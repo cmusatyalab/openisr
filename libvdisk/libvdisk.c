@@ -9,23 +9,111 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/fs.h>
 #include <linux/hdreg.h>
 #include <scsi/scsi.h>
+#include <pthread.h>
 
 static int (*real_open)(const char *pathname, int flags, ...);
 static int (*real_ioctl)(int fd, int request, ...);
+static int (*real_close)(int fd);
+static int (*real_dup)(int oldfd);
+static int (*real_dup2)(int oldfd, int newfd);
+static int (*real_fcntl)(int fd, int cmd, ...);
+
+static struct {
+	unsigned *map;
+	unsigned words;
+	pthread_mutex_t lock;
+} fdmap={NULL, 0, PTHREAD_MUTEX_INITIALIZER};
 
 static void __attribute__((constructor)) libvdisk_init(void)
 {
 	fprintf(stderr, "Initializing libvdisk\n");
 	real_open=dlsym(RTLD_NEXT, "open");
 	real_ioctl=dlsym(RTLD_NEXT, "ioctl");
-	if (real_open == NULL || real_ioctl == NULL)
+	real_close=dlsym(RTLD_NEXT, "close");
+	real_dup=dlsym(RTLD_NEXT, "dup");
+	real_dup2=dlsym(RTLD_NEXT, "dup2");
+	real_fcntl=dlsym(RTLD_NEXT, "fcntl");
+	if (real_open == NULL || real_ioctl == NULL || real_close == NULL ||
+		real_dup == NULL || real_dup2 == NULL || real_fcntl == NULL)
 		/* XXX */
 		fprintf(stderr, "Failed to get symbols");
 }
+
+/**** FD tracking ****/
+
+#define BYTES_PER_WORD (sizeof(*fdmap.map))
+#define BITS_PER_WORD (8*BYTES_PER_WORD)
+#define wordof(fd) (fd/BITS_PER_WORD)
+#define bitof(fd) (fd%BITS_PER_WORD)
+
+/* Must be called with fdmap lock held */
+static void _fdmap_make_space(int fd)
+{
+	unsigned newsize;
+	unsigned *newmap;
+	
+	if (fd < fdmap.words*BITS_PER_WORD)
+		return;
+
+	newsize=2*fdmap.words;
+	if (newsize == 0) newsize=1;
+	if (fd >= newsize*BITS_PER_WORD)
+		newsize=(fd/BITS_PER_WORD)+1;
+	fprintf(stderr, "Resizing fdmap from %d to %d\n", fdmap.words, newsize);
+	newmap=malloc(newsize*BYTES_PER_WORD);
+	if (newmap == NULL)
+		/* XXX */
+		fprintf(stderr, "Aiee!");
+	memset(newmap, 0, newsize*BYTES_PER_WORD);
+	if (fdmap.map != NULL) {
+		memcpy(newmap, fdmap.map, fdmap.words*BYTES_PER_WORD);
+		free(fdmap.map);
+	}
+	fdmap.map=newmap;
+	fdmap.words=newsize;
+}
+
+static int _fd_active(int fd)
+{
+	_fdmap_make_space(fd);
+	return ((fdmap.map[wordof(fd)] & (1 << bitof(fd))) != 0);	
+}
+
+static int fd_active(int fd)
+{
+	int ret;
+	pthread_mutex_lock(&fdmap.lock);
+	ret=_fd_active(fd);
+	pthread_mutex_unlock(&fdmap.lock);
+	return ret;
+}
+
+static void add_fd(int fd)
+{
+	pthread_mutex_lock(&fdmap.lock);
+	_fdmap_make_space(fd);
+	fprintf(stderr, "Adding %d to fdmap\n", fd);
+	fdmap.map[wordof(fd)] |= (1 << bitof(fd));
+	pthread_mutex_unlock(&fdmap.lock);
+}
+
+static void remove_fd(int fd)
+{
+	pthread_mutex_lock(&fdmap.lock);
+	_fdmap_make_space(fd);
+	if (_fd_active(fd)) {
+		fprintf(stderr, "Removing %d from fdmap\n", fd);
+		fdmap.map[wordof(fd)] &= ~(1 << bitof(fd));
+	}
+	pthread_mutex_unlock(&fdmap.lock);
+}
+
+/**** Utilities ****/
 
 static int open_wrapper(const char *pathname, int flags, mode_t mode)
 {
@@ -33,6 +121,9 @@ static int open_wrapper(const char *pathname, int flags, mode_t mode)
 	ret=real_open(pathname, flags, mode);
 	err=errno;
 	fprintf(stderr, "Opening %s => %d\n", pathname, ret);
+	/* XXX */
+	if (ret != -1 && strncmp("/dev/hd", pathname, 7) == 0)
+		add_fd(ret);
 	errno=err;
 	return ret;
 }
@@ -73,7 +164,57 @@ int open64(const char *pathname, int flags, ...)
 	return open_wrapper(pathname, flags|O_LARGEFILE, mode);
 }
 
-/* XXX native CD-ROM driver fails without fd tracking */
+int close(int fd)
+{
+	int ret, err;
+	ret=real_close(fd);
+	err=errno;
+	fprintf(stderr, "Closing %d => %d\n", fd, ret);
+	/* XXX EINTR? */
+	remove_fd(fd);
+	errno=err;
+	return real_close(fd);
+}
+
+int dup(int oldfd)
+{
+	int ret, err;
+	ret=real_dup(oldfd);
+	err=errno;
+	fprintf(stderr, "dup %d => %d\n", oldfd, ret);
+	if (ret != -1 && fd_active(oldfd))
+		add_fd(ret);
+	errno=err;
+	return ret;
+}
+
+int dup2(int oldfd, int newfd)
+{
+	int ret, err;
+	ret=real_dup2(oldfd, newfd);
+	err=errno;
+	fprintf(stderr, "dup2 %d => %d\n", oldfd, ret);
+	if (ret != -1 && fd_active(oldfd))
+		add_fd(ret);
+	errno=err;
+	return ret;
+}
+
+int fcntl(int fd, int cmd, ...)
+{
+	unsigned arg;
+	int ret, err;
+	get_last_arg(cmd, unsigned, arg);
+	ret=real_fcntl(fd, cmd, arg);
+	err=errno;
+	fprintf(stderr, "fcntl %d on %d => %d\n", cmd, fd, ret);
+	if (cmd == F_DUPFD && ret != -1 && fd_active(fd))
+		add_fd(ret);
+	errno=err;
+	return ret;
+}
+
+/* native CD-ROM driver fails without fd tracking */
 int ioctl(int fd, unsigned long request, ...)
 {
 	void *arg;
@@ -83,6 +224,8 @@ int ioctl(int fd, unsigned long request, ...)
 	uint64_t blocks;
 	
 	get_last_arg(request, void *, arg);
+	if (!fd_active(fd))
+		return real_ioctl(fd, request, arg);
 	switch (request) {
 	case BLKGETSIZE64:
 		name="BLKGETSIZE64";
