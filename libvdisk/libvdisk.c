@@ -23,7 +23,8 @@ static void __attribute__((constructor)) libvdisk_init(void)
 	real_open=dlsym(RTLD_NEXT, "open");
 	real_ioctl=dlsym(RTLD_NEXT, "ioctl");
 	if (real_open == NULL || real_ioctl == NULL)
-		/* XXX */;
+		/* XXX */
+		fprintf(stderr, "Failed to get symbols");
 }
 
 static int open_wrapper(const char *pathname, int flags, mode_t mode)
@@ -41,6 +42,7 @@ static int fill_driveid(struct hd_driveid *id, uint64_t blocks)
 	if (id == NULL)
 		return -1;
 	memset(id, 0, sizeof(*id));
+	/* XXX */
 	return 0;
 }
 
@@ -71,6 +73,7 @@ int open64(const char *pathname, int flags, ...)
 	return open_wrapper(pathname, flags|O_LARGEFILE, mode);
 }
 
+/* XXX native CD-ROM driver fails without fd tracking */
 int ioctl(int fd, unsigned long request, ...)
 {
 	void *arg;
@@ -94,6 +97,10 @@ int ioctl(int fd, unsigned long request, ...)
 		break;
 	case HDIO_GET_IDENTITY:
 		name="HDIO_GET_IDENTITY";
+		ret=real_ioctl(fd, request, arg);
+		err=errno;
+		break;
+#if 0
 		ret=real_ioctl(fd, BLKGETSIZE64, &blocks);
 		if (ret) {
 			err=errno;
@@ -107,6 +114,7 @@ int ioctl(int fd, unsigned long request, ...)
 		}
 		ret=0;
 		break;
+#endif
 	case SCSI_IOCTL_GET_IDLUN:
 		name="SCSI_IOCTL_GET_IDLUN";
 		ret=-1;
@@ -115,9 +123,12 @@ int ioctl(int fd, unsigned long request, ...)
 	default:
 		snprintf(buf, sizeof(buf), "0x%lx", request);
 		name=buf;
+		ret=real_ioctl(fd, request, arg);
+		err=errno;
 	}
 	if (request != FIONREAD)
 		fprintf(stderr, "ioctl %s on %d => %d\n", name, fd, ret);
 	errno=err;
 	return ret;
 }
+
