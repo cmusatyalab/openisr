@@ -17,6 +17,8 @@
 #include <pthread.h>
 
 #define DEBUG
+/* XXX */
+#define MAXPATHLEN 256
 
 static int (*real_open)(const char *pathname, int flags, ...);
 static int (*real_ioctl)(int fd, int request, ...);
@@ -30,8 +32,10 @@ static struct {
 	unsigned words;
 	pthread_mutex_t lock;
 } fdmap={NULL, 0, PTHREAD_MUTEX_INITIALIZER};
+static char *realdev=NULL;
 
 /**** Debug and message stuff ****/
+/* XXX convert to function? */
 #define warn(s, args...) do { \
 	fprintf(stderr, "libvdisk (%d): ", getpid()); \
 	fprintf(stderr, s , ## args); \
@@ -45,22 +49,43 @@ static struct {
 #define debug(s, args...) /***/
 #endif
 
-static void __attribute__((constructor)) libvdisk_init(void)
+/* XXX access permissions checking - we don't trap access() or stat(). 
+   we may have to do it ourselves. */
+
+static void _get_symbol(void **dest, char *name)
 {
-	debug("Initializing libvdisk");
-	real_open=dlsym(RTLD_NEXT, "open");
-	real_ioctl=dlsym(RTLD_NEXT, "ioctl");
-	real_close=dlsym(RTLD_NEXT, "close");
-	real_dup=dlsym(RTLD_NEXT, "dup");
-	real_dup2=dlsym(RTLD_NEXT, "dup2");
-	real_fcntl=dlsym(RTLD_NEXT, "fcntl");
-	if (real_open == NULL || real_ioctl == NULL || real_close == NULL ||
-				real_dup == NULL || real_dup2 == NULL ||
-				real_fcntl == NULL) {
-		warn("Failed to get symbols");
+	*dest=dlsym(RTLD_NEXT, name);
+	if (*dest == NULL) {
+		warn("Failed to get symbol: %s", name);
 		/* Cut our losses, since we're just going to fail horribly
 		   later on */
 		exit(-1);
+	}
+}
+#define GET_SYMBOL(foo) _get_symbol((void**)&real_ ## foo, #foo)
+
+static void __attribute__((constructor)) libvdisk_init(void)
+{
+	char *path;
+
+	debug("Initializing libvdisk");
+	GET_SYMBOL(open);
+	GET_SYMBOL(ioctl);
+	GET_SYMBOL(close);
+	GET_SYMBOL(dup);
+	GET_SYMBOL(dup2);
+	GET_SYMBOL(fcntl);
+
+	path=getenv("VDISK_DEVICE");
+	if (path != NULL) {
+		realdev=strndup(path, MAXPATHLEN);
+		if (realdev == NULL) {
+			warn("Failed to read VDISK_DEVICE; no remapping will be done");
+		}
+		/* Don't pollute VMware's environment */
+		unsetenv("VDISK_DEVICE");
+	} else {
+		warn("VDISK_DEVICE not set; no remapping will be done");
 	}
 }
 
@@ -137,14 +162,21 @@ static void remove_fd(int fd)
 
 /**** Utilities ****/
 
+static int want_remap(const char *pathname)
+{
+	return (strcmp(pathname, "/dev/hdv") == 0);
+}
+
 static int open_wrapper(const char *pathname, int flags, mode_t mode)
 {
 	int ret, err;
+	int remap=want_remap(pathname);
+	if (remap)
+		pathname=realdev;
 	ret=real_open(pathname, flags, mode);
 	err=errno;
 	debug("Opening %s => %d", pathname, ret);
-	/* XXX */
-	if (ret != -1 && strncmp("/dev/hd", pathname, 7) == 0)
+	if (remap && ret != -1)
 		add_fd(ret);
 	errno=err;
 	return ret;
