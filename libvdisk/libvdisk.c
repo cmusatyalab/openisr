@@ -16,6 +16,8 @@
 #include <scsi/scsi.h>
 #include <pthread.h>
 
+#define DEBUG
+
 static int (*real_open)(const char *pathname, int flags, ...);
 static int (*real_ioctl)(int fd, int request, ...);
 static int (*real_close)(int fd);
@@ -29,9 +31,23 @@ static struct {
 	pthread_mutex_t lock;
 } fdmap={NULL, 0, PTHREAD_MUTEX_INITIALIZER};
 
+/**** Debug and message stuff ****/
+#define warn(s, args...) do { \
+	fprintf(stderr, "libvdisk (%d): ", getpid()); \
+	fprintf(stderr, s , ## args); \
+	fprintf(stderr, "\n"); \
+	} while (0)
+#define ndebug(s, args...) /***/
+
+#ifdef DEBUG
+#define debug(s, args...) warn(s , ## args)
+#else
+#define debug(s, args...) /***/
+#endif
+
 static void __attribute__((constructor)) libvdisk_init(void)
 {
-	fprintf(stderr, "Initializing libvdisk\n");
+	debug("Initializing libvdisk");
 	real_open=dlsym(RTLD_NEXT, "open");
 	real_ioctl=dlsym(RTLD_NEXT, "ioctl");
 	real_close=dlsym(RTLD_NEXT, "close");
@@ -39,9 +55,13 @@ static void __attribute__((constructor)) libvdisk_init(void)
 	real_dup2=dlsym(RTLD_NEXT, "dup2");
 	real_fcntl=dlsym(RTLD_NEXT, "fcntl");
 	if (real_open == NULL || real_ioctl == NULL || real_close == NULL ||
-		real_dup == NULL || real_dup2 == NULL || real_fcntl == NULL)
-		/* XXX */
-		fprintf(stderr, "Failed to get symbols");
+				real_dup == NULL || real_dup2 == NULL ||
+				real_fcntl == NULL) {
+		warn("Failed to get symbols");
+		/* Cut our losses, since we're just going to fail horribly
+		   later on */
+		exit(-1);
+	}
 }
 
 /**** FD tracking ****/
@@ -64,11 +84,13 @@ static void _fdmap_make_space(int fd)
 	if (newsize == 0) newsize=1;
 	if (fd >= newsize*BITS_PER_WORD)
 		newsize=(fd/BITS_PER_WORD)+1;
-	fprintf(stderr, "Resizing fdmap from %d to %d\n", fdmap.words, newsize);
+	debug("Resizing fdmap from %d to %d", fdmap.words, newsize);
 	newmap=malloc(newsize*BYTES_PER_WORD);
-	if (newmap == NULL)
+	if (newmap == NULL) {
 		/* XXX */
-		fprintf(stderr, "Aiee!");
+		warn("Aiee, map allocation failed!");
+		return;
+	}
 	memset(newmap, 0, newsize*BYTES_PER_WORD);
 	if (fdmap.map != NULL) {
 		memcpy(newmap, fdmap.map, fdmap.words*BYTES_PER_WORD);
@@ -97,7 +119,7 @@ static void add_fd(int fd)
 {
 	pthread_mutex_lock(&fdmap.lock);
 	_fdmap_make_space(fd);
-	fprintf(stderr, "Adding %d to fdmap\n", fd);
+	debug("Adding %d to fdmap", fd);
 	fdmap.map[wordof(fd)] |= (1 << bitof(fd));
 	pthread_mutex_unlock(&fdmap.lock);
 }
@@ -107,7 +129,7 @@ static void remove_fd(int fd)
 	pthread_mutex_lock(&fdmap.lock);
 	_fdmap_make_space(fd);
 	if (_fd_active(fd)) {
-		fprintf(stderr, "Removing %d from fdmap\n", fd);
+		debug("Removing %d from fdmap", fd);
 		fdmap.map[wordof(fd)] &= ~(1 << bitof(fd));
 	}
 	pthread_mutex_unlock(&fdmap.lock);
@@ -120,7 +142,7 @@ static int open_wrapper(const char *pathname, int flags, mode_t mode)
 	int ret, err;
 	ret=real_open(pathname, flags, mode);
 	err=errno;
-	fprintf(stderr, "Opening %s => %d\n", pathname, ret);
+	debug("Opening %s => %d", pathname, ret);
 	/* XXX */
 	if (ret != -1 && strncmp("/dev/hd", pathname, 7) == 0)
 		add_fd(ret);
@@ -169,11 +191,12 @@ int close(int fd)
 	int ret, err;
 	ret=real_close(fd);
 	err=errno;
-	fprintf(stderr, "Closing %d => %d\n", fd, ret);
-	/* XXX EINTR? */
+	debug("Closing %d => %d", fd, ret);
+	/* On Linux, close() always releases the fd even if it returns
+	   EINTR. */
 	remove_fd(fd);
 	errno=err;
-	return real_close(fd);
+	return ret;
 }
 
 int dup(int oldfd)
@@ -181,7 +204,7 @@ int dup(int oldfd)
 	int ret, err;
 	ret=real_dup(oldfd);
 	err=errno;
-	fprintf(stderr, "dup %d => %d\n", oldfd, ret);
+	debug("dup %d => %d", oldfd, ret);
 	if (ret != -1 && fd_active(oldfd))
 		add_fd(ret);
 	errno=err;
@@ -193,7 +216,7 @@ int dup2(int oldfd, int newfd)
 	int ret, err;
 	ret=real_dup2(oldfd, newfd);
 	err=errno;
-	fprintf(stderr, "dup2 %d => %d\n", oldfd, ret);
+	debug("dup2 %d => %d", oldfd, ret);
 	if (ret != -1 && fd_active(oldfd))
 		add_fd(ret);
 	errno=err;
@@ -207,7 +230,7 @@ int fcntl(int fd, int cmd, ...)
 	get_last_arg(cmd, unsigned, arg);
 	ret=real_fcntl(fd, cmd, arg);
 	err=errno;
-	fprintf(stderr, "fcntl %d on %d => %d\n", cmd, fd, ret);
+	debug("fcntl %d on %d => %d", cmd, fd, ret);
 	if (cmd == F_DUPFD && ret != -1 && fd_active(fd))
 		add_fd(ret);
 	errno=err;
@@ -270,7 +293,7 @@ int ioctl(int fd, unsigned long request, ...)
 		err=errno;
 	}
 	if (request != FIONREAD)
-		fprintf(stderr, "ioctl %s on %d => %d\n", name, fd, ret);
+		debug("ioctl %s on %d => %d", name, fd, ret);
 	errno=err;
 	return ret;
 }
