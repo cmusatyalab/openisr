@@ -28,6 +28,8 @@ static int (*dup2_real)(int oldfd, int newfd);
 static int (*fcntl_real)(int fd, int cmd, ...);
 static int (*__xstat_real)(int ver, const char *filename, struct stat *buf);
 static int (*__xstat64_real)(int ver, const char *filename, struct stat *buf);
+static int (*__lxstat_real)(int ver, const char *filename, struct stat *buf);
+static int (*__lxstat64_real)(int ver, const char *filename, struct stat *buf);
 
 static struct {
 	unsigned *map;
@@ -79,6 +81,8 @@ static void __attribute__((constructor)) libvdisk_init(void)
 	GET_SYMBOL(fcntl);
 	GET_SYMBOL(__xstat);
 	GET_SYMBOL(__xstat64);
+	GET_SYMBOL(__lxstat);
+	GET_SYMBOL(__lxstat64);
 
 	path=getenv("VDISK_DEVICE");
 	if (path != NULL) {
@@ -187,16 +191,39 @@ static int open_wrapper(const char *pathname, int flags, mode_t mode)
 	return ret;
 }
 
-static int stat_wrapper(int ver, const char *filename, void *buf, int do64)
+enum stat_type {
+	STAT,
+	STAT64,
+	LSTAT,
+	LSTAT64
+};
+
+static int stat_wrapper(int ver, const char *filename, void *buf,
+			enum stat_type type)
 {
 	int ret, err;
+	char *typename;
 	remap(&filename);
-	if (do64)
-		ret=__xstat64_real(ver, filename, buf);
-	else
+	switch (type) {
+	case STAT:
+		typename="stat";
 		ret=__xstat_real(ver, filename, buf);
+		break;
+	case STAT64:
+		typename="stat64";
+		ret=__xstat64_real(ver, filename, buf);
+		break;
+	case LSTAT:
+		typename="lstat";
+		ret=__lxstat_real(ver, filename, buf);
+		break;
+	case LSTAT64:
+		typename="lstat64";
+		ret=__lxstat64_real(ver, filename, buf);
+		break;
+	}
 	err=errno;
-	debug("%s %s => %d", do64 ? "stat64" : "stat", filename, ret);
+	debug("%s %s => %d", typename, filename, ret);
 	errno=err;
 	return ret;
 }
@@ -288,18 +315,26 @@ int fcntl(int fd, int cmd, ...)
 	return ret;
 }
 
-/* XXX needed? */
-/* XXX lstat? */
 /* stat() in user programs translates to an __xstat() call at the library
    interface.  See the block comment in /usr/include/sys/stat.h. */
 int __xstat(int ver, const char *filename, struct stat *buf)
 {
-	return stat_wrapper(ver, filename, buf, 0);
+	return stat_wrapper(ver, filename, buf, STAT);
 }
 
 int __xstat64(int ver, const char *filename, struct stat64 *buf)
 {
-	return stat_wrapper(ver, filename, buf, 1);
+	return stat_wrapper(ver, filename, buf, STAT64);
+}
+
+int __lxstat(int ver, const char *filename, struct stat *buf)
+{
+	return stat_wrapper(ver, filename, buf, LSTAT);
+}
+
+int __lxstat64(int ver, const char *filename, struct stat64 *buf)
+{
+	return stat_wrapper(ver, filename, buf, LSTAT64);
 }
 
 /* native CD-ROM driver fails without fd tracking */
