@@ -53,9 +53,6 @@ static char *realdev=NULL;
 #define debug(s, args...) /***/
 #endif
 
-/* XXX access permissions checking - we don't trap access() or stat(). 
-   we may have to do it ourselves. */
-
 static void _get_symbol(void **dest, char *name)
 {
 	*dest=dlsym(RTLD_NEXT, name);
@@ -90,8 +87,6 @@ static void __attribute__((constructor)) libvdisk_init(void)
 		if (realdev == NULL) {
 			warn("Failed to read VDISK_DEVICE; no remapping will be done");
 		}
-		/* Don't pollute VMware's environment */
-		unsetenv("VDISK_DEVICE");
 	} else {
 		warn("VDISK_DEVICE not set; no remapping will be done");
 	}
@@ -322,6 +317,9 @@ int __xstat(int ver, const char *filename, struct stat *buf)
 	return stat_wrapper(ver, filename, buf, STAT);
 }
 
+/* We wrap all four stat() variants for completeness, but VMWare 5.5
+   seems to only care about stat64().  Perhaps we should wrap access()
+   also, though it is obscure. */
 int __xstat64(int ver, const char *filename, struct stat64 *buf)
 {
 	return stat_wrapper(ver, filename, buf, STAT64);
