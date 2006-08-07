@@ -20,12 +20,14 @@
 /* XXX */
 #define MAXPATHLEN 256
 
-static int (*real_open)(const char *pathname, int flags, ...);
-static int (*real_ioctl)(int fd, int request, ...);
-static int (*real_close)(int fd);
-static int (*real_dup)(int oldfd);
-static int (*real_dup2)(int oldfd, int newfd);
-static int (*real_fcntl)(int fd, int cmd, ...);
+static int (*open_real)(const char *pathname, int flags, ...);
+static int (*ioctl_real)(int fd, int request, ...);
+static int (*close_real)(int fd);
+static int (*dup_real)(int oldfd);
+static int (*dup2_real)(int oldfd, int newfd);
+static int (*fcntl_real)(int fd, int cmd, ...);
+static int (*__xstat_real)(int ver, const char *filename, struct stat *buf);
+static int (*__xstat64_real)(int ver, const char *filename, struct stat *buf);
 
 static struct {
 	unsigned *map;
@@ -62,7 +64,7 @@ static void _get_symbol(void **dest, char *name)
 		exit(-1);
 	}
 }
-#define GET_SYMBOL(foo) _get_symbol((void**)&real_ ## foo, #foo)
+#define GET_SYMBOL(foo) _get_symbol((void**)&foo ## _real, #foo)
 
 static void __attribute__((constructor)) libvdisk_init(void)
 {
@@ -75,6 +77,8 @@ static void __attribute__((constructor)) libvdisk_init(void)
 	GET_SYMBOL(dup);
 	GET_SYMBOL(dup2);
 	GET_SYMBOL(fcntl);
+	GET_SYMBOL(__xstat);
+	GET_SYMBOL(__xstat64);
 
 	path=getenv("VDISK_DEVICE");
 	if (path != NULL) {
@@ -162,22 +166,37 @@ static void remove_fd(int fd)
 
 /**** Utilities ****/
 
-static int want_remap(const char *pathname)
+static int remap(const char **pathname)
 {
-	return (strcmp(pathname, "/dev/hdv") == 0);
+	if (realdev == NULL || strcmp(*pathname, "/dev/hdv") != 0)
+		return 0;
+	*pathname=realdev;
+	return 1;
 }
 
 static int open_wrapper(const char *pathname, int flags, mode_t mode)
 {
-	int ret, err;
-	int remap=want_remap(pathname);
-	if (remap)
-		pathname=realdev;
-	ret=real_open(pathname, flags, mode);
+	int ret, err, remapped;
+	remapped=remap(&pathname);
+	ret=open_real(pathname, flags, mode);
 	err=errno;
 	debug("Opening %s => %d", pathname, ret);
-	if (remap && ret != -1)
+	if (remapped && ret != -1)
 		add_fd(ret);
+	errno=err;
+	return ret;
+}
+
+static int stat_wrapper(int ver, const char *filename, void *buf, int do64)
+{
+	int ret, err;
+	remap(&filename);
+	if (do64)
+		ret=__xstat64_real(ver, filename, buf);
+	else
+		ret=__xstat_real(ver, filename, buf);
+	err=errno;
+	debug("%s %s => %d", do64 ? "stat64" : "stat", filename, ret);
 	errno=err;
 	return ret;
 }
@@ -221,7 +240,7 @@ int open64(const char *pathname, int flags, ...)
 int close(int fd)
 {
 	int ret, err;
-	ret=real_close(fd);
+	ret=close_real(fd);
 	err=errno;
 	debug("Closing %d => %d", fd, ret);
 	/* On Linux, close() always releases the fd even if it returns
@@ -234,7 +253,7 @@ int close(int fd)
 int dup(int oldfd)
 {
 	int ret, err;
-	ret=real_dup(oldfd);
+	ret=dup_real(oldfd);
 	err=errno;
 	debug("dup %d => %d", oldfd, ret);
 	if (ret != -1 && fd_active(oldfd))
@@ -246,7 +265,7 @@ int dup(int oldfd)
 int dup2(int oldfd, int newfd)
 {
 	int ret, err;
-	ret=real_dup2(oldfd, newfd);
+	ret=dup2_real(oldfd, newfd);
 	err=errno;
 	debug("dup2 %d => %d", oldfd, ret);
 	if (ret != -1 && fd_active(oldfd))
@@ -260,13 +279,27 @@ int fcntl(int fd, int cmd, ...)
 	unsigned arg;
 	int ret, err;
 	get_last_arg(cmd, unsigned, arg);
-	ret=real_fcntl(fd, cmd, arg);
+	ret=fcntl_real(fd, cmd, arg);
 	err=errno;
 	debug("fcntl %d on %d => %d", cmd, fd, ret);
 	if (cmd == F_DUPFD && ret != -1 && fd_active(fd))
 		add_fd(ret);
 	errno=err;
 	return ret;
+}
+
+/* XXX needed? */
+/* XXX lstat? */
+/* stat() in user programs translates to an __xstat() call at the library
+   interface.  See the block comment in /usr/include/sys/stat.h. */
+int __xstat(int ver, const char *filename, struct stat *buf)
+{
+	return stat_wrapper(ver, filename, buf, 0);
+}
+
+int __xstat64(int ver, const char *filename, struct stat64 *buf)
+{
+	return stat_wrapper(ver, filename, buf, 1);
 }
 
 /* native CD-ROM driver fails without fd tracking */
@@ -280,26 +313,26 @@ int ioctl(int fd, unsigned long request, ...)
 	
 	get_last_arg(request, void *, arg);
 	if (!fd_active(fd))
-		return real_ioctl(fd, request, arg);
+		return ioctl_real(fd, request, arg);
 	switch (request) {
 	case BLKGETSIZE64:
 		name="BLKGETSIZE64";
-		ret=real_ioctl(fd, request, arg);
+		ret=ioctl_real(fd, request, arg);
 		/* We need to save and restore errno across library calls */
 		err=errno;
 		break;
 	case HDIO_GETGEO:
 		name="HDIO_GETGEO";
-		ret=real_ioctl(fd, request, arg);
+		ret=ioctl_real(fd, request, arg);
 		err=errno;
 		break;
 	case HDIO_GET_IDENTITY:
 		name="HDIO_GET_IDENTITY";
-		ret=real_ioctl(fd, request, arg);
+		ret=ioctl_real(fd, request, arg);
 		err=errno;
 		break;
 #if 0
-		ret=real_ioctl(fd, BLKGETSIZE64, &blocks);
+		ret=ioctl_real(fd, BLKGETSIZE64, &blocks);
 		if (ret) {
 			err=errno;
 			break;
@@ -321,7 +354,7 @@ int ioctl(int fd, unsigned long request, ...)
 	default:
 		snprintf(buf, sizeof(buf), "0x%lx", request);
 		name=buf;
-		ret=real_ioctl(fd, request, arg);
+		ret=ioctl_real(fd, request, arg);
 		err=errno;
 	}
 	if (request != FIONREAD)
