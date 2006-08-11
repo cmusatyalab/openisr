@@ -57,7 +57,7 @@ static void _get_symbol(void **dest, char *name)
 {
 	*dest=dlsym(RTLD_NEXT, name);
 	if (*dest == NULL) {
-		warn("Failed to get symbol: %s", name);
+		warn("Failed to get symbol: %s: %s", name, dlerror());
 		/* Cut our losses, since we're just going to fail horribly
 		   later on */
 		exit(-1);
@@ -223,13 +223,36 @@ static int stat_wrapper(int ver, const char *filename, void *buf,
 	return ret;
 }
 
-static int fill_driveid(struct hd_driveid *id, uint64_t blocks)
+/* XXX in case of small disks we should make an effort to waste less space */
+/* XXX do we need geometry compatibility with fauxide? */
+/* XXX fdisk params are wrong.  check what fauxide does */
+static void fill_geo(struct hd_geometry *geo, uint64_t sects)
 {
-	if (id == NULL)
-		return -1;
+	uint64_t cyls;
+	memset(geo, 0, sizeof(*geo));
+	geo->heads=255;
+	geo->sectors=63;
+	/* We must round down in case of a partial cylinder */
+	cyls=sects/(geo->heads*geo->sectors);
+	/* This makes no sense, but matches what the kernel does */
+	geo->cylinders=cyls % 65536;
+}
+
+static void fill_driveid(struct hd_driveid *id, uint64_t sects)
+{
+	uint64_t cyls;
 	memset(id, 0, sizeof(*id));
-	/* XXX */
-	return 0;
+	id->heads=16;
+	id->sectors=63;
+	cyls=sects/(id->heads*id->sectors);
+	id->cyls=cyls;
+	if (cyls > 16383)
+		id->cyls=16383;
+	id->capability=0x2;  /* LBA */
+	id->lba_capacity=sects;
+	if (sects > ((uint32_t)-1))
+		id->lba_capacity=((uint32_t)-1);
+	id->lba_capacity_2=sects;
 }
 
 #define get_last_arg(last_named_arg, arg_type, dest) do { \
@@ -342,52 +365,57 @@ int ioctl(int fd, unsigned long request, ...)
 	int ret, err=0;
 	char *name;
 	char buf[12];
-	uint64_t blocks;
+	uint64_t size;  /* bytes */
 	
 	get_last_arg(request, void *, arg);
 	if (!fd_active(fd))
 		return ioctl_real(fd, request, arg);
+	
 	switch (request) {
 	case BLKGETSIZE64:
 		name="BLKGETSIZE64";
-		ret=ioctl_real(fd, request, arg);
-		/* We need to save and restore errno across library calls */
-		err=errno;
 		break;
 	case HDIO_GETGEO:
 		name="HDIO_GETGEO";
-		ret=ioctl_real(fd, request, arg);
-		err=errno;
 		break;
 	case HDIO_GET_IDENTITY:
 		name="HDIO_GET_IDENTITY";
-		ret=ioctl_real(fd, request, arg);
-		err=errno;
 		break;
-#if 0
-		ret=ioctl_real(fd, BLKGETSIZE64, &blocks);
-		if (ret) {
-			err=errno;
-			break;
-		}
-		if (fill_driveid((struct hd_driveid*)arg, blocks)) {
-			/* XXX null pointer check */
-			ret=-1;
-			err=EFAULT;
-			break;
-		}
-		ret=0;
-		break;
-#endif
 	case SCSI_IOCTL_GET_IDLUN:
 		name="SCSI_IOCTL_GET_IDLUN";
-		ret=-1;
-		err=ENOTTY;
 		break;
 	default:
 		snprintf(buf, sizeof(buf), "0x%lx", request);
 		name=buf;
+	}
+
+	switch (request) {
+	case HDIO_GETGEO:
+	case HDIO_GET_IDENTITY:
+		if ((void*)arg == NULL) {
+			/* XXX? */
+			ret=-1;
+			err=EINVAL;
+			break;
+		}
+		ret=ioctl_real(fd, BLKGETSIZE64, &size);
+		if (ret) {
+			err=errno;
+			break;
+		}
+		if (request == HDIO_GETGEO)
+			fill_geo((struct hd_geometry*)arg, size/512);
+		else
+			fill_driveid((struct hd_driveid*)arg, size/512);
+		ret=0;
+		break;
+	case SCSI_IOCTL_GET_IDLUN:
+		ret=-1;
+		err=ENOTTY;
+		break;
+	default:
 		ret=ioctl_real(fd, request, arg);
+		/* We need to save and restore errno across library calls */
 		err=errno;
 	}
 	if (request != FIONREAD)
