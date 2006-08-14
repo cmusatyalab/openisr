@@ -1,16 +1,12 @@
 CFLAGS=-Wall -Wstrict-prototypes -g
+PROGS=open stat probe
 
-all: open stat probe
+.PHONY: all
+all: $(PROGS)
 
-open: open.c
-	gcc $(CFLAGS) -o open open.c
-
-stat: stat.c
-	gcc $(CFLAGS) -o stat stat.c
-
-probe: probe.c
-	gcc $(CFLAGS) -o probe probe.c
+%: %.c
+	gcc $(CFLAGS) -o $@ $^
 
 .PHONY: clean
 clean:
-	rm -f open stat probe
+	rm -f $(PROGS)

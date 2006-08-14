@@ -1,10 +1,13 @@
 CFLAGS=-W -Wall -Wstrict-prototypes -g
 
+.PHONY: all
 all: libvdisk.so
 
-libvdisk.so: libvdisk.c
-	gcc $(CFLAGS) -fPIC -o libvdisk.o -c libvdisk.c
-	gcc -shared -fPIC -ldl -o libvdisk.so libvdisk.o
+libvdisk.so: libvdisk.lo
+	gcc -shared -fPIC -ldl -o $@ $^
+
+%.lo: %.c
+	gcc $(CFLAGS) -fPIC -o $@ -c $<
 
 .PHONY: install
 install: libvdisk.so
@@ -13,4 +16,4 @@ install: libvdisk.so
 
 .PHONY: clean
 clean:
-	rm -f *.o *.so
+	rm -f *.o *.lo *.so
