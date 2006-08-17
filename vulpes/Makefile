@@ -4,47 +4,23 @@
 CC=gcc
 CCC=g++
 
-# if you wish to override `uname -r`, let configure 
-# fill this up with the location/pathname of the kernel tree.
+CFLAGS= -MMD -g -O2 -Wall -D_GNU_SOURCE -D_LARGEFILE_SOURCE
 
-KERNELSRC=
-ifneq (,$(KERNELSRC))
-KERNELVER := $(shell grep UTS_RELEASE $(KERNELSRC)/include/linux/version.h | cut -d\" -f2)
-else
-KERNELVER := $(shell uname -r)
-endif
-KERNELBUILDDIR := /lib/modules/$(KERNELVER)/build
-KERNELINCLUDEDIR := $(KERNELBUILDDIR)/include
-
-UCFLAGS= -MMD -g -O2 -Wall -D_GNU_SOURCE -D_LARGEFILE_SOURCE
-KCFLAGS= -MMD -Wall -O2 -DMODULE -D__KERNEL__ -DLINUX -I $(KERNELINCLUDEDIR)
-
-# ULFLAGS= -static -static-libgcc -lz -lcrypto -lcurl -L/usr/kerberos/lib -lssl -lgssapi_krb5 -lkrb5 -lcom_err -lk5crypto -lresolv -ldl -L/usr/kerberos/lib 
-ULFLAGS= -static -static-libgcc -L/usr/kerberos/lib 
-ULLIBS= -lz -lcurl -lk5crypto -lkrb5 -lcrypto -lgssapi_krb5 -ldl -lssl -lcom_err -lresolv 
-KLFLAGS=
+LFLAGS= -static -static-libgcc -L/usr/kerberos/lib 
+LLIBS= -lz -lcurl -lk5crypto -lkrb5 -lcrypto -lgssapi_krb5 -ldl -lssl -lcom_err -lresolv 
 
 ISR_HOME=$(PWD)
-DRIVERDIR=$(ISR_HOME)/local/drivers
 BINDIR=$(ISR_HOME)/local/bin
 
-DRIVER=fauxide.o
-DRIVER26=isr.ko
 APP=vulpes
 UTILS=keyring-utils
 
-KSRCS=fauxide.c
-KSRCS26=isr.c
-USRCS=vulpes.c vulpes_lev1.c vulpes_fids.c vulpes_logstats.c vulpes_lev1_encryption.c vulpes_log.c # vulpes_simple.c 
+SRCS=vulpes.c vulpes_lev1.c vulpes_fids.c vulpes_logstats.c vulpes_lev1_encryption.c vulpes_log.c # vulpes_simple.c 
 
-KOBJS=$(KSRCS:.c=.o)
-UOBJS=$(USRCS:.c=.o)
-KASS=$(KSRCS:.c=.s)
-UASS=$(USRCS:.c=.s)
-KPRE=$(KSRCS:.c=.i)
-UPRE=$(USRCS:.c=.i)
-KDEP=$(KSRCS:.c=.d)
-UDEP=$(USRCS:.c=.d)
+OBJS=$(SRCS:.c=.o)
+ASS=$(SRCS:.c=.s)
+PRE=$(SRCS:.c=.i)
+DEP=$(SRCS:.c=.d)
 
 CURL_VER=
 CURL_VER :=  $(shell curl-config --version|cut -f2 -d' '|cut -f2 -d'.')
@@ -54,7 +30,7 @@ else
 CURL_TOO_OLD=1
 endif
 
-all: LIBS $(DRIVER) $(APP)
+all: LIBS $(APP)
 
 LIBS: 
 ifeq (1,$(CURL_TOO_OLD))
@@ -66,57 +42,32 @@ ifeq (1,$(CURL_TOO_OLD))
 	rm -fr curl-7.12.1
 endif
 
-DRIVERBUILDDIR=$(PWD)/isr-driver-build
-DRIVER26:
-	(mkdir -p $(DRIVERBUILDDIR) \
-	 && cd $(DRIVERBUILDDIR) \
-	 && ln -sf ../Makefile.driver26 Makefile \
-	 && ln -sf ../isr.c ../fauxide.h . \
-	 && make \
-	 && cd .. )
+$(OBJS): %.o : %.c
+	$(CC) $(CFLAGS) $< -c -o $@
 
-$(KOBJS): %.o : %.c
-	$(CC) $(KCFLAGS) $< -c -o $@
+$(PRE): %.i : %.c
+	$(CC) $(CFLAGS) $< -E -o $@
 
-$(UOBJS): %.o : %.c
-	$(CC) $(UCFLAGS) $< -c -o $@
+$(ASS): %.s : %.c
+	$(CC) $(CFLAGS) $< -S -o $@
 
-$(KPRE): %.i : %.c
-	$(CC) $(KCFLAGS) $< -E -o $@
-
-$(UPRE): %.i : %.c
-	$(CC) $(UCFLAGS) $< -E -o $@
-
-$(KASS): %.s : %.c
-	$(CC) $(KCFLAGS) $< -S -o $@
-
-$(UASS): %.s : %.c
-	$(CC) $(UCFLAGS) $< -S -o $@
-
-$(KDEP): %.d : %.c
+$(DEP): %.d : %.c
 	@touch $@
 
-$(UDEP): %.d : %.c
-	@touch $@
-
--include $(KDEP) 
--include $(UDEP)
+-include $(DEP)
 
 clean:
-	rm -f $(UDEP) $(KDEP) $(UASS) $(KASS) $(UPRE) $(KPRE) $(UOBJS) $(KOBJS) *~ $(APP) processchunk vulpes_lka.d vulpes_lka.o
-	rm -fr $(DRIVERBUILDDIR)
+	rm -f $(DEP) $(ASS) $(PRE) $(OBJS) *~ $(APP) processchunk vulpes_lka.d vulpes_lka.o
 
 install: 
-	@mkdir -p $(DRIVERDIR)
 	@mkdir -p $(BINDIR)
-	@cp $(DRIVER) $(DRIVERDIR)
 	@cp $(APP) $(BINDIR)
 
 vulpes_lka.o: vulpes_lka.C
-	$(CCC) $(UCFLAGS) $< -c -o $@
+	$(CCC) $(CFLAGS) $< -c -o $@
 
-vulpes: $(UOBJS) vulpes_lka.o 
-	$(CCC) -o $@ $^ $(ULFLAGS) $(ULLIBS) $(ULLIBS) $(ULLIBS)
+vulpes: $(OBJS) vulpes_lka.o 
+	$(CCC) -o $@ $^ $(LFLAGS) $(LLIBS) $(LLIBS) $(LLIBS)
 
 keyring-utils: processchunk
 
@@ -126,5 +77,5 @@ processchunk: processchunk.c vulpes_lev1_encryption.o vulpes_log.o
 analyze_logstats: analyze_logstats.cpp
 	$(CCC) -o analyze_logstats analyze_logstats.cpp
 
-fauxide.tgz:
-	tar cvzf fauxide.tgz $(KSRCS) $(USRCS) tf.c Makefile 
+vulpes.tgz:
+	tar cvzf vulpes.tgz $(SRCS) tf.c Makefile 
