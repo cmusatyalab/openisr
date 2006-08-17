@@ -1,0 +1,14 @@
+                               Fauxide
+
+                      A virtual disk drive tool
+
+
+To build the 'isr' module for linux 2.6.x
+(equivalent to 'fauxide' in 2.4.x), use: 
+
+make DRIVER26
+
+
+CURL
+
+curl version 7.12.x or higher is required for vulpes
