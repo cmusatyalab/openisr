@@ -3,8 +3,7 @@ CCC=g++
 
 CFLAGS= -MMD -g -O2 -Wall -D_GNU_SOURCE -D_LARGEFILE_SOURCE
 
-LFLAGS= -static -static-libgcc -L/usr/kerberos/lib 
-LLIBS= -lz -lcurl -lk5crypto -lkrb5 -lcrypto -lgssapi_krb5 -ldl -lssl -lcom_err -lresolv 
+LFLAGS= -lz -lssl -lcurl
 
 ISR_HOME=$(PWD)
 BINDIR=$(ISR_HOME)/local/bin
@@ -71,7 +70,7 @@ vulpes_lka.o: vulpes_lka.C
 	$(CCC) $(CFLAGS) $< -c -o $@
 
 vulpes: $(OBJS) vulpes_lka.o 
-	$(CCC) -o $@ $^ $(LFLAGS) $(LLIBS) $(LLIBS) $(LLIBS)
+	$(CCC) -o $@ $(LFLAGS) $^
 
 keyring-utils: processchunk
 
