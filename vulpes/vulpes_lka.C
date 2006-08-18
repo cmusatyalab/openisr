@@ -34,8 +34,6 @@ ACCEPTANCE OF THIS AGREEMENT
 const int MAX_LKA_STRING_LEN=256;
 const char *lka_prov_str_hfs_sha1="hfs-sha-1";
 
-extern "C" const char *vulpes_lka_c_version = "$Id: vulpes_lka.C,v 1.8 2005/05/20 21:09:15 makozuch Exp $";
-
 /*
  * TYPES
  */

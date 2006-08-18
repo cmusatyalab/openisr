@@ -13,8 +13,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 */
 
-/* $Id: fauxide.h,v 1.5 2004/11/01 16:18:52 makozuch Exp $ */
-
 #ifndef FAUXIDE_H_
 #define FAUXIDE_H_
 

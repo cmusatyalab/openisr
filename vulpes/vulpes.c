@@ -13,8 +13,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 */
 
-/* $Id: vulpes.c,v 1.34 2005/03/11 21:26:07 makozuch Exp $ */
-
 /* INCLUDES */
 //#define _GNU_SOURCE
 #include <stdio.h>
@@ -39,17 +37,11 @@ extern int initialize_lev1_mapping(vulpes_mapping_t * map_ptr);
 
 extern int initialize_vulpes_logstats(vulpes_stats_t * stats,
 				      const char *filename);
-extern const char *vulpes_c_version;
-extern const char *vulpes_fids_c_version;
-extern const char *vulpes_lev1_c_version;
-extern const char *vulpes_lev1_encryption_c_version;
-extern const char *vulpes_lka_c_version;
-extern const char *vulpes_log_c_version;
-extern const char *vulpes_logstats_c_version;
 #ifdef VULPES_SIMPLE_DEFINED
 extern int initialize_simple_mapping(vulpes_mapping_t * map_ptr);
-extern const char *vulpes_simple_c_version;
 #endif
+extern const char *svn_revision;
+extern const char *svn_branch;
 
 /* DEFINES */
 /* #define VERBOSE_DEBUG  */
@@ -77,8 +69,6 @@ static int num_mappings = 0;
 static vulpes_mapping_t mapping[MAX_NUM_MAPPINGS];
 extern char *optarg;
 extern int optind, opterr, optopt;
-
-const char *vulpes_c_version = "$Id: vulpes.c,v 1.34 2005/03/11 21:26:07 makozuch Exp $";
 
 /* check kernel version */
 int
@@ -346,33 +336,7 @@ int initialize_vulpes_stats(vulpes_mapping_t * map_ptr)
 
 void version(void)
 {
-  printf("Version: %s\n", vulpes_version);
-}
-
-void print_allversions(void)
-{
-  const char *versions[] = {
-    vulpes_c_version,
-    vulpes_fids_c_version,
-    vulpes_lev1_c_version,
-    vulpes_lev1_encryption_c_version,
-    vulpes_lka_c_version,
-    vulpes_log_c_version,
-    vulpes_logstats_c_version,
-#ifdef VULPES_SIMPLE_DEFINED
-    vulpes_simple_c_version,
-#endif 
-    NULL
-  };
-  
-  int i = 0;
-  
-  version();
-  
-  while(versions[i] != NULL) {
-    printf("\t%s\n", versions[i]);
-    ++i;
-  }
+  printf("Version: %s (%s, rev %s)\n", vulpes_version, svn_branch, svn_revision);
 }
 
 void usage (const char *progname)
@@ -384,7 +348,7 @@ void usage (const char *progname)
   printf ("\ttransfertype is one of: local http\n");
   printf ("\tlkatype must be hfs-sha-1\n");
   printf ("\tproxy_server is the ip address or the hostname of the proxy\n");
-  printf("usage: %s --allversions             Print out detailed version info and exit.\n", progname);
+  printf("usage: %s --version                 Print version information and exit.\n", progname);
   printf("usage: %s --rescue <device_name>    Attempt to rescue a hung driver and exit.\n", progname);
   /*  printf ("\tinterface is the outgoing network interface/ip-address/hostname to use to connect to proxy on this machine\n");*/
   exit(0);
@@ -433,7 +397,8 @@ int main(int argc, char *argv[])
     
     static struct option vulpes_cmdline_options[] =
       {
-	{"allversions", no_argument, 0, 'a'},
+	{"version", no_argument, 0, 'a'},
+	{"allversions", no_argument, 0, 'a'},  /* XXX compatibility with old revs */
 	{"rescue", no_argument, 0, 'b'},
 	{"pid", no_argument, 0, 'c'},
 	{"map", no_argument, 0, 'd'},
@@ -460,7 +425,7 @@ int main(int argc, char *argv[])
     switch(opt_retVal) {
     case 'a':
       requiredArgs+=1;
-      print_allversions();
+      version();
       exit(0);
       break;
     case 'b':

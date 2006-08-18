@@ -14,8 +14,6 @@ ACCEPTANCE OF THIS AGREEMENT
 */
 
 
-/* $Id: vulpes_lka.h,v 1.5 2005/05/20 21:09:15 makozuch Exp $ */
-
 #ifndef VULPES_LKA_H_
 #define VULPES_LKA_H_
 

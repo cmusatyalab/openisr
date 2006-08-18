@@ -13,8 +13,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 */
 
-/* $Id: analyze_logstats.cpp,v 1.3 2004/11/01 16:18:52 makozuch Exp $ */
-
 /* This program reads a logstats file and produces a list of time samples */
 /* Definitions:
  *   num_reads: number of sectors read

@@ -24,8 +24,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 #define MAX_FNAME_SIZE 128
 
-const char *vulpes_log_c_version = "$Id: vulpes_log.c,v 1.12 2004/12/10 20:46:37 makozuch Exp $";
-
 typedef struct log_s {
   char fname[MAX_FNAME_SIZE+1];
   char *infostr;

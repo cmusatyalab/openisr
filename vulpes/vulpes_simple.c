@@ -28,8 +28,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 typedef int simple_mapping_special_t;
 
-const char *vulpes_simple_c_version = "$Id: vulpes_simple.c,v 1.7 2004/11/01 16:18:53 makozuch Exp $";
-
 static inline int long_seek(int fid, unsigned long long lloffset)
 {
     const off_t max_offset = 0x7fffffff;

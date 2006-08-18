@@ -50,8 +50,6 @@ static int r_num_open_fids = 0;
 static fid_id_t mru = NULL_FID_ID;
 static fid_id_t lru = NULL_FID_ID;
 
-const char *vulpes_fids_c_version = "$Id: vulpes_fids.c,v 1.10 2004/11/01 16:18:53 makozuch Exp $";
-
 __inline int reclaim_fid(fid_id_t ptr)
 {
   VULPES_DEBUG("fidsvc: reclaiming fnp %d.\n", (int) ptr);

@@ -13,8 +13,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 */
 
-/* $Id: tf.c,v 1.7 2004/11/01 16:18:52 makozuch Exp $ */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

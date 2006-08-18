@@ -13,8 +13,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 */
 
-/* $Id: vulpes_map.h,v 1.10 2004/11/01 16:18:53 makozuch Exp $ */
-
 #ifndef VULPES_MAP_H_
 #define VULPES_MAP_H_
 

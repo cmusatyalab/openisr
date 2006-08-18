@@ -41,8 +41,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #define VULPES_DEBUG(fmt, args...)     ;
 #endif
 
-const char *vulpes_lev1_encryption_c_version = "$Id: vulpes_lev1_encryption.c,v 1.9 2004/11/01 16:18:53 makozuch Exp $";
-
 /* LOCAL VARIABLES */
 static const char digestName[] = "sha1";
 

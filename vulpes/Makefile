@@ -1,6 +1,3 @@
-#
-# $Id: Makefile,v 1.18 2005/03/11 21:26:07 makozuch Exp $
-
 CC=gcc
 CCC=g++
 
@@ -92,6 +89,6 @@ dist: REV=$(shell svnversion .)
 dist:
 	svn export -q . vulpes-$(REV)
 	cp revision.c vulpes-$(REV)
-	tar czf vulpes-$(REV).tgz vulpes-$(REV)
+	tar czf vulpes-$(REV).tgz --force-local vulpes-$(REV)
 	rm -rf vulpes-$(REV)
 	@echo "Created vulpes-$(REV).tgz"

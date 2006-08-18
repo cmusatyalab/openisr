@@ -33,8 +33,6 @@ typedef struct vulpes_logstats_special_s {
     unsigned long long num_records;
 } vulpes_logstats_special_t;
 
-const char *vulpes_logstats_c_version = "$Id: vulpes_logstats.c,v 1.7 2004/11/01 16:18:53 makozuch Exp $";
-
 const unsigned long current_logstats_version = 0x1;
 
 

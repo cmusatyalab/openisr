@@ -13,8 +13,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 */
 
-/* $Id: vulpes_logstats.h,v 1.6 2004/11/01 16:18:53 makozuch Exp $ */
-
 #ifndef VULPES_LOGSTATS_H_
 #define VULPES_LOGSTATS_H_
 

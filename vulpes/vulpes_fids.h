@@ -13,8 +13,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 */
 
-/* $Id: vulpes_fids.h,v 1.8 2004/11/01 16:18:53 makozuch Exp $ */
-
 #ifndef VULPES_FIDS_H_
 #define VULPES_FIDS_H_
 

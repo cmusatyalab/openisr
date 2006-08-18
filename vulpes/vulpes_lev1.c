@@ -47,8 +47,6 @@ const unsigned CHUNK_STATUS_RW = 0x0200;	/* This chunk was last opened read/writ
 const unsigned CHUNK_STATUS_LKA_COPY = 0x4000;	/* This chunk data was fetched from the LKA cache */
 const unsigned CHUNK_STATUS_SHADOW_PRESENT = 0x8000;	/* This chunk is present in the local cache */
 
-const char *vulpes_lev1_c_version = "$Id: vulpes_lev1.c,v 1.29 2005/08/24 18:48:07 jaharkes Exp $";
-
 /* LOCALS */
 static int enableEncryption;
 
