@@ -15,7 +15,7 @@ BINDIR=$(ISR_HOME)/local/bin
 APP=vulpes
 UTILS=keyring-utils
 
-SRCS=vulpes.c vulpes_lev1.c vulpes_fids.c vulpes_logstats.c vulpes_lev1_encryption.c vulpes_log.c # vulpes_simple.c 
+SRCS=revision.c vulpes.c vulpes_lev1.c vulpes_fids.c vulpes_logstats.c vulpes_lev1_encryption.c vulpes_log.c # vulpes_simple.c 
 
 OBJS=$(SRCS:.c=.o)
 ASS=$(SRCS:.c=.s)
@@ -56,8 +56,18 @@ $(DEP): %.d : %.c
 
 -include $(DEP)
 
+.PHONY: clean
 clean:
-	rm -f $(DEP) $(ASS) $(PRE) $(OBJS) *~ $(APP) processchunk vulpes_lka.d vulpes_lka.o
+	rm -f $(DEP) $(ASS) $(PRE) $(OBJS) *~ $(APP) processchunk vulpes_lka.d vulpes_lka.o vulpes-*.tgz
+
+# This is a hack.  The include directive forces make to always execute
+# the rule, and to recalculate its target selection afterward.  Note
+# that if any source files have changed, this rule will be executed
+# twice due to %.d updates.
+.PHONY: revision.dummy
+revision.dummy:
+	@./mkrevision.sh
+-include revision.dummy
 
 install: 
 	@mkdir -p $(BINDIR)
@@ -77,5 +87,11 @@ processchunk: processchunk.c vulpes_lev1_encryption.o vulpes_log.o
 analyze_logstats: analyze_logstats.cpp
 	$(CCC) -o analyze_logstats analyze_logstats.cpp
 
-vulpes.tgz:
-	tar cvzf vulpes.tgz $(SRCS) tf.c Makefile 
+.PHONY: dist
+dist: REV=$(shell svnversion .)
+dist:
+	svn export -q . vulpes-$(REV)
+	cp revision.c vulpes-$(REV)
+	tar czf vulpes-$(REV).tgz vulpes-$(REV)
+	rm -rf vulpes-$(REV)
+	@echo "Created vulpes-$(REV).tgz"
