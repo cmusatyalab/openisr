@@ -27,16 +27,13 @@ else
 CURL_TOO_OLD=1
 endif
 
-all: LIBS $(APP)
+all: checklibs $(APP)
 
-LIBS: 
+.PHONY: checklibs
+checklibs:
 ifeq (1,$(CURL_TOO_OLD))
-	tar jxf curl-7.12.1.tar.bz2
-	cd curl-7.12.1
-	cd curl-7.12.1 && ./configure --prefix=/usr --exec-prefix=/usr
-	cd curl-7.12.1 && make
-	cd curl-7.12.1 && make install
-	rm -fr curl-7.12.1
+	@echo "You must have curl 7.12 or later installed."
+	@exit 1
 endif
 
 $(OBJS): %.o : %.c
