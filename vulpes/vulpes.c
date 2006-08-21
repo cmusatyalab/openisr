@@ -44,7 +44,7 @@ extern const char *svn_revision;
 extern const char *svn_branch;
 
 /* DEFINES */
-/* #define VERBOSE_DEBUG  */
+#undef VERBOSE_DEBUG
 #ifdef VERBOSE_DEBUG
 #define VULPES_DEBUG(fmt, args...)     {printf("[vulpes] " fmt, ## args); fflush(stdout);}
 #else
@@ -347,6 +347,11 @@ void usage (const char *progname)
   exit(0);
 }
 
+#define PARSE_ERROR(str, args...) do { \
+    printf("ERROR: " str "\n\n" , ## args); \
+    usage(argv[0]); \
+  } while (0)
+
 int main(int argc, char *argv[])
 {
   void *old_sig_handler;
@@ -423,8 +428,7 @@ int main(int argc, char *argv[])
       /* rescue */
       requiredArgs+=2;
       if (optind+0 >= argc) {
-	printf("ERROR: device_name required for RESCUE.\n");
-	usage(argv[0]);
+	PARSE_ERROR("device_name required for RESCUE.");
       } else {
 	const char *device_name = argv[optind++];
 	int result;
@@ -445,19 +449,16 @@ int main(int argc, char *argv[])
 	mapping_type_t type;
 	
 	if (mapDone) {
-	  printf("ERROR: --map may only be specified once.\n");
-	  usage(argv[0]);
+	  PARSE_ERROR("--map may only be specified once.");
 	}
 	requiredArgs+=4;
 	if (optind+2 >= argc) {
-	  printf("ERROR: failed to parse mapping.\n");
-	  usage(argv[0]);
+	  PARSE_ERROR("failed to parse mapping.");
 	}
 	
 	type = char_to_mapping_type(argv[optind++]);
 	if(type == NO_MAPPING) {
-	  printf("ERROR: unknown mapping type (%s).\n", argv[optind-1]);
-	  usage(argv[0]);
+	  PARSE_ERROR("unknown mapping type (%s).", argv[optind-1]);
 	}	    
 	mapping.type = type;
 	mapping.device_name=argv[optind++];
@@ -468,21 +469,18 @@ int main(int argc, char *argv[])
     case 'e':
       /* master */
       if (masterDone) {
-	printf("ERROR: --master may only be specified once.\n");
-	usage(argv[0]);
+	PARSE_ERROR("--master may only be specified once.");
       }
       requiredArgs+=3;
       if (optind+1 >= argc) {
-	printf("ERROR: failed to parse transport.\n");
-	usage(argv[0]);
+	PARSE_ERROR("failed to parse transport.");
       }
       if (strcmp("http",argv[optind])==0)
 	mapping.trxfer=HTTP_TRANSPORT;
       else if (strcmp("local",argv[optind])==0)
 	mapping.trxfer=LOCAL_TRANSPORT;
       else {
-	printf("ERROR: unknown transport type.\n");
-	usage(argv[0]);
+	PARSE_ERROR("unknown transport type.");
       }
       optind++;
       mapping.file_name=argv[optind++];
@@ -491,13 +489,11 @@ int main(int argc, char *argv[])
     case 'f':
       /* keyring */
       if (keyDone) {
-	printf("ERROR: --keyring may only be specified once.\n");
-	usage(argv[0]);
+	PARSE_ERROR("--keyring may only be specified once.");
       }
       requiredArgs+=2;
       if (optind+0 >= argc) {
-	printf("ERROR: failed to parse keyring name.\n");
-	usage(argv[0]);
+	PARSE_ERROR("failed to parse keyring name.");
       }
       mapping.keyring_name=argv[optind++];
       keyDone=1;
@@ -513,8 +509,7 @@ int main(int argc, char *argv[])
 	
 	tmp = initialize_vulpes_stats(&mapping[current_map]);
 	if (tmp) {
-	printf("ERROR: failed to initialize stats.\n");
-	usage(argv[0]);
+	PARSE_ERROR("failed to initialize stats.");
 	}
 	
 	switch (type) {
@@ -532,21 +527,18 @@ int main(int argc, char *argv[])
 	break;
 	case STATS_NONE:
 	default:
-	printf("ERROR: unknown stats type.\n");
-	exit(0);
+	PARSE_ERROR("unknown stats type.");
 	}
 	};
 	break;*/
     case 'h':
       /* log */
       if (logDone) {
-	printf("ERROR: --log may only be specified once.\n");
-	usage(argv[0]);
+	PARSE_ERROR("--log may only be specified once.");
       }
       requiredArgs+=5;
       if (optind+2 >= argc) {
-	printf("ERROR: failed to parse logging.\n");
-	usage(argv[0]);
+	PARSE_ERROR("failed to parse logging.");
       }
       logName=argv[optind++];
       log_infostr=argv[optind++];
@@ -562,23 +554,19 @@ int main(int argc, char *argv[])
 	long tmp_num;
 
 	if (proxyDone) {
-	  printf("ERROR: --proxy may only be specified once.\n");
-	  usage(argv[0]);
+	  PARSE_ERROR("--proxy may only be specified once.");
 	}
 	requiredArgs+=3;
 	error_buffer=(char*)malloc(64);
 	error_buffer[0]=0;
 	if (optind+1 >= argc) {
-	  printf("ERROR: failed to parse proxy description.\n");
-	  usage(argv[0]);
+	  PARSE_ERROR("failed to parse proxy description.");
 	}
 	mapping.proxy_name=argv[optind++];
 	tmp_num=strtol(argv[optind++], &error_buffer,10);
-	if (strlen(error_buffer)!=0)
-	  {
-	    printf("bad port\n");
-	    usage(argv[0]);
-	  }
+	if (strlen(error_buffer)!=0) {
+	  PARSE_ERROR("bad port");
+	}
 	mapping.proxy_port=tmp_num;
 	free(error_buffer);
 	proxyDone=1;
@@ -597,8 +585,7 @@ int main(int argc, char *argv[])
       /* lka */
       requiredArgs+=2;
       if (optind+0 >= argc) {
-	printf("ERROR: failed to parse lka option.\n");
-	usage(argv[0]);
+	PARSE_ERROR("failed to parse lka option.");
       }
       if(mapping.lka_svc == NULL)
 	if((mapping.lka_svc = vulpes_lka_open()) == NULL)
@@ -612,27 +599,22 @@ int main(int argc, char *argv[])
       /* help */
       usage(argv[0]);
     default:
-      printf("ERROR: unknown command line option.\n");
-      usage(argv[0]);
+      PARSE_ERROR("unknown command line option.");
     }
   }
 
   /* Check arguments */
   if (argc!=requiredArgs) {
-    printf("ERROR: failed to parse cmd line (%d of %d).\n", requiredArgs, argc);
-    usage(argv[0]);
+    PARSE_ERROR("failed to parse cmd line (%d of %d).", requiredArgs, argc);
   }
   if (keyDone==0) {
-    printf("--keyring parameter missing\n");
-    usage(argv[0]);
+    PARSE_ERROR("--keyring parameter missing");
   }
   if (masterDone==0) {
-    printf("--master parameter missing\n");
-    usage(argv[0]);
+    PARSE_ERROR("--master parameter missing");
   }
   if (mapDone==0) {
-    printf("--map parameter missing\n");
-    usage(argv[0]);
+    PARSE_ERROR("--map parameter missing");
   }
   
   if (logDone==0) {
@@ -705,7 +687,7 @@ int main(int argc, char *argv[])
   }
   
   /* Open the file */
-  VULPES_DEBUG("\tOpening file %d.\n", (int) i);
+  VULPES_DEBUG("\tOpening file.\n");
   if ((*(mapping.open_func)) (&mapping)) {
     vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open lev1 %s", mapping.file_name);
     goto vulpes_exit;
@@ -858,7 +840,7 @@ int main(int argc, char *argv[])
   close(mapping.vulpes_device);
   
   /* Close stats */
-  VULPES_DEBUG("\tClosing stats.\n",);
+  VULPES_DEBUG("\tClosing stats.\n");
   if (valid_stats()) {
     (*mapping.stats->close) (mapping.stats);
     free(mapping.stats);
