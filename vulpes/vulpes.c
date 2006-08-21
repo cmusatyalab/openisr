@@ -51,8 +51,6 @@ extern const char *svn_branch;
 #define VULPES_DEBUG(fmt, args...)     ;
 #endif
 
-#define MAX_NUM_MAPPINGS               16
-
 /* GLOBALS */
 
 static int exit_main_loop = 0;
@@ -65,8 +63,7 @@ static unsigned long long sectors_accessed = 0;
 
 const char *vulpes_version = "0.60";
 
-static int num_mappings = 0;
-static vulpes_mapping_t mapping[MAX_NUM_MAPPINGS];
+static vulpes_mapping_t mapping;
 extern char *optarg;
 extern int optind, opterr, optopt;
 
@@ -97,9 +94,9 @@ running_kernel26 ()
 
 
 /* FUNCTIONS */
-__inline int valid_stats(vulpes_mapping_t * map_ptr)
+__inline int valid_stats(void)
 {
-  return (map_ptr->stats != NULL);
+  return (mapping.stats != NULL);
 }
 
 void vulpes_signal_handler(int sig)
@@ -113,32 +110,29 @@ void vulpes_signal_handler(int sig)
   return;
 }
 
-int vulpes_register(vulpes_id_t id)
+int vulpes_register(void)
 {
   int i;
   int result = 0;
   vulpes_regblk_t regblk;
   vulpes_cmdblk_t cmdblk;
-  vulpes_mapping_t *map_ptr;
   
-  map_ptr = &mapping[id];
+  mapping.reg.vulpes_id = 0;
+  mapping.reg.pid = getpid();
+  mapping.reg.volsize = (*mapping.volsize_func) (&mapping);
   
-  map_ptr->reg.vulpes_id = id;
-  map_ptr->reg.pid = getpid();
-  map_ptr->reg.volsize = (*map_ptr->volsize_func) (map_ptr);
-  
-  regblk.reg = mapping[id].reg;
+  regblk.reg = mapping.reg;
   
   if (VULPES_REGBLK_SECT_PER_BUF % VULPES_CMDBLK_SECT_PER_BUF == 0) {
     int num_cmds =
       VULPES_REGBLK_SECT_PER_BUF / VULPES_CMDBLK_SECT_PER_BUF;
     for (i = 0; i < num_cmds; i++) {
       /* Create a dummy cmdblk to use the mapping.read function */
-      cmdblk.head.vulpes_id = id;
+      cmdblk.head.vulpes_id = 0;
       cmdblk.head.cmd = VULPES_CMD_READ;
       cmdblk.head.start_sect = 0;
       cmdblk.head.num_sect = VULPES_CMDBLK_SECT_PER_BUF;
-      result = (*map_ptr->read_func) (map_ptr, &cmdblk);
+      result = (*mapping.read_func) (&mapping, &cmdblk);
       if (result == -1)
 	{
 	  vulpes_log(LOG_ERRORS,"VULPES_REGISTER","failed in vulpes register: read_func failed");
@@ -151,7 +145,7 @@ int vulpes_register(vulpes_id_t id)
     }
     
     result =
-      ioctl(map_ptr->vulpes_device, FAUXIDE_IOCTL_REGBLK_REGISTER,
+      ioctl(mapping.vulpes_device, FAUXIDE_IOCTL_REGBLK_REGISTER,
 	    &regblk);
   } else {
     vulpes_log(LOG_ERRORS,"VULPES_REGISTER","bad buffer sizes");
@@ -162,13 +156,13 @@ int vulpes_register(vulpes_id_t id)
   return result;
 }
 
-int vulpes_unregister(vulpes_id_t id)
+int vulpes_unregister(void)
 {
   int result = 0;
   
   result =
-    ioctl(mapping[id].vulpes_device, FAUXIDE_IOCTL_REGBLK_UNREGISTER,
-	  &mapping[id].reg);
+    ioctl(mapping.vulpes_device, FAUXIDE_IOCTL_REGBLK_UNREGISTER,
+	  &mapping.reg);
   
   return result;
 }
@@ -194,21 +188,14 @@ int vulpes_rescue_fauxide(const char *device_name)
 int cmdblk_ok(const vulpes_cmd_head_t * head)
 {
   int result = 1;
-  vulpes_id_t id;
   
-  id = head->vulpes_id;
-  
-  /* Check the vulpes_id */
-  if (id >= num_mappings) {
-    result = 0;
-    return result;
-  }
+  /* vulpes_id is now ignored */
   
   /* Check command parameters */
   switch (head->cmd) {
   case VULPES_CMD_READ:
   case VULPES_CMD_WRITE:
-    if (head->start_sect + head->num_sect > mapping[id].reg.volsize)
+    if (head->start_sect + head->num_sect > mapping.reg.volsize)
       result = 0;
     break;
   default:
@@ -276,45 +263,41 @@ stats_type_t char_to_stats_type(const char *name)
   return result;
 }
 
-void initialize_null_mapping(vulpes_id_t id)
+void initialize_null_mapping(void)
 {
-  vulpes_mapping_t *map_ptr;
+  mapping.trxfer = LOCAL_TRANSPORT;
+  mapping.type = NO_MAPPING;
   
-  map_ptr = &(mapping[id]);
+  mapping.proxy_name = NULL;
+  mapping.proxy_port = 80;
+  mapping.outgoing_interface = NULL;
   
-  map_ptr->trxfer = LOCAL_TRANSPORT;
-  map_ptr->type = NO_MAPPING;
+  mapping.device_name = NULL;
+  mapping.file_name = NULL;
+  mapping.cache_name = NULL;
   
-  map_ptr->proxy_name = NULL;
-  map_ptr->proxy_port = 80;
-  map_ptr->outgoing_interface = NULL;
+  mapping.keyring_name = NULL;
   
-  map_ptr->device_name = NULL;
-  map_ptr->file_name = NULL;
-  map_ptr->cache_name = NULL;
+  mapping.vulpes_device = -1;
   
-  map_ptr->keyring_name = NULL;
+  mapping.reg.vulpes_id = -1;
+  mapping.reg.pid = -1;
+  mapping.reg.volsize = 0;
   
-  map_ptr->vulpes_device = -1;
+  mapping.open_func = NULL;
+  mapping.volsize_func = NULL;
+  mapping.read_func = NULL;
+  mapping.write_func = NULL;
+  mapping.close_func = NULL;
   
-  map_ptr->reg.vulpes_id = -1;
-  map_ptr->reg.pid = -1;
-  map_ptr->reg.volsize = 0;
+  mapping.verbose = 0;
   
-  map_ptr->open_func = NULL;
-  map_ptr->volsize_func = NULL;
-  map_ptr->read_func = NULL;
-  map_ptr->write_func = NULL;
-  map_ptr->close_func = NULL;
-  
-  map_ptr->verbose = 0;
-  
-  map_ptr->lka_svc = NULL;
-  map_ptr->special = NULL;
-  map_ptr->stats = NULL;
+  mapping.lka_svc = NULL;
+  mapping.special = NULL;
+  mapping.stats = NULL;
 }
 
-int initialize_vulpes_stats(vulpes_mapping_t * map_ptr)
+int initialize_vulpes_stats(void)
 {
   vulpes_stats_t *ptr;
   
@@ -329,7 +312,7 @@ int initialize_vulpes_stats(vulpes_mapping_t * map_ptr)
   ptr->close = NULL;
   ptr->special = NULL;
   
-  map_ptr->stats = ptr;
+  mapping.stats = ptr;
   
   return 0;
 }
@@ -342,15 +325,25 @@ void version(void)
 void usage (const char *progname)
 {
   version();
-  printf("usage: %s [--pid] --map <maptype> <device_name> <local_cache_name> --master <transfertype> <master_disk_location/url> --keyring <keyring_file> [--log <logfile> <info_str> <filemask> <stdoutmask>] [--debug] [--lka <lkatype:lkadir>] [--proxy proxy_server port-number] \n", progname);
-  printf("\tIf debug is chosen, then log messages for chosen loglevel(s) will be written out to the logfile without any buffering\n");
-  printf ("\tmaptype has to be lev1\n");
-  printf ("\ttransfertype is one of: local http\n");
-  printf ("\tlkatype must be hfs-sha-1\n");
-  printf ("\tproxy_server is the ip address or the hostname of the proxy\n");
-  printf("usage: %s --version                 Print version information and exit.\n", progname);
-  printf("usage: %s --rescue <device_name>    Attempt to rescue a hung driver and exit.\n", progname);
-  /*  printf ("\tinterface is the outgoing network interface/ip-address/hostname to use to connect to proxy on this machine\n");*/
+  printf("Usage: %s <options>\n", progname);
+  printf("Options:\n");
+  printf("\t--map <maptype> <device_name> <local_cache_name>\n");
+    printf("\t\tmaptype has to be lev1\n");
+  printf("\t--master <transfertype> <master_disk_location/url>\n");
+    printf("\t\ttransfertype is one of: local http\n");
+  printf("\t--keyring <keyring_file>\n");
+  printf("\t[--log <logfile> <info_str> <filemask> <stdoutmask>]\n");
+  printf("\t[--debug]\n");
+    printf("\t\tIf debug is chosen, then log messages for chosen loglevel(s)\n");
+    printf("\t\twill be written out to the logfile without any buffering\n");
+  printf("\t[--pid]\n");
+  printf("\t[--lka <lkatype:lkadir>]\n");
+    printf("\t\tlkatype must be hfs-sha-1\n");
+  printf("\t[--proxy proxy_server port-number]\n");
+    printf("\t\tproxy_server is the ip address or the hostname of the proxy\n");
+  printf("Usage: %s --help                  Print usage summary and exit.\n", progname);
+  printf("Usage: %s --version               Print version information and exit.\n", progname);
+  printf("Usage: %s --rescue <device_name>  Rescue a hung Fauxide driver and exit.\n", progname);
   exit(0);
 }
 
@@ -358,8 +351,6 @@ int main(int argc, char *argv[])
 {
   void *old_sig_handler;
   vulpes_cmdblk_t cmdblk;
-  vulpes_id_t id;
-  unsigned i;
   pid_t pid;
   const char* logName;
   const char* log_infostr;  
@@ -371,14 +362,14 @@ int main(int argc, char *argv[])
   int masterDone=0;
   int keyDone=0;
   int logDone=0;
+  int mapDone=0;
+  int proxyDone=0;
   
   /* Initialize the fidsvc */
   fidsvc_init();
   
-  /* Initialize the mapping array */
-  for (i = 0; i <= num_mappings; i++) {
-    initialize_null_mapping(i);
-  }
+  /* Initialize the mapping structure */
+  initialize_null_mapping();
   
   /* parse command line */
   if (argc < 2) {
@@ -409,12 +400,12 @@ int main(int argc, char *argv[])
 	/*{"interface", no_argument, 0, 'j'},
 	  {"noencryption", no_argument, 0, 'k'},*/
 	{"lka", no_argument, 0, 'l'},
+	{"help", no_argument, 0, 'm'},
 	{0,0,0,0}
       };
     
     int option_index=0;
     int opt_retVal;
-    vulpes_mapping_t *current_mapping=&(mapping[0]);
     
     opt_retVal=getopt_long(argc,argv, "", vulpes_cmdline_options,
 			   &option_index);
@@ -423,11 +414,13 @@ int main(int argc, char *argv[])
       break;    
     switch(opt_retVal) {
     case 'a':
+      /* version */
       requiredArgs+=1;
       version();
       exit(0);
       break;
     case 'b':
+      /* rescue */
       requiredArgs+=2;
       if (optind+0 >= argc) {
 	printf("ERROR: device_name required for RESCUE.\n");
@@ -442,58 +435,71 @@ int main(int argc, char *argv[])
       exit(0);
       break;
     case 'c':
+      /* pid */
       requiredArgs+=1;
       printf("VULPES: pid = %ld\n", (long) pid);
       break;
-    case 'd': 
+    case 'd':
+      /* map */
       {
 	mapping_type_t type;
 	
+	if (mapDone) {
+	  printf("ERROR: --map may only be specified once.\n");
+	  usage(argv[0]);
+	}
 	requiredArgs+=4;
 	if (optind+2 >= argc) {
 	  printf("ERROR: failed to parse mapping.\n");
 	  usage(argv[0]);
 	}
 	
-	/* each time we see a new --map (except the first), start a new mapping */
-	current_mapping=&(mapping[num_mappings]);
-	++num_mappings;
-	
 	type = char_to_mapping_type(argv[optind++]);
 	if(type == NO_MAPPING) {
 	  printf("ERROR: unknown mapping type (%s).\n", argv[optind-1]);
 	  usage(argv[0]);
 	}	    
-	current_mapping->type = type;
-	current_mapping->device_name=argv[optind++];
-	current_mapping->cache_name=argv[optind++];
+	mapping.type = type;
+	mapping.device_name=argv[optind++];
+	mapping.cache_name=argv[optind++];
+	mapDone=1;
       }
       break;
     case 'e':
+      /* master */
+      if (masterDone) {
+	printf("ERROR: --master may only be specified once.\n");
+	usage(argv[0]);
+      }
       requiredArgs+=3;
       if (optind+1 >= argc) {
 	printf("ERROR: failed to parse transport.\n");
 	usage(argv[0]);
       }
       if (strcmp("http",argv[optind])==0)
-	current_mapping->trxfer=HTTP_TRANSPORT;
+	mapping.trxfer=HTTP_TRANSPORT;
       else if (strcmp("local",argv[optind])==0)
-	current_mapping->trxfer=LOCAL_TRANSPORT;
+	mapping.trxfer=LOCAL_TRANSPORT;
       else {
 	printf("ERROR: unknown transport type.\n");
 	usage(argv[0]);
       }
       optind++;
-      current_mapping->file_name=argv[optind++];
+      mapping.file_name=argv[optind++];
       masterDone=1;
       break;
     case 'f':
+      /* keyring */
+      if (keyDone) {
+	printf("ERROR: --keyring may only be specified once.\n");
+	usage(argv[0]);
+      }
       requiredArgs+=2;
       if (optind+0 >= argc) {
 	printf("ERROR: failed to parse keyring name.\n");
 	usage(argv[0]);
       }
-      current_mapping->keyring_name=argv[optind++];
+      mapping.keyring_name=argv[optind++];
       keyDone=1;
       break;
       /*case 'g': {
@@ -532,6 +538,11 @@ int main(int argc, char *argv[])
 	};
 	break;*/
     case 'h':
+      /* log */
+      if (logDone) {
+	printf("ERROR: --log may only be specified once.\n");
+	usage(argv[0]);
+      }
       requiredArgs+=5;
       if (optind+2 >= argc) {
 	printf("ERROR: failed to parse logging.\n");
@@ -545,9 +556,15 @@ int main(int argc, char *argv[])
       logDone=1;
       break;
     case 'i':
+      /* proxy */
       {
 	char *error_buffer;
 	long tmp_num;
+
+	if (proxyDone) {
+	  printf("ERROR: --proxy may only be specified once.\n");
+	  usage(argv[0]);
+	}
 	requiredArgs+=3;
 	error_buffer=(char*)malloc(64);
 	error_buffer[0]=0;
@@ -555,40 +572,45 @@ int main(int argc, char *argv[])
 	  printf("ERROR: failed to parse proxy description.\n");
 	  usage(argv[0]);
 	}
-	current_mapping->proxy_name=argv[optind++];
+	mapping.proxy_name=argv[optind++];
 	tmp_num=strtol(argv[optind++], &error_buffer,10);
 	if (strlen(error_buffer)!=0)
 	  {
 	    printf("bad port\n");
 	    usage(argv[0]);
 	  }
-	current_mapping->proxy_port=tmp_num;
+	mapping.proxy_port=tmp_num;
 	free(error_buffer);
+	proxyDone=1;
       }
       break;
       /*			case 'j':
 				requiredArgs+=2;
 				if (optind+0 >= argc)
 				usage(argv[0]);
-				current_mapping->outgoing_interface=argv[optind++];
+				mapping.outgoing_interface=argv[optind++];
 				break;
 				case 'k':
 				requiredArgs+=1;
       */
     case 'l':
+      /* lka */
       requiredArgs+=2;
       if (optind+0 >= argc) {
 	printf("ERROR: failed to parse lka option.\n");
 	usage(argv[0]);
       }
-      if(current_mapping->lka_svc == NULL)
-	if((current_mapping->lka_svc = vulpes_lka_open()) == NULL)
+      if(mapping.lka_svc == NULL)
+	if((mapping.lka_svc = vulpes_lka_open()) == NULL)
 	  printf("WARNING: unable to open lka service.\n");
-      if(current_mapping->lka_svc != NULL)
-	if(vulpes_lka_add(current_mapping->lka_svc, argv[optind]) != VULPES_LKA_RETURN_SUCCESS)
+      if(mapping.lka_svc != NULL)
+	if(vulpes_lka_add(mapping.lka_svc, argv[optind]) != VULPES_LKA_RETURN_SUCCESS)
 	  printf("WARNING: unable to add lka database %s.\n", argv[optind]);
       optind++;
       break;
+    case 'm':
+      /* help */
+      usage(argv[0]);
     default:
       printf("ERROR: unknown command line option.\n");
       usage(argv[0]);
@@ -608,8 +630,8 @@ int main(int argc, char *argv[])
     printf("--master parameter missing\n");
     usage(argv[0]);
   }
-  if (num_mappings < 1) {
-    printf("--map paramater missing\n");
+  if (mapDone==0) {
+    printf("--map parameter missing\n");
     usage(argv[0]);
   }
   
@@ -643,98 +665,94 @@ int main(int argc, char *argv[])
   }
   
   
-  /* Establish the mappings */
-  VULPES_DEBUG("Establishing mappings...\n");
-  for (i = 0; i < num_mappings; i++) {
-    mapping_type_t type=mapping[i].type ;
-    /* Initialize the mapping */
-    switch (type) {
-    case SIMPLE_FILE_MAPPING:
-    case SIMPLE_DISK_MAPPING:
+  VULPES_DEBUG("Establishing mapping...\n");
+  /* Initialize the mapping */
+  switch (mapping.type) {
+  case SIMPLE_FILE_MAPPING:
+  case SIMPLE_DISK_MAPPING:
 #ifdef VULPES_SIMPLE_DEFINED
-      if (initialize_simple_mapping(&mapping[i])) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unable to initialize simple mapping %u",i);
-	goto vulpes_exit;	
-      }
+    if (initialize_simple_mapping(&mapping)) {
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unable to initialize simple mapping");
+      goto vulpes_exit;	
+    }
 #else
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: simple mapping not supported in this version.");
-      goto vulpes_exit;
+    vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: simple mapping not supported in this version.");
+    goto vulpes_exit;
 #endif
-      break;
-    case LEV1_MAPPING:
-    case LEV1V_MAPPING:
-    case ZLEV1_MAPPING:
-    case ZLEV1V_MAPPING:	{
-      if (initialize_lev1_mapping(&mapping[i])) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to initialize lev1 mapping");
-	goto vulpes_exit;
-      }
-    }
-      break;
-    case NO_MAPPING:
-    default:
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unknown mapping type %u",i);
+    break;
+  case LEV1_MAPPING:
+  case LEV1V_MAPPING:
+  case ZLEV1_MAPPING:
+  case ZLEV1V_MAPPING:	{
+    if (initialize_lev1_mapping(&mapping)) {
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to initialize lev1 mapping");
       goto vulpes_exit;
     }
-    
+  }
+    break;
+  case NO_MAPPING:
+  default:
+    vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unknown mapping type");
+    goto vulpes_exit;
+  }
+  
+  /* Open the device */
+  VULPES_DEBUG("\tOpening device\n");
+  mapping.vulpes_device = open(mapping.device_name, O_RDWR);
+  if (mapping.vulpes_device < 0) {
+    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open device %s",mapping.device_name);
+    goto vulpes_exit;
+  }
+  
+  /* Open the file */
+  VULPES_DEBUG("\tOpening file %d.\n", (int) i);
+  if ((*(mapping.open_func)) (&mapping)) {
+    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open lev1 %s", mapping.file_name);
+    goto vulpes_exit;
+  }
+  
+  /* Open the stats */
+  if (valid_stats()) {
+    VULPES_DEBUG("\tOpening stats.\n");
+    if ((*(mapping.stats->open)) (mapping.stats)) {
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unable to open stats");
+      goto vulpes_exit;
+    }
+  }
+  
+  /* Register ourselves with the device */
+  VULPES_DEBUG("\tRegistering device.\n");
+  if (vulpes_register()) {
+    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to register process with device");
+    goto vulpes_exit;
+  }
+  vulpes_log(LOG_BASIC,"VULPES_MAIN","Registered process with device");
+  
+  /* Need to register twice to get 2.6 kernel module to recognize driver properly */
+  if (running_kernel26()) {
+    /* Unregister process */
+    VULPES_DEBUG("\tUnregistering device.\n");
+    if (vulpes_unregister()) {
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","failed to unregister: %s", mapping.device_name);
+    }
+    vulpes_log(LOG_BASIC,"VULPES_MAIN","un-Registered process with device");
+    /* Close device */
+    VULPES_DEBUG("\tClosing device.\n");
+    close(mapping.vulpes_device);
     /* Open the device */
-    VULPES_DEBUG("\tOpening device %d.\n", (int) i);
-    mapping[i].vulpes_device = open(mapping[i].device_name, O_RDWR);
-    if (mapping[i].vulpes_device < 0) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open device %s",mapping[i].device_name);
+    VULPES_DEBUG("\tOpening device.\n");
+    mapping.vulpes_device = open(mapping.device_name, O_RDWR);
+    if (mapping.vulpes_device < 0) {
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open device %s",mapping.device_name);
       goto vulpes_exit;
     }
-    
-    /* Open the file */
-    VULPES_DEBUG("\tOpening file %d.\n", (int) i);
-    if ((*(mapping[i].open_func)) (&mapping[i])) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open lev1 %s", mapping[i].file_name);
-      goto vulpes_exit;
-    }
-    
-    /* Open the stats */
-    if (valid_stats(&mapping[i])) {
-      VULPES_DEBUG("\tOpening stats %d.\n", (int) i);
-      if ((*(mapping[i].stats->open)) (mapping[i].stats)) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unable to open stats %u",i);
-	goto vulpes_exit;
-      }
-    }
-    
     /* Register ourselves with the device */
-    VULPES_DEBUG("\tRegistering device %d.\n", (int) i);
-    if (vulpes_register(i)) {
+    VULPES_DEBUG("\tRegistering device.\n");
+    if (vulpes_register()) {
       vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to register process with device");
       goto vulpes_exit;
     }
     vulpes_log(LOG_BASIC,"VULPES_MAIN","Registered process with device");
-    
-    /* Need to register twice to get 2.6 kernel module to recognize driver properly */
-    if (running_kernel26()) {
-      /* Unregister process */
-      VULPES_DEBUG("\tUnregistering device %d.\n", (int) i);
-      if (vulpes_unregister(i)) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","failed to unregister: %s", mapping[i].device_name);
-      }
-      vulpes_log(LOG_BASIC,"VULPES_MAIN","un-Registered process with device");
-      /* Close device */
-      VULPES_DEBUG("\tClosing device %d.\n", (int) i);
-      close(mapping[i].vulpes_device);
-      /* Open the device */
-      VULPES_DEBUG("\tOpening device %d.\n", (int) i);
-      mapping[i].vulpes_device = open(mapping[i].device_name, O_RDWR);
-      if (mapping[i].vulpes_device < 0) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open device %s",mapping[i].device_name);
-	goto vulpes_exit;
-      }
-      /* Register ourselves with the device */
-      VULPES_DEBUG("\tRegistering device %d.\n", (int) i);
-      if (vulpes_register(i)) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to register process with device");
-	goto vulpes_exit;
-      }
-      vulpes_log(LOG_BASIC,"VULPES_MAIN","Registered process with device");
-    }
   }
   
   /* Initialize cmdblk */
@@ -743,23 +761,18 @@ int main(int argc, char *argv[])
   cmdblk.head.fauxide_id=NULL;
   
   /* Enter processing loop */
-  id = 0;
   do {
-    vulpes_mapping_t *map_ptr;
     int result = 0;
     
-    /* Execute ioctl -- use last id */
-    ioctl(mapping[id].vulpes_device, FAUXIDE_IOCTL_CMDBLK, &cmdblk);
-    
-    id = cmdblk.head.vulpes_id;
-    map_ptr = &mapping[id];
+    /* Execute ioctl */
+    ioctl(mapping.vulpes_device, FAUXIDE_IOCTL_CMDBLK, &cmdblk);
     
     /* Process cmd */
     switch (cmdblk.head.cmd) {
     case VULPES_CMD_READ:
       vulpes_log(LOG_FAUXIDE_REQ,"READ_IN","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (cmdblk_ok(&(cmdblk.head))) {
-	result = (*map_ptr->read_func) (map_ptr, &cmdblk);
+	result = (*mapping.read_func) (&mapping, &cmdblk);
       } else {
 	vulpes_log(LOG_ERRORS,"VULPES_MAIN","%llu:%lu:%lu: bad cmdblk",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
 	result = -1;
@@ -767,8 +780,8 @@ int main(int argc, char *argv[])
       vulpes_log(LOG_FAUXIDE_REQ,"READ_OUT","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (result == 0) {
 	tally_sector_accesses(0, cmdblk.head.num_sect);
-	if (valid_stats(map_ptr)) {
-	  if ((*map_ptr->stats->record_read) (map_ptr->stats,&cmdblk.head)) {
+	if (valid_stats()) {
+	  if ((*mapping.stats->record_read) (mapping.stats,&cmdblk.head)) {
 	    vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: issuing logstats record_read()");
 	  }
 	}
@@ -782,15 +795,15 @@ int main(int argc, char *argv[])
     case VULPES_CMD_WRITE:
       vulpes_log(LOG_FAUXIDE_REQ,"WRITE_IN","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (cmdblk_ok(&(cmdblk.head))) {
-	result = (*map_ptr->write_func) (map_ptr, &cmdblk);
+	result = (*mapping.write_func) (&mapping, &cmdblk);
       } else {
 	result = -1;
       }
       vulpes_log(LOG_FAUXIDE_REQ,"WRITE_DONE","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (result == 0) {
 	tally_sector_accesses(1, cmdblk.head.num_sect);
-	if (valid_stats(map_ptr)) {
-	  if ((*map_ptr->stats->record_write) (map_ptr->stats,&cmdblk.head)) {
+	if (valid_stats()) {
+	  if ((*mapping.stats->record_write) (mapping.stats,&cmdblk.head)) {
 	    vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: issuing logstats record_write()");
 	  }
 	}
@@ -833,38 +846,36 @@ int main(int argc, char *argv[])
   
   /* Unmap */
   vulpes_log(LOG_BASIC,"VULPES_MAIN", "Beginning vulpes shutdown sequence");
-  for (i = 0; i < num_mappings; i++) {
-    /* Unregister process */
-    VULPES_DEBUG("\tUnregistering device %d.\n", (int) i);
-    if (vulpes_unregister(i)) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","failed to unregister %s", mapping[i].device_name);
-    }
-    vulpes_log(LOG_BASIC,"VULPES_MAIN","un-Registered process with device");
-    
-    /* Close device */
-    VULPES_DEBUG("\tClosing device %d.\n", (int) i);
-    close(mapping[i].vulpes_device);
-    
-    /* Close stats */
-    VULPES_DEBUG("\tClosing stats %d.\n", (int) i);
-    if (valid_stats(&mapping[i])) {
-      (*mapping[i].stats->close) (mapping[i].stats);
-      free(mapping[i].stats);
-      mapping[i].stats = NULL;
-    }
-    
-    /* Close file */
-    VULPES_DEBUG("\tClosing map %d.\n", (int) i);
-    if ((*mapping[i].close_func) (&mapping[i]) == -1) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","close function failed");
-	exit(1);
-      }
-
-    /* Close the LKA service */
-    if(mapping[i].lka_svc != NULL)
-      if(vulpes_lka_close(mapping[i].lka_svc) != VULPES_LKA_RETURN_SUCCESS)
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","failure during lka_close().");    
+  /* Unregister process */
+  VULPES_DEBUG("\tUnregistering device.\n");
+  if (vulpes_unregister()) {
+    vulpes_log(LOG_ERRORS,"VULPES_MAIN","failed to unregister %s", mapping.device_name);
   }
+  vulpes_log(LOG_BASIC,"VULPES_MAIN","un-Registered process with device");
+  
+  /* Close device */
+  VULPES_DEBUG("\tClosing device.\n");
+  close(mapping.vulpes_device);
+  
+  /* Close stats */
+  VULPES_DEBUG("\tClosing stats.\n",);
+  if (valid_stats()) {
+    (*mapping.stats->close) (mapping.stats);
+    free(mapping.stats);
+    mapping.stats = NULL;
+  }
+  
+  /* Close file */
+  VULPES_DEBUG("\tClosing map.\n");
+  if ((*mapping.close_func) (&mapping) == -1) {
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","close function failed");
+      exit(1);
+    }
+
+  /* Close the LKA service */
+  if(mapping.lka_svc != NULL)
+    if(vulpes_lka_close(mapping.lka_svc) != VULPES_LKA_RETURN_SUCCESS)
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","failure during lka_close().");    
   
   /* Close the fidsvc */
   fidsvc_close();
@@ -878,7 +889,5 @@ int main(int argc, char *argv[])
  vulpes_exit:
   vulpes_log(LOG_BASIC,"VULPES_FINISH", "");
   vulpes_log_close();
-  exit(0);
-  
   return 0;
 }
