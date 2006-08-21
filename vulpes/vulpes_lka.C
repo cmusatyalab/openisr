@@ -48,11 +48,8 @@ protected:
 public:
   lka_provider(vulpes_lka_tag_t tagt) : r_tag_t(tagt), r_accesses(0), r_hits(0) {}
   virtual ~lka_provider(void) {
-    char s_value[12];
-    sprintf(s_value,"%u",r_accesses);
-    vulpes_log(LOG_STATS,"LOOKASIDE",NULL,NULL,"lookup requests",s_value);   
-    sprintf(s_value,"%u",r_hits);
-    vulpes_log(LOG_STATS,"LOOKASIDE",NULL,NULL,"lookup hits",s_value);   
+    vulpes_log(LOG_STATS,"LOOKASIDE","lookup requests: %u",r_accesses);
+    vulpes_log(LOG_STATS,"LOOKASIDE","lookup hits: %u",r_hits);
   }
 
   inline virtual vulpes_lka_tag_t 
@@ -112,12 +109,12 @@ static vulpes_lka_return_t copy_file(const char *dest, const char *src)
   int inf=open(src, O_RDONLY);
   if(inf == -1) {
 #ifdef DEBUG
-    vulpes_log(LOG_TRANSPORT,"LKA_COPY_FILE",NULL,NULL,"lka file not found",src);
+    vulpes_log(LOG_TRANSPORT,"LKA_COPY_FILE","lka file not found: %s",src);
 #endif
     return VULPES_LKA_RETURN_TAG_NOTFOUND;
   } else {
 #ifdef DEBUG
-    vulpes_log(LOG_TRANSPORT,"LKA_COPY_FILE",NULL,NULL,"lka file found",src);
+    vulpes_log(LOG_TRANSPORT,"LKA_COPY_FILE","lka file found: %s",src);
 #endif
   }
 

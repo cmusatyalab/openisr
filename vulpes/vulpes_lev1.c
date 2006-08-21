@@ -205,16 +205,10 @@ static __inline int cdp_is_dirty(chunk_data_t * cdp)
   result = ((cdp->status & CHUNK_STATUS_DIRTY) == CHUNK_STATUS_DIRTY);
 
 #ifdef DEBUG
-  if(result && !cdp_is_rw(cdp)) {
-    char s_value[12];
-    sprintf(s_value,"%#x", cdp->status);
-    vulpes_log(LOG_ERRORS,"CDP_IS_DIRTY()",NULL,NULL, "cdp is dirty but not rw", s_value);
-  }
-  if(result && !cdp_is_accessed(cdp)) {
-    char s_value[12];
-    sprintf(s_value,"%#x", cdp->status);
-    vulpes_log(LOG_ERRORS,"CDP_IS_DIRTY()",NULL,NULL, "cdp is dirty but not accessed", s_value);
-  }
+  if(result && !cdp_is_rw(cdp))
+    vulpes_log(LOG_ERRORS,"CDP_IS_DIRTY()","cdp is dirty but not rw: %#x", cdp->status);
+  if(result && !cdp_is_accessed(cdp))
+    vulpes_log(LOG_ERRORS,"CDP_IS_DIRTY()","cdp is dirty but not accessed: %#x", cdp->status);
 #endif
 
   return result;
@@ -475,7 +469,6 @@ printf_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, u
 {
   unsigned char *bufhash;
   unsigned char s_bufhash[41];
-  unsigned char s_value[32];
   int i;
 
   bufhash=digest(buf, bufsize);
@@ -484,16 +477,10 @@ printf_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, u
   }
   free(bufhash);
 
-  sprintf(s_value,"%u", index);
-  vulpes_log(LOG_CHUNKS,msg,NULL,"BUF_STATS", "buffer indx", s_value);	  
-
-  sprintf(s_value,"%#08x", (unsigned)buf);
-  vulpes_log(LOG_CHUNKS,msg,NULL,"BUF_STATS", "buffer addr", s_value);	  
-
-  sprintf(s_value,"%u", bufsize);
-  vulpes_log(LOG_CHUNKS,msg,NULL,"BUF_STATS", "buffer size", s_value);	  
-
-  vulpes_log(LOG_CHUNKS,msg,NULL,"BUF_STATS", "buffer hash", s_bufhash);	  
+  vulpes_log(LOG_CHUNKS,msg,"BUF_STATS: buffer indx: %u", index);
+  vulpes_log(LOG_CHUNKS,msg,"BUF_STATS: buffer addr: %#08x", (unsigned)buf);
+  vulpes_log(LOG_CHUNKS,msg,"BUF_STATS: buffer size: %u", bufsize);
+  vulpes_log(LOG_CHUNKS,msg,"BUF_STATS: buffer hash: %s", s_bufhash);
 }
 #endif
 
@@ -514,9 +501,9 @@ print_check_tag_error(const vulpes_mapping_t *map_ptr, unsigned chunk_num,
       sprintf(&(s_tag[2*i]), "%02x", tag[i]);
       sprintf(&(s_kr_tag[2*i]), "%02x", kr_tag[i]);
     }
-    vulpes_log(LOG_ERRORS,"CHECK_TAG_ERROR","expected",s_kr_tag,"found",s_tag);
+    vulpes_log(LOG_ERRORS,"CHECK_TAG_ERROR","expected %s, found %s",s_kr_tag,s_tag);
   } else {
-    vulpes_log(LOG_ERRORS,"CHECK_TAG_ERROR",NULL,NULL,NULL,"failed to get kr_tag");
+    vulpes_log(LOG_ERRORS,"CHECK_TAG_ERROR","failed to get kr_tag");
   }
 }
 
@@ -602,7 +589,7 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
 	  for(i=0; i<20; i++) {
 	    sprintf(&(s_bufhash[2*i]), "%02x", tag[i]);
 	  }
-	  vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE",NULL,NULL, "lka lookup tag", s_bufhash);	  
+	  vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup tag: %s", s_bufhash);	  
 	}
 #endif
 
@@ -613,23 +600,21 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
 	    /* LKA hit */
 	    chunk_data_t *cdp;
 	    
-	    vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE",NULL,NULL, 
-		       "lka lookup hit for ", dst);	  
+	    vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup hit for %s",dst);	  
 	    cdp = get_cdp_from_chunk_num(spec, chunk_num);
 	    mark_cdp_lka_copy(cdp);
 	  } else {
 	    /* Tag check failure */
 	    vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
-		       "SERIOUS, NON-FATAL ERROR - lka lookup hit from ",
+		       "SERIOUS, NON-FATAL ERROR - lka lookup hit from %s failed tag match for %s",
 		       ((lka_src_file == NULL) ? "<src>" : lka_src_file), 
-		       "failed tag match for ", dst);
+		       dst);
 	    lka_ret = VULPES_LKA_RETURN_ERROR;
 
 	    /* unlink dst here */
 	    if(unlink(dst)) {
 	      vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
-			 "SERIOUS ERROR - unable to unlink file ", dst,
-			 NULL, NULL);
+			 "SERIOUS ERROR - unable to unlink file %s", dst);
 	      /* Fall through and see if recovery is possible
 		 (through an overwrite to the file) */
 	    }
@@ -642,11 +627,11 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
 	  /* else, fall through */
 	} else {
 	  /* LKA miss */
-	  vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE",NULL,NULL, "lka lookup miss for ", dst);
+	  vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup miss for %s", dst);
 	}
       } else {
 	/* Serious error?  Chunk not found in keyring */
-	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",NULL,NULL, NULL,"failure in lev1_get_tag()");
+	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","failure in lev1_get_tag()");
       }
     }
   }
@@ -661,35 +646,35 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
       int out_f;
       int num;
       
-      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE",NULL,"local_begin",(char*)src,(char*)dst);
+      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","local_begin: %s %s",src,dst);
       in_f = gzopen(src, "r");
       if (in_f == NULL) {
-	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",NULL,NULL,"unable to open input",(char*)src);
+	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","local: unable to open input %s",src);
 	return -1;
       }
       
       out_f = open(dst, ( O_CREAT | O_RDWR | O_TRUNC), 0660);
       if (out_f == -1) {
-	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",NULL,"local","unable to open output",(char*)dst);
+	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","local: unable to open output %s",dst);
 	return -1;
       }
       
       
       while ((num = gzread(in_f, buf, buflen)) != 0) {
 	if (num == -1) {
-	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",NULL,"local","unable to read input",(char*)src);
+	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","local: unable to read input %s",src);
 	  return -1;
 	}
 	
 	if (write(out_f, buf, num) != num) {
-	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",NULL,"local","unable to write output",(char*)dst);
+	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","local: unable to write output %s",dst);
 	  return -1;
 	}
       }
       
       close(out_f);
       gzclose(in_f);
-      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE",NULL,"local_end",(char*)src,(char*)dst);
+      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","local_end: %s %s",src,dst);
       
       return 0;
     }
@@ -706,14 +691,14 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
       curl_easy_setopt(curl_handle, CURLOPT_URL, src);
       
       /* perform the get */
-      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE",NULL,"http_begin",(char*)src,(char*)dst);
+      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","http_begin: %s %s",src,dst);
       retVal=curl_easy_perform(curl_handle);
-      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE",NULL,"http_end",(char*)src,(char*)dst);
+      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","http_end: %s %s",src,dst);
       
       /* check for get errors */
       if ((strlen(curl_error_buffer)!=0) || (retVal!=0)) {
 	/* problems */
-	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",NULL,"http","curl",
+	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","http: curl %s",
 		   curl_error_buffer);
 	/*
 	printf("Curl Error: %s\n",curl_error_buffer);
@@ -724,15 +709,15 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
 	retstatus=-1;
       } else if(! valid_chunk_buffer(curl_buffer->buf, curl_buffer->size,
 				    map_ptr, chunk_num)) {
-	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",NULL,"http get failure",
-		   (char*)src, "buffer not valid");
+	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","http get failure: %s buffer not valid",
+		   src);
 	retstatus=-1;
       } else {
 	/* open cache file */
 	int fd; 
 	if ((fd=open(dst, O_CREAT|O_TRUNC|O_WRONLY,0660)) < 2) {
-	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",NULL,"http copy failure",
-		     "unable to open output",(char*)dst);
+	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","http copy failure: unable to open output %s",
+		     dst);
 	  close(fd);
 	  destroy_curl();
 	  return -1;
@@ -740,23 +725,22 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
 
 	/* write to cache */
 	if(write(fd,curl_buffer->buf,curl_buffer->size) == curl_buffer->size) {
-	  vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE",NULL,"http copy success",
-		     (char*)src,(char*)dst);
+	  vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","http copy success: %s %s",
+		     src,dst);
 	  /* close the cache file */
 	  close(fd);
 	  retstatus=0;
 	} else {
-	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",NULL,"http copy failure",
-		     "unable to write output",(char*)dst);
+	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","http copy failure: unable to write output %s",
+		     dst);
 	  /* delete the cache file */
 	  close(fd);
 	  if(unlink(dst)) {
 	    /* this is really serious. we've put a bad file in the cache 
 	       and can't remove it.
 	       TODO: ensure that we shut down from here */
-	    vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",NULL,
-		       "!!! http unlink failure!!!",
-		       "unable to unlink output",(char*)dst);
+	    vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
+		       "!!! http unlink failure!!!: unable to unlink output %s",dst);
 	  }
 	  retstatus=-1;
 	}
@@ -776,16 +760,11 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
   unsigned dir=0, chunk=0;
   chunk_data_t *cdp;
   int err;
-  char s_chunk_num[32];
   lev1_mapping_special_t *spec;
   unsigned chunksize;
   
 #ifdef DEBUG
-      {
-	char s_spec_addr[32];
-	sprintf(s_spec_addr,"%#08x",(unsigned) data);
-	vulpes_log(LOG_CHUNKS,"LEV1_RECLAIM",NULL,NULL,"received spec addr",s_spec_addr);
-      }
+  vulpes_log(LOG_CHUNKS,"LEV1_RECLAIM","received spec addr: %#08x",(unsigned)data);
 #endif
 
   spec = (lev1_mapping_special_t *) data;
@@ -796,8 +775,6 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
   
   chunksize = spec->chunksize_bytes;
   
-  sprintf(s_chunk_num,"%d", chunk_num);
-  
   /* We have some work to do: compress the memory buffer
    * and then, if reqd encrypt it, then write to file
    * and close it. use the buffer to recalculate the new
@@ -807,17 +784,17 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
   if (enableEncryption) {
     
     if (!cdp) {
-      vulpes_log(LOG_ERRORS,"LEV1_RECLAIM",NULL,NULL,"cdp is NULL, cant reclaim", s_chunk_num);
+      vulpes_log(LOG_ERRORS,"LEV1_RECLAIM","cdp is NULL, cannot reclaim %d", chunk_num);
       /* fd = fidsvc_get(cdp->fnp); */
       return -1;
     }
     
     if (!cdp->buffer) {
-      vulpes_log(LOG_ERRORS,"LEV1_RECLAIM",NULL,NULL,"tried to reclaim null buffer", s_chunk_num);
+      vulpes_log(LOG_ERRORS,"LEV1_RECLAIM","tried to reclaim null buffer: %d", chunk_num);
     } else { 
       if (!cdp_is_dirty(cdp)) {
 	/* just close the file (below) -- no changes */
-	vulpes_log(LOG_CHUNKS,"LEV1_RECLAIM",NULL,NULL,"clean chunk close().",s_chunk_num);
+	vulpes_log(LOG_CHUNKS,"LEV1_RECLAIM","clean chunk close: %d", chunk_num);
       } else {
 	unsigned long compressedSize;
 	int encryptedSize, errCode;
@@ -826,14 +803,14 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
 	compressedSize = 1.002 * chunksize+20;
 	compressed = (unsigned char *) malloc(compressedSize);
 	if(!compressed) {
-	  vulpes_log(LOG_ERRORS,"LEV1_RECLAIM",NULL,NULL,"malloc() failed while trying to compress buffer.",s_chunk_num);
+	  vulpes_log(LOG_ERRORS,"LEV1_RECLAIM","malloc() failed while trying to compress buffer: %d",chunk_num);
 	  return -1;
 	}
 	
 	errCode = compress2(compressed, &compressedSize, cdp->buffer,
 			    chunksize, Z_DEFAULT_COMPRESSION);
 	if (errCode != Z_OK) {
-	  vulpes_log(LOG_ERRORS,"LEV1_RECLAIM",NULL,NULL,"error compressing chunk",s_chunk_num);
+	  vulpes_log(LOG_ERRORS,"LEV1_RECLAIM","error compressing chunk: %d",chunk_num);
 	  return -1;
 	} 
 	
@@ -844,11 +821,7 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
 	
 #ifdef DEBUG
 	printf_buffer_stats("LEV1_RECLAIM plaintext", chunk_num, cdp->buffer, chunksize);
-	{
-	  char s_compressed_size[32];
-	  sprintf(s_compressed_size,"%lu",compressedSize);
-	  vulpes_log(LOG_CHUNKS,"LEV1_RECLAIM",NULL,"compressed chunk size",s_compressed_size,s_chunk_num);
-	}
+	vulpes_log(LOG_CHUNKS,"LEV1_RECLAIM","compressed chunk size %lu for %d",compressed_size,chunk_num);
 	printf_buffer_stats("LEV1_RECLAIM encrypted", chunk_num, encrypted, encryptedSize);
 #endif
 
@@ -856,13 +829,13 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
 	
 	errCode = ftruncate(fid, 0);
 	if (errCode != 0) {
-	  vulpes_log(LOG_ERRORS,"LEV1_RECLAIM",NULL,NULL,"ftruncate failed",s_chunk_num);
+	  vulpes_log(LOG_ERRORS,"LEV1_RECLAIM","ftruncate failed: %d",chunk_num);
 	  return -1;
 	}
 	
 	lseek(fid, 0, SEEK_SET);
 	if(write(fid, encrypted, encryptedSize) != encryptedSize) {
-	  vulpes_log(LOG_ERRORS,"LEV1_RECLAIM",NULL,NULL,"chunk write failed.",s_chunk_num);
+	  vulpes_log(LOG_ERRORS,"LEV1_RECLAIM","chunk write failed: %d",chunk_num);
 	  return -1;
 	}
 
@@ -871,20 +844,20 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
 	free(newtag);
 	free(encrypted);
 
-	vulpes_log(LOG_CHUNKS,"LEV1_RECLAIM",NULL,NULL,"dirty chunk close().",s_chunk_num);
+	vulpes_log(LOG_CHUNKS,"LEV1_RECLAIM","dirty chunk close: %d",chunk_num);
       }
     } 
   } else {
-    vulpes_log(LOG_ERRORS,"LEV1_RECLAIM",NULL,NULL,"reclaim() without encryption not implemented",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"LEV1_RECLAIM","reclaim() without encryption not implemented: %d",chunk_num);
     return -1;
   }
   
   if (close(fid)!=0) {
     err=errno;
     if (err==EBADF)
-      vulpes_log(LOG_ERRORS,"LEV1_RECLAIM",NULL,NULL,NULL,"close failed ebadf");
+      vulpes_log(LOG_ERRORS,"LEV1_RECLAIM","close failed ebadf");
     else
-      vulpes_log(LOG_ERRORS,"LEV1_RECLAIM",NULL,NULL,NULL,"close failed");
+      vulpes_log(LOG_ERRORS,"LEV1_RECLAIM","close failed");
   }
 
   /* clean up the cdp */
@@ -937,7 +910,6 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
   int chunksPerDir;
   fid_t fid;
   chunk_data_t *cdp;
-  char s_chunk_num[32];
   int open_readwrite;
 
   spec = (lev1_mapping_special_t *) map_ptr->special;
@@ -949,17 +921,11 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
   get_dir_chunk_from_chunk_num(spec, chunk_num, &dir, &chunk);
   cdp = &(spec->cd[dir][chunk]);  
 
-  sprintf(s_chunk_num,"%d", chunk_num);
-  
   open_readwrite = open_for_writing;
   if(cdp_is_dirty(cdp) && !open_readwrite) {
     open_readwrite = 1;
 #ifdef DEBUG
-    {
-      char s_spec_addr[32];
-      sprintf(s_spec_addr,"%#08x",(unsigned) spec);
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"changing mode from ro to rw",s_chunk_num);
-    }
+    vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","changing mode from ro to rw: ",chunk_num);
 #endif
   }
 
@@ -970,7 +936,7 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
     if (open_readwrite && !cdp_is_rw(cdp)) {
       /* Close the readonly file */
       if (fidsvc_remove(cdp->fnp)) {
-	vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,NULL,"failure while attempting to close file and reopen in rw mode");
+	vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","failure while attempting to close file and reopen in rw mode");
 	return -1;
       }
       
@@ -978,7 +944,7 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
       /* -- Note: this algorithm fouls up the replacement policy of the fid cache */
     } else {
       if (!cdp->buffer) {
-	vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"null buffer in cdp",s_chunk_num);
+	vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","null buffer in cdp: %d",chunk_num);
       }
       return 0;
     }
@@ -988,7 +954,7 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
   if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
 			   spec->shadow ? map_ptr->cache_name : map_ptr->
 			   file_name, dir, chunk, "",map_ptr)) {
-    vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"unable to form lev1 file name",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 file name: %d",chunk_num);
     return -1;
   }
   
@@ -1011,7 +977,7 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
 	    (remote_name, MAX_CHUNK_NAME_LENGTH,
 	     map_ptr->file_name, dir, chunk,
 	     (spec->compressed_chunks ? ".gz" : ""),map_ptr)) {
-	  vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"unable to form lev1 remote name",s_chunk_num);
+	  vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 remote name: %d",chunk_num);
 	  return -1;
 	}
 	/*if (spec->verbose)
@@ -1020,7 +986,7 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
 	if (lev1_copy_file(remote_name, chunk_name, map_ptr, chunk_num) == 0) {
 	  mark_cdp_shadow_present(cdp);
 	} else {
-	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",NULL,"unable to copy",remote_name,chunk_name);
+	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","unable to copy %s %s",remote_name,chunk_name);
 	  return -1;
 	}
       }
@@ -1037,19 +1003,15 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
   else
     fid = open(chunk_name,  O_RDONLY);
   if (fid < 0) {
-    vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,"unable to open",chunk_name,s_chunk_num);
+    vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to open %s %d",chunk_name,chunk_num);
     return -1;
   }
-  vulpes_log(LOG_CHUNKS,"OPEN_CHUNK_FILE","open",(open_readwrite ? "rw" : "ro"),chunk_name,s_chunk_num);
+  vulpes_log(LOG_CHUNKS,"OPEN_CHUNK_FILE","open %s %s %d",(open_readwrite ? "rw" : "ro"),chunk_name,chunk_num);
   
   /* store the fid */
   cdp->fnp = fidsvc_register(fid, lev1_reclaim, spec, chunk_num);
 #ifdef DEBUG
-      {
-	char s_spec_addr[32];
-	sprintf(s_spec_addr,"%#08x",(unsigned) spec);
-	vulpes_log(LOG_CHUNKS,"OPEN_CHUNK_FILE",NULL,NULL,"register spec addr",s_spec_addr);
-      }
+  vulpes_log(LOG_CHUNKS,"OPEN_CHUNK_FILE","register spec addr %#08x",(unsigned)spec);
 #endif
 
   /* Assume that the file will be read and written according to open_readwrite */
@@ -1074,35 +1036,31 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
     int i;
     
     if((fSize = get_filesize(fid)) == 0) {
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"Encrypted file size is zero",s_chunk_num);
+      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","Encrypted file size is zero: %d",chunk_num);
       return -1;
     }
     lseek(fid, 0, SEEK_SET);
 
 #ifdef DEBUG
-      {
-	char s_compressed_size[32];
-	sprintf(s_compressed_size,"%d",fSize);
-	vulpes_log(LOG_CHUNKS,"OPEN_CHUNK_FILE",NULL,"compressed chunk size",s_compressed_size,s_chunk_num);
-      }
+    vulpes_log(LOG_CHUNKS,"OPEN_CHUNK_FILE","compressed chunk size %d %d",fSize,chunk_num);
 #endif
 
     encryptedFile = (unsigned char *) malloc(fSize);
     if (encryptedFile == NULL) {
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"Couldnt malloc encrypted file",s_chunk_num);
+      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","Could not malloc encrypted file: %d",chunk_num);
       return -1;
     }
 
     errCode = read(fid, encryptedFile, fSize);
     if (errCode!=fSize) {
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"Could not read the required number of bytes",s_chunk_num);
+      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","Could not read the required number of bytes: %d",chunk_num);
       return -1;
     }
 
     tag = digest(encryptedFile, fSize);
     
     if (lev1_check_tag(spec->keyring, chunk_num, tag) != LEV1_ENCRYPT_SUCCESS){
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"lev1_check_tag() failed.",s_chunk_num);
+      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","lev1_check_tag() failed: %d",chunk_num);
       /* #ifdef DEBUG */
       {
 	unsigned char s_tag[41];
@@ -1115,9 +1073,9 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
 	    sprintf(&(s_tag[2*i]), "%02x", tag[i]);
 	    sprintf(&(s_kr_tag[2*i]), "%02x", kr_tag[i]);
 	  }
-	  vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","expected",s_kr_tag,"found",s_tag);
+	  vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","expected %s, found %s",s_kr_tag,s_tag);
 	} else {
-	  vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,NULL,"failed to get kr_tag");
+	  vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","failed to get kr_tag");
 	}
       }
       /* #endif */
@@ -1125,13 +1083,13 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
     }
     
     if (lev1_get_key(spec->keyring, chunk_num, &key) != LEV1_ENCRYPT_SUCCESS){
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"lev1_get_key() failed.",s_chunk_num);
+      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","lev1_get_key() failed: %d",chunk_num);
       return -1;
     }
     
     if (!vulpes_decrypt
 	(encryptedFile, fSize, &decryptedFile, &size, key, 20)) {
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"couldnt decrypt file into memory",s_chunk_num);
+      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","could not decrypt file into memory: %d",chunk_num);
       return -1;
     };
     writePtr=tag_log; readPtr=tag;
@@ -1140,9 +1098,9 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
     *writePtr='\0';
 
     if (open_readwrite)
-      vulpes_log(LOG_KEYS,"OPEN_CHUNK_FILE",NULL,"w",s_chunk_num,tag_log);
+      vulpes_log(LOG_KEYS,"OPEN_CHUNK_FILE","w %d %s",chunk_num,tag_log);
     else
-      vulpes_log(LOG_KEYS,"OPEN_CHUNK_FILE",NULL,"r",s_chunk_num,tag_log);
+      vulpes_log(LOG_KEYS,"OPEN_CHUNK_FILE","r %d %s",chunk_num,tag_log);
     
     free(encryptedFile);
     encryptedFile = NULL;
@@ -1150,7 +1108,7 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
     decompressedFile = NULL;
     decompressedFile = (unsigned char *) malloc(spec->chunksize_bytes);
     if (decompressedFile == NULL) {
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"couldnt malloc space for decompressed file",s_chunk_num);
+      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","could not malloc space for decompressed file: %d",chunk_num);
       return -1;
     }
 
@@ -1161,13 +1119,13 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
       uncompress(decompressedFile, &decompressedSize, decryptedFile,
 		 compressedSize);
     if (errCode != Z_OK) {
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"couldnt decompress file",s_chunk_num);
+      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","could not decompress file: %d",chunk_num);
       return -1;
     };
     
     if (decompressedSize!=spec->chunksize_bytes) {
       /* Partho: This "error condition" may not be an error in future versions */
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"On decompressing, final size is NOT CHUNKSIZE",s_chunk_num);
+      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","On decompressing, final size is NOT CHUNKSIZE: %d",chunk_num);
       return -1;
     }
     free(decryptedFile);
@@ -1178,7 +1136,7 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
     tmpDecompress = NULL;
     tmpDecompress = (unsigned char *) malloc(decompressedSize);
     if (tmpDecompress == NULL) {
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"couldnt malloc space for tmpDecompress",NULL);
+      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","could not malloc space for tmpDecompress");
       return -1;
     }
 
@@ -1192,7 +1150,7 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
     printf_buffer_stats("OPEN_CHUNK_FILE", chunk_num, cdp->buffer, spec->chunksize_bytes);
 #endif
   } else {
-    vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE",NULL,NULL,"open() without encryption not implemented",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","open() without encryption not implemented: %d",chunk_num);
     return -1;
   }
 
@@ -1232,25 +1190,25 @@ int lev1_open_func(vulpes_mapping_t * map_ptr)
   /* result =  0 means good
    *  result = -1 means error */
   if (result !=0 ) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC",NULL,NULL,NULL,"unable to form lev1 index name");
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to form lev1 index name");
     return -1;
   }
   
   /* Open index file */
   f = fopen(spec->index_name, "r");
   if (f == NULL) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC",NULL,NULL,"unable to open index file",spec->index_name);
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open index file %s",spec->index_name);
     return -1;
   }
   
   /* Scan index file */
   if (fscanf(f, "VERSION= %u\n", &spec->version) != 1) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC",NULL,NULL,"unable to parse version from index file",spec->index_name);
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to parse version from index file %s",spec->index_name);
     fclose(f);
     return -1;
   }
   if (spec->version != 1) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC",NULL,NULL,"unknown lev1 version number",spec->index_name);
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unknown lev1 version number: %s",spec->index_name);
     fclose(f);
     return -1;
   }
@@ -1267,16 +1225,14 @@ int lev1_open_func(vulpes_mapping_t * map_ptr)
     parse_error = 1;
   
   if (parse_error) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC",NULL,NULL,"bad parse",spec->index_name);
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","bad parse: %s",spec->index_name);
     result = -1;
   } else {
     unsigned long long tmp_volsize;
     
     /* compute derivative values */
     if (spec->chunksize_bytes % FAUXIDE_HARDSECT_SIZE != 0) {
-      char c_size[32];
-      sprintf(c_size,"%u",spec->chunksize_bytes);
-      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC",NULL,NULL,"bad chunksize",c_size);
+      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","bad chunksize: %u",spec->chunksize_bytes);
       result = -1;
     } else {
       spec->chunksize =
@@ -1285,9 +1241,7 @@ int lev1_open_func(vulpes_mapping_t * map_ptr)
     
     tmp_volsize = spec->chunksize * spec->numchunks;
     if (tmp_volsize > MAX_VOLSIZE_VALUE) {
-      char v_size[32];
-      sprintf(v_size,"%llu",tmp_volsize);
-      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC",NULL,NULL,"lev1 volsize too big", v_size);
+      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","lev1 volsize too big: %llu", tmp_volsize);
       result = -1;
     } else {
       spec->volsize = (vulpes_volsize_t) tmp_volsize;
@@ -1299,7 +1253,7 @@ int lev1_open_func(vulpes_mapping_t * map_ptr)
   if (spec->shadow) {
     /* Check if the root directory exists */
     if (!is_dir(map_ptr->cache_name)) {
-      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC",NULL,NULL,"unable to open dir", map_ptr->cache_name);
+      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open dir: %s", map_ptr->cache_name);
       result = -1;
     } else {
       char dirname[MAX_DIRLENGTH];
@@ -1310,7 +1264,7 @@ int lev1_open_func(vulpes_mapping_t * map_ptr)
 	form_dir_name(dirname, MAX_DIRLENGTH, map_ptr->cache_name, d);
 	if (!is_dir(dirname)) {
 	  if (mkdir(dirname, 0770)) {
-	    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC",NULL,NULL,"unable to mkdir", dirname);
+	    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to mkdir: %s", dirname);
 	    result = -1;
 	    break;
 	  }
@@ -1323,7 +1277,7 @@ int lev1_open_func(vulpes_mapping_t * map_ptr)
   spec->cd = malloc(spec->numdirs * sizeof(chunk_data_t *));
   if (spec->cd == NULL)
     {
-      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC",NULL,NULL,NULL,"unable to allocate fid array");
+      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to allocate fid array");
       return -1;
     }
   for (u = 0; u < spec->numdirs; u++) {
@@ -1333,7 +1287,7 @@ int lev1_open_func(vulpes_mapping_t * map_ptr)
     spec->cd[u] = malloc(spec->chunksperdir * sizeof(chunk_data_t));
     if (spec->cd[u] == NULL)
       {
-	vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC",NULL,NULL,NULL,"unable to allocate fid array 2");
+	vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to allocate fid array 2");
 	return -1;
       }
     /* fill the file descriptors with -1 */
@@ -1374,19 +1328,16 @@ int lev1_close_func(vulpes_mapping_t * map_ptr)
 		  if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
 		       spec->shadow ? map_ptr->cache_name : map_ptr->file_name,
 		       u, v, "",map_ptr)) {
-		    vulpes_log(LOG_ERRORS,"LEV1_CLOSE_FUNCTION",NULL,NULL,NULL,"unable to form lev1 file name");
+		    vulpes_log(LOG_ERRORS,"LEV1_CLOSE_FUNCTION","unable to form lev1 file name");
 		    return -1;
 		  }
-		  vulpes_log(LOG_CHUNKS,"LEV1_CLOSE_FUNCTION",NULL,NULL,"MODIFIEDCLOSE",chunk_name);
+		  vulpes_log(LOG_CHUNKS,"LEV1_CLOSE_FUNCTION","MODIFIEDCLOSE %s",chunk_name);
 		}
 	      }
 	    }
 	    if (spec->cd[u][v].fnp != NULL_FID_ID) {
 	      if (fidsvc_remove(spec->cd[u][v].fnp)) {
-		char dir_c[32],fil_c[32];
-		sprintf(dir_c,"%d",u);
-		sprintf(fil_c,"%d",v);
-		vulpes_log(LOG_ERRORS,"LEV1_CLOSE",NULL,dir_c,fil_c,"failed in fidsvc_remove");
+		vulpes_log(LOG_ERRORS,"LEV1_CLOSE","%d %d failed in fidsvc_remove",u,v);
 		return -1;
 	      }
 	    }
@@ -1405,21 +1356,14 @@ int lev1_close_func(vulpes_mapping_t * map_ptr)
   
   result = lev1_cleanupKeys(spec->keyring, map_ptr->keyring_name);
   if (result == -1) {
-    vulpes_log(LOG_ERRORS,"LEV1_CLOSE",NULL,NULL,NULL,"lev1_cleanupKeys failed");
+    vulpes_log(LOG_ERRORS,"LEV1_CLOSE","lev1_cleanupKeys failed");
     return result;
   }
 
   /* Print close stats */
-  {
-    char s_buffer[12];
-
-    sprintf(s_buffer, "%u", accessed_chunks);
-    vulpes_log(LOG_STATS,"LEV1_CLOSE_FUNCTION",NULL,NULL,"CHUNKS_ACCESSED",s_buffer);
-    sprintf(s_buffer, "%u", dirty_chunks);
-    vulpes_log(LOG_STATS,"LEV1_CLOSE_FUNCTION",NULL,NULL,"CHUNKS_MODIFIED",s_buffer);
-    sprintf(s_buffer, "%u", writes_before_read);
-    vulpes_log(LOG_STATS,"LEV1_CLOSE_FUNCTION",NULL,NULL,"CHUNKS_RAW",s_buffer);
-  }  
+  vulpes_log(LOG_STATS,"LEV1_CLOSE_FUNCTION","CHUNKS_ACCESSED:%u",accessed_chunks);
+  vulpes_log(LOG_STATS,"LEV1_CLOSE_FUNCTION","CHUNKS_MODIFIED:%u",dirty_chunks);
+  vulpes_log(LOG_STATS,"LEV1_CLOSE_FUNCTION","CHUNKS_RAW:%u",writes_before_read);
 
   return result;
 }
@@ -1432,28 +1376,26 @@ int lev1_read_func(const vulpes_mapping_t * map_ptr,
   ssize_t bytes;
   chunk_data_t *cdp=NULL;
   unsigned chunk_num = 0, dir = 0, chunk = 0;
-  char s_chunk_num[32];
   
   spec = (lev1_mapping_special_t *) map_ptr->special;
   
   /* find the dir,chunk numbers */
   chunk_num=get_chunk_number(spec,cmdblk->head.start_sect);
-  sprintf(s_chunk_num,"%d", chunk_num);
   get_dir_chunk_from_chunk_num(spec, chunk_num, &dir, &chunk);
 
   if (!one_chunk(spec, cmdblk)) {
-    vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC",NULL,NULL,"request crosses chunk boundary",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC","request crosses chunk boundary: %d",chunk_num);
     return -1;
   }
   
   cdp = &(spec->cd[dir][chunk]);
 
   if (open_chunk_file(map_ptr, cmdblk, 0) != 0) {
-    vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC",NULL,NULL,"open_chunk_file failed",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC","open_chunk_file failed: %d",chunk_num);
     /* if the open returned a failure... cleanup */
     if (cdp->fnp != NULL_FID_ID) {
       if (fidsvc_remove(cdp->fnp)) {
-	vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC",NULL,NULL,NULL,"fidsvc_remove() failed during cleanup");
+	vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC","fidsvc_remove() failed during cleanup");
       }
     }
     return -1;
@@ -1463,21 +1405,21 @@ int lev1_read_func(const vulpes_mapping_t * map_ptr,
   bytes = cmdblk->head.num_sect * FAUXIDE_HARDSECT_SIZE;
   
   if (start+bytes>spec->chunksize_bytes) {
-    vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC",NULL,NULL,"trying to read beyond end of chunk",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC","trying to read beyond end of chunk %d",chunk_num);
     return -1;
   }
   
   if (cdp->buffer == NULL) {
-    vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC",NULL,NULL,"cdp buffer is null",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC","cdp buffer is null: %d",chunk_num);
     return -1;
   }
 
   if(memcpy(cmdblk->buffer, ((unsigned char *) (cdp->buffer)) + start, bytes) == NULL) {
-    vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC",NULL,NULL,"Could not do a lev1_read. memcpy failed",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC","Could not do a lev1_read. memcpy failed: %d",chunk_num);
     return -1;
   }
 
-  vulpes_log(LOG_FAUXIDE_REQ,"LEV1_READ_FUNC",NULL,NULL,"read",s_chunk_num);
+  vulpes_log(LOG_FAUXIDE_REQ,"LEV1_READ_FUNC","read: %d",chunk_num);
   return 0;
 }
 
@@ -1489,28 +1431,26 @@ int lev1_write_func(const vulpes_mapping_t * map_ptr,
   ssize_t bytes;
   chunk_data_t *cdp=NULL;
   unsigned chunk_num = 0, dir = 0, chunk = 0;
-  char s_chunk_num[32];
   
   spec = (lev1_mapping_special_t *) map_ptr->special;
   
   /* find the dir,chunk numbers */
   chunk_num=get_chunk_number(spec,cmdblk->head.start_sect);
-  sprintf(s_chunk_num,"%d", chunk_num);
   get_dir_chunk_from_chunk_num(spec, chunk_num, &dir, &chunk);
 
   if (!one_chunk(spec, cmdblk)) {
-    vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC",NULL,NULL,"request crosses chunk boundary",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC","request crosses chunk boundary: %d",chunk_num);
     return -1;
   }
   
   cdp = &(spec->cd[dir][chunk]);
 
   if (open_chunk_file(map_ptr, cmdblk, 1) != 0) {
-    vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC",NULL,NULL,"open_chunk_file failed",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC","open_chunk_file failed: %d",chunk_num);
     /* if the open returned a failure... cleanup */
     if (cdp->fnp != NULL_FID_ID) {
       if (fidsvc_remove(cdp->fnp)) {
-	vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC",NULL,NULL,NULL,"fidsvc_remove() failed during cleanup");
+	vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC","fidsvc_remove() failed during cleanup");
       }
     }
     return -1;
@@ -1520,12 +1460,12 @@ int lev1_write_func(const vulpes_mapping_t * map_ptr,
   bytes = cmdblk->head.num_sect * FAUXIDE_HARDSECT_SIZE;
   
   if (start+bytes>spec->chunksize_bytes) {
-    vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC",NULL,NULL,"trying to write beyond end of chunk",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC","trying to write beyond end of chunk: %d",chunk_num);
     return -1;
   }
   
   if (cdp->buffer == NULL) {
-    vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC",NULL,NULL,"cdp buffer is null",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC","cdp buffer is null: %d",chunk_num);
     return -1;
   }
 
@@ -1535,11 +1475,11 @@ int lev1_write_func(const vulpes_mapping_t * map_ptr,
   
   mark_cdp_dirty(cdp);
   if (memcpy(((unsigned char *) (cdp->buffer)) + start, cmdblk->buffer, bytes) == 0) {
-    vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC",NULL,NULL,"memcpy failed",s_chunk_num);
+    vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC","memcpy failed: %d",chunk_num);
     return -1;
   }
 
-  vulpes_log(LOG_FAUXIDE_REQ,"LEV1_WRITE_FUNC",NULL,NULL,"write",s_chunk_num);
+  vulpes_log(LOG_FAUXIDE_REQ,"LEV1_WRITE_FUNC","write: %d",chunk_num);
   return 0;
 }
 
@@ -1552,7 +1492,7 @@ int initialize_lev1_mapping(vulpes_mapping_t * map_ptr)
   spec = map_ptr->special = malloc(sizeof(lev1_mapping_special_t));
   if (!map_ptr->special)
     {
-      vulpes_log(LOG_ERRORS,"LEV1_INIT",NULL,NULL,NULL,"malloc for map_ptr->special failed");
+      vulpes_log(LOG_ERRORS,"LEV1_INIT","malloc for map_ptr->special failed");
       return -1;
     }
   bzero(map_ptr->special, sizeof(lev1_mapping_special_t));
@@ -1578,32 +1518,18 @@ int initialize_lev1_mapping(vulpes_mapping_t * map_ptr)
   
   spec->shadow = (map_ptr->cache_name != NULL);
   if (spec->compressed_chunks && !spec->shadow) {
-    vulpes_log(LOG_ERRORS,"LEV1_INIT",NULL,NULL,NULL,"attempted compression without caching");
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","attempted compression without caching");
     free(map_ptr->special);
     map_ptr->special = NULL;
     return -1;
   }
   
-  if (map_ptr->cache_name)
-    vulpes_log(LOG_BASIC,"LEV1_INIT",NULL,NULL,"vulpes_cache",map_ptr->cache_name);
-  else
-    vulpes_log(LOG_BASIC,"LEV1_INIT",NULL,NULL,"vulpes_cache","none");
-  if ( (map_ptr->proxy_name) && (map_ptr->proxy_port))
-    {
-      char p_port[32];
-      sprintf(p_port,"%ld",map_ptr->proxy_port);
-      vulpes_log(LOG_BASIC,"LEV1_INIT",NULL,NULL,"proxy",map_ptr->proxy_name);
-      vulpes_log(LOG_BASIC,"LEV1_INIT",NULL,NULL,"proxy-port",p_port);
-    }
-  /* DELETEME 
-     printf("Cache name = <%s>  Shadow = %d\n",
-     ((map_ptr->cache_name != NULL) ? map_ptr->cache_name : "NULL"),
-     spec->shadow);
-     if (map_ptr->outgoing_interface)
-     printf("Using interface %s for network connections\n", map_ptr->outgoing_interface);
-     if ( (map_ptr->proxy_name) && (map_ptr->proxy_port))
-     printf("Will connect to port %ld on the proxy server - %s\n",map_ptr->proxy_port, map_ptr->proxy_name);
-     DELETEME */
+  vulpes_log(LOG_BASIC,"LEV1_INIT","vulpes_cache: %s",
+             (map_ptr->cache_name == NULL) ? "none" : map_ptr->cache_name);
+  if ((map_ptr->proxy_name) && (map_ptr->proxy_port)) {
+    vulpes_log(LOG_BASIC,"LEV1_INIT","proxy: %s",map_ptr->proxy_name);
+    vulpes_log(LOG_BASIC,"LEV1_INIT","proxy-port: %ld",map_ptr->proxy_port);
+  }
   
   map_ptr->open_func = lev1_open_func;
   map_ptr->volsize_func = lev1_volsize_func;
@@ -1614,11 +1540,11 @@ int initialize_lev1_mapping(vulpes_mapping_t * map_ptr)
   enableEncryption = ((map_ptr->keyring_name==NULL) ? 0 : 1);
   if (enableEncryption) {
     if((spec->keyring = lev1_initEncryption(map_ptr->keyring_name)) == NULL) {
-      vulpes_log(LOG_ERRORS,"LEV1_INIT",NULL,NULL,NULL,"lev1_initEncryption() failed.");
+      vulpes_log(LOG_ERRORS,"LEV1_INIT","lev1_initEncryption() failed");
       return -1;	
     }
   } else {
-    vulpes_log(LOG_ERRORS,"LEV1_INIT",NULL,NULL,NULL,"null keyring name");
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","null keyring name");
     return -1;
   }
   

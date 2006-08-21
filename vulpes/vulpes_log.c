@@ -20,6 +20,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <fcntl.h>
 #include <sys/timeb.h>
 #include <time.h>
+#include <stdarg.h>
 #include "vulpes_log.h"
 
 #define MAX_FNAME_SIZE 128
@@ -134,80 +135,78 @@ int log_msgtype_active(logmsg_t msgtype)
   return (log_msgtype_active_file(msgtype) || log_msgtype_active_stdout(msgtype));
 }
 
-int vulpes_log(logmsg_t msgtype, const char *msghdr, const char* field2, const char *field3, 
-	       const char *field4, const char *field5)
+void vulpes_log(logmsg_t msgtype, const char *msghdr, const char *format, ...)
 {
   unsigned writefile, writestdout;
+  char timestamp_coarse[128];
+  char timestamp_fine[32];
+  const char *s_msgtype;
+  char s_buf[6];
+  va_list ap;
 
   writefile = log_msgtype_active_file(msgtype);
   writestdout = log_msgtype_active_stdout(msgtype);
 
-  if(writefile || writestdout) {
-    char timestamp_coarse[128];
-    char timestamp_fine[32];
-    const char *s_msgtype;
-    char s_buf[6];
-  
-    vulpes_timestamp(timestamp_coarse, timestamp_fine);
+  if(!(writefile || writestdout))
+    return;
 
-    /* Set the msg type string */
-    switch(msgtype) {
-    case LOG_ERRORS:
-      s_msgtype="ERROR";
-      break;
-    case LOG_STATS:
-      s_msgtype="STATS";
-      break;
-    case LOG_BASIC:
-      s_msgtype="EVENT";
-      break;
-    case LOG_CHUNKS:
-      s_msgtype="CHUNK";
-      break;
-    case LOG_KEYS:
-      s_msgtype="CKEYS";
-      break;
-    case LOG_TRANSPORT:
-      s_msgtype="TRANS";
-      break;
-    case LOG_FAUXIDE_REQ:
-      s_msgtype="F_REQ";
-      break;
-    default:
-      sprintf(s_buf,"MSG%02u", (unsigned)msgtype);
-      s_msgtype=s_buf;
-    }
-    
-    if(writefile) {
-      fprintf(gl_log.logf, "%s%s%s:%s:%s:%s:%s:%s:%s\n",
-	      timestamp_coarse,
-	      ((gl_log.infostr == NULL) ? " " : gl_log.infostr),
-	      s_msgtype,
-	      timestamp_fine,
-	      ((msghdr == NULL) ? "" : msghdr),
-	      ((field2 == NULL) ? "" : field2),
-	      ((field3 == NULL) ? "" : field3),
-	      ((field4 == NULL) ? "" : field4),
-	      ((field5 == NULL) ? "" : field5));
-      if(vulpes_log_fflush_needed(msgtype))
-	fflush(gl_log.logf);
-    }
+  vulpes_timestamp(timestamp_coarse, timestamp_fine);
 
-    if(writestdout) {
-      printf("%s%s%s:%s:%s:%s:%s:%s:%s\n",
-	     timestamp_coarse,
-	     ((gl_log.infostr == NULL) ? " " : gl_log.infostr),
-	     s_msgtype,
-	     timestamp_fine,
-	     ((msghdr == NULL) ? "" : msghdr),
-	     ((field2 == NULL) ? "" : field2),
-	     ((field3 == NULL) ? "" : field3),
-	     ((field4 == NULL) ? "" : field4),
-	     ((field5 == NULL) ? "" : field5));
-      if(vulpes_log_fflush_needed(msgtype))
-	fflush(stdout);
-    }
+  /* Set the msg type string */
+  switch(msgtype) {
+  case LOG_ERRORS:
+    s_msgtype="ERROR";
+    break;
+  case LOG_STATS:
+    s_msgtype="STATS";
+    break;
+  case LOG_BASIC:
+    s_msgtype="EVENT";
+    break;
+  case LOG_CHUNKS:
+    s_msgtype="CHUNK";
+    break;
+  case LOG_KEYS:
+    s_msgtype="CKEYS";
+    break;
+  case LOG_TRANSPORT:
+    s_msgtype="TRANS";
+    break;
+  case LOG_FAUXIDE_REQ:
+    s_msgtype="F_REQ";
+    break;
+  default:
+    sprintf(s_buf,"MSG%02u", (unsigned)msgtype);
+    s_msgtype=s_buf;
   }
   
-  return 0;
+  /* XXX log messages are no longer printed atomically, so this will give
+     us problems if we switch to threads */
+  if(writefile) {
+    va_start(ap, format);
+    fprintf(gl_log.logf, "%s%s%s:%s:%s:",
+            timestamp_coarse,
+            ((gl_log.infostr == NULL) ? " " : gl_log.infostr),
+            s_msgtype,
+            timestamp_fine,
+            ((msghdr == NULL) ? "UNKNOWN" : msghdr));
+    vfprintf(gl_log.logf, format, ap);
+    fprintf(gl_log.logf, "\n");
+    va_end(ap);
+    if(vulpes_log_fflush_needed(msgtype))
+      fflush(gl_log.logf);
+  }
+
+  if(writestdout) {
+    printf("%s%s%s:%s:%s:",
+           timestamp_coarse,
+           ((gl_log.infostr == NULL) ? " " : gl_log.infostr),
+           s_msgtype,
+           timestamp_fine,
+           ((msghdr == NULL) ? "UNKNOWN" : msghdr));
+    vprintf(format, ap);
+    printf("\n");
+    if(vulpes_log_fflush_needed(msgtype))
+      fflush(stdout);
+  }
 }

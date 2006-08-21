@@ -274,7 +274,7 @@ vulpes_read_hex_keyring(int fd, int *keysRead)
 		readPtr++;
 	}
 	/*printf("Done reading\n");*/
-	vulpes_log(LOG_KEYS,"READ_HEX_KEYRING",NULL,NULL,NULL,NULL);
+	vulpes_log(LOG_KEYS,"READ_HEX_KEYRING","");
 	free(hexFile);
 	*keysRead = howManyKeys;
 	return binaryFile;
@@ -329,13 +329,12 @@ vulpes_write_hex_keyring(int fd, unsigned char* binaryKeyring, int howManyKeys)
 void lev1_updateKey(keyring_t *kr, unsigned char new_key[20], unsigned char new_tag[20],
 		    int keyNum)
 {
-  unsigned char old_tag_log[41], tag_log[41], keyNumber_c[32];
+  unsigned char old_tag_log[41], tag_log[41];
   unsigned char *readPtr ,*writePtr;
   int i;
 
   if(kr == NULL) {
-    vulpes_log(LOG_ERRORS,"lev1_updateKey",NULL,NULL,NULL,"cannot be here - no encryptiong in place");
-    /* printf("Cannot use this function: no encryption in place\n"); */
+    vulpes_log(LOG_ERRORS,"lev1_updateKey","cannot be here - no encryption in place");
   }
 
   writePtr=old_tag_log; readPtr=kr->keyRing[keyNum].tag;
@@ -349,9 +348,8 @@ void lev1_updateKey(keyring_t *kr, unsigned char new_key[20], unsigned char new_
     binToHex(readPtr,writePtr);
   *writePtr='\0';
 
-  sprintf(keyNumber_c,"%d",keyNum);
   if (strcmp(old_tag_log,tag_log)!=0)
-    vulpes_log(LOG_KEYS,"LEV1_UPDATEKEY",NULL,keyNumber_c,old_tag_log,tag_log);
+    vulpes_log(LOG_KEYS,"LEV1_UPDATEKEY","%d %s %s",keyNum,old_tag_log,tag_log);
   
   memcpy(kr->keyRing[keyNum].tag, new_tag, 20);
   memcpy(kr->keyRing[keyNum].key, new_key, 20);
@@ -424,7 +422,6 @@ static int lev1_getKeyRingFile(keyring_t *kr, char *userPath, char *user_key, in
 {
   int fdes;
   char fname[256];
-  char num_keys[32];
   
   if (kr == NULL) {
     printf("Cannot use this function: no encryption in place\n");
@@ -444,23 +441,19 @@ static int lev1_getKeyRingFile(keyring_t *kr, char *userPath, char *user_key, in
     fdes = open(fname, O_RDONLY);
     if (fdes < 0)
       {
-	vulpes_log(LOG_ERRORS,"LEV1_GETKEYRING",NULL,NULL,"couldnt open keyring",fname);
-	/*printf("Couldnt open keyring file\n");*/
+	vulpes_log(LOG_ERRORS,"LEV1_GETKEYRING","could not open keyring: %s",fname);
 	return 0;
       }
     kr->keyRing = (keyring_entry_t *)  vulpes_read_hex_keyring(fdes,&(kr->numKeys));
     if (!kr->keyRing)
       return 0;
     close(fdes);
-    /* printf("Read in %d keys\n", numKeys);*/
-    num_keys[0]=0;
-    sprintf(num_keys,"%d",kr->numKeys);
-    vulpes_log(LOG_BASIC,"LEV1_GETKEYRING",NULL,num_keys,"read keyring",fname);
+    vulpes_log(LOG_BASIC,"LEV1_GETKEYRING","read keyring %s: %d keys",fname,kr->numKeys);
     
     return 1;
   }
  
- vulpes_log(LOG_ERRORS,"LEV1_GETKEYRING",NULL,NULL,"UNTESTED CODE","using encrypted keyring");
+ vulpes_log(LOG_ERRORS,"LEV1_GETKEYRING","UNTESTED CODE: using encrypted keyring");
 			
  /* printf("WARNING: Using an ENCRYPTED(?) keyring. Running UNTESTED CODE\n");*/
  return 0;/* DISABLE THIS PATH , call the vulpes_read_hex_keyring if ENABLED someday*/
@@ -494,8 +487,7 @@ static int writeKeyRingFile(keyring_t *kr, char *userPath, char *user_key,
 			    int userKeyLen)
 {
   int fdes, tmp ;
-  char fname[256], num_keys[32];
-  
+  char fname[256];
   
   if (kr == NULL) {
     printf("Cannot use this function: no encryption in place\n");
@@ -515,9 +507,7 @@ static int writeKeyRingFile(keyring_t *kr, char *userPath, char *user_key,
     /*printf("\nOpening this file as the keyring to write to %s\n", fname);*/
     fdes = open(fname, O_WRONLY|O_TRUNC, 0600);
     if (fdes < 0) {
-	vulpes_log(LOG_ERRORS,"WRITEKEYRINGFILE",NULL,NULL,fname,"couldnt open keyring file for writeback");
-	/*printf("Opening keyring file: %s\n", fname);
-	  printf("Couldnt open keyring file for writeback\n");*/
+	vulpes_log(LOG_ERRORS,"WRITEKEYRINGFILE","could not open keyring file for writeback: %s", fname);
 	return -1;
     }
     tmp = ftruncate(fdes,0);
@@ -525,21 +515,16 @@ static int writeKeyRingFile(keyring_t *kr, char *userPath, char *user_key,
     /* NOT REQUIRED ANYMORE
        write(fdes, (void *) keyRing, numKeys * (sizeof(keyring_entry_t)));  */
     if (tmp==-1) {
-      vulpes_log(LOG_ERRORS,"WRITEKEYRINGFILE",NULL,NULL,fname,"couldnt truncate keyring file for writeback");
-      /*printf("Couldnt truncate keyring file for writeback\n");*/
+      vulpes_log(LOG_ERRORS,"WRITEKEYRINGFILE","could not truncate keyring file for writeback: %s", fname);
       return -1;
     }
     tmp = vulpes_write_hex_keyring(fdes, (void *)(kr->keyRing), kr->numKeys);  /* converts to hex and writes */
     if (tmp==0) {
-      vulpes_log(LOG_ERRORS,"WRITEKEYRINGFILE",NULL,NULL,fname,"failed in vulpes_write_hex_keyring");
-      /*printf("Couldnt write keyring - failed in vulpes_write_hex_keyring\n");*/
+      vulpes_log(LOG_ERRORS,"WRITEKEYRINGFILE","failed in vulpes_write_hex_keyring: %s", fname);
       return -1;
     }
     close(fdes);
-    num_keys[0]=0;
-    sprintf(num_keys,"%d",kr->numKeys);
-    vulpes_log(LOG_BASIC,"WRITEKEYRINGFILE",NULL,num_keys,"wrote keyring",fname);
-    /*printf("Wrote out %d keys\n", numKeys);*/
+    vulpes_log(LOG_BASIC,"WRITEKEYRINGFILE","wrote keyring %s: %d keys",fname,kr->numKeys);
     /* debugHash(); */
     return 0;
   }
@@ -591,7 +576,7 @@ int lev1_cleanupKeys(keyring_t *kr, char *keyring_name)
   if (kr == NULL) return 0;
 
   if (!keyring_name) {
-    vulpes_log(LOG_ERRORS,"LEV1_CLEANUPKEYS",NULL,NULL,NULL,"keyring name is null");
+    vulpes_log(LOG_ERRORS,"LEV1_CLEANUPKEYS","keyring name is null");
     /*i= writeKeyRingFile("/home/nath/", NULL, 0);
       free(keyRing);*/
     return -1;

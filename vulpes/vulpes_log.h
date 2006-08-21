@@ -37,9 +37,7 @@ int vulpes_log_close(void);
 
 int log_msgtype_active(logmsg_t msgtype);
 
-int vulpes_log(logmsg_t msgtype, const char *msg_hdr, const char* part_one, 
-	       const char *part_two, const char *part_three, 
-	       const char *part_four);
+void vulpes_log(logmsg_t msgtype, const char *msghdr, const char *format, ...);
   
 #ifdef __cplusplus
 }

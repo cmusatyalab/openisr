@@ -79,11 +79,11 @@ running_kernel26 ()
   
   ret = uname (&un);
   if (ret < 0) {
-    vulpes_log(LOG_ERRORS,"RUNNING_KERNEL26",NULL,NULL,NULL,"unable to determine running kernel's version(uname)");
+    vulpes_log(LOG_ERRORS,"RUNNING_KERNEL26","unable to determine running kernel's version(uname)");
     return 0;
   }
   if (strlen (un.release) < 3) {
-    vulpes_log(LOG_ERRORS,"RUNNING_KERNEL26",NULL,NULL,NULL,"unable to determine running kernel's version(release)");
+    vulpes_log(LOG_ERRORS,"RUNNING_KERNEL26","unable to determine running kernel's version(release)");
     return 0;
   }
   
@@ -141,7 +141,7 @@ int vulpes_register(vulpes_id_t id)
       result = (*map_ptr->read_func) (map_ptr, &cmdblk);
       if (result == -1)
 	{
-	  vulpes_log(LOG_ERRORS,"VULPES_REGISTER",NULL,NULL,"failed in vulpes register","read_func failed");
+	  vulpes_log(LOG_ERRORS,"VULPES_REGISTER","failed in vulpes register: read_func failed");
 	  return -1;
 	}
       
@@ -154,7 +154,7 @@ int vulpes_register(vulpes_id_t id)
       ioctl(map_ptr->vulpes_device, FAUXIDE_IOCTL_REGBLK_REGISTER,
 	    &regblk);
   } else {
-    vulpes_log(LOG_ERRORS,"VULPES_REGISTER",NULL,NULL,NULL,"bad buffer sizes");
+    vulpes_log(LOG_ERRORS,"VULPES_REGISTER","bad buffer sizes");
     result = 0;
   }
   
@@ -365,7 +365,6 @@ int main(int argc, char *argv[])
   const char* log_infostr;  
   unsigned logfilemask=0, logstdoutmask=0x1;
   unsigned long long request_counter=0;
-  char request_counter_c[64];
   int requiredArgs=1;/* reqd arg count; at least give me a program name! */
   
   /* required parameters */
@@ -622,11 +621,8 @@ int main(int argc, char *argv[])
   }
   
   /* now that parameters are correct - start vulpes log */
-  {
-    char pid_s[12];
-    sprintf(pid_s, "%u", (unsigned)pid);
-    vulpes_log(LOG_BASIC,"VULPES_START","Version",vulpes_version,"PID",pid_s);
-  }
+  vulpes_log(LOG_BASIC,"VULPES_START","Version: %s, revision: %s %s, PID: %u",
+             vulpes_version, svn_branch, svn_revision, (unsigned)pid);
   
   /* Register our signal handler */
   {
@@ -638,8 +634,7 @@ int main(int argc, char *argv[])
     while((sig=caught_signals[s]) != SIGKILL) {
       old_sig_handler = signal(sig, vulpes_signal_handler);
       if (old_sig_handler == SIG_ERR) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,NULL,
-		   "unable to register signal handler for signal");
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to register signal handler for signal");
 	goto vulpes_exit;
       }
       
@@ -658,13 +653,11 @@ int main(int argc, char *argv[])
     case SIMPLE_DISK_MAPPING:
 #ifdef VULPES_SIMPLE_DEFINED
       if (initialize_simple_mapping(&mapping[i])) {
-	char s_buf[12];
-	sprintf(s_buf, "%d", (int)i);
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,"ERROR: unable to initialize simple mapping",s_buf);
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unable to initialize simple mapping %u",i);
 	goto vulpes_exit;	
       }
 #else
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,"ERROR: simple mapping not supported in this version.",NULL);
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: simple mapping not supported in this version.");
       goto vulpes_exit;
 #endif
       break;
@@ -673,18 +666,14 @@ int main(int argc, char *argv[])
     case ZLEV1_MAPPING:
     case ZLEV1V_MAPPING:	{
       if (initialize_lev1_mapping(&mapping[i])) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,NULL,"unable to initialize lev1 mapping");
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to initialize lev1 mapping");
 	goto vulpes_exit;
       }
     }
       break;
     case NO_MAPPING:
     default:
-      {
-	char s_buf[12];
-	sprintf(s_buf, "%d", (int)i);
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,"ERROR: unknown mapping type",s_buf);
-      }
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unknown mapping type %u",i);
       goto vulpes_exit;
     }
     
@@ -692,14 +681,14 @@ int main(int argc, char *argv[])
     VULPES_DEBUG("\tOpening device %d.\n", (int) i);
     mapping[i].vulpes_device = open(mapping[i].device_name, O_RDWR);
     if (mapping[i].vulpes_device < 0) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,"unable to open device",mapping[i].device_name);
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open device %s",mapping[i].device_name);
       goto vulpes_exit;
     }
     
     /* Open the file */
     VULPES_DEBUG("\tOpening file %d.\n", (int) i);
     if ((*(mapping[i].open_func)) (&mapping[i])) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,"unable to open lev1", mapping[i].file_name);
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open lev1 %s", mapping[i].file_name);
       goto vulpes_exit;
     }
     
@@ -707,9 +696,7 @@ int main(int argc, char *argv[])
     if (valid_stats(&mapping[i])) {
       VULPES_DEBUG("\tOpening stats %d.\n", (int) i);
       if ((*(mapping[i].stats->open)) (mapping[i].stats)) {
-	char s_buf[12];
-	sprintf(s_buf, "%d", (int)i);
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,"ERROR: unable to open stats",s_buf);
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unable to open stats %u",i);
 	goto vulpes_exit;
       }
     }
@@ -717,19 +704,19 @@ int main(int argc, char *argv[])
     /* Register ourselves with the device */
     VULPES_DEBUG("\tRegistering device %d.\n", (int) i);
     if (vulpes_register(i)) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,NULL,"unable to register process with device");
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to register process with device");
       goto vulpes_exit;
     }
-    vulpes_log(LOG_BASIC,"VULPES_MAIN",NULL,NULL,NULL,"Registered process with device");
+    vulpes_log(LOG_BASIC,"VULPES_MAIN","Registered process with device");
     
     /* Need to register twice to get 2.6 kernel module to recognize driver properly */
     if (running_kernel26()) {
       /* Unregister process */
       VULPES_DEBUG("\tUnregistering device %d.\n", (int) i);
       if (vulpes_unregister(i)) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,"failed to unregister", mapping[i].device_name);
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","failed to unregister: %s", mapping[i].device_name);
       }
-      vulpes_log(LOG_BASIC,"VULPES_MAIN",NULL,NULL,NULL,"un-Registered process with device");
+      vulpes_log(LOG_BASIC,"VULPES_MAIN","un-Registered process with device");
       /* Close device */
       VULPES_DEBUG("\tClosing device %d.\n", (int) i);
       close(mapping[i].vulpes_device);
@@ -737,16 +724,16 @@ int main(int argc, char *argv[])
       VULPES_DEBUG("\tOpening device %d.\n", (int) i);
       mapping[i].vulpes_device = open(mapping[i].device_name, O_RDWR);
       if (mapping[i].vulpes_device < 0) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,"unable to open device",mapping[i].device_name);
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open device %s",mapping[i].device_name);
 	goto vulpes_exit;
       }
       /* Register ourselves with the device */
       VULPES_DEBUG("\tRegistering device %d.\n", (int) i);
       if (vulpes_register(i)) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,NULL,"unable to register process with device");
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to register process with device");
 	goto vulpes_exit;
       }
-      vulpes_log(LOG_BASIC,"VULPES_MAIN",NULL,NULL,NULL,"Registered process with device");
+      vulpes_log(LOG_BASIC,"VULPES_MAIN","Registered process with device");
     }
   }
   
@@ -758,13 +745,8 @@ int main(int argc, char *argv[])
   /* Enter processing loop */
   id = 0;
   do {
-    static char firstBuffer[128],secondBuffer[128],thirdBuffer[128];
     vulpes_mapping_t *map_ptr;
     int result = 0;
-    
-    firstBuffer[0]=0;
-    secondBuffer[0]=0;
-    thirdBuffer[0]=0;
     
     /* Execute ioctl -- use last id */
     ioctl(mapping[id].vulpes_device, FAUXIDE_IOCTL_CMDBLK, &cmdblk);
@@ -775,57 +757,49 @@ int main(int argc, char *argv[])
     /* Process cmd */
     switch (cmdblk.head.cmd) {
     case VULPES_CMD_READ:
-      sprintf(firstBuffer,"%lu",cmdblk.head.start_sect);
-      sprintf(secondBuffer,"%lu",cmdblk.head.num_sect);
-      request_counter_c[0]=0;
-      sprintf(request_counter_c,"%llu",request_counter);
-      request_counter++;
-      vulpes_log(LOG_FAUXIDE_REQ,"READ_IN",NULL,request_counter_c,firstBuffer,secondBuffer);
+      vulpes_log(LOG_FAUXIDE_REQ,"READ_IN","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (cmdblk_ok(&(cmdblk.head))) {
 	result = (*map_ptr->read_func) (map_ptr, &cmdblk);
       } else {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",request_counter_c,firstBuffer,secondBuffer,"bad cmdblk");
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","%llu:%lu:%lu: bad cmdblk",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
 	result = -1;
       }
-      vulpes_log(LOG_FAUXIDE_REQ,"READ_OUT",NULL,request_counter_c,firstBuffer,secondBuffer);
+      vulpes_log(LOG_FAUXIDE_REQ,"READ_OUT","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (result == 0) {
 	tally_sector_accesses(0, cmdblk.head.num_sect);
 	if (valid_stats(map_ptr)) {
 	  if ((*map_ptr->stats->record_read) (map_ptr->stats,&cmdblk.head)) {
-	    vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,NULL,"ERROR: issuing logstats record_read()");
+	    vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: issuing logstats record_read()");
 	  }
 	}
 	cmdblk.head.cmd = VULPES_CMD_READ_DONE;
       } else {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",request_counter_c,firstBuffer,secondBuffer,"read failed");
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","%llu:%lu:%lu: read failed",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
 	cmdblk.head.cmd = VULPES_CMD_ERROR;
       }
+      request_counter++;
       break;
     case VULPES_CMD_WRITE:
-      sprintf(firstBuffer,"%lu",cmdblk.head.start_sect);
-      sprintf(secondBuffer,"%lu",cmdblk.head.num_sect);
-      request_counter_c[0]=0;
-      sprintf(request_counter_c,"%llu",request_counter);
-      vulpes_log(LOG_FAUXIDE_REQ,"WRITE_IN",NULL,request_counter_c,firstBuffer,secondBuffer);
-      request_counter++;
+      vulpes_log(LOG_FAUXIDE_REQ,"WRITE_IN","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (cmdblk_ok(&(cmdblk.head))) {
 	result = (*map_ptr->write_func) (map_ptr, &cmdblk);
       } else {
 	result = -1;
       }
-      vulpes_log(LOG_FAUXIDE_REQ,"WRITE_DONE",NULL,request_counter_c,firstBuffer,secondBuffer);
+      vulpes_log(LOG_FAUXIDE_REQ,"WRITE_DONE","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (result == 0) {
 	tally_sector_accesses(1, cmdblk.head.num_sect);
 	if (valid_stats(map_ptr)) {
 	  if ((*map_ptr->stats->record_write) (map_ptr->stats,&cmdblk.head)) {
-	    vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,NULL,"ERROR: issuing logstats record_write()");
+	    vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: issuing logstats record_write()");
 	  }
 	}
 	cmdblk.head.cmd = VULPES_CMD_WRITE_DONE;
       } else {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",request_counter_c,firstBuffer,secondBuffer,"write failed");
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","%llu:%lu:%lu: write failed",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
 	cmdblk.head.cmd = VULPES_CMD_ERROR;
       }
+      request_counter++;
       break;
     case VULPES_CMD_SLEEP:
       VULPES_DEBUG("Going to sleep...\n");
@@ -836,13 +810,7 @@ int main(int argc, char *argv[])
 #ifdef _POSIX_PRIORITY_SCHEDULING
 	tmp = sched_yield();
 	if (tmp)
-	  {
-	    char sched_err[32];
-	    sched_err[0]=0;
-	    sprintf(sched_err,"%d",errno);
-	    vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,sched_err,"sched_yield");
-	    /*printf("ERROR: sched_yield()  errno = %d.\n", (int) errno);*/
-	  }
+	  vulpes_log(LOG_ERRORS,"VULPES_MAIN","sched_yield: %d",errno);
 #else
 	usleep(20000);	/* 20 msec */
 #endif
@@ -858,22 +826,20 @@ int main(int argc, char *argv[])
       break;
     default: 
       {
-	char s_buf[12];
-	sprintf(s_buf, "%d", (int) cmdblk.head.cmd);
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,"ERROR: unknown vulpes command",s_buf);
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unknown vulpes command %d",cmdblk.head.cmd);
       }
     }
   } while (exit_main_loop == 0);
   
   /* Unmap */
-  vulpes_log(LOG_BASIC,"VULPES_MAIN", NULL,NULL,NULL, "Beginning vulpes shutdown sequence");
+  vulpes_log(LOG_BASIC,"VULPES_MAIN", "Beginning vulpes shutdown sequence");
   for (i = 0; i < num_mappings; i++) {
     /* Unregister process */
     VULPES_DEBUG("\tUnregistering device %d.\n", (int) i);
     if (vulpes_unregister(i)) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,"failed to unregister", mapping[i].device_name);
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","failed to unregister %s", mapping[i].device_name);
     }
-    vulpes_log(LOG_BASIC,"VULPES_MAIN",NULL,NULL,NULL,"un-Registered process with device");
+    vulpes_log(LOG_BASIC,"VULPES_MAIN","un-Registered process with device");
     
     /* Close device */
     VULPES_DEBUG("\tClosing device %d.\n", (int) i);
@@ -890,34 +856,27 @@ int main(int argc, char *argv[])
     /* Close file */
     VULPES_DEBUG("\tClosing map %d.\n", (int) i);
     if ((*mapping[i].close_func) (&mapping[i]) == -1) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,NULL,"close function failed");
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","close function failed");
 	exit(1);
       }
 
     /* Close the LKA service */
     if(mapping[i].lka_svc != NULL)
       if(vulpes_lka_close(mapping[i].lka_svc) != VULPES_LKA_RETURN_SUCCESS)
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN",NULL,NULL,NULL,"failure during lka_close().");    
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","failure during lka_close().");    
   }
   
   /* Close the fidsvc */
   fidsvc_close();
   
   /* Print stats */
-  {
-    char s_buffer[32];
-
-    sprintf(s_buffer, "%llu", sectors_read);
-    vulpes_log(LOG_STATS,"VULPES",NULL,NULL,"Sectors read",s_buffer);
-    sprintf(s_buffer, "%llu", sectors_written);
-    vulpes_log(LOG_STATS,"VULPES",NULL,NULL,"Sectors written",s_buffer);
-    sprintf(s_buffer, "%llu", sectors_accessed);
-    vulpes_log(LOG_STATS,"VULPES",NULL,NULL,"Sectors accessed",s_buffer);
-  }
+  vulpes_log(LOG_STATS,"VULPES","Sectors read:%llu",sectors_read);
+  vulpes_log(LOG_STATS,"VULPES","Sectors written:%llu",sectors_written);
+  vulpes_log(LOG_STATS,"VULPES","Sectors accessed:%llu",sectors_accessed);
 
   
  vulpes_exit:
-  vulpes_log(LOG_BASIC,"VULPES_FINISH",NULL,NULL,NULL,NULL);
+  vulpes_log(LOG_BASIC,"VULPES_FINISH", "");
   vulpes_log_close();
   exit(0);
   
