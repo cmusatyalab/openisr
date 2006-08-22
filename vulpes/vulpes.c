@@ -34,9 +34,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 /* EXTERNS */
 extern int initialize_lev1_mapping(vulpes_mapping_t * map_ptr);
-
-extern int initialize_vulpes_logstats(vulpes_stats_t * stats,
-				      const char *filename);
 #ifdef VULPES_SIMPLE_DEFINED
 extern int initialize_simple_mapping(vulpes_mapping_t * map_ptr);
 #endif
@@ -94,11 +91,6 @@ running_kernel26 ()
 
 
 /* FUNCTIONS */
-__inline int valid_stats(void)
-{
-  return (mapping.stats != NULL);
-}
-
 void vulpes_signal_handler(int sig)
 {
   VULPES_DEBUG("Caught signal %d\n", sig);
@@ -250,19 +242,6 @@ mapping_type_t char_to_mapping_type(const char *name)
   return result;
 }
 
-stats_type_t char_to_stats_type(const char *name)
-{
-  stats_type_t result = STATS_NONE;
-  
-  if (strcmp("log", name) == 0) {
-    result = STATS_REQLOG;
-  } else {
-    result = STATS_NONE;
-  }
-  
-  return result;
-}
-
 void initialize_null_mapping(void)
 {
   mapping.trxfer = LOCAL_TRANSPORT;
@@ -294,27 +273,6 @@ void initialize_null_mapping(void)
   
   mapping.lka_svc = NULL;
   mapping.special = NULL;
-  mapping.stats = NULL;
-}
-
-int initialize_vulpes_stats(void)
-{
-  vulpes_stats_t *ptr;
-  
-  ptr = malloc(sizeof(vulpes_stats_t));
-  if (!ptr) {
-    return -1;
-  }
-  
-  ptr->open = NULL;
-  ptr->record_read = NULL;
-  ptr->record_write = NULL;
-  ptr->close = NULL;
-  ptr->special = NULL;
-  
-  mapping.stats = ptr;
-  
-  return 0;
 }
 
 void version(void)
@@ -399,7 +357,6 @@ int main(int argc, char *argv[])
 	{"map", no_argument, 0, 'd'},
 	{"master", no_argument, 0, 'e'},
 	{"keyring", no_argument, 0, 'f'},
-	/*{"stats", no_argument, 0, 'g'},*/
 	{"log", no_argument, 0, 'h'},
 	{"proxy", no_argument, 0, 'i'},
 	/*{"interface", no_argument, 0, 'j'},
@@ -498,39 +455,6 @@ int main(int argc, char *argv[])
       mapping.keyring_name=argv[optind++];
       keyDone=1;
       break;
-      /*case 'g': {
-	stats_type_t type;
-	int tmp;
-	
-	requiredArgs+=2;
-	if (optind+0 >= argc)
-	usage(argv[0]);
-	type = char_to_stats_type(argv[optind++]);
-	
-	tmp = initialize_vulpes_stats(&mapping[current_map]);
-	if (tmp) {
-	PARSE_ERROR("failed to initialize stats.");
-	}
-	
-	switch (type) {
-	case STATS_REQLOG:
-	requiredArgs+=1;
-	if (optind+0 >= argc)
-	usage(argv[0]);
-	tmp =
-	initialize_vulpes_logstats(mapping[current_map -1].stats,
-	argv[optind++]);
-	if (tmp) {
-	printf("ERROR: failed to initialize logstats.\n");
-	exit(0);
-	}
-	break;
-	case STATS_NONE:
-	default:
-	PARSE_ERROR("unknown stats type.");
-	}
-	};
-	break;*/
     case 'h':
       /* log */
       if (logDone) {
@@ -693,15 +617,6 @@ int main(int argc, char *argv[])
     goto vulpes_exit;
   }
   
-  /* Open the stats */
-  if (valid_stats()) {
-    VULPES_DEBUG("\tOpening stats.\n");
-    if ((*(mapping.stats->open)) (mapping.stats)) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unable to open stats");
-      goto vulpes_exit;
-    }
-  }
-  
   /* Register ourselves with the device */
   VULPES_DEBUG("\tRegistering device.\n");
   if (vulpes_register()) {
@@ -762,11 +677,6 @@ int main(int argc, char *argv[])
       vulpes_log(LOG_FAUXIDE_REQ,"READ_OUT","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (result == 0) {
 	tally_sector_accesses(0, cmdblk.head.num_sect);
-	if (valid_stats()) {
-	  if ((*mapping.stats->record_read) (mapping.stats,&cmdblk.head)) {
-	    vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: issuing logstats record_read()");
-	  }
-	}
 	cmdblk.head.cmd = VULPES_CMD_READ_DONE;
       } else {
 	vulpes_log(LOG_ERRORS,"VULPES_MAIN","%llu:%lu:%lu: read failed",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
@@ -784,11 +694,6 @@ int main(int argc, char *argv[])
       vulpes_log(LOG_FAUXIDE_REQ,"WRITE_DONE","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (result == 0) {
 	tally_sector_accesses(1, cmdblk.head.num_sect);
-	if (valid_stats()) {
-	  if ((*mapping.stats->record_write) (mapping.stats,&cmdblk.head)) {
-	    vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: issuing logstats record_write()");
-	  }
-	}
 	cmdblk.head.cmd = VULPES_CMD_WRITE_DONE;
       } else {
 	vulpes_log(LOG_ERRORS,"VULPES_MAIN","%llu:%lu:%lu: write failed",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
@@ -838,14 +743,6 @@ int main(int argc, char *argv[])
   /* Close device */
   VULPES_DEBUG("\tClosing device.\n");
   close(mapping.vulpes_device);
-  
-  /* Close stats */
-  VULPES_DEBUG("\tClosing stats.\n");
-  if (valid_stats()) {
-    (*mapping.stats->close) (mapping.stats);
-    free(mapping.stats);
-    mapping.stats = NULL;
-  }
   
   /* Close file */
   VULPES_DEBUG("\tClosing map.\n");

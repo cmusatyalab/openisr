@@ -16,7 +16,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #ifndef VULPES_MAP_H_
 #define VULPES_MAP_H_
 
-#include "vulpes_stats.h"
 #include "vulpes_lka.h"
 
 typedef int transfer_type_t;
@@ -69,7 +68,6 @@ struct vulpes_mapping_s {
   int verbose;			/* Set by main -- currently not used */
   vulpes_lka_svc_t lka_svc;     /* Set by main */
   void *special;		/* Set in open_func */
-  vulpes_stats_t *stats;	/* Set by main/initialize_stats */
 };
 
 #endif
