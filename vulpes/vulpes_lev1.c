@@ -157,9 +157,6 @@ void init_curl(const vulpes_mapping_t *map_ptr)
   memset(curl_error_buffer, 0, CURL_ERROR_SIZE);
   curl_easy_setopt(curl_handle, CURLOPT_ERRORBUFFER, curl_error_buffer);
   
-  if (map_ptr->outgoing_interface)
-    curl_easy_setopt(curl_handle, CURLOPT_INTERFACE, map_ptr->outgoing_interface);
-  
   /* set up proxies if any */
   if ( (map_ptr->proxy_name) && (map_ptr->proxy_port))
     {

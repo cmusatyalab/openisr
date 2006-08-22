@@ -49,7 +49,6 @@ struct vulpes_mapping_s {
   mapping_type_t type;	        /* Set by main */
   char* proxy_name;             /*Set by main */
   long  proxy_port;             /* set by main */
-  char* outgoing_interface;     /* set by main */
   
   char *device_name;		/* Set by main */
   char *file_name;		/* Set by main */

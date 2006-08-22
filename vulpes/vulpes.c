@@ -249,7 +249,6 @@ void initialize_null_mapping(void)
   
   mapping.proxy_name = NULL;
   mapping.proxy_port = 80;
-  mapping.outgoing_interface = NULL;
   
   mapping.device_name = NULL;
   mapping.file_name = NULL;
@@ -359,8 +358,6 @@ int main(int argc, char *argv[])
 	{"keyring", no_argument, 0, 'f'},
 	{"log", no_argument, 0, 'h'},
 	{"proxy", no_argument, 0, 'i'},
-	/*{"interface", no_argument, 0, 'j'},
-	  {"noencryption", no_argument, 0, 'k'},*/
 	{"lka", no_argument, 0, 'l'},
 	{"help", no_argument, 0, 'm'},
 	{0,0,0,0}
@@ -496,15 +493,6 @@ int main(int argc, char *argv[])
 	proxyDone=1;
       }
       break;
-      /*			case 'j':
-				requiredArgs+=2;
-				if (optind+0 >= argc)
-				usage(argv[0]);
-				mapping.outgoing_interface=argv[optind++];
-				break;
-				case 'k':
-				requiredArgs+=1;
-      */
     case 'l':
       /* lka */
       requiredArgs+=2;
