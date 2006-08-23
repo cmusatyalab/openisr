@@ -21,12 +21,12 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <sys/ioctl.h>
-#include <sys/utsname.h>
 #include <signal.h>
-#include <sched.h>
 #include <getopt.h>
+/* XXX right now fauxide's data structures are accessed throughout the codebase
+   rather than confining them to the fauxide driver */
 #include "fauxide.h"
+#include "vulpes.h"
 #include "vulpes_map.h"
 #include "vulpes_fids.h"
 #include "vulpes_log.h"
@@ -34,25 +34,19 @@ ACCEPTANCE OF THIS AGREEMENT
 
 /* EXTERNS */
 extern int initialize_lev1_mapping(vulpes_mapping_t * map_ptr);
+extern int fauxide_init(void);
+extern void fauxide_run(void);
+extern void fauxide_shutdown(void);
+extern int fauxide_rescue(const char *device_name);
 #ifdef VULPES_SIMPLE_DEFINED
 extern int initialize_simple_mapping(vulpes_mapping_t * map_ptr);
 #endif
 extern const char *svn_revision;
 extern const char *svn_branch;
 
-/* DEFINES */
-#undef VERBOSE_DEBUG
-#ifdef VERBOSE_DEBUG
-#define VULPES_DEBUG(fmt, args...)     {printf("[vulpes] " fmt, ## args); fflush(stdout);}
-#else
-#define VULPES_DEBUG(fmt, args...)     ;
-#endif
-
 /* GLOBALS */
 
-static int exit_main_loop = 0;
-static int sleeping = 0;
-static int got_signal = 0;
+volatile int exit_pending = 0;
 
 static unsigned long long sectors_read = 0;
 static unsigned long long sectors_written = 0;
@@ -60,141 +54,24 @@ static unsigned long long sectors_accessed = 0;
 
 const char *vulpes_version = "0.60";
 
-static vulpes_mapping_t mapping;
+vulpes_mapping_t mapping;
 extern char *optarg;
 extern int optind, opterr, optopt;
 
-/* check kernel version */
-int
-running_kernel26 ()
-{
-  int ret;
-  struct utsname un;
-  
-  ret = uname (&un);
-  if (ret < 0) {
-    vulpes_log(LOG_ERRORS,"RUNNING_KERNEL26","unable to determine running kernel's version(uname)");
-    return 0;
-  }
-  if (strlen (un.release) < 3) {
-    vulpes_log(LOG_ERRORS,"RUNNING_KERNEL26","unable to determine running kernel's version(release)");
-    return 0;
-  }
-  
-  //printf ("%c%c%c\n", buf[0], buf[1], buf[2]);
-  
-  if (un.release[0] == '2' && un.release[1] == '.' && un.release[2] == '6')
-    return 1;
-  else
-    return 0;
-}
-
 
 /* FUNCTIONS */
-void vulpes_signal_handler(int sig)
+static void vulpes_signal_handler(int sig)
 {
   VULPES_DEBUG("Caught signal %d\n", sig);
-  
-  got_signal = 1;
-  
-  if (sig != SIGUSR1)
-    exit_main_loop = 1;
-  return;
+  exit_pending = 1;
 }
 
-int vulpes_register(void)
+int set_signal_handler(int sig, void (*handler)(int sig))
 {
-  int i;
-  int result = 0;
-  vulpes_regblk_t regblk;
-  vulpes_cmdblk_t cmdblk;
-  
-  mapping.reg.vulpes_id = 0;
-  mapping.reg.pid = getpid();
-  mapping.reg.volsize = (*mapping.volsize_func) (&mapping);
-  
-  regblk.reg = mapping.reg;
-  
-  if (VULPES_REGBLK_SECT_PER_BUF % VULPES_CMDBLK_SECT_PER_BUF == 0) {
-    int num_cmds =
-      VULPES_REGBLK_SECT_PER_BUF / VULPES_CMDBLK_SECT_PER_BUF;
-    for (i = 0; i < num_cmds; i++) {
-      /* Create a dummy cmdblk to use the mapping.read function */
-      cmdblk.head.vulpes_id = 0;
-      cmdblk.head.cmd = VULPES_CMD_READ;
-      cmdblk.head.start_sect = 0;
-      cmdblk.head.num_sect = VULPES_CMDBLK_SECT_PER_BUF;
-      result = (*mapping.read_func) (&mapping, &cmdblk);
-      if (result == -1)
-	{
-	  vulpes_log(LOG_ERRORS,"VULPES_REGISTER","failed in vulpes register: read_func failed");
-	  return -1;
-	}
-      
-      /* Copy from cmdblk to regblk */
-      memcpy((regblk.buffer + i * VULPES_CMDBLK_BUFSIZE),
-	     cmdblk.buffer, VULPES_CMDBLK_BUFSIZE);
-    }
-    
-    result =
-      ioctl(mapping.vulpes_device, FAUXIDE_IOCTL_REGBLK_REGISTER,
-	    &regblk);
-  } else {
-    vulpes_log(LOG_ERRORS,"VULPES_REGISTER","bad buffer sizes");
-    result = 0;
-  }
-  
-  
-  return result;
-}
-
-int vulpes_unregister(void)
-{
-  int result = 0;
-  
-  result =
-    ioctl(mapping.vulpes_device, FAUXIDE_IOCTL_REGBLK_UNREGISTER,
-	  &mapping.reg);
-  
-  return result;
-}
-
-int vulpes_rescue_fauxide(const char *device_name)
-{
-  int result = 0;
-  int rescue_device = -1;
-
-  rescue_device = open(device_name, O_RDWR);
-  if (rescue_device < 0) {
-    printf("ERROR: vulpes_rescue_fauxide() unable to open device (%s).\n", 
-	   device_name);
-    result = rescue_device;
-  } else {
-    result = ioctl(rescue_device, FAUXIDE_IOCTL_RESCUE, NULL);
-    close(rescue_device);
-  }
-  
-  return result;
-}
-
-int cmdblk_ok(const vulpes_cmd_head_t * head)
-{
-  int result = 1;
-  
-  /* vulpes_id is now ignored */
-  
-  /* Check command parameters */
-  switch (head->cmd) {
-  case VULPES_CMD_READ:
-  case VULPES_CMD_WRITE:
-    if (head->start_sect + head->num_sect > mapping.reg.volsize)
-      result = 0;
-    break;
-  default:
-    result = 0;
-  }
-  
-  return result;
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler=handler;
+  return sigaction(sig, &sa, NULL);
 }
 
 void tally_sector_accesses(unsigned write, unsigned num)
@@ -219,7 +96,7 @@ void tally_sector_accesses(unsigned write, unsigned num)
 #endif
 }
 
-mapping_type_t char_to_mapping_type(const char *name)
+static mapping_type_t char_to_mapping_type(const char *name)
 {
   mapping_type_t result = NO_MAPPING;
   
@@ -242,7 +119,7 @@ mapping_type_t char_to_mapping_type(const char *name)
   return result;
 }
 
-void initialize_null_mapping(void)
+static void initialize_null_mapping(void)
 {
   mapping.trxfer = LOCAL_TRANSPORT;
   mapping.type = NO_MAPPING;
@@ -274,12 +151,12 @@ void initialize_null_mapping(void)
   mapping.special = NULL;
 }
 
-void version(void)
+static void version(void)
 {
   printf("Version: %s (%s, rev %s)\n", vulpes_version, svn_branch, svn_revision);
 }
 
-void usage (const char *progname)
+static void usage(const char *progname)
 {
   version();
   printf("Usage: %s <options>\n", progname);
@@ -311,13 +188,9 @@ void usage (const char *progname)
 
 int main(int argc, char *argv[])
 {
-  void *old_sig_handler;
-  vulpes_cmdblk_t cmdblk;
-  pid_t pid;
   const char* logName;
   const char* log_infostr;  
   unsigned logfilemask=0, logstdoutmask=0x1;
-  unsigned long long request_counter=0;
   int requiredArgs=1;/* reqd arg count; at least give me a program name! */
   
   /* required parameters */
@@ -337,9 +210,6 @@ int main(int argc, char *argv[])
   if (argc < 2) {
     usage(argv[0]);
   }
-  
-  /* capture process id */
-  pid = getpid();
   
   /* Partho: command line parsing was getting way out of hand. Using 
    *  getopt_long(). Porting to windows? :) Will need some work
@@ -386,16 +256,16 @@ int main(int argc, char *argv[])
       } else {
 	const char *device_name = argv[optind++];
 	int result;
-	printf("START: vulpes_rescue_fauxide().\n");
-	result = vulpes_rescue_fauxide(device_name);
-	printf("END: vulpes_rescue_fauxide() returned %d.\n", result);
+	printf("START: fauxide_rescue().\n");
+	result = fauxide_rescue(device_name);
+	printf("END: fauxide_rescue() returned %d.\n", result);
       }
       exit(0);
       break;
     case 'c':
       /* pid */
       requiredArgs+=1;
-      printf("VULPES: pid = %ld\n", (long) pid);
+      printf("VULPES: pid = %u\n", (unsigned) getpid());
       break;
     case 'd':
       /* map */
@@ -538,9 +408,9 @@ int main(int argc, char *argv[])
   
   /* now that parameters are correct - start vulpes log */
   vulpes_log(LOG_BASIC,"VULPES_START","Version: %s, revision: %s %s, PID: %u",
-             vulpes_version, svn_branch, svn_revision, (unsigned)pid);
+             vulpes_version, svn_branch, svn_revision, (unsigned)getpid());
   
-  /* Register our signal handler */
+  /* Register default signal handler */
   {
     int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
 			  SIGABRT, SIGTERM, SIGTSTP,
@@ -548,12 +418,10 @@ int main(int argc, char *argv[])
     int sig;
     int s=0;
     while((sig=caught_signals[s]) != SIGKILL) {
-      old_sig_handler = signal(sig, vulpes_signal_handler);
-      if (old_sig_handler == SIG_ERR) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to register signal handler for signal");
+      if (set_signal_handler(sig, vulpes_signal_handler)) {
+	vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to register default signal handler for signal %d", sig);
 	goto vulpes_exit;
       }
-      
       s++;
     }
   }
@@ -590,13 +458,7 @@ int main(int argc, char *argv[])
     goto vulpes_exit;
   }
   
-  /* Open the device */
-  VULPES_DEBUG("\tOpening device\n");
-  mapping.vulpes_device = open(mapping.device_name, O_RDWR);
-  if (mapping.vulpes_device < 0) {
-    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open device %s",mapping.device_name);
-    goto vulpes_exit;
-  }
+  /* XXX we don't do proper cleanup in the error paths */
   
   /* Open the file */
   VULPES_DEBUG("\tOpening file.\n");
@@ -605,133 +467,20 @@ int main(int argc, char *argv[])
     goto vulpes_exit;
   }
   
-  /* Register ourselves with the device */
-  VULPES_DEBUG("\tRegistering device.\n");
-  if (vulpes_register()) {
-    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to register process with device");
+  /* Set up fauxide driver */
+  if (fauxide_init()) {
+    /* fauxide_init() has already complained to the log */
     goto vulpes_exit;
   }
-  vulpes_log(LOG_BASIC,"VULPES_MAIN","Registered process with device");
+
+  /* Enter main loop */
+  fauxide_run();
   
-  /* Need to register twice to get 2.6 kernel module to recognize driver properly */
-  if (running_kernel26()) {
-    /* Unregister process */
-    VULPES_DEBUG("\tUnregistering device.\n");
-    if (vulpes_unregister()) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","failed to unregister: %s", mapping.device_name);
-    }
-    vulpes_log(LOG_BASIC,"VULPES_MAIN","un-Registered process with device");
-    /* Close device */
-    VULPES_DEBUG("\tClosing device.\n");
-    close(mapping.vulpes_device);
-    /* Open the device */
-    VULPES_DEBUG("\tOpening device.\n");
-    mapping.vulpes_device = open(mapping.device_name, O_RDWR);
-    if (mapping.vulpes_device < 0) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open device %s",mapping.device_name);
-      goto vulpes_exit;
-    }
-    /* Register ourselves with the device */
-    VULPES_DEBUG("\tRegistering device.\n");
-    if (vulpes_register()) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to register process with device");
-      goto vulpes_exit;
-    }
-    vulpes_log(LOG_BASIC,"VULPES_MAIN","Registered process with device");
-  }
-  
-  /* Initialize cmdblk */
-  cmdblk.head.cmd = VULPES_CMD_GET;
-  cmdblk.head.vulpes_id=0;
-  cmdblk.head.fauxide_id=NULL;
-  
-  /* Enter processing loop */
-  do {
-    int result = 0;
-    
-    /* Execute ioctl */
-    ioctl(mapping.vulpes_device, FAUXIDE_IOCTL_CMDBLK, &cmdblk);
-    
-    /* Process cmd */
-    switch (cmdblk.head.cmd) {
-    case VULPES_CMD_READ:
-      vulpes_log(LOG_FAUXIDE_REQ,"READ_IN","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
-      if (cmdblk_ok(&(cmdblk.head))) {
-	result = (*mapping.read_func) (&mapping, &cmdblk);
-      } else {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","%llu:%lu:%lu: bad cmdblk",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
-	result = -1;
-      }
-      vulpes_log(LOG_FAUXIDE_REQ,"READ_OUT","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
-      if (result == 0) {
-	tally_sector_accesses(0, cmdblk.head.num_sect);
-	cmdblk.head.cmd = VULPES_CMD_READ_DONE;
-      } else {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","%llu:%lu:%lu: read failed",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
-	cmdblk.head.cmd = VULPES_CMD_ERROR;
-      }
-      request_counter++;
-      break;
-    case VULPES_CMD_WRITE:
-      vulpes_log(LOG_FAUXIDE_REQ,"WRITE_IN","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
-      if (cmdblk_ok(&(cmdblk.head))) {
-	result = (*mapping.write_func) (&mapping, &cmdblk);
-      } else {
-	result = -1;
-      }
-      vulpes_log(LOG_FAUXIDE_REQ,"WRITE_DONE","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
-      if (result == 0) {
-	tally_sector_accesses(1, cmdblk.head.num_sect);
-	cmdblk.head.cmd = VULPES_CMD_WRITE_DONE;
-      } else {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","%llu:%lu:%lu: write failed",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
-	cmdblk.head.cmd = VULPES_CMD_ERROR;
-      }
-      request_counter++;
-      break;
-    case VULPES_CMD_SLEEP:
-      VULPES_DEBUG("Going to sleep...\n");
-      sleeping = 1;
-      if (!got_signal) {
-	int tmp;
-	/* Give the system one last chance to post a request */
-#ifdef _POSIX_PRIORITY_SCHEDULING
-	tmp = sched_yield();
-	if (tmp)
-	  vulpes_log(LOG_ERRORS,"VULPES_MAIN","sched_yield: %d",errno);
-#else
-	usleep(20000);	/* 20 msec */
-#endif
-	if (!got_signal) {
-	  VULPES_DEBUG("  ZZzzz...\n");
-	  sleep(1);
-	}
-      }
-      sleeping = 0;
-      got_signal = 0;
-      VULPES_DEBUG("\t...woke up.\n");
-      cmdblk.head.cmd = VULPES_CMD_GET;	/* Next call is "get" */
-      break;
-    default: 
-      {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unknown vulpes command %d",cmdblk.head.cmd);
-      }
-    }
-  } while (exit_main_loop == 0);
-  
-  /* Unmap */
   vulpes_log(LOG_BASIC,"VULPES_MAIN", "Beginning vulpes shutdown sequence");
-  /* Unregister process */
-  VULPES_DEBUG("\tUnregistering device.\n");
-  if (vulpes_unregister()) {
-    vulpes_log(LOG_ERRORS,"VULPES_MAIN","failed to unregister %s", mapping.device_name);
-  }
-  vulpes_log(LOG_BASIC,"VULPES_MAIN","un-Registered process with device");
-  
-  /* Close device */
-  VULPES_DEBUG("\tClosing device.\n");
-  close(mapping.vulpes_device);
-  
+
+  /* Shut down fauxide driver */
+  fauxide_shutdown();
+
   /* Close file */
   VULPES_DEBUG("\tClosing map.\n");
   if ((*mapping.close_func) (&mapping) == -1) {
