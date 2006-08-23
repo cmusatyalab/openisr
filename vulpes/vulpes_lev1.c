@@ -46,6 +46,7 @@ const unsigned CHUNK_STATUS_DIRTY = 0x0002;	/* This chunk has been written this 
 const unsigned CHUNK_STATUS_RW = 0x0200;	/* This chunk was last opened read/write */
 const unsigned CHUNK_STATUS_LKA_COPY = 0x4000;	/* This chunk data was fetched from the LKA cache */
 const unsigned CHUNK_STATUS_PRESENT = 0x8000;	/* This chunk is present in the local cache */
+const char *lev1_index_name = "index.lev1";
 
 /* LOCALS */
 typedef struct chunk_data_s {
@@ -71,7 +72,6 @@ struct lev1_mapping_special_s {
 };
 typedef  struct lev1_mapping_special_s lev1_mapping_special_t;
 
-const char *lev1_index_name = "index.lev1";
 static unsigned writes_before_read = 0;
 
 static void get_dir_chunk(const lev1_mapping_special_t * spec,
@@ -82,8 +82,7 @@ static unsigned get_chunk_number(const lev1_mapping_special_t * spec,
 				 unsigned sect_num);
 static int form_chunk_file_name(char *buffer, int bufsize,
 				const char *rootname,
-				unsigned dir, unsigned chunk,
-				const vulpes_mapping_t* map_ptr);
+				unsigned dir, unsigned chunk);
 
 
 /* various functions to enable HTTP transport via the CURL library */
@@ -299,27 +298,20 @@ static __inline void mark_cdp_present(chunk_data_t * cdp)
 static int form_index_name(const char *dirname,
 			   lev1_mapping_special_t * spec)
 {
-  size_t len_dir, len_name;
   int add_slash = 0;
+  int result;
   
-  /* check lengths */
-  len_dir = strlen(dirname);
-  if (dirname[len_dir - 1] != '/') {
+  if (dirname[strlen(dirname) - 1] != '/') {
     add_slash = 1;
   }
-  len_name = strlen(lev1_index_name);
-  if (len_dir + len_name + add_slash + 1 > MAX_INDEX_NAME_LENGTH) {
+  
+  result=snprintf(spec->index_name, MAX_INDEX_NAME_LENGTH, "%s%s%s",
+                        dirname, (add_slash ? "/" : ""), lev1_index_name);
+
+  if (result >= MAX_INDEX_NAME_LENGTH || result == -1) {
+    /* Older versions of libc return -1 on truncation */
     return -1;
   }
-  
-  /* form dirname */
-  strcpy(spec->index_name, dirname);
-  if (add_slash) {
-    spec->index_name[len_dir] = '/';
-    spec->index_name[len_dir + 1] = '\0';
-  }
-  strcat(spec->index_name, lev1_index_name);
-  
   return 0;
 }
 
@@ -379,75 +371,33 @@ static __inline
 int form_dir_name(char *buffer, int bufsize,
 		  const char *rootname, unsigned dir)
 {
-  int result = 0;
-  size_t len;
+  int result;
   
   /* Assume buffer != NULL */
   
-  len = strlen(rootname);
-  
-  if (bufsize > len + 6) {
-    strcpy(buffer, rootname);
-    sprintf(buffer + len, "/%04u/", dir);
-    buffer[len + 6] = '\0';	/* just to be sure we have trailing nul */
-  } else {
-    buffer[0] = '\0';	/* Assumed buf_size > 0 */
-    result = -1;
+  result=snprintf(buffer, bufsize, "%s/%04u/", rootname, dir);
+  if (result >= bufsize || result == -1) {
+    /* Older versions of libc return -1 on truncation */
+    return -1;
   }
-  
-  return result;
+  return 0;
 }
 
 static __inline
 int form_chunk_file_name(char *buffer, int bufsize,
 			 const char *rootname,
-			 unsigned dir, unsigned chunk,
-			 const vulpes_mapping_t* map_ptr)
+			 unsigned dir, unsigned chunk)
 {
-  if (map_ptr->trxfer == LOCAL_TRANSPORT){
-    int result = 0;
-    size_t len;
-    
-    /* Assume buffer != NULL */
-    
-    len = strlen(rootname);
-    
-    if (bufsize > len + 10) {	/* 10=5(dir)+5(chunk) */
-      strcpy(buffer, rootname);
-      sprintf(buffer + len, "/%04u", dir);
-      sprintf(buffer + len + 5, "/%04u", chunk);
-      buffer[len + 10 + 1] = '\0';	/* just to be sure we have trailing nul */
-    } else {	
-      buffer[0] = '\0';	/* Assumed buf_size > 0 */			
-      result = -1;
-    }
-    
-    return result;
-  }
+  int result;
   
-  if (map_ptr->trxfer == HTTP_TRANSPORT){
-    int result = 0;
-    size_t len;
-    
-    /* Assume buffer != NULL */
-    
-    len = strlen(rootname);
-    
-    buffer[0]=0;
-    strcpy(buffer, rootname);
-    
-    if (bufsize > len + 10) {	/* 10=5(dir)+5(chunk) */
-      sprintf(buffer + len, "/%04u", dir);
-      sprintf(buffer + len + 5, "/%04u", chunk);
-      buffer[len + 10 + 1] = '\0';	/* just to be sure we have trailing nul */
-    } else {	
-      buffer[0] = '\0';	/* Assumed buf_size > 0 */			
-      result = -1;
-    }
-    
-    return result;
+  /* Assume buffer != NULL */
+  
+  result=snprintf(buffer, bufsize, "%s/%04u/%04u", rootname, dir, chunk);
+  if (result >= bufsize || result == -1) {
+    /* Older versions of libc return -1 on truncation */
+    return -1;
   }
-  return -1;/*if we havent caught the tranxport type - return error*/
+  return 0;
 }
 
 #ifdef DEBUG
@@ -933,7 +883,7 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
   
   /* otherwise(file not open), form the cache filename */
   if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
-			   map_ptr->cache_name, dir, chunk, map_ptr)) {
+			   map_ptr->cache_name, dir, chunk)) {
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 file name: %d",chunk_num);
     return -1;
   }
@@ -951,9 +901,8 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
     } else {
       /* the file has not been copied yet */
       char remote_name[MAX_CHUNK_NAME_LENGTH];
-      if (form_chunk_file_name
-	  (remote_name, MAX_CHUNK_NAME_LENGTH,
-	   map_ptr->master_name, dir, chunk, map_ptr)) {
+      if (form_chunk_file_name(remote_name, MAX_CHUNK_NAME_LENGTH,
+	   map_ptr->master_name, dir, chunk)) {
 	vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 remote name: %d",chunk_num);
 	return -1;
       }
@@ -1271,7 +1220,7 @@ int lev1_close_func(vulpes_mapping_t * map_ptr)
 		++dirty_chunks;
 		if (spec->verbose) {
 		  if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
-		       map_ptr->cache_name, u, v, map_ptr)) {
+		       map_ptr->cache_name, u, v)) {
 		    vulpes_log(LOG_ERRORS,"LEV1_CLOSE_FUNCTION","unable to form lev1 file name");
 		    return -1;
 		  }

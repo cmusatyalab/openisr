@@ -266,26 +266,21 @@ int main(int argc, char *argv[])
       break;
     case 'd':
       /* map */
-      {
-	mapping_type_t type;
-	
-	if (mapDone) {
-	  PARSE_ERROR("--map may only be specified once.");
-	}
-	requiredArgs+=4;
-	if (optind+2 >= argc) {
-	  PARSE_ERROR("failed to parse mapping.");
-	}
-	
-	type = char_to_mapping_type(argv[optind++]);
-	if(type == NO_MAPPING) {
-	  PARSE_ERROR("unknown mapping type (%s).", argv[optind-1]);
-	}	    
-	mapping.type = type;
-	mapping.device_name=argv[optind++];
-	mapping.cache_name=argv[optind++];
-	mapDone=1;
+      if (mapDone) {
+	PARSE_ERROR("--map may only be specified once.");
       }
+      requiredArgs+=4;
+      if (optind+2 >= argc) {
+	PARSE_ERROR("failed to parse mapping.");
+      }
+      
+      mapping.type = char_to_mapping_type(argv[optind++]);
+      if(mapping.type == NO_MAPPING) {
+	PARSE_ERROR("unknown mapping type (%s).", argv[optind-1]);
+      }	    
+      mapping.device_name=argv[optind++];
+      mapping.cache_name=argv[optind++];
+      mapDone=1;
       break;
     case 'e':
       /* master */
