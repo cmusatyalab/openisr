@@ -103,11 +103,8 @@ static mapping_type_t char_to_mapping_type(const char *name)
   if (strcmp("lev1", name) == 0) {
     result = LEV1_MAPPING;
   } else if (strcmp("lev1-v", name) == 0) {
+    /* XXX */
     result = LEV1V_MAPPING;
-  } else if (strcmp("zlev1", name) == 0) {
-    result = ZLEV1_MAPPING;
-  } else if (strcmp("zlev1-v", name) == 0) {
-    result = ZLEV1V_MAPPING;
   } else if (strcmp("file", name) == 0) {
     result = SIMPLE_FILE_MAPPING;
   } else if (strcmp("disk", name) == 0) {
@@ -444,13 +441,10 @@ int main(int argc, char *argv[])
     break;
   case LEV1_MAPPING:
   case LEV1V_MAPPING:
-  case ZLEV1_MAPPING:
-  case ZLEV1V_MAPPING:	{
     if (initialize_lev1_mapping(&mapping)) {
       vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to initialize lev1 mapping");
       goto vulpes_exit;
     }
-  }
     break;
   case NO_MAPPING:
   default:

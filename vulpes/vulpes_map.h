@@ -29,8 +29,6 @@ typedef int mapping_type_t;
 #define SIMPLE_DISK_MAPPING  2
 #define LEV1_MAPPING         3
 #define LEV1V_MAPPING        4
-#define ZLEV1_MAPPING        5
-#define ZLEV1V_MAPPING       6
 
 typedef struct vulpes_mapping_s vulpes_mapping_t;
 

@@ -64,7 +64,6 @@ struct lev1_mapping_special_s {
   vulpes_volsize_t volsize;	/* sectors */
   unsigned chunksize;		/* sectors */
   int verbose;
-  int compressed_chunks;
   
   keyring_t *keyring;
   
@@ -85,7 +84,7 @@ static unsigned get_chunk_number(const lev1_mapping_special_t * spec,
 static int form_chunk_file_name(char *buffer, int bufsize,
 				const char *rootname,
 				unsigned dir, unsigned chunk,
-				const char *suffix, const vulpes_mapping_t* map_ptr);
+				const vulpes_mapping_t* map_ptr);
 
 
 /* various functions to enable HTTP transport via the CURL library */
@@ -404,24 +403,21 @@ static __inline
 int form_chunk_file_name(char *buffer, int bufsize,
 			 const char *rootname,
 			 unsigned dir, unsigned chunk,
-			 const char *suffix, const vulpes_mapping_t* map_ptr)
+			 const vulpes_mapping_t* map_ptr)
 {
   if (map_ptr->trxfer == LOCAL_TRANSPORT){
     int result = 0;
     size_t len;
-    size_t sufflen;
     
     /* Assume buffer != NULL */
     
     len = strlen(rootname);
-    sufflen = strlen(suffix);
     
     if (bufsize > len + 10) {	/* 10=5(dir)+5(chunk) */
       strcpy(buffer, rootname);
       sprintf(buffer + len, "/%04u", dir);
       sprintf(buffer + len + 5, "/%04u", chunk);
-      sprintf(buffer + len + 10, "%s", suffix);
-      buffer[len + 10 + sufflen + 1] = '\0';	/* just to be sure we have trailing nul */
+      buffer[len + 10 + 1] = '\0';	/* just to be sure we have trailing nul */
     } else {	
       buffer[0] = '\0';	/* Assumed buf_size > 0 */			
       result = -1;
@@ -433,12 +429,10 @@ int form_chunk_file_name(char *buffer, int bufsize,
   if (map_ptr->trxfer == HTTP_TRANSPORT){
     int result = 0;
     size_t len;
-    size_t sufflen;
     
     /* Assume buffer != NULL */
     
     len = strlen(rootname);
-    sufflen = strlen(suffix);
     
     buffer[0]=0;
     strcpy(buffer, rootname);
@@ -446,8 +440,7 @@ int form_chunk_file_name(char *buffer, int bufsize,
     if (bufsize > len + 10) {	/* 10=5(dir)+5(chunk) */
       sprintf(buffer + len, "/%04u", dir);
       sprintf(buffer + len + 5, "/%04u", chunk);
-      sprintf(buffer + len + 10, "%s", suffix);
-      buffer[len + 10 + sufflen + 1] = '\0';	/* just to be sure we have trailing nul */
+      buffer[len + 10 + 1] = '\0';	/* just to be sure we have trailing nul */
     } else {	
       buffer[0] = '\0';	/* Assumed buf_size > 0 */			
       result = -1;
@@ -637,13 +630,13 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
       char buf[LEV1COPYFILEBUFLEN];
       int buflen = LEV1COPYFILEBUFLEN;
       
-      gzFile in_f;
+      int in_f;
       int out_f;
       int num;
       
       vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","local_begin: %s %s",src,dst);
-      in_f = gzopen(src, "r");
-      if (in_f == NULL) {
+      in_f = open(src, O_RDONLY);
+      if (in_f == -1) {
 	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","local: unable to open input %s",src);
 	return -1;
       }
@@ -655,7 +648,7 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
       }
       
       
-      while ((num = gzread(in_f, buf, buflen)) != 0) {
+      while ((num = read(in_f, buf, buflen)) != 0) {
 	if (num == -1) {
 	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","local: unable to read input %s",src);
 	  return -1;
@@ -668,7 +661,7 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
       }
       
       close(out_f);
-      gzclose(in_f);
+      close(in_f);
       vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","local_end: %s %s",src,dst);
       
       return 0;
@@ -942,7 +935,7 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
   /* otherwise(file not open), form the filename */
   if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
 			   spec->shadow ? map_ptr->cache_name : map_ptr->
-			   file_name, dir, chunk, "",map_ptr)) {
+			   file_name, dir, chunk, map_ptr)) {
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 file name: %d",chunk_num);
     return -1;
   }
@@ -964,8 +957,7 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
 	char remote_name[MAX_CHUNK_NAME_LENGTH];
 	if (form_chunk_file_name
 	    (remote_name, MAX_CHUNK_NAME_LENGTH,
-	     map_ptr->file_name, dir, chunk,
-	     (spec->compressed_chunks ? ".gz" : ""),map_ptr)) {
+	     map_ptr->file_name, dir, chunk, map_ptr)) {
 	  vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 remote name: %d",chunk_num);
 	  return -1;
 	}
@@ -1297,7 +1289,7 @@ int lev1_close_func(vulpes_mapping_t * map_ptr)
 		if (spec->verbose) {
 		  if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
 		       spec->shadow ? map_ptr->cache_name : map_ptr->file_name,
-		       u, v, "",map_ptr)) {
+		       u, v, map_ptr)) {
 		    vulpes_log(LOG_ERRORS,"LEV1_CLOSE_FUNCTION","unable to form lev1 file name");
 		    return -1;
 		  }
@@ -1473,13 +1465,6 @@ int initialize_lev1_mapping(vulpes_mapping_t * map_ptr)
   case LEV1V_MAPPING:
     spec->verbose = 1;
     break;
-  case ZLEV1_MAPPING:
-    spec->compressed_chunks = 1;
-    break;
-  case ZLEV1V_MAPPING:
-    spec->compressed_chunks = 1;
-    spec->verbose = 1;
-    break;
   default:
     free(map_ptr->special);
     map_ptr->special = NULL;
@@ -1487,12 +1472,6 @@ int initialize_lev1_mapping(vulpes_mapping_t * map_ptr)
   }
   
   spec->shadow = (map_ptr->cache_name != NULL);
-  if (spec->compressed_chunks && !spec->shadow) {
-    vulpes_log(LOG_ERRORS,"LEV1_INIT","attempted compression without caching");
-    free(map_ptr->special);
-    map_ptr->special = NULL;
-    return -1;
-  }
   
   vulpes_log(LOG_BASIC,"LEV1_INIT","vulpes_cache: %s",
              (map_ptr->cache_name == NULL) ? "none" : map_ptr->cache_name);
