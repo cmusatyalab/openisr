@@ -45,7 +45,7 @@ const unsigned CHUNK_STATUS_ACCESSED = 0x0001;	/* This chunk has been accessed t
 const unsigned CHUNK_STATUS_DIRTY = 0x0002;	/* This chunk has been written this session */
 const unsigned CHUNK_STATUS_RW = 0x0200;	/* This chunk was last opened read/write */
 const unsigned CHUNK_STATUS_LKA_COPY = 0x4000;	/* This chunk data was fetched from the LKA cache */
-const unsigned CHUNK_STATUS_SHADOW_PRESENT = 0x8000;	/* This chunk is present in the local cache */
+const unsigned CHUNK_STATUS_PRESENT = 0x8000;	/* This chunk is present in the local cache */
 
 /* LOCALS */
 typedef struct chunk_data_s {
@@ -67,7 +67,6 @@ struct lev1_mapping_special_s {
   
   keyring_t *keyring;
   
-  int shadow;
   chunk_data_t **cd;		/* cd[][] */
 };
 typedef  struct lev1_mapping_special_s lev1_mapping_special_t;
@@ -228,10 +227,10 @@ static __inline void mark_cdp_readonly(chunk_data_t * cdp)
   cdp->status &= ~CHUNK_STATUS_RW;
 }
 
-static __inline int cdp_shadow_present(chunk_data_t * cdp)
+static __inline int cdp_present(chunk_data_t * cdp)
 {
-  return ((cdp->status & CHUNK_STATUS_SHADOW_PRESENT) ==
-	  CHUNK_STATUS_SHADOW_PRESENT);
+  return ((cdp->status & CHUNK_STATUS_PRESENT) ==
+	  CHUNK_STATUS_PRESENT);
 }
 
 static __inline int cdp_lka_copy(chunk_data_t * cdp)
@@ -292,9 +291,9 @@ void get_dir_chunk(const lev1_mapping_special_t * spec,
   get_dir_chunk_from_chunk_num(spec, chunk_num, dir, chunk);
 }
 
-static __inline void mark_cdp_shadow_present(chunk_data_t * cdp)
+static __inline void mark_cdp_present(chunk_data_t * cdp)
 {
-  cdp->status |= CHUNK_STATUS_SHADOW_PRESENT;
+  cdp->status |= CHUNK_STATUS_PRESENT;
 }
 
 static int form_index_name(const char *dirname,
@@ -932,10 +931,9 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
     }
   }
   
-  /* otherwise(file not open), form the filename */
+  /* otherwise(file not open), form the cache filename */
   if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
-			   spec->shadow ? map_ptr->cache_name : map_ptr->
-			   file_name, dir, chunk, map_ptr)) {
+			   map_ptr->cache_name, dir, chunk, map_ptr)) {
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 file name: %d",chunk_num);
     return -1;
   }
@@ -944,32 +942,27 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
   if(!cdp_is_accessed(cdp) && open_readwrite)
     ++ writes_before_read;
   
-  /* copy shadow if needed */
-  if (spec->shadow) {
-    /* check if we know that the file is present */
-    if (!cdp_shadow_present(cdp)) {
-      /* check if the file is present anyway */
-      if (is_file(chunk_name)) {
-	/* the file is present -- set the shadow_present flag */
-	mark_cdp_shadow_present(cdp);
+  /* check if we know that the file is present in the cache */
+  if (!cdp_present(cdp)) {
+    /* check if the file is present anyway */
+    if (is_file(chunk_name)) {
+      /* the file is present -- set the present flag */
+      mark_cdp_present(cdp);
+    } else {
+      /* the file has not been copied yet */
+      char remote_name[MAX_CHUNK_NAME_LENGTH];
+      if (form_chunk_file_name
+	  (remote_name, MAX_CHUNK_NAME_LENGTH,
+	   map_ptr->master_name, dir, chunk, map_ptr)) {
+	vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 remote name: %d",chunk_num);
+	return -1;
+      }
+      
+      if (lev1_copy_file(remote_name, chunk_name, map_ptr, chunk_num) == 0) {
+	mark_cdp_present(cdp);
       } else {
-	/* the file has not been copied yet */
-	char remote_name[MAX_CHUNK_NAME_LENGTH];
-	if (form_chunk_file_name
-	    (remote_name, MAX_CHUNK_NAME_LENGTH,
-	     map_ptr->file_name, dir, chunk, map_ptr)) {
-	  vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 remote name: %d",chunk_num);
-	  return -1;
-	}
-	/*if (spec->verbose)
-	  printf("Copying %s to %s ...", remote_name, chunk_name);*/
-	
-	if (lev1_copy_file(remote_name, chunk_name, map_ptr, chunk_num) == 0) {
-	  mark_cdp_shadow_present(cdp);
-	} else {
-	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","unable to copy %s %s",remote_name,chunk_name);
-	  return -1;
-	}
+	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","unable to copy %s %s",remote_name,chunk_name);
+	return -1;
       }
     }
   }
@@ -1140,14 +1133,7 @@ int lev1_open_func(vulpes_mapping_t * map_ptr)
   spec = (lev1_mapping_special_t *) map_ptr->special;
   
   /* Form index_name */
-  if (map_ptr->trxfer == LOCAL_TRANSPORT)
-    {
-      result = form_index_name(map_ptr->cache_name, spec);
-      /*result = form_index_name(map_ptr->file_name, spec);*/
-    }
-  else
-    if (map_ptr->trxfer == HTTP_TRANSPORT)
-      result = form_index_name(map_ptr->cache_name,spec);
+  result = form_index_name(map_ptr->cache_name, spec);
   
   /* result =  0 means good
    *  result = -1 means error */
@@ -1211,25 +1197,22 @@ int lev1_open_func(vulpes_mapping_t * map_ptr)
   }
   fclose(f);
   
-  /* Create caching directories if needed */
-  if (spec->shadow) {
-    /* Check if the root directory exists */
-    if (!is_dir(map_ptr->cache_name)) {
-      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open dir: %s", map_ptr->cache_name);
-      result = -1;
-    } else {
-      char dirname[MAX_DIRLENGTH];
-      unsigned d;
-      
-      /* check the subdirectories  -- create if needed */
-      for (d = 0; d < spec->numdirs; d++) {
-	form_dir_name(dirname, MAX_DIRLENGTH, map_ptr->cache_name, d);
-	if (!is_dir(dirname)) {
-	  if (mkdir(dirname, 0770)) {
-	    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to mkdir: %s", dirname);
-	    result = -1;
-	    break;
-	  }
+  /* Check if the cache root directory exists */
+  if (!is_dir(map_ptr->cache_name)) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open dir: %s", map_ptr->cache_name);
+    result = -1;
+  } else {
+    char dirname[MAX_DIRLENGTH];
+    unsigned d;
+    
+    /* check the subdirectories  -- create if needed */
+    for (d = 0; d < spec->numdirs; d++) {
+      form_dir_name(dirname, MAX_DIRLENGTH, map_ptr->cache_name, d);
+      if (!is_dir(dirname)) {
+	if (mkdir(dirname, 0770)) {
+	  vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to mkdir: %s", dirname);
+	  result = -1;
+	  break;
 	}
       }
     }
@@ -1288,8 +1271,7 @@ int lev1_close_func(vulpes_mapping_t * map_ptr)
 		++dirty_chunks;
 		if (spec->verbose) {
 		  if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
-		       spec->shadow ? map_ptr->cache_name : map_ptr->file_name,
-		       u, v, map_ptr)) {
+		       map_ptr->cache_name, u, v, map_ptr)) {
 		    vulpes_log(LOG_ERRORS,"LEV1_CLOSE_FUNCTION","unable to form lev1 file name");
 		    return -1;
 		  }
@@ -1471,10 +1453,7 @@ int initialize_lev1_mapping(vulpes_mapping_t * map_ptr)
     return -1;
   }
   
-  spec->shadow = (map_ptr->cache_name != NULL);
-  
-  vulpes_log(LOG_BASIC,"LEV1_INIT","vulpes_cache: %s",
-             (map_ptr->cache_name == NULL) ? "none" : map_ptr->cache_name);
+  vulpes_log(LOG_BASIC,"LEV1_INIT","vulpes_cache: %s", map_ptr->cache_name);
   if ((map_ptr->proxy_name) && (map_ptr->proxy_port)) {
     vulpes_log(LOG_BASIC,"LEV1_INIT","proxy: %s",map_ptr->proxy_name);
     vulpes_log(LOG_BASIC,"LEV1_INIT","proxy-port: %ld",map_ptr->proxy_port);

@@ -102,9 +102,9 @@ int simple_open_func(vulpes_mapping_t * map_ptr)
     int result = 0;
     int fid;
 
-    fid = open(map_ptr->file_name, O_RDWR);
+    fid = open(map_ptr->cache_name, O_RDWR);
     if (fid < 0) {
-	printf("ERROR: unable to open %s.\n", map_ptr->file_name);
+	printf("ERROR: unable to open %s.\n", map_ptr->cache_name);
 	return -1;
     }
 
@@ -143,14 +143,14 @@ int simple_read_func(const vulpes_mapping_t * map_ptr,
     result = long_seek(fid, start);
     if (result) {
 	printf("ERROR: seeking %s to sector %lu (byte %llu)\n",
-	       map_ptr->file_name, (unsigned long) cmdblk->head.start_sect,
+	       map_ptr->cache_name, (unsigned long) cmdblk->head.start_sect,
 	       (unsigned long long) start);
     }
 
     bytes = cmdblk->head.num_sect * FAUXIDE_HARDSECT_SIZE;
     tmp_size = read(fid, cmdblk->buffer, bytes);
     if (tmp_size != bytes) {
-	printf("ERROR: reading %s. %llu bytes\n", map_ptr->file_name,
+	printf("ERROR: reading %s. %llu bytes\n", map_ptr->cache_name,
 	       (unsigned long long) bytes);
 	result = -1;
     }
@@ -175,7 +175,7 @@ int simple_write_func(const vulpes_mapping_t * map_ptr,
     result = long_seek(fid, start);
     if (result) {
 	printf("ERROR: seeking %s to sector %lu (byte %llu)\n",
-	       map_ptr->file_name, (unsigned long) cmdblk->head.start_sect,
+	       map_ptr->cache_name, (unsigned long) cmdblk->head.start_sect,
 	       (unsigned long long) start);
     }
 
@@ -183,7 +183,7 @@ int simple_write_func(const vulpes_mapping_t * map_ptr,
     tmp_size = write(fid, cmdblk->buffer, bytes);
     if (tmp_size != bytes) {
 	printf("ERROR: writing %s. %llu bytes\n",
-	       map_ptr->file_name, (unsigned long long) bytes);
+	       map_ptr->cache_name, (unsigned long long) bytes);
 	result = -1;
     }
 

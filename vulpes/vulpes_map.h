@@ -49,7 +49,7 @@ struct vulpes_mapping_s {
   long  proxy_port;             /* set by main */
   
   char *device_name;		/* Set by main */
-  char *file_name;		/* Set by main */
+  char *master_name;		/* Set by main */
   char *cache_name;		/* Set by main */
   char *keyring_name;		/* Set by main */
 

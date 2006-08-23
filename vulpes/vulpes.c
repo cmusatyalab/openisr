@@ -125,7 +125,7 @@ static void initialize_null_mapping(void)
   mapping.proxy_port = 80;
   
   mapping.device_name = NULL;
-  mapping.file_name = NULL;
+  mapping.master_name = NULL;
   mapping.cache_name = NULL;
   
   mapping.keyring_name = NULL;
@@ -304,7 +304,7 @@ int main(int argc, char *argv[])
 	PARSE_ERROR("unknown transport type.");
       }
       optind++;
-      mapping.file_name=argv[optind++];
+      mapping.master_name=argv[optind++];
       masterDone=1;
       break;
     case 'f':
@@ -457,7 +457,7 @@ int main(int argc, char *argv[])
   /* Open the file */
   VULPES_DEBUG("\tOpening file.\n");
   if ((*(mapping.open_func)) (&mapping)) {
-    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open lev1 %s", mapping.file_name);
+    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open lev1 %s", mapping.cache_name);
     goto vulpes_exit;
   }
   
