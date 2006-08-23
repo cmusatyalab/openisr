@@ -456,17 +456,13 @@ valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize,
   spec = (lev1_mapping_special_t *) map_ptr->special;
   keyring = spec->keyring;
 
-  if(keyring == NULL) {
-    bufvalid = (bufsize == spec->chunksize_bytes);
-  } else {
-    dgst = digest(buffer, bufsize);
-    bufvalid = (lev1_check_tag(keyring, chunk_num, dgst) == LEV1_ENCRYPT_SUCCESS);
-    if(! bufvalid) {
-      print_check_tag_error(map_ptr, chunk_num, dgst);
-    }
-    
-    free(dgst);
+  dgst = digest(buffer, bufsize);
+  bufvalid = (lev1_check_tag(keyring, chunk_num, dgst) == LEV1_ENCRYPT_SUCCESS);
+  if(! bufvalid) {
+    print_check_tag_error(map_ptr, chunk_num, dgst);
   }
+  
+  free(dgst);
 
   return bufvalid;
 }
@@ -510,66 +506,64 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
   spec = (lev1_mapping_special_t *) map_ptr->special;
   
   /* first check the lka database(s) */
-  if(spec->keyring != NULL) { /* currently, must have keyring for lka lookup */
-    if(map_ptr->lka_svc != NULL) {
-      unsigned char *tag;
-      
-      if(lev1_get_tag(spec->keyring, chunk_num, &tag)==LEV1_ENCRYPT_SUCCESS) {
-	vulpes_lka_return_t lka_ret;
-	char *lka_src_file;
+  if(map_ptr->lka_svc != NULL) {
+    unsigned char *tag;
+    
+    if(lev1_get_tag(spec->keyring, chunk_num, &tag)==LEV1_ENCRYPT_SUCCESS) {
+      vulpes_lka_return_t lka_ret;
+      char *lka_src_file;
 
 #ifdef DEBUG
-	{
-	  unsigned char s_bufhash[41];
-	  int i;
+      {
+	unsigned char s_bufhash[41];
+	int i;
 
-	  for(i=0; i<20; i++) {
-	    sprintf(&(s_bufhash[2*i]), "%02x", tag[i]);
-	  }
-	  vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup tag: %s", s_bufhash);	  
+	for(i=0; i<20; i++) {
+	  sprintf(&(s_bufhash[2*i]), "%02x", tag[i]);
 	}
+	vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup tag: %s", s_bufhash);	  
+      }
 #endif
 
-	lka_ret = vulpes_lka_copy(map_ptr->lka_svc, VULPES_LKA_TAG_SHA1, 
-				  tag, dst, &lka_src_file);
-	if(lka_ret == VULPES_LKA_RETURN_SUCCESS) {
-	  if(valid_chunk_file(dst, map_ptr, chunk_num)) {
-	    /* LKA hit */
-	    chunk_data_t *cdp;
-	    
-	    vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup hit for %s",dst);	  
-	    cdp = get_cdp_from_chunk_num(spec, chunk_num);
-	    mark_cdp_lka_copy(cdp);
-	  } else {
-	    /* Tag check failure */
-	    vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
-		       "SERIOUS, NON-FATAL ERROR - lka lookup hit from %s failed tag match for %s",
-		       ((lka_src_file == NULL) ? "<src>" : lka_src_file), 
-		       dst);
-	    lka_ret = VULPES_LKA_RETURN_ERROR;
-
-	    /* unlink dst here */
-	    if(unlink(dst)) {
-	      vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
-			 "SERIOUS ERROR - unable to unlink file %s", dst);
-	      /* Fall through and see if recovery is possible
-		 (through an overwrite to the file) */
-	    }
-	  }
-
-	  /* free the source name buffer */
-	  if(lka_src_file != NULL) free(lka_src_file);
-
-	  if(lka_ret == VULPES_LKA_RETURN_SUCCESS) return 0;
-	  /* else, fall through */
+      lka_ret = vulpes_lka_copy(map_ptr->lka_svc, VULPES_LKA_TAG_SHA1, 
+				tag, dst, &lka_src_file);
+      if(lka_ret == VULPES_LKA_RETURN_SUCCESS) {
+	if(valid_chunk_file(dst, map_ptr, chunk_num)) {
+	  /* LKA hit */
+	  chunk_data_t *cdp;
+	  
+	  vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup hit for %s",dst);	  
+	  cdp = get_cdp_from_chunk_num(spec, chunk_num);
+	  mark_cdp_lka_copy(cdp);
 	} else {
-	  /* LKA miss */
-	  vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup miss for %s", dst);
+	  /* Tag check failure */
+	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
+		     "SERIOUS, NON-FATAL ERROR - lka lookup hit from %s failed tag match for %s",
+		     ((lka_src_file == NULL) ? "<src>" : lka_src_file), 
+		     dst);
+	  lka_ret = VULPES_LKA_RETURN_ERROR;
+
+	  /* unlink dst here */
+	  if(unlink(dst)) {
+	    vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
+		       "SERIOUS ERROR - unable to unlink file %s", dst);
+	    /* Fall through and see if recovery is possible
+	       (through an overwrite to the file) */
+	  }
 	}
+
+	/* free the source name buffer */
+	if(lka_src_file != NULL) free(lka_src_file);
+
+	if(lka_ret == VULPES_LKA_RETURN_SUCCESS) return 0;
+	/* else, fall through */
       } else {
-	/* Serious error?  Chunk not found in keyring */
-	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","failure in lev1_get_tag()");
+	/* LKA miss */
+	vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup miss for %s", dst);
       }
+    } else {
+      /* Serious error?  Chunk not found in keyring */
+      vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","failure in lev1_get_tag()");
     }
   }
   
