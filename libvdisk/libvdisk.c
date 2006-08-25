@@ -45,12 +45,12 @@ static char *realdev=NULL;
 	fprintf(stderr, s , ## args); \
 	fprintf(stderr, "\n"); \
 	} while (0)
-#define ndebug(s, args...) /***/
+#define ndebug(s, args...) do {} while (0)
 
 #ifdef DEBUG
 #define debug(s, args...) warn(s , ## args)
 #else
-#define debug(s, args...) /***/
+#define debug(s, args...) do {} while (0)
 #endif
 
 static void _get_symbol(void **dest, char *name)
