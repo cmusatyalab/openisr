@@ -59,7 +59,7 @@ clean:
 # twice due to %.d updates.
 .PHONY: revision.dummy
 revision.dummy:
-	@./mkrevision.sh
+	@../mkrevision.sh object vulpes
 -include revision.dummy
 
 install: 

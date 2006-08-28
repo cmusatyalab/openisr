@@ -15,6 +15,7 @@
 #include <linux/hdreg.h>
 #include <scsi/scsi.h>
 #include <pthread.h>
+#include "revision.h"
 
 #define DEBUG
 /* XXX */
@@ -69,7 +70,7 @@ static void __attribute__((constructor)) libvdisk_init(void)
 {
 	char *path;
 
-	debug("Initializing libvdisk");
+	warn("Initializing (" SVN_BRANCH ", rev " SVN_REVISION ")");
 	GET_SYMBOL(open);
 	GET_SYMBOL(ioctl);
 	GET_SYMBOL(close);
