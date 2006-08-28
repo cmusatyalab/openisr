@@ -105,12 +105,12 @@ static void _fdmap_make_space(int fd)
 	unsigned newsize;
 	unsigned *newmap;
 	
-	if (fd < fdmap.words*BITS_PER_WORD)
+	if (fd < 0 || (unsigned)fd < fdmap.words*BITS_PER_WORD)
 		return;
 
 	newsize=2*fdmap.words;
 	if (newsize == 0) newsize=1;
-	if (fd >= newsize*BITS_PER_WORD)
+	if ((unsigned)fd >= newsize*BITS_PER_WORD)
 		newsize=(fd/BITS_PER_WORD)+1;
 	debug("Resizing fdmap from %d to %d", fdmap.words, newsize);
 	newmap=malloc(newsize*BYTES_PER_WORD);
@@ -130,6 +130,8 @@ static void _fdmap_make_space(int fd)
 
 static int _fd_active(int fd)
 {
+	if (fd < 0)
+		return 0;
 	_fdmap_make_space(fd);
 	return ((fdmap.map[wordof(fd)] & (1 << bitof(fd))) != 0);	
 }
@@ -145,6 +147,8 @@ static int fd_active(int fd)
 
 static void add_fd(int fd)
 {
+	if (fd < 0)
+		return;
 	pthread_mutex_lock(&fdmap.lock);
 	_fdmap_make_space(fd);
 	debug("Adding %d to fdmap", fd);
@@ -167,7 +171,9 @@ static void remove_fd(int fd)
 
 static int remap(const char **pathname)
 {
-	if (realdev == NULL || strcmp(*pathname, "/dev/hdv") != 0)
+	if (realdev == NULL)
+		return 0;
+	if (*pathname == NULL || strcmp(*pathname, "/dev/hdv") != 0)
 		return 0;
 	*pathname=realdev;
 	return 1;
@@ -215,6 +221,12 @@ static int stat_wrapper(int ver, const char *filename, void *buf,
 	case LSTAT64:
 		typename="lstat64";
 		ret=__lxstat64_real(ver, filename, buf);
+		break;
+	default:
+		typename="<unknown>";
+		ret=-1;
+		errno=EACCES;
+		warn("Bug in stat_wrapper(): unknown stat type");
 		break;
 	}
 	err=errno;
