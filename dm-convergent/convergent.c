@@ -3,6 +3,7 @@
 #include <linux/kernel.h>
 #include <linux/blkdev.h>
 #include <linux/bio.h>
+#include <linux/highmem.h>
 #include <linux/device-mapper.h>
 #include <linux/workqueue.h>
 /* We need this for the definition of struct dm_dev. */
@@ -35,6 +36,104 @@ struct workqueue_struct *queue;
 #define log(prio, msg, args...) printk(prio "dm-convergent: " msg "\n", ## args)
 #define debug(msg, args...) log(KERN_DEBUG, msg, args)
 
+/* XXX might want to support high memory pages.  on the other hand, those
+   might force bounce buffering */
+/* XXX mempool or something for allocated pages */
+/* XXX use bio_set */
+/* non-atomic? */
+static struct bio *bio_create(unsigned bytes)
+{
+	struct bio *bio;
+	struct page *page;
+	unsigned npages=(bytes+PAGE_SIZE-1)/PAGE_SIZE;
+	int seg;
+	struct bio_vec *bvec;
+	
+	BUG_ON(bytes == 0);
+	
+	bio=bio_alloc(GFP_NOIO, npages);
+	if (bio == NULL)
+		return NULL;
+
+	bytes -= (npages-1) * PAGE_SIZE;
+	while (npages--) {
+		page=alloc_page(GFP_NOIO);
+		if (page == NULL)
+			goto bad;
+		if (!bio_add_page(bio, page, npages ? PAGE_SIZE : bytes, 0))
+			goto bad;
+	}
+	return bio;
+	
+bad:
+	bio_for_each_segment(bvec, bio, seg) {
+		page=bvec->bv_page;
+		__free_page(page);
+	}
+	bio_put(bio);
+	return NULL;
+}
+
+static struct scatterlist *bio_to_scatterlist(struct bio *bio, gfp_t gfp_mask)
+{
+	struct scatterlist *sg;
+	struct bio_vec *bvec;
+	int seg;
+	int i=0;
+	
+	/* XXX use cache? */
+	sg=kmalloc(bio_segments(bio) * sizeof(*sg), gfp_mask);
+	if (sg == NULL)
+		return NULL;
+	bio_for_each_segment(bvec, bio, seg) {
+		sg[i].page=bvec->bv_page;
+		sg[i].offset=bvec->bv_offset;
+		sg[i].length=bvec->bv_len;
+	}
+	/* XXX do we need to increment a page refcount? */
+	return sg;
+}
+
+static void free_scatterlist(struct scatterlist *sg)
+{
+	kfree(sg);
+}
+
+/* supports high memory pages */
+/* non-atomic */
+static void scatterlist_copy(struct scatterlist *src,
+			struct scatterlist *dst, unsigned nbytes)
+{
+	void *sbuf, *dbuf;
+	unsigned sleft, dleft;
+	unsigned copied=0;
+	unsigned bytesThisRound;
+	
+	sbuf=kmap(src->page)+src->offset;
+	sleft=src->length;
+	dbuf=kmap(dst->page)+dst->offset;
+	dleft=dst->length;
+	while (copied < nbytes) {
+		if (sleft == 0) {
+			kunmap(src->page);
+			src++;
+			sbuf=kmap(src->page)+src->offset;
+			sleft=src->length;
+		}
+		if (dleft == 0) {
+			kunmap(dst->page);
+			dst++;
+			dbuf=kmap(dst->page)+dst->offset;
+			dleft=dst->length;
+		}
+		bytesThisRound=min(sleft, dleft);
+		memcpy(dbuf, sbuf, bytesThisRound);
+		copied += bytesThisRound;
+	}
+	kunmap(src->page);
+	kunmap(dst->page);
+}
+
 /* argument format: blocksize backdev backdevoffset */
 static int convergent_target_ctr(struct dm_target *ti,
 				unsigned int argc, char **argv)
@@ -64,14 +163,14 @@ static int convergent_target_ctr(struct dm_target *ti,
 				dev->blocksize > (unsigned short)-1) {
 		ti->error="convergent: block size must be multiple of 512 and <= 65536";
 		ret=-EINVAL;
-		goto out;
+		goto bad;
 	}
 	ti->limits.hardsect_size=dev->blocksize;
 	dev->offset=simple_strtosector(argv[2], &endp, 10);
 	if (*endp != 0) {
 		ti->error="convergent: invalid backing device offset";
 		ret=-EINVAL;
-		goto out;
+		goto bad;
 	}
 	debug("blocksize %u, backdev %s, offset " SECTOR_FORMAT,
 				dev->blocksize, argv[1], dev->offset);
@@ -81,11 +180,11 @@ static int convergent_target_ctr(struct dm_target *ti,
 				FMODE_READ|FMODE_WRITE, &dev->dmdev);
 	if (ret) {
 		ti->error="convergent: could not get backing device";
-		goto out;
+		goto bad;
 	}
 	
 	return 0;
-out:
+bad:
 	kfree(dev);
 	return ret;
 }
@@ -109,6 +208,8 @@ static void convergent_callback(void* data)
 	/* XXX memory leak - we don't free the convergent_req */
 }
 
+/* XXX need to allocate from separate mempool to avoid deadlock if the pool
+       empties */
 static int convergent_map(struct dm_target *ti, struct bio *bio,
 				union map_info *map_context)
 {
@@ -145,20 +246,20 @@ static int __init convergent_init(void)
 	if (queue == NULL) {
 		log(KERN_ERR, "couldn't create workqueue");
 		ret=-ENOMEM;
-		goto fail1;
+		goto bad1;
 	}
 	
 	ret=dm_register_target(&convergent_target);
 	if (ret) {
 		log(KERN_ERR, "convergent registration failed: %d", ret);
-		goto fail2;
+		goto bad2;
 	}
 	
 	return 0;
 	
-fail2:
+bad2:
 	destroy_workqueue(queue);
-fail1:
+bad1:
 	return ret;
 }
 
