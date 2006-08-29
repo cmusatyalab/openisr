@@ -1,5 +1,7 @@
 revision.c
+dm.h
 .*.cmd
+.*.d
 .tmp_versions
 *.mod.c
 *.ko
