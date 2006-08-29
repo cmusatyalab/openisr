@@ -1,8 +1,10 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/blkdev.h>
 #include <linux/bio.h>
 #include <linux/device-mapper.h>
+#include <linux/workqueue.h>
 /* We need this for the definition of struct dm_dev. */
 #include "dm.h"
 
@@ -10,10 +12,19 @@ extern char *svn_branch;
 extern char *svn_revision;
 
 struct convergent_dev {
+	struct dm_target *ti;
 	struct dm_dev *dmdev;
 	unsigned blocksize;
 	sector_t offset;
 };
+
+struct convergent_req {
+	struct convergent_dev *dev;
+	struct bio *bio;
+	struct work_struct work;
+};
+
+struct workqueue_struct *queue;
 
 #ifdef CONFIG_LBD
 #define simple_strtosector simple_strtoull
@@ -45,6 +56,7 @@ static int convergent_target_ctr(struct dm_target *ti,
 		return -ENOMEM;
 	}
 	ti->private=dev;
+	dev->ti=ti;
 	
 	dev->blocksize=simple_strtoul(argv[0], &endp, 10);
 	/* XXX hardsect_size maximum is 65536! */
@@ -86,14 +98,31 @@ static void convergent_target_dtr(struct dm_target *ti)
 	kfree(dev);
 }
 
+static void convergent_callback(void* data)
+{
+	struct convergent_req *req=data;
+	
+	req->bio->bi_bdev=req->dev->dmdev->bdev;
+	req->bio->bi_sector=(req->bio->bi_sector - req->dev->ti->begin)
+				+ req->dev->offset;
+	generic_make_request(req->bio);
+	/* XXX memory leak - we don't free the convergent_req */
+}
+
 static int convergent_map(struct dm_target *ti, struct bio *bio,
 				union map_info *map_context)
 {
 	struct convergent_dev *dev=ti->private;
+	struct convergent_req *req;
 	
-	bio->bi_bdev=dev->dmdev->bdev;
-	bio->bi_sector=(bio->bi_sector - ti->begin) + dev->offset;
-	return 1;
+	req=kmalloc(sizeof(*req), GFP_NOIO);
+	if (req == NULL)
+		return -ENOMEM;
+	req->dev=dev;
+	req->bio=bio;
+	INIT_WORK(&req->work, convergent_callback, req);
+	queue_work(queue, &req->work);
+	return 0;
 }
 
 static struct target_type convergent_target = {
@@ -108,20 +137,42 @@ static struct target_type convergent_target = {
 static int __init convergent_init(void)
 {
 	int ret;
+	
 	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
+	
+	/* XXX do we really want a workqueue? */
+	queue=create_singlethread_workqueue("dm-convergent");
+	if (queue == NULL) {
+		log(KERN_ERR, "couldn't create workqueue");
+		ret=-ENOMEM;
+		goto fail1;
+	}
+	
 	ret=dm_register_target(&convergent_target);
-	if (ret)
+	if (ret) {
 		log(KERN_ERR, "convergent registration failed: %d", ret);
+		goto fail2;
+	}
+	
+	return 0;
+	
+fail2:
+	destroy_workqueue(queue);
+fail1:
 	return ret;
 }
 
 static void __exit convergent_shutdown(void)
 {
 	int ret;
+	
 	log(KERN_INFO, "unloading");
+	
 	ret=dm_unregister_target(&convergent_target);
 	if (ret)
 		log(KERN_ERR, "convergent unregistration failed: %d", ret);
+	
+	destroy_workqueue(queue);
 }
 
 module_init(convergent_init);
