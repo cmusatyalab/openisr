@@ -24,6 +24,8 @@ struct convergent_req {
 	struct convergent_dev *dev;
 	struct bio *oldbio;
 	struct bio *newbio;
+	struct scatterlist *oldsg;
+	struct scatterlist *newsg;
 	struct work_struct work;
 	unsigned completed;
 };
@@ -142,41 +144,20 @@ static void scatterlist_copy(struct scatterlist *src,
 	kunmap(dst->page);
 }
 
-/* Copying bios directly is hard, because we're supposed to only use the
-   official accessors and they're not quite adequate */
-static int bio_copy(struct bio *src, struct bio *dst, gfp_t gfp_mask)
-{
-	int ret=0;
-	struct scatterlist *srcsg=bio_to_scatterlist(src, gfp_mask);
-	struct scatterlist *dstsg=bio_to_scatterlist(dst, gfp_mask);
-	if (srcsg == NULL || dstsg == NULL) {
-		ret=-ENOMEM;
-		goto out;
-	}
-	scatterlist_copy(srcsg, dstsg, src->bi_size);
-out:
-	/* XXX might be null -- is okay as long as we just call kfree */
-	free_scatterlist(srcsg);
-	free_scatterlist(dstsg);
-	return ret;
-}
-
 static void convergent_callback2(void* data)
 {
 	struct convergent_req *req=data;
 	struct bio *oldbio=req->oldbio;
-	struct bio *newbio=req->newbio;
-	int ret=0;
 	
-	if (bio_data_dir(oldbio) == READ) {
-		ret=bio_copy(newbio, oldbio, GFP_NOIO);
-		debug("Coping data for read: ret %d", ret);
-	}
-	bio_put(newbio);
+	/* newbio not valid */
+	if (bio_data_dir(oldbio) == READ)
+		scatterlist_copy(req->newsg, req->oldsg, oldbio->bi_size);
+	free_scatterlist(req->oldsg);
+	free_scatterlist(req->newsg);
 	debug("Submitting original bio");
-	bio_endio(oldbio, oldbio->bi_size, ret);
+	bio_endio(oldbio, oldbio->bi_size, 0);
 	/* XXX memory leak - we don't free the convergent_req */
-	/* XXX memory leak - newbio not freed properly */
+	/* XXX memory leak - newbio pages not freed properly */
 }
 
 static int convergent_bio_callback(struct bio *newbio, unsigned nbytes, int error)
@@ -207,10 +188,13 @@ static void convergent_callback1(void* data)
 	
 	newbio=bio_create(oldbio->bi_size, req->dev->dmdev->bdev);
 	if (newbio == NULL)
-		goto bad;
+		goto bad1;
+	req->oldsg=bio_to_scatterlist(oldbio, GFP_NOIO);
+	req->newsg=bio_to_scatterlist(newbio, GFP_NOIO);
+	if (req->oldsg == NULL || req->newsg == NULL)
+		goto bad2;
 	if (bio_data_dir(oldbio) == WRITE)
-		if (bio_copy(oldbio, newbio, GFP_NOIO))
-			goto bad;
+		scatterlist_copy(req->oldsg, req->newsg, oldbio->bi_size);
 	newbio->bi_sector=(oldbio->bi_sector - req->dev->ti->begin)
 				+ req->dev->offset;
 	newbio->bi_rw=oldbio->bi_rw;  /* XXX */
@@ -219,10 +203,13 @@ static void convergent_callback1(void* data)
 	req->newbio=newbio;
 	req->completed=0;
 	debug("Submitting clone bio");
-	bio_get(newbio);
 	generic_make_request(newbio);
 	return;
-bad:
+bad2:
+	/* XXX might be null -- is okay as long as we just call kfree */
+	free_scatterlist(req->oldsg);
+	free_scatterlist(req->newsg);
+bad1:
 	bio_endio(oldbio, oldbio->bi_size, -ENOMEM);
 }
 
