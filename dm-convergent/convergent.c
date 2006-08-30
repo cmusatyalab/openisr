@@ -4,6 +4,7 @@
 #include <linux/blkdev.h>
 #include <linux/bio.h>
 #include <linux/highmem.h>
+#include <linux/fs.h>
 #include <linux/device-mapper.h>
 #include <linux/workqueue.h>
 /* We need this for the definition of struct dm_dev. */
@@ -21,8 +22,10 @@ struct convergent_dev {
 
 struct convergent_req {
 	struct convergent_dev *dev;
-	struct bio *bio;
+	struct bio *oldbio;
+	struct bio *newbio;
 	struct work_struct work;
+	unsigned completed;
 };
 
 struct workqueue_struct *queue;
@@ -34,14 +37,14 @@ struct workqueue_struct *queue;
 #endif
 
 #define log(prio, msg, args...) printk(prio "dm-convergent: " msg "\n", ## args)
-#define debug(msg, args...) log(KERN_DEBUG, msg, args)
+#define debug(msg, args...) log(KERN_DEBUG, msg, ## args)
 
 /* XXX might want to support high memory pages.  on the other hand, those
    might force bounce buffering */
 /* XXX mempool or something for allocated pages */
 /* XXX use bio_set */
 /* non-atomic? */
-static struct bio *bio_create(unsigned bytes)
+static struct bio *bio_create(unsigned bytes, struct block_device *bdev)
 {
 	struct bio *bio;
 	struct page *page;
@@ -51,9 +54,11 @@ static struct bio *bio_create(unsigned bytes)
 	
 	BUG_ON(bytes == 0);
 	
+	debug("Creating bio");
 	bio=bio_alloc(GFP_NOIO, npages);
 	if (bio == NULL)
 		return NULL;
+	bio->bi_bdev=bdev;
 
 	bytes -= (npages-1) * PAGE_SIZE;
 	while (npages--) {
@@ -81,6 +86,7 @@ static struct scatterlist *bio_to_scatterlist(struct bio *bio, gfp_t gfp_mask)
 	int seg;
 	int i=0;
 	
+	debug("Creating scatterlist");
 	/* XXX use cache? */
 	sg=kmalloc(bio_segments(bio) * sizeof(*sg), gfp_mask);
 	if (sg == NULL)
@@ -96,6 +102,7 @@ static struct scatterlist *bio_to_scatterlist(struct bio *bio, gfp_t gfp_mask)
 
 static void free_scatterlist(struct scatterlist *sg)
 {
+	debug("Freeing scatterlist");
 	kfree(sg);
 }
 
@@ -109,6 +116,7 @@ static void scatterlist_copy(struct scatterlist *src,
 	unsigned copied=0;
 	unsigned bytesThisRound;
 	
+	debug("Copying scatterlist");
 	sbuf=kmap(src->page)+src->offset;
 	sleft=src->length;
 	dbuf=kmap(dst->page)+dst->offset;
@@ -132,6 +140,109 @@ static void scatterlist_copy(struct scatterlist *src,
 	}
 	kunmap(src->page);
 	kunmap(dst->page);
+}
+
+/* Copying bios directly is hard, because we're supposed to only use the
+   official accessors and they're not quite adequate */
+static int bio_copy(struct bio *src, struct bio *dst, gfp_t gfp_mask)
+{
+	int ret=0;
+	struct scatterlist *srcsg=bio_to_scatterlist(src, gfp_mask);
+	struct scatterlist *dstsg=bio_to_scatterlist(dst, gfp_mask);
+	if (srcsg == NULL || dstsg == NULL) {
+		ret=-ENOMEM;
+		goto out;
+	}
+	scatterlist_copy(srcsg, dstsg, src->bi_size);
+out:
+	/* XXX might be null -- is okay as long as we just call kfree */
+	free_scatterlist(srcsg);
+	free_scatterlist(dstsg);
+	return ret;
+}
+
+static void convergent_callback2(void* data)
+{
+	struct convergent_req *req=data;
+	struct bio *oldbio=req->oldbio;
+	struct bio *newbio=req->newbio;
+	int ret=0;
+	
+	if (bio_data_dir(oldbio) == READ) {
+		ret=bio_copy(newbio, oldbio, GFP_NOIO);
+		debug("Coping data for read: ret %d", ret);
+	}
+	bio_put(newbio);
+	debug("Submitting original bio");
+	bio_endio(oldbio, oldbio->bi_size, ret);
+	/* XXX memory leak - we don't free the convergent_req */
+	/* XXX memory leak - newbio not freed properly */
+}
+
+static int convergent_bio_callback(struct bio *newbio, unsigned nbytes, int error)
+{
+	struct convergent_req *req=newbio->bi_private;
+	debug("Clone bio completion");
+	if (error) {
+		/* XXX we shouldn't fail the whole I/O */
+		bio_endio(req->oldbio, req->oldbio->bi_size, error);
+		return 0;
+	}
+	/* XXX racy? */
+	req->completed += nbytes;
+	if (req->completed == req->oldbio->bi_size) {
+		/* XXX make sure it's not still running? */
+		debug("Queueing postprocessing callback on request %p", req);
+		PREPARE_WORK(&req->work, convergent_callback2, req);
+		queue_work(queue, &req->work);
+	}
+	return 0;
+}
+
+static void convergent_callback1(void* data)
+{
+	struct convergent_req *req=data;
+	struct bio *oldbio=req->oldbio;
+	struct bio *newbio;
+	
+	newbio=bio_create(oldbio->bi_size, req->dev->dmdev->bdev);
+	if (newbio == NULL)
+		goto bad;
+	if (bio_data_dir(oldbio) == WRITE)
+		if (bio_copy(oldbio, newbio, GFP_NOIO))
+			goto bad;
+	newbio->bi_sector=(oldbio->bi_sector - req->dev->ti->begin)
+				+ req->dev->offset;
+	newbio->bi_rw=oldbio->bi_rw;  /* XXX */
+	newbio->bi_end_io=convergent_bio_callback;
+	newbio->bi_private=req;
+	req->newbio=newbio;
+	req->completed=0;
+	debug("Submitting clone bio");
+	bio_get(newbio);
+	generic_make_request(newbio);
+	return;
+bad:
+	bio_endio(oldbio, oldbio->bi_size, -ENOMEM);
+}
+
+/* XXX need to allocate from separate mempool to avoid deadlock if the pool
+       empties */
+static int convergent_map(struct dm_target *ti, struct bio *bio,
+				union map_info *map_context)
+{
+	struct convergent_dev *dev=ti->private;
+	struct convergent_req *req;
+	
+	debug("Map function called");
+	req=kmalloc(sizeof(*req), GFP_NOIO);
+	if (req == NULL)
+		return -ENOMEM;
+	req->dev=dev;
+	req->oldbio=bio;
+	INIT_WORK(&req->work, convergent_callback1, req);
+	queue_work(queue, &req->work);
+	return 0;
 }
 
 /* argument format: blocksize backdev backdevoffset */
@@ -195,35 +306,6 @@ static void convergent_target_dtr(struct dm_target *ti)
 	
 	dm_put_device(ti, dev->dmdev);
 	kfree(dev);
-}
-
-static void convergent_callback(void* data)
-{
-	struct convergent_req *req=data;
-	
-	req->bio->bi_bdev=req->dev->dmdev->bdev;
-	req->bio->bi_sector=(req->bio->bi_sector - req->dev->ti->begin)
-				+ req->dev->offset;
-	generic_make_request(req->bio);
-	/* XXX memory leak - we don't free the convergent_req */
-}
-
-/* XXX need to allocate from separate mempool to avoid deadlock if the pool
-       empties */
-static int convergent_map(struct dm_target *ti, struct bio *bio,
-				union map_info *map_context)
-{
-	struct convergent_dev *dev=ti->private;
-	struct convergent_req *req;
-	
-	req=kmalloc(sizeof(*req), GFP_NOIO);
-	if (req == NULL)
-		return -ENOMEM;
-	req->dev=dev;
-	req->bio=bio;
-	INIT_WORK(&req->work, convergent_callback, req);
-	queue_work(queue, &req->work);
-	return 0;
 }
 
 static struct target_type convergent_target = {
