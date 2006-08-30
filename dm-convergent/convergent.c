@@ -6,9 +6,12 @@
 #include <linux/highmem.h>
 #include <linux/fs.h>
 #include <linux/device-mapper.h>
+#include <linux/crypto.h>
 #include <linux/workqueue.h>
 /* We need this for the definition of struct dm_dev. */
 #include "dm.h"
+
+#define DEBUG
 
 extern char *svn_branch;
 extern char *svn_revision;
@@ -18,6 +21,10 @@ struct convergent_dev {
 	struct dm_dev *dmdev;
 	unsigned blocksize;
 	sector_t offset;
+	struct crypto_tfm *cipher;
+	struct crypto_tfm *hash;
+	struct crypto_tfm *compress;
+	spinlock_t tfm_lock;
 };
 
 struct convergent_req {
@@ -39,7 +46,11 @@ struct workqueue_struct *queue;
 #endif
 
 #define log(prio, msg, args...) printk(prio "dm-convergent: " msg "\n", ## args)
+#ifdef DEBUG
 #define debug(msg, args...) log(KERN_DEBUG, msg, ## args)
+#else
+#define debug(args...) do {} while (0)
+#endif
 
 /* XXX might want to support high memory pages.  on the other hand, those
    might force bounce buffering */
@@ -144,6 +155,43 @@ static void scatterlist_copy(struct scatterlist *src,
 	kunmap(dst->page);
 }
 
+static void request_tfm(struct convergent_req *req, int type)
+{
+	struct convergent_dev *dev=req->dev;
+	struct scatterlist *src;
+	struct scatterlist *dst;
+	unsigned nbytes;
+	int decrypt;
+	char iv[8]={0};
+	
+	if (type == READ) {
+		src=req->newsg;
+		dst=req->oldsg;
+		decrypt=1;
+	} else {
+		src=req->oldsg;
+		dst=req->newsg;
+		decrypt=0;
+	}
+	nbytes=req->oldbio->bi_size;
+	
+	spin_lock(&dev->tfm_lock);
+	/* XXX */
+	if (crypto_cipher_setkey(dev->cipher, "asdf", 4))
+		BUG();
+	/* XXX wrong: doesn't reset the IV each block */
+	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
+	if (decrypt) {
+		if (crypto_cipher_decrypt(dev->cipher, dst, src, nbytes))
+			BUG();
+	}
+	else {
+		if (crypto_cipher_encrypt(dev->cipher, dst, src, nbytes))
+			BUG();
+	}
+	spin_unlock(&dev->tfm_lock);
+}
+
 static void convergent_callback2(void* data)
 {
 	struct convergent_req *req=data;
@@ -151,7 +199,7 @@ static void convergent_callback2(void* data)
 	
 	/* newbio not valid */
 	if (bio_data_dir(oldbio) == READ)
-		scatterlist_copy(req->newsg, req->oldsg, oldbio->bi_size);
+		request_tfm(req, READ);
 	free_scatterlist(req->oldsg);
 	free_scatterlist(req->newsg);
 	debug("Submitting original bio");
@@ -194,7 +242,7 @@ static void convergent_callback1(void* data)
 	if (req->oldsg == NULL || req->newsg == NULL)
 		goto bad2;
 	if (bio_data_dir(oldbio) == WRITE)
-		scatterlist_copy(req->oldsg, req->newsg, oldbio->bi_size);
+		request_tfm(req, WRITE);
 	newbio->bi_sector=(oldbio->bi_sector - req->dev->ti->begin)
 				+ req->dev->offset;
 	newbio->bi_rw=oldbio->bi_rw;  /* XXX */
@@ -230,6 +278,23 @@ static int convergent_map(struct dm_target *ti, struct bio *bio,
 	INIT_WORK(&req->work, convergent_callback1, req);
 	queue_work(queue, &req->work);
 	return 0;
+}
+
+static void convergent_target_dtr(struct dm_target *ti)
+{
+	struct convergent_dev *dev=ti->private;
+	
+	if (dev) {
+		if (dev->compress)
+			crypto_free_tfm(dev->compress);
+		if (dev->hash)
+			crypto_free_tfm(dev->hash);
+		if (dev->cipher)
+			crypto_free_tfm(dev->cipher);
+		if (dev->dmdev)
+			dm_put_device(ti, dev->dmdev);
+	}
+	kfree(dev);
 }
 
 /* argument format: blocksize backdev backdevoffset */
@@ -281,18 +346,21 @@ static int convergent_target_ctr(struct dm_target *ti,
 		goto bad;
 	}
 	
+	dev->cipher=crypto_alloc_tfm("blowfish", CRYPTO_TFM_MODE_CBC);
+	dev->hash=crypto_alloc_tfm("sha1", 0);
+	/* XXX compression level hardcoded, etc.  may want to do this
+	   ourselves. */
+	dev->compress=crypto_alloc_tfm("deflate", 0);
+	if (dev->cipher == NULL || dev->hash == NULL || dev->compress == NULL) {
+		ti->error="convergent: could not allocate crypto transforms";
+		goto bad;
+	}
+	spin_lock_init(&dev->tfm_lock);
+	
 	return 0;
 bad:
-	kfree(dev);
+	convergent_target_dtr(ti);
 	return ret;
-}
-
-static void convergent_target_dtr(struct dm_target *ti)
-{
-	struct convergent_dev *dev=ti->private;
-	
-	dm_put_device(ti, dev->dmdev);
-	kfree(dev);
 }
 
 static struct target_type convergent_target = {
