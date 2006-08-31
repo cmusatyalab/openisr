@@ -108,6 +108,7 @@ static struct scatterlist *bio_to_scatterlist(struct bio *bio, gfp_t gfp_mask)
 		sg[i].page=bvec->bv_page;
 		sg[i].offset=bvec->bv_offset;
 		sg[i].length=bvec->bv_len;
+		i++;
 	}
 	/* XXX do we need to increment a page refcount? */
 	return sg;
@@ -234,6 +235,7 @@ static void convergent_callback1(void* data)
 	struct bio *oldbio=req->oldbio;
 	struct bio *newbio;
 	
+	/* XXX need to do read-modify-write for large blocks */
 	newbio=bio_create(oldbio->bi_size, req->dev->dmdev->bdev);
 	if (newbio == NULL)
 		goto bad1;
@@ -269,7 +271,8 @@ static int convergent_map(struct dm_target *ti, struct bio *bio,
 	struct convergent_dev *dev=ti->private;
 	struct convergent_req *req;
 	
-	debug("Map function called");
+	debug("Map function called, request: %u bytes at sector "SECTOR_FORMAT,
+				bio->bi_size, bio->bi_sector);
 	req=kmalloc(sizeof(*req), GFP_NOIO);
 	if (req == NULL)
 		return -ENOMEM;
@@ -321,14 +324,13 @@ static int convergent_target_ctr(struct dm_target *ti,
 	dev->ti=ti;
 	
 	dev->blocksize=simple_strtoul(argv[0], &endp, 10);
-	/* XXX hardsect_size maximum is 65536! */
-	if (*endp != 0 || dev->blocksize % 512 != 0 ||
-				dev->blocksize > (unsigned short)-1) {
-		ti->error="convergent: block size must be multiple of 512 and <= 65536";
+	if (*endp != 0 || dev->blocksize < 512 ||
+				(dev->blocksize & (dev->blocksize - 1)) != 0) {
+		ti->error="convergent: block size must be >= 512 " \
+					"and a power of 2";
 		ret=-EINVAL;
 		goto bad;
 	}
-	ti->limits.hardsect_size=dev->blocksize;
 	dev->offset=simple_strtosector(argv[2], &endp, 10);
 	if (*endp != 0) {
 		ti->error="convergent: invalid backing device offset";
@@ -338,6 +340,14 @@ static int convergent_target_ctr(struct dm_target *ti,
 	debug("blocksize %u, backdev %s, offset " SECTOR_FORMAT,
 				dev->blocksize, argv[1], dev->offset);
 	
+	/* We don't want to change hardsect_size because its value is
+	   not just used by the request queue; it's exported to
+	   the filesystem code, etc.  Also, the kernel seems not to
+	   be able to handle hardsect_size > PAGE_SIZE.  Setting split_io
+	   makes sure we don't get one request spanning multiple blocks,
+	   but we still may need to do larger I/Os than what we're given */
+	/* XXX we get strange request sizes with direct I/O this way */
+	ti->split_io=dev->blocksize/512;
 	/* XXX perhaps ti->table->mode? */
 	ret=dm_get_device(ti, argv[1], dev->offset, ti->len,
 				FMODE_READ|FMODE_WRITE, &dev->dmdev);
