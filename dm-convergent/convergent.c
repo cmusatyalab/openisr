@@ -7,34 +7,49 @@
 #include <linux/fs.h>
 #include <linux/device-mapper.h>
 #include <linux/crypto.h>
+#include <linux/mempool.h>
 #include <linux/workqueue.h>
 /* We need this for the definition of struct dm_dev. */
 #include "dm.h"
 
 #define DEBUG
 
+#define MAX_INPUT_SEGS 32
+#define MIN_CONCURRENT_REQS 2
+
 extern char *svn_branch;
 extern char *svn_revision;
 
+#define chunk_pages(dev) (((dev)->blocksize+PAGE_SIZE-1)/PAGE_SIZE)
 struct convergent_dev {
 	struct dm_target *ti;
 	struct dm_dev *dmdev;
 	unsigned blocksize;
 	sector_t offset;
+	
 	struct crypto_tfm *cipher;
 	struct crypto_tfm *hash;
 	struct crypto_tfm *compress;
 	spinlock_t tfm_lock;
+	
+	mempool_t *page_pool;
+	kmem_cache_t *req_cache;
+	mempool_t *req_pool;
+	
+	struct list_head freed_reqs;  /* XXX stupid temporary hack */
 };
 
 struct convergent_req {
+	struct list_head freed_reqs;
 	struct convergent_dev *dev;
-	struct bio *oldbio;
-	struct bio *newbio;
-	struct scatterlist *oldsg;
-	struct scatterlist *newsg;
 	struct work_struct work;
 	unsigned completed;
+	struct bio *orig_bio;
+	struct bio *stacked_bio;
+	struct scatterlist orig_sg[MAX_INPUT_SEGS];
+	/* XXX hack that lets us not manage yet another allocation */
+	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
+	struct scatterlist stacked_sg[0];
 };
 
 struct workqueue_struct *queue;
@@ -51,73 +66,101 @@ struct workqueue_struct *queue;
 #else
 #define debug(args...) do {} while (0)
 #endif
+#define ndebug(args...) do {} while (0)
+
+static void *mempool_alloc_page(gfp_t gfp_mask, void *unused)
+{
+	return alloc_page(gfp_mask);
+}
+
+static void mempool_free_page(void *page, void *unused)
+{
+	__free_page(page);
+}
 
 /* XXX might want to support high memory pages.  on the other hand, those
    might force bounce buffering */
-/* XXX mempool or something for allocated pages */
-/* XXX use bio_set */
-/* non-atomic? */
-static struct bio *bio_create(unsigned bytes, struct block_device *bdev)
+/* non-atomic */
+static int alloc_cache_pages(struct convergent_req *req)
 {
-	struct bio *bio;
-	struct page *page;
-	unsigned npages=(bytes+PAGE_SIZE-1)/PAGE_SIZE;
-	int seg;
-	struct bio_vec *bvec;
+	int i;
+	unsigned npages=chunk_pages(req->dev);
+	unsigned residual;
+	struct scatterlist *sg=NULL;  /* initialization to avoid warning */
 	
-	BUG_ON(bytes == 0);
-	
-	debug("Creating bio");
-	bio=bio_alloc(GFP_NOIO, npages);
-	if (bio == NULL)
-		return NULL;
-	bio->bi_bdev=bdev;
-
-	bytes -= (npages-1) * PAGE_SIZE;
-	while (npages--) {
-		page=alloc_page(GFP_NOIO);
-		if (page == NULL)
+	for (i=0; i<npages; i++) {
+		sg=&req->stacked_sg[i];
+		sg->page=mempool_alloc(req->dev->page_pool, GFP_NOIO);
+		if (sg->page == NULL)
 			goto bad;
-		if (!bio_add_page(bio, page, npages ? PAGE_SIZE : bytes, 0))
-			goto bad;
+		sg->offset=0;
+		sg->length=PAGE_SIZE;
 	}
-	return bio;
+	/* Possible partial last page */
+	residual=req->dev->blocksize % PAGE_SIZE;
+	if (residual)
+		sg->length=residual;
+	return 0;
 	
 bad:
-	bio_for_each_segment(bvec, bio, seg) {
-		page=bvec->bv_page;
-		__free_page(page);
-	}
-	bio_put(bio);
-	return NULL;
+	while (--i >= 0)
+		mempool_free(req->stacked_sg[i].page, req->dev->page_pool);
+	return -ENOMEM;
 }
 
-static struct scatterlist *bio_to_scatterlist(struct bio *bio, gfp_t gfp_mask)
+static void free_cache_pages(struct convergent_req *req)
 {
-	struct scatterlist *sg;
+	int i;
+
+	for (i=0; i<chunk_pages(req->dev); i++)
+		mempool_free(req->stacked_sg[i].page, req->dev->page_pool);
+}
+
+/* non-atomic */
+/* XXX we may need to send off several bios and keep track of which ones of
+   them have completed */
+/* XXX need to allocate from separate mempool to avoid deadlock if the pool
+       empties */
+static int bio_create(struct convergent_req *req)
+{
+	struct bio *bio;
+	unsigned npages=chunk_pages(req->dev);
+	int i;
+	
+	ndebug("Creating bio");
+	/* XXX use bio_set */
+	bio=bio_alloc(GFP_NOIO, npages);
+	if (bio == NULL)
+		return -ENOMEM;
+	bio->bi_bdev=req->dev->dmdev->bdev;
+	
+	for (i=0; i<npages; i++) {
+		if (!bio_add_page(bio, req->stacked_sg[i].page,
+					req->stacked_sg[i].length,
+					req->stacked_sg[i].offset))
+			goto bad;
+	}
+	req->stacked_bio=bio;
+	return 0;
+	
+bad:
+	bio_put(bio);
+	return -EIO;  /* XXX */
+}
+
+static void orig_bio_to_scatterlist(struct convergent_req *req)
+{
 	struct bio_vec *bvec;
 	int seg;
 	int i=0;
 	
-	debug("Creating scatterlist");
-	/* XXX use cache? */
-	sg=kmalloc(bio_segments(bio) * sizeof(*sg), gfp_mask);
-	if (sg == NULL)
-		return NULL;
-	bio_for_each_segment(bvec, bio, seg) {
-		sg[i].page=bvec->bv_page;
-		sg[i].offset=bvec->bv_offset;
-		sg[i].length=bvec->bv_len;
+	bio_for_each_segment(bvec, req->orig_bio, seg) {
+		req->orig_sg[i].page=bvec->bv_page;
+		req->orig_sg[i].offset=bvec->bv_offset;
+		req->orig_sg[i].length=bvec->bv_len;
 		i++;
 	}
 	/* XXX do we need to increment a page refcount? */
-	return sg;
-}
-
-static void free_scatterlist(struct scatterlist *sg)
-{
-	debug("Freeing scatterlist");
-	kfree(sg);
 }
 
 /* supports high memory pages */
@@ -130,7 +173,7 @@ static void scatterlist_copy(struct scatterlist *src,
 	unsigned copied=0;
 	unsigned bytesThisRound;
 	
-	debug("Copying scatterlist");
+	ndebug("Copying scatterlist");
 	sbuf=kmap(src->page)+src->offset;
 	sleft=src->length;
 	dbuf=kmap(dst->page)+dst->offset;
@@ -166,16 +209,18 @@ static void request_tfm(struct convergent_req *req, int type)
 	char iv[8]={0};
 	
 	if (type == READ) {
-		src=req->newsg;
-		dst=req->oldsg;
+		src=req->stacked_sg;
+		dst=req->orig_sg;
 		decrypt=1;
 	} else {
-		src=req->oldsg;
-		dst=req->newsg;
+		src=req->orig_sg;
+		dst=req->stacked_sg;
 		decrypt=0;
 	}
-	nbytes=req->oldbio->bi_size;
+	nbytes=req->orig_bio->bi_size;
 	
+	debug("Performing %s on %u bytes", decrypt ? "decrypt" : "encrypt",
+				nbytes);
 	spin_lock(&dev->tfm_lock);
 	/* XXX */
 	if (crypto_cipher_setkey(dev->cipher, "asdf", 4))
@@ -196,33 +241,35 @@ static void request_tfm(struct convergent_req *req, int type)
 static void convergent_callback2(void* data)
 {
 	struct convergent_req *req=data;
-	struct bio *oldbio=req->oldbio;
 	
 	/* newbio not valid */
-	if (bio_data_dir(oldbio) == READ)
+	if (bio_data_dir(req->orig_bio) == READ)
 		request_tfm(req, READ);
-	free_scatterlist(req->oldsg);
-	free_scatterlist(req->newsg);
+	free_cache_pages(req);
 	debug("Submitting original bio");
-	bio_endio(oldbio, oldbio->bi_size, 0);
-	/* XXX memory leak - we don't free the convergent_req */
-	/* XXX memory leak - newbio pages not freed properly */
+	bio_endio(req->orig_bio, req->orig_bio->bi_size, 0);
+	/* XXX temporary hack to free the req before shutting down */
+	list_add(&req->freed_reqs, &req->dev->freed_reqs);
 }
 
 static int convergent_bio_callback(struct bio *newbio, unsigned nbytes, int error)
 {
 	struct convergent_req *req=newbio->bi_private;
-	debug("Clone bio completion");
+	debug("Clone bio completion: %u bytes, total now %u; err %d",
+				nbytes, req->completed+nbytes, error);
 	if (error) {
 		/* XXX we shouldn't fail the whole I/O */
-		bio_endio(req->oldbio, req->oldbio->bi_size, error);
+		free_cache_pages(req);
+		list_add(&req->freed_reqs, &req->dev->freed_reqs);
+		bio_endio(req->orig_bio, req->orig_bio->bi_size, error);
 		return 0;
 	}
 	/* XXX racy? */
 	req->completed += nbytes;
-	if (req->completed == req->oldbio->bi_size) {
+	/* XXX this means we can just issue multiple new bios if need be */
+	if (req->completed == req->orig_bio->bi_size) {
 		/* XXX make sure it's not still running? */
-		debug("Queueing postprocessing callback on request %p", req);
+		ndebug("Queueing postprocessing callback on request %p", req);
 		PREPARE_WORK(&req->work, convergent_callback2, req);
 		queue_work(queue, &req->work);
 	}
@@ -232,17 +279,16 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes, int erro
 static void convergent_callback1(void* data)
 {
 	struct convergent_req *req=data;
-	struct bio *oldbio=req->oldbio;
+	struct bio *oldbio=req->orig_bio;
 	struct bio *newbio;
 	
 	/* XXX need to do read-modify-write for large blocks */
-	newbio=bio_create(oldbio->bi_size, req->dev->dmdev->bdev);
-	if (newbio == NULL)
+	if (alloc_cache_pages(req))
 		goto bad1;
-	req->oldsg=bio_to_scatterlist(oldbio, GFP_NOIO);
-	req->newsg=bio_to_scatterlist(newbio, GFP_NOIO);
-	if (req->oldsg == NULL || req->newsg == NULL)
+	orig_bio_to_scatterlist(req);
+	if (bio_create(req))
 		goto bad2;
+	newbio=req->stacked_bio;
 	if (bio_data_dir(oldbio) == WRITE)
 		request_tfm(req, WRITE);
 	newbio->bi_sector=(oldbio->bi_sector - req->dev->ti->begin)
@@ -250,21 +296,16 @@ static void convergent_callback1(void* data)
 	newbio->bi_rw=oldbio->bi_rw;  /* XXX */
 	newbio->bi_end_io=convergent_bio_callback;
 	newbio->bi_private=req;
-	req->newbio=newbio;
 	req->completed=0;
 	debug("Submitting clone bio");
 	generic_make_request(newbio);
 	return;
 bad2:
-	/* XXX might be null -- is okay as long as we just call kfree */
-	free_scatterlist(req->oldsg);
-	free_scatterlist(req->newsg);
+	free_cache_pages(req);
 bad1:
 	bio_endio(oldbio, oldbio->bi_size, -ENOMEM);
 }
 
-/* XXX need to allocate from separate mempool to avoid deadlock if the pool
-       empties */
 static int convergent_map(struct dm_target *ti, struct bio *bio,
 				union map_info *map_context)
 {
@@ -273,11 +314,12 @@ static int convergent_map(struct dm_target *ti, struct bio *bio,
 	
 	debug("Map function called, request: %u bytes at sector "SECTOR_FORMAT,
 				bio->bi_size, bio->bi_sector);
-	req=kmalloc(sizeof(*req), GFP_NOIO);
+	req=mempool_alloc(dev->req_pool, GFP_NOIO);
 	if (req == NULL)
 		return -ENOMEM;
 	req->dev=dev;
-	req->oldbio=bio;
+	req->orig_bio=bio;
+	INIT_LIST_HEAD(&req->freed_reqs);
 	INIT_WORK(&req->work, convergent_callback1, req);
 	queue_work(queue, &req->work);
 	return 0;
@@ -288,6 +330,19 @@ static void convergent_target_dtr(struct dm_target *ti)
 	struct convergent_dev *dev=ti->private;
 	
 	if (dev) {
+		if (dev->req_pool) {
+			struct convergent_req *req;
+			struct convergent_req *next;
+			list_for_each_entry_safe(req, next, &dev->freed_reqs,
+						freed_reqs)
+				mempool_free(req, dev->req_pool);
+			mempool_destroy(dev->req_pool);
+		}
+		if (dev->req_cache)
+			if (kmem_cache_destroy(dev->req_cache))
+				log(KERN_ERR, "couldn't destroy request cache");
+		if (dev->page_pool)
+			mempool_destroy(dev->page_pool);
 		if (dev->compress)
 			crypto_free_tfm(dev->compress);
 		if (dev->hash)
@@ -348,6 +403,7 @@ static int convergent_target_ctr(struct dm_target *ti,
 	   but we still may need to do larger I/Os than what we're given */
 	/* XXX we get strange request sizes with direct I/O this way */
 	ti->split_io=dev->blocksize/512;
+	ti->limits.max_phys_segments=MAX_INPUT_SEGS;
 	/* XXX perhaps ti->table->mode? */
 	ret=dm_get_device(ti, argv[1], dev->offset, ti->len,
 				FMODE_READ|FMODE_WRITE, &dev->dmdev);
@@ -366,6 +422,23 @@ static int convergent_target_ctr(struct dm_target *ti,
 		goto bad;
 	}
 	spin_lock_init(&dev->tfm_lock);
+	
+	dev->page_pool=mempool_create(chunk_pages(dev) * MIN_CONCURRENT_REQS,
+				mempool_alloc_page, mempool_free_page, NULL);
+	if (dev->page_pool == NULL)
+		goto bad;
+	dev->req_cache=kmem_cache_create("convergent_requests",
+				sizeof(struct convergent_req) +
+				chunk_pages(dev) * sizeof(struct scatterlist),
+				0, 0, NULL, NULL);
+	if (dev->req_cache == NULL)
+		goto bad;
+	dev->req_pool=mempool_create(MIN_CONCURRENT_REQS, mempool_alloc_slab,
+				mempool_free_slab, dev->req_cache);
+	if (dev->req_pool == NULL)
+		goto bad;
+	
+	INIT_LIST_HEAD(&dev->freed_reqs);
 	
 	return 0;
 bad:
