@@ -116,73 +116,6 @@ static void free_cache_pages(struct convergent_req *req)
 		mempool_free(req->chunk_sg[i].page, req->dev->page_pool);
 }
 
-static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
-			int error);
-/* non-atomic */
-static struct bio *bio_create(struct convergent_req *req, unsigned offset)
-{
-	struct bio *bio;
-
-	/* XXX use bio_set */
-	/* XXX could alloc smaller bios if we're looping */
-	bio=bio_alloc(GFP_NOIO, chunk_pages(req->dev));
-	if (bio == NULL)
-		return NULL;
-
-	bio->bi_bdev=req->dev->dmdev->bdev;
-	bio->bi_sector=(req->orig_bio->bi_sector - req->dev->ti->begin)
-				+ req->dev->offset + offset;
-	bio->bi_rw=req->orig_bio->bi_rw;  /* XXX */
-	bio->bi_end_io=convergent_bio_callback;
-	bio->bi_private=req;
-	return bio;
-}
-
-/* XXX need to allocate from separate mempool to avoid deadlock if the pool
-       empties */
-/* XXX need read-modify-write for chunk sizes > 4K */
-static void convergent_callback2(void* data);
-static void issue_chunk_io(struct convergent_req *req)
-{
-	struct bio *bio=NULL;
-	unsigned nbytes=req->dev->blocksize;
-	unsigned offset=0;
-	int i=0;
-	
-	/* XXX test against very small maximum seg count on target, etc. */
-	ndebug("Submitting clone bio(s)");
-	/* We can't assume that we can fit the entire chunk request in one
-	   bio: it depends on the queue restrictions of the underlying
-	   device */
-	while (offset < nbytes) {
-		if (bio == NULL) {
-			bio=bio_create(req, offset/512);
-			if (bio == NULL)
-				goto bad;
-		}
-		if (bio_add_page(bio, req->chunk_sg[i].page,
-					req->chunk_sg[i].length,
-					req->chunk_sg[i].offset)) {
-			offset += req->chunk_sg[i].length;
-		} else {
-			generic_make_request(bio);
-			bio=NULL;
-		}
-	}
-	BUG_ON(bio == NULL);
-	generic_make_request(bio);
-	return;
-	
-bad:
-	/* XXX make this sane */
-	req->error=-ENOMEM;
-	if (atomic_add_return(nbytes-offset, &req->completed) == nbytes) {
-		ndebug("Queueing postprocessing callback on request %p", req);
-		PREPARE_WORK(&req->work, convergent_callback2, req);
-		queue_work(queue, &req->work);
-	}
-}
-
 static void orig_bio_to_scatterlist(struct convergent_req *req)
 {
 	struct bio_vec *bvec;
@@ -307,6 +240,70 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 		queue_work(queue, &req->work);
 	}
 	return 0;
+}
+
+/* non-atomic */
+static struct bio *bio_create(struct convergent_req *req, unsigned offset)
+{
+	struct bio *bio;
+
+	/* XXX use bio_set */
+	/* XXX could alloc smaller bios if we're looping */
+	bio=bio_alloc(GFP_NOIO, chunk_pages(req->dev));
+	if (bio == NULL)
+		return NULL;
+
+	bio->bi_bdev=req->dev->dmdev->bdev;
+	bio->bi_sector=(req->orig_bio->bi_sector - req->dev->ti->begin)
+				+ req->dev->offset + offset;
+	bio->bi_rw=req->orig_bio->bi_rw;  /* XXX */
+	bio->bi_end_io=convergent_bio_callback;
+	bio->bi_private=req;
+	return bio;
+}
+
+/* XXX need to allocate from separate mempool to avoid deadlock if the pool
+       empties */
+/* XXX need read-modify-write for chunk sizes > 4K */
+static void issue_chunk_io(struct convergent_req *req)
+{
+	struct bio *bio=NULL;
+	unsigned nbytes=req->dev->blocksize;
+	unsigned offset=0;
+	int i=0;
+	
+	/* XXX test against very small maximum seg count on target, etc. */
+	ndebug("Submitting clone bio(s)");
+	/* We can't assume that we can fit the entire chunk request in one
+	   bio: it depends on the queue restrictions of the underlying
+	   device */
+	while (offset < nbytes) {
+		if (bio == NULL) {
+			bio=bio_create(req, offset/512);
+			if (bio == NULL)
+				goto bad;
+		}
+		if (bio_add_page(bio, req->chunk_sg[i].page,
+					req->chunk_sg[i].length,
+					req->chunk_sg[i].offset)) {
+			offset += req->chunk_sg[i].length;
+		} else {
+			generic_make_request(bio);
+			bio=NULL;
+		}
+	}
+	BUG_ON(bio == NULL);
+	generic_make_request(bio);
+	return;
+	
+bad:
+	/* XXX make this sane */
+	req->error=-ENOMEM;
+	if (atomic_add_return(nbytes-offset, &req->completed) == nbytes) {
+		ndebug("Queueing postprocessing callback on request %p", req);
+		PREPARE_WORK(&req->work, convergent_callback2, req);
+		queue_work(queue, &req->work);
+	}
 }
 
 static void convergent_callback1(void* data)
