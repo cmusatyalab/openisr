@@ -43,13 +43,13 @@ struct convergent_req {
 	struct list_head freed_reqs;
 	struct convergent_dev *dev;
 	struct work_struct work;
-	unsigned completed;
+	atomic_t completed;
+	int error;
 	struct bio *orig_bio;
-	struct bio *stacked_bio;
 	struct scatterlist orig_sg[MAX_INPUT_SEGS];
 	/* XXX hack that lets us not manage yet another allocation */
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
-	struct scatterlist stacked_sg[0];
+	struct scatterlist chunk_sg[0];
 };
 
 struct workqueue_struct *queue;
@@ -89,7 +89,7 @@ static int alloc_cache_pages(struct convergent_req *req)
 	struct scatterlist *sg=NULL;  /* initialization to avoid warning */
 	
 	for (i=0; i<npages; i++) {
-		sg=&req->stacked_sg[i];
+		sg=&req->chunk_sg[i];
 		sg->page=mempool_alloc(req->dev->page_pool, GFP_NOIO);
 		if (sg->page == NULL)
 			goto bad;
@@ -104,7 +104,7 @@ static int alloc_cache_pages(struct convergent_req *req)
 	
 bad:
 	while (--i >= 0)
-		mempool_free(req->stacked_sg[i].page, req->dev->page_pool);
+		mempool_free(req->chunk_sg[i].page, req->dev->page_pool);
 	return -ENOMEM;
 }
 
@@ -113,39 +113,74 @@ static void free_cache_pages(struct convergent_req *req)
 	int i;
 
 	for (i=0; i<chunk_pages(req->dev); i++)
-		mempool_free(req->stacked_sg[i].page, req->dev->page_pool);
+		mempool_free(req->chunk_sg[i].page, req->dev->page_pool);
 }
 
+static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
+			int error);
 /* non-atomic */
-/* XXX we may need to send off several bios and keep track of which ones of
-   them have completed */
-/* XXX need to allocate from separate mempool to avoid deadlock if the pool
-       empties */
-static int bio_create(struct convergent_req *req)
+static struct bio *bio_create(struct convergent_req *req, unsigned offset)
 {
 	struct bio *bio;
-	unsigned npages=chunk_pages(req->dev);
-	int i;
-	
-	ndebug("Creating bio");
+
 	/* XXX use bio_set */
-	bio=bio_alloc(GFP_NOIO, npages);
+	/* XXX could alloc smaller bios if we're looping */
+	bio=bio_alloc(GFP_NOIO, chunk_pages(req->dev));
 	if (bio == NULL)
-		return -ENOMEM;
+		return NULL;
+
 	bio->bi_bdev=req->dev->dmdev->bdev;
+	bio->bi_sector=(req->orig_bio->bi_sector - req->dev->ti->begin)
+				+ req->dev->offset + offset;
+	bio->bi_rw=req->orig_bio->bi_rw;  /* XXX */
+	bio->bi_end_io=convergent_bio_callback;
+	bio->bi_private=req;
+	return bio;
+}
+
+/* XXX need to allocate from separate mempool to avoid deadlock if the pool
+       empties */
+/* XXX need read-modify-write for chunk sizes > 4K */
+static void convergent_callback2(void* data);
+static void issue_chunk_io(struct convergent_req *req)
+{
+	struct bio *bio=NULL;
+	unsigned nbytes=req->dev->blocksize;
+	unsigned offset=0;
+	int i=0;
 	
-	for (i=0; i<npages; i++) {
-		if (!bio_add_page(bio, req->stacked_sg[i].page,
-					req->stacked_sg[i].length,
-					req->stacked_sg[i].offset))
-			goto bad;
+	/* XXX test against very small maximum seg count on target, etc. */
+	ndebug("Submitting clone bio(s)");
+	/* We can't assume that we can fit the entire chunk request in one
+	   bio: it depends on the queue restrictions of the underlying
+	   device */
+	while (offset < nbytes) {
+		if (bio == NULL) {
+			bio=bio_create(req, offset/512);
+			if (bio == NULL)
+				goto bad;
+		}
+		if (bio_add_page(bio, req->chunk_sg[i].page,
+					req->chunk_sg[i].length,
+					req->chunk_sg[i].offset)) {
+			offset += req->chunk_sg[i].length;
+		} else {
+			generic_make_request(bio);
+			bio=NULL;
+		}
 	}
-	req->stacked_bio=bio;
-	return 0;
+	BUG_ON(bio == NULL);
+	generic_make_request(bio);
+	return;
 	
 bad:
-	bio_put(bio);
-	return -EIO;  /* XXX */
+	/* XXX make this sane */
+	req->error=-ENOMEM;
+	if (atomic_add_return(nbytes-offset, &req->completed) == nbytes) {
+		ndebug("Queueing postprocessing callback on request %p", req);
+		PREPARE_WORK(&req->work, convergent_callback2, req);
+		queue_work(queue, &req->work);
+	}
 }
 
 static void orig_bio_to_scatterlist(struct convergent_req *req)
@@ -209,12 +244,12 @@ static void request_tfm(struct convergent_req *req, int type)
 	char iv[8]={0};
 	
 	if (type == READ) {
-		src=req->stacked_sg;
+		src=req->chunk_sg;
 		dst=req->orig_sg;
 		decrypt=1;
 	} else {
 		src=req->orig_sg;
-		dst=req->stacked_sg;
+		dst=req->chunk_sg;
 		decrypt=0;
 	}
 	nbytes=req->orig_bio->bi_size;
@@ -243,31 +278,29 @@ static void convergent_callback2(void* data)
 	struct convergent_req *req=data;
 	
 	/* newbio not valid */
-	if (bio_data_dir(req->orig_bio) == READ)
+	if (!req->error && bio_data_dir(req->orig_bio) == READ)
 		request_tfm(req, READ);
 	free_cache_pages(req);
 	debug("Submitting original bio");
-	bio_endio(req->orig_bio, req->orig_bio->bi_size, 0);
+	bio_endio(req->orig_bio, req->orig_bio->bi_size, req->error);
 	/* XXX temporary hack to free the req before shutting down */
 	list_add(&req->freed_reqs, &req->dev->freed_reqs);
 }
 
-static int convergent_bio_callback(struct bio *newbio, unsigned nbytes, int error)
+static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
+			int error)
 {
 	struct convergent_req *req=newbio->bi_private;
-	debug("Clone bio completion: %u bytes, total now %u; err %d",
-				nbytes, req->completed+nbytes, error);
-	if (error) {
+	int completed;
+	if (error && !req->error) {
 		/* XXX we shouldn't fail the whole I/O */
-		free_cache_pages(req);
-		list_add(&req->freed_reqs, &req->dev->freed_reqs);
-		bio_endio(req->orig_bio, req->orig_bio->bi_size, error);
-		return 0;
+		req->error=error;
 	}
-	/* XXX racy? */
-	req->completed += nbytes;
-	/* XXX this means we can just issue multiple new bios if need be */
-	if (req->completed == req->orig_bio->bi_size) {
+	completed=atomic_add_return(nbytes, &req->completed);
+	debug("Clone bio completion: %u bytes, total now %u; err %d",
+				nbytes, completed, error);
+	BUG_ON(completed > req->orig_bio->bi_size);
+	if (completed >= req->orig_bio->bi_size) {
 		/* XXX make sure it's not still running? */
 		ndebug("Queueing postprocessing callback on request %p", req);
 		PREPARE_WORK(&req->work, convergent_callback2, req);
@@ -279,31 +312,17 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes, int erro
 static void convergent_callback1(void* data)
 {
 	struct convergent_req *req=data;
-	struct bio *oldbio=req->orig_bio;
-	struct bio *newbio;
 	
 	/* XXX need to do read-modify-write for large blocks */
 	if (alloc_cache_pages(req))
-		goto bad1;
+		goto bad;
 	orig_bio_to_scatterlist(req);
-	if (bio_create(req))
-		goto bad2;
-	newbio=req->stacked_bio;
-	if (bio_data_dir(oldbio) == WRITE)
+	if (bio_data_dir(req->orig_bio) == WRITE)
 		request_tfm(req, WRITE);
-	newbio->bi_sector=(oldbio->bi_sector - req->dev->ti->begin)
-				+ req->dev->offset;
-	newbio->bi_rw=oldbio->bi_rw;  /* XXX */
-	newbio->bi_end_io=convergent_bio_callback;
-	newbio->bi_private=req;
-	req->completed=0;
-	debug("Submitting clone bio");
-	generic_make_request(newbio);
+	issue_chunk_io(req);
 	return;
-bad2:
-	free_cache_pages(req);
-bad1:
-	bio_endio(oldbio, oldbio->bi_size, -ENOMEM);
+bad:
+	bio_endio(req->orig_bio, req->orig_bio->bi_size, -ENOMEM);
 }
 
 static int convergent_map(struct dm_target *ti, struct bio *bio,
@@ -312,6 +331,8 @@ static int convergent_map(struct dm_target *ti, struct bio *bio,
 	struct convergent_dev *dev=ti->private;
 	struct convergent_req *req;
 	
+	BUG_ON(bio_segments(bio) > MAX_INPUT_SEGS);
+	
 	debug("Map function called, request: %u bytes at sector "SECTOR_FORMAT,
 				bio->bi_size, bio->bi_sector);
 	req=mempool_alloc(dev->req_pool, GFP_NOIO);
@@ -319,6 +340,8 @@ static int convergent_map(struct dm_target *ti, struct bio *bio,
 		return -ENOMEM;
 	req->dev=dev;
 	req->orig_bio=bio;
+	req->error=0;
+	atomic_set(&req->completed, 0);
 	INIT_LIST_HEAD(&req->freed_reqs);
 	INIT_WORK(&req->work, convergent_callback1, req);
 	queue_work(queue, &req->work);
