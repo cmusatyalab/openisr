@@ -69,7 +69,8 @@ module_param(blocksize, uint, S_IRUGO);
 #define SECTOR_FORMAT "%lu"
 #endif
 
-#define log(prio, msg, args...) printk(prio "dm-convergent: " msg "\n", ## args)
+#define MODULE_NAME "isr-convergent"
+#define log(prio, msg, args...) printk(prio MODULE_NAME ": " msg "\n", ## args)
 #ifdef DEBUG
 #define debug(msg, args...) log(KERN_DEBUG, msg, ## args)
 #else
@@ -475,7 +476,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 		ret=-ENOMEM;
 		goto bad;
 	}
-	dev->req_cache=kmem_cache_create("convergent_requests",
+	dev->req_cache=kmem_cache_create(MODULE_NAME "-requests",
 				sizeof(struct convergent_req) +
 				chunk_pages(dev) * sizeof(struct scatterlist),
 				0, 0, NULL, NULL);
@@ -529,14 +530,14 @@ static int __init convergent_init(void)
 	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
 	
 	/* XXX do we really want a workqueue? */
-	workqueue=create_singlethread_workqueue("dm-convergent");
+	workqueue=create_singlethread_workqueue(MODULE_NAME);
 	if (workqueue == NULL) {
 		log(KERN_ERR, "couldn't create workqueue");
 		ret=-ENOMEM;
 		goto bad1;
 	}
 	
-	ret=register_blkdev(0, "convergent");
+	ret=register_blkdev(0, MODULE_NAME);
 	if (ret < 0) {
 		log(KERN_ERR, "block driver registration failed");
 		goto bad2;
@@ -558,7 +559,7 @@ static int __init convergent_init(void)
 	return 0;
 
 bad3:
-	if (unregister_blkdev(blk_major, "convergent"))
+	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
 bad2:
 	destroy_workqueue(workqueue);
@@ -572,7 +573,7 @@ static void __exit convergent_shutdown(void)
 	
 	convergent_dev_dtr(gdev);
 	
-	if (unregister_blkdev(blk_major, "convergent"))
+	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
 	
 	destroy_workqueue(workqueue);
@@ -582,7 +583,7 @@ module_init(convergent_init);
 module_exit(convergent_shutdown);
 
 MODULE_AUTHOR("Benjamin Gilbert <bgilbert@cs.cmu.edu>");
-MODULE_DESCRIPTION("device-mapper target for convergent encryption "
+MODULE_DESCRIPTION("stacking block device for convergent encryption "
 			"and compression");
 /* We must use a GPL-compatible license to use the crypto API */
 MODULE_LICENSE("GPL");

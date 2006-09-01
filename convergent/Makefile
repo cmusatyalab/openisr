@@ -1,7 +1,7 @@
 ifneq ($(KERNELRELEASE),)
 
-obj-m := dm-convergent.o
-dm-convergent-objs := convergent.o revision.o
+obj-m := isr-convergent.o
+isr-convergent-objs := convergent.o revision.o
 
 else
 
@@ -22,7 +22,7 @@ clean:
 # twice due to %.d updates.
 .PHONY: revision.dummy
 revision.dummy:
-	@../mkrevision.sh object dm-convergent
+	@../mkrevision.sh object convergent
 -include revision.dummy
 
 endif
