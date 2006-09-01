@@ -1,29 +1,31 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/genhd.h>
 #include <linux/blkdev.h>
 #include <linux/bio.h>
 #include <linux/highmem.h>
 #include <linux/fs.h>
-#include <linux/device-mapper.h>
 #include <linux/crypto.h>
 #include <linux/mempool.h>
 #include <linux/workqueue.h>
-/* We need this for the definition of struct dm_dev. */
-#include "dm.h"
 
 #define DEBUG
 
 #define MAX_INPUT_SEGS 32
 #define MIN_CONCURRENT_REQS 2
+#define MINORS 16
 
 extern char *svn_branch;
 extern char *svn_revision;
 
+#define chunk_sectors(dev) ((dev)->blocksize/512)
 #define chunk_pages(dev) (((dev)->blocksize+PAGE_SIZE-1)/PAGE_SIZE)
 struct convergent_dev {
-	struct dm_target *ti;
-	struct dm_dev *dmdev;
+	struct gendisk *gendisk;
+	request_queue_t *queue;
+	struct block_device *chunk_bdev;
+	
 	unsigned blocksize;
 	sector_t offset;
 	
@@ -52,12 +54,19 @@ struct convergent_req {
 	struct scatterlist chunk_sg[0];
 };
 
-struct workqueue_struct *queue;
+static struct workqueue_struct *workqueue;
+static int blk_major;
+/* XXX until we get a management interface */
+static char *device=NULL;
+static unsigned blocksize=0;
+static struct convergent_dev *gdev;
+module_param(device, charp, S_IRUGO);
+module_param(blocksize, uint, S_IRUGO);
 
 #ifdef CONFIG_LBD
-#define simple_strtosector simple_strtoull
+#define SECTOR_FORMAT "%llu"
 #else
-#define simple_strtosector simple_strtoul
+#define SECTOR_FORMAT "%lu"
 #endif
 
 #define log(prio, msg, args...) printk(prio "dm-convergent: " msg "\n", ## args)
@@ -232,12 +241,13 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 	completed=atomic_add_return(nbytes, &req->completed);
 	debug("Clone bio completion: %u bytes, total now %u; err %d",
 				nbytes, completed, error);
-	BUG_ON(completed > req->orig_bio->bi_size);
+	/* Can't call BUG() in interrupt */
+	WARN_ON(completed > req->orig_bio->bi_size);
 	if (completed >= req->orig_bio->bi_size) {
 		/* XXX make sure it's not still running? */
 		ndebug("Queueing postprocessing callback on request %p", req);
 		PREPARE_WORK(&req->work, convergent_callback2, req);
-		queue_work(queue, &req->work);
+		queue_work(workqueue, &req->work);
 	}
 	return 0;
 }
@@ -253,9 +263,8 @@ static struct bio *bio_create(struct convergent_req *req, unsigned offset)
 	if (bio == NULL)
 		return NULL;
 
-	bio->bi_bdev=req->dev->dmdev->bdev;
-	bio->bi_sector=(req->orig_bio->bi_sector - req->dev->ti->begin)
-				+ req->dev->offset + offset;
+	bio->bi_bdev=req->dev->chunk_bdev;
+	bio->bi_sector=req->orig_bio->bi_sector + req->dev->offset + offset;
 	bio->bi_rw=req->orig_bio->bi_rw;  /* XXX */
 	bio->bi_end_io=convergent_bio_callback;
 	bio->bi_private=req;
@@ -302,7 +311,7 @@ bad:
 	if (atomic_add_return(nbytes-offset, &req->completed) == nbytes) {
 		ndebug("Queueing postprocessing callback on request %p", req);
 		PREPARE_WORK(&req->work, convergent_callback2, req);
-		queue_work(queue, &req->work);
+		queue_work(workqueue, &req->work);
 	}
 }
 
@@ -322,15 +331,14 @@ bad:
 	bio_endio(req->orig_bio, req->orig_bio->bi_size, -ENOMEM);
 }
 
-static int convergent_map(struct dm_target *ti, struct bio *bio,
-				union map_info *map_context)
+static int convergent_make_request(request_queue_t *q, struct bio *bio)
 {
-	struct convergent_dev *dev=ti->private;
+	struct convergent_dev *dev=q->queuedata;
 	struct convergent_req *req;
 	
 	BUG_ON(bio_segments(bio) > MAX_INPUT_SEGS);
 	
-	debug("Map function called, request: %u bytes at sector "SECTOR_FORMAT,
+	debug("make_request called, request: %u bytes at sector "SECTOR_FORMAT,
 				bio->bi_size, bio->bi_sector);
 	req=mempool_alloc(dev->req_pool, GFP_NOIO);
 	if (req == NULL)
@@ -341,139 +349,178 @@ static int convergent_map(struct dm_target *ti, struct bio *bio,
 	atomic_set(&req->completed, 0);
 	INIT_LIST_HEAD(&req->freed_reqs);
 	INIT_WORK(&req->work, convergent_callback1, req);
-	queue_work(queue, &req->work);
+	queue_work(workqueue, &req->work);
 	return 0;
 }
 
-static void convergent_target_dtr(struct dm_target *ti)
+/* Return the number of bytes of bvec that can be merged into bio */
+static int convergent_mergeable_bvec(request_queue_t *q, struct bio *bio,
+			struct bio_vec *bvec)
 {
-	struct convergent_dev *dev=ti->private;
+	struct convergent_dev *dev=q->queuedata;
+	sector_t boundary;
+	unsigned allowable;
 	
-	if (dev) {
-		if (dev->req_pool) {
-			struct convergent_req *req;
-			struct convergent_req *next;
-			list_for_each_entry_safe(req, next, &dev->freed_reqs,
-						freed_reqs)
-				mempool_free(req, dev->req_pool);
-			mempool_destroy(dev->req_pool);
-		}
-		if (dev->req_cache)
-			if (kmem_cache_destroy(dev->req_cache))
-				log(KERN_ERR, "couldn't destroy request cache");
-		if (dev->page_pool)
-			mempool_destroy(dev->page_pool);
-		if (dev->compress)
-			crypto_free_tfm(dev->compress);
-		if (dev->hash)
-			crypto_free_tfm(dev->hash);
-		if (dev->cipher)
-			crypto_free_tfm(dev->cipher);
-		if (dev->dmdev)
-			dm_put_device(ti, dev->dmdev);
+	/* XXX constructs like these should probably be using masks */
+	boundary=(bio->bi_sector + chunk_sectors(dev) - 1)/chunk_sectors(dev);
+	allowable=(boundary - bio->bi_sector) * 512;
+	/* XXX */
+	BUG_ON(!bio_segments(bio) && allowable < PAGE_SIZE);
+	debug("mergeable called; sec=" SECTOR_FORMAT " boundary="
+				SECTOR_FORMAT " allowable=%u",
+				bio->bi_sector, boundary, allowable);
+	return allowable;
+}
+
+static void convergent_dev_dtr(struct convergent_dev *dev)
+{
+	debug("Dtr called");
+	if (dev->gendisk)
+		del_gendisk(dev->gendisk);
+	if (dev->req_pool) {
+		struct convergent_req *req;
+		struct convergent_req *next;
+		list_for_each_entry_safe(req, next, &dev->freed_reqs,
+					freed_reqs)
+			mempool_free(req, dev->req_pool);
+		mempool_destroy(dev->req_pool);
 	}
+	if (dev->req_cache)
+		if (kmem_cache_destroy(dev->req_cache))
+			log(KERN_ERR, "couldn't destroy request cache");
+	if (dev->page_pool)
+		mempool_destroy(dev->page_pool);
+	if (dev->compress)
+		crypto_free_tfm(dev->compress);
+	if (dev->hash)
+		crypto_free_tfm(dev->hash);
+	if (dev->cipher)
+		crypto_free_tfm(dev->cipher);
+	if (dev->queue)
+		blk_cleanup_queue(dev->queue);
+	if (dev->chunk_bdev)
+		close_bdev_excl(dev->chunk_bdev);
 	kfree(dev);
 }
 
+static struct block_device_operations convergent_ops = {
+	.owner =	THIS_MODULE
+};
+
 /* argument format: blocksize backdev backdevoffset */
-static int convergent_target_ctr(struct dm_target *ti,
-				unsigned int argc, char **argv)
+static struct convergent_dev *convergent_dev_ctr(char *devnode,
+			unsigned blocksize, sector_t offset)
 {
 	struct convergent_dev *dev;
-	char *endp;
 	int ret;
 	
-	if (argc != 3) {
-		ti->error="convergent: invalid arguments: should be " \
-				"<blocksize> <backing-device> " \
-				"<backing-device-offset>";
-		return -EINVAL;
-	}
-	
+	debug("Ctr starting");
 	dev=kzalloc(sizeof(*dev), GFP_KERNEL);
-	if (dev == NULL) {
-		ti->error="convergent: could not allocate memory";
-		return -ENOMEM;
-	}
-	ti->private=dev;
-	dev->ti=ti;
+	if (dev == NULL)
+		return ERR_PTR(-ENOMEM);
 	
-	dev->blocksize=simple_strtoul(argv[0], &endp, 10);
-	if (*endp != 0 || dev->blocksize < 512 ||
-				(dev->blocksize & (dev->blocksize - 1)) != 0) {
-		ti->error="convergent: block size must be >= 512 " \
-					"and a power of 2";
+	if (blocksize < 512 || (blocksize & (blocksize - 1)) != 0) {
+		log(KERN_ERR, "block size must be >= 512 and a power of 2");
 		ret=-EINVAL;
 		goto bad;
 	}
-	dev->offset=simple_strtosector(argv[2], &endp, 10);
-	if (*endp != 0) {
-		ti->error="convergent: invalid backing device offset";
-		ret=-EINVAL;
-		goto bad;
-	}
+	dev->blocksize=blocksize;
+	dev->offset=offset;
 	debug("blocksize %u, backdev %s, offset " SECTOR_FORMAT,
-				dev->blocksize, argv[1], dev->offset);
+				blocksize, devnode, offset);
 	
+	debug("Opening %s", devnode);
+	dev->chunk_bdev=open_bdev_excl(devnode, 0, dev);
+	if (IS_ERR(dev->chunk_bdev)) {
+		log(KERN_ERR, "couldn't open %s", devnode);
+		ret=PTR_ERR(dev->chunk_bdev);
+		goto bad;
+	}
+	debug("Allocating queue");
+	dev->queue=blk_alloc_queue(GFP_KERNEL);
+	if (dev->queue == NULL) {
+		log(KERN_ERR, "couldn't allocate request queue");
+		ret=-ENOMEM;
+		goto bad;
+	}
+	dev->queue->queuedata=dev;
+	blk_queue_make_request(dev->queue, convergent_make_request);
 	/* We don't want to change hardsect_size because its value is
 	   not just used by the request queue; it's exported to
 	   the filesystem code, etc.  Also, the kernel seems not to
-	   be able to handle hardsect_size > PAGE_SIZE.  Setting split_io
-	   makes sure we don't get one request spanning multiple blocks,
-	   but we still may need to do larger I/Os than what we're given */
-	/* XXX we get strange request sizes with direct I/O this way */
-	ti->split_io=dev->blocksize/512;
-	ti->limits.max_phys_segments=MAX_INPUT_SEGS;
-	/* XXX perhaps ti->table->mode? */
-	ret=dm_get_device(ti, argv[1], dev->offset, ti->len,
-				FMODE_READ|FMODE_WRITE, &dev->dmdev);
-	if (ret) {
-		ti->error="convergent: could not get backing device";
-		goto bad;
-	}
+	   be able to handle hardsect_size > PAGE_SIZE.  We use a
+	   merge function to make sure no bio spans multiple blocks.
+	   Requests still might. */
+	blk_queue_merge_bvec(dev->queue, convergent_mergeable_bvec);
+	/* XXX bounce buffer configuration */
+	blk_queue_max_phys_segments(dev->queue, MAX_INPUT_SEGS);
 	
+	debug("Allocating crypto");
 	dev->cipher=crypto_alloc_tfm("blowfish", CRYPTO_TFM_MODE_CBC);
 	dev->hash=crypto_alloc_tfm("sha1", 0);
 	/* XXX compression level hardcoded, etc.  may want to do this
 	   ourselves. */
 	dev->compress=crypto_alloc_tfm("deflate", 0);
 	if (dev->cipher == NULL || dev->hash == NULL || dev->compress == NULL) {
-		ti->error="convergent: could not allocate crypto transforms";
+		log(KERN_ERR, "could not allocate crypto transforms");
+		ret=-ENOMEM;  /* XXX? */
 		goto bad;
 	}
 	spin_lock_init(&dev->tfm_lock);
 	
+	debug("Allocating memory pools");
 	dev->page_pool=mempool_create(chunk_pages(dev) * MIN_CONCURRENT_REQS,
 				mempool_alloc_page, mempool_free_page, NULL);
-	if (dev->page_pool == NULL)
+	if (dev->page_pool == NULL) {
+		ret=-ENOMEM;
 		goto bad;
+	}
 	dev->req_cache=kmem_cache_create("convergent_requests",
 				sizeof(struct convergent_req) +
 				chunk_pages(dev) * sizeof(struct scatterlist),
 				0, 0, NULL, NULL);
-	if (dev->req_cache == NULL)
+	if (dev->req_cache == NULL) {
+		ret=-ENOMEM;
 		goto bad;
+	}
 	dev->req_pool=mempool_create(MIN_CONCURRENT_REQS, mempool_alloc_slab,
 				mempool_free_slab, dev->req_cache);
-	if (dev->req_pool == NULL)
+	if (dev->req_pool == NULL) {
+		ret=-ENOMEM;
 		goto bad;
+	}
 	
 	INIT_LIST_HEAD(&dev->freed_reqs);
 	
-	return 0;
+	debug("Allocating disk");
+	dev->gendisk=alloc_disk(MINORS);
+	if (dev->gendisk == NULL) {
+		log(KERN_ERR, "couldn't allocate gendisk");
+		ret=-ENOMEM;
+		goto bad;
+	}
+	dev->gendisk->major=blk_major;
+	dev->gendisk->first_minor=0*MINORS;  /* XXX */
+	sprintf(dev->gendisk->disk_name, "openisr");
+	dev->gendisk->fops=&convergent_ops;
+	dev->gendisk->queue=dev->queue;
+	/* This is how the BLKGETSIZE64 ioctl is implemented, but
+	   bd_inode is labeled "will die" in fs.h */
+	debug("Chunk partition capacity: %llu MB",
+				dev->chunk_bdev->bd_inode->i_size >> 20);
+	set_capacity(dev->gendisk,
+			(dev->chunk_bdev->bd_inode->i_size/512) - offset);
+	/* XXX */
+	blk_queue_hardsect_size(dev->queue, PAGE_SIZE);
+	dev->gendisk->private_data=dev;
+	debug("Adding disk");
+	add_disk(dev->gendisk);
+	
+	return dev;
 bad:
-	convergent_target_dtr(ti);
-	return ret;
+	convergent_dev_dtr(dev);
+	return ERR_PTR(ret);
 }
-
-static struct target_type convergent_target = {
-	.name =		"convergent",
-	.module =	THIS_MODULE,
-	.version =	{0,0,0}, /* XXX */
-	.ctr =		convergent_target_ctr,
-	.dtr =		convergent_target_dtr,
-	.map =		convergent_map
-};
 
 static int __init convergent_init(void)
 {
@@ -482,38 +529,53 @@ static int __init convergent_init(void)
 	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
 	
 	/* XXX do we really want a workqueue? */
-	queue=create_singlethread_workqueue("dm-convergent");
-	if (queue == NULL) {
+	workqueue=create_singlethread_workqueue("dm-convergent");
+	if (workqueue == NULL) {
 		log(KERN_ERR, "couldn't create workqueue");
 		ret=-ENOMEM;
 		goto bad1;
 	}
 	
-	ret=dm_register_target(&convergent_target);
-	if (ret) {
-		log(KERN_ERR, "convergent registration failed: %d", ret);
+	ret=register_blkdev(0, "convergent");
+	if (ret < 0) {
+		log(KERN_ERR, "block driver registration failed");
 		goto bad2;
+	}
+	blk_major=ret;
+	
+	if (device == NULL) {
+		log(KERN_ERR, "no device node specified");
+		ret=-EINVAL;
+		goto bad2;
+	}
+	debug("Constructing device");
+	gdev=convergent_dev_ctr(device, blocksize, 0);
+	if (IS_ERR(gdev)) {
+		ret=PTR_ERR(gdev);
+		goto bad3;
 	}
 	
 	return 0;
-	
+
+bad3:
+	if (unregister_blkdev(blk_major, "convergent"))
+		log(KERN_ERR, "block driver unregistration failed");
 bad2:
-	destroy_workqueue(queue);
+	destroy_workqueue(workqueue);
 bad1:
 	return ret;
 }
 
 static void __exit convergent_shutdown(void)
 {
-	int ret;
-	
 	log(KERN_INFO, "unloading");
 	
-	ret=dm_unregister_target(&convergent_target);
-	if (ret)
-		log(KERN_ERR, "convergent unregistration failed: %d", ret);
+	convergent_dev_dtr(gdev);
 	
-	destroy_workqueue(queue);
+	if (unregister_blkdev(blk_major, "convergent"))
+		log(KERN_ERR, "block driver unregistration failed");
+	
+	destroy_workqueue(workqueue);
 }
 
 module_init(convergent_init);

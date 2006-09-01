@@ -10,12 +10,10 @@ PWD := $(shell pwd)
 
 .PHONY: module
 module:
-	ln -sf $(KERNELDIR)/drivers/md/dm.h .
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
 .PHONY: clean
 clean:
-	rm -f dm.h
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
 
 # This is a hack.  The include directive forces make to always execute
