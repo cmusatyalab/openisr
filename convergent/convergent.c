@@ -15,6 +15,7 @@
 #define MAX_INPUT_SEGS 32
 #define MIN_CONCURRENT_REQS 2
 #define MINORS 16
+#define HASH_BUCKETS 128
 
 extern char *svn_branch;
 extern char *svn_revision;
@@ -40,16 +41,22 @@ struct convergent_dev {
 	kmem_cache_t *req_cache;
 	mempool_t *req_pool;
 	
+	struct list_head pending_reqs[HASH_BUCKETS];
+	spinlock_t pending_lock;
+
 	struct list_head freed_reqs;  /* XXX stupid temporary hack */
+	spinlock_t freed_lock;
 };
 
 struct convergent_req {
-	struct list_head freed_reqs;
+	struct list_head lh_bucket;
+	struct list_head lh_chained;
 	struct convergent_dev *dev;
 	struct work_struct work;
 	atomic_t completed;
 	int error;
 	unsigned isRMW; /* XXX convert to proper flag */
+	sector_t chunk;
 	struct bio *orig_bio;
 	struct scatterlist orig_sg[MAX_INPUT_SEGS];
 	/* XXX hack that lets us not manage yet another allocation */
@@ -129,6 +136,11 @@ static void free_cache_pages(struct convergent_req *req)
 		mempool_free(req->chunk_sg[i].page, req->dev->page_pool);
 }
 
+static int hash(sector_t chunk)
+{
+	return chunk % HASH_BUCKETS;
+}
+
 static void orig_bio_to_scatterlist(struct convergent_req *req)
 {
 	struct bio_vec *bvec;
@@ -205,15 +217,65 @@ static void chunk_tfm(struct convergent_req *req, int type)
 		BUG();
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	if (type == READ) {
-		ndebug("Decrypting %u bytes", nbytes);
+		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
+					nbytes, req->chunk);
 		if (crypto_cipher_decrypt(dev->cipher, sg, sg, nbytes))
 			BUG();
 	} else {
-		ndebug("Encrypting %u bytes", nbytes);
+		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
+					nbytes, req->chunk);
 		if (crypto_cipher_encrypt(dev->cipher, sg, sg, nbytes))
 			BUG();
 	}
 	spin_unlock(&dev->tfm_lock);
+}
+
+static void request_start(struct convergent_req *req)
+{
+	struct convergent_dev *dev=req->dev;
+	struct convergent_req *parent=NULL;
+	struct convergent_req *cur;
+	
+	spin_lock(&dev->pending_lock);
+	/* See if another request for this chunk is in progress */
+	list_for_each_entry(cur, &dev->pending_reqs[hash(req->chunk)],
+				lh_bucket) {
+		if (cur->chunk == req->chunk) {
+			parent=cur;
+			break;
+		}
+	}
+	if (parent == NULL) {
+		ndebug("Starting request for chunk " SECTOR_FORMAT,
+					req->chunk);
+		list_add_tail(&req->lh_bucket,
+				&dev->pending_reqs[hash(req->chunk)]);
+		queue_work(workqueue, &req->work);
+	} else {
+		list_add_tail(&req->lh_chained, &parent->lh_chained);
+	}
+	spin_unlock(&dev->pending_lock);
+}
+
+static void request_end(struct convergent_req *req)
+{
+	struct convergent_dev *dev=req->dev;
+	struct convergent_req *child;
+	
+	ndebug("Ending request for chunk " SECTOR_FORMAT, req->chunk);
+	spin_lock(&dev->pending_lock);
+	list_del_init(&req->lh_bucket);
+	if (!list_empty(&req->lh_chained)) {
+		ndebug("Retrieving request for chunk " SECTOR_FORMAT,
+					req->chunk);
+		child=list_entry(req->lh_chained.next, struct convergent_req,
+					lh_chained);
+		list_del(&req->lh_chained);
+		list_add_tail(&child->lh_bucket,
+				&dev->pending_reqs[hash(child->chunk)]);
+		queue_work(workqueue, &child->work);
+	}
+	spin_unlock(&dev->pending_lock);
 }
 
 /* XXX see if there's a better place to break the prototype cycle */
@@ -243,10 +305,14 @@ static void convergent_callback2(void* data)
 	}
 out:
 	free_cache_pages(req);
-	ndebug("Submitting original bio");
+	ndebug("Submitting original bio, %u bytes, chunk "SECTOR_FORMAT,
+				req->orig_bio->bi_size, req->chunk);
 	bio_endio(req->orig_bio, req->orig_bio->bi_size, req->error);
+	request_end(req);
 	/* XXX temporary hack to free the req before shutting down */
-	list_add(&req->freed_reqs, &req->dev->freed_reqs);
+	spin_lock(&req->dev->freed_lock);
+	list_add(&req->lh_bucket, &req->dev->freed_reqs);
+	spin_unlock(&req->dev->freed_lock);
 }
 
 static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
@@ -259,7 +325,7 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 		req->error=error;
 	}
 	completed=atomic_add_return(nbytes, &req->completed);
-	debug("Clone bio completion: %u bytes, total now %u; err %d",
+	ndebug("Clone bio completion: %u bytes, total now %u; err %d",
 				nbytes, completed, error);
 	/* Can't call BUG() in interrupt */
 	WARN_ON(completed > req->dev->blocksize);
@@ -287,7 +353,7 @@ static struct bio *bio_create(struct convergent_req *req, int dir,
 	bio->bi_bdev=req->dev->chunk_bdev;
 	bio->bi_sector=chunk_start(req->dev, req->orig_bio->bi_sector)
 				+ req->dev->offset + offset;
-	debug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
+	ndebug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
 	bio->bi_rw=dir;
 	bio_set_prio(bio, bio_prio(req->orig_bio));
 	bio->bi_end_io=convergent_bio_callback;
@@ -320,7 +386,9 @@ static void issue_chunk_io(struct convergent_req *req, int dir)
 					req->chunk_sg[i].length,
 					req->chunk_sg[i].offset)) {
 			offset += req->chunk_sg[i].length;
+			i++;
 		} else {
+			debug("Submitting multiple bios");
 			generic_make_request(bio);
 			bio=NULL;
 		}
@@ -356,7 +424,6 @@ static void convergent_callback1(void* data)
 			chunk_tfm(req, WRITE);
 			issue_chunk_io(req, WRITE);
 		} else {
-			/* XXX we have WAR problems here */
 			/* Partial chunk; need read-modify-write */
 			req->isRMW=1;
 			issue_chunk_io(req, READ);
@@ -366,6 +433,8 @@ static void convergent_callback1(void* data)
 	}
 	return;
 bad:
+	/* XXX fix */
+	BUG();
 	bio_endio(req->orig_bio, req->orig_bio->bi_size, -ENOMEM);
 }
 
@@ -376,7 +445,7 @@ static int convergent_make_request(request_queue_t *q, struct bio *bio)
 	
 	BUG_ON(bio_segments(bio) > MAX_INPUT_SEGS);
 	
-	debug("make_request called, request: %u bytes at sector "SECTOR_FORMAT,
+	ndebug("make_request called, request: %u bytes at sector "SECTOR_FORMAT,
 				bio->bi_size, bio->bi_sector);
 	req=mempool_alloc(dev->req_pool, GFP_NOIO);
 	if (req == NULL)
@@ -385,10 +454,15 @@ static int convergent_make_request(request_queue_t *q, struct bio *bio)
 	req->orig_bio=bio;
 	req->error=0;
 	req->isRMW=0;
+	/* XXX not CONFIG_LBD safe */
+	/* XXX don't reach into orig_bio? */
+	req->chunk=req->orig_bio->bi_sector/chunk_sectors(dev);
 	atomic_set(&req->completed, 0);
-	INIT_LIST_HEAD(&req->freed_reqs);
+	INIT_LIST_HEAD(&req->lh_bucket);
+	INIT_LIST_HEAD(&req->lh_chained);
+	
 	INIT_WORK(&req->work, convergent_callback1, req);
-	queue_work(workqueue, &req->work);
+	request_start(req);
 	return 0;
 }
 
@@ -415,14 +489,17 @@ static int convergent_mergeable_bvec(request_queue_t *q, struct bio *bio,
 static void convergent_dev_dtr(struct convergent_dev *dev)
 {
 	debug("Dtr called");
+	/* XXX racy? */
 	if (dev->gendisk)
 		del_gendisk(dev->gendisk);
 	if (dev->req_pool) {
 		struct convergent_req *req;
 		struct convergent_req *next;
 		list_for_each_entry_safe(req, next, &dev->freed_reqs,
-					freed_reqs)
+					lh_bucket) {
+			list_del(&req->lh_bucket);
 			mempool_free(req, dev->req_pool);
+		}
 		mempool_destroy(dev->req_pool);
 	}
 	if (dev->req_cache)
@@ -454,6 +531,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	struct convergent_dev *dev;
 	sector_t capacity;
 	int ret;
+	int i;
 	
 	debug("Ctr starting");
 	dev=kzalloc(sizeof(*dev), GFP_KERNEL);
@@ -532,7 +610,11 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 		goto bad;
 	}
 	
+	for (i=0; i<HASH_BUCKETS; i++)
+		INIT_LIST_HEAD(&dev->pending_reqs[i]);
+	spin_lock_init(&dev->pending_lock);
 	INIT_LIST_HEAD(&dev->freed_reqs);
+	spin_lock_init(&dev->freed_lock);
 	
 	ndebug("Allocating disk");
 	dev->gendisk=alloc_disk(MINORS);
@@ -553,7 +635,6 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	/* XXX use chunk_start */
 	capacity=((dev->chunk_bdev->bd_inode->i_size - (512 * offset))
 				& ~(loff_t)(blocksize - 1)) / 512;
-	debug("Chunk partition capacity: " SECTOR_FORMAT " sectors", capacity);
 	debug("Chunk partition capacity: " SECTOR_FORMAT " MB", capacity >> 11);
 	set_capacity(dev->gendisk, capacity);
 	dev->gendisk->private_data=dev;
@@ -593,7 +674,7 @@ static int __init convergent_init(void)
 		ret=-EINVAL;
 		goto bad2;
 	}
-	debug("Constructing device");
+	ndebug("Constructing device");
 	gdev=convergent_dev_ctr(device, blocksize, 0);
 	if (IS_ERR(gdev)) {
 		ret=PTR_ERR(gdev);
