@@ -19,13 +19,15 @@
 extern char *svn_branch;
 extern char *svn_revision;
 
-#define chunk_sectors(dev) ((dev)->blocksize/512)
+#define chunk_sectors(dev) ((sector_t)(dev)->blocksize/512)
 #define chunk_pages(dev) (((dev)->blocksize+PAGE_SIZE-1)/PAGE_SIZE)
+#define chunk_start(dev, sect) (sect & ~(chunk_sectors(dev) - 1))
 struct convergent_dev {
 	struct gendisk *gendisk;
 	request_queue_t *queue;
 	struct block_device *chunk_bdev;
 	
+	/* XXX rename to chunksize */
 	unsigned blocksize;
 	sector_t offset;
 	
@@ -47,6 +49,7 @@ struct convergent_req {
 	struct work_struct work;
 	atomic_t completed;
 	int error;
+	unsigned isRMW; /* XXX convert to proper flag */
 	struct bio *orig_bio;
 	struct scatterlist orig_sg[MAX_INPUT_SEGS];
 	/* XXX hack that lets us not manage yet another allocation */
@@ -143,88 +146,104 @@ static void orig_bio_to_scatterlist(struct convergent_req *req)
 
 /* supports high memory pages */
 /* non-atomic */
-static void scatterlist_copy(struct scatterlist *src,
-			struct scatterlist *dst, unsigned nbytes)
+static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
+			unsigned soffset, unsigned doffset, unsigned len)
 {
 	void *sbuf, *dbuf;
 	unsigned sleft, dleft;
-	unsigned copied=0;
 	unsigned bytesThisRound;
 	
-	ndebug("Copying scatterlist");
-	sbuf=kmap(src->page)+src->offset;
-	sleft=src->length;
-	dbuf=kmap(dst->page)+dst->offset;
-	dleft=dst->length;
-	while (copied < nbytes) {
+	while (soffset >= src->length) {
+		soffset -= src->length;
+		src++;
+	}
+	sleft=src->length - soffset;
+	sbuf=kmap(src->page) + src->offset + soffset;
+	
+	while (doffset >= dst->length) {
+		doffset -= dst->length;
+		dst++;
+	}
+	dleft=dst->length - doffset;
+	dbuf=kmap(dst->page) + dst->offset + doffset;
+	
+	while (len) {
 		if (sleft == 0) {
 			kunmap(src->page);
 			src++;
-			sbuf=kmap(src->page)+src->offset;
+			sbuf=kmap(src->page) + src->offset;
 			sleft=src->length;
 		}
 		if (dleft == 0) {
 			kunmap(dst->page);
 			dst++;
-			dbuf=kmap(dst->page)+dst->offset;
+			dbuf=kmap(dst->page) + dst->offset;
 			dleft=dst->length;
 		}
 		bytesThisRound=min(sleft, dleft);
 		memcpy(dbuf, sbuf, bytesThisRound);
-		copied += bytesThisRound;
+		len -= bytesThisRound;
+		sleft -= bytesThisRound;
+		dleft -= bytesThisRound;
+		sbuf += bytesThisRound;
+		dbuf += bytesThisRound;
 	}
 	kunmap(src->page);
 	kunmap(dst->page);
 }
 
-static void request_tfm(struct convergent_req *req, int type)
+static void chunk_tfm(struct convergent_req *req, int type)
 {
 	struct convergent_dev *dev=req->dev;
-	struct scatterlist *src;
-	struct scatterlist *dst;
-	unsigned nbytes;
-	int decrypt;
+	struct scatterlist *sg=req->chunk_sg;
+	unsigned nbytes=dev->blocksize;
 	char iv[8]={0};
 	
-	if (type == READ) {
-		src=req->chunk_sg;
-		dst=req->orig_sg;
-		decrypt=1;
-	} else {
-		src=req->orig_sg;
-		dst=req->chunk_sg;
-		decrypt=0;
-	}
-	nbytes=req->orig_bio->bi_size;
-	
-	debug("Performing %s on %u bytes", decrypt ? "decrypt" : "encrypt",
-				nbytes);
 	spin_lock(&dev->tfm_lock);
 	/* XXX */
 	if (crypto_cipher_setkey(dev->cipher, "asdf", 4))
 		BUG();
-	/* XXX wrong: doesn't reset the IV each block */
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
-	if (decrypt) {
-		if (crypto_cipher_decrypt(dev->cipher, dst, src, nbytes))
+	if (type == READ) {
+		ndebug("Decrypting %u bytes", nbytes);
+		if (crypto_cipher_decrypt(dev->cipher, sg, sg, nbytes))
 			BUG();
-	}
-	else {
-		if (crypto_cipher_encrypt(dev->cipher, dst, src, nbytes))
+	} else {
+		ndebug("Encrypting %u bytes", nbytes);
+		if (crypto_cipher_encrypt(dev->cipher, sg, sg, nbytes))
 			BUG();
 	}
 	spin_unlock(&dev->tfm_lock);
 }
 
+/* XXX see if there's a better place to break the prototype cycle */
+static void issue_chunk_io(struct convergent_req *req, int dir);
 static void convergent_callback2(void* data)
 {
 	struct convergent_req *req=data;
 	
-	/* newbio not valid */
-	if (!req->error && bio_data_dir(req->orig_bio) == READ)
-		request_tfm(req, READ);
+	if (req->error)
+		goto out;
+	if (bio_data_dir(req->orig_bio) == READ) {
+		chunk_tfm(req, READ);
+		scatterlist_copy(req->chunk_sg, req->orig_sg, 512 *
+			(req->orig_bio->bi_sector % chunk_sectors(req->dev)),
+			0, req->orig_bio->bi_size);
+	} else if (req->isRMW) {
+		req->isRMW=0;
+		atomic_set(&req->completed, 0);
+		chunk_tfm(req, READ);
+		scatterlist_copy(req->orig_sg, req->chunk_sg, 0, 512 *
+			(req->orig_bio->bi_sector % chunk_sectors(req->dev)),
+			req->orig_bio->bi_size);
+		chunk_tfm(req, WRITE);
+		issue_chunk_io(req, WRITE);
+		/* We're not done yet! */
+		return;
+	}
+out:
 	free_cache_pages(req);
-	debug("Submitting original bio");
+	ndebug("Submitting original bio");
 	bio_endio(req->orig_bio, req->orig_bio->bi_size, req->error);
 	/* XXX temporary hack to free the req before shutting down */
 	list_add(&req->freed_reqs, &req->dev->freed_reqs);
@@ -243,8 +262,8 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 	debug("Clone bio completion: %u bytes, total now %u; err %d",
 				nbytes, completed, error);
 	/* Can't call BUG() in interrupt */
-	WARN_ON(completed > req->orig_bio->bi_size);
-	if (completed >= req->orig_bio->bi_size) {
+	WARN_ON(completed > req->dev->blocksize);
+	if (completed >= req->dev->blocksize) {
 		/* XXX make sure it's not still running? */
 		ndebug("Queueing postprocessing callback on request %p", req);
 		PREPARE_WORK(&req->work, convergent_callback2, req);
@@ -254,7 +273,8 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 }
 
 /* non-atomic */
-static struct bio *bio_create(struct convergent_req *req, unsigned offset)
+static struct bio *bio_create(struct convergent_req *req, int dir,
+			unsigned offset)
 {
 	struct bio *bio;
 
@@ -265,8 +285,11 @@ static struct bio *bio_create(struct convergent_req *req, unsigned offset)
 		return NULL;
 
 	bio->bi_bdev=req->dev->chunk_bdev;
-	bio->bi_sector=req->orig_bio->bi_sector + req->dev->offset + offset;
-	bio->bi_rw=req->orig_bio->bi_rw;  /* XXX */
+	bio->bi_sector=chunk_start(req->dev, req->orig_bio->bi_sector)
+				+ req->dev->offset + offset;
+	debug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
+	bio->bi_rw=dir;
+	bio_set_prio(bio, bio_prio(req->orig_bio));
 	bio->bi_end_io=convergent_bio_callback;
 	bio->bi_private=req;
 	return bio;
@@ -275,7 +298,7 @@ static struct bio *bio_create(struct convergent_req *req, unsigned offset)
 /* XXX need to allocate from separate mempool to avoid deadlock if the pool
        empties */
 /* XXX need read-modify-write for chunk sizes > 4K */
-static void issue_chunk_io(struct convergent_req *req)
+static void issue_chunk_io(struct convergent_req *req, int dir)
 {
 	struct bio *bio=NULL;
 	unsigned nbytes=req->dev->blocksize;
@@ -289,7 +312,7 @@ static void issue_chunk_io(struct convergent_req *req)
 	   device */
 	while (offset < nbytes) {
 		if (bio == NULL) {
-			bio=bio_create(req, offset/512);
+			bio=bio_create(req, dir, offset/512);
 			if (bio == NULL)
 				goto bad;
 		}
@@ -324,9 +347,23 @@ static void convergent_callback1(void* data)
 	if (alloc_cache_pages(req))
 		goto bad;
 	orig_bio_to_scatterlist(req);
-	if (bio_data_dir(req->orig_bio) == WRITE)
-		request_tfm(req, WRITE);
-	issue_chunk_io(req);
+	if (bio_data_dir(req->orig_bio) == WRITE) {
+		/* XXX make sure bio doesn't cross chunk boundary */
+		if (req->orig_bio->bi_size == req->dev->blocksize) {
+			/* Whole chunk */
+			scatterlist_copy(req->orig_sg, req->chunk_sg,
+					0, 0, req->orig_bio->bi_size);
+			chunk_tfm(req, WRITE);
+			issue_chunk_io(req, WRITE);
+		} else {
+			/* XXX we have WAR problems here */
+			/* Partial chunk; need read-modify-write */
+			req->isRMW=1;
+			issue_chunk_io(req, READ);
+		}
+	} else {
+		issue_chunk_io(req, READ);
+	}
 	return;
 bad:
 	bio_endio(req->orig_bio, req->orig_bio->bi_size, -ENOMEM);
@@ -347,6 +384,7 @@ static int convergent_make_request(request_queue_t *q, struct bio *bio)
 	req->dev=dev;
 	req->orig_bio=bio;
 	req->error=0;
+	req->isRMW=0;
 	atomic_set(&req->completed, 0);
 	INIT_LIST_HEAD(&req->freed_reqs);
 	INIT_WORK(&req->work, convergent_callback1, req);
@@ -363,6 +401,7 @@ static int convergent_mergeable_bvec(request_queue_t *q, struct bio *bio,
 	unsigned allowable;
 	
 	/* XXX constructs like these should probably be using masks */
+	/* XXX chunk_start */
 	boundary=(bio->bi_sector + chunk_sectors(dev) - 1)/chunk_sectors(dev);
 	allowable=(boundary - bio->bi_sector) * 512;
 	/* XXX */
@@ -413,6 +452,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 			unsigned blocksize, sector_t offset)
 {
 	struct convergent_dev *dev;
+	sector_t capacity;
 	int ret;
 	
 	debug("Ctr starting");
@@ -437,7 +477,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 		ret=PTR_ERR(dev->chunk_bdev);
 		goto bad;
 	}
-	debug("Allocating queue");
+	ndebug("Allocating queue");
 	dev->queue=blk_alloc_queue(GFP_KERNEL);
 	if (dev->queue == NULL) {
 		log(KERN_ERR, "couldn't allocate request queue");
@@ -456,11 +496,12 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	/* XXX bounce buffer configuration */
 	blk_queue_max_phys_segments(dev->queue, MAX_INPUT_SEGS);
 	
-	debug("Allocating crypto");
+	ndebug("Allocating crypto");
 	dev->cipher=crypto_alloc_tfm("blowfish", CRYPTO_TFM_MODE_CBC);
 	dev->hash=crypto_alloc_tfm("sha1", 0);
 	/* XXX compression level hardcoded, etc.  may want to do this
-	   ourselves. */
+	   ourselves, especially since the compression mutators aren't
+	   actually scatterlist-based. */
 	dev->compress=crypto_alloc_tfm("deflate", 0);
 	if (dev->cipher == NULL || dev->hash == NULL || dev->compress == NULL) {
 		log(KERN_ERR, "could not allocate crypto transforms");
@@ -469,7 +510,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	}
 	spin_lock_init(&dev->tfm_lock);
 	
-	debug("Allocating memory pools");
+	ndebug("Allocating memory pools");
 	dev->page_pool=mempool_create(chunk_pages(dev) * MIN_CONCURRENT_REQS,
 				mempool_alloc_page, mempool_free_page, NULL);
 	if (dev->page_pool == NULL) {
@@ -493,7 +534,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	
 	INIT_LIST_HEAD(&dev->freed_reqs);
 	
-	debug("Allocating disk");
+	ndebug("Allocating disk");
 	dev->gendisk=alloc_disk(MINORS);
 	if (dev->gendisk == NULL) {
 		log(KERN_ERR, "couldn't allocate gendisk");
@@ -507,14 +548,16 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	dev->gendisk->queue=dev->queue;
 	/* This is how the BLKGETSIZE64 ioctl is implemented, but
 	   bd_inode is labeled "will die" in fs.h */
-	debug("Chunk partition capacity: %llu MB",
-				dev->chunk_bdev->bd_inode->i_size >> 20);
-	set_capacity(dev->gendisk,
-			(dev->chunk_bdev->bd_inode->i_size/512) - offset);
-	/* XXX */
-	blk_queue_hardsect_size(dev->queue, PAGE_SIZE);
+	/* Make sure the capacity, after offset adjustment, is a multiple
+	   of the blocksize */
+	/* XXX use chunk_start */
+	capacity=((dev->chunk_bdev->bd_inode->i_size - (512 * offset))
+				& ~(loff_t)(blocksize - 1)) / 512;
+	debug("Chunk partition capacity: " SECTOR_FORMAT " sectors", capacity);
+	debug("Chunk partition capacity: " SECTOR_FORMAT " MB", capacity >> 11);
+	set_capacity(dev->gendisk, capacity);
 	dev->gendisk->private_data=dev;
-	debug("Adding disk");
+	ndebug("Adding disk");
 	add_disk(dev->gendisk);
 	
 	return dev;
@@ -527,6 +570,7 @@ static int __init convergent_init(void)
 {
 	int ret;
 	
+	debug("===================================================");
 	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
 	
 	/* XXX do we really want a workqueue? */
