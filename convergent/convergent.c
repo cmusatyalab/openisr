@@ -48,6 +48,8 @@ struct convergent_dev {
 	spinlock_t freed_lock;
 };
 
+#define REQ_RMW    0x00000001  /* Is in the read phase of read-modify-write */
+
 struct convergent_req {
 	struct list_head lh_bucket;
 	struct list_head lh_chained;
@@ -55,7 +57,7 @@ struct convergent_req {
 	struct work_struct work;
 	atomic_t completed;
 	int error;
-	unsigned isRMW; /* XXX convert to proper flag */
+	unsigned flags;
 	sector_t chunk;
 	struct bio *orig_bio;
 	struct scatterlist orig_sg[MAX_INPUT_SEGS];
@@ -100,7 +102,6 @@ static void mempool_free_page(void *page, void *unused)
 
 /* XXX might want to support high memory pages.  on the other hand, those
    might force bounce buffering */
-/* non-atomic */
 static int alloc_cache_pages(struct convergent_req *req)
 {
 	int i;
@@ -108,6 +109,7 @@ static int alloc_cache_pages(struct convergent_req *req)
 	unsigned residual;
 	struct scatterlist *sg=NULL;  /* initialization to avoid warning */
 	
+	might_sleep();
 	for (i=0; i<npages; i++) {
 		sg=&req->chunk_sg[i];
 		sg->page=mempool_alloc(req->dev->page_pool, GFP_NOIO);
@@ -157,7 +159,6 @@ static void orig_bio_to_scatterlist(struct convergent_req *req)
 }
 
 /* supports high memory pages */
-/* non-atomic */
 static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 			unsigned soffset, unsigned doffset, unsigned len)
 {
@@ -165,6 +166,7 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	unsigned sleft, dleft;
 	unsigned bytesThisRound;
 	
+	might_sleep();
 	while (soffset >= src->length) {
 		soffset -= src->length;
 		src++;
@@ -291,8 +293,8 @@ static void convergent_callback2(void* data)
 		scatterlist_copy(req->chunk_sg, req->orig_sg, 512 *
 			(req->orig_bio->bi_sector % chunk_sectors(req->dev)),
 			0, req->orig_bio->bi_size);
-	} else if (req->isRMW) {
-		req->isRMW=0;
+	} else if (req->flags & REQ_RMW) {
+		req->flags &= ~REQ_RMW;
 		atomic_set(&req->completed, 0);
 		chunk_tfm(req, READ);
 		scatterlist_copy(req->orig_sg, req->chunk_sg, 0, 512 *
@@ -309,12 +311,15 @@ out:
 				req->orig_bio->bi_size, req->chunk);
 	bio_endio(req->orig_bio, req->orig_bio->bi_size, req->error);
 	request_end(req);
-	/* XXX temporary hack to free the req before shutting down */
+	/* XXX temporary hack to free the req before shutting down.
+	   this can go away if we stay with workqueues, but if we use
+	   tasklets we'll need to come by later and kill the tasklet. */
 	spin_lock(&req->dev->freed_lock);
 	list_add(&req->lh_bucket, &req->dev->freed_reqs);
 	spin_unlock(&req->dev->freed_lock);
 }
 
+/* May be called from interrupt context */
 static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 			int error)
 {
@@ -338,12 +343,12 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 	return 0;
 }
 
-/* non-atomic */
 static struct bio *bio_create(struct convergent_req *req, int dir,
 			unsigned offset)
 {
 	struct bio *bio;
 
+	might_sleep();
 	/* XXX use bio_set */
 	/* XXX could alloc smaller bios if we're looping */
 	bio=bio_alloc(GFP_NOIO, chunk_pages(req->dev));
@@ -363,7 +368,6 @@ static struct bio *bio_create(struct convergent_req *req, int dir,
 
 /* XXX need to allocate from separate mempool to avoid deadlock if the pool
        empties */
-/* XXX need read-modify-write for chunk sizes > 4K */
 static void issue_chunk_io(struct convergent_req *req, int dir)
 {
 	struct bio *bio=NULL;
@@ -411,7 +415,6 @@ static void convergent_callback1(void* data)
 {
 	struct convergent_req *req=data;
 	
-	/* XXX need to do read-modify-write for large blocks */
 	if (alloc_cache_pages(req))
 		goto bad;
 	orig_bio_to_scatterlist(req);
@@ -425,7 +428,7 @@ static void convergent_callback1(void* data)
 			issue_chunk_io(req, WRITE);
 		} else {
 			/* Partial chunk; need read-modify-write */
-			req->isRMW=1;
+			req->flags |= REQ_RMW;
 			issue_chunk_io(req, READ);
 		}
 	} else {
@@ -453,7 +456,7 @@ static int convergent_make_request(request_queue_t *q, struct bio *bio)
 	req->dev=dev;
 	req->orig_bio=bio;
 	req->error=0;
-	req->isRMW=0;
+	req->flags=0;
 	/* XXX not CONFIG_LBD safe */
 	/* XXX don't reach into orig_bio? */
 	req->chunk=req->orig_bio->bi_sector/chunk_sectors(dev);
@@ -524,7 +527,6 @@ static struct block_device_operations convergent_ops = {
 	.owner =	THIS_MODULE
 };
 
-/* argument format: blocksize backdev backdevoffset */
 static struct convergent_dev *convergent_dev_ctr(char *devnode,
 			unsigned blocksize, sector_t offset)
 {
@@ -595,6 +597,8 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 		ret=-ENOMEM;
 		goto bad;
 	}
+	/* XXX need different cache name for each device; need kstrdup
+	   or somesuch, since cache system doesn't copy the string */
 	dev->req_cache=kmem_cache_create(MODULE_NAME "-requests",
 				sizeof(struct convergent_req) +
 				chunk_pages(dev) * sizeof(struct scatterlist),
