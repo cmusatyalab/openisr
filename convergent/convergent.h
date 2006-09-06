@@ -23,6 +23,7 @@ struct convergent_dev {
 	struct crypto_tfm *compress;
 	spinlock_t tfm_lock;
 	
+	/* XXX make this a global object? */
 	mempool_t *page_pool;
 	kmem_cache_t *req_cache;
 	mempool_t *req_pool;

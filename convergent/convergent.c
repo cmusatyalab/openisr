@@ -12,6 +12,7 @@
 #include "convergent.h"
 
 static struct workqueue_struct *workqueue;
+struct bio_set *bio_pool;
 static int blk_major;
 /* XXX until we get a management interface */
 static char *device=NULL;
@@ -28,6 +29,11 @@ static void *mempool_alloc_page(gfp_t gfp_mask, void *unused)
 static void mempool_free_page(void *page, void *unused)
 {
 	__free_page(page);
+}
+
+static void bio_destructor(struct bio *bio)
+{
+	bio_free(bio, bio_pool);
 }
 
 /* XXX might want to support high memory pages.  on the other hand, those
@@ -277,9 +283,8 @@ static struct bio *bio_create(struct convergent_req *req, int dir,
 	struct bio *bio;
 
 	might_sleep();
-	/* XXX use bio_set */
 	/* XXX could alloc smaller bios if we're looping */
-	bio=bio_alloc(GFP_NOIO, chunk_pages(req->dev));
+	bio=bio_alloc_bioset(GFP_NOIO, chunk_pages(req->dev), bio_pool);
 	if (bio == NULL)
 		return NULL;
 
@@ -291,11 +296,10 @@ static struct bio *bio_create(struct convergent_req *req, int dir,
 	bio_set_prio(bio, bio_prio(req->orig_bio));
 	bio->bi_end_io=convergent_bio_callback;
 	bio->bi_private=req;
+	bio->bi_destructor=bio_destructor;
 	return bio;
 }
 
-/* XXX need to allocate from separate mempool to avoid deadlock if the pool
-       empties */
 static void issue_chunk_io(struct convergent_req *req, int dir)
 {
 	struct bio *bio=NULL;
@@ -578,30 +582,47 @@ static int __init convergent_init(void)
 		goto bad1;
 	}
 	
+	/* The second and third parameters are dependent on the contents
+	   of bvec_slabs[] in fs/bio.c, and on the chunk size.  Better too
+	   high than too low. */
+	/* XXX reduce a bit? */
+	/* XXX a global pool means that layering convergent on top of
+	   convergent could result in deadlocks.  we may want to prevent
+	   this in the registration interface. */
+	bio_pool=bioset_create(4 * MIN_CONCURRENT_REQS,
+				4 * MIN_CONCURRENT_REQS, 4);
+	if (bio_pool == NULL) {
+		log(KERN_ERR, "couldn't create bioset");
+		ret=-ENOMEM;
+		goto bad2;
+	}
+
 	ret=register_blkdev(0, MODULE_NAME);
 	if (ret < 0) {
 		log(KERN_ERR, "block driver registration failed");
-		goto bad2;
+		goto bad3;
 	}
 	blk_major=ret;
 	
 	if (device == NULL) {
 		log(KERN_ERR, "no device node specified");
 		ret=-EINVAL;
-		goto bad2;
+		goto bad4;
 	}
 	ndebug("Constructing device");
 	gdev=convergent_dev_ctr(device, chunksize, 0);
 	if (IS_ERR(gdev)) {
 		ret=PTR_ERR(gdev);
-		goto bad3;
+		goto bad4;
 	}
 	
 	return 0;
 
-bad3:
+bad4:
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
+bad3:
+	bioset_free(bio_pool);
 bad2:
 	destroy_workqueue(workqueue);
 bad1:
@@ -616,6 +637,8 @@ static void __exit convergent_shutdown(void)
 	
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
+	
+	bioset_free(bio_pool);
 	
 	destroy_workqueue(workqueue);
 }
