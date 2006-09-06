@@ -8,10 +8,10 @@
 #include <linux/fs.h>
 #include <linux/crypto.h>
 #include <linux/mempool.h>
-#include <linux/workqueue.h>
+#include <linux/interrupt.h>
+#include <linux/timer.h>
 #include "convergent.h"
 
-static struct workqueue_struct *workqueue;
 struct bio_set *bio_pool;
 static int blk_major;
 /* XXX until we get a management interface */
@@ -34,6 +34,24 @@ static void mempool_free_page(void *page, void *unused)
 static void bio_destructor(struct bio *bio)
 {
 	bio_free(bio, bio_pool);
+}
+
+static void request_cleaner(unsigned long data)
+{
+	struct convergent_dev *dev=(void*)data;
+	struct convergent_req *req;
+	struct convergent_req *next;
+	
+	spin_lock(&dev->freed_lock);
+	list_for_each_entry_safe(req, next, &dev->freed_reqs, lh_bucket) {
+		list_del(&req->lh_bucket);
+		/* Wait for the tasklet to finish if it hasn't already */
+		tasklet_disable(&req->callback);
+		mempool_free(req, req->dev->req_pool);
+	}
+	spin_unlock(&dev->freed_lock);
+	if (!(dev->flags & DEV_KILLCLEANER))
+		mod_timer(&dev->cleaner, jiffies + CLEANER_SWEEP);
 }
 
 /* XXX might want to support high memory pages.  on the other hand, those
@@ -201,7 +219,6 @@ static struct bio *bio_create(struct convergent_req *req, int dir,
 	return bio;
 }
 
-static void convergent_callback2(void* data);  /* XXX */
 static void issue_chunk_io(struct convergent_req *req, int dir)
 {
 	struct bio *bio=NULL;
@@ -240,8 +257,7 @@ bad:
 	req->error=-ENOMEM;
 	if (atomic_add_return(nbytes-offset, &req->completed) == nbytes) {
 		ndebug("Queueing postprocessing callback on request %p", req);
-		INIT_WORK(&req->work, convergent_callback2, req);
-		queue_work(workqueue, &req->work);
+		tasklet_schedule(&req->callback);
 	}
 }
 
@@ -305,9 +321,9 @@ static void request_end(struct convergent_req *req)
 	}
 }
 
-static void convergent_callback2(void* data)
+static void convergent_callback2(unsigned long data)
 {
-	struct convergent_req *req=data;
+	struct convergent_req *req=(void*)data;
 	
 	if (req->error)
 		goto out;
@@ -334,10 +350,10 @@ out:
 				req->orig_bio->bi_size, req->chunk);
 	bio_endio(req->orig_bio, req->orig_bio->bi_size, req->error);
 	request_end(req);
-	/* XXX this is safe for workqueues.  if we switch to tasklets,
-	   we'll need to add the req to a freed-req list that we clean
-	   out periodically */
-	mempool_free(req, req->dev->req_pool);
+	/* Schedule the request to be freed the next time the cleaner runs */
+	spin_lock(&req->dev->freed_lock);
+	list_add_tail(&req->lh_bucket, &req->dev->freed_reqs);
+	spin_unlock(&req->dev->freed_lock);
 }
 
 /* May be called from interrupt context */
@@ -356,10 +372,8 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 	/* Can't call BUG() in interrupt */
 	WARN_ON(completed > req->dev->chunksize);
 	if (completed >= req->dev->chunksize) {
-		/* XXX make sure it's not still running? */
 		ndebug("Queueing postprocessing callback on request %p", req);
-		INIT_WORK(&req->work, convergent_callback2, req);
-		queue_work(workqueue, &req->work);
+		tasklet_schedule(&req->callback);
 	}
 	return 0;
 }
@@ -414,6 +428,7 @@ static int convergent_make_request(request_queue_t *q, struct bio *bio)
 	atomic_set(&req->completed, 0);
 	INIT_LIST_HEAD(&req->lh_bucket);
 	INIT_LIST_HEAD(&req->lh_chained);
+	tasklet_init(&req->callback, convergent_callback2, (unsigned long)req);
 	
 	if (request_start(req))
 		convergent_callback1(req);
@@ -443,6 +458,10 @@ static void convergent_dev_dtr(struct convergent_dev *dev)
 	/* XXX racy? */
 	if (dev->gendisk)
 		del_gendisk(dev->gendisk);
+	dev->flags |= DEV_KILLCLEANER;
+	/* Since the gendisk is gone, the last run of the cleaner should
+	   clear out everything */
+	del_timer_sync(&dev->cleaner);
 	if (dev->req_pool)
 		mempool_destroy(dev->req_pool);
 	if (dev->req_cache)
@@ -479,6 +498,18 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	dev=kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (dev == NULL)
 		return ERR_PTR(-ENOMEM);
+	
+	for (i=0; i<HASH_BUCKETS; i++)
+		INIT_LIST_HEAD(&dev->pending_reqs[i]);
+	spin_lock_init(&dev->pending_lock);
+	
+	INIT_LIST_HEAD(&dev->freed_reqs);
+	spin_lock_init(&dev->freed_lock);
+	init_timer(&dev->cleaner);
+	dev->cleaner.function=request_cleaner;
+	dev->cleaner.data=(unsigned long)dev;
+	dev->cleaner.expires=jiffies + CLEANER_SWEEP;
+	add_timer(&dev->cleaner);
 	
 	if (chunksize < 512 || (chunksize & (chunksize - 1)) != 0) {
 		log(KERN_ERR, "chunk size must be >= 512 and a power of 2");
@@ -554,10 +585,6 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 		goto bad;
 	}
 	
-	for (i=0; i<HASH_BUCKETS; i++)
-		INIT_LIST_HEAD(&dev->pending_reqs[i]);
-	spin_lock_init(&dev->pending_lock);
-	
 	ndebug("Allocating disk");
 	dev->gendisk=alloc_disk(MINORS);
 	if (dev->gendisk == NULL) {
@@ -595,14 +622,6 @@ static int __init convergent_init(void)
 	debug("===================================================");
 	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
 	
-	/* XXX do we really want a workqueue? */
-	workqueue=create_singlethread_workqueue(MODULE_NAME);
-	if (workqueue == NULL) {
-		log(KERN_ERR, "couldn't create workqueue");
-		ret=-ENOMEM;
-		goto bad1;
-	}
-	
 	/* The second and third parameters are dependent on the contents
 	   of bvec_slabs[] in fs/bio.c, and on the chunk size.  Better too
 	   high than too low. */
@@ -615,37 +634,35 @@ static int __init convergent_init(void)
 	if (bio_pool == NULL) {
 		log(KERN_ERR, "couldn't create bioset");
 		ret=-ENOMEM;
-		goto bad2;
+		goto bad1;
 	}
 
 	ret=register_blkdev(0, MODULE_NAME);
 	if (ret < 0) {
 		log(KERN_ERR, "block driver registration failed");
-		goto bad3;
+		goto bad2;
 	}
 	blk_major=ret;
 	
 	if (device == NULL) {
 		log(KERN_ERR, "no device node specified");
 		ret=-EINVAL;
-		goto bad4;
+		goto bad3;
 	}
 	ndebug("Constructing device");
 	gdev=convergent_dev_ctr(device, chunksize, 0);
 	if (IS_ERR(gdev)) {
 		ret=PTR_ERR(gdev);
-		goto bad4;
+		goto bad3;
 	}
 	
 	return 0;
 
-bad4:
+bad3:
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
-bad3:
-	bioset_free(bio_pool);
 bad2:
-	destroy_workqueue(workqueue);
+	bioset_free(bio_pool);
 bad1:
 	return ret;
 }
@@ -660,8 +677,6 @@ static void __exit convergent_shutdown(void)
 		log(KERN_ERR, "block driver unregistration failed");
 	
 	bioset_free(bio_pool);
-	
-	destroy_workqueue(workqueue);
 }
 
 module_init(convergent_init);

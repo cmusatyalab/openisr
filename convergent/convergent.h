@@ -6,6 +6,7 @@
 #define MIN_CONCURRENT_REQS 2
 #define MINORS 16
 #define HASH_BUCKETS 128
+#define CLEANER_SWEEP (HZ/2)
 #define MODULE_NAME "isr-convergent"
 
 typedef sector_t chunk_t;
@@ -19,6 +20,7 @@ struct convergent_dev {
 	
 	unsigned chunksize;
 	sector_t offset;
+	unsigned flags;
 	
 	struct crypto_tfm *cipher;
 	struct crypto_tfm *hash;
@@ -32,13 +34,21 @@ struct convergent_dev {
 	
 	struct list_head pending_reqs[HASH_BUCKETS];
 	spinlock_t pending_lock;
+	
+	/* XXX make this a global object?  we'd need a list of devs */
+	struct timer_list cleaner;
+	struct list_head freed_reqs;
+	spinlock_t freed_lock;
 };
+
+/* convergent_dev flags */
+#define DEV_KILLCLEANER  0x00000001  /* Cleaner should not reschedule itself */
 
 struct convergent_req {
 	struct list_head lh_bucket;
 	struct list_head lh_chained;
 	struct convergent_dev *dev;
-	struct work_struct work;
+	struct tasklet_struct callback;
 	atomic_t completed;
 	int error;
 	unsigned flags;
