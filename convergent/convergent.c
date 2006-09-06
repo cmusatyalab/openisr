@@ -20,16 +20,15 @@
 extern char *svn_branch;
 extern char *svn_revision;
 
-#define chunk_sectors(dev) ((sector_t)(dev)->blocksize/512)
-#define chunk_pages(dev) (((dev)->blocksize+PAGE_SIZE-1)/PAGE_SIZE)
+#define chunk_sectors(dev) ((sector_t)(dev)->chunksize/512)
+#define chunk_pages(dev) (((dev)->chunksize+PAGE_SIZE-1)/PAGE_SIZE)
 #define chunk_start(dev, sect) (sect & ~(chunk_sectors(dev) - 1))
 struct convergent_dev {
 	struct gendisk *gendisk;
 	request_queue_t *queue;
 	struct block_device *chunk_bdev;
 	
-	/* XXX rename to chunksize */
-	unsigned blocksize;
+	unsigned chunksize;
 	sector_t offset;
 	
 	struct crypto_tfm *cipher;
@@ -70,10 +69,10 @@ static struct workqueue_struct *workqueue;
 static int blk_major;
 /* XXX until we get a management interface */
 static char *device=NULL;
-static unsigned blocksize=0;
+static unsigned chunksize=0;
 static struct convergent_dev *gdev;
 module_param(device, charp, S_IRUGO);
-module_param(blocksize, uint, S_IRUGO);
+module_param(chunksize, uint, S_IRUGO);
 
 #ifdef CONFIG_LBD
 #define SECTOR_FORMAT "%llu"
@@ -119,7 +118,7 @@ static int alloc_cache_pages(struct convergent_req *req)
 		sg->length=PAGE_SIZE;
 	}
 	/* Possible partial last page */
-	residual=req->dev->blocksize % PAGE_SIZE;
+	residual=req->dev->chunksize % PAGE_SIZE;
 	if (residual)
 		sg->length=residual;
 	return 0;
@@ -210,7 +209,7 @@ static void chunk_tfm(struct convergent_req *req, int type)
 {
 	struct convergent_dev *dev=req->dev;
 	struct scatterlist *sg=req->chunk_sg;
-	unsigned nbytes=dev->blocksize;
+	unsigned nbytes=dev->chunksize;
 	char iv[8]={0};
 	
 	spin_lock(&dev->tfm_lock);
@@ -333,8 +332,8 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 	ndebug("Clone bio completion: %u bytes, total now %u; err %d",
 				nbytes, completed, error);
 	/* Can't call BUG() in interrupt */
-	WARN_ON(completed > req->dev->blocksize);
-	if (completed >= req->dev->blocksize) {
+	WARN_ON(completed > req->dev->chunksize);
+	if (completed >= req->dev->chunksize) {
 		/* XXX make sure it's not still running? */
 		ndebug("Queueing postprocessing callback on request %p", req);
 		PREPARE_WORK(&req->work, convergent_callback2, req);
@@ -371,7 +370,7 @@ static struct bio *bio_create(struct convergent_req *req, int dir,
 static void issue_chunk_io(struct convergent_req *req, int dir)
 {
 	struct bio *bio=NULL;
-	unsigned nbytes=req->dev->blocksize;
+	unsigned nbytes=req->dev->chunksize;
 	unsigned offset=0;
 	int i=0;
 	
@@ -420,7 +419,7 @@ static void convergent_callback1(void* data)
 	orig_bio_to_scatterlist(req);
 	if (bio_data_dir(req->orig_bio) == WRITE) {
 		/* XXX make sure bio doesn't cross chunk boundary */
-		if (req->orig_bio->bi_size == req->dev->blocksize) {
+		if (req->orig_bio->bi_size == req->dev->chunksize) {
 			/* Whole chunk */
 			scatterlist_copy(req->orig_sg, req->chunk_sg,
 					0, 0, req->orig_bio->bi_size);
@@ -528,7 +527,7 @@ static struct block_device_operations convergent_ops = {
 };
 
 static struct convergent_dev *convergent_dev_ctr(char *devnode,
-			unsigned blocksize, sector_t offset)
+			unsigned chunksize, sector_t offset)
 {
 	struct convergent_dev *dev;
 	sector_t capacity;
@@ -540,15 +539,15 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	if (dev == NULL)
 		return ERR_PTR(-ENOMEM);
 	
-	if (blocksize < 512 || (blocksize & (blocksize - 1)) != 0) {
-		log(KERN_ERR, "block size must be >= 512 and a power of 2");
+	if (chunksize < 512 || (chunksize & (chunksize - 1)) != 0) {
+		log(KERN_ERR, "chunk size must be >= 512 and a power of 2");
 		ret=-EINVAL;
 		goto bad;
 	}
-	dev->blocksize=blocksize;
+	dev->chunksize=chunksize;
 	dev->offset=offset;
-	debug("blocksize %u, backdev %s, offset " SECTOR_FORMAT,
-				blocksize, devnode, offset);
+	debug("chunksize %u, backdev %s, offset " SECTOR_FORMAT,
+				chunksize, devnode, offset);
 	
 	debug("Opening %s", devnode);
 	dev->chunk_bdev=open_bdev_excl(devnode, 0, dev);
@@ -570,7 +569,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	   not just used by the request queue; it's exported to
 	   the filesystem code, etc.  Also, the kernel seems not to
 	   be able to handle hardsect_size > PAGE_SIZE.  We use a
-	   merge function to make sure no bio spans multiple blocks.
+	   merge function to make sure no bio spans multiple chunks.
 	   Requests still might. */
 	blk_queue_merge_bvec(dev->queue, convergent_mergeable_bvec);
 	/* XXX bounce buffer configuration */
@@ -635,10 +634,10 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	/* This is how the BLKGETSIZE64 ioctl is implemented, but
 	   bd_inode is labeled "will die" in fs.h */
 	/* Make sure the capacity, after offset adjustment, is a multiple
-	   of the blocksize */
+	   of the chunksize */
 	/* XXX use chunk_start */
 	capacity=((dev->chunk_bdev->bd_inode->i_size - (512 * offset))
-				& ~(loff_t)(blocksize - 1)) / 512;
+				& ~(loff_t)(chunksize - 1)) / 512;
 	debug("Chunk partition capacity: " SECTOR_FORMAT " MB", capacity >> 11);
 	set_capacity(dev->gendisk, capacity);
 	dev->gendisk->private_data=dev;
@@ -679,7 +678,7 @@ static int __init convergent_init(void)
 		goto bad2;
 	}
 	ndebug("Constructing device");
-	gdev=convergent_dev_ctr(device, blocksize, 0);
+	gdev=convergent_dev_ctr(device, chunksize, 0);
 	if (IS_ERR(gdev)) {
 		ret=PTR_ERR(gdev);
 		goto bad3;
