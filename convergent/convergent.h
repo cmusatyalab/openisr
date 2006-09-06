@@ -29,9 +29,6 @@ struct convergent_dev {
 	
 	struct list_head pending_reqs[HASH_BUCKETS];
 	spinlock_t pending_lock;
-
-	struct list_head freed_reqs;  /* XXX stupid temporary hack */
-	spinlock_t freed_lock;
 };
 
 struct convergent_req {

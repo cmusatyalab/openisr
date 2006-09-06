@@ -241,12 +241,10 @@ out:
 				req->orig_bio->bi_size, req->chunk);
 	bio_endio(req->orig_bio, req->orig_bio->bi_size, req->error);
 	request_end(req);
-	/* XXX temporary hack to free the req before shutting down.
-	   this can go away if we stay with workqueues, but if we use
-	   tasklets we'll need to come by later and kill the tasklet. */
-	spin_lock(&req->dev->freed_lock);
-	list_add(&req->lh_bucket, &req->dev->freed_reqs);
-	spin_unlock(&req->dev->freed_lock);
+	/* XXX this is safe for workqueues.  if we switch to tasklets,
+	   we'll need to add the req to a freed-req list that we clean
+	   out periodically */
+	mempool_free(req, req->dev->req_pool);
 }
 
 /* May be called from interrupt context */
@@ -420,16 +418,8 @@ static void convergent_dev_dtr(struct convergent_dev *dev)
 	/* XXX racy? */
 	if (dev->gendisk)
 		del_gendisk(dev->gendisk);
-	if (dev->req_pool) {
-		struct convergent_req *req;
-		struct convergent_req *next;
-		list_for_each_entry_safe(req, next, &dev->freed_reqs,
-					lh_bucket) {
-			list_del(&req->lh_bucket);
-			mempool_free(req, dev->req_pool);
-		}
+	if (dev->req_pool)
 		mempool_destroy(dev->req_pool);
-	}
 	if (dev->req_cache)
 		if (kmem_cache_destroy(dev->req_cache))
 			log(KERN_ERR, "couldn't destroy request cache");
@@ -542,8 +532,6 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	for (i=0; i<HASH_BUCKETS; i++)
 		INIT_LIST_HEAD(&dev->pending_reqs[i]);
 	spin_lock_init(&dev->pending_lock);
-	INIT_LIST_HEAD(&dev->freed_reqs);
-	spin_lock_init(&dev->freed_lock);
 	
 	ndebug("Allocating disk");
 	dev->gendisk=alloc_disk(MINORS);
