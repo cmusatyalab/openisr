@@ -8,6 +8,8 @@
 #define HASH_BUCKETS 128
 #define MODULE_NAME "isr-convergent"
 
+typedef sector_t chunk_t;
+
 struct convergent_dev {
 	struct gendisk *gendisk;
 	request_queue_t *queue;
@@ -40,7 +42,8 @@ struct convergent_req {
 	atomic_t completed;
 	int error;
 	unsigned flags;
-	sector_t chunk;
+	/* XXX this member contains redundant information - eliminate? */
+	chunk_t chunk;
 	struct bio *orig_bio;
 	struct scatterlist orig_sg[MAX_INPUT_SEGS];
 	/* XXX hack that lets us not manage yet another allocation */
@@ -68,8 +71,39 @@ struct convergent_req {
 extern char *svn_branch;
 extern char *svn_revision;
 
-#define chunk_sectors(dev) ((sector_t)(dev)->chunksize/512)
-#define chunk_pages(dev) (((dev)->chunksize+PAGE_SIZE-1)/PAGE_SIZE)
-#define chunk_start(dev, sect) (sect & ~(chunk_sectors(dev) - 1))
+/* 512-byte sectors per chunk */
+static inline sector_t chunk_sectors(struct convergent_dev *dev)
+{
+	return dev->chunksize/512;
+}
+
+/* PAGE_SIZE-sized pages per chunk, rounding up in case of a partial page */
+static inline unsigned chunk_pages(struct convergent_dev *dev)
+{
+	return (dev->chunksize + PAGE_SIZE - 1) / PAGE_SIZE;
+}
+
+/* The sector number of the beginning of the chunk containing @sect */
+static inline sector_t chunk_start(struct convergent_dev *dev, sector_t sect)
+{
+	/* We can't use the divide operator on a sector_t, because sector_t
+	   might be 64 bits and 32-bit kernels need do_div() for 64-bit
+	   divides */
+	return sect & ~(chunk_sectors(dev) - 1);
+}
+
+/* The byte offset of sector @sect within its chunk */
+static inline unsigned chunk_offset(struct convergent_dev *dev, sector_t sect)
+{
+	return 512 * (sect - chunk_start(dev, sect));
+}
+
+/* The chunk number of @sect */
+static inline chunk_t chunk_of(struct convergent_dev *dev, sector_t sect)
+{
+	/* Again, no division allowed */
+	unsigned shift=fls(chunk_sectors(dev)) - 1;
+	return sect >> shift;
+}
 
 #endif

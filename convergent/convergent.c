@@ -68,7 +68,7 @@ static void free_cache_pages(struct convergent_req *req)
 		mempool_free(req->chunk_sg[i].page, req->dev->page_pool);
 }
 
-static int hash(sector_t chunk)
+static unsigned hash(chunk_t chunk)
 {
 	return chunk % HASH_BUCKETS;
 }
@@ -220,15 +220,15 @@ static void convergent_callback2(void* data)
 		goto out;
 	if (bio_data_dir(req->orig_bio) == READ) {
 		chunk_tfm(req, READ);
-		scatterlist_copy(req->chunk_sg, req->orig_sg, 512 *
-			(req->orig_bio->bi_sector % chunk_sectors(req->dev)),
+		scatterlist_copy(req->chunk_sg, req->orig_sg,
+			chunk_offset(req->dev, req->orig_bio->bi_sector),
 			0, req->orig_bio->bi_size);
 	} else if (req->flags & REQ_RMW) {
 		req->flags &= ~REQ_RMW;
 		atomic_set(&req->completed, 0);
 		chunk_tfm(req, READ);
-		scatterlist_copy(req->orig_sg, req->chunk_sg, 0, 512 *
-			(req->orig_bio->bi_sector % chunk_sectors(req->dev)),
+		scatterlist_copy(req->orig_sg, req->chunk_sg, 0,
+			chunk_offset(req->dev, req->orig_bio->bi_sector),
 			req->orig_bio->bi_size);
 		chunk_tfm(req, WRITE);
 		issue_chunk_io(req, WRITE);
@@ -387,9 +387,7 @@ static int convergent_make_request(request_queue_t *q, struct bio *bio)
 	req->orig_bio=bio;
 	req->error=0;
 	req->flags=0;
-	/* XXX not CONFIG_LBD safe */
-	/* XXX don't reach into orig_bio? */
-	req->chunk=req->orig_bio->bi_sector/chunk_sectors(dev);
+	req->chunk=chunk_of(dev, bio->bi_sector);
 	atomic_set(&req->completed, 0);
 	INIT_LIST_HEAD(&req->lh_bucket);
 	INIT_LIST_HEAD(&req->lh_chained);
@@ -404,18 +402,15 @@ static int convergent_mergeable_bvec(request_queue_t *q, struct bio *bio,
 			struct bio_vec *bvec)
 {
 	struct convergent_dev *dev=q->queuedata;
-	sector_t boundary;
-	unsigned allowable;
+	int allowable;
 	
-	/* XXX constructs like these should probably be using masks */
-	/* XXX chunk_start */
-	boundary=(bio->bi_sector + chunk_sectors(dev) - 1)/chunk_sectors(dev);
-	allowable=(boundary - bio->bi_sector) * 512;
+	allowable=dev->chunksize - chunk_offset(dev, bio->bi_sector)
+				- bio->bi_size;
+	BUG_ON(allowable < 0);
 	/* XXX */
 	BUG_ON(!bio_segments(bio) && allowable < PAGE_SIZE);
-	debug("mergeable called; sec=" SECTOR_FORMAT " boundary="
-				SECTOR_FORMAT " allowable=%u",
-				bio->bi_sector, boundary, allowable);
+	debug("mergeable called; sec=" SECTOR_FORMAT " size=%u allowable=%d",
+				bio->bi_sector, bio->bi_size, allowable);
 	return allowable;
 }
 
@@ -562,13 +557,12 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	sprintf(dev->gendisk->disk_name, "openisr");
 	dev->gendisk->fops=&convergent_ops;
 	dev->gendisk->queue=dev->queue;
-	/* This is how the BLKGETSIZE64 ioctl is implemented, but
-	   bd_inode is labeled "will die" in fs.h */
 	/* Make sure the capacity, after offset adjustment, is a multiple
 	   of the chunksize */
-	/* XXX use chunk_start */
-	capacity=((dev->chunk_bdev->bd_inode->i_size - (512 * offset))
-				& ~(loff_t)(chunksize - 1)) / 512;
+	/* This is how the BLKGETSIZE64 ioctl is implemented, but
+	   bd_inode is labeled "will die" in fs.h */
+	capacity=((dev->chunk_bdev->bd_inode->i_size / 512) - offset)
+				& ~(loff_t)(chunk_sectors(dev) - 1);
 	debug("Chunk partition capacity: " SECTOR_FORMAT " MB", capacity >> 11);
 	set_capacity(dev->gendisk, capacity);
 	dev->gendisk->private_data=dev;
