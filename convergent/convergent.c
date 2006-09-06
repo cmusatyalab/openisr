@@ -45,10 +45,9 @@ static int alloc_cache_pages(struct convergent_req *req)
 	unsigned residual;
 	struct scatterlist *sg=NULL;  /* initialization to avoid warning */
 	
-	might_sleep();
 	for (i=0; i<npages; i++) {
 		sg=&req->chunk_sg[i];
-		sg->page=mempool_alloc(req->dev->page_pool, GFP_NOIO);
+		sg->page=mempool_alloc(req->dev->page_pool, GFP_ATOMIC);
 		if (sg->page == NULL)
 			goto bad;
 		sg->offset=0;
@@ -102,32 +101,42 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	unsigned sleft, dleft;
 	unsigned bytesThisRound;
 	
-	might_sleep();
+	/* Necessary to preserve invariant of comment A */
+	if (len == 0)
+		return;
+	
+	/* The choice of kmap slots here is rather arbitrary.  There
+	   "shouldn't" be any conflicts, since slots are per-CPU and should
+	   only be used atomically. */
 	while (soffset >= src->length) {
 		soffset -= src->length;
 		src++;
 	}
 	sleft=src->length - soffset;
-	sbuf=kmap(src->page) + src->offset + soffset;
+	sbuf=kmap_atomic(src->page, KM_SOFTIRQ0) + src->offset + soffset;
 	
 	while (doffset >= dst->length) {
 		doffset -= dst->length;
 		dst++;
 	}
 	dleft=dst->length - doffset;
-	dbuf=kmap(dst->page) + dst->offset + doffset;
+	dbuf=kmap_atomic(dst->page, KM_SOFTIRQ1) + dst->offset + doffset;
 	
+	/* Comment A: We calculate the address to kunmap_atomic() as buf - 1,
+	   since in all cases that we call kunmap_atomic(), we must have
+	   copied at least one byte from buf.  If we used buf, we might
+	   unmap the wrong page if we copied a full page. */
 	while (len) {
 		if (sleft == 0) {
-			kunmap(src->page);
+			kunmap_atomic(sbuf - 1, KM_SOFTIRQ0);
 			src++;
-			sbuf=kmap(src->page) + src->offset;
+			sbuf=kmap_atomic(src->page, KM_SOFTIRQ0) + src->offset;
 			sleft=src->length;
 		}
 		if (dleft == 0) {
-			kunmap(dst->page);
+			kunmap_atomic(dbuf - 1, KM_SOFTIRQ1);
 			dst++;
-			dbuf=kmap(dst->page) + dst->offset;
+			dbuf=kmap_atomic(dst->page, KM_SOFTIRQ1) + dst->offset;
 			dleft=dst->length;
 		}
 		bytesThisRound=min(sleft, dleft);
@@ -138,8 +147,8 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 		sbuf += bytesThisRound;
 		dbuf += bytesThisRound;
 	}
-	kunmap(src->page);
-	kunmap(dst->page);
+	kunmap_atomic(sbuf - 1, KM_SOFTIRQ0);
+	kunmap_atomic(dbuf - 1, KM_SOFTIRQ1);
 }
 
 static void chunk_tfm(struct convergent_req *req, int type)
@@ -175,9 +184,8 @@ static struct bio *bio_create(struct convergent_req *req, int dir,
 {
 	struct bio *bio;
 
-	might_sleep();
 	/* XXX could alloc smaller bios if we're looping */
-	bio=bio_alloc_bioset(GFP_NOIO, chunk_pages(req->dev), bio_pool);
+	bio=bio_alloc_bioset(GFP_ATOMIC, chunk_pages(req->dev), bio_pool);
 	if (bio == NULL)
 		return NULL;
 
@@ -232,17 +240,21 @@ bad:
 	req->error=-ENOMEM;
 	if (atomic_add_return(nbytes-offset, &req->completed) == nbytes) {
 		ndebug("Queueing postprocessing callback on request %p", req);
-		PREPARE_WORK(&req->work, convergent_callback2, req);
+		INIT_WORK(&req->work, convergent_callback2, req);
 		queue_work(workqueue, &req->work);
 	}
 }
 
-static void request_start(struct convergent_req *req)
+static int request_start(struct convergent_req *req)
 {
 	struct convergent_dev *dev=req->dev;
 	struct convergent_req *parent=NULL;
 	struct convergent_req *cur;
+	int ret;
 	
+	/* XXX request chaining can go away once we can simply stop the
+	   queue, and should, since we need to be able to stop the queue
+	   when we run low on memory */
 	spin_lock(&dev->pending_lock);
 	/* See if another request for this chunk is in progress */
 	list_for_each_entry(cur, &dev->pending_reqs[hash(req->chunk)],
@@ -257,17 +269,21 @@ static void request_start(struct convergent_req *req)
 					req->chunk);
 		list_add_tail(&req->lh_bucket,
 				&dev->pending_reqs[hash(req->chunk)]);
-		queue_work(workqueue, &req->work);
+		ret=1;
 	} else {
 		list_add_tail(&req->lh_chained, &parent->lh_chained);
+		ret=0;
 	}
 	spin_unlock(&dev->pending_lock);
+	return ret;
 }
 
+static void convergent_callback1(struct convergent_req *req);
 static void request_end(struct convergent_req *req)
 {
 	struct convergent_dev *dev=req->dev;
-	struct convergent_req *child;
+	struct convergent_req *child=NULL;
+	int do_callback=0;
 	
 	ndebug("Ending request for chunk " SECTOR_FORMAT, req->chunk);
 	spin_lock(&dev->pending_lock);
@@ -280,9 +296,13 @@ static void request_end(struct convergent_req *req)
 		list_del(&req->lh_chained);
 		list_add_tail(&child->lh_bucket,
 				&dev->pending_reqs[hash(child->chunk)]);
-		queue_work(workqueue, &child->work);
+		do_callback=1;
 	}
 	spin_unlock(&dev->pending_lock);
+	if (do_callback) {
+		/* Eww eww eww. */
+		convergent_callback1(child);
+	}
 }
 
 static void convergent_callback2(void* data)
@@ -338,16 +358,16 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 	if (completed >= req->dev->chunksize) {
 		/* XXX make sure it's not still running? */
 		ndebug("Queueing postprocessing callback on request %p", req);
-		PREPARE_WORK(&req->work, convergent_callback2, req);
+		INIT_WORK(&req->work, convergent_callback2, req);
 		queue_work(workqueue, &req->work);
 	}
 	return 0;
 }
 
-static void convergent_callback1(void* data)
+/* XXX this isn't a callback anymore; it's called directly from softirq
+   context */
+static void convergent_callback1(struct convergent_req *req)
 {
-	struct convergent_req *req=data;
-	
 	if (alloc_cache_pages(req))
 		goto bad;
 	orig_bio_to_scatterlist(req);
@@ -395,8 +415,8 @@ static int convergent_make_request(request_queue_t *q, struct bio *bio)
 	INIT_LIST_HEAD(&req->lh_bucket);
 	INIT_LIST_HEAD(&req->lh_chained);
 	
-	INIT_WORK(&req->work, convergent_callback1, req);
-	request_start(req);
+	if (request_start(req))
+		convergent_callback1(req);
 	return 0;
 }
 
