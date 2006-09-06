@@ -168,6 +168,75 @@ static void chunk_tfm(struct convergent_req *req, int type)
 	spin_unlock(&dev->tfm_lock);
 }
 
+static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
+			int error);
+static struct bio *bio_create(struct convergent_req *req, int dir,
+			unsigned offset)
+{
+	struct bio *bio;
+
+	might_sleep();
+	/* XXX could alloc smaller bios if we're looping */
+	bio=bio_alloc_bioset(GFP_NOIO, chunk_pages(req->dev), bio_pool);
+	if (bio == NULL)
+		return NULL;
+
+	bio->bi_bdev=req->dev->chunk_bdev;
+	bio->bi_sector=chunk_start(req->dev, req->orig_bio->bi_sector)
+				+ req->dev->offset + offset;
+	ndebug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
+	bio->bi_rw=dir;
+	bio_set_prio(bio, bio_prio(req->orig_bio));
+	bio->bi_end_io=convergent_bio_callback;
+	bio->bi_private=req;
+	bio->bi_destructor=bio_destructor;
+	return bio;
+}
+
+static void convergent_callback2(void* data);  /* XXX */
+static void issue_chunk_io(struct convergent_req *req, int dir)
+{
+	struct bio *bio=NULL;
+	unsigned nbytes=req->dev->chunksize;
+	unsigned offset=0;
+	int i=0;
+	
+	/* XXX test against very small maximum seg count on target, etc. */
+	ndebug("Submitting clone bio(s)");
+	/* We can't assume that we can fit the entire chunk request in one
+	   bio: it depends on the queue restrictions of the underlying
+	   device */
+	while (offset < nbytes) {
+		if (bio == NULL) {
+			bio=bio_create(req, dir, offset/512);
+			if (bio == NULL)
+				goto bad;
+		}
+		if (bio_add_page(bio, req->chunk_sg[i].page,
+					req->chunk_sg[i].length,
+					req->chunk_sg[i].offset)) {
+			offset += req->chunk_sg[i].length;
+			i++;
+		} else {
+			debug("Submitting multiple bios");
+			generic_make_request(bio);
+			bio=NULL;
+		}
+	}
+	BUG_ON(bio == NULL);
+	generic_make_request(bio);
+	return;
+	
+bad:
+	/* XXX make this sane */
+	req->error=-ENOMEM;
+	if (atomic_add_return(nbytes-offset, &req->completed) == nbytes) {
+		ndebug("Queueing postprocessing callback on request %p", req);
+		PREPARE_WORK(&req->work, convergent_callback2, req);
+		queue_work(workqueue, &req->work);
+	}
+}
+
 static void request_start(struct convergent_req *req)
 {
 	struct convergent_dev *dev=req->dev;
@@ -216,8 +285,6 @@ static void request_end(struct convergent_req *req)
 	spin_unlock(&dev->pending_lock);
 }
 
-/* XXX see if there's a better place to break the prototype cycle */
-static void issue_chunk_io(struct convergent_req *req, int dir);
 static void convergent_callback2(void* data)
 {
 	struct convergent_req *req=data;
@@ -275,72 +342,6 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 		queue_work(workqueue, &req->work);
 	}
 	return 0;
-}
-
-static struct bio *bio_create(struct convergent_req *req, int dir,
-			unsigned offset)
-{
-	struct bio *bio;
-
-	might_sleep();
-	/* XXX could alloc smaller bios if we're looping */
-	bio=bio_alloc_bioset(GFP_NOIO, chunk_pages(req->dev), bio_pool);
-	if (bio == NULL)
-		return NULL;
-
-	bio->bi_bdev=req->dev->chunk_bdev;
-	bio->bi_sector=chunk_start(req->dev, req->orig_bio->bi_sector)
-				+ req->dev->offset + offset;
-	ndebug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
-	bio->bi_rw=dir;
-	bio_set_prio(bio, bio_prio(req->orig_bio));
-	bio->bi_end_io=convergent_bio_callback;
-	bio->bi_private=req;
-	bio->bi_destructor=bio_destructor;
-	return bio;
-}
-
-static void issue_chunk_io(struct convergent_req *req, int dir)
-{
-	struct bio *bio=NULL;
-	unsigned nbytes=req->dev->chunksize;
-	unsigned offset=0;
-	int i=0;
-	
-	/* XXX test against very small maximum seg count on target, etc. */
-	ndebug("Submitting clone bio(s)");
-	/* We can't assume that we can fit the entire chunk request in one
-	   bio: it depends on the queue restrictions of the underlying
-	   device */
-	while (offset < nbytes) {
-		if (bio == NULL) {
-			bio=bio_create(req, dir, offset/512);
-			if (bio == NULL)
-				goto bad;
-		}
-		if (bio_add_page(bio, req->chunk_sg[i].page,
-					req->chunk_sg[i].length,
-					req->chunk_sg[i].offset)) {
-			offset += req->chunk_sg[i].length;
-			i++;
-		} else {
-			debug("Submitting multiple bios");
-			generic_make_request(bio);
-			bio=NULL;
-		}
-	}
-	BUG_ON(bio == NULL);
-	generic_make_request(bio);
-	return;
-	
-bad:
-	/* XXX make this sane */
-	req->error=-ENOMEM;
-	if (atomic_add_return(nbytes-offset, &req->completed) == nbytes) {
-		ndebug("Queueing postprocessing callback on request %p", req);
-		PREPARE_WORK(&req->work, convergent_callback2, req);
-		queue_work(workqueue, &req->work);
-	}
 }
 
 static void convergent_callback1(void* data)
