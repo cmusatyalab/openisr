@@ -54,8 +54,10 @@ struct convergent_req {
 	atomic_t completed;
 	int error;
 	unsigned flags;
-	/* XXX this member contains redundant information - eliminate? */
 	chunk_t chunk;
+	unsigned offset;  /* byte offset into chunk */
+	unsigned len;     /* bytes */
+	unsigned prio;
 	struct request *orig_io;
 	struct scatterlist orig_sg[MAX_INPUT_SEGS];
 	/* XXX hack that lets us not manage yet another allocation */
@@ -65,6 +67,7 @@ struct convergent_req {
 
 /* convergent_req flags */
 #define REQ_RMW    0x00000001  /* Is in the read phase of read-modify-write */
+#define REQ_WRITE  0x00000002  /* Is a write request */
 
 #ifdef CONFIG_LBD
 #define SECTOR_FORMAT "%llu"
@@ -82,6 +85,8 @@ struct convergent_req {
 
 extern char *svn_branch;
 extern char *svn_revision;
+
+/* XXX clean these out */
 
 /* 512-byte sectors per chunk */
 static inline sector_t chunk_sectors(struct convergent_dev *dev)
@@ -110,12 +115,26 @@ static inline unsigned chunk_offset(struct convergent_dev *dev, sector_t sect)
 	return 512 * (sect - chunk_start(dev, sect));
 }
 
+/* The number of bytes between the start of @sect and the end of the chunk */
+static inline unsigned chunk_space(struct convergent_dev *dev, sector_t sect)
+{
+	return dev->chunksize - chunk_offset(dev, sect);
+}
+
 /* The chunk number of @sect */
 static inline chunk_t chunk_of(struct convergent_dev *dev, sector_t sect)
 {
 	/* Again, no division allowed */
 	unsigned shift=fls(chunk_sectors(dev)) - 1;
 	return sect >> shift;
+}
+
+/* The sector number corresponding to the first sector of @chunk */
+static inline sector_t chunk_to_sector(struct convergent_dev *dev,
+			chunk_t chunk)
+{
+	unsigned shift=fls(chunk_sectors(dev)) - 1;
+	return chunk << shift;
 }
 
 int submitter_start(void);
