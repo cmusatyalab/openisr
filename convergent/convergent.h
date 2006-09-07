@@ -17,6 +17,7 @@ typedef sector_t chunk_t;
 struct convergent_dev {
 	struct gendisk *gendisk;
 	request_queue_t *queue;
+	spinlock_t queue_lock;
 	struct block_device *chunk_bdev;
 	
 	unsigned chunksize;
@@ -55,7 +56,7 @@ struct convergent_req {
 	unsigned flags;
 	/* XXX this member contains redundant information - eliminate? */
 	chunk_t chunk;
-	struct bio *orig_bio;
+	struct request *orig_io;
 	struct scatterlist orig_sg[MAX_INPUT_SEGS];
 	/* XXX hack that lets us not manage yet another allocation */
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */

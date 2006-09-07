@@ -96,17 +96,21 @@ static unsigned hash(chunk_t chunk)
 	return chunk % HASH_BUCKETS;
 }
 
-static void orig_bio_to_scatterlist(struct convergent_req *req)
+static void orig_io_to_scatterlist(struct convergent_req *req)
 {
+	struct bio *bio;
 	struct bio_vec *bvec;
 	int seg;
 	int i=0;
 	
-	bio_for_each_segment(bvec, req->orig_bio, seg) {
-		req->orig_sg[i].page=bvec->bv_page;
-		req->orig_sg[i].offset=bvec->bv_offset;
-		req->orig_sg[i].length=bvec->bv_len;
-		i++;
+	/* XXX deal with multiple-chunk requests */
+	rq_for_each_bio(bio, req->orig_io) {
+		bio_for_each_segment(bvec, bio, seg) {
+			req->orig_sg[i].page=bvec->bv_page;
+			req->orig_sg[i].offset=bvec->bv_offset;
+			req->orig_sg[i].length=bvec->bv_len;
+			i++;
+		}
 	}
 	/* XXX do we need to increment a page refcount? */
 }
@@ -201,6 +205,7 @@ static struct bio *bio_create(struct convergent_req *req, int dir,
 			unsigned offset)
 {
 	struct bio *bio;
+	unsigned prio;
 
 	/* XXX could alloc smaller bios if we're looping */
 	bio=bio_alloc_bioset(GFP_ATOMIC, chunk_pages(req->dev), bio_pool);
@@ -208,11 +213,14 @@ static struct bio *bio_create(struct convergent_req *req, int dir,
 		return NULL;
 
 	bio->bi_bdev=req->dev->chunk_bdev;
-	bio->bi_sector=chunk_start(req->dev, req->orig_bio->bi_sector)
+	/* XXX replace this with something coming from req->chunk? */
+	/* XXX is ->sector updated as we progress thru the io? */
+	bio->bi_sector=chunk_start(req->dev, req->orig_io->sector)
 				+ req->dev->offset + offset;
 	ndebug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
 	bio->bi_rw=dir;
-	bio_set_prio(bio, bio_prio(req->orig_bio));
+	prio=req->orig_io->ioprio;  /* Eliminate compiler warning */
+	bio_set_prio(bio, prio);
 	bio->bi_end_io=convergent_bio_callback;
 	bio->bi_private=req;
 	bio->bi_destructor=bio_destructor;
@@ -324,21 +332,23 @@ static void request_end(struct convergent_req *req)
 static void convergent_callback2(unsigned long data)
 {
 	struct convergent_req *req=(void*)data;
+	struct convergent_dev *dev=req->dev;
 	
 	if (req->error)
 		goto out;
-	if (bio_data_dir(req->orig_bio) == READ) {
+	/* XXX multiple-chunk ios */
+	if (rq_data_dir(req->orig_io) == READ) {
 		chunk_tfm(req, READ);
 		scatterlist_copy(req->chunk_sg, req->orig_sg,
-			chunk_offset(req->dev, req->orig_bio->bi_sector),
-			0, req->orig_bio->bi_size);
+			chunk_offset(dev, req->orig_io->sector),
+			0, req->orig_io->nr_sectors * 512);
 	} else if (req->flags & REQ_RMW) {
 		req->flags &= ~REQ_RMW;
 		atomic_set(&req->completed, 0);
 		chunk_tfm(req, READ);
 		scatterlist_copy(req->orig_sg, req->chunk_sg, 0,
-			chunk_offset(req->dev, req->orig_bio->bi_sector),
-			req->orig_bio->bi_size);
+			chunk_offset(dev, req->orig_io->sector),
+			req->orig_io->nr_sectors * 512);
 		chunk_tfm(req, WRITE);
 		issue_chunk_io(req, WRITE);
 		/* We're not done yet! */
@@ -347,13 +357,20 @@ static void convergent_callback2(unsigned long data)
 out:
 	free_cache_pages(req);
 	ndebug("Submitting original bio, %u bytes, chunk "SECTOR_FORMAT,
-				req->orig_bio->bi_size, req->chunk);
-	bio_endio(req->orig_bio, req->orig_bio->bi_size, req->error);
+				req->orig_io->nr_sectors * 512, req->chunk);
+	spin_lock(&dev->queue_lock);
+	/* XXX error handling */
+	if (end_that_request_first(req->orig_io, req->error ? req->error : 1,
+				req->orig_io->nr_sectors))
+		BUG(); /* XXX */
+	/* XXX add_disk_randomness? */
+	end_that_request_last(req->orig_io, req->error ? req->error : 1);
+	spin_unlock(&dev->queue_lock);
 	request_end(req);
 	/* Schedule the request to be freed the next time the cleaner runs */
-	spin_lock(&req->dev->freed_lock);
-	list_add_tail(&req->lh_bucket, &req->dev->freed_reqs);
-	spin_unlock(&req->dev->freed_lock);
+	spin_lock(&dev->freed_lock);
+	list_add_tail(&req->lh_bucket, &dev->freed_reqs);
+	spin_unlock(&dev->freed_lock);
 }
 
 /* May be called from interrupt context */
@@ -384,13 +401,13 @@ static void convergent_callback1(struct convergent_req *req)
 {
 	if (alloc_cache_pages(req))
 		goto bad;
-	orig_bio_to_scatterlist(req);
-	if (bio_data_dir(req->orig_bio) == WRITE) {
+	orig_io_to_scatterlist(req);
+	if (rq_data_dir(req->orig_io) == WRITE) {
 		/* XXX make sure bio doesn't cross chunk boundary */
-		if (req->orig_bio->bi_size == req->dev->chunksize) {
+		if (req->orig_io->nr_sectors == chunk_sectors(req->dev)) {
 			/* Whole chunk */
 			scatterlist_copy(req->orig_sg, req->chunk_sg,
-					0, 0, req->orig_bio->bi_size);
+					0, 0, req->orig_io->nr_sectors * 512);
 			chunk_tfm(req, WRITE);
 			issue_chunk_io(req, WRITE);
 		} else {
@@ -405,26 +422,27 @@ static void convergent_callback1(struct convergent_req *req)
 bad:
 	/* XXX fix */
 	BUG();
-	bio_endio(req->orig_bio, req->orig_bio->bi_size, -ENOMEM);
 }
 
-static int convergent_make_request(request_queue_t *q, struct bio *bio)
+static int convergent_handle_request(struct convergent_dev *dev,
+			struct request *io)
 {
-	struct convergent_dev *dev=q->queuedata;
 	struct convergent_req *req;
 	
-	BUG_ON(bio_segments(bio) > MAX_INPUT_SEGS);
+	BUG_ON(io->nr_phys_segments > MAX_INPUT_SEGS);
 	
-	ndebug("make_request called, request: %u bytes at sector "SECTOR_FORMAT,
-				bio->bi_size, bio->bi_sector);
-	req=mempool_alloc(dev->req_pool, GFP_NOIO);
+	debug("handle_request called: %lu sectors at sector " SECTOR_FORMAT,
+				io->nr_sectors, io->sector);
+	req=mempool_alloc(dev->req_pool, GFP_ATOMIC);
 	if (req == NULL)
 		return -ENOMEM;
 	req->dev=dev;
-	req->orig_bio=bio;
+	req->orig_io=io;
 	req->error=0;
 	req->flags=0;
-	req->chunk=chunk_of(dev, bio->bi_sector);
+	req->chunk=chunk_of(dev, io->sector);
+	/* XXX */
+	BUG_ON(req->chunk != chunk_of(dev, io->sector + io->nr_sectors - 1));
 	atomic_set(&req->completed, 0);
 	INIT_LIST_HEAD(&req->lh_bucket);
 	INIT_LIST_HEAD(&req->lh_chained);
@@ -433,6 +451,24 @@ static int convergent_make_request(request_queue_t *q, struct bio *bio)
 	if (request_start(req))
 		convergent_callback1(req);
 	return 0;
+}
+
+static void convergent_request(request_queue_t *q)
+{
+	struct convergent_dev *dev=q->queuedata;
+	struct request *io;
+	
+	while ((io = elv_next_request(q)) != NULL) {
+		if (!blk_fs_request(io)) {
+			/* XXX */
+			debug("Skipping non-fs request");
+			end_request(io, 0);
+			continue;
+		}
+		blkdev_dequeue_request(io);
+		/* XXX check return status */
+		convergent_handle_request(dev, io);
+	}
 }
 
 /* Return the number of bytes of bvec that can be merged into bio */
@@ -529,14 +565,14 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 		goto bad;
 	}
 	ndebug("Allocating queue");
-	dev->queue=blk_alloc_queue(GFP_KERNEL);
+	spin_lock_init(&dev->queue_lock);
+	dev->queue=blk_init_queue(convergent_request, &dev->queue_lock);
 	if (dev->queue == NULL) {
 		log(KERN_ERR, "couldn't allocate request queue");
 		ret=-ENOMEM;
 		goto bad;
 	}
 	dev->queue->queuedata=dev;
-	blk_queue_make_request(dev->queue, convergent_make_request);
 	/* We don't want to change hardsect_size because its value is
 	   not just used by the request queue; it's exported to
 	   the filesystem code, etc.  Also, the kernel seems not to
@@ -546,6 +582,9 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	blk_queue_merge_bvec(dev->queue, convergent_mergeable_bvec);
 	/* XXX bounce buffer configuration */
 	blk_queue_max_phys_segments(dev->queue, MAX_INPUT_SEGS);
+	/* XXX */
+	blk_queue_hardsect_size(dev->queue, PAGE_SIZE);
+	blk_queue_max_sectors(dev->queue, PAGE_SIZE/512);
 	
 	ndebug("Allocating crypto");
 	dev->cipher=crypto_alloc_tfm("blowfish", CRYPTO_TFM_MODE_CBC);
