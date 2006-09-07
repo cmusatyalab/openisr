@@ -43,7 +43,7 @@ static void request_cleaner(unsigned long data)
 	struct convergent_req *next;
 	int did_work=0;
 	
-	spin_lock(&dev->freed_lock);
+	spin_lock_bh(&dev->freed_lock);
 	list_for_each_entry_safe(req, next, &dev->freed_reqs, lh_freed) {
 		list_del(&req->lh_freed);
 		/* Wait for the tasklet to finish if it hasn't already */
@@ -51,12 +51,12 @@ static void request_cleaner(unsigned long data)
 		mempool_free(req, req->dev->req_pool);
 		did_work=1;
 	}
-	spin_unlock(&dev->freed_lock);
+	spin_unlock_bh(&dev->freed_lock);
 	if (did_work && (dev->flags & DEV_LOWMEM)) {
-		spin_lock(&dev->queue_lock);
+		spin_lock_bh(&dev->queue_lock);
 		dev->flags &= ~DEV_LOWMEM;
 		blk_start_queue(dev->queue);
-		spin_unlock(&dev->queue_lock);
+		spin_unlock_bh(&dev->queue_lock);
 	}
 	if (!(dev->flags & DEV_KILLCLEANER))
 		mod_timer(&dev->cleaner, jiffies + CLEANER_SWEEP);
@@ -192,7 +192,7 @@ static void chunk_tfm(struct convergent_req *req, int type)
 	unsigned nbytes=dev->chunksize;
 	char iv[8]={0};
 	
-	spin_lock(&dev->tfm_lock);
+	spin_lock_bh(&dev->tfm_lock);
 	/* XXX */
 	if (crypto_cipher_setkey(dev->cipher, "asdf", 4))
 		BUG();
@@ -208,7 +208,7 @@ static void chunk_tfm(struct convergent_req *req, int type)
 		if (crypto_cipher_encrypt(dev->cipher, sg, sg, nbytes))
 			BUG();
 	}
-	spin_unlock(&dev->tfm_lock);
+	spin_unlock_bh(&dev->tfm_lock);
 }
 
 static int convergent_endio(struct bio *newbio, unsigned nbytes, int error);
@@ -278,6 +278,7 @@ bad:
 
 static int convergent_handle_request(struct convergent_dev *dev,
 			struct request *io, int initial);
+/* Tasklet - runs in softirq context */
 static void convergent_callback(unsigned long data)
 {
 	struct convergent_req *req=(void*)data;
@@ -304,7 +305,7 @@ out:
 	free_cache_pages(req);
 	ndebug("Submitting original bio, %u bytes, chunk "SECTOR_FORMAT,
 				req->len, req->chunk);
-	spin_lock(&dev->queue_lock);
+	spin_lock_bh(&dev->queue_lock);
 	/* XXX error handling */
 	if (end_that_request_first(req->orig_io, req->error ? req->error : 1,
 				req->len / 512)) {
@@ -318,11 +319,11 @@ out:
 	}
 	if (unregister_chunk(dev->pending, req->chunk))
 		blk_start_queue(dev->queue);
-	spin_unlock(&dev->queue_lock);
+	spin_unlock_bh(&dev->queue_lock);
 	/* Schedule the request to be freed the next time the cleaner runs */
-	spin_lock(&dev->freed_lock);
+	spin_lock_bh(&dev->freed_lock);
 	list_add_tail(&req->lh_freed, &dev->freed_reqs);
-	spin_unlock(&dev->freed_lock);
+	spin_unlock_bh(&dev->freed_lock);
 }
 
 /* May be called from interrupt context */
@@ -537,7 +538,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 		goto bad;
 	}
 	dev->queue->queuedata=dev;
-	/* XXX bounce buffer configuration */
+	blk_queue_bounce_limit(dev->queue, BLK_BOUNCE_ANY);
 	blk_queue_max_phys_segments(dev->queue, MAX_INPUT_SEGS);
 	/* XXX max_sectors */
 	

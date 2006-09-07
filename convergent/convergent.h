@@ -14,8 +14,6 @@
 
 typedef sector_t chunk_t;
 
-/* XXX what spin_lock primitives should we use when we're using softirqs? */
-
 struct convergent_dev {
 	struct gendisk *gendisk;
 	request_queue_t *queue;
