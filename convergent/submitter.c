@@ -34,7 +34,7 @@ void submitter_shutdown(void)
 int submitter_start(void)
 {
 	queue=create_workqueue(SUBMIT_QUEUE);
-	submission_cache=kmem_cache_create(MODULE_NAME "-io",
+	submission_cache=kmem_cache_create(MODULE_NAME "-submit",
 				sizeof(struct submission), 0, 0, NULL, NULL);
 	/* XXX arbitrary factor */
 	submission_pool=mempool_create(4 * MIN_CONCURRENT_REQS,

@@ -31,15 +31,15 @@ struct convergent_dev {
 	
 	/* XXX make this a global object? */
 	mempool_t *page_pool;
-	kmem_cache_t *req_cache;
-	mempool_t *req_pool;
+	kmem_cache_t *io_cache;
+	mempool_t *io_pool;
 	
 	/* Must be accessed with queue lock held */
 	struct registration_table *pending;
 	
 	/* XXX make this a global object?  we'd need a list of devs */
 	struct timer_list cleaner;
-	struct list_head freed_reqs;
+	struct list_head freed_ios;
 	spinlock_t freed_lock;
 };
 
@@ -47,28 +47,28 @@ struct convergent_dev {
 #define DEV_KILLCLEANER  0x00000001  /* Cleaner should not reschedule itself */
 #define DEV_LOWMEM       0x00000002  /* Queue stopped until requests freed */
 
-struct convergent_req {
+struct convergent_io {
 	struct list_head lh_freed;
 	struct convergent_dev *dev;
 	struct tasklet_struct callback;
-	atomic_t completed;
+	atomic_t completed;    /* bytes */
 	int error;
 	unsigned flags;
 	chunk_t chunk;
-	chunk_t last_chunk;
-	unsigned offset;  /* byte offset into chunk */
-	unsigned len;     /* bytes */
+	chunk_t last_chunk;    /* multiple-chunk requests */
+	unsigned offset;       /* byte offset into chunk */
+	unsigned len;          /* bytes */
 	unsigned prio;
-	struct request *orig_io;
+	struct request *orig_req;
 	struct scatterlist orig_sg[MAX_INPUT_SEGS];
 	/* XXX hack that lets us not manage yet another allocation */
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
 	struct scatterlist chunk_sg[0];
 };
 
-/* convergent_req flags */
-#define REQ_RMW    0x00000001  /* Is in the read phase of read-modify-write */
-#define REQ_WRITE  0x00000002  /* Is a write request */
+/* convergent_io flags */
+#define IO_RMW    0x00000001  /* Is in the read phase of read-modify-write */
+#define IO_WRITE  0x00000002  /* Is a write request */
 
 #ifdef CONFIG_LBD
 #define SECTOR_FORMAT "%llu"

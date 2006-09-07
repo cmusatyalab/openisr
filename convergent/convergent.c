@@ -36,19 +36,19 @@ static void bio_destructor(struct bio *bio)
 	bio_free(bio, bio_pool);
 }
 
-static void request_cleaner(unsigned long data)
+static void io_cleaner(unsigned long data)
 {
 	struct convergent_dev *dev=(void*)data;
-	struct convergent_req *req;
-	struct convergent_req *next;
+	struct convergent_io *io;
+	struct convergent_io *next;
 	int did_work=0;
 	
 	spin_lock_bh(&dev->freed_lock);
-	list_for_each_entry_safe(req, next, &dev->freed_reqs, lh_freed) {
-		list_del(&req->lh_freed);
+	list_for_each_entry_safe(io, next, &dev->freed_ios, lh_freed) {
+		list_del(&io->lh_freed);
 		/* Wait for the tasklet to finish if it hasn't already */
-		tasklet_disable(&req->callback);
-		mempool_free(req, req->dev->req_pool);
+		tasklet_disable(&io->callback);
+		mempool_free(io, io->dev->io_pool);
 		did_work=1;
 	}
 	spin_unlock_bh(&dev->freed_lock);
@@ -66,56 +66,56 @@ static void request_cleaner(unsigned long data)
 
 /* XXX might want to support high memory pages.  on the other hand, those
    might force bounce buffering */
-static int alloc_cache_pages(struct convergent_req *req)
+static int alloc_cache_pages(struct convergent_io *io)
 {
 	int i;
-	unsigned npages=chunk_pages(req->dev);
+	unsigned npages=chunk_pages(io->dev);
 	unsigned residual;
 	struct scatterlist *sg=NULL;  /* initialization to avoid warning */
 	
 	for (i=0; i<npages; i++) {
-		sg=&req->chunk_sg[i];
-		sg->page=mempool_alloc(req->dev->page_pool, GFP_ATOMIC);
+		sg=&io->chunk_sg[i];
+		sg->page=mempool_alloc(io->dev->page_pool, GFP_ATOMIC);
 		if (sg->page == NULL)
 			goto bad;
 		sg->offset=0;
 		sg->length=PAGE_SIZE;
 	}
 	/* Possible partial last page */
-	residual=req->dev->chunksize % PAGE_SIZE;
+	residual=io->dev->chunksize % PAGE_SIZE;
 	if (residual)
 		sg->length=residual;
 	return 0;
 	
 bad:
 	while (--i >= 0)
-		mempool_free(req->chunk_sg[i].page, req->dev->page_pool);
+		mempool_free(io->chunk_sg[i].page, io->dev->page_pool);
 	return -ENOMEM;
 }
 
-static void free_cache_pages(struct convergent_req *req)
+static void free_cache_pages(struct convergent_io *io)
 {
 	int i;
 
-	for (i=0; i<chunk_pages(req->dev); i++)
-		mempool_free(req->chunk_sg[i].page, req->dev->page_pool);
+	for (i=0; i<chunk_pages(io->dev); i++)
+		mempool_free(io->chunk_sg[i].page, io->dev->page_pool);
 }
 
-static void orig_io_to_scatterlist(struct convergent_req *req)
+static void request_to_scatterlist(struct convergent_io *io)
 {
 	struct bio *bio;
 	struct bio_vec *bvec;
 	int seg;
 	int i=0;
-	unsigned nbytes=req->len;
+	unsigned nbytes=io->len;
 	unsigned bytesThisRound;
 	
-	rq_for_each_bio(bio, req->orig_io) {
+	rq_for_each_bio(bio, io->orig_req) {
 		bio_for_each_segment(bvec, bio, seg) {
 			bytesThisRound=min(bvec->bv_len, nbytes);
-			req->orig_sg[i].page=bvec->bv_page;
-			req->orig_sg[i].offset=bvec->bv_offset;
-			req->orig_sg[i].length=bytesThisRound;
+			io->orig_sg[i].page=bvec->bv_page;
+			io->orig_sg[i].offset=bvec->bv_offset;
+			io->orig_sg[i].length=bytesThisRound;
 			i++;
 			nbytes -= bytesThisRound;
 			/* Stop when we reach the end of this chunk if this
@@ -185,10 +185,10 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	kunmap_atomic(dbuf - 1, KM_SOFTIRQ1);
 }
 
-static void chunk_tfm(struct convergent_req *req, int type)
+static void chunk_tfm(struct convergent_io *io, int type)
 {
-	struct convergent_dev *dev=req->dev;
-	struct scatterlist *sg=req->chunk_sg;
+	struct convergent_dev *dev=io->dev;
+	struct scatterlist *sg=io->chunk_sg;
 	unsigned nbytes=dev->chunksize;
 	char iv[8]={0};
 	
@@ -199,12 +199,12 @@ static void chunk_tfm(struct convergent_req *req, int type)
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	if (type == READ) {
 		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
-					nbytes, req->chunk);
+					nbytes, io->chunk);
 		if (crypto_cipher_decrypt(dev->cipher, sg, sg, nbytes))
 			BUG();
 	} else {
 		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
-					nbytes, req->chunk);
+					nbytes, io->chunk);
 		if (crypto_cipher_encrypt(dev->cipher, sg, sg, nbytes))
 			BUG();
 	}
@@ -212,10 +212,10 @@ static void chunk_tfm(struct convergent_req *req, int type)
 }
 
 static int convergent_endio(struct bio *newbio, unsigned nbytes, int error);
-static struct bio *bio_create(struct convergent_req *req, int dir,
+static struct bio *bio_create(struct convergent_io *io, int dir,
 			unsigned offset)
 {
-	struct convergent_dev *dev=req->dev;
+	struct convergent_dev *dev=io->dev;
 	struct bio *bio;
 
 	/* XXX could alloc smaller bios if we're looping */
@@ -224,38 +224,38 @@ static struct bio *bio_create(struct convergent_req *req, int dir,
 		return NULL;
 
 	bio->bi_bdev=dev->chunk_bdev;
-	bio->bi_sector=chunk_to_sector(dev, req->chunk) + dev->offset + offset;
+	bio->bi_sector=chunk_to_sector(dev, io->chunk) + dev->offset + offset;
 	ndebug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
 	bio->bi_rw=dir;
-	bio_set_prio(bio, req->prio);
+	bio_set_prio(bio, io->prio);
 	bio->bi_end_io=convergent_endio;
-	bio->bi_private=req;
+	bio->bi_private=io;
 	bio->bi_destructor=bio_destructor;
 	return bio;
 }
 
-static void issue_chunk_io(struct convergent_req *req, int dir)
+static void issue_chunk_io(struct convergent_io *io, int dir)
 {
 	struct bio *bio=NULL;
-	unsigned nbytes=req->dev->chunksize;
+	unsigned nbytes=io->dev->chunksize;
 	unsigned offset=0;
 	int i=0;
 	
 	/* XXX test against very small maximum seg count on target, etc. */
 	ndebug("Submitting clone bio(s)");
-	/* We can't assume that we can fit the entire chunk request in one
+	/* We can't assume that we can fit the entire chunk io in one
 	   bio: it depends on the queue restrictions of the underlying
 	   device */
 	while (offset < nbytes) {
 		if (bio == NULL) {
-			bio=bio_create(req, dir, offset/512);
+			bio=bio_create(io, dir, offset/512);
 			if (bio == NULL)
 				goto bad;
 		}
-		if (bio_add_page(bio, req->chunk_sg[i].page,
-					req->chunk_sg[i].length,
-					req->chunk_sg[i].offset)) {
-			offset += req->chunk_sg[i].length;
+		if (bio_add_page(bio, io->chunk_sg[i].page,
+					io->chunk_sg[i].length,
+					io->chunk_sg[i].offset)) {
+			offset += io->chunk_sg[i].length;
 			i++;
 		} else {
 			debug("Submitting multiple bios");
@@ -269,11 +269,9 @@ static void issue_chunk_io(struct convergent_req *req, int dir)
 	
 bad:
 	/* XXX make this sane */
-	req->error=-ENOMEM;
-	if (atomic_add_return(nbytes-offset, &req->completed) == nbytes) {
-		ndebug("Queueing postprocessing callback on request %p", req);
-		tasklet_schedule(&req->callback);
-	}
+	io->error=-ENOMEM;
+	if (atomic_add_return(nbytes-offset, &io->completed) == nbytes)
+		tasklet_schedule(&io->callback);
 }
 
 static int convergent_handle_request(struct convergent_dev *dev,
@@ -281,83 +279,81 @@ static int convergent_handle_request(struct convergent_dev *dev,
 /* Tasklet - runs in softirq context */
 static void convergent_callback(unsigned long data)
 {
-	struct convergent_req *req=(void*)data;
-	struct convergent_dev *dev=req->dev;
+	struct convergent_io *io=(void*)data;
+	struct convergent_dev *dev=io->dev;
 	
-	if (req->error)
+	if (io->error)
 		goto out;
-	if (!(req->flags & REQ_WRITE)) {
-		chunk_tfm(req, READ);
-		scatterlist_copy(req->chunk_sg, req->orig_sg, req->offset,
-			0, req->len);
-	} else if (req->flags & REQ_RMW) {
-		req->flags &= ~REQ_RMW;
-		atomic_set(&req->completed, 0);
-		chunk_tfm(req, READ);
-		scatterlist_copy(req->orig_sg, req->chunk_sg, 0, req->offset,
-			req->len);
-		chunk_tfm(req, WRITE);
-		issue_chunk_io(req, WRITE);
+	if (!(io->flags & IO_WRITE)) {
+		chunk_tfm(io, READ);
+		scatterlist_copy(io->chunk_sg, io->orig_sg, io->offset,
+			0, io->len);
+	} else if (io->flags & IO_RMW) {
+		io->flags &= ~IO_RMW;
+		atomic_set(&io->completed, 0);
+		chunk_tfm(io, READ);
+		scatterlist_copy(io->orig_sg, io->chunk_sg, 0, io->offset,
+			io->len);
+		chunk_tfm(io, WRITE);
+		issue_chunk_io(io, WRITE);
 		/* We're not done yet! */
 		return;
 	}
 out:
-	free_cache_pages(req);
+	free_cache_pages(io);
 	ndebug("Submitting original bio, %u bytes, chunk "SECTOR_FORMAT,
-				req->len, req->chunk);
+				io->len, io->chunk);
 	spin_lock_bh(&dev->queue_lock);
 	/* XXX error handling */
-	if (end_that_request_first(req->orig_io, req->error ? req->error : 1,
-				req->len / 512)) {
+	if (end_that_request_first(io->orig_req, io->error ? io->error : 1,
+				io->len / 512)) {
 		/* There's another chunk in this request. */
 		/* XXX error handling */
 		/* XXX minimum mempool size */
-		convergent_handle_request(dev, req->orig_io, 0);
+		convergent_handle_request(dev, io->orig_req, 0);
 	} else {
 		/* XXX add_disk_randomness? */
-		end_that_request_last(req->orig_io, req->error ? req->error : 1);
+		end_that_request_last(io->orig_req, io->error ? io->error : 1);
 	}
-	if (unregister_chunk(dev->pending, req->chunk))
+	if (unregister_chunk(dev->pending, io->chunk))
 		blk_start_queue(dev->queue);
 	spin_unlock_bh(&dev->queue_lock);
-	/* Schedule the request to be freed the next time the cleaner runs */
+	/* Schedule the io to be freed the next time the cleaner runs */
 	spin_lock_bh(&dev->freed_lock);
-	list_add_tail(&req->lh_freed, &dev->freed_reqs);
+	list_add_tail(&io->lh_freed, &dev->freed_ios);
 	spin_unlock_bh(&dev->freed_lock);
 }
 
 /* May be called from interrupt context */
-static int convergent_endio(struct bio *newbio, unsigned nbytes, int error)
+static int convergent_endio(struct bio *bio, unsigned nbytes, int error)
 {
-	struct convergent_req *req=newbio->bi_private;
+	struct convergent_io *io=bio->bi_private;
 	int completed;
-	if (error && !req->error) {
+	if (error && !io->error) {
 		/* XXX we shouldn't fail the whole I/O */
-		req->error=error;
+		io->error=error;
 	}
-	completed=atomic_add_return(nbytes, &req->completed);
+	completed=atomic_add_return(nbytes, &io->completed);
 	ndebug("Clone bio completion: %u bytes, total now %u; err %d",
 				nbytes, completed, error);
 	/* Can't call BUG() in interrupt */
-	WARN_ON(completed > req->dev->chunksize);
-	if (completed >= req->dev->chunksize) {
-		ndebug("Queueing postprocessing callback on request %p", req);
-		tasklet_schedule(&req->callback);
-	}
+	WARN_ON(completed > io->dev->chunksize);
+	if (completed >= io->dev->chunksize)
+		tasklet_schedule(&io->callback);
 	return 0;
 }
 
 /* Must be called with queue lock held */
 static int convergent_handle_request(struct convergent_dev *dev,
-			struct request *io, int initial)
+			struct request *req, int initial)
 {
-	struct convergent_req *req;
+	struct convergent_io *io;
 	chunk_t first_chunk, last_chunk;
 	int ret;
 	
-	BUG_ON(io->nr_phys_segments > MAX_INPUT_SEGS);
-	first_chunk=chunk_of(dev, io->sector);
-	last_chunk=chunk_of(dev, io->sector + io->nr_sectors - 1);
+	BUG_ON(req->nr_phys_segments > MAX_INPUT_SEGS);
+	first_chunk=chunk_of(dev, req->sector);
+	last_chunk=chunk_of(dev, req->sector + req->nr_sectors - 1);
 	if (initial && !register_chunks(dev->pending, first_chunk,
 				last_chunk)) {
 		debug("Waiting for chunk " SECTOR_FORMAT, first_chunk);
@@ -365,59 +361,59 @@ static int convergent_handle_request(struct convergent_dev *dev,
 		goto bad1;
 	}
 	
-	req=mempool_alloc(dev->req_pool, GFP_ATOMIC);
-	if (req == NULL) {
+	io=mempool_alloc(dev->io_pool, GFP_ATOMIC);
+	if (io == NULL) {
 		ret=-ENOMEM;
 		goto bad2;
 	}
 	
-	req->dev=dev;
-	req->orig_io=io;
-	req->error=0;
-	req->flags=0;
-	if (rq_data_dir(io))
-		req->flags |= REQ_WRITE;
-	req->chunk=first_chunk;
-	req->offset=chunk_offset(dev, io->sector);
-	req->len=min((unsigned)io->nr_sectors * 512,
-				chunk_space(dev, io->sector));
-	req->last_chunk=last_chunk;
-	req->prio=io->ioprio;
-	atomic_set(&req->completed, 0);
-	INIT_LIST_HEAD(&req->lh_freed);
-	tasklet_init(&req->callback, convergent_callback, (unsigned long)req);
+	io->dev=dev;
+	io->orig_req=req;
+	io->error=0;
+	io->flags=0;
+	if (rq_data_dir(req))
+		io->flags |= IO_WRITE;
+	io->chunk=first_chunk;
+	io->offset=chunk_offset(dev, req->sector);
+	io->len=min((unsigned)req->nr_sectors * 512,
+				chunk_space(dev, req->sector));
+	io->last_chunk=last_chunk;
+	io->prio=req->ioprio;
+	atomic_set(&io->completed, 0);
+	INIT_LIST_HEAD(&io->lh_freed);
+	tasklet_init(&io->callback, convergent_callback, (unsigned long)io);
 	
 	if (initial)
 		debug("handle_request called: %lu sectors over " SECTOR_FORMAT
 					" chunks at chunk " SECTOR_FORMAT,
-					io->nr_sectors,
-					req->last_chunk - req->chunk + 1,
-					req->chunk);
+					req->nr_sectors,
+					io->last_chunk - io->chunk + 1,
+					io->chunk);
 	
-	if (alloc_cache_pages(req)) {
+	if (alloc_cache_pages(io)) {
 		ret=-ENOMEM;
 		goto bad3;
 	}
-	orig_io_to_scatterlist(req);
-	if (req->flags & REQ_WRITE) {
-		if (req->len == req->dev->chunksize) {
+	request_to_scatterlist(io);
+	if (io->flags & IO_WRITE) {
+		if (io->len == io->dev->chunksize) {
 			/* Whole chunk */
-			scatterlist_copy(req->orig_sg, req->chunk_sg,
-					0, 0, req->len);
-			chunk_tfm(req, WRITE);
-			issue_chunk_io(req, WRITE);
+			scatterlist_copy(io->orig_sg, io->chunk_sg,
+					0, 0, io->len);
+			chunk_tfm(io, WRITE);
+			issue_chunk_io(io, WRITE);
 		} else {
 			/* Partial chunk; need read-modify-write */
-			req->flags |= REQ_RMW;
-			issue_chunk_io(req, READ);
+			io->flags |= IO_RMW;
+			issue_chunk_io(io, READ);
 		}
 	} else {
-		issue_chunk_io(req, READ);
+		issue_chunk_io(io, READ);
 	}
 	return 0;
 	
 bad3:
-	mempool_free(req, dev->req_pool);
+	mempool_free(io, dev->io_pool);
 bad2:
 	if (initial)
 		unregister_chunks(dev->pending, first_chunk, last_chunk);
@@ -428,23 +424,23 @@ bad1:
 static void convergent_request(request_queue_t *q)
 {
 	struct convergent_dev *dev=q->queuedata;
-	struct request *io;
+	struct request *req;
 	unsigned long interrupt_state;
 	int ret;
 	
-	while ((io = elv_next_request(q)) != NULL) {
-		if (!blk_fs_request(io)) {
+	while ((req = elv_next_request(q)) != NULL) {
+		if (!blk_fs_request(req)) {
 			/* XXX */
 			debug("Skipping non-fs request");
-			end_request(io, 0);
+			end_request(req, 0);
 			continue;
 		}
-		blkdev_dequeue_request(io);
-		ret=convergent_handle_request(dev, io, 1);
+		blkdev_dequeue_request(req);
+		ret=convergent_handle_request(dev, req, 1);
 		if (ret) {
 			if (ret == -ENOMEM)
 				dev->flags |= DEV_LOWMEM;
-			elv_requeue_request(q, io);
+			elv_requeue_request(q, req);
 			/* blk_stop_queue() must be called with interrupts
 			   disabled */
 			local_irq_save(interrupt_state);
@@ -467,12 +463,12 @@ static void convergent_dev_dtr(struct convergent_dev *dev)
 	del_timer_sync(&dev->cleaner);
 	/* Run the timer one more time to make sure everything's cleaned out
 	   now that the gendisk is gone */
-	request_cleaner((unsigned long)dev);
-	if (dev->req_pool)
-		mempool_destroy(dev->req_pool);
-	if (dev->req_cache)
-		if (kmem_cache_destroy(dev->req_cache))
-			log(KERN_ERR, "couldn't destroy request cache");
+	io_cleaner((unsigned long)dev);
+	if (dev->io_pool)
+		mempool_destroy(dev->io_pool);
+	if (dev->io_cache)
+		if (kmem_cache_destroy(dev->io_cache))
+			log(KERN_ERR, "couldn't destroy io cache");
 	if (dev->page_pool)
 		mempool_destroy(dev->page_pool);
 	if (dev->compress)
@@ -504,10 +500,10 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	if (dev == NULL)
 		return ERR_PTR(-ENOMEM);
 	
-	INIT_LIST_HEAD(&dev->freed_reqs);
+	INIT_LIST_HEAD(&dev->freed_ios);
 	spin_lock_init(&dev->freed_lock);
 	init_timer(&dev->cleaner);
-	dev->cleaner.function=request_cleaner;
+	dev->cleaner.function=io_cleaner;
 	dev->cleaner.data=(unsigned long)dev;
 	dev->cleaner.expires=jiffies + CLEANER_SWEEP;
 	add_timer(&dev->cleaner);
@@ -565,17 +561,17 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	}
 	/* XXX need different cache name for each device; need kstrdup
 	   or somesuch, since cache system doesn't copy the string */
-	dev->req_cache=kmem_cache_create(MODULE_NAME "-requests",
-				sizeof(struct convergent_req) +
+	dev->io_cache=kmem_cache_create(MODULE_NAME "-io",
+				sizeof(struct convergent_io) +
 				chunk_pages(dev) * sizeof(struct scatterlist),
 				0, 0, NULL, NULL);
-	if (dev->req_cache == NULL) {
+	if (dev->io_cache == NULL) {
 		ret=-ENOMEM;
 		goto bad;
 	}
-	dev->req_pool=mempool_create(MIN_CONCURRENT_REQS, mempool_alloc_slab,
-				mempool_free_slab, dev->req_cache);
-	if (dev->req_pool == NULL) {
+	dev->io_pool=mempool_create(MIN_CONCURRENT_REQS, mempool_alloc_slab,
+				mempool_free_slab, dev->io_cache);
+	if (dev->io_pool == NULL) {
 		ret=-ENOMEM;
 		goto bad;
 	}
