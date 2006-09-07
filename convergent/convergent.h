@@ -10,6 +10,8 @@
 #define MODULE_NAME "isr-convergent"
 #define SUBMIT_QUEUE "convergent-io"
 
+#include <linux/blkdev.h>
+
 typedef sector_t chunk_t;
 
 /* XXX what spin_lock primitives should we use when we're using softirqs? */
@@ -34,8 +36,8 @@ struct convergent_dev {
 	kmem_cache_t *req_cache;
 	mempool_t *req_pool;
 	
-	struct list_head pending_reqs[HASH_BUCKETS];
-	spinlock_t pending_lock;
+	/* Must be accessed with queue lock held */
+	struct registration_table *pending;
 	
 	/* XXX make this a global object?  we'd need a list of devs */
 	struct timer_list cleaner;
@@ -45,16 +47,17 @@ struct convergent_dev {
 
 /* convergent_dev flags */
 #define DEV_KILLCLEANER  0x00000001  /* Cleaner should not reschedule itself */
+#define DEV_LOWMEM       0x00000002  /* Queue stopped until requests freed */
 
 struct convergent_req {
-	struct list_head lh_bucket;
-	struct list_head lh_chained;
+	struct list_head lh_freed;
 	struct convergent_dev *dev;
 	struct tasklet_struct callback;
 	atomic_t completed;
 	int error;
 	unsigned flags;
 	chunk_t chunk;
+	chunk_t last_chunk;
 	unsigned offset;  /* byte offset into chunk */
 	unsigned len;     /* bytes */
 	unsigned prio;
@@ -140,5 +143,12 @@ static inline sector_t chunk_to_sector(struct convergent_dev *dev,
 int submitter_start(void);
 void submitter_shutdown(void);
 void submit(struct bio *bio);
+
+void registration_shutdown(void);
+int registration_start(void);
+struct registration_table *registration_alloc(void);
+void registration_free(struct registration_table *table);
+int register_chunks(struct registration_table *table, chunk_t start, chunk_t end);
+int unregister_chunk(struct registration_table *table, chunk_t chunk);
 
 #endif

@@ -41,17 +41,27 @@ static void request_cleaner(unsigned long data)
 	struct convergent_dev *dev=(void*)data;
 	struct convergent_req *req;
 	struct convergent_req *next;
+	int did_work=0;
 	
 	spin_lock(&dev->freed_lock);
-	list_for_each_entry_safe(req, next, &dev->freed_reqs, lh_bucket) {
-		list_del(&req->lh_bucket);
+	list_for_each_entry_safe(req, next, &dev->freed_reqs, lh_freed) {
+		list_del(&req->lh_freed);
 		/* Wait for the tasklet to finish if it hasn't already */
 		tasklet_disable(&req->callback);
 		mempool_free(req, req->dev->req_pool);
+		did_work=1;
 	}
 	spin_unlock(&dev->freed_lock);
+	if (did_work && (dev->flags & DEV_LOWMEM)) {
+		spin_lock(&dev->queue_lock);
+		dev->flags &= ~DEV_LOWMEM;
+		blk_start_queue(dev->queue);
+		spin_unlock(&dev->queue_lock);
+	}
 	if (!(dev->flags & DEV_KILLCLEANER))
 		mod_timer(&dev->cleaner, jiffies + CLEANER_SWEEP);
+	else
+		debug("Timer shutting down");
 }
 
 /* XXX might want to support high memory pages.  on the other hand, those
@@ -89,11 +99,6 @@ static void free_cache_pages(struct convergent_req *req)
 
 	for (i=0; i<chunk_pages(req->dev); i++)
 		mempool_free(req->chunk_sg[i].page, req->dev->page_pool);
-}
-
-static unsigned hash(chunk_t chunk)
-{
-	return chunk % HASH_BUCKETS;
 }
 
 static void orig_io_to_scatterlist(struct convergent_req *req)
@@ -273,68 +278,8 @@ bad:
 	}
 }
 
-static int request_start(struct convergent_req *req)
-{
-	struct convergent_dev *dev=req->dev;
-	struct convergent_req *parent=NULL;
-	struct convergent_req *cur;
-	int ret;
-	
-	/* XXX request chaining can go away once we can simply stop the
-	   queue, and should, since we need to be able to stop the queue
-	   when we run low on memory */
-	spin_lock(&dev->pending_lock);
-	/* See if another request for this chunk is in progress */
-	list_for_each_entry(cur, &dev->pending_reqs[hash(req->chunk)],
-				lh_bucket) {
-		if (cur->chunk == req->chunk) {
-			parent=cur;
-			break;
-		}
-	}
-	if (parent == NULL) {
-		ndebug("Starting request for chunk " SECTOR_FORMAT,
-					req->chunk);
-		list_add_tail(&req->lh_bucket,
-				&dev->pending_reqs[hash(req->chunk)]);
-		ret=1;
-	} else {
-		list_add_tail(&req->lh_chained, &parent->lh_chained);
-		ret=0;
-	}
-	spin_unlock(&dev->pending_lock);
-	return ret;
-}
-
-static void convergent_callback1(struct convergent_req *req);
-static void request_end(struct convergent_req *req)
-{
-	struct convergent_dev *dev=req->dev;
-	struct convergent_req *child=NULL;
-	int do_callback=0;
-	
-	ndebug("Ending request for chunk " SECTOR_FORMAT, req->chunk);
-	spin_lock(&dev->pending_lock);
-	list_del_init(&req->lh_bucket);
-	if (!list_empty(&req->lh_chained)) {
-		ndebug("Retrieving request for chunk " SECTOR_FORMAT,
-					req->chunk);
-		child=list_entry(req->lh_chained.next, struct convergent_req,
-					lh_chained);
-		list_del(&req->lh_chained);
-		list_add_tail(&child->lh_bucket,
-				&dev->pending_reqs[hash(child->chunk)]);
-		do_callback=1;
-	}
-	spin_unlock(&dev->pending_lock);
-	if (do_callback) {
-		/* Eww eww eww. */
-		convergent_callback1(child);
-	}
-}
-
 static int convergent_handle_request(struct convergent_dev *dev,
-			struct request *io);
+			struct request *io, int initial);
 static void convergent_callback2(unsigned long data)
 {
 	struct convergent_req *req=(void*)data;
@@ -368,17 +313,17 @@ out:
 		/* There's another chunk in this request. */
 		/* XXX error handling */
 		/* XXX minimum mempool size */
-		spin_unlock(&dev->queue_lock);
-		convergent_handle_request(dev, req->orig_io);
+		convergent_handle_request(dev, req->orig_io, 0);
 	} else {
 		/* XXX add_disk_randomness? */
 		end_that_request_last(req->orig_io, req->error ? req->error : 1);
-		spin_unlock(&dev->queue_lock);
 	}
-	request_end(req);
+	if (unregister_chunk(dev->pending, req->chunk))
+		blk_start_queue(dev->queue);
+	spin_unlock(&dev->queue_lock);
 	/* Schedule the request to be freed the next time the cleaner runs */
 	spin_lock(&dev->freed_lock);
-	list_add_tail(&req->lh_bucket, &dev->freed_reqs);
+	list_add_tail(&req->lh_freed, &dev->freed_reqs);
 	spin_unlock(&dev->freed_lock);
 }
 
@@ -432,38 +377,49 @@ bad:
 	BUG();
 }
 
+/* Must be called with queue lock held */
 static int convergent_handle_request(struct convergent_dev *dev,
-			struct request *io)
+			struct request *io, int initial)
 {
 	struct convergent_req *req;
 	
 	BUG_ON(io->nr_phys_segments > MAX_INPUT_SEGS);
 	
-	debug("handle_request called: %lu sectors at sector " SECTOR_FORMAT,
-				io->nr_sectors, io->sector);
 	req=mempool_alloc(dev->req_pool, GFP_ATOMIC);
 	if (req == NULL)
 		return -ENOMEM;
+	
+	req->chunk=chunk_of(dev, io->sector);
+	req->last_chunk=chunk_of(dev, io->sector + io->nr_sectors - 1);
+	if (initial && !register_chunks(dev->pending, req->chunk,
+				req->last_chunk)) {
+		debug("Waiting for chunk " SECTOR_FORMAT, req->chunk);
+		mempool_free(req, dev->req_pool);
+		return -EAGAIN;
+	}
+	
 	req->dev=dev;
 	req->orig_io=io;
 	req->error=0;
 	req->flags=0;
 	if (rq_data_dir(io))
 		req->flags |= REQ_WRITE;
-	req->chunk=chunk_of(dev, io->sector);
 	req->offset=chunk_offset(dev, io->sector);
 	req->len=min((unsigned)io->nr_sectors * 512,
 				chunk_space(dev, io->sector));
 	req->prio=io->ioprio;
-	/* XXX: need a way to look up other chunks in hash table */
-	BUG_ON(req->chunk != chunk_of(dev, io->sector + io->nr_sectors - 1));
 	atomic_set(&req->completed, 0);
-	INIT_LIST_HEAD(&req->lh_bucket);
-	INIT_LIST_HEAD(&req->lh_chained);
+	INIT_LIST_HEAD(&req->lh_freed);
 	tasklet_init(&req->callback, convergent_callback2, (unsigned long)req);
 	
-	if (request_start(req))
-		convergent_callback1(req);
+	if (initial)
+		debug("handle_request called: %lu sectors over " SECTOR_FORMAT
+					" chunks at chunk " SECTOR_FORMAT,
+					io->nr_sectors,
+					req->last_chunk - req->chunk + 1,
+					req->chunk);
+	
+	convergent_callback1(req);
 	return 0;
 }
 
@@ -471,6 +427,8 @@ static void convergent_request(request_queue_t *q)
 {
 	struct convergent_dev *dev=q->queuedata;
 	struct request *io;
+	unsigned long interrupt_state;
+	int ret;
 	
 	while ((io = elv_next_request(q)) != NULL) {
 		if (!blk_fs_request(io)) {
@@ -480,8 +438,18 @@ static void convergent_request(request_queue_t *q)
 			continue;
 		}
 		blkdev_dequeue_request(io);
-		/* XXX check return status */
-		convergent_handle_request(dev, io);
+		ret=convergent_handle_request(dev, io, 1);
+		if (ret) {
+			if (ret == -ENOMEM)
+				dev->flags |= DEV_LOWMEM;
+			elv_requeue_request(q, io);
+			/* blk_stop_queue() must be called with interrupts
+			   disabled */
+			local_irq_save(interrupt_state);
+			blk_stop_queue(q);
+			local_irq_restore(interrupt_state);
+			return;
+		}
 	}
 }
 
@@ -509,10 +477,13 @@ static void convergent_dev_dtr(struct convergent_dev *dev)
 	/* XXX racy? */
 	if (dev->gendisk)
 		del_gendisk(dev->gendisk);
+	if (dev->pending)
+		registration_free(dev->pending);
 	dev->flags |= DEV_KILLCLEANER;
-	/* Since the gendisk is gone, the last run of the cleaner should
-	   clear out everything */
 	del_timer_sync(&dev->cleaner);
+	/* Run the timer one more time to make sure everything's cleaned out
+	   now that the gendisk is gone */
+	request_cleaner((unsigned long)dev);
 	if (dev->req_pool)
 		mempool_destroy(dev->req_pool);
 	if (dev->req_cache)
@@ -543,16 +514,11 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	struct convergent_dev *dev;
 	sector_t capacity;
 	int ret;
-	int i;
 	
 	debug("Ctr starting");
 	dev=kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (dev == NULL)
 		return ERR_PTR(-ENOMEM);
-	
-	for (i=0; i<HASH_BUCKETS; i++)
-		INIT_LIST_HEAD(&dev->pending_reqs[i]);
-	spin_lock_init(&dev->pending_lock);
 	
 	INIT_LIST_HEAD(&dev->freed_reqs);
 	spin_lock_init(&dev->freed_lock);
@@ -597,9 +563,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	blk_queue_merge_bvec(dev->queue, convergent_mergeable_bvec);
 	/* XXX bounce buffer configuration */
 	blk_queue_max_phys_segments(dev->queue, MAX_INPUT_SEGS);
-	/* XXX */
-	blk_queue_hardsect_size(dev->queue, PAGE_SIZE);
-	blk_queue_max_sectors(dev->queue, PAGE_SIZE/512);
+	/* XXX max_sectors */
 	
 	ndebug("Allocating crypto");
 	dev->cipher=crypto_alloc_tfm("blowfish", CRYPTO_TFM_MODE_CBC);
@@ -635,6 +599,11 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	dev->req_pool=mempool_create(MIN_CONCURRENT_REQS, mempool_alloc_slab,
 				mempool_free_slab, dev->req_cache);
 	if (dev->req_pool == NULL) {
+		ret=-ENOMEM;
+		goto bad;
+	}
+	dev->pending=registration_alloc();
+	if (dev->pending == NULL) {
 		ret=-ENOMEM;
 		goto bad;
 	}
@@ -696,31 +665,39 @@ static int __init convergent_init(void)
 		ret=-ENOMEM;
 		goto bad2;
 	}
+	
+	if (registration_start()) {
+		log(KERN_ERR, "couldn't allocate registration cache");
+		ret=-ENOMEM;
+		goto bad3;
+	}
 
 	ret=register_blkdev(0, MODULE_NAME);
 	if (ret < 0) {
 		log(KERN_ERR, "block driver registration failed");
-		goto bad3;
+		goto bad4;
 	}
 	blk_major=ret;
 	
 	if (device == NULL) {
 		log(KERN_ERR, "no device node specified");
 		ret=-EINVAL;
-		goto bad4;
+		goto bad5;
 	}
 	ndebug("Constructing device");
 	gdev=convergent_dev_ctr(device, chunksize, 0);
 	if (IS_ERR(gdev)) {
 		ret=PTR_ERR(gdev);
-		goto bad4;
+		goto bad5;
 	}
 	
 	return 0;
 
-bad4:
+bad5:
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
+bad4:
+	registration_shutdown();
 bad3:
 	submitter_shutdown();
 bad2:
@@ -737,6 +714,8 @@ static void __exit convergent_shutdown(void)
 	
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
+	
+	registration_shutdown();
 	
 	submitter_shutdown();
 	

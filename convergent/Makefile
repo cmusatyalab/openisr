@@ -1,7 +1,7 @@
 ifneq ($(KERNELRELEASE),)
 
 obj-m := isr-convergent.o
-isr-convergent-objs := convergent.o submitter.o revision.o
+isr-convergent-objs := convergent.o submitter.o conflict.o revision.o
 
 else
 
