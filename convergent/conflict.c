@@ -71,7 +71,8 @@ void registration_free(struct registration_table *table)
 }
 
 /* Must be synchronized by caller */
-int register_chunks(struct registration_table *table, chunk_t start, chunk_t end)
+int register_chunks(struct registration_table *table, chunk_t start,
+			chunk_t end)
 {
 	chunk_t cur;
 	struct registration *reg;
@@ -116,4 +117,18 @@ int unregister_chunk(struct registration_table *table, chunk_t chunk)
 	/* Not found */
 	BUG();
 	return 0;
+}
+
+/* Must be synchronized by caller */
+int unregister_chunks(struct registration_table *table, chunk_t start,
+			chunk_t end)
+{
+	chunk_t cur;
+	int waiter=0;
+	
+	for (cur=start; cur <= end; cur++)
+		if (unregister_chunk(table, cur))
+			waiter=1;
+	
+	return waiter;
 }

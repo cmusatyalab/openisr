@@ -148,7 +148,10 @@ void registration_shutdown(void);
 int registration_start(void);
 struct registration_table *registration_alloc(void);
 void registration_free(struct registration_table *table);
-int register_chunks(struct registration_table *table, chunk_t start, chunk_t end);
+int register_chunks(struct registration_table *table, chunk_t start,
+			chunk_t end);
 int unregister_chunk(struct registration_table *table, chunk_t chunk);
+int unregister_chunks(struct registration_table *table, chunk_t start,
+			chunk_t end);
 
 #endif

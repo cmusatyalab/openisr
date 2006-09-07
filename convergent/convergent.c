@@ -119,8 +119,7 @@ static void orig_io_to_scatterlist(struct convergent_req *req)
 			i++;
 			nbytes -= bytesThisRound;
 			/* Stop when we reach the end of this chunk if this
-			   is a multiple-chunk request.  XXX not strictly
-			   necessary */
+			   is a multiple-chunk request. */
 			if (nbytes == 0)
 				return;
 		}
@@ -212,8 +211,7 @@ static void chunk_tfm(struct convergent_req *req, int type)
 	spin_unlock(&dev->tfm_lock);
 }
 
-static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
-			int error);
+static int convergent_endio(struct bio *newbio, unsigned nbytes, int error);
 static struct bio *bio_create(struct convergent_req *req, int dir,
 			unsigned offset)
 {
@@ -230,7 +228,7 @@ static struct bio *bio_create(struct convergent_req *req, int dir,
 	ndebug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
 	bio->bi_rw=dir;
 	bio_set_prio(bio, req->prio);
-	bio->bi_end_io=convergent_bio_callback;
+	bio->bi_end_io=convergent_endio;
 	bio->bi_private=req;
 	bio->bi_destructor=bio_destructor;
 	return bio;
@@ -280,7 +278,7 @@ bad:
 
 static int convergent_handle_request(struct convergent_dev *dev,
 			struct request *io, int initial);
-static void convergent_callback2(unsigned long data)
+static void convergent_callback(unsigned long data)
 {
 	struct convergent_req *req=(void*)data;
 	struct convergent_dev *dev=req->dev;
@@ -328,8 +326,7 @@ out:
 }
 
 /* May be called from interrupt context */
-static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
-			int error)
+static int convergent_endio(struct bio *newbio, unsigned nbytes, int error)
 {
 	struct convergent_req *req=newbio->bi_private;
 	int completed;
@@ -349,12 +346,57 @@ static int convergent_bio_callback(struct bio *newbio, unsigned nbytes,
 	return 0;
 }
 
-/* XXX this isn't a callback anymore; it's called directly from softirq
-   context */
-static void convergent_callback1(struct convergent_req *req)
+/* Must be called with queue lock held */
+static int convergent_handle_request(struct convergent_dev *dev,
+			struct request *io, int initial)
 {
-	if (alloc_cache_pages(req))
-		goto bad;
+	struct convergent_req *req;
+	chunk_t first_chunk, last_chunk;
+	int ret;
+	
+	BUG_ON(io->nr_phys_segments > MAX_INPUT_SEGS);
+	first_chunk=chunk_of(dev, io->sector);
+	last_chunk=chunk_of(dev, io->sector + io->nr_sectors - 1);
+	if (initial && !register_chunks(dev->pending, first_chunk,
+				last_chunk)) {
+		debug("Waiting for chunk " SECTOR_FORMAT, first_chunk);
+		ret=-EAGAIN;
+		goto bad1;
+	}
+	
+	req=mempool_alloc(dev->req_pool, GFP_ATOMIC);
+	if (req == NULL) {
+		ret=-ENOMEM;
+		goto bad2;
+	}
+	
+	req->dev=dev;
+	req->orig_io=io;
+	req->error=0;
+	req->flags=0;
+	if (rq_data_dir(io))
+		req->flags |= REQ_WRITE;
+	req->chunk=first_chunk;
+	req->offset=chunk_offset(dev, io->sector);
+	req->len=min((unsigned)io->nr_sectors * 512,
+				chunk_space(dev, io->sector));
+	req->last_chunk=last_chunk;
+	req->prio=io->ioprio;
+	atomic_set(&req->completed, 0);
+	INIT_LIST_HEAD(&req->lh_freed);
+	tasklet_init(&req->callback, convergent_callback, (unsigned long)req);
+	
+	if (initial)
+		debug("handle_request called: %lu sectors over " SECTOR_FORMAT
+					" chunks at chunk " SECTOR_FORMAT,
+					io->nr_sectors,
+					req->last_chunk - req->chunk + 1,
+					req->chunk);
+	
+	if (alloc_cache_pages(req)) {
+		ret=-ENOMEM;
+		goto bad3;
+	}
 	orig_io_to_scatterlist(req);
 	if (req->flags & REQ_WRITE) {
 		if (req->len == req->dev->chunksize) {
@@ -371,56 +413,15 @@ static void convergent_callback1(struct convergent_req *req)
 	} else {
 		issue_chunk_io(req, READ);
 	}
-	return;
-bad:
-	/* XXX fix */
-	BUG();
-}
-
-/* Must be called with queue lock held */
-static int convergent_handle_request(struct convergent_dev *dev,
-			struct request *io, int initial)
-{
-	struct convergent_req *req;
-	
-	BUG_ON(io->nr_phys_segments > MAX_INPUT_SEGS);
-	
-	req=mempool_alloc(dev->req_pool, GFP_ATOMIC);
-	if (req == NULL)
-		return -ENOMEM;
-	
-	req->chunk=chunk_of(dev, io->sector);
-	req->last_chunk=chunk_of(dev, io->sector + io->nr_sectors - 1);
-	if (initial && !register_chunks(dev->pending, req->chunk,
-				req->last_chunk)) {
-		debug("Waiting for chunk " SECTOR_FORMAT, req->chunk);
-		mempool_free(req, dev->req_pool);
-		return -EAGAIN;
-	}
-	
-	req->dev=dev;
-	req->orig_io=io;
-	req->error=0;
-	req->flags=0;
-	if (rq_data_dir(io))
-		req->flags |= REQ_WRITE;
-	req->offset=chunk_offset(dev, io->sector);
-	req->len=min((unsigned)io->nr_sectors * 512,
-				chunk_space(dev, io->sector));
-	req->prio=io->ioprio;
-	atomic_set(&req->completed, 0);
-	INIT_LIST_HEAD(&req->lh_freed);
-	tasklet_init(&req->callback, convergent_callback2, (unsigned long)req);
-	
-	if (initial)
-		debug("handle_request called: %lu sectors over " SECTOR_FORMAT
-					" chunks at chunk " SECTOR_FORMAT,
-					io->nr_sectors,
-					req->last_chunk - req->chunk + 1,
-					req->chunk);
-	
-	convergent_callback1(req);
 	return 0;
+	
+bad3:
+	mempool_free(req, dev->req_pool);
+bad2:
+	if (initial)
+		unregister_chunks(dev->pending, first_chunk, last_chunk);
+bad1:
+	return ret;
 }
 
 static void convergent_request(request_queue_t *q)
@@ -451,24 +452,6 @@ static void convergent_request(request_queue_t *q)
 			return;
 		}
 	}
-}
-
-/* Return the number of bytes of bvec that can be merged into bio */
-/* XXX only keep this if we want to split a req into multiple bios for
-   simultaneous work and chain them for in-order completion */
-static int convergent_mergeable_bvec(request_queue_t *q, struct bio *bio,
-			struct bio_vec *bvec)
-{
-	struct convergent_dev *dev=q->queuedata;
-	int allowable;
-	
-	allowable=chunk_space(dev, bio->bi_sector) - bio->bi_size;
-	BUG_ON(allowable < 0);
-	/* XXX */
-	BUG_ON(!bio_segments(bio) && allowable < PAGE_SIZE);
-	debug("mergeable called; sec=" SECTOR_FORMAT " size=%u allowable=%d",
-				bio->bi_sector, bio->bi_size, allowable);
-	return allowable;
 }
 
 static void convergent_dev_dtr(struct convergent_dev *dev)
@@ -554,13 +537,6 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 		goto bad;
 	}
 	dev->queue->queuedata=dev;
-	/* We don't want to change hardsect_size because its value is
-	   not just used by the request queue; it's exported to
-	   the filesystem code, etc.  Also, the kernel seems not to
-	   be able to handle hardsect_size > PAGE_SIZE.  We use a
-	   merge function to make sure no bio spans multiple chunks.
-	   Requests still might. */
-	blk_queue_merge_bvec(dev->queue, convergent_mergeable_bvec);
 	/* XXX bounce buffer configuration */
 	blk_queue_max_phys_segments(dev->queue, MAX_INPUT_SEGS);
 	/* XXX max_sectors */
