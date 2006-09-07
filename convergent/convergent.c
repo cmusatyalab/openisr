@@ -244,12 +244,12 @@ static void issue_chunk_io(struct convergent_req *req, int dir)
 			i++;
 		} else {
 			debug("Submitting multiple bios");
-			generic_make_request(bio);
+			submit(bio);
 			bio=NULL;
 		}
 	}
 	BUG_ON(bio == NULL);
-	generic_make_request(bio);
+	submit(bio);
 	return;
 	
 bad:
@@ -636,31 +636,39 @@ static int __init convergent_init(void)
 		ret=-ENOMEM;
 		goto bad1;
 	}
+	
+	if (submitter_start()) {
+		log(KERN_ERR, "couldn't start I/O submission thread");
+		ret=-ENOMEM;
+		goto bad2;
+	}
 
 	ret=register_blkdev(0, MODULE_NAME);
 	if (ret < 0) {
 		log(KERN_ERR, "block driver registration failed");
-		goto bad2;
+		goto bad3;
 	}
 	blk_major=ret;
 	
 	if (device == NULL) {
 		log(KERN_ERR, "no device node specified");
 		ret=-EINVAL;
-		goto bad3;
+		goto bad4;
 	}
 	ndebug("Constructing device");
 	gdev=convergent_dev_ctr(device, chunksize, 0);
 	if (IS_ERR(gdev)) {
 		ret=PTR_ERR(gdev);
-		goto bad3;
+		goto bad4;
 	}
 	
 	return 0;
 
-bad3:
+bad4:
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
+bad3:
+	submitter_shutdown();
 bad2:
 	bioset_free(bio_pool);
 bad1:
@@ -675,6 +683,8 @@ static void __exit convergent_shutdown(void)
 	
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
+	
+	submitter_shutdown();
 	
 	bioset_free(bio_pool);
 }

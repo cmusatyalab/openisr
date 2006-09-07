@@ -8,6 +8,7 @@
 #define HASH_BUCKETS 128
 #define CLEANER_SWEEP (HZ/2)
 #define MODULE_NAME "isr-convergent"
+#define SUBMIT_QUEUE "convergent-io"
 
 typedef sector_t chunk_t;
 
@@ -115,5 +116,9 @@ static inline chunk_t chunk_of(struct convergent_dev *dev, sector_t sect)
 	unsigned shift=fls(chunk_sectors(dev)) - 1;
 	return sect >> shift;
 }
+
+int submitter_start(void);
+void submitter_shutdown(void);
+void submit(struct bio *bio);
 
 #endif
