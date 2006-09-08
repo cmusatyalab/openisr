@@ -4,10 +4,13 @@
 #define DEBUG
 #define MAX_INPUT_SEGS 32
 #define MIN_CONCURRENT_REQS 2
-#define MINORS 16
+#define DEVICES 16  /* If this is more than 26, ctr will need to be fixed */
+#define MINORS_PER_DEVICE 16
 #define HASH_BUCKETS 128
 #define CLEANER_SWEEP (HZ/2)
+#define NAME_BUFLEN 32
 #define MODULE_NAME "isr-convergent"
+#define DEVICE_NAME "openisr"
 #define SUBMIT_QUEUE "convergent-io"
 
 #include <linux/blkdev.h>
@@ -22,7 +25,9 @@ struct convergent_dev {
 	
 	unsigned chunksize;
 	sector_t offset;
-	unsigned flags;
+	int devnum;
+	unsigned flags;	/* XXX racy */
+	atomic_t refcount;
 	
 	struct crypto_tfm *cipher;
 	struct crypto_tfm *hash;
@@ -33,6 +38,7 @@ struct convergent_dev {
 	mempool_t *page_pool;
 	kmem_cache_t *io_cache;
 	mempool_t *io_pool;
+	char *io_cache_name;
 	
 	/* Must be accessed with queue lock held */
 	struct registration_table *pending;
@@ -46,6 +52,7 @@ struct convergent_dev {
 /* convergent_dev flags */
 #define DEV_KILLCLEANER  0x00000001  /* Cleaner should not reschedule itself */
 #define DEV_LOWMEM       0x00000002  /* Queue stopped until requests freed */
+#define DEV_SHUTDOWN     0x00000004  /* Userspace keying daemon has gone away */
 
 struct convergent_io {
 	struct list_head lh_freed;
@@ -83,9 +90,6 @@ struct convergent_io {
 #define debug(args...) do {} while (0)
 #endif
 #define ndebug(args...) do {} while (0)
-
-extern char *svn_branch;
-extern char *svn_revision;
 
 /* XXX clean these out */
 
@@ -138,10 +142,22 @@ static inline sector_t chunk_to_sector(struct convergent_dev *dev,
 	return chunk << shift;
 }
 
+/* convergent.c */
+extern int blk_major;
+struct convergent_dev *convergent_dev_ctr(char *devnode,
+			unsigned chunksize, sector_t offset);
+void convergent_dev_dtr(struct convergent_dev *dev);
+
+/* chardev.c */
+int chardev_start(void);
+void chardev_shutdown(void);
+
+/* submitter.c */
 int submitter_start(void);
 void submitter_shutdown(void);
 void submit(struct bio *bio);
 
+/* conflict.c */
 void registration_shutdown(void);
 int registration_start(void);
 struct registration_table *registration_alloc(void);
@@ -151,5 +167,9 @@ int register_chunks(struct registration_table *table, chunk_t start,
 int unregister_chunk(struct registration_table *table, chunk_t chunk);
 int unregister_chunks(struct registration_table *table, chunk_t start,
 			chunk_t end);
+
+/* revision.c */
+extern char *svn_branch;
+extern char *svn_revision;
 
 #endif

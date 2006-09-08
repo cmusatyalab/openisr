@@ -12,14 +12,9 @@
 #include <linux/timer.h>
 #include "convergent.h"
 
-struct bio_set *bio_pool;
-static int blk_major;
-/* XXX until we get a management interface */
-static char *device=NULL;
-static unsigned chunksize=0;
-static struct convergent_dev *gdev;
-module_param(device, charp, S_IRUGO);
-module_param(chunksize, uint, S_IRUGO);
+static struct bio_set *bio_pool;
+static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
+int blk_major;
 
 static void *mempool_alloc_page(gfp_t gfp_mask, void *unused)
 {
@@ -41,7 +36,6 @@ static void io_cleaner(unsigned long data)
 	struct convergent_dev *dev=(void*)data;
 	struct convergent_io *io;
 	struct convergent_io *next;
-	int did_work=0;
 	
 	spin_lock_bh(&dev->freed_lock);
 	list_for_each_entry_safe(io, next, &dev->freed_ios, lh_freed) {
@@ -49,10 +43,9 @@ static void io_cleaner(unsigned long data)
 		/* Wait for the tasklet to finish if it hasn't already */
 		tasklet_disable(&io->callback);
 		mempool_free(io, io->dev->io_pool);
-		did_work=1;
 	}
 	spin_unlock_bh(&dev->freed_lock);
-	if (did_work && (dev->flags & DEV_LOWMEM)) {
+	if (dev->flags & DEV_LOWMEM) {
 		spin_lock_bh(&dev->queue_lock);
 		dev->flags &= ~DEV_LOWMEM;
 		blk_start_queue(dev->queue);
@@ -351,6 +344,9 @@ static int convergent_handle_request(struct convergent_dev *dev,
 	chunk_t first_chunk, last_chunk;
 	int ret;
 	
+	if (dev->flags & DEV_SHUTDOWN)
+		return -ENXIO;
+	
 	BUG_ON(req->nr_phys_segments > MAX_INPUT_SEGS);
 	first_chunk=chunk_of(dev, req->sector);
 	last_chunk=chunk_of(dev, req->sector + req->nr_sectors - 1);
@@ -438,20 +434,64 @@ static void convergent_request(request_queue_t *q)
 		blkdev_dequeue_request(req);
 		ret=convergent_handle_request(dev, req, 1);
 		if (ret) {
-			if (ret == -ENOMEM)
-				dev->flags |= DEV_LOWMEM;
 			elv_requeue_request(q, req);
+			if (ret == -ENXIO) {
+				/* XXX end_request adds device entropy */
+				end_request(req, 0);
+				continue;
+			}
 			/* blk_stop_queue() must be called with interrupts
 			   disabled */
 			local_irq_save(interrupt_state);
 			blk_stop_queue(q);
 			local_irq_restore(interrupt_state);
+			if (ret == -ENOMEM)
+				dev->flags |= DEV_LOWMEM;
 			return;
 		}
 	}
 }
 
-static void convergent_dev_dtr(struct convergent_dev *dev)
+static int convergent_open(struct inode *ino, struct file *filp)
+{
+	struct convergent_dev *dev=ino->i_bdev->bd_disk->private_data;
+	
+	/* XXX racy? */
+	if (dev->flags & DEV_SHUTDOWN)
+		return -ENODEV;
+	atomic_inc(&dev->refcount);
+	return 0;
+}
+
+static int convergent_release(struct inode *ino, struct file *filp)
+{
+	struct convergent_dev *dev=ino->i_bdev->bd_disk->private_data;
+	
+	if (atomic_dec_and_test(&dev->refcount))
+		convergent_dev_dtr(dev);
+	return 0;
+}
+
+static int alloc_devnum(void)
+{
+	int num;
+
+	/* This is done unlocked, so we have to be careful */
+	for (;;) {
+		num=find_first_zero_bit(devnums, DEVICES);
+		if (num == DEVICES)
+			return -1;
+		if (!test_and_set_bit(num, devnums))
+			return num;
+	}
+}
+
+static void free_devnum(int devnum)
+{
+	clear_bit(devnum, devnums);
+}
+
+void convergent_dev_dtr(struct convergent_dev *dev)
 {
 	debug("Dtr called");
 	/* XXX racy? */
@@ -469,6 +509,8 @@ static void convergent_dev_dtr(struct convergent_dev *dev)
 	if (dev->io_cache)
 		if (kmem_cache_destroy(dev->io_cache))
 			log(KERN_ERR, "couldn't destroy io cache");
+	if (dev->io_cache_name)
+		kfree(dev->io_cache_name);
 	if (dev->page_pool)
 		mempool_destroy(dev->page_pool);
 	if (dev->compress)
@@ -481,24 +523,36 @@ static void convergent_dev_dtr(struct convergent_dev *dev)
 		blk_cleanup_queue(dev->queue);
 	if (dev->chunk_bdev)
 		close_bdev_excl(dev->chunk_bdev);
+	free_devnum(dev->devnum);
 	kfree(dev);
 }
 
 static struct block_device_operations convergent_ops = {
-	.owner =	THIS_MODULE
+	.owner =	THIS_MODULE,
+	.open =		convergent_open,
+	.release =	convergent_release,
 };
 
-static struct convergent_dev *convergent_dev_ctr(char *devnode,
+struct convergent_dev *convergent_dev_ctr(char *devnode,
 			unsigned chunksize, sector_t offset)
 {
 	struct convergent_dev *dev;
 	sector_t capacity;
+	char buf[NAME_BUFLEN];
+	int devnum;
 	int ret;
 	
 	debug("Ctr starting");
+	
+	devnum=alloc_devnum();
+	if (devnum < 0)
+		return ERR_PTR(-EMFILE);
+	
 	dev=kzalloc(sizeof(*dev), GFP_KERNEL);
-	if (dev == NULL)
+	if (dev == NULL) {
+		free_devnum(devnum);
 		return ERR_PTR(-ENOMEM);
+	}
 	
 	INIT_LIST_HEAD(&dev->freed_ios);
 	spin_lock_init(&dev->freed_lock);
@@ -507,6 +561,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	dev->cleaner.data=(unsigned long)dev;
 	dev->cleaner.expires=jiffies + CLEANER_SWEEP;
 	add_timer(&dev->cleaner);
+	dev->devnum=devnum;
 	
 	if (chunksize < 512 || (chunksize & (chunksize - 1)) != 0) {
 		log(KERN_ERR, "chunk size must be >= 512 and a power of 2");
@@ -515,6 +570,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	}
 	dev->chunksize=chunksize;
 	dev->offset=offset;
+	atomic_set(&dev->refcount, 1);
 	debug("chunksize %u, backdev %s, offset " SECTOR_FORMAT,
 				chunksize, devnode, offset);
 	
@@ -523,6 +579,7 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	if (IS_ERR(dev->chunk_bdev)) {
 		log(KERN_ERR, "couldn't open %s", devnode);
 		ret=PTR_ERR(dev->chunk_bdev);
+		dev->chunk_bdev=NULL;
 		goto bad;
 	}
 	ndebug("Allocating queue");
@@ -559,9 +616,14 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 		ret=-ENOMEM;
 		goto bad;
 	}
-	/* XXX need different cache name for each device; need kstrdup
-	   or somesuch, since cache system doesn't copy the string */
-	dev->io_cache=kmem_cache_create(MODULE_NAME "-io",
+	snprintf(buf, NAME_BUFLEN, MODULE_NAME "-" DEVICE_NAME "%c",
+				'a' + devnum);
+	dev->io_cache_name=kstrdup(buf, GFP_KERNEL);
+	if (dev->io_cache_name == NULL) {
+		ret=-ENOMEM;
+		goto bad;
+	}
+	dev->io_cache=kmem_cache_create(dev->io_cache_name,
 				sizeof(struct convergent_io) +
 				chunk_pages(dev) * sizeof(struct scatterlist),
 				0, 0, NULL, NULL);
@@ -582,15 +644,16 @@ static struct convergent_dev *convergent_dev_ctr(char *devnode,
 	}
 	
 	ndebug("Allocating disk");
-	dev->gendisk=alloc_disk(MINORS);
+	dev->gendisk=alloc_disk(MINORS_PER_DEVICE);
 	if (dev->gendisk == NULL) {
 		log(KERN_ERR, "couldn't allocate gendisk");
 		ret=-ENOMEM;
 		goto bad;
 	}
 	dev->gendisk->major=blk_major;
-	dev->gendisk->first_minor=0*MINORS;  /* XXX */
-	sprintf(dev->gendisk->disk_name, "openisr");
+	dev->gendisk->first_minor=devnum*MINORS_PER_DEVICE;
+	dev->gendisk->minors=MINORS_PER_DEVICE;
+	sprintf(dev->gendisk->disk_name, DEVICE_NAME "%c", 'a' + devnum);
 	dev->gendisk->fops=&convergent_ops;
 	dev->gendisk->queue=dev->queue;
 	/* Make sure the capacity, after offset adjustment, is a multiple
@@ -633,15 +696,15 @@ static int __init convergent_init(void)
 		goto bad1;
 	}
 	
-	if (submitter_start()) {
+	ret=submitter_start();
+	if (ret) {
 		log(KERN_ERR, "couldn't start I/O submission thread");
-		ret=-ENOMEM;
 		goto bad2;
 	}
 	
-	if (registration_start()) {
+	ret=registration_start();
+	if (ret) {
 		log(KERN_ERR, "couldn't allocate registration cache");
-		ret=-ENOMEM;
 		goto bad3;
 	}
 
@@ -652,15 +715,9 @@ static int __init convergent_init(void)
 	}
 	blk_major=ret;
 	
-	if (device == NULL) {
-		log(KERN_ERR, "no device node specified");
-		ret=-EINVAL;
-		goto bad5;
-	}
-	ndebug("Constructing device");
-	gdev=convergent_dev_ctr(device, chunksize, 0);
-	if (IS_ERR(gdev)) {
-		ret=PTR_ERR(gdev);
+	ret=chardev_start();
+	if (ret) {
+		log(KERN_ERR, "couldn't register chardev");
 		goto bad5;
 	}
 	
@@ -683,7 +740,7 @@ static void __exit convergent_shutdown(void)
 {
 	log(KERN_INFO, "unloading");
 	
-	convergent_dev_dtr(gdev);
+	chardev_shutdown();
 	
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");

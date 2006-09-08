@@ -1,16 +1,23 @@
 ifneq ($(KERNELRELEASE),)
 
 obj-m := isr-convergent.o
-isr-convergent-objs := convergent.o submitter.o conflict.o revision.o
+isr-convergent-objs := convergent.o submitter.o conflict.o chardev.o revision.o
 
 else
 
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
+CFLAGS = -O2 -g -W -Wall -Wstrict-prototypes
+
+.PHONY: all
+all: module test
 
 .PHONY: module
 module:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
+
+test: test.c
+	$(CC) $(CFLAGS) -o $@ $^
 
 .PHONY: clean
 clean:
