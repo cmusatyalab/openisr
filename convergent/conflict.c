@@ -28,7 +28,7 @@ void registration_shutdown(void)
 		kmem_cache_destroy(reg_cache);
 }
 
-int registration_start(void)
+int __init registration_start(void)
 {
 	reg_cache=kmem_cache_create(MODULE_NAME "-registration",
 				sizeof(struct registration), 0, 0, NULL, NULL);

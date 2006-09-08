@@ -31,7 +31,7 @@ void submitter_shutdown(void)
 		destroy_workqueue(queue);
 }
 
-int submitter_start(void)
+int __init submitter_start(void)
 {
 	queue=create_workqueue(SUBMIT_QUEUE);
 	submission_cache=kmem_cache_create(MODULE_NAME "-submit",

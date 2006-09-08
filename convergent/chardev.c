@@ -3,11 +3,9 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/poll.h>
+#include <linux/miscdevice.h>
 #include "convergent.h"
 #include "convergent-user.h"
-
-static dev_t char_major;
-static struct cdev chardev;
 
 static void shutdown_dev(struct convergent_dev *dev)
 {
@@ -114,26 +112,19 @@ static struct file_operations convergent_char_ops = {
 	/* XXX AIO? */
 };
 
-int chardev_start(void)
+static struct miscdevice convergent_miscdev = {
+	.minor =		MISC_DYNAMIC_MINOR,
+	.name =			DEVICE_NAME "ctl",
+	.fops =			&convergent_char_ops,
+	.list =			LIST_HEAD_INIT(convergent_miscdev.list),
+};
+
+int __init chardev_start(void)
 {
-	int ret;
-	
-	ret=alloc_chrdev_region(&char_major, 0, 1, MODULE_NAME);
-	if (ret)
-		return ret;
-	
-	cdev_init(&chardev, &convergent_char_ops);
-	chardev.owner=THIS_MODULE;
-	ret=cdev_add(&chardev, char_major, 1);
-	if (ret) {
-		unregister_chrdev_region(char_major, 1);
-		return ret;
-	}
-	return 0;
+	return misc_register(&convergent_miscdev);
 }
 
-void chardev_shutdown(void)
+void __exit chardev_shutdown(void)
 {
-	cdev_del(&chardev);
-	unregister_chrdev_region(char_major, 1);
+	misc_deregister(&convergent_miscdev);
 }
