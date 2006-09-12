@@ -2,7 +2,8 @@
 #define LINUX_CONVERGENT_H
 
 #define DEBUG
-#define MAX_INPUT_SEGS 32
+#define MAX_INPUT_SEGS 512
+#define MAX_SEGS_PER_IO 32
 #define MIN_CONCURRENT_REQS 2
 #define DEVICES 16  /* If this is more than 26, ctr will need to be fixed */
 #define MINORS_PER_DEVICE 16
@@ -22,6 +23,8 @@ struct convergent_dev {
 	request_queue_t *queue;
 	spinlock_t queue_lock;
 	struct block_device *chunk_bdev;
+	/* Protected by queue_lock */
+	struct scatterlist setup_sg[MAX_INPUT_SEGS];
 	
 	unsigned chunksize;
 	sector_t offset;
@@ -68,15 +71,16 @@ struct convergent_io {
 	unsigned len;          /* bytes */
 	unsigned prio;
 	struct request *orig_req;
-	struct scatterlist orig_sg[MAX_INPUT_SEGS];
+	struct scatterlist orig_sg[MAX_SEGS_PER_IO];
 	/* XXX hack that lets us not manage yet another allocation */
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
 	struct scatterlist chunk_sg[0];
 };
 
 /* convergent_io flags */
-#define IO_RMW    0x00000001  /* Is in the read phase of read-modify-write */
-#define IO_WRITE  0x00000002  /* Is a write request */
+#define IO_RMW       0x00000001  /* Is in the read phase of read-modify-write */
+#define IO_WRITE     0x00000002  /* Is a write request */
+#define IO_KEEPCHUNK 0x00000004  /* Don't unreserve the chunk when done */
 
 #ifdef CONFIG_LBD
 #define SECTOR_FORMAT "%llu"
