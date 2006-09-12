@@ -5,6 +5,10 @@
 static kmem_cache_t *reg_cache;
 static mempool_t *reg_pool;
 
+/* XXX rename all this (and the file) to chunkdata */
+/* XXX LRU removal except for inuse chunks (waiting for userspace,
+   or in flight) */
+
 struct registration {
 	struct list_head lh;
 	chunk_t chunk;
@@ -71,7 +75,7 @@ void registration_free(struct registration_table *table)
 }
 
 /* Must be synchronized by caller */
-int register_chunks(struct registration_table *table, chunk_t start,
+int reserve_chunks(struct registration_table *table, chunk_t start,
 			chunk_t end)
 {
 	chunk_t cur;
@@ -101,7 +105,7 @@ int register_chunks(struct registration_table *table, chunk_t start,
 }
 
 /* Must be synchronized by caller */
-int unregister_chunk(struct registration_table *table, chunk_t chunk)
+int unreserve_chunk(struct registration_table *table, chunk_t chunk)
 {
 	struct registration *reg;
 	int waiter;
@@ -120,14 +124,14 @@ int unregister_chunk(struct registration_table *table, chunk_t chunk)
 }
 
 /* Must be synchronized by caller */
-int unregister_chunks(struct registration_table *table, chunk_t start,
+int unreserve_chunks(struct registration_table *table, chunk_t start,
 			chunk_t end)
 {
 	chunk_t cur;
 	int waiter=0;
 	
 	for (cur=start; cur <= end; cur++)
-		if (unregister_chunk(table, cur))
+		if (unreserve_chunk(table, cur))
 			waiter=1;
 	
 	return waiter;
