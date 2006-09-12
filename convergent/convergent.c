@@ -93,32 +93,6 @@ static void free_cache_pages(struct convergent_io *io)
 		mempool_free(io->chunk_sg[i].page, io->dev->page_pool);
 }
 
-static void request_to_scatterlist(struct convergent_io *io)
-{
-	struct bio *bio;
-	struct bio_vec *bvec;
-	int seg;
-	int i=0;
-	unsigned nbytes=io->len;
-	unsigned bytesThisRound;
-	
-	rq_for_each_bio(bio, io->orig_req) {
-		bio_for_each_segment(bvec, bio, seg) {
-			bytesThisRound=min(bvec->bv_len, nbytes);
-			io->orig_sg[i].page=bvec->bv_page;
-			io->orig_sg[i].offset=bvec->bv_offset;
-			io->orig_sg[i].length=bytesThisRound;
-			i++;
-			nbytes -= bytesThisRound;
-			/* Stop when we reach the end of this chunk if this
-			   is a multiple-chunk request. */
-			if (nbytes == 0)
-				return;
-		}
-	}
-	/* XXX do we need to increment a page refcount? */
-}
-
 /* supports high memory pages */
 static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 			unsigned soffset, unsigned doffset, unsigned len)
@@ -436,6 +410,8 @@ static int convergent_handle_request(struct convergent_dev *dev,
 	atomic_set(&io->completed, 0);
 	INIT_LIST_HEAD(&io->lh_freed);
 	tasklet_init(&io->callback, convergent_callback, (unsigned long)io);
+	BUG_ON(req->nr_phys_segments > MAX_INPUT_SEGS);
+	blk_rq_map_sg(dev->queue, req, io->orig_sg);
 	
 	if (alloc_cache_pages(io))
 		goto bad2;
@@ -446,7 +422,6 @@ static int convergent_handle_request(struct convergent_dev *dev,
 				io->chunk, reserved ?
 				"continuation" : "initial");
 	
-	request_to_scatterlist(io);
 	if (io->flags & IO_WRITE) {
 		if (io->len == io->dev->chunksize) {
 			/* Whole chunk */
