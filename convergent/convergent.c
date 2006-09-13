@@ -593,7 +593,7 @@ void convergent_dev_dtr(struct convergent_dev *dev)
 	if (dev->gendisk)
 		del_gendisk(dev->gendisk);
 	if (dev->chunkdata)
-		chunkdata_free(dev->chunkdata);
+		chunkdata_free_table(dev->chunkdata);
 	dev->flags |= DEV_KILLCLEANER;
 	del_timer_sync(&dev->cleaner);
 	/* Run the timer one more time to make sure everything's cleaned out
@@ -733,7 +733,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode,
 		ret=-ENOMEM;
 		goto bad;
 	}
-	dev->chunkdata=chunkdata_alloc();
+	dev->chunkdata=chunkdata_alloc_table();
 	if (dev->chunkdata == NULL) {
 		ret=-ENOMEM;
 		goto bad;

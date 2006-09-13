@@ -7,7 +7,8 @@
 #define MIN_CONCURRENT_REQS 2
 #define DEVICES 16  /* If this is more than 26, ctr will need to be fixed */
 #define MINORS_PER_DEVICE 16
-#define HASH_BUCKETS 128
+#define CD_HASH_BUCKETS 4096
+#define CD_MAX_CHUNKS 2048
 #define CLEANER_SWEEP (HZ/2)
 #define NAME_BUFLEN 32
 #define MODULE_NAME "isr-convergent"
@@ -163,10 +164,10 @@ void submitter_shutdown(void);
 void submit(struct bio *bio);
 
 /* chunkdata.c */
-void chunkdata_shutdown(void);
 int chunkdata_start(void);
-struct chunkdata_table *chunkdata_alloc(void);
-void chunkdata_free(struct chunkdata_table *table);
+void chunkdata_shutdown(void);
+struct chunkdata_table *chunkdata_alloc_table(void);
+void chunkdata_free_table(struct chunkdata_table *table);
 int reserve_chunks(struct chunkdata_table *table, chunk_t start,
 			chunk_t end);
 int unreserve_chunk(struct chunkdata_table *table, chunk_t chunk);
