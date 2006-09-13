@@ -44,7 +44,7 @@ struct convergent_dev {
 	char *io_cache_name;
 	
 	/* Must be accessed with queue lock held */
-	struct registration_table *chunkdata;
+	struct chunkdata_table *chunkdata;
 	struct list_head pending_reserved;  /* requests */
 	
 	/* XXX make this a global object?  we'd need a list of devs */
@@ -162,15 +162,15 @@ int submitter_start(void);
 void submitter_shutdown(void);
 void submit(struct bio *bio);
 
-/* conflict.c */
-void registration_shutdown(void);
-int registration_start(void);
-struct registration_table *registration_alloc(void);
-void registration_free(struct registration_table *table);
-int reserve_chunks(struct registration_table *table, chunk_t start,
+/* chunkdata.c */
+void chunkdata_shutdown(void);
+int chunkdata_start(void);
+struct chunkdata_table *chunkdata_alloc(void);
+void chunkdata_free(struct chunkdata_table *table);
+int reserve_chunks(struct chunkdata_table *table, chunk_t start,
 			chunk_t end);
-int unreserve_chunk(struct registration_table *table, chunk_t chunk);
-int unreserve_chunks(struct registration_table *table, chunk_t start,
+int unreserve_chunk(struct chunkdata_table *table, chunk_t chunk);
+int unreserve_chunks(struct chunkdata_table *table, chunk_t start,
 			chunk_t end);
 
 /* revision.c */

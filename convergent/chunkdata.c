@@ -5,17 +5,16 @@
 static kmem_cache_t *reg_cache;
 static mempool_t *reg_pool;
 
-/* XXX rename all this (and the file) to chunkdata */
 /* XXX LRU removal except for inuse chunks (waiting for userspace,
    or in flight) */
 
-struct registration {
+struct chunkdata {
 	struct list_head lh;
 	chunk_t chunk;
 	int waiter;
 };
 
-struct registration_table {
+struct chunkdata_table {
 	struct list_head hash[HASH_BUCKETS];
 };
 
@@ -24,7 +23,7 @@ static unsigned hash(chunk_t chunk)
 	return chunk % HASH_BUCKETS;
 }
 
-void registration_shutdown(void)
+void chunkdata_shutdown(void)
 {
 	if (reg_pool)
 		mempool_destroy(reg_pool);
@@ -32,25 +31,25 @@ void registration_shutdown(void)
 		kmem_cache_destroy(reg_cache);
 }
 
-int __init registration_start(void)
+int __init chunkdata_start(void)
 {
-	reg_cache=kmem_cache_create(MODULE_NAME "-registration",
-				sizeof(struct registration), 0, 0, NULL, NULL);
+	reg_cache=kmem_cache_create(MODULE_NAME "-chunkdata",
+				sizeof(struct chunkdata), 0, 0, NULL, NULL);
 	/* XXX arbitrary factor.  should be based on maximum request size
 	   vs. chunk size */
 	reg_pool=mempool_create(8 * MIN_CONCURRENT_REQS,
 				mempool_alloc_slab, mempool_free_slab,
 				reg_cache);
 	if (reg_cache == NULL || reg_pool == NULL) {
-		registration_shutdown();
+		chunkdata_shutdown();
 		return -ENOMEM;
 	}
 	return 0;
 }
 
-struct registration_table *registration_alloc(void)
+struct chunkdata_table *chunkdata_alloc(void)
 {
-	struct registration_table *table;
+	struct chunkdata_table *table;
 	int i;
 	
 	table=kmalloc(sizeof(*table), GFP_KERNEL);
@@ -61,7 +60,7 @@ struct registration_table *registration_alloc(void)
 	return table;
 }
 
-void registration_free(struct registration_table *table)
+void chunkdata_free(struct chunkdata_table *table)
 {
 	int i;
 	
@@ -75,11 +74,11 @@ void registration_free(struct registration_table *table)
 }
 
 /* Must be synchronized by caller */
-int reserve_chunks(struct registration_table *table, chunk_t start,
+int reserve_chunks(struct chunkdata_table *table, chunk_t start,
 			chunk_t end)
 {
 	chunk_t cur;
-	struct registration *reg;
+	struct chunkdata *reg;
 	int conflict=0;
 	
 	for (cur=start; cur <= end; cur++) {
@@ -105,9 +104,9 @@ int reserve_chunks(struct registration_table *table, chunk_t start,
 }
 
 /* Must be synchronized by caller */
-int unreserve_chunk(struct registration_table *table, chunk_t chunk)
+int unreserve_chunk(struct chunkdata_table *table, chunk_t chunk)
 {
-	struct registration *reg;
+	struct chunkdata *reg;
 	int waiter;
 	
 	list_for_each_entry(reg, &table->hash[hash(chunk)], lh) {
@@ -124,7 +123,7 @@ int unreserve_chunk(struct registration_table *table, chunk_t chunk)
 }
 
 /* Must be synchronized by caller */
-int unreserve_chunks(struct registration_table *table, chunk_t start,
+int unreserve_chunks(struct chunkdata_table *table, chunk_t start,
 			chunk_t end)
 {
 	chunk_t cur;

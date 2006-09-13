@@ -593,7 +593,7 @@ void convergent_dev_dtr(struct convergent_dev *dev)
 	if (dev->gendisk)
 		del_gendisk(dev->gendisk);
 	if (dev->chunkdata)
-		registration_free(dev->chunkdata);
+		chunkdata_free(dev->chunkdata);
 	dev->flags |= DEV_KILLCLEANER;
 	del_timer_sync(&dev->cleaner);
 	/* Run the timer one more time to make sure everything's cleaned out
@@ -733,7 +733,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode,
 		ret=-ENOMEM;
 		goto bad;
 	}
-	dev->chunkdata=registration_alloc();
+	dev->chunkdata=chunkdata_alloc();
 	if (dev->chunkdata == NULL) {
 		ret=-ENOMEM;
 		goto bad;
@@ -798,9 +798,9 @@ static int __init convergent_init(void)
 		goto bad2;
 	}
 	
-	ret=registration_start();
+	ret=chunkdata_start();
 	if (ret) {
-		log(KERN_ERR, "couldn't allocate registration cache");
+		log(KERN_ERR, "couldn't allocate chunkdata cache");
 		goto bad3;
 	}
 
@@ -823,7 +823,7 @@ bad5:
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
 bad4:
-	registration_shutdown();
+	chunkdata_shutdown();
 bad3:
 	submitter_shutdown();
 bad2:
@@ -841,7 +841,7 @@ static void __exit convergent_shutdown(void)
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
 	
-	registration_shutdown();
+	chunkdata_shutdown();
 	
 	submitter_shutdown();
 	
