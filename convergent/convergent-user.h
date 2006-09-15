@@ -13,6 +13,7 @@
 struct isr_setup {
 	char chunk_device[MAX_DEVICE_LEN];
 	unsigned chunksize;
+	unsigned cachesize;
 	unsigned long long offset;
 	int major;
 	int first_minor;

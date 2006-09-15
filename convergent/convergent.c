@@ -633,8 +633,8 @@ static struct block_device_operations convergent_ops = {
 	.release =	convergent_release,
 };
 
-struct convergent_dev *convergent_dev_ctr(char *devnode,
-			unsigned chunksize, sector_t offset)
+struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
+			unsigned cachesize, sector_t offset)
 {
 	struct convergent_dev *dev;
 	sector_t capacity;
@@ -669,11 +669,18 @@ struct convergent_dev *convergent_dev_ctr(char *devnode,
 		ret=-EINVAL;
 		goto bad;
 	}
+	/* XXX we need a minimum too */
+	if (cachesize > CD_MAX_CHUNKS) {
+		log(KERN_ERR, "cache size may not be larger than %u",
+					CD_MAX_CHUNKS);
+		ret=-EINVAL;
+		goto bad;
+	}
 	dev->chunksize=chunksize;
 	dev->offset=offset;
 	atomic_set(&dev->refcount, 1);
-	debug("chunksize %u, backdev %s, offset " SECTOR_FORMAT,
-				chunksize, devnode, offset);
+	debug("chunksize %u, cachesize %u, backdev %s, offset " SECTOR_FORMAT,
+				chunksize, cachesize, devnode, offset);
 	
 	debug("Opening %s", devnode);
 	dev->chunk_bdev=open_bdev_excl(devnode, 0, dev);
@@ -738,7 +745,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode,
 		ret=-ENOMEM;
 		goto bad;
 	}
-	dev->chunkdata=chunkdata_alloc_table();
+	dev->chunkdata=chunkdata_alloc_table(cachesize);
 	if (dev->chunkdata == NULL) {
 		ret=-ENOMEM;
 		goto bad;

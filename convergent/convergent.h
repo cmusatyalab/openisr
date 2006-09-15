@@ -7,8 +7,7 @@
 #define MIN_CONCURRENT_REQS 2
 #define DEVICES 16  /* If this is more than 26, ctr will need to be fixed */
 #define MINORS_PER_DEVICE 16
-#define CD_HASH_BUCKETS 4096
-#define CD_MAX_CHUNKS 2048
+#define CD_MAX_CHUNKS 8192  /* XXX make this based on MB RAM in the box */
 #define CLEANER_SWEEP (HZ/2)
 #define NAME_BUFLEN 32
 #define MODULE_NAME "isr-convergent"
@@ -150,8 +149,8 @@ static inline sector_t chunk_to_sector(struct convergent_dev *dev,
 
 /* convergent.c */
 extern int blk_major;
-struct convergent_dev *convergent_dev_ctr(char *devnode,
-			unsigned chunksize, sector_t offset);
+struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
+			unsigned cachesize, sector_t offset);
 void convergent_dev_dtr(struct convergent_dev *dev);
 
 /* chardev.c */
@@ -166,7 +165,7 @@ void submit(struct bio *bio);
 /* chunkdata.c */
 int chunkdata_start(void);
 void chunkdata_shutdown(void);
-struct chunkdata_table *chunkdata_alloc_table(void);
+struct chunkdata_table *chunkdata_alloc_table(unsigned count);
 void chunkdata_free_table(struct chunkdata_table *table);
 int reserve_chunks(struct chunkdata_table *table, chunk_t start,
 			chunk_t end);

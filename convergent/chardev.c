@@ -65,6 +65,7 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 					== MAX_DEVICE_LEN)
 			return -EINVAL;
 		dev=convergent_dev_ctr(setup.chunk_device, setup.chunksize,
+					setup.cachesize,
 					(sector_t)setup.offset);
 		if (IS_ERR(dev))
 			return PTR_ERR(dev);

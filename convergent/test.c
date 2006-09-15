@@ -12,8 +12,9 @@ int main(int argc, char **argv)
 	int fd, ret;
 	struct isr_setup setup;
 	
-	if (argc != 5) {
-		printf("Usage: %s ctldev chunkdev chunksize offset\n", argv[0]);
+	if (argc != 6) {
+		printf("Usage: %s ctldev chunkdev chunksize cachesize offset\n",
+					argv[0]);
 		return 1;
 	}
 	
@@ -24,7 +25,8 @@ int main(int argc, char **argv)
 	}
 	snprintf(setup.chunk_device, MAX_DEVICE_LEN, "%s", argv[2]);
 	setup.chunksize=atoi(argv[3]);
-	setup.offset=atoi(argv[4]);
+	setup.cachesize=atoi(argv[4]);
+	setup.offset=atoi(argv[5]);
 	ret=ioctl(fd, ISR_REGISTER, &setup);
 	if (ret) {
 		perror("Registering device");

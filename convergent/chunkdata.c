@@ -3,10 +3,10 @@
 #include "convergent.h"
 
 static kmem_cache_t *cd_cache;
-static mempool_t *cd_pool;
 
 /* XXX LRU removal except for inuse chunks (waiting for userspace,
    or in flight) */
+/* XXX rename all this */
 
 enum cd_bits {
 	__CD_RESERVED,  /* A request has reserved this chunk */
@@ -25,21 +25,20 @@ struct chunkdata {
 };
 
 struct chunkdata_table {
-	struct list_head hash[CD_HASH_BUCKETS];
-	struct list_head lru;
-	unsigned count;
 	spinlock_t lock;
+	unsigned buckets;
+	struct list_head lru;
+	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
+	struct list_head hash[0];
 };
 
-static unsigned hash(chunk_t chunk)
+static unsigned hash(struct chunkdata_table *table, chunk_t chunk)
 {
-	return chunk % CD_HASH_BUCKETS;
+	return chunk % table->buckets;
 }
 
 void chunkdata_shutdown(void)
 {
-	if (cd_pool)
-		mempool_destroy(cd_pool);
 	if (cd_cache)
 		kmem_cache_destroy(cd_cache);
 }
@@ -48,33 +47,11 @@ int __init chunkdata_start(void)
 {
 	cd_cache=kmem_cache_create(MODULE_NAME "-chunkdata",
 				sizeof(struct chunkdata), 0, 0, NULL, NULL);
-	/* XXX arbitrary factor.  should be based on maximum request size
-	   vs. chunk size */
-	/* XXX still use mempool, or preallocate regs? */
-	cd_pool=mempool_create(8 * MIN_CONCURRENT_REQS,
-				mempool_alloc_slab, mempool_free_slab,
-				cd_cache);
-	if (cd_cache == NULL || cd_pool == NULL) {
+	if (cd_cache == NULL) {
 		chunkdata_shutdown();
 		return -ENOMEM;
 	}
 	return 0;
-}
-
-struct chunkdata_table *chunkdata_alloc_table(void)
-{
-	struct chunkdata_table *table;
-	int i;
-	
-	table=kmalloc(sizeof(*table), GFP_KERNEL);
-	if (table == NULL)
-		return NULL;
-	for (i=0; i<CD_HASH_BUCKETS; i++)
-		INIT_LIST_HEAD(&table->hash[i]);
-	INIT_LIST_HEAD(&table->lru);
-	spin_lock_init(&table->lock);
-	table->count=0;
-	return table;
 }
 
 void chunkdata_free_table(struct chunkdata_table *table)
@@ -89,10 +66,41 @@ void chunkdata_free_table(struct chunkdata_table *table)
 			BUG();
 		list_del(&cd->lh_bucket);
 		list_del(&cd->lh_lru);
-		mempool_free(cd, cd_pool);
+		kmem_cache_free(cd_cache, cd);
 	}
 	spin_unlock_bh(&table->lock);
 	kfree(table);
+}
+
+struct chunkdata_table *chunkdata_alloc_table(unsigned count)
+{
+	struct chunkdata_table *table;
+	struct chunkdata *cd;
+	unsigned buckets=count;  /* XXX is this reasonable? */
+	int i;
+	
+	table=kmalloc(sizeof(*table) + buckets * sizeof(table->hash[0]),
+				GFP_KERNEL);
+	if (table == NULL)
+		return NULL;
+	table->buckets=buckets;
+	INIT_LIST_HEAD(&table->lru);
+	spin_lock_init(&table->lock);
+	for (i=0; i<buckets; i++)
+		INIT_LIST_HEAD(&table->hash[i]);
+	
+	for (i=0; i<count; i++) {
+		cd=kmem_cache_alloc(cd_cache, GFP_KERNEL);
+		if (cd == NULL) {
+			chunkdata_free_table(table);
+			return NULL;
+		}
+		INIT_LIST_HEAD(&cd->lh_bucket);
+		INIT_LIST_HEAD(&cd->lh_lru);
+		list_add(&cd->lh_lru, &table->lru);
+		cd->flags=0;
+	}
+	return table;
 }
 
 static void chunkdata_hit(struct chunkdata_table *table, struct chunkdata *cd)
@@ -102,57 +110,38 @@ static void chunkdata_hit(struct chunkdata_table *table, struct chunkdata *cd)
 	list_add_tail(&cd->lh_lru, &table->lru);
 }
 
-static struct chunkdata *__chunkdata_alloc(struct chunkdata_table *table,
+static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 			chunk_t chunk)
 {
 	struct chunkdata *cd;
 	struct chunkdata *next;
 	
 	BUG_ON(!spin_is_locked(&table->lock));
-	if (table->count < CD_MAX_CHUNKS) {
-		cd=mempool_alloc(cd_pool, GFP_ATOMIC);
-		if (cd == NULL)
-			BUG();  /* XXX */
-		INIT_LIST_HEAD(&cd->lh_bucket);
-		INIT_LIST_HEAD(&cd->lh_lru);
-		list_add(&cd->lh_bucket, &table->hash[hash(chunk)]);
-		list_add_tail(&cd->lh_lru, &table->lru);
-		cd->chunk=chunk;
-		cd->flags=0;
-		table->count++;
-		return cd;
-	} else {
-		list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
-			/* XXX */
-			if (!(cd->flags & CD_RESERVED)) {
-				list_del_init(&cd->lh_bucket);
-				list_add(&cd->lh_bucket,
-						&table->hash[hash(chunk)]);
-				chunkdata_hit(table, cd);
-				cd->chunk=chunk;
-				cd->flags=0;
-				return cd;
-			}
-		}
-		/* XXX */
-		BUG();
-		return NULL;
-	}
-}
-
-static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
-			chunk_t chunk)
-{
-	struct chunkdata *cd;
 	
-	BUG_ON(!spin_is_locked(&table->lock));
-	list_for_each_entry(cd, &table->hash[hash(chunk)], lh_bucket) {
+	/* See if the chunk is in the table already */
+	list_for_each_entry(cd, &table->hash[hash(table, chunk)], lh_bucket) {
 		if (cd->chunk == chunk) {
 			chunkdata_hit(table, cd);
 			return cd;
 		}
 	}
-	return __chunkdata_alloc(table, chunk);
+	
+	/* Steal the LRU chunk */
+	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
+		/* XXX */
+		if (!(cd->flags & CD_RESERVED)) {
+			list_del_init(&cd->lh_bucket);
+			list_add(&cd->lh_bucket,
+					&table->hash[hash(table, chunk)]);
+			chunkdata_hit(table, cd);
+			cd->chunk=chunk;
+			cd->flags=0;
+			return cd;
+		}
+	}
+	
+	/* Can't get a chunk */
+	return NULL;
 }
 
 int reserve_chunks(struct chunkdata_table *table, chunk_t start,
