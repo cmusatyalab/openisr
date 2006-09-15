@@ -24,8 +24,9 @@ struct convergent_dev {
 	request_queue_t *queue;
 	spinlock_t queue_lock;
 	struct block_device *chunk_bdev;
-	/* Protected by queue_lock */
+	
 	struct scatterlist setup_sg[MAX_INPUT_SEGS];
+	spinlock_t setup_lock;
 	
 	unsigned chunksize;
 	sector_t offset;
@@ -46,7 +47,6 @@ struct convergent_dev {
 	
 	/* Must be accessed with queue lock held */
 	struct chunkdata_table *chunkdata;
-	struct list_head pending_reserved;  /* requests */
 	
 	/* XXX make this a global object?  we'd need a list of devs */
 	struct timer_list cleaner;

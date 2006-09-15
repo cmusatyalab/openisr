@@ -28,6 +28,7 @@ struct chunkdata_table {
 	struct list_head hash[CD_HASH_BUCKETS];
 	struct list_head lru;
 	unsigned count;
+	spinlock_t lock;
 };
 
 static unsigned hash(chunk_t chunk)
@@ -71,6 +72,7 @@ struct chunkdata_table *chunkdata_alloc_table(void)
 	for (i=0; i<CD_HASH_BUCKETS; i++)
 		INIT_LIST_HEAD(&table->hash[i]);
 	INIT_LIST_HEAD(&table->lru);
+	spin_lock_init(&table->lock);
 	table->count=0;
 	return table;
 }
@@ -80,6 +82,7 @@ void chunkdata_free_table(struct chunkdata_table *table)
 	struct chunkdata *cd;
 	struct chunkdata *next;
 	
+	spin_lock_bh(&table->lock);
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
 		/* XXX flags check */
 		if (cd->flags & CD_RESERVED)
@@ -88,11 +91,13 @@ void chunkdata_free_table(struct chunkdata_table *table)
 		list_del(&cd->lh_lru);
 		mempool_free(cd, cd_pool);
 	}
+	spin_unlock_bh(&table->lock);
 	kfree(table);
 }
 
 static void chunkdata_hit(struct chunkdata_table *table, struct chunkdata *cd)
 {
+	BUG_ON(!spin_is_locked(&table->lock));
 	list_del_init(&cd->lh_lru);
 	list_add_tail(&cd->lh_lru, &table->lru);
 }
@@ -103,6 +108,7 @@ static struct chunkdata *__chunkdata_alloc(struct chunkdata_table *table,
 	struct chunkdata *cd;
 	struct chunkdata *next;
 	
+	BUG_ON(!spin_is_locked(&table->lock));
 	if (table->count < CD_MAX_CHUNKS) {
 		cd=mempool_alloc(cd_pool, GFP_ATOMIC);
 		if (cd == NULL)
@@ -139,6 +145,7 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 {
 	struct chunkdata *cd;
 	
+	BUG_ON(!spin_is_locked(&table->lock));
 	list_for_each_entry(cd, &table->hash[hash(chunk)], lh_bucket) {
 		if (cd->chunk == chunk) {
 			chunkdata_hit(table, cd);
@@ -148,25 +155,30 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	return __chunkdata_alloc(table, chunk);
 }
 
-/* Must be synchronized by caller */
 int reserve_chunks(struct chunkdata_table *table, chunk_t start,
 			chunk_t end)
 {
 	chunk_t cur;
 	struct chunkdata *cd;
 	int conflict=0;
+	int ret;
 	
+	spin_lock(&table->lock);
 	for (cur=start; cur <= end; cur++) {
 		cd=chunkdata_get(table, cur);
-		if (cd == NULL)
-			return 0;
+		if (cd == NULL) {
+			ret=0;
+			goto out;
+		}
 		if (cd->flags & CD_RESERVED) {
 			cd->flags |= CD_WAITER;
 			conflict=1;
 		}
 	}
-	if (conflict)
-		return 0;
+	if (conflict) {
+		ret=0;
+		goto out;
+	}
 	for (cur=start; cur <= end; cur++) {
 		cd=chunkdata_get(table, cur);
 		if (cd == NULL)
@@ -174,15 +186,19 @@ int reserve_chunks(struct chunkdata_table *table, chunk_t start,
 			BUG();
 		cd->flags |= CD_RESERVED;
 	}
-	return 1;
+	ret=1;
+out:
+	spin_unlock(&table->lock);
+	return ret;
 }
 
-/* Must be synchronized by caller */
-int unreserve_chunk(struct chunkdata_table *table, chunk_t chunk)
+/* XXX locking is probably wrong - needs to be checked with lock validator */
+static int __unreserve_chunk(struct chunkdata_table *table, chunk_t chunk)
 {
 	struct chunkdata *cd;
 	int waiter;
 	
+	BUG_ON(!spin_is_locked(&table->lock));
 	cd=chunkdata_get(table, chunk);
 	BUG_ON(!(cd->flags & CD_RESERVED));
 	waiter=cd->flags & CD_WAITER;
@@ -190,16 +206,27 @@ int unreserve_chunk(struct chunkdata_table *table, chunk_t chunk)
 	return waiter ? 1 : 0;
 }
 
-/* Must be synchronized by caller */
+int unreserve_chunk(struct chunkdata_table *table, chunk_t chunk)
+{
+	int ret;
+	
+	spin_lock(&table->lock);
+	ret=__unreserve_chunk(table, chunk);
+	spin_unlock(&table->lock);
+	return ret;
+}
+
 int unreserve_chunks(struct chunkdata_table *table, chunk_t start,
 			chunk_t end)
 {
 	chunk_t cur;
 	int waiter=0;
 	
+	spin_lock(&table->lock);
 	for (cur=start; cur <= end; cur++)
-		if (unreserve_chunk(table, cur))
+		if (__unreserve_chunk(table, cur))
 			waiter=1;
+	spin_unlock(&table->lock);
 	
 	return waiter;
 }
