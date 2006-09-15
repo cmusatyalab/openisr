@@ -16,56 +16,9 @@ static struct bio_set *bio_pool;
 static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
 int blk_major;
 
-static void *mempool_alloc_page(gfp_t gfp_mask, void *unused)
-{
-	return alloc_page(gfp_mask);
-}
-
-static void mempool_free_page(void *page, void *unused)
-{
-	__free_page(page);
-}
-
 static void bio_destructor(struct bio *bio)
 {
 	bio_free(bio, bio_pool);
-}
-
-/* XXX might want to support high memory pages.  on the other hand, those
-   might force bounce buffering */
-static int alloc_cache_pages(struct convergent_io *io)
-{
-	int i;
-	unsigned npages=chunk_pages(io->dev);
-	unsigned residual;
-	struct scatterlist *sg=NULL;  /* initialization to avoid warning */
-	
-	for (i=0; i<npages; i++) {
-		sg=&io->chunk_sg[i];
-		sg->page=mempool_alloc(io->dev->page_pool, GFP_ATOMIC);
-		if (sg->page == NULL)
-			goto bad;
-		sg->offset=0;
-		sg->length=PAGE_SIZE;
-	}
-	/* Possible partial last page */
-	residual=io->dev->chunksize % PAGE_SIZE;
-	if (residual)
-		sg->length=residual;
-	return 0;
-	
-bad:
-	while (--i >= 0)
-		mempool_free(io->chunk_sg[i].page, io->dev->page_pool);
-	return -ENOMEM;
-}
-
-static void free_cache_pages(struct convergent_io *io)
-{
-	int i;
-
-	for (i=0; i<chunk_pages(io->dev); i++)
-		mempool_free(io->chunk_sg[i].page, io->dev->page_pool);
 }
 
 /* We don't want convergent_req to be a very large structure, but we want
@@ -328,7 +281,6 @@ static void io_cleaner(unsigned long data)
 
 static void convergent_teardown_io(struct convergent_io *io)
 {
-	free_cache_pages(io);
 	/* Schedule the io to be freed the next time the cleaner runs */
 	spin_lock_bh(&io->dev->freed_lock);
 	list_add_tail(&io->lh_freed, &io->dev->freed_ios);
@@ -369,7 +321,7 @@ out:
 	   sure the user never sees out-of-order completions of the same
 	   chunk. */
 	if (!(io->flags & IO_KEEPCHUNK)) {
-		if (unreserve_chunk(dev->chunkdata, io->chunk)) {
+		if (unreserve_chunk(dev, io->chunk)) {
 			/* Someone was waiting for this chunk. */
 			queue_start(dev);
 		}
@@ -410,7 +362,7 @@ static void convergent_process_io(struct convergent_io *io)
 	/* The device might have been shut down since the io was first
 	   set up (e.g., if this is a multi-chunk io) */
 	if (dev->flags & DEV_SHUTDOWN) {
-		unreserve_chunks(dev->chunkdata, io->chunk, io->last_chunk);
+		unreserve_chunks(dev, io->chunk, io->last_chunk);
 		/* XXX restart queue */
 		end_that_request(req, 0, req->nr_sectors);
 		convergent_teardown_io(io);
@@ -421,6 +373,7 @@ static void convergent_process_io(struct convergent_io *io)
 	io->len=min((unsigned)req->nr_sectors * 512,
 				chunk_space(dev, req->sector));
 	atomic_set(&io->completed, 0);
+	io->chunk_sg=get_scatterlist(dev, io->chunk);
 	len=request_to_scatterlist(io);
 	if (len < io->len) {
 		/* Don't try to do partial-sector I/O.  XXX necessary? */
@@ -474,15 +427,18 @@ static struct convergent_io *convergent_setup_io(struct convergent_dev *dev,
 	
 	first_chunk=chunk_of(dev, req->sector);
 	last_chunk=chunk_of(dev, req->sector + req->nr_sectors - 1);
-	ret=reserve_chunks(dev->chunkdata, first_chunk, last_chunk);
+	ret=reserve_chunks(dev, first_chunk, last_chunk);
 	if (!ret) {
 		debug("Waiting for chunk " SECTOR_FORMAT, first_chunk);
 		return ERR_PTR(-EAGAIN);
 	}
 	
 	io=mempool_alloc(dev->io_pool, GFP_ATOMIC);
-	if (io == NULL)
-		goto bad1;
+	if (io == NULL) {
+		unreserve_chunks(dev, first_chunk, last_chunk);
+		/* XXX restart queue */
+		return ERR_PTR(-ENOMEM);
+	}
 	
 	io->dev=dev;
 	io->orig_req=req;
@@ -495,22 +451,12 @@ static struct convergent_io *convergent_setup_io(struct convergent_dev *dev,
 	INIT_LIST_HEAD(&io->lh_freed);
 	tasklet_init(&io->callback, convergent_complete_io, (unsigned long)io);
 	
-	if (alloc_cache_pages(io))
-		goto bad2;
-	
 	debug("setup_io called: %lu sectors over " SECTOR_FORMAT
 				" chunks at chunk " SECTOR_FORMAT,
 				req->nr_sectors, last_chunk - first_chunk + 1,
 				first_chunk);
 	
 	return io;
-	
-bad2:
-	mempool_free(io, dev->io_pool);
-bad1:
-	unreserve_chunks(dev->chunkdata, first_chunk, last_chunk);
-	/* XXX restart queue */
-	return ERR_PTR(-ENOMEM);
 }
 
 static void convergent_request(request_queue_t *q)
@@ -598,7 +544,7 @@ void convergent_dev_dtr(struct convergent_dev *dev)
 	if (dev->gendisk)
 		del_gendisk(dev->gendisk);
 	if (dev->chunkdata)
-		chunkdata_free_table(dev->chunkdata);
+		chunkdata_free_table(dev);
 	dev->flags |= DEV_KILLCLEANER;
 	del_timer_sync(&dev->cleaner);
 	/* Run the timer one more time to make sure everything's cleaned out
@@ -611,8 +557,6 @@ void convergent_dev_dtr(struct convergent_dev *dev)
 			log(KERN_ERR, "couldn't destroy io cache");
 	if (dev->io_cache_name)
 		kfree(dev->io_cache_name);
-	if (dev->page_pool)
-		mempool_destroy(dev->page_pool);
 	if (dev->compress)
 		crypto_free_tfm(dev->compress);
 	if (dev->hash)
@@ -677,6 +621,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		goto bad;
 	}
 	dev->chunksize=chunksize;
+	dev->cachesize=cachesize;
 	dev->offset=offset;
 	atomic_set(&dev->refcount, 1);
 	debug("chunksize %u, cachesize %u, backdev %s, offset " SECTOR_FORMAT,
@@ -718,12 +663,6 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	spin_lock_init(&dev->tfm_lock);
 	
 	ndebug("Allocating memory pools");
-	dev->page_pool=mempool_create(chunk_pages(dev) * MIN_CONCURRENT_REQS,
-				mempool_alloc_page, mempool_free_page, NULL);
-	if (dev->page_pool == NULL) {
-		ret=-ENOMEM;
-		goto bad;
-	}
 	snprintf(buf, NAME_BUFLEN, MODULE_NAME "-" DEVICE_NAME "%c",
 				'a' + devnum);
 	dev->io_cache_name=kstrdup(buf, GFP_KERNEL);
@@ -732,9 +671,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		goto bad;
 	}
 	dev->io_cache=kmem_cache_create(dev->io_cache_name,
-				sizeof(struct convergent_io) +
-				chunk_pages(dev) * sizeof(struct scatterlist),
-				0, 0, NULL, NULL);
+				sizeof(struct convergent_io), 0, 0, NULL, NULL);
 	if (dev->io_cache == NULL) {
 		ret=-ENOMEM;
 		goto bad;
@@ -745,11 +682,9 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		ret=-ENOMEM;
 		goto bad;
 	}
-	dev->chunkdata=chunkdata_alloc_table(cachesize);
-	if (dev->chunkdata == NULL) {
-		ret=-ENOMEM;
+	ret=chunkdata_alloc_table(dev);
+	if (ret)
 		goto bad;
-	}
 	
 	ndebug("Allocating disk");
 	dev->gendisk=alloc_disk(MINORS_PER_DEVICE);
@@ -810,32 +745,24 @@ static int __init convergent_init(void)
 		goto bad2;
 	}
 	
-	ret=chunkdata_start();
-	if (ret) {
-		log(KERN_ERR, "couldn't allocate chunkdata cache");
-		goto bad3;
-	}
-
 	ret=register_blkdev(0, MODULE_NAME);
 	if (ret < 0) {
 		log(KERN_ERR, "block driver registration failed");
-		goto bad4;
+		goto bad3;
 	}
 	blk_major=ret;
 	
 	ret=chardev_start();
 	if (ret) {
 		log(KERN_ERR, "couldn't register chardev");
-		goto bad5;
+		goto bad4;
 	}
 	
 	return 0;
 
-bad5:
+bad4:
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
-bad4:
-	chunkdata_shutdown();
 bad3:
 	submitter_shutdown();
 bad2:
@@ -852,8 +779,6 @@ static void __exit convergent_shutdown(void)
 	
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
-	
-	chunkdata_shutdown();
 	
 	submitter_shutdown();
 	

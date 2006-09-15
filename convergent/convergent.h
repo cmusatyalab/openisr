@@ -28,6 +28,7 @@ struct convergent_dev {
 	spinlock_t setup_lock;
 	
 	unsigned chunksize;
+	unsigned cachesize;
 	sector_t offset;
 	int devnum;
 	unsigned flags;	/* XXX racy */
@@ -38,8 +39,7 @@ struct convergent_dev {
 	struct crypto_tfm *compress;
 	spinlock_t tfm_lock;
 	
-	/* XXX make this a global object? */
-	mempool_t *page_pool;
+	/* XXX this can be made global */
 	kmem_cache_t *io_cache;
 	mempool_t *io_pool;
 	char *io_cache_name;
@@ -72,9 +72,7 @@ struct convergent_io {
 	unsigned prio;
 	struct request *orig_req;
 	struct scatterlist orig_sg[MAX_SEGS_PER_IO];
-	/* XXX hack that lets us not manage yet another allocation */
-	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
-	struct scatterlist chunk_sg[0];
+	struct scatterlist *chunk_sg;
 };
 
 /* convergent_io flags */
@@ -163,15 +161,12 @@ void submitter_shutdown(void);
 void submit(struct bio *bio);
 
 /* chunkdata.c */
-int chunkdata_start(void);
-void chunkdata_shutdown(void);
-struct chunkdata_table *chunkdata_alloc_table(unsigned count);
-void chunkdata_free_table(struct chunkdata_table *table);
-int reserve_chunks(struct chunkdata_table *table, chunk_t start,
-			chunk_t end);
-int unreserve_chunk(struct chunkdata_table *table, chunk_t chunk);
-int unreserve_chunks(struct chunkdata_table *table, chunk_t start,
-			chunk_t end);
+int chunkdata_alloc_table(struct convergent_dev *dev);
+void chunkdata_free_table(struct convergent_dev *dev);
+int reserve_chunks(struct convergent_dev *dev, chunk_t start, chunk_t end);
+int unreserve_chunk(struct convergent_dev *dev, chunk_t chunk);
+int unreserve_chunks(struct convergent_dev *dev, chunk_t start, chunk_t end);
+struct scatterlist *get_scatterlist(struct convergent_dev *dev, chunk_t chunk);
 
 /* revision.c */
 extern char *svn_branch;
