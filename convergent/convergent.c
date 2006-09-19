@@ -293,9 +293,7 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 {
 	int i;
 	struct convergent_io *io=chunk->parent;
-	struct convergent_dev *dev=io->dev;
 	int have_more=0;
-	int need_wake=0;
 	
 	spin_lock_bh(&io->lock);
 	chunk->flags |= CHUNK_COMPLETED;
@@ -318,18 +316,16 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 		/* We only unreserve the chunk after endio, to make absolutely
 		   sure the user never sees out-of-order completions of the same
 		   chunk. */
-		if (unreserve_chunk(dev, chunk->chunk)) {
-			/* Someone was waiting for this chunk. */
-			need_wake=1;
-		}
+		/* XXX locking */
+		spin_unlock_bh(&io->lock);
+		unreserve_chunk(chunk);
+		spin_lock_bh(&io->lock);
 	}
 	spin_unlock_bh(&io->lock);
 	if (!have_more) {
 		/* All chunks in this io are completed. */
 		convergent_teardown_io(io);
 	}
-	if (need_wake)
-		queue_start(dev);
 }
 
 /* Tasklet - runs in softirq context */
@@ -395,6 +391,7 @@ static void convergent_process_chunk(struct convergent_io_chunk *chunk)
 				"length %u", chunk->chunk, chunk->offset,
 				chunk->len);
 	
+	chunk->sg=get_scatterlist(chunk);
 	if (io->flags & IO_WRITE) {
 		if (chunk->len == dev->chunksize) {
 			/* Whole chunk */
@@ -413,7 +410,7 @@ static void convergent_process_chunk(struct convergent_io_chunk *chunk)
 	}
 }
 
-static void convergent_process_io(struct convergent_io *io)
+void convergent_process_io(struct convergent_io *io)
 {
 	int i;
 	
@@ -421,47 +418,35 @@ static void convergent_process_io(struct convergent_io *io)
 		convergent_process_chunk(&io->chunks[i]);
 }
 
-/* Do initial setup, memory allocations, anything that can fail.  Return the
-   io.  Called without queue lock held. */
-static struct convergent_io *convergent_setup_io(struct convergent_dev *dev,
-			struct request *req)
+/* Do initial setup, memory allocations, anything that can fail.  Called
+   without queue lock held. */
+static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 {
 	struct convergent_io *io;
 	struct convergent_io_chunk *chunk;
-	chunk_t first_chunk, last_chunk;
 	unsigned remaining;
 	unsigned bytes;
 	unsigned sg_len;
-	int ret;
 	int i;
 	
 	BUG_ON(req->nr_phys_segments > MAX_INPUT_SEGS);
 	
 	if (dev->flags & DEV_SHUTDOWN) {
 		end_that_request(req, 0, req->nr_sectors);
-		return ERR_PTR(-ENXIO);
-	}
-	
-	first_chunk=chunk_of(dev, req->sector);
-	last_chunk=chunk_of(dev, req->sector + req->nr_sectors - 1);
-	ret=reserve_chunks(dev, first_chunk, last_chunk);
-	if (!ret) {
-		debug("Waiting for chunk " SECTOR_FORMAT, first_chunk);
-		return ERR_PTR(-EAGAIN);
+		return -ENXIO;
 	}
 	
 	io=mempool_alloc(dev->io_pool, GFP_ATOMIC);
 	if (io == NULL) {
-		unreserve_chunks(dev, first_chunk, last_chunk);
 		/* XXX restart queue */
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 	}
 	
 	io->dev=dev;
 	io->orig_req=req;
 	io->flags=0;
-	io->first_chunk=first_chunk;
-	io->last_chunk=last_chunk;
+	io->first_chunk=chunk_of(dev, req->sector);
+	io->last_chunk=chunk_of(dev, req->sector + req->nr_sectors - 1);
 	io->prio=req->ioprio;
 	if (rq_data_dir(req))
 		io->flags |= IO_WRITE;
@@ -477,7 +462,6 @@ static struct convergent_io *convergent_setup_io(struct convergent_dev *dev,
 	for (i=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
 		chunk->parent=io;
-		chunk->sg=get_scatterlist(dev, io->first_chunk + i);
 		chunk->chunk=io->first_chunk + i;
 		chunk->orig_offset=bytes;
 		if (i == 0)
@@ -487,7 +471,7 @@ static struct convergent_io *convergent_setup_io(struct convergent_dev *dev,
 		chunk->len=min(remaining, chunk_remaining(dev, chunk->offset));
 		chunk->flags=0;
 		chunk->error=0;
-		INIT_LIST_HEAD(&chunk->lh_reservation);
+		INIT_LIST_HEAD(&chunk->lh_pending);
 		atomic_set(&chunk->completed, 0);
 		tasklet_init(&chunk->callback, convergent_complete_io,
 					(unsigned long)chunk);
@@ -497,17 +481,23 @@ static struct convergent_io *convergent_setup_io(struct convergent_dev *dev,
 	
 	debug("setup_io called: %lu sectors over " SECTOR_FORMAT
 				" chunks at chunk " SECTOR_FORMAT,
-				req->nr_sectors, last_chunk - first_chunk + 1,
-				first_chunk);
+				req->nr_sectors,
+				io->last_chunk - io->first_chunk + 1,
+				io->first_chunk);
 	
-	return io;
+	if (reserve_chunks(io)) {
+		/* Couldn't allocate chunkdata for this io, so we have to
+		   tear the whole thing down */
+		mempool_free(io, dev->io_pool);
+		return -ENOMEM;
+	}
+	return 0;
 }
 
 static void convergent_request(request_queue_t *q)
 {
 	struct convergent_dev *dev=q->queuedata;
 	struct request *req;
-	struct convergent_io *io;
 	
 	while ((req = elv_next_request(q)) != NULL) {
 		blkdev_dequeue_request(req);
@@ -518,24 +508,18 @@ static void convergent_request(request_queue_t *q)
 			end_that_request(req, 0, req->nr_sectors);
 			goto next;
 		}
-		io=convergent_setup_io(dev, req);
-		if (!IS_ERR(io)) {
-			convergent_process_io(io);
-		} else {
-			switch (PTR_ERR(io)) {
-			case -ENXIO:
-				break;
-			case -ENOMEM:
-				dev->flags |= DEV_LOWMEM;
-				/* Fall through */
-			case -EAGAIN:
-				queue_stop(dev);
-				spin_lock(&dev->queue_lock);
-				elv_requeue_request(q, req);
-				return;
-			default:
-				BUG();
-			}
+		switch (convergent_setup_io(dev, req)) {
+		case 0:
+		case -ENXIO:
+			break;
+		case -ENOMEM:
+			dev->flags |= DEV_LOWMEM;
+			queue_stop(dev);
+			spin_lock(&dev->queue_lock);
+			elv_requeue_request(q, req);
+			return;
+		default:
+			BUG();
 		}
 next:
 		spin_lock(&dev->queue_lock);

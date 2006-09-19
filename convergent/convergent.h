@@ -68,7 +68,7 @@ enum dev_bits {
 #define DEV_SHUTDOWN        (1 << __DEV_SHUTDOWN)
 
 struct convergent_io_chunk {
-	struct list_head lh_reservation;
+	struct list_head lh_pending;
 	struct convergent_io *parent;
 	struct scatterlist *sg;
 	struct tasklet_struct callback;
@@ -198,6 +198,7 @@ extern int blk_major;
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset);
 void convergent_dev_dtr(struct convergent_dev *dev);
+void convergent_process_io(struct convergent_io *io);
 
 /* chardev.c */
 int chardev_start(void);
@@ -211,10 +212,9 @@ void submit(struct bio *bio);
 /* chunkdata.c */
 int chunkdata_alloc_table(struct convergent_dev *dev);
 void chunkdata_free_table(struct convergent_dev *dev);
-int reserve_chunks(struct convergent_dev *dev, chunk_t start, chunk_t end);
-int unreserve_chunk(struct convergent_dev *dev, chunk_t chunk);
-int unreserve_chunks(struct convergent_dev *dev, chunk_t start, chunk_t end);
-struct scatterlist *get_scatterlist(struct convergent_dev *dev, chunk_t chunk);
+int reserve_chunks(struct convergent_io *io);
+void unreserve_chunk(struct convergent_io_chunk *chunk);
+struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);
 
 /* revision.c */
 extern char *svn_branch;

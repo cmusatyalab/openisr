@@ -7,22 +7,19 @@
 /* XXX rename all this */
 
 enum cd_bits {
-	__CD_RESERVED,    /* A request has reserved this chunk */
-	__CD_WAITER,      /* Another request is waiting for this chunk */
 	__CD_DATA_VALID,  /* The chunk's contents are buffered */
 	__CD_DATA_DIRTY,  /* The buffered data needs a writeback */
 	__CD_NR_BITS
 };
 
-#define CD_RESERVED    (1 << __CD_RESERVED)
-#define CD_WAITER      (1 << __CD_WAITER)
-#define CD_DATA_VALID  (1 << __CD_DATA_VALID)
-#define CD_DATA_DIRTY  (1 << __CD_DATA_DIRTY)
+#define CD_DATA_VALID  (1 << __CD_DATA_VALID) /* XXX */
+#define CD_DATA_DIRTY  (1 << __CD_DATA_DIRTY) /* XXX */
 
 struct chunkdata {
 	struct list_head lh_bucket;
 	struct list_head lh_lru;
 	chunk_t chunk;
+	struct list_head pending;
 	unsigned flags;
 	/* XXX hack that lets us not manage yet another allocation */
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
@@ -37,6 +34,19 @@ struct chunkdata_table {
 	struct list_head hash[0];
 };
 
+static inline struct convergent_io_chunk *pending_head(struct chunkdata *cd)
+{
+	return list_entry(cd->pending.next, struct convergent_io_chunk,
+					lh_pending);
+}
+
+static inline int pending_head_is(struct chunkdata *cd,
+			struct convergent_io_chunk *chunk)
+{
+	if (list_empty(&cd->pending))
+		return 0;
+	return (pending_head(cd) == chunk);
+}
 
 /* XXX might want to support high memory pages.  on the other hand, those
    might force bounce buffering */
@@ -89,7 +99,7 @@ void chunkdata_free_table(struct convergent_dev *dev)
 	spin_lock_bh(&table->lock);
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
 		/* XXX flags check */
-		if (cd->flags & CD_RESERVED)
+		if (!list_empty(&cd->pending))
 			BUG();
 		list_del(&cd->lh_bucket);
 		list_del(&cd->lh_lru);
@@ -130,6 +140,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 			goto bad2;
 		INIT_LIST_HEAD(&cd->lh_bucket);
 		INIT_LIST_HEAD(&cd->lh_lru);
+		INIT_LIST_HEAD(&cd->pending);
 		list_add(&cd->lh_lru, &table->lru);
 		cd->flags=0;
 	}
@@ -145,8 +156,7 @@ bad1:
 static void chunkdata_hit(struct chunkdata_table *table, struct chunkdata *cd)
 {
 	BUG_ON(!spin_is_locked(&table->lock));
-	list_del_init(&cd->lh_lru);
-	list_add_tail(&cd->lh_lru, &table->lru);
+	list_move_tail(&cd->lh_lru, &table->lru);
 }
 
 static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
@@ -168,7 +178,7 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	/* Steal the LRU chunk */
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
 		/* XXX */
-		if (!(cd->flags & CD_RESERVED)) {
+		if (list_empty(&cd->pending)) {
 			list_del_init(&cd->lh_bucket);
 			list_add(&cd->lh_bucket,
 					&table->hash[hash(table, chunk)]);
@@ -183,92 +193,84 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	return NULL;
 }
 
-int reserve_chunks(struct convergent_dev *dev, chunk_t start, chunk_t end)
+static void try_start_io(struct chunkdata_table *table,
+			struct convergent_io *io)
 {
-	struct chunkdata_table *table=dev->chunkdata;
-	chunk_t cur;
+	struct convergent_io_chunk *chunk;
 	struct chunkdata *cd;
-	int conflict=0;
-	int ret;
+	int i;
+	
+	BUG_ON(!spin_is_locked(&table->lock));
+	
+	for (i=0; i<io_chunks(io); i++) {
+		chunk=&io->chunks[i];
+		cd=chunkdata_get(table, chunk->chunk);
+		BUG_ON(cd == NULL);  /* XXX */
+		if (!pending_head_is(cd, chunk))
+			return;
+		/* XXX make sure we have userspace keys */
+	}
+	/* XXX */
+	spin_unlock(&table->lock);
+	convergent_process_io(io);
+	spin_lock(&table->lock);
+}
+
+int reserve_chunks(struct convergent_io *io)
+{
+	struct chunkdata_table *table=io->dev->chunkdata;
+	chunk_t cur;
+	struct convergent_io_chunk *chunk;
+	struct chunkdata *cd;
+	int i;
 	
 	spin_lock(&table->lock);
-	for (cur=start; cur <= end; cur++) {
-		cd=chunkdata_get(table, cur);
-		if (cd == NULL) {
-			ret=0;
-			goto out;
-		}
-		if (cd->flags & CD_RESERVED) {
-			cd->flags |= CD_WAITER;
-			conflict=1;
-		}
-	}
-	if (conflict) {
-		ret=0;
-		goto out;
-	}
-	for (cur=start; cur <= end; cur++) {
+	for (i=0; i<io_chunks(io); i++) {
+		cur=io->first_chunk + i;
+		chunk=&io->chunks[i];
 		cd=chunkdata_get(table, cur);
 		if (cd == NULL)
-			/* XXX eek!  back out */
-			BUG();
-		cd->flags |= CD_RESERVED;
+			goto bad;
+		list_add_tail(&chunk->lh_pending, &cd->pending);
 	}
-	ret=1;
-out:
+	try_start_io(table, io);
 	spin_unlock(&table->lock);
-	return ret;
+	return 0;
+	
+bad:
+	while (--i >= 0) {
+		chunk=&io->chunks[i];
+		list_del_init(&chunk->lh_pending);
+	}
+	spin_unlock(&table->lock);
+	/* XXX this isn't strictly nomem */
+	return -ENOMEM;
 }
 
 /* XXX locking is probably wrong - needs to be checked with lock validator */
-static int __unreserve_chunk(struct chunkdata_table *table, chunk_t chunk)
+void unreserve_chunk(struct convergent_io_chunk *chunk)
 {
-	struct chunkdata *cd;
-	int waiter;
-	
-	BUG_ON(!spin_is_locked(&table->lock));
-	cd=chunkdata_get(table, chunk);
-	BUG_ON(!(cd->flags & CD_RESERVED));
-	waiter=cd->flags & CD_WAITER;
-	cd->flags &= ~(CD_RESERVED | CD_WAITER);
-	return waiter ? 1 : 0;
-}
-
-int unreserve_chunk(struct convergent_dev *dev, chunk_t chunk)
-{
-	struct chunkdata_table *table=dev->chunkdata;
-	int ret;
-	
-	spin_lock(&table->lock);
-	ret=__unreserve_chunk(table, chunk);
-	spin_unlock(&table->lock);
-	return ret;
-}
-
-int unreserve_chunks(struct convergent_dev *dev, chunk_t start, chunk_t end)
-{
-	struct chunkdata_table *table=dev->chunkdata;
-	chunk_t cur;
-	int waiter=0;
-	
-	spin_lock(&table->lock);
-	for (cur=start; cur <= end; cur++)
-		if (__unreserve_chunk(table, cur))
-			waiter=1;
-	spin_unlock(&table->lock);
-	
-	return waiter;
-}
-
-struct scatterlist *get_scatterlist(struct convergent_dev *dev, chunk_t chunk)
-{
-	struct chunkdata_table *table=dev->chunkdata;
+	struct chunkdata_table *table=chunk->parent->dev->chunkdata;
 	struct chunkdata *cd;
 	
 	spin_lock(&table->lock);
-	cd=chunkdata_get(table, chunk);
+	cd=chunkdata_get(table, chunk->chunk);
+	BUG_ON(!pending_head_is(cd, chunk));
+	list_del_init(&chunk->lh_pending);
+	/* XXX this might cause the io to be started twice due to lock races */
+	if (!list_empty(&cd->pending))
+		try_start_io(table, pending_head(cd)->parent);
 	spin_unlock(&table->lock);
-	BUG_ON(cd == NULL);
-	BUG_ON(!(cd->flags & CD_RESERVED));
+}
+
+struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
+{
+	struct chunkdata_table *table=chunk->parent->dev->chunkdata;
+	struct chunkdata *cd;
+	
+	spin_lock(&table->lock);
+	cd=chunkdata_get(table, chunk->chunk);
+	spin_unlock(&table->lock);
+	BUG_ON(cd == NULL || !pending_head_is(cd, chunk));
 	return cd->sg;
 }
