@@ -4,7 +4,8 @@
 #define DEBUG
 #define MAX_INPUT_SEGS 512
 #define MAX_SEGS_PER_IO 32
-#define MIN_CONCURRENT_REQS 2
+#define MAX_CHUNKS_PER_IO 32
+#define MIN_CONCURRENT_REQS 2  /* XXX */
 #define DEVICES 16  /* If this is more than 26, ctr will need to be fixed */
 #define MINORS_PER_DEVICE 16
 #define CD_MAX_CHUNKS 8192  /* XXX make this based on MB RAM in the box */
@@ -15,6 +16,8 @@
 #define SUBMIT_QUEUE "convergent-io"
 
 #include <linux/blkdev.h>
+
+/* XXX convert chunk_t canonical name from chunk to cid */
 
 typedef sector_t chunk_t;
 
@@ -53,32 +56,70 @@ struct convergent_dev {
 	spinlock_t freed_lock;
 };
 
-/* convergent_dev flags */
-#define DEV_KILLCLEANER  0x00000001  /* Cleaner should not reschedule itself */
-#define DEV_LOWMEM       0x00000002  /* Queue stopped until requests freed */
-#define DEV_SHUTDOWN     0x00000004  /* Userspace keying daemon has gone away */
+enum dev_bits {
+	__DEV_KILLCLEANER,  /* Cleaner should not reschedule itself */
+	__DEV_LOWMEM,       /* Queue stopped until requests freed */
+	__DEV_SHUTDOWN,     /* Userspace keying daemon has gone away */
+};
 
+/* convergent_dev flags */
+#define DEV_KILLCLEANER     (1 << __DEV_KILLCLEANER)
+#define DEV_LOWMEM          (1 << __DEV_LOWMEM)
+#define DEV_SHUTDOWN        (1 << __DEV_SHUTDOWN)
+
+struct convergent_io_chunk {
+	struct list_head lh_reservation;
+	struct convergent_io *parent;
+	struct scatterlist *sg;
+	struct tasklet_struct callback;
+	chunk_t chunk;
+	unsigned orig_offset;  /* byte offset into orig_sg */
+	unsigned offset;       /* byte offset into chunk */
+	unsigned len;          /* bytes */
+	atomic_t completed;    /* bytes */
+	unsigned flags;
+	int error;
+};
+
+enum chunk_bits {
+	__CHUNK_RMW,          /* Is in the read phase of read-modify-write */
+	__CHUNK_COMPLETED,    /* I/O complete */
+	__CHUNK_DEAD,         /* endio called */
+};
+
+/* convergent_io_chunk flags */
+#define CHUNK_RMW             (1 << __CHUNK_RMW)
+#define CHUNK_COMPLETED       (1 << __CHUNK_COMPLETED)
+#define CHUNK_DEAD            (1 << __CHUNK_DEAD)
+
+/* XXX divide this up into per-io and per-chunk parts, and complete sub-chunks
+   in parallel.  (tune performance *before* doing userspace crypto, since
+   we'll need the data structures.)  then, move chunk page lifecycle management
+   into chunkdata, so that io processing becomes just requesting chunks and
+   then chunkdata doing a single callback into convergent.c to do whatever
+   I/O is pending for those chunks.  IOW, read-chunk-from-disk and
+   write-chunk-to-disk become the responsibility of chunkdata.c.  BUT
+   we need callbacks and io dependency management first, so start with
+   per-chunk sub-ios. */
 struct convergent_io {
 	struct list_head lh_freed;
 	struct convergent_dev *dev;
-	struct tasklet_struct callback;
-	atomic_t completed;    /* bytes */
-	int error;
 	unsigned flags;
-	chunk_t chunk;
-	chunk_t last_chunk;    /* multiple-chunk requests */
-	unsigned offset;       /* byte offset into chunk */
-	unsigned len;          /* bytes */
+	chunk_t first_chunk;
+	chunk_t last_chunk;
 	unsigned prio;
 	struct request *orig_req;
 	struct scatterlist orig_sg[MAX_SEGS_PER_IO];
-	struct scatterlist *chunk_sg;
+	struct convergent_io_chunk chunks[MAX_CHUNKS_PER_IO];
+	spinlock_t lock;
+};
+
+enum io_bits {
+	__IO_WRITE,        /* Is a write request */
 };
 
 /* convergent_io flags */
-#define IO_RMW       0x00000001  /* Is in the read phase of read-modify-write */
-#define IO_WRITE     0x00000002  /* Is a write request */
-#define IO_KEEPCHUNK 0x00000004  /* Don't unreserve the chunk when done */
+#define IO_WRITE           (1 << __IO_WRITE)
 
 #ifdef CONFIG_LBD
 #define SECTOR_FORMAT "%llu"
@@ -123,10 +164,11 @@ static inline unsigned chunk_offset(struct convergent_dev *dev, sector_t sect)
 	return 512 * (sect - chunk_start(dev, sect));
 }
 
-/* The number of bytes between the start of @sect and the end of the chunk */
-static inline unsigned chunk_space(struct convergent_dev *dev, sector_t sect)
+/* The number of bytes between @offset and the end of the chunk */
+static inline unsigned chunk_remaining(struct convergent_dev *dev,
+			unsigned offset)
 {
-	return dev->chunksize - chunk_offset(dev, sect);
+	return dev->chunksize - offset;
 }
 
 /* The chunk number of @sect */
@@ -143,6 +185,12 @@ static inline sector_t chunk_to_sector(struct convergent_dev *dev,
 {
 	unsigned shift=fls(chunk_sectors(dev)) - 1;
 	return chunk << shift;
+}
+
+/* The number of chunks in this io */
+static inline unsigned io_chunks(struct convergent_io *io)
+{
+	return io->last_chunk - io->first_chunk + 1;
 }
 
 /* convergent.c */

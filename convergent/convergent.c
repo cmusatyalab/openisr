@@ -62,7 +62,7 @@ static unsigned request_to_scatterlist(struct convergent_io *io)
 		for (i=0; i<nsegs; i++)
 			nbytes += dev->setup_sg[i].length;
 	} else {
-		nbytes=io->len;
+		nbytes=io->orig_req->nr_sectors * 512;
 	}
 	memcpy(io->orig_sg, dev->setup_sg,
 				nsegs * sizeof(struct scatterlist));
@@ -128,10 +128,10 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	kunmap_atomic(dbuf - 1, KM_SOFTIRQ1);
 }
 
-static void chunk_tfm(struct convergent_io *io, int type)
+static void chunk_tfm(struct convergent_io_chunk *chunk, int type)
 {
-	struct convergent_dev *dev=io->dev;
-	struct scatterlist *sg=io->chunk_sg;
+	struct convergent_dev *dev=chunk->parent->dev;
+	struct scatterlist *sg=chunk->sg;
 	unsigned nbytes=dev->chunksize;
 	char iv[8]={0};
 	
@@ -142,12 +142,12 @@ static void chunk_tfm(struct convergent_io *io, int type)
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	if (type == READ) {
 		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
-					nbytes, io->chunk);
+					nbytes, chunk->chunk);
 		if (crypto_cipher_decrypt(dev->cipher, sg, sg, nbytes))
 			BUG();
 	} else {
 		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
-					nbytes, io->chunk);
+					nbytes, chunk->chunk);
 		if (crypto_cipher_encrypt(dev->cipher, sg, sg, nbytes))
 			BUG();
 	}
@@ -155,10 +155,10 @@ static void chunk_tfm(struct convergent_io *io, int type)
 }
 
 static int convergent_endio_func(struct bio *newbio, unsigned nbytes, int error);
-static struct bio *bio_create(struct convergent_io *io, int dir,
+static struct bio *bio_create(struct convergent_io_chunk *chunk, int dir,
 			unsigned offset)
 {
-	struct convergent_dev *dev=io->dev;
+	struct convergent_dev *dev=chunk->parent->dev;
 	struct bio *bio;
 
 	/* XXX could alloc smaller bios if we're looping */
@@ -167,20 +167,20 @@ static struct bio *bio_create(struct convergent_io *io, int dir,
 		return NULL;
 
 	bio->bi_bdev=dev->chunk_bdev;
-	bio->bi_sector=chunk_to_sector(dev, io->chunk) + dev->offset + offset;
+	bio->bi_sector=chunk_to_sector(dev, chunk->chunk) + dev->offset + offset;
 	ndebug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
 	bio->bi_rw=dir;
-	bio_set_prio(bio, io->prio);
+	bio_set_prio(bio, chunk->parent->prio);
 	bio->bi_end_io=convergent_endio_func;
-	bio->bi_private=io;
+	bio->bi_private=chunk;
 	bio->bi_destructor=bio_destructor;
 	return bio;
 }
 
-static void issue_chunk_io(struct convergent_io *io, int dir)
+static void issue_chunk_io(struct convergent_io_chunk *chunk, int dir)
 {
 	struct bio *bio=NULL;
-	unsigned nbytes=io->dev->chunksize;
+	unsigned nbytes=chunk->parent->dev->chunksize;
 	unsigned offset=0;
 	int i=0;
 	
@@ -191,14 +191,14 @@ static void issue_chunk_io(struct convergent_io *io, int dir)
 	   device */
 	while (offset < nbytes) {
 		if (bio == NULL) {
-			bio=bio_create(io, dir, offset/512);
+			bio=bio_create(chunk, dir, offset/512);
 			if (bio == NULL)
 				goto bad;
 		}
-		if (bio_add_page(bio, io->chunk_sg[i].page,
-					io->chunk_sg[i].length,
-					io->chunk_sg[i].offset)) {
-			offset += io->chunk_sg[i].length;
+		if (bio_add_page(bio, chunk->sg[i].page,
+					chunk->sg[i].length,
+					chunk->sg[i].offset)) {
+			offset += chunk->sg[i].length;
 			i++;
 		} else {
 			debug("Submitting multiple bios");
@@ -212,9 +212,9 @@ static void issue_chunk_io(struct convergent_io *io, int dir)
 	
 bad:
 	/* XXX make this sane */
-	io->error=-ENOMEM;
-	if (atomic_add_return(nbytes-offset, &io->completed) == nbytes)
-		tasklet_schedule(&io->callback);
+	chunk->error=-ENOMEM;
+	if (atomic_add_return(nbytes-offset, &chunk->completed) == nbytes)
+		tasklet_schedule(&chunk->callback);
 }
 
 /* Called without queue lock held */
@@ -258,12 +258,14 @@ static void io_cleaner(unsigned long data)
 	struct convergent_dev *dev=(void*)data;
 	struct convergent_io *io;
 	struct convergent_io *next;
+	int i;
 	
 	spin_lock_bh(&dev->freed_lock);
 	list_for_each_entry_safe(io, next, &dev->freed_ios, lh_freed) {
 		list_del(&io->lh_freed);
-		/* Wait for the tasklet to finish if it hasn't already */
-		tasklet_disable(&io->callback);
+		/* Wait for the tasklets to finish if they haven't already */
+		for (i=0; i<io_chunks(io); i++)
+			tasklet_disable(&io->chunks[i].callback);
 		mempool_free(io, io->dev->io_pool);
 	}
 	spin_unlock_bh(&dev->freed_lock);
@@ -287,126 +289,136 @@ static void convergent_teardown_io(struct convergent_io *io)
 	spin_unlock_bh(&io->dev->freed_lock);
 }
 
-static void convergent_process_io(struct convergent_io *io);
+static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
+{
+	int i;
+	struct convergent_io *io=chunk->parent;
+	struct convergent_dev *dev=io->dev;
+	int have_more=0;
+	int need_wake=0;
+	
+	spin_lock_bh(&io->lock);
+	chunk->flags |= CHUNK_COMPLETED;
+	ndebug("Completing chunk " SECTOR_FORMAT, chunk->chunk);
+	
+	for (i=0; i<io_chunks(io); i++) {
+		chunk=&io->chunks[i];
+		if (chunk->flags & CHUNK_DEAD)
+			continue;
+		if (!(chunk->flags & CHUNK_COMPLETED)) {
+			have_more=1;
+			break;
+		}
+		ndebug("end_that_request for chunk " SECTOR_FORMAT,
+					chunk->chunk);
+		end_that_request(io->orig_req,
+					chunk->error ? chunk->error : 1,
+					chunk->len / 512);
+		chunk->flags |= CHUNK_DEAD;
+		/* We only unreserve the chunk after endio, to make absolutely
+		   sure the user never sees out-of-order completions of the same
+		   chunk. */
+		if (unreserve_chunk(dev, chunk->chunk)) {
+			/* Someone was waiting for this chunk. */
+			need_wake=1;
+		}
+	}
+	spin_unlock_bh(&io->lock);
+	if (!have_more) {
+		/* All chunks in this io are completed. */
+		convergent_teardown_io(io);
+	}
+	if (need_wake)
+		queue_start(dev);
+}
+
 /* Tasklet - runs in softirq context */
 static void convergent_complete_io(unsigned long data)
 {
-	struct convergent_io *io=(void*)data;
-	struct convergent_dev *dev=io->dev;
-	int have_more;
+	struct convergent_io_chunk *chunk=(void*)data;
+	struct convergent_io *io=chunk->parent;
 	
-	if (io->error)
+	if (chunk->error)
 		goto out;
 	if (!(io->flags & IO_WRITE)) {
-		chunk_tfm(io, READ);
-		scatterlist_copy(io->chunk_sg, io->orig_sg, io->offset,
-			0, io->len);
-	} else if (io->flags & IO_RMW) {
-		io->flags &= ~IO_RMW;
-		atomic_set(&io->completed, 0);
-		chunk_tfm(io, READ);
-		scatterlist_copy(io->orig_sg, io->chunk_sg, 0, io->offset,
-			io->len);
-		chunk_tfm(io, WRITE);
-		issue_chunk_io(io, WRITE);
+		chunk_tfm(chunk, READ);
+		scatterlist_copy(chunk->sg, io->orig_sg, chunk->offset,
+					chunk->orig_offset, chunk->len);
+	} else if (chunk->flags & CHUNK_RMW) {
+		chunk->flags &= ~CHUNK_RMW;
+		atomic_set(&chunk->completed, 0);
+		chunk_tfm(chunk, READ);
+		scatterlist_copy(io->orig_sg, chunk->sg,
+					chunk->orig_offset, chunk->offset,
+					chunk->len);
+		chunk_tfm(chunk, WRITE);
+		issue_chunk_io(chunk, WRITE);
 		/* We're not done yet! */
 		return;
 	}
 out:
-	ndebug("Submitting original bio, %u bytes, chunk "SECTOR_FORMAT,
-				io->len, io->chunk);
-	have_more=end_that_request(io->orig_req, io->error ? io->error : 1,
-				io->len / 512);
-	/* We only unreserve the chunk after endio, to make absolutely
-	   sure the user never sees out-of-order completions of the same
-	   chunk. */
-	if (!(io->flags & IO_KEEPCHUNK)) {
-		if (unreserve_chunk(dev, io->chunk)) {
-			/* Someone was waiting for this chunk. */
-			queue_start(dev);
-		}
-	}
-	if (have_more)
-		convergent_process_io(io);
-	else
-		convergent_teardown_io(io);
+	convergent_complete_chunk(chunk);
 }
 
 /* May be called from hardirq context */
 static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error)
 {
-	struct convergent_io *io=bio->bi_private;
+	struct convergent_io_chunk *chunk=bio->bi_private;
 	int completed;
-	if (error && !io->error) {
-		/* XXX we shouldn't fail the whole I/O */
-		io->error=error;
-	}
-	completed=atomic_add_return(nbytes, &io->completed);
+	if (error && !chunk->error)
+		chunk->error=error;
+	completed=atomic_add_return(nbytes, &chunk->completed);
 	ndebug("Clone bio completion: %u bytes, total now %u; err %d",
 				nbytes, completed, error);
 	/* Can't call BUG() in interrupt */
-	WARN_ON(completed > io->dev->chunksize);
-	if (completed >= io->dev->chunksize)
-		tasklet_schedule(&io->callback);
+	WARN_ON(completed > chunk->parent->dev->chunksize);
+	if (completed >= chunk->parent->dev->chunksize)
+		tasklet_schedule(&chunk->callback);
 	return 0;
 }
 
 /* Process one chunk from an io.  Called without queue lock held. */
-static void convergent_process_io(struct convergent_io *io)
+static void convergent_process_chunk(struct convergent_io_chunk *chunk)
 {
-	struct request *req=io->orig_req;
+	struct convergent_io *io=chunk->parent;
 	struct convergent_dev *dev=io->dev;
-	unsigned len;
 	
-	io->chunk=chunk_of(dev, req->sector);
 	/* The device might have been shut down since the io was first
-	   set up (e.g., if this is a multi-chunk io) */
+	   set up */
 	if (dev->flags & DEV_SHUTDOWN) {
-		unreserve_chunks(dev, io->chunk, io->last_chunk);
-		/* XXX restart queue */
-		end_that_request(req, 0, req->nr_sectors);
-		convergent_teardown_io(io);
+		chunk->error=-EIO;
+		convergent_complete_chunk(chunk);
 		return;
 	}
 	
-	io->offset=chunk_offset(dev, req->sector);
-	io->len=min((unsigned)req->nr_sectors * 512,
-				chunk_space(dev, req->sector));
-	atomic_set(&io->completed, 0);
-	io->chunk_sg=get_scatterlist(dev, io->chunk);
-	len=request_to_scatterlist(io);
-	if (len < io->len) {
-		/* Don't try to do partial-sector I/O.  XXX necessary? */
-		io->len=len & (512 - 1);
-		/* XXX */
-		BUG_ON(io->len == 0);
-		/* Don't unreserve the chunk when we're done processing it,
-		   since we're going to have to loop to pick up the rest */
-		io->flags |= IO_KEEPCHUNK;
-	} else {
-		io->flags &= ~IO_KEEPCHUNK;
-	}
-	
-	debug("process_io called: %lu sectors over " SECTOR_FORMAT
-				" chunks at chunk " SECTOR_FORMAT,
-				req->nr_sectors, io->last_chunk - io->chunk + 1,
-				io->chunk);
+	debug("process_chunk called: chunk " SECTOR_FORMAT ", offset %u, "
+				"length %u", chunk->chunk, chunk->offset,
+				chunk->len);
 	
 	if (io->flags & IO_WRITE) {
-		if (io->len == io->dev->chunksize) {
+		if (chunk->len == dev->chunksize) {
 			/* Whole chunk */
-			scatterlist_copy(io->orig_sg, io->chunk_sg,
-					0, 0, io->len);
-			chunk_tfm(io, WRITE);
-			issue_chunk_io(io, WRITE);
+			scatterlist_copy(io->orig_sg, chunk->sg,
+					chunk->orig_offset, chunk->offset,
+					chunk->len);
+			chunk_tfm(chunk, WRITE);
+			issue_chunk_io(chunk, WRITE);
 		} else {
 			/* Partial chunk; need read-modify-write */
-			io->flags |= IO_RMW;
-			issue_chunk_io(io, READ);
+			chunk->flags |= CHUNK_RMW;
+			issue_chunk_io(chunk, READ);
 		}
 	} else {
-		issue_chunk_io(io, READ);
+		issue_chunk_io(chunk, READ);
 	}
+}
+
+static void convergent_process_io(struct convergent_io *io)
+{
+	int i;
+	
+	for (i=0; i<io_chunks(io); i++)
+		convergent_process_chunk(&io->chunks[i]);
 }
 
 /* Do initial setup, memory allocations, anything that can fail.  Return the
@@ -415,8 +427,13 @@ static struct convergent_io *convergent_setup_io(struct convergent_dev *dev,
 			struct request *req)
 {
 	struct convergent_io *io;
+	struct convergent_io_chunk *chunk;
 	chunk_t first_chunk, last_chunk;
+	unsigned remaining;
+	unsigned bytes;
+	unsigned sg_len;
 	int ret;
+	int i;
 	
 	BUG_ON(req->nr_phys_segments > MAX_INPUT_SEGS);
 	
@@ -442,14 +459,41 @@ static struct convergent_io *convergent_setup_io(struct convergent_dev *dev,
 	
 	io->dev=dev;
 	io->orig_req=req;
-	io->error=0;
 	io->flags=0;
+	io->first_chunk=first_chunk;
 	io->last_chunk=last_chunk;
 	io->prio=req->ioprio;
 	if (rq_data_dir(req))
 		io->flags |= IO_WRITE;
 	INIT_LIST_HEAD(&io->lh_freed);
-	tasklet_init(&io->callback, convergent_complete_io, (unsigned long)io);
+	spin_lock_init(&io->lock);
+	
+	bytes=0;
+	remaining=(unsigned)req->nr_sectors * 512;
+	sg_len=request_to_scatterlist(io);
+	BUG_ON((sg_len & ~(512 - 1)) != sg_len);
+	/* XXX */
+	BUG_ON(sg_len != remaining);
+	for (i=0; i<io_chunks(io); i++) {
+		chunk=&io->chunks[i];
+		chunk->parent=io;
+		chunk->sg=get_scatterlist(dev, io->first_chunk + i);
+		chunk->chunk=io->first_chunk + i;
+		chunk->orig_offset=bytes;
+		if (i == 0)
+			chunk->offset=chunk_offset(dev, req->sector);
+		else
+			chunk->offset=0;
+		chunk->len=min(remaining, chunk_remaining(dev, chunk->offset));
+		chunk->flags=0;
+		chunk->error=0;
+		INIT_LIST_HEAD(&chunk->lh_reservation);
+		atomic_set(&chunk->completed, 0);
+		tasklet_init(&chunk->callback, convergent_complete_io,
+					(unsigned long)chunk);
+		remaining -= chunk->len;
+		bytes += chunk->len;
+	}
 	
 	debug("setup_io called: %lu sectors over " SECTOR_FORMAT
 				" chunks at chunk " SECTOR_FORMAT,
@@ -646,7 +690,8 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	dev->queue->queuedata=dev;
 	blk_queue_bounce_limit(dev->queue, BLK_BOUNCE_ANY);
 	blk_queue_max_phys_segments(dev->queue, MAX_INPUT_SEGS);
-	/* XXX max_sectors */
+	blk_queue_max_sectors(dev->queue,
+				chunk_sectors(dev) * (MAX_CHUNKS_PER_IO - 1));
 	
 	ndebug("Allocating crypto");
 	dev->cipher=crypto_alloc_tfm("blowfish", CRYPTO_TFM_MODE_CBC);
