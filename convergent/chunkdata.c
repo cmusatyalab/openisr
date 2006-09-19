@@ -7,13 +7,17 @@
 /* XXX rename all this */
 
 enum cd_bits {
-	__CD_RESERVED,  /* A request has reserved this chunk */
-	__CD_WAITER,    /* Another request is waiting for this chunk */
+	__CD_RESERVED,    /* A request has reserved this chunk */
+	__CD_WAITER,      /* Another request is waiting for this chunk */
+	__CD_DATA_VALID,  /* The chunk's contents are buffered */
+	__CD_DATA_DIRTY,  /* The buffered data needs a writeback */
 	__CD_NR_BITS
 };
 
 #define CD_RESERVED    (1 << __CD_RESERVED)
 #define CD_WAITER      (1 << __CD_WAITER)
+#define CD_DATA_VALID  (1 << __CD_DATA_VALID)
+#define CD_DATA_DIRTY  (1 << __CD_DATA_DIRTY)
 
 struct chunkdata {
 	struct list_head lh_bucket;

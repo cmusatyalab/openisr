@@ -135,7 +135,7 @@ static void chunk_tfm(struct convergent_io_chunk *chunk, int type)
 	unsigned nbytes=dev->chunksize;
 	char iv[8]={0};
 	
-	spin_lock_bh(&dev->tfm_lock);
+	spin_lock(&dev->tfm_lock);
 	/* XXX */
 	if (crypto_cipher_setkey(dev->cipher, "asdf", 4))
 		BUG();
@@ -151,7 +151,7 @@ static void chunk_tfm(struct convergent_io_chunk *chunk, int type)
 		if (crypto_cipher_encrypt(dev->cipher, sg, sg, nbytes))
 			BUG();
 	}
-	spin_unlock_bh(&dev->tfm_lock);
+	spin_unlock(&dev->tfm_lock);
 }
 
 static int convergent_endio_func(struct bio *newbio, unsigned nbytes, int error);
