@@ -1,5 +1,8 @@
 #include <linux/slab.h>
 #include <linux/mempool.h>
+#include <linux/bio.h>
+#include <linux/crypto.h>
+#include <linux/timer.h>
 #include "convergent.h"
 
 /* XXX LRU removal except for inuse chunks (waiting for userspace,
@@ -7,19 +10,27 @@
 /* XXX rename all this */
 
 enum cd_bits {
+	__CD_LOCKED,      /* I/O in progress */
+	__CD_WRITE,       /* Pending I/O is a write */
 	__CD_DATA_VALID,  /* The chunk's contents are buffered */
 	__CD_DATA_DIRTY,  /* The buffered data needs a writeback */
 	__CD_NR_BITS
 };
 
-#define CD_DATA_VALID  (1 << __CD_DATA_VALID) /* XXX */
-#define CD_DATA_DIRTY  (1 << __CD_DATA_DIRTY) /* XXX */
+#define CD_LOCKED      (1 << __CD_LOCKED)
+#define CD_WRITE       (1 << __CD_WRITE)
+#define CD_DATA_VALID  (1 << __CD_DATA_VALID)
+#define CD_DATA_DIRTY  (1 << __CD_DATA_DIRTY)
 
 struct chunkdata {
 	struct list_head lh_bucket;
 	struct list_head lh_lru;
+	struct chunkdata_table *table;
 	chunk_t chunk;
 	struct list_head pending;
+	atomic_t completed;    /* bytes, for I/O */
+	int error;             /* for I/O */
+	struct tasklet_struct callback;
 	unsigned flags;
 	/* XXX hack that lets us not manage yet another allocation */
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
@@ -28,14 +39,24 @@ struct chunkdata {
 
 struct chunkdata_table {
 	spinlock_t lock;
+	struct convergent_dev *dev;
 	unsigned buckets;
 	struct list_head lru;
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
 	struct list_head hash[0];
 };
 
+static struct bio_set *bio_pool;
+
+static void bio_destructor(struct bio *bio)
+{
+	bio_free(bio, bio_pool);
+}
+
 static inline struct convergent_io_chunk *pending_head(struct chunkdata *cd)
 {
+	if (list_empty(&cd->pending))
+		return NULL;
 	return list_entry(cd->pending.next, struct convergent_io_chunk,
 					lh_pending);
 }
@@ -50,8 +71,9 @@ static inline int pending_head_is(struct chunkdata *cd,
 
 /* XXX might want to support high memory pages.  on the other hand, those
    might force bounce buffering */
-static int alloc_chunk_pages(struct convergent_dev *dev, struct chunkdata *cd)
+static int alloc_chunk_pages(struct chunkdata *cd)
 {
+	struct convergent_dev *dev=cd->table->dev;
 	int i;
 	unsigned npages=chunk_pages(dev);
 	unsigned residual;
@@ -77,8 +99,9 @@ bad:
 	return -ENOMEM;
 }
 
-static void free_chunk_pages(struct convergent_dev *dev, struct chunkdata *cd)
+static void free_chunk_pages(struct chunkdata *cd)
 {
+	struct convergent_dev *dev=cd->table->dev;
 	int i;
 
 	for (i=0; i<chunk_pages(dev); i++)
@@ -88,6 +111,176 @@ static void free_chunk_pages(struct convergent_dev *dev, struct chunkdata *cd)
 static unsigned hash(struct chunkdata_table *table, chunk_t chunk)
 {
 	return chunk % table->buckets;
+}
+
+static void chunk_tfm(struct chunkdata *cd, int type)
+{
+	struct convergent_dev *dev=cd->table->dev;
+	struct scatterlist *sg=cd->sg;
+	unsigned nbytes=dev->chunksize;
+	char iv[8]={0};
+	
+	spin_lock(&dev->tfm_lock);
+	/* XXX */
+	if (crypto_cipher_setkey(dev->cipher, "asdf", 4))
+		BUG();
+	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
+	if (type == READ) {
+		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
+					nbytes, chunk->chunk);
+		if (crypto_cipher_decrypt(dev->cipher, sg, sg, nbytes))
+			BUG();
+	} else {
+		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
+					nbytes, chunk->chunk);
+		if (crypto_cipher_encrypt(dev->cipher, sg, sg, nbytes))
+			BUG();
+	}
+	spin_unlock(&dev->tfm_lock);
+}
+
+static int convergent_endio_func(struct bio *newbio, unsigned nbytes, int error);
+static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
+{
+	struct convergent_dev *dev=cd->table->dev;
+	struct bio *bio;
+	struct convergent_io_chunk *chunk;
+	
+	/* XXX could alloc smaller bios if we're looping */
+	bio=bio_alloc_bioset(GFP_ATOMIC, chunk_pages(dev), bio_pool);
+	if (bio == NULL)
+		return NULL;
+
+	bio->bi_bdev=dev->chunk_bdev;
+	bio->bi_sector=chunk_to_sector(dev, cd->chunk) + dev->offset + offset;
+	ndebug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
+	bio->bi_rw=dir;
+	if (dir == READ) {
+		chunk=pending_head(cd);
+		if (chunk != NULL)
+			bio_set_prio(bio, chunk->parent->prio);
+	}
+	bio->bi_end_io=convergent_endio_func;
+	bio->bi_private=cd;
+	bio->bi_destructor=bio_destructor;
+	return bio;
+}
+
+static void issue_chunk_io(struct chunkdata *cd, int dir)
+{
+	struct convergent_dev *dev=cd->table->dev;
+	struct bio *bio=NULL;
+	unsigned offset=0;
+	int i=0;
+	
+	BUG_ON(!spin_is_locked(&dev->chunkdata->lock));
+	BUG_ON(cd->flags & CD_LOCKED);
+	
+	cd->flags |= CD_LOCKED;
+	if (dir == WRITE)
+		cd->flags |= CD_WRITE;
+	cd->error=0;
+	atomic_set(&cd->completed, 0);
+	
+	/* XXX test against very small maximum seg count on target, etc. */
+	ndebug("Submitting clone bio(s)");
+	/* We can't assume that we can fit the entire chunk io in one
+	   bio: it depends on the queue restrictions of the underlying
+	   device */
+	while (offset < dev->chunksize) {
+		if (bio == NULL) {
+			bio=bio_create(cd, dir, offset/512);
+			if (bio == NULL)
+				goto bad;
+		}
+		if (bio_add_page(bio, cd->sg[i].page,
+					cd->sg[i].length,
+					cd->sg[i].offset)) {
+			offset += cd->sg[i].length;
+			i++;
+		} else {
+			debug("Submitting multiple bios");
+			submit(bio);
+			bio=NULL;
+		}
+	}
+	BUG_ON(bio == NULL);
+	submit(bio);
+	return;
+	
+bad:
+	/* XXX make this sane */
+	cd->error=-ENOMEM;
+	if (atomic_add_return(dev->chunksize - offset, &cd->completed)
+				== dev->chunksize)
+		tasklet_schedule(&cd->callback);
+}
+
+/* XXX */
+static void try_start_io(struct chunkdata_table *table,
+			struct convergent_io *io);
+/* Runs in tasklet (softirq) context */
+static void chunkdata_complete_io(unsigned long data)
+{
+	struct chunkdata *cd=(void*)data;
+	struct convergent_io_chunk *pending;
+	
+	spin_lock_bh(&cd->table->lock);
+	if (cd->error)
+		BUG();  /* XXX!!!!!!! */
+	BUG_ON(!(cd->flags & CD_LOCKED));
+	if (!(cd->flags & CD_WRITE))
+		cd->flags |= CD_DATA_VALID;
+	cd->flags &= ~(CD_LOCKED | CD_DATA_DIRTY | CD_WRITE);
+	
+	/* XXX we have a bit of a problem: we encrypt in-place.  so if we
+	   just did write-back, we need to decrypt again to keep the data
+	   clean. */
+	chunk_tfm(cd, READ);
+	
+	pending=pending_head(cd);
+	if (pending != NULL)
+		try_start_io(cd->table, pending->parent);
+	spin_unlock_bh(&cd->table->lock);
+}
+
+/* May be called from hardirq context */
+static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error)
+{
+	struct chunkdata *cd=bio->bi_private;
+	int completed;
+	if (error && !cd->error)
+		cd->error=error;
+	completed=atomic_add_return(nbytes, &cd->completed);
+	ndebug("Clone bio completion: %u bytes, total now %u; err %d",
+				nbytes, completed, error);
+	/* Can't call BUG() in interrupt */
+	WARN_ON(completed > cd->table->dev->chunksize);
+	if (completed >= cd->table->dev->chunksize)
+		tasklet_schedule(&cd->callback);
+	return 0;
+}
+
+int __init chunkdata_start(void)
+{
+	/* The second and third parameters are dependent on the contents
+	   of bvec_slabs[] in fs/bio.c, and on the chunk size.  Better too
+	   high than too low. */
+	/* XXX reduce a bit? */
+	/* XXX a global pool means that layering convergent on top of
+	   convergent could result in deadlocks.  we may want to prevent
+	   this in the registration interface. */
+	bio_pool=bioset_create(4 * MIN_CONCURRENT_REQS,
+				4 * MIN_CONCURRENT_REQS, 4);
+	if (bio_pool == NULL)
+		return -ENOMEM;
+	
+	return 0;
+}
+
+void __exit chunkdata_shutdown(void)
+{
+	bioset_free(bio_pool);
 }
 
 void chunkdata_free_table(struct convergent_dev *dev)
@@ -101,9 +294,13 @@ void chunkdata_free_table(struct convergent_dev *dev)
 		/* XXX flags check */
 		if (!list_empty(&cd->pending))
 			BUG();
+		/* XXX dirty writeouts */
+		/* Wait for the tasklet to finish if it hasn't already */
+		/* XXX necessary? */
+		tasklet_disable(&cd->callback);
 		list_del(&cd->lh_bucket);
 		list_del(&cd->lh_lru);
-		free_chunk_pages(dev, cd);
+		free_chunk_pages(cd);
 		kfree(cd);
 	}
 	spin_unlock_bh(&table->lock);
@@ -126,6 +323,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 	spin_lock_init(&table->lock);
 	for (i=0; i<buckets; i++)
 		INIT_LIST_HEAD(&table->hash[i]);
+	table->dev=dev;
 	dev->chunkdata=table;
 	
 	for (i=0; i<dev->cachesize; i++) {
@@ -136,13 +334,16 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 					GFP_KERNEL);
 		if (cd == NULL)
 			goto bad1;
-		if (alloc_chunk_pages(dev, cd))
-			goto bad2;
+		cd->table=table;
+		cd->flags=0;
 		INIT_LIST_HEAD(&cd->lh_bucket);
 		INIT_LIST_HEAD(&cd->lh_lru);
 		INIT_LIST_HEAD(&cd->pending);
+		if (alloc_chunk_pages(cd))
+			goto bad2;
+		tasklet_init(&cd->callback, chunkdata_complete_io,
+					(unsigned long)cd);
 		list_add(&cd->lh_lru, &table->lru);
-		cd->flags=0;
 	}
 	return 0;
 	
@@ -153,10 +354,10 @@ bad1:
 	return -ENOMEM;
 }
 
-static void chunkdata_hit(struct chunkdata_table *table, struct chunkdata *cd)
+static void chunkdata_hit(struct chunkdata *cd)
 {
-	BUG_ON(!spin_is_locked(&table->lock));
-	list_move_tail(&cd->lh_lru, &table->lru);
+	BUG_ON(!spin_is_locked(&cd->table->lock));
+	list_move_tail(&cd->lh_lru, &cd->table->lru);
 }
 
 static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
@@ -170,7 +371,7 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	/* See if the chunk is in the table already */
 	list_for_each_entry(cd, &table->hash[hash(table, chunk)], lh_bucket) {
 		if (cd->chunk == chunk) {
-			chunkdata_hit(table, cd);
+			chunkdata_hit(cd);
 			return cd;
 		}
 	}
@@ -178,11 +379,13 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	/* Steal the LRU chunk */
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
 		/* XXX */
-		if (list_empty(&cd->pending)) {
+		if (list_empty(&cd->pending) &&
+					!(cd->flags & CD_LOCKED) &&
+					!(cd->flags & CD_DATA_DIRTY)) {
 			list_del_init(&cd->lh_bucket);
 			list_add(&cd->lh_bucket,
 					&table->hash[hash(table, chunk)]);
-			chunkdata_hit(table, cd);
+			chunkdata_hit(cd);
 			cd->chunk=chunk;
 			cd->flags=0;
 			return cd;
@@ -208,12 +411,47 @@ static void try_start_io(struct chunkdata_table *table,
 		BUG_ON(cd == NULL);  /* XXX */
 		if (!pending_head_is(cd, chunk))
 			return;
+		if (cd->flags & CD_LOCKED)
+			return;
+		if (!(cd->flags & CD_DATA_VALID) && (chunk->flags & CHUNK_READ))
+			return;
 		/* XXX make sure we have userspace keys */
+		/* XXX there's no reason not to launch I/O on some chunks of
+		   the request even though not all of them are read in yet,
+		   as long as this I/O is at the head of the queue */
+	}
+	/* Now we know we're going to do this I/O.  Update state flags based
+	   on what the I/O will accomplish. */
+	for (i=0; i<io_chunks(io); i++) {
+		chunk=&io->chunks[i];
+		cd=chunkdata_get(table, chunk->chunk);
+		cd->flags |= CD_DATA_VALID;
+		if (io->flags & IO_WRITE)
+			cd->flags |= CD_DATA_DIRTY;
 	}
 	/* XXX */
 	spin_unlock(&table->lock);
-	convergent_process_io(io);
+	for (i=0; i<io_chunks(io); i++)
+		tasklet_schedule(&io->chunks[i].callback);
 	spin_lock(&table->lock);
+}
+
+static int try_writeback(struct chunkdata *cd)
+{
+	BUG_ON(!spin_is_locked(&cd->table->lock));
+	
+	if (cd->flags & CD_LOCKED)
+		return 0;
+	if (!(cd->flags & CD_DATA_VALID) || !(cd->flags & CD_DATA_DIRTY))
+		return 0;
+	/* We can only lock-and-writeback a chunk when it is not reserved. */
+	if (!list_empty(&cd->pending))
+		return 0;
+	debug("Writing out chunk " SECTOR_FORMAT, cd->chunk);
+	/* XXX if locking breaks, this will kill things */
+	chunk_tfm(cd, WRITE);
+	issue_chunk_io(cd, WRITE);
+	return 1;
 }
 
 int reserve_chunks(struct convergent_io *io)
@@ -231,6 +469,14 @@ int reserve_chunks(struct convergent_io *io)
 		cd=chunkdata_get(table, cur);
 		if (cd == NULL)
 			goto bad;
+		if (!(cd->flags & CD_DATA_VALID) &&
+					list_empty(&cd->pending) &&
+					(chunk->flags & CHUNK_READ)) {
+			/* We're going to be the first-in-queue and we
+			   need to read in the chunk. */
+			debug("Reading in chunk " SECTOR_FORMAT, cd->chunk);
+			issue_chunk_io(cd, READ);
+		}
 		list_add_tail(&chunk->lh_pending, &cd->pending);
 	}
 	try_start_io(table, io);
@@ -252,14 +498,18 @@ void unreserve_chunk(struct convergent_io_chunk *chunk)
 {
 	struct chunkdata_table *table=chunk->parent->dev->chunkdata;
 	struct chunkdata *cd;
+	struct convergent_io_chunk *pending;
 	
 	spin_lock(&table->lock);
 	cd=chunkdata_get(table, chunk->chunk);
 	BUG_ON(!pending_head_is(cd, chunk));
 	list_del_init(&chunk->lh_pending);
 	/* XXX this might cause the io to be started twice due to lock races */
-	if (!list_empty(&cd->pending))
-		try_start_io(table, pending_head(cd)->parent);
+	pending=pending_head(cd);
+	if (pending != NULL)
+		try_start_io(table, pending->parent);
+	else
+		try_writeback(cd);  /* XXX perhaps delay this a bit */
 	spin_unlock(&table->lock);
 }
 

@@ -3,23 +3,15 @@
 #include <linux/kernel.h>
 #include <linux/genhd.h>
 #include <linux/blkdev.h>
-#include <linux/bio.h>
 #include <linux/highmem.h>
 #include <linux/fs.h>
 #include <linux/crypto.h>
 #include <linux/mempool.h>
 #include <linux/interrupt.h>
-#include <linux/timer.h>
 #include "convergent.h"
 
-static struct bio_set *bio_pool;
 static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
 int blk_major;
-
-static void bio_destructor(struct bio *bio)
-{
-	bio_free(bio, bio_pool);
-}
 
 /* We don't want convergent_req to be a very large structure, but we want
    to be able to handle a large number of physical segments in a request.
@@ -128,95 +120,6 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	kunmap_atomic(dbuf - 1, KM_SOFTIRQ1);
 }
 
-static void chunk_tfm(struct convergent_io_chunk *chunk, int type)
-{
-	struct convergent_dev *dev=chunk->parent->dev;
-	struct scatterlist *sg=chunk->sg;
-	unsigned nbytes=dev->chunksize;
-	char iv[8]={0};
-	
-	spin_lock(&dev->tfm_lock);
-	/* XXX */
-	if (crypto_cipher_setkey(dev->cipher, "asdf", 4))
-		BUG();
-	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
-	if (type == READ) {
-		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
-					nbytes, chunk->chunk);
-		if (crypto_cipher_decrypt(dev->cipher, sg, sg, nbytes))
-			BUG();
-	} else {
-		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
-					nbytes, chunk->chunk);
-		if (crypto_cipher_encrypt(dev->cipher, sg, sg, nbytes))
-			BUG();
-	}
-	spin_unlock(&dev->tfm_lock);
-}
-
-static int convergent_endio_func(struct bio *newbio, unsigned nbytes, int error);
-static struct bio *bio_create(struct convergent_io_chunk *chunk, int dir,
-			unsigned offset)
-{
-	struct convergent_dev *dev=chunk->parent->dev;
-	struct bio *bio;
-
-	/* XXX could alloc smaller bios if we're looping */
-	bio=bio_alloc_bioset(GFP_ATOMIC, chunk_pages(dev), bio_pool);
-	if (bio == NULL)
-		return NULL;
-
-	bio->bi_bdev=dev->chunk_bdev;
-	bio->bi_sector=chunk_to_sector(dev, chunk->chunk) + dev->offset + offset;
-	ndebug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
-	bio->bi_rw=dir;
-	bio_set_prio(bio, chunk->parent->prio);
-	bio->bi_end_io=convergent_endio_func;
-	bio->bi_private=chunk;
-	bio->bi_destructor=bio_destructor;
-	return bio;
-}
-
-static void issue_chunk_io(struct convergent_io_chunk *chunk, int dir)
-{
-	struct bio *bio=NULL;
-	unsigned nbytes=chunk->parent->dev->chunksize;
-	unsigned offset=0;
-	int i=0;
-	
-	/* XXX test against very small maximum seg count on target, etc. */
-	ndebug("Submitting clone bio(s)");
-	/* We can't assume that we can fit the entire chunk io in one
-	   bio: it depends on the queue restrictions of the underlying
-	   device */
-	while (offset < nbytes) {
-		if (bio == NULL) {
-			bio=bio_create(chunk, dir, offset/512);
-			if (bio == NULL)
-				goto bad;
-		}
-		if (bio_add_page(bio, chunk->sg[i].page,
-					chunk->sg[i].length,
-					chunk->sg[i].offset)) {
-			offset += chunk->sg[i].length;
-			i++;
-		} else {
-			debug("Submitting multiple bios");
-			submit(bio);
-			bio=NULL;
-		}
-	}
-	BUG_ON(bio == NULL);
-	submit(bio);
-	return;
-	
-bad:
-	/* XXX make this sane */
-	chunk->error=-ENOMEM;
-	if (atomic_add_return(nbytes-offset, &chunk->completed) == nbytes)
-		tasklet_schedule(&chunk->callback);
-}
-
 /* Called without queue lock held */
 static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 {
@@ -224,11 +127,11 @@ static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 	spinlock_t *lock=req->q->queue_lock;
 
 	BUG_ON(!list_empty(&req->queuelist));
-	spin_lock_bh(lock);
+	spin_lock(lock);
 	ret=end_that_request_first(req, uptodate, nr_sectors);
 	if (!ret)
 		end_that_request_last(req, uptodate);
-	spin_unlock_bh(lock);
+	spin_unlock(lock);
 	return ret;
 }
 
@@ -284,9 +187,9 @@ static void io_cleaner(unsigned long data)
 static void convergent_teardown_io(struct convergent_io *io)
 {
 	/* Schedule the io to be freed the next time the cleaner runs */
-	spin_lock_bh(&io->dev->freed_lock);
+	spin_lock(&io->dev->freed_lock);
 	list_add_tail(&io->lh_freed, &io->dev->freed_ios);
-	spin_unlock_bh(&io->dev->freed_lock);
+	spin_unlock(&io->dev->freed_lock);
 }
 
 static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
@@ -295,7 +198,7 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 	struct convergent_io *io=chunk->parent;
 	int have_more=0;
 	
-	spin_lock_bh(&io->lock);
+	spin_lock(&io->lock);
 	chunk->flags |= CHUNK_COMPLETED;
 	ndebug("Completing chunk " SECTOR_FORMAT, chunk->chunk);
 	
@@ -317,67 +220,24 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 		   sure the user never sees out-of-order completions of the same
 		   chunk. */
 		/* XXX locking */
-		spin_unlock_bh(&io->lock);
+		spin_unlock(&io->lock);
 		unreserve_chunk(chunk);
-		spin_lock_bh(&io->lock);
+		spin_lock(&io->lock);
 	}
-	spin_unlock_bh(&io->lock);
+	spin_unlock(&io->lock);
 	if (!have_more) {
 		/* All chunks in this io are completed. */
 		convergent_teardown_io(io);
 	}
 }
 
-/* Tasklet - runs in softirq context */
-static void convergent_complete_io(unsigned long data)
+/* Process one chunk from an io.  Tasklet. */
+static void convergent_process_chunk(unsigned long data)
 {
 	struct convergent_io_chunk *chunk=(void*)data;
 	struct convergent_io *io=chunk->parent;
-	
-	if (chunk->error)
-		goto out;
-	if (!(io->flags & IO_WRITE)) {
-		chunk_tfm(chunk, READ);
-		scatterlist_copy(chunk->sg, io->orig_sg, chunk->offset,
-					chunk->orig_offset, chunk->len);
-	} else if (chunk->flags & CHUNK_RMW) {
-		chunk->flags &= ~CHUNK_RMW;
-		atomic_set(&chunk->completed, 0);
-		chunk_tfm(chunk, READ);
-		scatterlist_copy(io->orig_sg, chunk->sg,
-					chunk->orig_offset, chunk->offset,
-					chunk->len);
-		chunk_tfm(chunk, WRITE);
-		issue_chunk_io(chunk, WRITE);
-		/* We're not done yet! */
-		return;
-	}
-out:
-	convergent_complete_chunk(chunk);
-}
-
-/* May be called from hardirq context */
-static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error)
-{
-	struct convergent_io_chunk *chunk=bio->bi_private;
-	int completed;
-	if (error && !chunk->error)
-		chunk->error=error;
-	completed=atomic_add_return(nbytes, &chunk->completed);
-	ndebug("Clone bio completion: %u bytes, total now %u; err %d",
-				nbytes, completed, error);
-	/* Can't call BUG() in interrupt */
-	WARN_ON(completed > chunk->parent->dev->chunksize);
-	if (completed >= chunk->parent->dev->chunksize)
-		tasklet_schedule(&chunk->callback);
-	return 0;
-}
-
-/* Process one chunk from an io.  Called without queue lock held. */
-static void convergent_process_chunk(struct convergent_io_chunk *chunk)
-{
-	struct convergent_io *io=chunk->parent;
 	struct convergent_dev *dev=io->dev;
+	struct scatterlist *chunk_sg;
 	
 	/* The device might have been shut down since the io was first
 	   set up */
@@ -391,31 +251,16 @@ static void convergent_process_chunk(struct convergent_io_chunk *chunk)
 				"length %u", chunk->chunk, chunk->offset,
 				chunk->len);
 	
-	chunk->sg=get_scatterlist(chunk);
+	/* XXX error handling */
+	chunk_sg=get_scatterlist(chunk);
 	if (io->flags & IO_WRITE) {
-		if (chunk->len == dev->chunksize) {
-			/* Whole chunk */
-			scatterlist_copy(io->orig_sg, chunk->sg,
-					chunk->orig_offset, chunk->offset,
-					chunk->len);
-			chunk_tfm(chunk, WRITE);
-			issue_chunk_io(chunk, WRITE);
-		} else {
-			/* Partial chunk; need read-modify-write */
-			chunk->flags |= CHUNK_RMW;
-			issue_chunk_io(chunk, READ);
-		}
+		scatterlist_copy(io->orig_sg, chunk_sg, chunk->orig_offset,
+					chunk->offset, chunk->len);
 	} else {
-		issue_chunk_io(chunk, READ);
+		scatterlist_copy(chunk_sg, io->orig_sg, chunk->offset,
+					chunk->orig_offset, chunk->len);
 	}
-}
-
-void convergent_process_io(struct convergent_io *io)
-{
-	int i;
-	
-	for (i=0; i<io_chunks(io); i++)
-		convergent_process_chunk(&io->chunks[i]);
+	convergent_complete_chunk(chunk);
 }
 
 /* Do initial setup, memory allocations, anything that can fail.  Called
@@ -470,10 +315,11 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 			chunk->offset=0;
 		chunk->len=min(remaining, chunk_remaining(dev, chunk->offset));
 		chunk->flags=0;
+		if (!((io->flags & IO_WRITE) && chunk->len == dev->chunksize))
+			chunk->flags |= CHUNK_READ;
 		chunk->error=0;
 		INIT_LIST_HEAD(&chunk->lh_pending);
-		atomic_set(&chunk->completed, 0);
-		tasklet_init(&chunk->callback, convergent_complete_io,
+		tasklet_init(&chunk->callback, convergent_process_chunk,
 					(unsigned long)chunk);
 		remaining -= chunk->len;
 		bytes += chunk->len;
@@ -753,18 +599,9 @@ static int __init convergent_init(void)
 	debug("===================================================");
 	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
 	
-	/* The second and third parameters are dependent on the contents
-	   of bvec_slabs[] in fs/bio.c, and on the chunk size.  Better too
-	   high than too low. */
-	/* XXX reduce a bit? */
-	/* XXX a global pool means that layering convergent on top of
-	   convergent could result in deadlocks.  we may want to prevent
-	   this in the registration interface. */
-	bio_pool=bioset_create(4 * MIN_CONCURRENT_REQS,
-				4 * MIN_CONCURRENT_REQS, 4);
-	if (bio_pool == NULL) {
-		log(KERN_ERR, "couldn't create bioset");
-		ret=-ENOMEM;
+	ret=chunkdata_start();
+	if (ret) {
+		log(KERN_ERR, "couldn't set up chunkdata");
 		goto bad1;
 	}
 	
@@ -795,7 +632,7 @@ bad4:
 bad3:
 	submitter_shutdown();
 bad2:
-	bioset_free(bio_pool);
+	chunkdata_shutdown();
 bad1:
 	return ret;
 }
@@ -811,7 +648,7 @@ static void __exit convergent_shutdown(void)
 	
 	submitter_shutdown();
 	
-	bioset_free(bio_pool);
+	chunkdata_shutdown();
 }
 
 module_init(convergent_init);

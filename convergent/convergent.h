@@ -70,37 +70,33 @@ enum dev_bits {
 struct convergent_io_chunk {
 	struct list_head lh_pending;
 	struct convergent_io *parent;
-	struct scatterlist *sg;
 	struct tasklet_struct callback;
 	chunk_t chunk;
 	unsigned orig_offset;  /* byte offset into orig_sg */
 	unsigned offset;       /* byte offset into chunk */
 	unsigned len;          /* bytes */
-	atomic_t completed;    /* bytes */
 	unsigned flags;
 	int error;
 };
 
 enum chunk_bits {
-	__CHUNK_RMW,          /* Is in the read phase of read-modify-write */
+	__CHUNK_READ,         /* Needs to be read in before I/O starts */
 	__CHUNK_COMPLETED,    /* I/O complete */
 	__CHUNK_DEAD,         /* endio called */
 };
 
 /* convergent_io_chunk flags */
-#define CHUNK_RMW             (1 << __CHUNK_RMW)
+#define CHUNK_READ            (1 << __CHUNK_READ)
 #define CHUNK_COMPLETED       (1 << __CHUNK_COMPLETED)
 #define CHUNK_DEAD            (1 << __CHUNK_DEAD)
 
-/* XXX divide this up into per-io and per-chunk parts, and complete sub-chunks
-   in parallel.  (tune performance *before* doing userspace crypto, since
-   we'll need the data structures.)  then, move chunk page lifecycle management
+/* XXX (tune performance *before* doing userspace crypto, since
+   we'll need the data structures.)  move chunk page lifecycle management
    into chunkdata, so that io processing becomes just requesting chunks and
    then chunkdata doing a single callback into convergent.c to do whatever
    I/O is pending for those chunks.  IOW, read-chunk-from-disk and
-   write-chunk-to-disk become the responsibility of chunkdata.c.  BUT
-   we need callbacks and io dependency management first, so start with
-   per-chunk sub-ios. */
+   write-chunk-to-disk become the responsibility of chunkdata.c. */
+/* XXX coarser-grained locking */
 struct convergent_io {
 	struct list_head lh_freed;
 	struct convergent_dev *dev;
@@ -210,6 +206,8 @@ void submitter_shutdown(void);
 void submit(struct bio *bio);
 
 /* chunkdata.c */
+int chunkdata_start(void);
+void chunkdata_shutdown(void);
 int chunkdata_alloc_table(struct convergent_dev *dev);
 void chunkdata_free_table(struct convergent_dev *dev);
 int reserve_chunks(struct convergent_io *io);
