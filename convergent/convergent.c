@@ -44,8 +44,8 @@ static unsigned request_to_scatterlist(struct convergent_io *io)
 	int i;
 	unsigned nbytes=0;
 	
+	BUG_ON(!spin_is_locked(&dev->lock));
 	BUG_ON(io->orig_req->nr_phys_segments > MAX_INPUT_SEGS);
-	spin_lock(&dev->setup_lock);
 	nsegs=blk_rq_map_sg(dev->queue, io->orig_req, dev->setup_sg);
 	debug("%d phys segs, %d coalesced segs",
 				io->orig_req->nr_phys_segments, nsegs);
@@ -58,7 +58,6 @@ static unsigned request_to_scatterlist(struct convergent_io *io)
 	}
 	memcpy(io->orig_sg, dev->setup_sg,
 				nsegs * sizeof(struct scatterlist));
-	spin_unlock(&dev->setup_lock);
 	return nbytes;
 }
 
@@ -120,40 +119,35 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	kunmap_atomic(dbuf - 1, KM_SOFTIRQ1);
 }
 
-/* Called without queue lock held */
 static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 {
 	int ret;
-	spinlock_t *lock=req->q->queue_lock;
 
+	BUG_ON(!spin_is_locked(req->q->queue_lock));
 	BUG_ON(!list_empty(&req->queuelist));
-	spin_lock(lock);
 	ret=end_that_request_first(req, uptodate, nr_sectors);
 	if (!ret)
 		end_that_request_last(req, uptodate);
-	spin_unlock(lock);
 	return ret;
 }
 
-/* Called without queue lock held */
 static void queue_start(struct convergent_dev *dev)
 {
+	BUG_ON(!spin_is_locked(&dev->lock));
 	if (dev->flags & DEV_LOWMEM)
 		return;
-	spin_lock_bh(&dev->queue_lock);
 	blk_start_queue(dev->queue);
-	spin_unlock_bh(&dev->queue_lock);
 }
 
-/* Called without queue lock held */
 static void queue_stop(struct convergent_dev *dev)
 {
 	unsigned long interrupt_state;
 	
+	BUG_ON(!spin_is_locked(&dev->lock));
 	/* Interrupts must be disabled to stop the queue */
-	spin_lock_irqsave(&dev->queue_lock, interrupt_state);
+	local_irq_save(interrupt_state);
 	blk_stop_queue(dev->queue);
-	spin_unlock_irqrestore(&dev->queue_lock, interrupt_state);
+	local_irq_restore(interrupt_state);
 }
 
 static void io_cleaner(unsigned long data)
@@ -163,7 +157,7 @@ static void io_cleaner(unsigned long data)
 	struct convergent_io *next;
 	int i;
 	
-	spin_lock_bh(&dev->freed_lock);
+	spin_lock_bh(&dev->lock);
 	list_for_each_entry_safe(io, next, &dev->freed_ios, lh_freed) {
 		list_del(&io->lh_freed);
 		/* Wait for the tasklets to finish if they haven't already */
@@ -171,25 +165,17 @@ static void io_cleaner(unsigned long data)
 			tasklet_disable(&io->chunks[i].callback);
 		mempool_free(io, io->dev->io_pool);
 	}
-	spin_unlock_bh(&dev->freed_lock);
 	/* XXX perhaps it wouldn't hurt to make the timer more frequent */
 	/* XXX check for LOWMEM races */
 	if (dev->flags & DEV_LOWMEM) {
 		dev->flags &= ~DEV_LOWMEM;
 		queue_start(dev);
 	}
+	spin_unlock_bh(&dev->lock);
 	if (!(dev->flags & DEV_KILLCLEANER))
 		mod_timer(&dev->cleaner, jiffies + CLEANER_SWEEP);
 	else
 		debug("Timer shutting down");
-}
-
-static void convergent_teardown_io(struct convergent_io *io)
-{
-	/* Schedule the io to be freed the next time the cleaner runs */
-	spin_lock(&io->dev->freed_lock);
-	list_add_tail(&io->lh_freed, &io->dev->freed_ios);
-	spin_unlock(&io->dev->freed_lock);
 }
 
 static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
@@ -198,7 +184,8 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 	struct convergent_io *io=chunk->parent;
 	int have_more=0;
 	
-	spin_lock(&io->lock);
+	BUG_ON(!spin_is_locked(&io->dev->lock));
+	
 	chunk->flags |= CHUNK_COMPLETED;
 	ndebug("Completing chunk " SECTOR_FORMAT, chunk->chunk);
 	
@@ -219,15 +206,12 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 		/* We only unreserve the chunk after endio, to make absolutely
 		   sure the user never sees out-of-order completions of the same
 		   chunk. */
-		/* XXX locking */
-		spin_unlock(&io->lock);
 		unreserve_chunk(chunk);
-		spin_lock(&io->lock);
 	}
-	spin_unlock(&io->lock);
 	if (!have_more) {
-		/* All chunks in this io are completed. */
-		convergent_teardown_io(io);
+		/* All chunks in this io are completed.  Schedule the io to
+		   be freed the next time the cleaner runs */
+		list_add_tail(&io->lh_freed, &io->dev->freed_ios);
 	}
 }
 
@@ -239,11 +223,14 @@ static void convergent_process_chunk(unsigned long data)
 	struct convergent_dev *dev=io->dev;
 	struct scatterlist *chunk_sg;
 	
+	spin_lock_bh(&dev->lock);
+	
 	/* The device might have been shut down since the io was first
 	   set up */
 	if (dev->flags & DEV_SHUTDOWN) {
 		chunk->error=-EIO;
 		convergent_complete_chunk(chunk);
+		spin_unlock_bh(&dev->lock);
 		return;
 	}
 	
@@ -261,10 +248,10 @@ static void convergent_process_chunk(unsigned long data)
 					chunk->orig_offset, chunk->len);
 	}
 	convergent_complete_chunk(chunk);
+	spin_unlock_bh(&dev->lock);
 }
 
-/* Do initial setup, memory allocations, anything that can fail.  Called
-   without queue lock held. */
+/* Do initial setup, memory allocations, anything that can fail. */
 static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 {
 	struct convergent_io *io;
@@ -274,6 +261,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	unsigned sg_len;
 	int i;
 	
+	BUG_ON(!spin_is_locked(&dev->lock));
 	BUG_ON(req->nr_phys_segments > MAX_INPUT_SEGS);
 	
 	if (dev->flags & DEV_SHUTDOWN) {
@@ -296,13 +284,14 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	if (rq_data_dir(req))
 		io->flags |= IO_WRITE;
 	INIT_LIST_HEAD(&io->lh_freed);
-	spin_lock_init(&io->lock);
 	
 	bytes=0;
 	remaining=(unsigned)req->nr_sectors * 512;
 	sg_len=request_to_scatterlist(io);
 	BUG_ON((sg_len & ~(512 - 1)) != sg_len);
 	/* XXX */
+	/* XXX perhaps we can get rid of the global sg list now that we
+	   essentially do i/o coalescing in the backend. */
 	BUG_ON(sg_len != remaining);
 	for (i=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
@@ -347,12 +336,11 @@ static void convergent_request(request_queue_t *q)
 	
 	while ((req = elv_next_request(q)) != NULL) {
 		blkdev_dequeue_request(req);
-		spin_unlock(&dev->queue_lock);
 		if (!blk_fs_request(req)) {
 			/* XXX */
 			debug("Skipping non-fs request");
 			end_that_request(req, 0, req->nr_sectors);
-			goto next;
+			continue;
 		}
 		switch (convergent_setup_io(dev, req)) {
 		case 0:
@@ -361,14 +349,11 @@ static void convergent_request(request_queue_t *q)
 		case -ENOMEM:
 			dev->flags |= DEV_LOWMEM;
 			queue_stop(dev);
-			spin_lock(&dev->queue_lock);
 			elv_requeue_request(q, req);
 			return;
 		default:
 			BUG();
 		}
-next:
-		spin_lock(&dev->queue_lock);
 	}
 }
 
@@ -472,9 +457,8 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		return ERR_PTR(-ENOMEM);
 	}
 	
-	spin_lock_init(&dev->setup_lock);
+	spin_lock_init(&dev->lock);
 	INIT_LIST_HEAD(&dev->freed_ios);
-	spin_lock_init(&dev->freed_lock);
 	init_timer(&dev->cleaner);
 	dev->cleaner.function=io_cleaner;
 	dev->cleaner.data=(unsigned long)dev;
@@ -488,6 +472,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		goto bad;
 	}
 	/* XXX we need a minimum too */
+	/* XXX must not be smaller than MAX_CHUNKS_PER_IO */
 	if (cachesize > CD_MAX_CHUNKS) {
 		log(KERN_ERR, "cache size may not be larger than %u",
 					CD_MAX_CHUNKS);
@@ -510,8 +495,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		goto bad;
 	}
 	ndebug("Allocating queue");
-	spin_lock_init(&dev->queue_lock);
-	dev->queue=blk_init_queue(convergent_request, &dev->queue_lock);
+	dev->queue=blk_init_queue(convergent_request, &dev->lock);
 	if (dev->queue == NULL) {
 		log(KERN_ERR, "couldn't allocate request queue");
 		ret=-ENOMEM;
@@ -535,7 +519,6 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		ret=-ENOMEM;  /* XXX? */
 		goto bad;
 	}
-	spin_lock_init(&dev->tfm_lock);
 	
 	ndebug("Allocating memory pools");
 	snprintf(buf, NAME_BUFLEN, MODULE_NAME "-" DEVICE_NAME "%c",

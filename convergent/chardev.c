@@ -13,9 +13,9 @@ static void shutdown_dev(struct convergent_dev *dev)
 	if (atomic_dec_and_test(&dev->refcount)) {
 		convergent_dev_dtr(dev);
 	} else {
-		spin_lock_bh(&dev->queue_lock);
+		spin_lock_bh(&dev->lock);
 		blk_start_queue(dev->queue);
-		spin_unlock_bh(&dev->queue_lock);
+		spin_unlock_bh(&dev->lock);
 	}
 }
 

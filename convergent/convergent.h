@@ -24,11 +24,10 @@ typedef sector_t chunk_t;
 struct convergent_dev {
 	struct gendisk *gendisk;
 	request_queue_t *queue;
-	spinlock_t queue_lock;
+	spinlock_t lock;
 	struct block_device *chunk_bdev;
 	
 	struct scatterlist setup_sg[MAX_INPUT_SEGS];
-	spinlock_t setup_lock;
 	
 	unsigned chunksize;
 	unsigned cachesize;
@@ -40,7 +39,6 @@ struct convergent_dev {
 	struct crypto_tfm *cipher;
 	struct crypto_tfm *hash;
 	struct crypto_tfm *compress;
-	spinlock_t tfm_lock;
 	
 	/* XXX this can be made global */
 	kmem_cache_t *io_cache;
@@ -53,7 +51,6 @@ struct convergent_dev {
 	/* XXX make this a global object?  we'd need a list of devs */
 	struct timer_list cleaner;
 	struct list_head freed_ios;
-	spinlock_t freed_lock;
 };
 
 enum dev_bits {
@@ -96,7 +93,6 @@ enum chunk_bits {
    then chunkdata doing a single callback into convergent.c to do whatever
    I/O is pending for those chunks.  IOW, read-chunk-from-disk and
    write-chunk-to-disk become the responsibility of chunkdata.c. */
-/* XXX coarser-grained locking */
 struct convergent_io {
 	struct list_head lh_freed;
 	struct convergent_dev *dev;
@@ -107,7 +103,6 @@ struct convergent_io {
 	struct request *orig_req;
 	struct scatterlist orig_sg[MAX_SEGS_PER_IO];
 	struct convergent_io_chunk chunks[MAX_CHUNKS_PER_IO];
-	spinlock_t lock;
 };
 
 enum io_bits {
