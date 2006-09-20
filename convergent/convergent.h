@@ -78,12 +78,14 @@ struct convergent_io_chunk {
 
 enum chunk_bits {
 	__CHUNK_READ,         /* Needs to be read in before I/O starts */
+	__CHUNK_STARTED,      /* I/O has been initiated */
 	__CHUNK_COMPLETED,    /* I/O complete */
 	__CHUNK_DEAD,         /* endio called */
 };
 
 /* convergent_io_chunk flags */
 #define CHUNK_READ            (1 << __CHUNK_READ)
+#define CHUNK_STARTED         (1 << __CHUNK_STARTED)
 #define CHUNK_COMPLETED       (1 << __CHUNK_COMPLETED)
 #define CHUNK_DEAD            (1 << __CHUNK_DEAD)
 
@@ -189,7 +191,6 @@ extern int blk_major;
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset);
 void convergent_dev_dtr(struct convergent_dev *dev);
-void convergent_process_io(struct convergent_io *io);
 
 /* chardev.c */
 int chardev_start(void);

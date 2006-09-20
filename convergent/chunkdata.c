@@ -216,8 +216,7 @@ bad:
 }
 
 /* XXX */
-static void try_start_io(struct chunkdata_table *table,
-			struct convergent_io *io);
+static void try_start_io(struct convergent_io *io);
 /* Runs in tasklet (softirq) context */
 static void chunkdata_complete_io(unsigned long data)
 {
@@ -239,7 +238,7 @@ static void chunkdata_complete_io(unsigned long data)
 	
 	pending=pending_head(cd);
 	if (pending != NULL)
-		try_start_io(cd->table, pending->parent);
+		try_start_io(pending->parent);
 	spin_unlock_bh(&cd->table->dev->lock);
 }
 
@@ -395,41 +394,60 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	return NULL;
 }
 
-static void try_start_io(struct chunkdata_table *table,
-			struct convergent_io *io)
+/* Returns 1 if all chunks in the io are either at the front of their
+   pending queues or have already been unreserved */
+static int io_has_reservation(struct convergent_io *io)
 {
 	struct convergent_io_chunk *chunk;
 	struct chunkdata *cd;
 	int i;
 	
-	BUG_ON(!spin_is_locked(&table->dev->lock));
-	
+	BUG_ON(!spin_is_locked(&io->dev->lock));
 	for (i=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
-		cd=chunkdata_get(table, chunk->chunk);
-		BUG_ON(cd == NULL);  /* XXX */
-		if (!pending_head_is(cd, chunk))
-			return;
-		if (cd->flags & CD_LOCKED)
-			return;
-		if (!(cd->flags & CD_DATA_VALID) && (chunk->flags & CHUNK_READ))
-			return;
-		/* XXX make sure we have userspace keys */
-		/* XXX there's no reason not to launch I/O on some chunks of
-		   the request even though not all of them are read in yet,
-		   as long as this I/O is at the head of the queue */
+		/* CHUNK_STARTED is an optimization: if set, we know it's
+		   head-of-queue so we don't need to do the lookup */
+		if ((chunk->flags & CHUNK_DEAD) ||
+					(chunk->flags & CHUNK_STARTED))
+			continue;
+		cd=chunkdata_get(io->dev->chunkdata, chunk->chunk);
+		if (cd == NULL || !pending_head_is(cd, chunk))
+			return 0;
 	}
-	/* Now we know we're going to do this I/O.  Update state flags based
-	   on what the I/O will accomplish. */
+	return 1;
+}
+
+static void try_start_io(struct convergent_io *io)
+{
+	struct convergent_io_chunk *chunk;
+	struct chunkdata *cd;
+	int i;
+	
+	BUG_ON(!spin_is_locked(&io->dev->lock));
+	
+	/* See if this io can run yet at all. */
+	if (!io_has_reservation(io))
+		return;
+	
+	/* Start any chunks which can run and haven't been started yet. */
 	for (i=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
-		cd=chunkdata_get(table, chunk->chunk);
+		if ((chunk->flags & CHUNK_DEAD) ||
+					(chunk->flags & CHUNK_STARTED))
+			continue;
+		cd=chunkdata_get(io->dev->chunkdata, chunk->chunk);
+		if (cd->flags & CD_LOCKED)
+			continue;
+		if (!(cd->flags & CD_DATA_VALID) && (chunk->flags & CHUNK_READ))
+			continue;
+		/* XXX make sure we have userspace keys */
+		/* Update state flags based on what the I/O will accomplish. */
 		cd->flags |= CD_DATA_VALID;
 		if (io->flags & IO_WRITE)
 			cd->flags |= CD_DATA_DIRTY;
-	}
-	for (i=0; i<io_chunks(io); i++)
+		chunk->flags |= CHUNK_STARTED;
 		tasklet_schedule(&io->chunks[i].callback);
+	}
 }
 
 static int try_writeback(struct chunkdata *cd)
@@ -475,7 +493,7 @@ int reserve_chunks(struct convergent_io *io)
 		}
 		list_add_tail(&chunk->lh_pending, &cd->pending);
 	}
-	try_start_io(dev->chunkdata, io);
+	try_start_io(io);
 	return 0;
 	
 bad:
@@ -500,7 +518,7 @@ void unreserve_chunk(struct convergent_io_chunk *chunk)
 	/* XXX this might cause the io to be started twice due to lock races */
 	pending=pending_head(cd);
 	if (pending != NULL)
-		try_start_io(dev->chunkdata, pending->parent);
+		try_start_io(pending->parent);
 	else
 		try_writeback(cd);  /* XXX perhaps delay this a bit */
 }
