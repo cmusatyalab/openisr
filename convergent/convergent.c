@@ -168,7 +168,6 @@ static void io_cleaner(unsigned long data)
 		mempool_free(io, io_pool);
 	}
 	/* XXX perhaps it wouldn't hurt to make the timer more frequent */
-	/* XXX check for LOWMEM races */
 	if (dev->flags & DEV_LOWMEM) {
 		dev->flags &= ~DEV_LOWMEM;
 		queue_start(dev);
@@ -272,10 +271,8 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	}
 	
 	io=mempool_alloc(io_pool, GFP_ATOMIC);
-	if (io == NULL) {
-		/* XXX restart queue */
+	if (io == NULL)
 		return -ENOMEM;
-	}
 	
 	io->dev=dev;
 	io->orig_req=req;
@@ -331,6 +328,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	return 0;
 }
 
+/* Called with queue lock held */
 static void convergent_request(request_queue_t *q)
 {
 	struct convergent_dev *dev=q->queuedata;

@@ -5,8 +5,6 @@
 #include <linux/timer.h>
 #include "convergent.h"
 
-/* XXX LRU removal except for inuse chunks (waiting for userspace,
-   or in flight) */
 /* XXX rename all this */
 
 enum cd_bits {
@@ -47,9 +45,10 @@ struct chunkdata_table {
 
 static struct bio_set *bio_pool;
 
-static void bio_destructor(struct bio *bio)
+
+static unsigned hash(struct chunkdata_table *table, chunk_t chunk)
 {
-	bio_free(bio, bio_pool);
+	return chunk % table->buckets;
 }
 
 static inline struct convergent_io_chunk *pending_head(struct chunkdata *cd)
@@ -66,6 +65,48 @@ static inline int pending_head_is(struct chunkdata *cd,
 	if (list_empty(&cd->pending))
 		return 0;
 	return (pending_head(cd) == chunk);
+}
+
+static void chunkdata_hit(struct chunkdata *cd)
+{
+	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	list_move_tail(&cd->lh_lru, &cd->table->lru);
+}
+
+static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
+			chunk_t chunk)
+{
+	struct chunkdata *cd;
+	struct chunkdata *next;
+	
+	BUG_ON(!spin_is_locked(&table->dev->lock));
+	
+	/* See if the chunk is in the table already */
+	list_for_each_entry(cd, &table->hash[hash(table, chunk)], lh_bucket) {
+		if (cd->chunk == chunk) {
+			chunkdata_hit(cd);
+			return cd;
+		}
+	}
+	
+	/* Steal the LRU chunk */
+	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
+		/* XXX */
+		if (list_empty(&cd->pending) &&
+					!(cd->flags & CD_LOCKED) &&
+					!(cd->flags & CD_DATA_DIRTY)) {
+			list_del_init(&cd->lh_bucket);
+			list_add(&cd->lh_bucket,
+					&table->hash[hash(table, chunk)]);
+			chunkdata_hit(cd);
+			cd->chunk=chunk;
+			cd->flags=0;
+			return cd;
+		}
+	}
+	
+	/* Can't get a chunk */
+	return NULL;
 }
 
 /* XXX might want to support high memory pages.  on the other hand, those
@@ -107,34 +148,9 @@ static void free_chunk_pages(struct chunkdata *cd)
 		__free_page(cd->sg[i].page);
 }
 
-static unsigned hash(struct chunkdata_table *table, chunk_t chunk)
+static void bio_destructor(struct bio *bio)
 {
-	return chunk % table->buckets;
-}
-
-static void chunk_tfm(struct chunkdata *cd, int type)
-{
-	struct convergent_dev *dev=cd->table->dev;
-	struct scatterlist *sg=cd->sg;
-	unsigned nbytes=dev->chunksize;
-	char iv[8]={0};
-	
-	BUG_ON(!spin_is_locked(&dev->lock));
-	/* XXX */
-	if (crypto_cipher_setkey(dev->cipher, "asdf", 4))
-		BUG();
-	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
-	if (type == READ) {
-		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
-					nbytes, chunk->chunk);
-		if (crypto_cipher_decrypt(dev->cipher, sg, sg, nbytes))
-			BUG();
-	} else {
-		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
-					nbytes, chunk->chunk);
-		if (crypto_cipher_encrypt(dev->cipher, sg, sg, nbytes))
-			BUG();
-	}
+	bio_free(bio, bio_pool);
 }
 
 static int convergent_endio_func(struct bio *newbio, unsigned nbytes, int error);
@@ -215,6 +231,31 @@ bad:
 		tasklet_schedule(&cd->callback);
 }
 
+static void chunk_tfm(struct chunkdata *cd, int type)
+{
+	struct convergent_dev *dev=cd->table->dev;
+	struct scatterlist *sg=cd->sg;
+	unsigned nbytes=dev->chunksize;
+	char iv[8]={0};
+	
+	BUG_ON(!spin_is_locked(&dev->lock));
+	/* XXX */
+	if (crypto_cipher_setkey(dev->cipher, "asdf", 4))
+		BUG();
+	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
+	if (type == READ) {
+		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
+					nbytes, chunk->chunk);
+		if (crypto_cipher_decrypt(dev->cipher, sg, sg, nbytes))
+			BUG();
+	} else {
+		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
+					nbytes, chunk->chunk);
+		if (crypto_cipher_encrypt(dev->cipher, sg, sg, nbytes))
+			BUG();
+	}
+}
+
 /* XXX */
 static void try_start_io(struct convergent_io *io);
 /* Runs in tasklet (softirq) context */
@@ -259,139 +300,6 @@ static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error)
 	if (completed >= cd->table->dev->chunksize)
 		tasklet_schedule(&cd->callback);
 	return 0;
-}
-
-int __init chunkdata_start(void)
-{
-	/* The second and third parameters are dependent on the contents
-	   of bvec_slabs[] in fs/bio.c, and on the chunk size.  Better too
-	   high than too low. */
-	/* XXX reduce a bit? */
-	/* XXX a global pool means that layering convergent on top of
-	   convergent could result in deadlocks.  we may want to prevent
-	   this in the registration interface. */
-	bio_pool=bioset_create(4 * MIN_CONCURRENT_REQS,
-				4 * MIN_CONCURRENT_REQS, 4);
-	if (bio_pool == NULL)
-		return -ENOMEM;
-	
-	return 0;
-}
-
-void __exit chunkdata_shutdown(void)
-{
-	bioset_free(bio_pool);
-}
-
-void chunkdata_free_table(struct convergent_dev *dev)
-{
-	struct chunkdata_table *table=dev->chunkdata;
-	struct chunkdata *cd;
-	struct chunkdata *next;
-	
-	/* XXX locking? */
-	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
-		/* XXX flags check */
-		if (!list_empty(&cd->pending))
-			BUG();
-		/* XXX dirty writeouts */
-		/* Wait for the tasklet to finish if it hasn't already */
-		/* XXX necessary? */
-		tasklet_disable(&cd->callback);
-		list_del(&cd->lh_bucket);
-		list_del(&cd->lh_lru);
-		free_chunk_pages(cd);
-		kfree(cd);
-	}
-	kfree(table);
-}
-
-int chunkdata_alloc_table(struct convergent_dev *dev)
-{
-	struct chunkdata_table *table;
-	struct chunkdata *cd;
-	unsigned buckets=dev->cachesize;  /* XXX is this reasonable? */
-	int i;
-	
-	table=kmalloc(sizeof(*table) + buckets * sizeof(table->hash[0]),
-				GFP_KERNEL);
-	if (table == NULL)
-		return -ENOMEM;
-	table->buckets=buckets;
-	INIT_LIST_HEAD(&table->lru);
-	for (i=0; i<buckets; i++)
-		INIT_LIST_HEAD(&table->hash[i]);
-	table->dev=dev;
-	dev->chunkdata=table;
-	
-	for (i=0; i<dev->cachesize; i++) {
-		/* We don't use a lookaside cache for struct cachedata because
-		   they don't come and go; we pre-allocate and then they sit
-		   around. */
-		cd=kmalloc(sizeof(*cd) + chunk_pages(dev) * sizeof(cd->sg[0]),
-					GFP_KERNEL);
-		if (cd == NULL)
-			goto bad1;
-		cd->table=table;
-		cd->flags=0;
-		INIT_LIST_HEAD(&cd->lh_bucket);
-		INIT_LIST_HEAD(&cd->lh_lru);
-		INIT_LIST_HEAD(&cd->pending);
-		if (alloc_chunk_pages(cd))
-			goto bad2;
-		tasklet_init(&cd->callback, chunkdata_complete_io,
-					(unsigned long)cd);
-		list_add(&cd->lh_lru, &table->lru);
-	}
-	return 0;
-	
-bad2:
-	kfree(cd);
-bad1:
-	chunkdata_free_table(dev);
-	return -ENOMEM;
-}
-
-static void chunkdata_hit(struct chunkdata *cd)
-{
-	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
-	list_move_tail(&cd->lh_lru, &cd->table->lru);
-}
-
-static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
-			chunk_t chunk)
-{
-	struct chunkdata *cd;
-	struct chunkdata *next;
-	
-	BUG_ON(!spin_is_locked(&table->dev->lock));
-	
-	/* See if the chunk is in the table already */
-	list_for_each_entry(cd, &table->hash[hash(table, chunk)], lh_bucket) {
-		if (cd->chunk == chunk) {
-			chunkdata_hit(cd);
-			return cd;
-		}
-	}
-	
-	/* Steal the LRU chunk */
-	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
-		/* XXX */
-		if (list_empty(&cd->pending) &&
-					!(cd->flags & CD_LOCKED) &&
-					!(cd->flags & CD_DATA_DIRTY)) {
-			list_del_init(&cd->lh_bucket);
-			list_add(&cd->lh_bucket,
-					&table->hash[hash(table, chunk)]);
-			chunkdata_hit(cd);
-			cd->chunk=chunk;
-			cd->flags=0;
-			return cd;
-		}
-	}
-	
-	/* Can't get a chunk */
-	return NULL;
 }
 
 /* Returns 1 if all chunks in the io are either at the front of their
@@ -532,4 +440,95 @@ struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
 	cd=chunkdata_get(dev->chunkdata, chunk->chunk);
 	BUG_ON(cd == NULL || !pending_head_is(cd, chunk));
 	return cd->sg;
+}
+
+void chunkdata_free_table(struct convergent_dev *dev)
+{
+	struct chunkdata_table *table=dev->chunkdata;
+	struct chunkdata *cd;
+	struct chunkdata *next;
+	
+	/* XXX locking? */
+	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
+		/* XXX flags check */
+		if (!list_empty(&cd->pending))
+			BUG();
+		/* XXX dirty writeouts */
+		/* Wait for the tasklet to finish if it hasn't already */
+		/* XXX necessary? */
+		tasklet_disable(&cd->callback);
+		list_del(&cd->lh_bucket);
+		list_del(&cd->lh_lru);
+		free_chunk_pages(cd);
+		kfree(cd);
+	}
+	kfree(table);
+}
+
+int chunkdata_alloc_table(struct convergent_dev *dev)
+{
+	struct chunkdata_table *table;
+	struct chunkdata *cd;
+	unsigned buckets=dev->cachesize;  /* XXX is this reasonable? */
+	int i;
+	
+	table=kmalloc(sizeof(*table) + buckets * sizeof(table->hash[0]),
+				GFP_KERNEL);
+	if (table == NULL)
+		return -ENOMEM;
+	table->buckets=buckets;
+	INIT_LIST_HEAD(&table->lru);
+	for (i=0; i<buckets; i++)
+		INIT_LIST_HEAD(&table->hash[i]);
+	table->dev=dev;
+	dev->chunkdata=table;
+	
+	for (i=0; i<dev->cachesize; i++) {
+		/* We don't use a lookaside cache for struct cachedata because
+		   they don't come and go; we pre-allocate and then they sit
+		   around. */
+		cd=kmalloc(sizeof(*cd) + chunk_pages(dev) * sizeof(cd->sg[0]),
+					GFP_KERNEL);
+		if (cd == NULL)
+			goto bad1;
+		cd->table=table;
+		cd->flags=0;
+		INIT_LIST_HEAD(&cd->lh_bucket);
+		INIT_LIST_HEAD(&cd->lh_lru);
+		INIT_LIST_HEAD(&cd->pending);
+		if (alloc_chunk_pages(cd))
+			goto bad2;
+		tasklet_init(&cd->callback, chunkdata_complete_io,
+					(unsigned long)cd);
+		list_add(&cd->lh_lru, &table->lru);
+	}
+	return 0;
+	
+bad2:
+	kfree(cd);
+bad1:
+	chunkdata_free_table(dev);
+	return -ENOMEM;
+}
+
+int __init chunkdata_start(void)
+{
+	/* The second and third parameters are dependent on the contents
+	   of bvec_slabs[] in fs/bio.c, and on the chunk size.  Better too
+	   high than too low. */
+	/* XXX reduce a bit? */
+	/* XXX a global pool means that layering convergent on top of
+	   convergent could result in deadlocks.  we may want to prevent
+	   this in the registration interface. */
+	bio_pool=bioset_create(4 * MIN_CONCURRENT_REQS,
+				4 * MIN_CONCURRENT_REQS, 4);
+	if (bio_pool == NULL)
+		return -ENOMEM;
+	
+	return 0;
+}
+
+void __exit chunkdata_shutdown(void)
+{
+	bioset_free(bio_pool);
 }
