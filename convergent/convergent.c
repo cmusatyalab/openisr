@@ -11,6 +11,8 @@
 #include "convergent.h"
 
 static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
+static kmem_cache_t *io_cache;
+static mempool_t *io_pool;
 int blk_major;
 
 /* We don't want convergent_req to be a very large structure, but we want
@@ -163,7 +165,7 @@ static void io_cleaner(unsigned long data)
 		/* Wait for the tasklets to finish if they haven't already */
 		for (i=0; i<io_chunks(io); i++)
 			tasklet_disable(&io->chunks[i].callback);
-		mempool_free(io, io->dev->io_pool);
+		mempool_free(io, io_pool);
 	}
 	/* XXX perhaps it wouldn't hurt to make the timer more frequent */
 	/* XXX check for LOWMEM races */
@@ -269,7 +271,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 		return -ENXIO;
 	}
 	
-	io=mempool_alloc(dev->io_pool, GFP_ATOMIC);
+	io=mempool_alloc(io_pool, GFP_ATOMIC);
 	if (io == NULL) {
 		/* XXX restart queue */
 		return -ENOMEM;
@@ -323,7 +325,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	if (reserve_chunks(io)) {
 		/* Couldn't allocate chunkdata for this io, so we have to
 		   tear the whole thing down */
-		mempool_free(io, dev->io_pool);
+		mempool_free(io, io_pool);
 		return -ENOMEM;
 	}
 	return 0;
@@ -409,13 +411,6 @@ void convergent_dev_dtr(struct convergent_dev *dev)
 	/* Run the timer one more time to make sure everything's cleaned out
 	   now that the gendisk is gone */
 	io_cleaner((unsigned long)dev);
-	if (dev->io_pool)
-		mempool_destroy(dev->io_pool);
-	if (dev->io_cache)
-		if (kmem_cache_destroy(dev->io_cache))
-			log(KERN_ERR, "couldn't destroy io cache");
-	if (dev->io_cache_name)
-		kfree(dev->io_cache_name);
 	if (dev->compress)
 		crypto_free_tfm(dev->compress);
 	if (dev->hash)
@@ -441,7 +436,6 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 {
 	struct convergent_dev *dev;
 	sector_t capacity;
-	char buf[NAME_BUFLEN];
 	int devnum;
 	int ret;
 	
@@ -520,26 +514,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		goto bad;
 	}
 	
-	ndebug("Allocating memory pools");
-	snprintf(buf, NAME_BUFLEN, MODULE_NAME "-" DEVICE_NAME "%c",
-				'a' + devnum);
-	dev->io_cache_name=kstrdup(buf, GFP_KERNEL);
-	if (dev->io_cache_name == NULL) {
-		ret=-ENOMEM;
-		goto bad;
-	}
-	dev->io_cache=kmem_cache_create(dev->io_cache_name,
-				sizeof(struct convergent_io), 0, 0, NULL, NULL);
-	if (dev->io_cache == NULL) {
-		ret=-ENOMEM;
-		goto bad;
-	}
-	dev->io_pool=mempool_create(MIN_CONCURRENT_REQS, mempool_alloc_slab,
-				mempool_free_slab, dev->io_cache);
-	if (dev->io_pool == NULL) {
-		ret=-ENOMEM;
-		goto bad;
-	}
+	ndebug("Allocating chunkdata");
 	ret=chunkdata_alloc_table(dev);
 	if (ret)
 		goto bad;
@@ -582,41 +557,59 @@ static int __init convergent_init(void)
 	debug("===================================================");
 	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
 	
+	io_cache=kmem_cache_create(MODULE_NAME "-io",
+				sizeof(struct convergent_io), 0, 0, NULL, NULL);
+	if (io_cache == NULL) {
+		ret=-ENOMEM;
+		goto bad_cache;
+	}
+	io_pool=mempool_create(MIN_CONCURRENT_REQS, mempool_alloc_slab,
+				mempool_free_slab, io_cache);
+	if (io_pool == NULL) {
+		ret=-ENOMEM;
+		goto bad_mempool;
+	}
+	
 	ret=chunkdata_start();
 	if (ret) {
 		log(KERN_ERR, "couldn't set up chunkdata");
-		goto bad1;
+		goto bad_chunkdata;
 	}
 	
 	ret=submitter_start();
 	if (ret) {
 		log(KERN_ERR, "couldn't start I/O submission thread");
-		goto bad2;
+		goto bad_submit;
 	}
 	
 	ret=register_blkdev(0, MODULE_NAME);
 	if (ret < 0) {
 		log(KERN_ERR, "block driver registration failed");
-		goto bad3;
+		goto bad_blkdev;
 	}
 	blk_major=ret;
 	
 	ret=chardev_start();
 	if (ret) {
 		log(KERN_ERR, "couldn't register chardev");
-		goto bad4;
+		goto bad_chrdev;
 	}
 	
 	return 0;
 
-bad4:
+bad_chrdev:
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
-bad3:
+bad_blkdev:
 	submitter_shutdown();
-bad2:
+bad_submit:
 	chunkdata_shutdown();
-bad1:
+bad_chunkdata:
+	mempool_destroy(io_pool);
+bad_mempool:
+	if (kmem_cache_destroy(io_cache))
+		log(KERN_ERR, "couldn't destroy io cache");
+bad_cache:
 	return ret;
 }
 
@@ -632,6 +625,10 @@ static void __exit convergent_shutdown(void)
 	submitter_shutdown();
 	
 	chunkdata_shutdown();
+	
+	mempool_destroy(io_pool);
+	if (kmem_cache_destroy(io_cache))
+		log(KERN_ERR, "couldn't destroy io cache");
 }
 
 module_init(convergent_init);

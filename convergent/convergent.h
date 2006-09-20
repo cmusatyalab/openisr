@@ -10,7 +10,6 @@
 #define MINORS_PER_DEVICE 16
 #define CD_MAX_CHUNKS 8192  /* XXX make this based on MB RAM in the box */
 #define CLEANER_SWEEP (HZ/2)
-#define NAME_BUFLEN 32
 #define MODULE_NAME "isr-convergent"
 #define DEVICE_NAME "openisr"
 #define SUBMIT_QUEUE "convergent-io"
@@ -40,12 +39,6 @@ struct convergent_dev {
 	struct crypto_tfm *hash;
 	struct crypto_tfm *compress;
 	
-	/* XXX this can be made global */
-	kmem_cache_t *io_cache;
-	mempool_t *io_pool;
-	char *io_cache_name;
-	
-	/* Must be accessed with queue lock held */
 	struct chunkdata_table *chunkdata;
 	
 	/* XXX make this a global object?  we'd need a list of devs */
@@ -89,12 +82,6 @@ enum chunk_bits {
 #define CHUNK_COMPLETED       (1 << __CHUNK_COMPLETED)
 #define CHUNK_DEAD            (1 << __CHUNK_DEAD)
 
-/* XXX (tune performance *before* doing userspace crypto, since
-   we'll need the data structures.)  move chunk page lifecycle management
-   into chunkdata, so that io processing becomes just requesting chunks and
-   then chunkdata doing a single callback into convergent.c to do whatever
-   I/O is pending for those chunks.  IOW, read-chunk-from-disk and
-   write-chunk-to-disk become the responsibility of chunkdata.c. */
 struct convergent_io {
 	struct list_head lh_freed;
 	struct convergent_dev *dev;
