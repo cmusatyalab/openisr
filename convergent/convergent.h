@@ -187,6 +187,7 @@ void chardev_shutdown(void);
 int workqueue_start(void);
 void workqueue_shutdown(void);
 void submit(struct bio *bio);
+int delayed_add_disk(struct gendisk *disk);
 
 /* chunkdata.c */
 int chunkdata_start(void);

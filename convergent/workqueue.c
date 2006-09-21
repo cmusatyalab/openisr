@@ -6,18 +6,26 @@
 
 struct job {
 	struct work_struct work;
-	struct bio *bio;
+	void *data;
 };
 
 static struct workqueue_struct *queue;
 static kmem_cache_t *job_cache;
 static mempool_t *job_pool;
 
-static void job_handle(void *data)
+static void job_handle_bio(void *data)
 {
 	struct job *job=data;
 	
-	generic_make_request(job->bio);
+	generic_make_request(job->data);
+	mempool_free(job, job_pool);
+}
+
+static void job_handle_gendisk(void *data)
+{
+	struct job *job=data;
+	
+	add_disk(job->data);
 	mempool_free(job, job_pool);
 }
 
@@ -53,7 +61,24 @@ void submit(struct bio *bio)
 	struct job *job=mempool_alloc(job_pool, GFP_ATOMIC);
 	if (job == NULL)
 		BUG();  /* XXX */
-	INIT_WORK(&job->work, job_handle, job);
-	job->bio=bio;
+	INIT_WORK(&job->work, job_handle_bio, job);
+	job->data=bio;
 	queue_work(queue, &job->work);
+}
+
+int delayed_add_disk(struct gendisk *disk)
+{
+	struct job *job;
+	
+	might_sleep();
+	job=mempool_alloc(job_pool, GFP_KERNEL);
+	if (job == NULL)
+		return -ENOMEM;
+	INIT_WORK(&job->work, job_handle_gendisk, job);
+	job->data=disk;
+	/* We use the shared queue in order to prevent deadlock: if we
+	   used our own queue, add_disk() would block its own I/O to the
+	   partition table. */
+	schedule_work(&job->work);
+	return 0;
 }

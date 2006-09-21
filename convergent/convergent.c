@@ -550,7 +550,14 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	set_capacity(dev->gendisk, capacity);
 	dev->gendisk->private_data=dev;
 	ndebug("Adding disk");
-	add_disk(dev->gendisk);
+	/* add_disk() initiates I/O to read the partition tables, so userspace
+	   needs to be able to process key requests while it is running.
+	   If we called add_disk() directly here, we would deadlock. */
+	ret=delayed_add_disk(dev->gendisk);
+	if (ret) {
+		log(KERN_ERR, "couldn't schedule gendisk registration");
+		goto bad;
+	}
 	
 	return dev;
 bad:
