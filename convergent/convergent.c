@@ -109,6 +109,7 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 			dbuf=kmap_atomic(dst->page, KM_SOFTIRQ1) + dst->offset;
 			dleft=dst->length;
 		}
+		WARN_ON(sleft > PAGE_SIZE || dleft > PAGE_SIZE);
 		bytesThisRound=min(sleft, dleft);
 		memcpy(dbuf, sbuf, bytesThisRound);
 		len -= bytesThisRound;
@@ -496,6 +497,15 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	dev->queue->queuedata=dev;
 	blk_queue_bounce_limit(dev->queue, BLK_BOUNCE_ANY);
 	blk_queue_max_phys_segments(dev->queue, MAX_INPUT_SEGS);
+	/* By default, blk_rq_map_sg() coalesces physically adjacent pages
+	   into the same segment, resulting in a segment that spans more
+	   than one page but only points directly to the first struct page.
+	   This works fine when scatterlist_copy() kmaps low memory but
+	   will die if it kmaps high memory.  Instead, we tell blk_rq_map_sg()
+	   not to cross page boundaries when coalescing segments. */
+	/* XXX this has a minimum of PAGE_CACHE_SIZE - 1, which might be
+	   larger than PAGE_SIZE */
+	blk_queue_segment_boundary(dev->queue, PAGE_SIZE - 1);
 	blk_queue_max_sectors(dev->queue,
 				chunk_sectors(dev) * (MAX_CHUNKS_PER_IO - 1));
 	
