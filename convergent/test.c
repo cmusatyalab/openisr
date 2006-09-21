@@ -4,13 +4,15 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include "convergent-user.h"
 
 int main(int argc, char **argv)
 {
-	int fd, ret;
+	int fd, ret, keyval;
 	struct isr_setup setup;
+	struct isr_message message;
 	
 	if (argc != 6) {
 		printf("Usage: %s ctldev chunkdev chunksize cachesize offset\n",
@@ -32,6 +34,19 @@ int main(int argc, char **argv)
 		perror("Registering device");
 		return 1;
 	}
-	pause();
+	while (1) {
+		ret=read(fd, &message, sizeof(message));
+		if (ret != sizeof(message)) {
+			printf("read() returned %d, expected %d", ret,
+						sizeof(message));
+			continue;
+		}
+		keyval=message.chunk % 256;
+		printf("Chunk %llu key %d\n", message.chunk, keyval);
+		memset(message.key, keyval, KEY_LEN);
+		if (write(fd, &message, sizeof(message)) != sizeof(message))
+			printf("Error on write\n");
+	}
+	printf("Exiting\n");
 	return 0;
 }

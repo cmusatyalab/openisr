@@ -40,6 +40,7 @@ struct convergent_dev {
 	struct crypto_tfm *compress;
 	
 	struct chunkdata_table *chunkdata;
+	wait_queue_head_t waiting_users;
 	
 	/* XXX make this a global object?  we'd need a list of devs */
 	struct timer_list cleaner;
@@ -194,6 +195,9 @@ int chunkdata_start(void);
 void chunkdata_shutdown(void);
 int chunkdata_alloc_table(struct convergent_dev *dev);
 void chunkdata_free_table(struct convergent_dev *dev);
+void configure_chunk(struct convergent_dev *dev, chunk_t cid, char key[]);
+int have_user_message(struct convergent_dev *dev);
+int next_user_message(struct convergent_dev *dev, chunk_t *cid);
 int reserve_chunks(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);

@@ -3,7 +3,9 @@
 #include <linux/bio.h>
 #include <linux/crypto.h>
 #include <linux/timer.h>
+#include <linux/wait.h>
 #include "convergent.h"
+#include "convergent-user.h"
 
 /* XXX rename all this */
 
@@ -12,6 +14,7 @@ enum cd_bits {
 	__CD_WRITE,       /* Pending I/O is a write */
 	__CD_DATA_VALID,  /* The chunk's contents are buffered */
 	__CD_DATA_DIRTY,  /* The buffered data needs a writeback */
+	__CD_META_VALID,  /* The metadata (key, etc.) is buffered */
 	__CD_NR_BITS
 };
 
@@ -19,10 +22,12 @@ enum cd_bits {
 #define CD_WRITE       (1 << __CD_WRITE)
 #define CD_DATA_VALID  (1 << __CD_DATA_VALID)
 #define CD_DATA_DIRTY  (1 << __CD_DATA_DIRTY)
+#define CD_META_VALID  (1 << __CD_META_VALID)
 
 struct chunkdata {
 	struct list_head lh_bucket;
 	struct list_head lh_lru;
+	struct list_head lh_user;
 	struct chunkdata_table *table;
 	chunk_t chunk;
 	struct list_head pending;
@@ -30,6 +35,7 @@ struct chunkdata {
 	int error;             /* for I/O */
 	struct tasklet_struct callback;
 	unsigned flags;
+	char key[MAX_KEY_LEN];
 	/* XXX hack that lets us not manage yet another allocation */
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
 	struct scatterlist sg[0];
@@ -39,6 +45,7 @@ struct chunkdata_table {
 	struct convergent_dev *dev;
 	unsigned buckets;
 	struct list_head lru;
+	struct list_head user;
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
 	struct list_head hash[0];
 };
@@ -153,7 +160,7 @@ static void bio_destructor(struct bio *bio)
 	bio_free(bio, bio_pool);
 }
 
-static int convergent_endio_func(struct bio *newbio, unsigned nbytes, int error);
+static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error);
 static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 {
 	struct convergent_dev *dev=cd->table->dev;
@@ -239,8 +246,8 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 	char iv[8]={0};
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
-	/* XXX */
-	if (crypto_cipher_setkey(dev->cipher, "asdf", 4))
+	BUG_ON(!(cd->flags & CD_META_VALID));
+	if (crypto_cipher_setkey(dev->cipher, cd->key, KEY_LEN))
 		BUG();
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	if (type == READ) {
@@ -346,9 +353,10 @@ static void try_start_io(struct convergent_io *io)
 		cd=chunkdata_get(io->dev->chunkdata, chunk->chunk);
 		if (cd->flags & CD_LOCKED)
 			continue;
+		if (!(cd->flags & CD_META_VALID))
+			continue;
 		if (!(cd->flags & CD_DATA_VALID) && (chunk->flags & CHUNK_READ))
 			continue;
-		/* XXX make sure we have userspace keys */
 		/* Update state flags based on what the I/O will accomplish. */
 		cd->flags |= CD_DATA_VALID;
 		if (io->flags & IO_WRITE)
@@ -364,6 +372,8 @@ static int try_writeback(struct chunkdata *cd)
 	
 	if (cd->flags & CD_LOCKED)
 		return 0;
+	if (!(cd->flags & CD_META_VALID))
+		return 0;
 	if (!(cd->flags & CD_DATA_VALID) || !(cd->flags & CD_DATA_DIRTY))
 		return 0;
 	/* We can only lock-and-writeback a chunk when it is not reserved. */
@@ -374,6 +384,60 @@ static int try_writeback(struct chunkdata *cd)
 	chunk_tfm(cd, WRITE);
 	issue_chunk_io(cd, WRITE);
 	return 1;
+}
+
+static void queue_for_user(struct chunkdata *cd)
+{
+	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	list_add_tail(&cd->lh_user, &cd->table->user);
+	wake_up_interruptible(&cd->table->dev->waiting_users);
+}
+
+void configure_chunk(struct convergent_dev *dev, chunk_t cid, char key[])
+{
+	struct chunkdata *cd;
+	struct convergent_io_chunk *chunk;
+	
+	BUG_ON(!spin_is_locked(&dev->lock));
+	cd=chunkdata_get(dev->chunkdata, cid);
+	if (cd == NULL || (cd->flags & CD_META_VALID)) {
+		/* Userspace is messing with us. */
+		debug("Irrelevant metadata passed to configure_chunk()");
+		return;
+	}
+	BUG_ON(cd->flags & CD_DATA_VALID);
+	memcpy(cd->key, key, KEY_LEN);
+	cd->flags |= CD_META_VALID;
+	chunk=pending_head(cd);
+	if (chunk != NULL) {
+		if (chunk->flags & CHUNK_READ) {
+			/* The first-in-queue needs the chunk read in. */
+			debug("Reading in chunk " SECTOR_FORMAT, cd->chunk);
+			issue_chunk_io(cd, READ);
+		} else {
+			try_start_io(chunk->parent);
+		}
+	}
+}
+
+int have_user_message(struct convergent_dev *dev)
+{
+	BUG_ON(!spin_is_locked(&dev->lock));
+	return (!list_empty(&dev->chunkdata->user));
+}
+
+int next_user_message(struct convergent_dev *dev, chunk_t *cid)
+{
+	struct chunkdata *chunk;
+	
+	BUG_ON(!spin_is_locked(&dev->lock));
+	if (list_empty(&dev->chunkdata->user))
+		return -ENODATA;
+	chunk=container_of(dev->chunkdata->user.next, struct chunkdata,
+				lh_user);
+	list_del_init(&chunk->lh_user);
+	*cid=chunk->chunk;
+	return 0;
 }
 
 int reserve_chunks(struct convergent_io *io)
@@ -391,13 +455,10 @@ int reserve_chunks(struct convergent_io *io)
 		cd=chunkdata_get(dev->chunkdata, cur);
 		if (cd == NULL)
 			goto bad;
-		if (!(cd->flags & CD_DATA_VALID) &&
-					list_empty(&cd->pending) &&
-					(chunk->flags & CHUNK_READ)) {
-			/* We're going to be the first-in-queue and we
-			   need to read in the chunk. */
-			debug("Reading in chunk " SECTOR_FORMAT, cd->chunk);
-			issue_chunk_io(cd, READ);
+		if (list_empty(&cd->pending) && !(cd->flags & CD_META_VALID)) {
+			debug("Requesting key for chunk " SECTOR_FORMAT,
+						cd->chunk);
+			queue_for_user(cd);
 		}
 		list_add_tail(&chunk->lh_pending, &cd->pending);
 	}
@@ -449,10 +510,10 @@ void chunkdata_free_table(struct convergent_dev *dev)
 	struct chunkdata *next;
 	
 	/* XXX locking? */
+	BUG_ON(!list_empty(&table->user));
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
 		/* XXX flags check */
-		if (!list_empty(&cd->pending))
-			BUG();
+		BUG_ON(!list_empty(&cd->pending));
 		/* XXX dirty writeouts */
 		/* Wait for the tasklet to finish if it hasn't already */
 		/* XXX necessary? */
@@ -478,6 +539,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		return -ENOMEM;
 	table->buckets=buckets;
 	INIT_LIST_HEAD(&table->lru);
+	INIT_LIST_HEAD(&table->user);
 	for (i=0; i<buckets; i++)
 		INIT_LIST_HEAD(&table->hash[i]);
 	table->dev=dev;
@@ -495,6 +557,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		cd->flags=0;
 		INIT_LIST_HEAD(&cd->lh_bucket);
 		INIT_LIST_HEAD(&cd->lh_lru);
+		INIT_LIST_HEAD(&cd->lh_user);
 		INIT_LIST_HEAD(&cd->pending);
 		if (alloc_chunk_pages(cd))
 			goto bad2;

@@ -8,6 +8,7 @@
 #include <linux/crypto.h>
 #include <linux/mempool.h>
 #include <linux/interrupt.h>
+#include <linux/wait.h>
 #include "convergent.h"
 
 static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
@@ -401,6 +402,7 @@ void convergent_dev_dtr(struct convergent_dev *dev)
 {
 	debug("Dtr called");
 	/* XXX racy? */
+	/* XXX doesn't make sure the add_disk job has run */
 	if (dev->gendisk)
 		del_gendisk(dev->gendisk);
 	if (dev->chunkdata)
@@ -452,6 +454,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	
 	spin_lock_init(&dev->lock);
 	INIT_LIST_HEAD(&dev->freed_ios);
+	init_waitqueue_head(&dev->waiting_users);
 	init_timer(&dev->cleaner);
 	dev->cleaner.function=io_cleaner;
 	dev->cleaner.data=(unsigned long)dev;

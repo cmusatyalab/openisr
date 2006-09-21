@@ -37,13 +37,87 @@ static int chr_release(struct inode *ino, struct file *filp)
 static ssize_t chr_read(struct file *filp, char __user *buf,
 			size_t count, loff_t *offp)
 {
-	return 0;  /* XXX */
+	struct convergent_dev *dev=filp->private_data;
+	struct isr_message msg;
+	DEFINE_WAIT(wait);
+	chunk_t cid;
+	int i;
+	int need_wait;
+	
+	debug("Entering chr_read");
+	if (dev == NULL)
+		return -ENXIO;
+	if (count % sizeof(msg))
+		return -EINVAL;
+	count /= sizeof(msg);
+	
+	for (i=0; i<count; i++) {
+		spin_lock_bh(&dev->lock);
+		debug("Trying to get chunk");
+		while (!have_user_message(dev)) {
+			spin_unlock_bh(&dev->lock);
+			if (i > 0)
+				goto out;
+			if (filp->f_flags & O_NONBLOCK)
+				return -EAGAIN;
+			spin_lock_bh(&dev->lock);
+			prepare_to_wait(&dev->waiting_users, &wait,
+						TASK_INTERRUPTIBLE);
+			need_wait=!have_user_message(dev);
+			spin_unlock_bh(&dev->lock);
+			if (need_wait)
+				schedule();
+			finish_wait(&dev->waiting_users, &wait);
+			if (signal_pending(current))
+				return -ERESTARTSYS;
+			spin_lock_bh(&dev->lock);
+		}
+		if (next_user_message(dev, &cid))
+			BUG();
+		spin_unlock_bh(&dev->lock);
+		
+		debug("Have chunk");
+		memset(&msg, 0, sizeof(msg));
+		msg.chunk=cid;
+		if (copy_to_user(buf, &msg, sizeof(msg)))
+			BUG();  /* XXX */
+	}
+out:
+	debug("Leaving chr_read: %d", i * sizeof(msg));
+	return i * sizeof(msg);
 }
 
 static ssize_t chr_write(struct file *filp, const char __user *buf,
 			size_t count, loff_t *offp)
 {
-	return 0;  /* XXX */
+	struct convergent_dev *dev=filp->private_data;
+	struct isr_message msg;
+	int i;
+	
+	debug("Entering chr_write");
+	if (dev == NULL)
+		return -ENXIO;
+	if (count % sizeof(msg))
+		return -EINVAL;
+	count /= sizeof(msg);
+	
+	for (i=0; i<count; i++) {
+		if (copy_from_user(&msg, buf, sizeof(msg))) {
+			if (i > 0)
+				break;
+			else
+				return -EFAULT;
+		}
+		
+		/* XXX validate structure */
+		debug("Setting key");
+		
+		spin_lock_bh(&dev->lock);
+		configure_chunk(dev, (chunk_t)msg.chunk, msg.key);
+		spin_unlock_bh(&dev->lock);
+	}
+	debug("Leaving chr_write: %d", i * sizeof(msg));
+	return i * sizeof(msg);
 }
 
 /* XXX we may want to eliminate this later */
