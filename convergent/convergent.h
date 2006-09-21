@@ -183,9 +183,9 @@ void convergent_dev_dtr(struct convergent_dev *dev);
 int chardev_start(void);
 void chardev_shutdown(void);
 
-/* submitter.c */
-int submitter_start(void);
-void submitter_shutdown(void);
+/* workqueue.c */
+int workqueue_start(void);
+void workqueue_shutdown(void);
 void submit(struct bio *bio);
 
 /* chunkdata.c */

@@ -584,10 +584,10 @@ static int __init convergent_init(void)
 		goto bad_chunkdata;
 	}
 	
-	ret=submitter_start();
+	ret=workqueue_start();
 	if (ret) {
 		log(KERN_ERR, "couldn't start I/O submission thread");
-		goto bad_submit;
+		goto bad_workqueue;
 	}
 	
 	ret=register_blkdev(0, MODULE_NAME);
@@ -609,8 +609,8 @@ bad_chrdev:
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
 bad_blkdev:
-	submitter_shutdown();
-bad_submit:
+	workqueue_shutdown();
+bad_workqueue:
 	chunkdata_shutdown();
 bad_chunkdata:
 	mempool_destroy(io_pool);
@@ -630,7 +630,7 @@ static void __exit convergent_shutdown(void)
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
 	
-	submitter_shutdown();
+	workqueue_shutdown();
 	
 	chunkdata_shutdown();
 	
