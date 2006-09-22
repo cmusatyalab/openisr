@@ -2,7 +2,6 @@
 #define LINUX_CONVERGENT_H
 
 #define DEBUG
-#define MAX_INPUT_SEGS 512
 #define MAX_SEGS_PER_IO 32
 #define MAX_CHUNKS_PER_IO 32
 #define MIN_CONCURRENT_REQS 2  /* XXX */
@@ -25,8 +24,6 @@ struct convergent_dev {
 	request_queue_t *queue;
 	spinlock_t lock;
 	struct block_device *chunk_bdev;
-	
-	struct scatterlist setup_sg[MAX_INPUT_SEGS];
 	
 	unsigned chunksize;
 	unsigned cachesize;

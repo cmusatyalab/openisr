@@ -16,54 +16,6 @@ static kmem_cache_t *io_cache;
 static mempool_t *io_pool;
 int blk_major;
 
-/* We don't want convergent_req to be a very large structure, but we want
-   to be able to handle a large number of physical segments in a request.
-   Why is this important?  add_page_to_bio() is careful to coalesce bvecs
-   which point to adjacent areas in the same page, but submit_bh() is not:
-   it actually creates a separate bio for each 512-byte bh, and of course
-   bios can't be coalesced with each other because they might have different
-   completion functions.  So we can get requests containing a ton of
-   512-byte bios, each of which is a separate physical segment.  This is
-   a problem because it means that the total request size is limited by
-   the size of our statically-allocated scatterlist.
-   
-   Fortunately, blk_rq_map_sg() coalesces adjacent segments when building
-   the scatterlist.  However, we're still required to provide it a scatterlist
-   with enough space to keep each physical segment as a separate entry, even
-   if that turns out not to be necessary.  To get around this, we keep one
-   big scatterlist in the convergent_dev and smaller ones in each io.
-   If blk_rq_map_sg() produces a scatterlist small enough to fit in the io,
-   great.  Otherwise we split the io using the same mechanism we use for
-   multiple-chunk requests.  The result is that we should be able to process
-   large requests most of the time, while still handling requests that are
-   truly dispersed through memory.
-   
-   This function fills in the scatterlist in @io and returns the number
-   of bytes we can operate on right now. */
-static unsigned request_to_scatterlist(struct convergent_io *io)
-{
-	struct convergent_dev *dev=io->dev;
-	int nsegs;
-	int i;
-	unsigned nbytes=0;
-	
-	BUG_ON(!spin_is_locked(&dev->lock));
-	BUG_ON(io->orig_req->nr_phys_segments > MAX_INPUT_SEGS);
-	nsegs=blk_rq_map_sg(dev->queue, io->orig_req, dev->setup_sg);
-	debug("%d phys segs, %d coalesced segs",
-				io->orig_req->nr_phys_segments, nsegs);
-	if (nsegs > MAX_SEGS_PER_IO) {
-		nsegs=MAX_SEGS_PER_IO;
-		for (i=0; i<nsegs; i++)
-			nbytes += dev->setup_sg[i].length;
-	} else {
-		nbytes=io->orig_req->nr_sectors * 512;
-	}
-	memcpy(io->orig_sg, dev->setup_sg,
-				nsegs * sizeof(struct scatterlist));
-	return nbytes;
-}
-
 /* supports high memory pages */
 static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 			unsigned soffset, unsigned doffset, unsigned len)
@@ -256,11 +208,11 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	struct convergent_io_chunk *chunk;
 	unsigned remaining;
 	unsigned bytes;
-	unsigned sg_len;
+	unsigned nsegs;
 	int i;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
-	BUG_ON(req->nr_phys_segments > MAX_INPUT_SEGS);
+	BUG_ON(req->nr_phys_segments > MAX_SEGS_PER_IO);
 	
 	if (dev->flags & DEV_SHUTDOWN) {
 		end_that_request(req, 0, req->nr_sectors);
@@ -280,15 +232,11 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	if (rq_data_dir(req))
 		io->flags |= IO_WRITE;
 	INIT_LIST_HEAD(&io->lh_freed);
+	nsegs=blk_rq_map_sg(dev->queue, req, io->orig_sg);
+	debug("%d phys segs, %d coalesced segs", req->nr_phys_segments, nsegs);
 	
 	bytes=0;
 	remaining=(unsigned)req->nr_sectors * 512;
-	sg_len=request_to_scatterlist(io);
-	BUG_ON((sg_len & ~(512 - 1)) != sg_len);
-	/* XXX */
-	/* XXX perhaps we can get rid of the global sg list now that we
-	   essentially do i/o coalescing in the backend. */
-	BUG_ON(sg_len != remaining);
 	for (i=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
 		chunk->parent=io;
@@ -494,7 +442,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	}
 	dev->queue->queuedata=dev;
 	blk_queue_bounce_limit(dev->queue, BLK_BOUNCE_ANY);
-	blk_queue_max_phys_segments(dev->queue, MAX_INPUT_SEGS);
+	blk_queue_max_phys_segments(dev->queue, MAX_SEGS_PER_IO);
 	/* By default, blk_rq_map_sg() coalesces physically adjacent pages
 	   into the same segment, resulting in a segment that spans more
 	   than one page but only points directly to the first struct page.
