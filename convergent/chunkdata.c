@@ -14,7 +14,8 @@ enum cd_bits {
 	__CD_WRITE,       /* Pending I/O is a write */
 	__CD_DATA_VALID,  /* The chunk's contents are buffered */
 	__CD_DATA_DIRTY,  /* The buffered data needs a writeback */
-	__CD_META_VALID,  /* The metadata (key, etc.) is buffered */
+	__CD_KEY_DIRTY,   /* Key needs to be sent to userspace */
+	__CD_USER,        /* Metadata I/O with userspace is pending */
 	__CD_NR_BITS
 };
 
@@ -22,7 +23,8 @@ enum cd_bits {
 #define CD_WRITE       (1 << __CD_WRITE)
 #define CD_DATA_VALID  (1 << __CD_DATA_VALID)
 #define CD_DATA_DIRTY  (1 << __CD_DATA_DIRTY)
-#define CD_META_VALID  (1 << __CD_META_VALID)
+#define CD_KEY_DIRTY   (1 << __CD_KEY_DIRTY)
+#define CD_USER        (1 << __CD_USER)     /* XXX */
 
 struct chunkdata {
 	struct list_head lh_bucket;
@@ -35,7 +37,7 @@ struct chunkdata {
 	int error;             /* for I/O */
 	struct tasklet_struct callback;
 	unsigned flags;
-	char key[MAX_KEY_LEN];
+	char key[MAX_HASH_LEN];
 	/* XXX hack that lets us not manage yet another allocation */
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
 	struct scatterlist sg[0];
@@ -101,7 +103,9 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 		/* XXX */
 		if (list_empty(&cd->pending) &&
 					!(cd->flags & CD_LOCKED) &&
-					!(cd->flags & CD_DATA_DIRTY)) {
+					!(cd->flags & CD_USER) &&
+					!(cd->flags & CD_DATA_DIRTY) &&
+					!(cd->flags & CD_KEY_DIRTY)) {
 			list_del_init(&cd->lh_bucket);
 			list_add(&cd->lh_bucket,
 					&table->hash[hash(table, chunk)]);
@@ -153,6 +157,20 @@ static void free_chunk_pages(struct chunkdata *cd)
 
 	for (i=0; i<chunk_pages(dev); i++)
 		__free_page(cd->sg[i].page);
+}
+
+static void crypto_digest(struct crypto_tfm *tfm, struct scatterlist *sg,
+			unsigned nbytes, void *out)
+{
+	int count=0;
+	/* Unlike the cipher API, which wants nbytes, the digest API
+	   wants nsg. */
+	/* XXX carry this around in the data structure instead? */
+	while (nbytes) {
+		nbytes -= sg[count].length;
+		count++;
+	}
+	crypto_digest_digest(tfm, sg, count, out);
 }
 
 static void bio_destructor(struct bio *bio)
@@ -238,6 +256,8 @@ bad:
 		tasklet_schedule(&cd->callback);
 }
 
+/* XXX */
+static void queue_for_user(struct chunkdata *cd);
 static void chunk_tfm(struct chunkdata *cd, int type)
 {
 	struct convergent_dev *dev=cd->table->dev;
@@ -246,8 +266,14 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 	char iv[8]={0};
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
-	BUG_ON(!(cd->flags & CD_META_VALID));
-	if (crypto_cipher_setkey(dev->cipher, cd->key, KEY_LEN))
+	if (type == WRITE) {
+		crypto_digest(dev->hash, sg, nbytes, cd->key);
+		if (!(cd->flags & CD_KEY_DIRTY)) {
+			cd->flags |= CD_KEY_DIRTY;
+			queue_for_user(cd);
+		}
+	}
+	if (crypto_cipher_setkey(dev->cipher, cd->key, HASH_LEN))
 		BUG();
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	if (type == READ) {
@@ -351,9 +377,7 @@ static void try_start_io(struct convergent_io *io)
 					(chunk->flags & CHUNK_STARTED))
 			continue;
 		cd=chunkdata_get(io->dev->chunkdata, chunk->chunk);
-		if (cd->flags & CD_LOCKED)
-			continue;
-		if (!(cd->flags & CD_META_VALID))
+		if ((cd->flags & CD_LOCKED) || (cd->flags & CD_USER))
 			continue;
 		if (!(cd->flags & CD_DATA_VALID) && (chunk->flags & CHUNK_READ))
 			continue;
@@ -370,9 +394,7 @@ static int try_writeback(struct chunkdata *cd)
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
 	
-	if (cd->flags & CD_LOCKED)
-		return 0;
-	if (!(cd->flags & CD_META_VALID))
+	if ((cd->flags & CD_LOCKED) || (cd->flags & CD_USER))
 		return 0;
 	if (!(cd->flags & CD_DATA_VALID) || !(cd->flags & CD_DATA_DIRTY))
 		return 0;
@@ -389,6 +411,12 @@ static int try_writeback(struct chunkdata *cd)
 static void queue_for_user(struct chunkdata *cd)
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	if (cd->flags & CD_USER) {
+		/* Don't queue the cd again if it's already queued */
+		return;
+	}
+	ndebug("queue_for_user %x", cd->flags);
+	cd->flags |= CD_USER;
 	list_add_tail(&cd->lh_user, &cd->table->user);
 	wake_up_interruptible(&cd->table->dev->waiting_users);
 }
@@ -400,14 +428,14 @@ void configure_chunk(struct convergent_dev *dev, chunk_t cid, char key[])
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	cd=chunkdata_get(dev->chunkdata, cid);
-	if (cd == NULL || (cd->flags & CD_META_VALID)) {
+	if (cd == NULL || !(cd->flags & CD_USER)) {
 		/* Userspace is messing with us. */
 		debug("Irrelevant metadata passed to configure_chunk()");
 		return;
 	}
 	BUG_ON(cd->flags & CD_DATA_VALID);
-	memcpy(cd->key, key, KEY_LEN);
-	cd->flags |= CD_META_VALID;
+	memcpy(cd->key, key, HASH_LEN);
+	cd->flags &= ~CD_USER;
 	chunk=pending_head(cd);
 	if (chunk != NULL) {
 		if (chunk->flags & CHUNK_READ) {
@@ -426,17 +454,25 @@ int have_user_message(struct convergent_dev *dev)
 	return (!list_empty(&dev->chunkdata->user));
 }
 
-int next_user_message(struct convergent_dev *dev, chunk_t *cid)
+/* XXX make chunkdata globally accessible */
+int next_user_message(struct convergent_dev *dev, chunk_t *cid,
+			char key[], int *havekey)
 {
-	struct chunkdata *chunk;
+	struct chunkdata *cd;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	if (list_empty(&dev->chunkdata->user))
 		return -ENODATA;
-	chunk=container_of(dev->chunkdata->user.next, struct chunkdata,
+	cd=container_of(dev->chunkdata->user.next, struct chunkdata,
 				lh_user);
-	list_del_init(&chunk->lh_user);
-	*cid=chunk->chunk;
+	list_del_init(&cd->lh_user);
+	*cid=cd->chunk;
+	if (cd->flags & CD_KEY_DIRTY) {
+		*havekey=1;
+		cd->flags &= ~(CD_KEY_DIRTY | CD_USER);
+		memcpy(key, cd->key, HASH_LEN);
+	} else
+		*havekey=0;
 	return 0;
 }
 
@@ -455,7 +491,7 @@ int reserve_chunks(struct convergent_io *io)
 		cd=chunkdata_get(dev->chunkdata, cur);
 		if (cd == NULL)
 			goto bad;
-		if (list_empty(&cd->pending) && !(cd->flags & CD_META_VALID)) {
+		if (list_empty(&cd->pending) && !(cd->flags & CD_DATA_VALID)) {
 			debug("Requesting key for chunk " SECTOR_FORMAT,
 						cd->chunk);
 			queue_for_user(cd);

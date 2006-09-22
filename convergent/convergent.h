@@ -31,6 +31,7 @@ struct convergent_dev {
 	unsigned chunksize;
 	unsigned cachesize;
 	sector_t offset;
+	chunk_t chunks;
 	int devnum;
 	unsigned flags;	/* XXX racy */
 	atomic_t refcount;
@@ -197,7 +198,8 @@ int chunkdata_alloc_table(struct convergent_dev *dev);
 void chunkdata_free_table(struct convergent_dev *dev);
 void configure_chunk(struct convergent_dev *dev, chunk_t cid, char key[]);
 int have_user_message(struct convergent_dev *dev);
-int next_user_message(struct convergent_dev *dev, chunk_t *cid);
+int next_user_message(struct convergent_dev *dev, chunk_t *cid,
+			char key[], int *havekey);
 int reserve_chunks(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);

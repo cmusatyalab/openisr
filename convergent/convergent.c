@@ -551,6 +551,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 				& ~(loff_t)(chunk_sectors(dev) - 1);
 	debug("Chunk partition capacity: " SECTOR_FORMAT " MB", capacity >> 11);
 	set_capacity(dev->gendisk, capacity);
+	dev->chunks=chunk_of(dev, capacity);
 	dev->gendisk->private_data=dev;
 	ndebug("Adding disk");
 	/* add_disk() initiates I/O to read the partition tables, so userspace

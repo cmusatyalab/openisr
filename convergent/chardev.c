@@ -43,8 +43,9 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	chunk_t cid;
 	int i;
 	int need_wait;
+	int have_key;
 	
-	debug("Entering chr_read");
+	ndebug("Entering chr_read");
 	if (dev == NULL)
 		return -ENXIO;
 	if (count % sizeof(msg))
@@ -52,8 +53,10 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	count /= sizeof(msg);
 	
 	for (i=0; i<count; i++) {
+		memset(&msg, 0, sizeof(msg));
+		
 		spin_lock_bh(&dev->lock);
-		debug("Trying to get chunk");
+		ndebug("Trying to get chunk");
 		while (!have_user_message(dev)) {
 			spin_unlock_bh(&dev->lock);
 			if (i > 0)
@@ -72,18 +75,21 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 				return -ERESTARTSYS;
 			spin_lock_bh(&dev->lock);
 		}
-		if (next_user_message(dev, &cid))
+		if (next_user_message(dev, &cid, msg.key, &have_key))
 			BUG();
 		spin_unlock_bh(&dev->lock);
 		
-		debug("Have chunk");
-		memset(&msg, 0, sizeof(msg));
+		ndebug("Have chunk");
 		msg.chunk=cid;
+		if (have_key)
+			msg.flags=ISR_MSG_HAVE_KEY;
+		else
+			msg.flags=ISR_MSG_WANT_KEY;
 		if (copy_to_user(buf, &msg, sizeof(msg)))
 			BUG();  /* XXX */
 	}
 out:
-	debug("Leaving chr_read: %d", i * sizeof(msg));
+	ndebug("Leaving chr_read: %d", i * sizeof(msg));
 	return i * sizeof(msg);
 }
 
@@ -94,7 +100,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 	struct isr_message msg;
 	int i;
 	
-	debug("Entering chr_write");
+	ndebug("Entering chr_write");
 	if (dev == NULL)
 		return -ENXIO;
 	if (count % sizeof(msg))
@@ -110,13 +116,13 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 		}
 		
 		/* XXX validate structure */
-		debug("Setting key");
+		ndebug("Setting key");
 		
 		spin_lock_bh(&dev->lock);
 		configure_chunk(dev, (chunk_t)msg.chunk, msg.key);
 		spin_unlock_bh(&dev->lock);
 	}
-	debug("Leaving chr_write: %d", i * sizeof(msg));
+	ndebug("Leaving chr_write: %d", i * sizeof(msg));
 	return i * sizeof(msg);
 }
 
@@ -146,6 +152,7 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		setup.major=blk_major;
 		setup.first_minor=dev->devnum * MINORS_PER_DEVICE;
 		setup.minors=MINORS_PER_DEVICE;
+		setup.chunks=dev->chunks;
 		if (copy_to_user((void __user *)arg, &setup, sizeof(setup)))
 			BUG();
 		filp->private_data=dev;
