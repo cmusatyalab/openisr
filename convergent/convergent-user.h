@@ -4,9 +4,6 @@
 #define MAX_DEVICE_LEN 64
 #define MAX_HASH_LEN 32
 
-/* XXX temporary */
-#define HASH_LEN 20
-
 /* XXX consider 64-bit kernel with 32-bit userland */
 
 /* XXX should be unique */
@@ -15,23 +12,35 @@
 #define ISR_UNREGISTER	2
 
 struct isr_setup {
-	char chunk_device[MAX_DEVICE_LEN];
-	unsigned chunksize;
-	unsigned cachesize;
-	unsigned long long offset;
-	int major;
-	int first_minor;
-	int minors;
-	unsigned long long chunks;
+	char chunk_device[MAX_DEVICE_LEN];    /* to kernel */
+	unsigned chunksize;                   /* to kernel */
+	unsigned cachesize;                   /* to kernel */
+	unsigned long long offset;            /* to kernel */
+	unsigned short cipher;                /* to kernel */
+	unsigned short hash;                  /* to kernel */
+	unsigned short compress;              /* to kernel */
+	int major;                            /* to user */
+	int first_minor;                      /* to user */
+	int minors;                           /* to user */
+	unsigned long long chunks;            /* to user */
+	unsigned hash_len;                    /* to user */
 };
+
+#define ISR_CIPHER_BLOWFISH      0x0000
+#define ISR_HASH_SHA1            0x0000
+#define ISR_COMPRESS_NONE        0x0000
 
 struct isr_message {
+	unsigned type;
 	unsigned long long chunk;
+	unsigned short compression;  /* XXX */
 	char key[MAX_HASH_LEN];
-	unsigned flags;
 };
 
-#define ISR_MSG_HAVE_KEY  0x00000001
-#define ISR_MSG_WANT_KEY  0x00000002
+/* Kernel to user */
+#define ISR_MSGTYPE_GET_KEY      0x0000
+#define ISR_MSGTYPE_UPDATE_KEY   0x0001
+/* User to kernel */
+#define ISR_MSGTYPE_SET_KEY      0x1000
 
 #endif

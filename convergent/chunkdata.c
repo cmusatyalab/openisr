@@ -10,21 +10,23 @@
 /* XXX rename all this */
 
 enum cd_bits {
-	__CD_LOCKED,      /* I/O in progress */
-	__CD_WRITE,       /* Pending I/O is a write */
-	__CD_DATA_VALID,  /* The chunk's contents are buffered */
-	__CD_DATA_DIRTY,  /* The buffered data needs a writeback */
-	__CD_KEY_DIRTY,   /* Key needs to be sent to userspace */
-	__CD_USER,        /* Metadata I/O with userspace is pending */
+	__CD_USER,           /* Pending through userspace */
 	__CD_NR_BITS
 };
 
-#define CD_LOCKED      (1 << __CD_LOCKED)
-#define CD_WRITE       (1 << __CD_WRITE)
-#define CD_DATA_VALID  (1 << __CD_DATA_VALID)
-#define CD_DATA_DIRTY  (1 << __CD_DATA_DIRTY)
-#define CD_KEY_DIRTY   (1 << __CD_KEY_DIRTY)
-#define CD_USER        (1 << __CD_USER)     /* XXX */
+#define CD_USER         (1 << __CD_USER)
+
+enum cd_state {
+	ST_INVALID,          /* No key or data */
+	ST_LOAD_META,        /* Loading metadata */
+	ST_META,             /* Have metadata but not data */
+	ST_LOAD_DATA,        /* Loading data */
+	ST_CLEAN,            /* Have metadata and data */
+	ST_DIRTY,            /* Data is dirty */
+	ST_STORE_DATA,       /* Storing data */
+	ST_DIRTY_META,       /* Metadata is dirty */
+	ST_STORE_META,       /* Storing metadata */
+};
 
 struct chunkdata {
 	struct list_head lh_bucket;
@@ -37,6 +39,7 @@ struct chunkdata {
 	int error;             /* for I/O */
 	struct tasklet_struct callback;
 	unsigned flags;
+	enum cd_state state;
 	char key[MAX_HASH_LEN];
 	/* XXX hack that lets us not manage yet another allocation */
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
@@ -102,16 +105,15 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
 		/* XXX */
 		if (list_empty(&cd->pending) &&
-					!(cd->flags & CD_LOCKED) &&
-					!(cd->flags & CD_USER) &&
-					!(cd->flags & CD_DATA_DIRTY) &&
-					!(cd->flags & CD_KEY_DIRTY)) {
+					(cd->state == ST_INVALID ||
+					cd->state == ST_CLEAN)) {
 			list_del_init(&cd->lh_bucket);
 			list_add(&cd->lh_bucket,
 					&table->hash[hash(table, chunk)]);
 			chunkdata_hit(cd);
 			cd->chunk=chunk;
 			cd->flags=0;
+			cd->state=ST_INVALID;
 			return cd;
 		}
 	}
@@ -192,19 +194,25 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 	return bio;
 }
 
-static void issue_chunk_io(struct chunkdata *cd, int dir)
+static void issue_chunk_io(struct chunkdata *cd)
 {
 	struct convergent_dev *dev=cd->table->dev;
 	struct bio *bio=NULL;
 	unsigned offset=0;
 	int i=0;
+	int dir;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
-	BUG_ON(cd->flags & CD_LOCKED);
 	
-	cd->flags |= CD_LOCKED;
-	if (dir == WRITE)
-		cd->flags |= CD_WRITE;
+	if (cd->state == ST_LOAD_DATA) {
+		dir=READ;
+	} else if (cd->state == ST_STORE_DATA) {
+		dir=WRITE;
+	} else {
+		BUG();
+		return;
+	}
+	
 	cd->error=0;
 	atomic_set(&cd->completed, 0);
 	
@@ -242,24 +250,17 @@ bad:
 		tasklet_schedule(&cd->callback);
 }
 
-/* XXX */
-static void queue_for_user(struct chunkdata *cd);
 static void chunk_tfm(struct chunkdata *cd, int type)
 {
 	struct convergent_dev *dev=cd->table->dev;
 	struct scatterlist *sg=cd->sg;
 	unsigned nbytes=dev->chunksize;
-	char iv[8]={0};
+	char iv[8]={0}; /* XXX */
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
-	if (type == WRITE) {
+	if (type == WRITE)
 		crypto_digest_digest(dev->hash, sg, chunk_pages(dev), cd->key);
-		if (!(cd->flags & CD_KEY_DIRTY)) {
-			cd->flags |= CD_KEY_DIRTY;
-			queue_for_user(cd);
-		}
-	}
-	if (crypto_cipher_setkey(dev->cipher, cd->key, HASH_LEN))
+	if (crypto_cipher_setkey(dev->cipher, cd->key, dev->hash_len))
 		BUG();
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	if (type == READ) {
@@ -276,29 +277,29 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 }
 
 /* XXX */
-static void try_start_io(struct convergent_io *io);
+static void run_chunk(struct chunkdata *cd);
 /* Runs in tasklet (softirq) context */
 static void chunkdata_complete_io(unsigned long data)
 {
 	struct chunkdata *cd=(void*)data;
-	struct convergent_io_chunk *pending;
 	
 	spin_lock_bh(&cd->table->dev->lock);
 	if (cd->error)
 		BUG();  /* XXX!!!!!!! */
-	BUG_ON(!(cd->flags & CD_LOCKED));
-	if (!(cd->flags & CD_WRITE))
-		cd->flags |= CD_DATA_VALID;
-	cd->flags &= ~(CD_LOCKED | CD_DATA_DIRTY | CD_WRITE);
 	
 	/* XXX we have a bit of a problem: we encrypt in-place.  so if we
 	   just did write-back, we need to decrypt again to keep the data
 	   clean. */
 	chunk_tfm(cd, READ);
 	
-	pending=pending_head(cd);
-	if (pending != NULL)
-		try_start_io(pending->parent);
+	if (cd->state == ST_LOAD_DATA)
+		cd->state=ST_CLEAN;
+	else if (cd->state == ST_STORE_DATA)
+		cd->state=ST_DIRTY_META;
+	else
+		BUG();
+	
+	run_chunk(cd);
 	spin_unlock_bh(&cd->table->dev->lock);
 }
 
@@ -363,103 +364,166 @@ static void try_start_io(struct convergent_io *io)
 					(chunk->flags & CHUNK_STARTED))
 			continue;
 		cd=chunkdata_get(io->dev->chunkdata, chunk->chunk);
-		if ((cd->flags & CD_LOCKED) || (cd->flags & CD_USER))
+		
+		switch (cd->state) {
+		case ST_META:
+			if (chunk->flags & CHUNK_READ)
+				continue;
+		case ST_CLEAN:
+		case ST_DIRTY:
+			break;
+		default:
 			continue;
-		if (!(cd->flags & CD_DATA_VALID) && (chunk->flags & CHUNK_READ))
-			continue;
-		/* Update state flags based on what the I/O will accomplish. */
-		cd->flags |= CD_DATA_VALID;
+		}
+		
 		if (io->flags & IO_WRITE)
-			cd->flags |= CD_DATA_DIRTY;
+			cd->state=ST_DIRTY;
 		chunk->flags |= CHUNK_STARTED;
 		tasklet_schedule(&io->chunks[i].callback);
 	}
 }
 
-static int try_writeback(struct chunkdata *cd)
-{
-	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
-	
-	if ((cd->flags & CD_LOCKED) || (cd->flags & CD_USER))
-		return 0;
-	if (!(cd->flags & CD_DATA_VALID) || !(cd->flags & CD_DATA_DIRTY))
-		return 0;
-	/* We can only lock-and-writeback a chunk when it is not reserved. */
-	if (!list_empty(&cd->pending))
-		return 0;
-	debug("Writing out chunk " SECTOR_FORMAT, cd->chunk);
-	/* XXX if locking breaks, this will kill things */
-	chunk_tfm(cd, WRITE);
-	issue_chunk_io(cd, WRITE);
-	return 1;
-}
-
 static void queue_for_user(struct chunkdata *cd)
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
-	if (cd->flags & CD_USER) {
-		/* Don't queue the cd again if it's already queued */
-		return;
-	}
-	ndebug("queue_for_user %x", cd->flags);
-	cd->flags |= CD_USER;
+	BUG_ON(!list_empty(&cd->lh_user));
+	BUG_ON(cd->state != ST_LOAD_META && cd->state != ST_STORE_META);
 	list_add_tail(&cd->lh_user, &cd->table->user);
 	wake_up_interruptible(&cd->table->dev->waiting_users);
 }
 
-void configure_chunk(struct convergent_dev *dev, chunk_t cid, char key[])
-{
-	struct chunkdata *cd;
-	struct convergent_io_chunk *chunk;
-	
-	BUG_ON(!spin_is_locked(&dev->lock));
-	cd=chunkdata_get(dev->chunkdata, cid);
-	if (cd == NULL || !(cd->flags & CD_USER)) {
-		/* Userspace is messing with us. */
-		debug("Irrelevant metadata passed to configure_chunk()");
-		return;
-	}
-	BUG_ON(cd->flags & CD_DATA_VALID);
-	memcpy(cd->key, key, HASH_LEN);
-	cd->flags &= ~CD_USER;
-	chunk=pending_head(cd);
-	if (chunk != NULL) {
-		if (chunk->flags & CHUNK_READ) {
-			/* The first-in-queue needs the chunk read in. */
-			debug("Reading in chunk " SECTOR_FORMAT, cd->chunk);
-			issue_chunk_io(cd, READ);
-		} else {
-			try_start_io(chunk->parent);
-		}
-	}
-}
-
-int have_user_message(struct convergent_dev *dev)
+int have_usermsg(struct convergent_dev *dev)
 {
 	BUG_ON(!spin_is_locked(&dev->lock));
 	return (!list_empty(&dev->chunkdata->user));
 }
 
-/* XXX make chunkdata globally accessible */
-int next_user_message(struct convergent_dev *dev, chunk_t *cid,
-			char key[], int *havekey)
+struct chunkdata *next_usermsg(struct convergent_dev *dev, unsigned *type)
 {
 	struct chunkdata *cd;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
-	if (list_empty(&dev->chunkdata->user))
-		return -ENODATA;
-	cd=container_of(dev->chunkdata->user.next, struct chunkdata,
-				lh_user);
+	list_for_each_entry(cd, &dev->chunkdata->user, lh_user) {
+		if (cd->flags & CD_USER)
+			continue;
+		cd->flags |= CD_USER;
+		if (cd->state == ST_LOAD_META)
+			*type=ISR_MSGTYPE_GET_KEY;
+		else if (cd->state == ST_STORE_META)
+			*type=ISR_MSGTYPE_UPDATE_KEY;
+		else
+			BUG();
+		return cd;
+	}
+	return NULL;
+}
+
+void fail_usermsg(struct chunkdata *cd)
+{
+	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(!(cd->flags & CD_USER));
+	cd->flags &= ~CD_USER;
+}
+
+void end_usermsg(struct chunkdata *cd)
+{
+	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(!(cd->flags & CD_USER));
+	cd->flags &= ~CD_USER;
 	list_del_init(&cd->lh_user);
+	if (cd->state == ST_STORE_META) {
+		cd->state=ST_CLEAN;
+		run_chunk(cd);
+	}
+}
+
+void get_usermsg_get_key(struct chunkdata *cd, unsigned long long *cid)
+{
+	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(cd->state != ST_LOAD_META);
 	*cid=cd->chunk;
-	if (cd->flags & CD_KEY_DIRTY) {
-		*havekey=1;
-		cd->flags &= ~(CD_KEY_DIRTY | CD_USER);
-		memcpy(key, cd->key, HASH_LEN);
-	} else
-		*havekey=0;
-	return 0;
+}
+
+void get_usermsg_update_key(struct chunkdata *cd, unsigned long long *cid,
+			char key[])
+{
+	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(cd->state != ST_STORE_META);
+	*cid=cd->chunk;
+	memcpy(key, cd->key, cd->table->dev->hash_len);
+}
+
+void set_usermsg_set_key(struct convergent_dev *dev, chunk_t cid, char key[])
+{
+	struct chunkdata *cd;
+	
+	BUG_ON(!spin_is_locked(&dev->lock));
+	cd=chunkdata_get(dev->chunkdata, cid);
+	if (cd == NULL || !list_empty(&cd->lh_user) ||
+				cd->state != ST_LOAD_META) {
+		/* Userspace is messing with us. */
+		debug("Irrelevant metadata passed to usermsg_set_key()");
+		return;
+	}
+	memcpy(cd->key, key, dev->hash_len);
+	cd->state=ST_META;
+	run_chunk(cd);
+}
+
+/* XXX need to make sure everything is eventually written back */
+static void run_chunk(struct chunkdata *cd)
+{
+	struct convergent_io_chunk *chunk;
+	
+	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	chunk=pending_head(cd);
+	
+	if (cd->state == ST_DIRTY_META) {
+		/* We just wrote out data but haven't written out metadata
+		   yet.  We can't do anything else with this chunk until
+		   we write out metadata. */
+		cd->state=ST_STORE_META;
+		queue_for_user(cd);
+		return;
+	} else if (cd->state == ST_DIRTY && chunk == NULL) {
+		debug("Writing out chunk " SECTOR_FORMAT, cd->chunk);
+		cd->state=ST_STORE_DATA;
+		chunk_tfm(cd, WRITE);
+		issue_chunk_io(cd);
+	} else if (chunk != NULL) {
+		switch (cd->state) {
+		case ST_INVALID:
+			/* No key or data */
+			debug("Requesting key for chunk " SECTOR_FORMAT,
+						cd->chunk);
+			cd->state=ST_LOAD_META;
+			queue_for_user(cd);
+			break;
+		case ST_META:
+			/* Have metadata but not data */
+			if (chunk->flags & CHUNK_READ) {
+				/* The first-in-queue needs the chunk read
+				   in. */
+				debug("Reading in chunk " SECTOR_FORMAT,
+							cd->chunk);
+				cd->state=ST_LOAD_DATA;
+				issue_chunk_io(cd);
+				break;
+			}
+			/* else fall through */
+		case ST_CLEAN:
+		case ST_DIRTY:
+			/* Have metadata and data */
+			try_start_io(chunk->parent);
+		case ST_LOAD_META:
+		case ST_LOAD_DATA:
+		case ST_STORE_DATA:
+		case ST_STORE_META:
+			break;
+		case ST_DIRTY_META:
+			BUG();
+		}
+	}
 }
 
 int reserve_chunks(struct convergent_io *io)
@@ -477,14 +541,14 @@ int reserve_chunks(struct convergent_io *io)
 		cd=chunkdata_get(dev->chunkdata, cur);
 		if (cd == NULL)
 			goto bad;
-		if (list_empty(&cd->pending) && !(cd->flags & CD_DATA_VALID)) {
-			debug("Requesting key for chunk " SECTOR_FORMAT,
-						cd->chunk);
-			queue_for_user(cd);
-		}
 		list_add_tail(&chunk->lh_pending, &cd->pending);
 	}
-	try_start_io(io);
+	for (i=0; i<io_chunks(io); i++) {
+		cur=io->first_chunk + i;
+		cd=chunkdata_get(dev->chunkdata, cur);
+		BUG_ON(cd == NULL);
+		run_chunk(cd);
+	}
 	return 0;
 	
 bad:
@@ -500,18 +564,12 @@ void unreserve_chunk(struct convergent_io_chunk *chunk)
 {
 	struct convergent_dev *dev=chunk->parent->dev;
 	struct chunkdata *cd;
-	struct convergent_io_chunk *pending;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	cd=chunkdata_get(dev->chunkdata, chunk->chunk);
 	BUG_ON(!pending_head_is(cd, chunk));
 	list_del_init(&chunk->lh_pending);
-	/* XXX this might cause the io to be started twice due to lock races */
-	pending=pending_head(cd);
-	if (pending != NULL)
-		try_start_io(pending->parent);
-	else
-		try_writeback(cd);  /* XXX perhaps delay this a bit */
+	run_chunk(cd);
 }
 
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
@@ -576,7 +634,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		if (cd == NULL)
 			goto bad1;
 		cd->table=table;
-		cd->flags=0;
+		cd->state=ST_INVALID;
 		INIT_LIST_HEAD(&cd->lh_bucket);
 		INIT_LIST_HEAD(&cd->lh_lru);
 		INIT_LIST_HEAD(&cd->lh_user);

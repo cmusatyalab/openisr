@@ -35,7 +35,7 @@ struct convergent_dev {
 	
 	struct crypto_tfm *cipher;
 	struct crypto_tfm *hash;
-	struct crypto_tfm *compress;
+	unsigned hash_len;
 	
 	struct chunkdata_table *chunkdata;
 	wait_queue_head_t waiting_users;
@@ -175,7 +175,8 @@ static inline unsigned io_chunks(struct convergent_io *io)
 /* convergent.c */
 extern int blk_major;
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
-			unsigned cachesize, sector_t offset);
+			unsigned cachesize, sector_t offset,
+			unsigned cipher, unsigned hash, unsigned compress);
 void convergent_dev_dtr(struct convergent_dev *dev);
 
 /* chardev.c */
@@ -194,9 +195,14 @@ void chunkdata_shutdown(void);
 int chunkdata_alloc_table(struct convergent_dev *dev);
 void chunkdata_free_table(struct convergent_dev *dev);
 void configure_chunk(struct convergent_dev *dev, chunk_t cid, char key[]);
-int have_user_message(struct convergent_dev *dev);
-int next_user_message(struct convergent_dev *dev, chunk_t *cid,
-			char key[], int *havekey);
+int have_usermsg(struct convergent_dev *dev);
+struct chunkdata *next_usermsg(struct convergent_dev *dev, unsigned *type);
+void fail_usermsg(struct chunkdata *cd);
+void end_usermsg(struct chunkdata *cd);
+void get_usermsg_get_key(struct chunkdata *cd, unsigned long long *cid);
+void get_usermsg_update_key(struct chunkdata *cd, unsigned long long *cid,
+			char key[]);
+void set_usermsg_set_key(struct convergent_dev *dev, chunk_t cid, char key[]);
 int reserve_chunks(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);

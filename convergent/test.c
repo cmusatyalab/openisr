@@ -14,11 +14,11 @@ struct chunk {
 
 static struct chunk *chunks;
 
-void printkey(char *key)
+void printkey(char *key, int len)
 {
 	int i;
 	
-	for (i=0; i<HASH_LEN; i++)
+	for (i=0; i<len; i++)
 		printf("%.2hhx", key[i]);
 	printf("\n");
 }
@@ -44,6 +44,9 @@ int main(int argc, char **argv)
 	setup.chunksize=atoi(argv[3]);
 	setup.cachesize=atoi(argv[4]);
 	setup.offset=atoi(argv[5]);
+	setup.cipher=ISR_CIPHER_BLOWFISH;
+	setup.hash=ISR_HASH_SHA1;
+	setup.compress=ISR_COMPRESS_NONE;
 	ret=ioctl(fd, ISR_REGISTER, &setup);
 	if (ret) {
 		perror("Registering device");
@@ -64,18 +67,26 @@ int main(int argc, char **argv)
 						sizeof(message));
 			continue;
 		}
-		if (message.flags & ISR_MSG_HAVE_KEY) {
-			printf("Receiving chunk %8llu key ", message.chunk);
-			printkey(message.key);
-			memcpy(chunks[message.chunk].key, message.key, HASH_LEN);
-		}
-		if (message.flags & ISR_MSG_WANT_KEY) {
+		switch (message.type) {
+		case ISR_MSGTYPE_GET_KEY:
 			printf("Sending   chunk %8llu key ", message.chunk);
-			printkey(chunks[message.chunk].key);
-			memcpy(message.key, chunks[message.chunk].key, HASH_LEN);
+			printkey(chunks[message.chunk].key, setup.hash_len);
+			memcpy(message.key, chunks[message.chunk].key,
+						setup.hash_len);
+			message.type=ISR_MSGTYPE_SET_KEY;
 			if (write(fd, &message, sizeof(message)) !=
 						sizeof(message))
 				printf("Error on write\n");
+			break;
+		case ISR_MSGTYPE_UPDATE_KEY:
+			printf("Receiving chunk %8llu key ", message.chunk);
+			printkey(message.key, setup.hash_len);
+			memcpy(chunks[message.chunk].key, message.key,
+						setup.hash_len);
+			break;
+		default:
+			printf("Unknown message type\n");
+			continue;
 		}
 	}
 	printf("Exiting\n");

@@ -40,10 +40,10 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	struct convergent_dev *dev=filp->private_data;
 	struct isr_message msg;
 	DEFINE_WAIT(wait);
-	chunk_t cid;
 	int i;
 	int need_wait;
-	int have_key;
+	int ret;
+	struct chunkdata *cd;
 	
 	ndebug("Entering chr_read");
 	if (dev == NULL)
@@ -57,7 +57,8 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 		
 		spin_lock_bh(&dev->lock);
 		ndebug("Trying to get chunk");
-		while (!have_user_message(dev)) {
+		/* XXX clean up */
+		while (!have_usermsg(dev)) {
 			spin_unlock_bh(&dev->lock);
 			if (i > 0)
 				goto out;
@@ -66,7 +67,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 			spin_lock_bh(&dev->lock);
 			prepare_to_wait(&dev->waiting_users, &wait,
 						TASK_INTERRUPTIBLE);
-			need_wait=!have_user_message(dev);
+			need_wait=!have_usermsg(dev);
 			spin_unlock_bh(&dev->lock);
 			if (need_wait)
 				schedule();
@@ -75,18 +76,29 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 				return -ERESTARTSYS;
 			spin_lock_bh(&dev->lock);
 		}
-		if (next_user_message(dev, &cid, msg.key, &have_key))
+		cd=next_usermsg(dev, &msg.type);
+		/* XXX this is wrong: we need to get rid of have_usermsg()
+		   and pull directly from next_usermsg(): have_usermsg() uses
+		   a bogus test */
+		BUG_ON(cd == NULL);
+		switch (msg.type) {
+		case ISR_MSGTYPE_GET_KEY:
+			get_usermsg_get_key(cd, &msg.chunk);
+			break;
+		case ISR_MSGTYPE_UPDATE_KEY:
+			get_usermsg_update_key(cd, &msg.chunk, msg.key);
+			break;
+		default:
 			BUG();
+		}
 		spin_unlock_bh(&dev->lock);
-		
-		ndebug("Have chunk");
-		msg.chunk=cid;
-		if (have_key)
-			msg.flags=ISR_MSG_HAVE_KEY;
+		ret=copy_to_user(buf, &msg, sizeof(msg));
+		spin_lock_bh(&dev->lock);
+		if (ret)
+			fail_usermsg(cd);
 		else
-			msg.flags=ISR_MSG_WANT_KEY;
-		if (copy_to_user(buf, &msg, sizeof(msg)))
-			BUG();  /* XXX */
+			end_usermsg(cd);
+		spin_unlock_bh(&dev->lock);
 	}
 out:
 	ndebug("Leaving chr_read: %d", i * sizeof(msg));
@@ -115,11 +127,17 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 				return -EFAULT;
 		}
 		
+		if (msg.type != ISR_MSGTYPE_SET_KEY) {
+			if (i > 0)
+				break;
+			else
+				return -EINVAL;
+		}
 		/* XXX validate structure */
 		ndebug("Setting key");
 		
 		spin_lock_bh(&dev->lock);
-		configure_chunk(dev, (chunk_t)msg.chunk, msg.key);
+		set_usermsg_set_key(dev, msg.chunk, msg.key);
 		spin_unlock_bh(&dev->lock);
 	}
 	ndebug("Leaving chr_write: %d", i * sizeof(msg));
@@ -146,13 +164,15 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 			return -EINVAL;
 		dev=convergent_dev_ctr(setup.chunk_device, setup.chunksize,
 					setup.cachesize,
-					(sector_t)setup.offset);
+					(sector_t)setup.offset, setup.cipher,
+					setup.hash, setup.compress);
 		if (IS_ERR(dev))
 			return PTR_ERR(dev);
 		setup.major=blk_major;
 		setup.first_minor=dev->devnum * MINORS_PER_DEVICE;
 		setup.minors=MINORS_PER_DEVICE;
 		setup.chunks=dev->chunks;
+		setup.hash_len=dev->hash_len;
 		if (copy_to_user((void __user *)arg, &setup, sizeof(setup)))
 			BUG();
 		filp->private_data=dev;
