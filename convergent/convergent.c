@@ -185,7 +185,6 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 {
 	int i;
 	struct convergent_io *io=chunk->parent;
-	int have_more=0;
 	
 	BUG_ON(!spin_is_locked(&io->dev->lock));
 	
@@ -196,10 +195,8 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 		chunk=&io->chunks[i];
 		if (chunk->flags & CHUNK_DEAD)
 			continue;
-		if (!(chunk->flags & CHUNK_COMPLETED)) {
-			have_more=1;
-			break;
-		}
+		if (!(chunk->flags & CHUNK_COMPLETED))
+			return;
 		ndebug("end_that_request for chunk " SECTOR_FORMAT,
 					chunk->chunk);
 		end_that_request(io->orig_req,
@@ -211,11 +208,9 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 		   chunk. */
 		unreserve_chunk(chunk);
 	}
-	if (!have_more) {
-		/* All chunks in this io are completed.  Schedule the io to
-		   be freed the next time the cleaner runs */
-		list_add_tail(&io->lh_freed, &io->dev->freed_ios);
-	}
+	/* All chunks in this io are completed.  Schedule the io to
+	   be freed the next time the cleaner runs */
+	list_add_tail(&io->lh_freed, &io->dev->freed_ios);
 }
 
 /* Process one chunk from an io.  Tasklet. */

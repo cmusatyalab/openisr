@@ -159,20 +159,6 @@ static void free_chunk_pages(struct chunkdata *cd)
 		__free_page(cd->sg[i].page);
 }
 
-static void crypto_digest(struct crypto_tfm *tfm, struct scatterlist *sg,
-			unsigned nbytes, void *out)
-{
-	int count=0;
-	/* Unlike the cipher API, which wants nbytes, the digest API
-	   wants nsg. */
-	/* XXX carry this around in the data structure instead? */
-	while (nbytes) {
-		nbytes -= sg[count].length;
-		count++;
-	}
-	crypto_digest_digest(tfm, sg, count, out);
-}
-
 static void bio_destructor(struct bio *bio)
 {
 	bio_free(bio, bio_pool);
@@ -267,7 +253,7 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	if (type == WRITE) {
-		crypto_digest(dev->hash, sg, nbytes, cd->key);
+		crypto_digest_digest(dev->hash, sg, chunk_pages(dev), cd->key);
 		if (!(cd->flags & CD_KEY_DIRTY)) {
 			cd->flags |= CD_KEY_DIRTY;
 			queue_for_user(cd);
