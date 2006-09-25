@@ -5,7 +5,6 @@
 #include <linux/timer.h>
 #include <linux/wait.h>
 #include "convergent.h"
-#include "convergent-user.h"
 
 /* XXX rename all this */
 
@@ -34,6 +33,8 @@ struct chunkdata {
 	struct list_head lh_user;
 	struct chunkdata_table *table;
 	chunk_t chunk;
+	unsigned size;         /* compressed size before padding */
+	unsigned compression;  /* compression type */
 	struct list_head pending;
 	atomic_t completed;    /* bytes, for I/O */
 	int error;             /* for I/O */
@@ -194,6 +195,11 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 	return bio;
 }
 
+/* We read or write the whole chunk, even if we don't need all of the sectors
+   due to compression.  This ensures that the I/O elevator can still coalesce
+   our requests, which is more important than minimizing the requested
+   sector count since the excess data will be in the disk's track buffer
+   anyway. */
 static void issue_chunk_io(struct chunkdata *cd)
 {
 	struct convergent_dev *dev=cd->table->dev;
@@ -250,12 +256,23 @@ bad:
 		tasklet_schedule(&cd->callback);
 }
 
+static int get_crypto_pad(struct convergent_dev *dev, unsigned data_len)
+{
+	unsigned blocksize=crypto_tfm_alg_blocksize(dev->cipher);
+	unsigned partial=data_len % blocksize;
+	if (partial)
+		return blocksize - partial;
+	else
+		return 0;
+}
+
 static void chunk_tfm(struct chunkdata *cd, int type)
 {
 	struct convergent_dev *dev=cd->table->dev;
 	struct scatterlist *sg=cd->sg;
-	unsigned nbytes=dev->chunksize;
+	unsigned padding;
 	char iv[8]={0}; /* XXX */
+	int ret;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	if (type == WRITE)
@@ -264,14 +281,30 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 		BUG();
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	if (type == READ) {
-		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
-					nbytes, chunk->chunk);
-		if (crypto_cipher_decrypt(dev->cipher, sg, sg, nbytes))
+		padding=get_crypto_pad(dev, cd->size);
+		debug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
+					cd->size + padding, cd->chunk);
+		if (crypto_cipher_decrypt(dev->cipher, sg, sg,
+					cd->size + padding))
 			BUG();
+		if (decompress(dev, sg, cd->compression, cd->size))
+			BUG(); /* XXX */
 	} else {
-		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
-					nbytes, chunk->chunk);
-		if (crypto_cipher_encrypt(dev->cipher, sg, sg, nbytes))
+		ret=compress(dev, sg);
+		if (ret == -EFBIG) {
+			cd->size=dev->chunksize;
+			cd->compression=ISR_COMPRESS_NONE;
+		} else if (ret < 0) {
+			BUG();  /* XXX */
+		} else {
+			cd->size=ret;
+			cd->compression=dev->compression;
+		}
+		padding=get_crypto_pad(dev, cd->size);
+		debug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
+					cd->size + padding, cd->chunk);
+		if (crypto_cipher_encrypt(dev->cipher, sg, sg,
+					cd->size + padding))
 			BUG();
 	}
 }
@@ -439,15 +472,18 @@ void get_usermsg_get_key(struct chunkdata *cd, unsigned long long *cid)
 }
 
 void get_usermsg_update_key(struct chunkdata *cd, unsigned long long *cid,
-			char key[])
+			unsigned *length, unsigned *compression, char key[])
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
 	BUG_ON(cd->state != ST_STORE_META);
 	*cid=cd->chunk;
+	*length=cd->size;
+	*compression=cd->compression;
 	memcpy(key, cd->key, cd->table->dev->hash_len);
 }
 
-void set_usermsg_set_key(struct convergent_dev *dev, chunk_t cid, char key[])
+void set_usermsg_set_key(struct convergent_dev *dev, chunk_t cid,
+			unsigned length, unsigned compression, char key[])
 {
 	struct chunkdata *cd;
 	
@@ -459,6 +495,8 @@ void set_usermsg_set_key(struct convergent_dev *dev, chunk_t cid, char key[])
 		debug("Irrelevant metadata passed to usermsg_set_key()");
 		return;
 	}
+	cd->size=length;
+	cd->compression=compression;
 	memcpy(cd->key, key, dev->hash_len);
 	cd->state=ST_META;
 	run_chunk(cd);
@@ -583,6 +621,8 @@ void chunkdata_free_table(struct convergent_dev *dev)
 	struct chunkdata *cd;
 	struct chunkdata *next;
 	
+	if (table == NULL)
+		return;
 	/* XXX locking? */
 	BUG_ON(!list_empty(&table->user));
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
@@ -626,26 +666,22 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		cd=kmalloc(sizeof(*cd) + chunk_pages(dev) * sizeof(cd->sg[0]),
 					GFP_KERNEL);
 		if (cd == NULL)
-			goto bad1;
+			return -ENOMEM;
 		cd->table=table;
 		cd->state=ST_INVALID;
 		INIT_LIST_HEAD(&cd->lh_bucket);
 		INIT_LIST_HEAD(&cd->lh_lru);
 		INIT_LIST_HEAD(&cd->lh_user);
 		INIT_LIST_HEAD(&cd->pending);
-		if (alloc_chunk_pages(cd))
-			goto bad2;
+		if (alloc_chunk_pages(cd)) {
+			kfree(cd);
+			return -ENOMEM;
+		}
 		tasklet_init(&cd->callback, chunkdata_complete_io,
 					(unsigned long)cd);
 		list_add(&cd->lh_lru, &table->lru);
 	}
 	return 0;
-	
-bad2:
-	kfree(cd);
-bad1:
-	chunkdata_free_table(dev);
-	return -ENOMEM;
 }
 
 int __init chunkdata_start(void)

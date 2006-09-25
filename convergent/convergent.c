@@ -10,7 +10,6 @@
 #include <linux/interrupt.h>
 #include <linux/wait.h>
 #include "convergent.h"
-#include "convergent-user.h"
 
 static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
 static kmem_cache_t *io_cache;
@@ -349,13 +348,13 @@ void convergent_dev_dtr(struct convergent_dev *dev)
 	/* XXX doesn't make sure the add_disk job has run */
 	if (dev->gendisk)
 		del_gendisk(dev->gendisk);
-	if (dev->chunkdata)
-		chunkdata_free_table(dev);
+	chunkdata_free_table(dev);
 	dev->flags |= DEV_KILLCLEANER;
 	del_timer_sync(&dev->cleaner);
 	/* Run the timer one more time to make sure everything's cleaned out
 	   now that the gendisk is gone */
 	io_cleaner((unsigned long)dev);
+	compression_free(dev);
 	if (dev->hash)
 		crypto_free_tfm(dev->hash);
 	if (dev->cipher)
@@ -374,7 +373,7 @@ static struct block_device_operations convergent_ops = {
 	.release =	convergent_release,
 };
 
-/* XXX should this be in chardev.c?  we could dump the -user.h dependency */
+/* XXX should this be in chardev.c?  */
 static int convergent_configure_crypto(struct convergent_dev *dev,
 			unsigned cipher, unsigned hash, unsigned compress)
 {
@@ -401,6 +400,7 @@ static int convergent_configure_crypto(struct convergent_dev *dev,
 	
 	switch (compress) {
 	case ISR_COMPRESS_NONE:
+	case ISR_COMPRESS_ZLIB:
 		break;
 	default:
 		return -EINVAL;
@@ -410,6 +410,7 @@ static int convergent_configure_crypto(struct convergent_dev *dev,
 	if (dev->cipher == NULL || dev->hash == NULL)
 		return -EINVAL;
 	dev->hash_len=crypto_tfm_alg_digestsize(dev->hash);
+	dev->compression=compress;
 	return 0;
 }
 
@@ -498,6 +499,13 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	ret=convergent_configure_crypto(dev, cipher, hash, compress);
 	if (ret) {
 		log(KERN_ERR, "could not configure crypto");
+		goto bad;
+	}
+	
+	ndebug("Allocating compression");
+	ret=compression_alloc(dev);
+	if (ret) {
+		log(KERN_ERR, "could not configure compression");
 		goto bad;
 	}
 	

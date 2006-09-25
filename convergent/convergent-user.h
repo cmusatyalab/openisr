@@ -18,7 +18,8 @@ struct isr_setup {
 	unsigned long long offset;            /* to kernel */
 	unsigned short cipher;                /* to kernel */
 	unsigned short hash;                  /* to kernel */
-	unsigned short compress;              /* to kernel */
+	unsigned short compress_default;      /* to kernel */
+	unsigned short compress_required;     /* to kernel */  /* XXX not checked */
 	int major;                            /* to user */
 	int first_minor;                      /* to user */
 	int minors;                           /* to user */
@@ -26,14 +27,17 @@ struct isr_setup {
 	unsigned hash_len;                    /* to user */
 };
 
-#define ISR_CIPHER_BLOWFISH      0x0000
-#define ISR_HASH_SHA1            0x0000
-#define ISR_COMPRESS_NONE        0x0000
+/* XXX need more compact data structure - use fewer bits for these */
+#define ISR_CIPHER_BLOWFISH      0x0001
+#define ISR_HASH_SHA1            0x0001
+#define ISR_COMPRESS_NONE        0x0001
+#define ISR_COMPRESS_ZLIB        0x0002
 
 struct isr_message {
 	unsigned type;
 	unsigned long long chunk;
-	unsigned short compression;  /* XXX */
+	unsigned length;
+	unsigned compression;
 	char key[MAX_HASH_LEN];
 };
 

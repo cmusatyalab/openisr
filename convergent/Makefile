@@ -1,7 +1,8 @@
 ifneq ($(KERNELRELEASE),)
 
 obj-m := isr-convergent.o
-isr-convergent-objs := convergent.o workqueue.o chunkdata.o chardev.o revision.o
+isr-convergent-objs := convergent.o workqueue.o chunkdata.o chardev.o
+isr-convergent-objs += compression.o revision.o
 
 else
 

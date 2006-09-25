@@ -5,7 +5,6 @@
 #include <linux/poll.h>
 #include <linux/miscdevice.h>
 #include "convergent.h"
-#include "convergent-user.h"
 
 static void shutdown_dev(struct convergent_dev *dev)
 {
@@ -76,11 +75,13 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 			spin_lock_bh(&dev->lock);
 		}
 		switch (msg.type) {
+		/* XXX rename these messages */
 		case ISR_MSGTYPE_GET_KEY:
 			get_usermsg_get_key(cd, &msg.chunk);
 			break;
 		case ISR_MSGTYPE_UPDATE_KEY:
-			get_usermsg_update_key(cd, &msg.chunk, msg.key);
+			get_usermsg_update_key(cd, &msg.chunk, &msg.length,
+						&msg.compression, msg.key);
 			break;
 		default:
 			BUG();
@@ -131,7 +132,8 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 		ndebug("Setting key");
 		
 		spin_lock_bh(&dev->lock);
-		set_usermsg_set_key(dev, msg.chunk, msg.key);
+		set_usermsg_set_key(dev, msg.chunk, msg.length,
+					msg.compression, msg.key);
 		spin_unlock_bh(&dev->lock);
 	}
 	ndebug("Leaving chr_write: %d", i * sizeof(msg));
@@ -159,7 +161,7 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		dev=convergent_dev_ctr(setup.chunk_device, setup.chunksize,
 					setup.cachesize,
 					(sector_t)setup.offset, setup.cipher,
-					setup.hash, setup.compress);
+					setup.hash, setup.compress_default);
 		if (IS_ERR(dev))
 			return PTR_ERR(dev);
 		setup.major=blk_major;

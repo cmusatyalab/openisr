@@ -13,7 +13,10 @@
 #define DEVICE_NAME "openisr"
 #define SUBMIT_QUEUE "convergent-io"
 
+#define SUPPORTED_COMPRESSION (ISR_COMPRESS_NONE | ISR_COMPRESS_ZLIB)
+
 #include <linux/blkdev.h>
+#include "convergent-user.h"
 
 /* XXX convert chunk_t canonical name from chunk to cid */
 
@@ -36,6 +39,12 @@ struct convergent_dev {
 	struct crypto_tfm *cipher;
 	struct crypto_tfm *hash;
 	unsigned hash_len;
+	
+	unsigned compression;
+	void *buf_compressed;
+	void *buf_uncompressed;
+	void *zlib_deflate;
+	void *zlib_inflate;
 	
 	struct chunkdata_table *chunkdata;
 	wait_queue_head_t waiting_users;
@@ -200,11 +209,19 @@ void fail_usermsg(struct chunkdata *cd);
 void end_usermsg(struct chunkdata *cd);
 void get_usermsg_get_key(struct chunkdata *cd, unsigned long long *cid);
 void get_usermsg_update_key(struct chunkdata *cd, unsigned long long *cid,
-			char key[]);
-void set_usermsg_set_key(struct convergent_dev *dev, chunk_t cid, char key[]);
+			unsigned *length, unsigned *compression, char key[]);
+void set_usermsg_set_key(struct convergent_dev *dev, chunk_t cid,
+			unsigned length, unsigned compression, char key[]);
 int reserve_chunks(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);
+
+/* compression.c */
+int compression_alloc(struct convergent_dev *dev);
+void compression_free(struct convergent_dev *dev);
+int compress(struct convergent_dev *dev, struct scatterlist *sg);
+int decompress(struct convergent_dev *dev, struct scatterlist *sg,
+			int type, unsigned compressed_len);
 
 /* revision.c */
 extern char *svn_branch;

@@ -10,6 +10,8 @@
 
 struct chunk {
 	char key[MAX_HASH_LEN];
+	unsigned length;
+	unsigned compression;
 };
 
 static struct chunk *chunks;
@@ -26,6 +28,7 @@ void printkey(char *key, int len)
 int main(int argc, char **argv)
 {
 	int fd, ret;
+	unsigned u;
 	struct isr_setup setup;
 	struct isr_message message;
 	
@@ -46,7 +49,8 @@ int main(int argc, char **argv)
 	setup.offset=atoi(argv[5]);
 	setup.cipher=ISR_CIPHER_BLOWFISH;
 	setup.hash=ISR_HASH_SHA1;
-	setup.compress=ISR_COMPRESS_NONE;
+	setup.compress_default=ISR_COMPRESS_ZLIB;
+	setup.compress_required=ISR_COMPRESS_NONE | ISR_COMPRESS_ZLIB;
 	ret=ioctl(fd, ISR_REGISTER, &setup);
 	if (ret) {
 		perror("Registering device");
@@ -60,6 +64,10 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	memset(chunks, 0, setup.chunks * sizeof(struct chunk));
+	for (u=0; u<setup.chunks; u++) {
+		chunks[u].length=setup.chunksize;
+		chunks[u].compression=ISR_COMPRESS_NONE;
+	}
 	while (1) {
 		ret=read(fd, &message, sizeof(message));
 		if (ret != sizeof(message)) {
@@ -73,6 +81,8 @@ int main(int argc, char **argv)
 			printkey(chunks[message.chunk].key, setup.hash_len);
 			memcpy(message.key, chunks[message.chunk].key,
 						setup.hash_len);
+			message.length=chunks[message.chunk].length;
+			message.compression=chunks[message.chunk].compression;
 			message.type=ISR_MSGTYPE_SET_KEY;
 			if (write(fd, &message, sizeof(message)) !=
 						sizeof(message))
@@ -83,6 +93,8 @@ int main(int argc, char **argv)
 			printkey(message.key, setup.hash_len);
 			memcpy(chunks[message.chunk].key, message.key,
 						setup.hash_len);
+			chunks[message.chunk].length=message.length;
+			chunks[message.chunk].compression=message.compression;
 			break;
 		default:
 			printf("Unknown message type\n");
