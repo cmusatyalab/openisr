@@ -22,6 +22,42 @@ static void scatterlist_transfer(struct convergent_dev *dev,
 	}
 }
 
+/* Perform PKCS padding on a buffer.  Return the new buffer length. */
+static int crypto_pad(struct convergent_dev *dev, void *buf,
+			unsigned datalen, unsigned buflen)
+{
+	unsigned padlen=dev->cipher_block - (datalen % dev->cipher_block);
+	char *cbuf=buf;
+	unsigned i;
+	ndebug("Pad %u", padlen);
+	if (datalen + padlen >= buflen) {
+		/* If padding would bring us exactly to the length of
+		   the buffer, we refuse to do it.  Rationale: we're only
+		   doing padding if we're doing compression, and compression
+		   failed to reduce the size of the chunk after padding,
+		   so we're better off just not compressing. */
+		return -EFBIG;
+	}
+	for (i=0; i<padlen; i++)
+		cbuf[datalen + i]=(char)padlen;
+	return datalen + padlen;
+}
+
+/* Perform PKCS unpadding on a buffer.  Return the new buffer length. */
+static int crypto_unpad(struct convergent_dev *dev, void *buf, int len)
+{
+	char *cbuf=buf;
+	unsigned padlen=(unsigned)cbuf[len - 1];
+	unsigned i;
+	ndebug("Unpad %u", padlen);
+	if (padlen == 0 || padlen > dev->cipher_block)
+		return -EINVAL;
+	for (i=2; i <= padlen; i++)
+		if (cbuf[len - i] != padlen)
+			return -EINVAL;
+	return len - padlen;
+}
+
 /* XXX this should be converted to use scatterlists rather than a vmalloc
    buffer */
 static int compress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *sg)
@@ -43,6 +79,7 @@ static int compress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *s
 	strm.next_out=dev->buf_compressed;
 	strm.avail_out=dev->chunksize;
 	ret=zlib_deflate(&strm, Z_FINISH);
+	size=strm.total_out;
 	ret2=zlib_deflateEnd(&strm);
 	if (ret == Z_OK) {
 		/* Compressed data larger than uncompressed data */
@@ -50,8 +87,15 @@ static int compress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *s
 	} else if (ret != Z_STREAM_END || ret2 != Z_OK) {
 		return -EIO;
 	}
-	size=strm.total_out;
-	/* XXX necessary?  where does zeroing fit in? */
+	ret=crypto_pad(dev, dev->buf_compressed, size, dev->chunksize);
+	if (ret < 0) {
+		/* We tried padding the compresstext, but that made it
+		   at least as large as chunksize */
+		return ret;
+	}
+	size=ret;
+	/* We write the whole chunk out to disk, so make sure we're not
+	   leaking data. */
 	memset(dev->buf_compressed + size, 0, dev->chunksize - size);
 	scatterlist_transfer(dev, sg, dev->buf_compressed, WRITE);
 	return size;
@@ -60,40 +104,47 @@ static int compress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *s
 /* XXX this should be converted to use scatterlists rather than a vmalloc
    buffer */
 static int decompress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *sg,
-			unsigned compressed_len)
+			unsigned len)
 {
 	z_stream strm;
 	int ret;
 	int ret2;
+	int size;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	/* XXX don't need to transfer whole scatterlist */
 	scatterlist_transfer(dev, sg, dev->buf_compressed, READ);
+	size=crypto_unpad(dev, dev->buf_compressed, len);
+	if (size < 0)
+		return -EIO;
 	strm.workspace=dev->zlib_inflate;
 	/* XXX keep persistent stream structures? */
 	ret=zlib_inflateInit(&strm);
 	if (ret != Z_OK)
 		return -ENOMEM; /* XXX */
 	strm.next_in=dev->buf_compressed;
-	strm.avail_in=compressed_len;
+	strm.avail_in=size;
 	strm.next_out=dev->buf_uncompressed;
 	strm.avail_out=dev->chunksize;
 	ret=zlib_inflate(&strm, Z_FINISH);
+	size=strm.total_out;
 	ret2=zlib_inflateEnd(&strm);
 	if (ret == Z_MEM_ERROR)
 		return -ENOMEM;
 	else if (ret != Z_STREAM_END || ret2 != Z_OK)
 		return -EIO;
-	if (strm.total_out != dev->chunksize)
+	if (size != dev->chunksize)
 		return -EIO;
 	scatterlist_transfer(dev, sg, dev->buf_uncompressed, WRITE);
 	return 0;
 }
 
-/* XXX we need decent crypto padding */
+/* Guaranteed to return data which is an even multiple of the crypto
+   block size. */
 int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type)
 {
+	BUG_ON(!spin_is_locked(&dev->lock));
 	switch (type) {
 	case ISR_COMPRESS_NONE:
 		return dev->chunksize;
@@ -108,6 +159,7 @@ int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type, unsigned len)
 {
+	BUG_ON(!spin_is_locked(&dev->lock));
 	switch (type) {
 	case ISR_COMPRESS_NONE:
 		if (len != dev->chunksize)

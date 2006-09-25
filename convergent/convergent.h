@@ -182,16 +182,6 @@ static inline unsigned io_chunks(struct convergent_io *io)
 	return io->last_chunk - io->first_chunk + 1;
 }
 
-/* The number of pad bytes needed for data of length @len bytes */
-static inline unsigned crypto_pad(struct convergent_dev *dev, unsigned len)
-{
-	unsigned partial=len % dev->cipher_block;
-	if (partial)
-		return dev->cipher_block - partial;
-	else
-		return 0;
-}
-
 /* convergent.c */
 extern int blk_major;
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,

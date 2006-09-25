@@ -260,22 +260,20 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 {
 	struct convergent_dev *dev=cd->table->dev;
 	struct scatterlist *sg=cd->sg;
-	unsigned padding;
 	char iv[8]={0}; /* XXX */
 	int ret;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
+	/* XXX don't compute hash over whole chunk */
 	if (type == WRITE)
 		crypto_digest_digest(dev->hash, sg, chunk_pages(dev), cd->key);
 	if (crypto_cipher_setkey(dev->cipher, cd->key, dev->hash_len))
 		BUG();
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	if (type == READ) {
-		padding=crypto_pad(dev, cd->size);
 		debug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
-					cd->size + padding, cd->chunk);
-		if (crypto_cipher_decrypt(dev->cipher, sg, sg,
-					cd->size + padding))
+					cd->size, cd->chunk);
+		if (crypto_cipher_decrypt(dev->cipher, sg, sg, cd->size))
 			BUG();
 		if (decompress_chunk(dev, sg, cd->compression, cd->size))
 			BUG(); /* XXX */
@@ -290,11 +288,9 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 		} else {
 			cd->size=ret;
 		}
-		padding=crypto_pad(dev, cd->size);
 		debug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
-					cd->size + padding, cd->chunk);
-		if (crypto_cipher_encrypt(dev->cipher, sg, sg,
-					cd->size + padding))
+					cd->size, cd->chunk);
+		if (crypto_cipher_encrypt(dev->cipher, sg, sg, cd->size))
 			BUG();
 	}
 }
