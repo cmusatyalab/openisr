@@ -425,9 +425,9 @@ struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type)
 			continue;
 		cd->flags |= CD_USER;
 		if (cd->state == ST_LOAD_META)
-			*type=ISR_MSGTYPE_GET_KEY;
+			*type=ISR_MSGTYPE_GET_META;
 		else if (cd->state == ST_STORE_META)
-			*type=ISR_MSGTYPE_UPDATE_KEY;
+			*type=ISR_MSGTYPE_UPDATE_META;
 		else
 			BUG();
 		return cd;
@@ -454,14 +454,14 @@ void end_usermsg(struct chunkdata *cd)
 	}
 }
 
-void get_usermsg_get_key(struct chunkdata *cd, unsigned long long *cid)
+void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid)
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
 	BUG_ON(cd->state != ST_LOAD_META);
 	*cid=cd->chunk;
 }
 
-void get_usermsg_update_key(struct chunkdata *cd, unsigned long long *cid,
+void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 			unsigned *length, compress_t *compression, char key[])
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
@@ -472,7 +472,7 @@ void get_usermsg_update_key(struct chunkdata *cd, unsigned long long *cid,
 	memcpy(key, cd->key, cd->table->dev->hash_len);
 }
 
-void set_usermsg_set_key(struct convergent_dev *dev, chunk_t cid,
+void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 			unsigned length, compress_t compression, char key[])
 {
 	struct chunkdata *cd;

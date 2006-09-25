@@ -217,10 +217,10 @@ void chunkdata_free_table(struct convergent_dev *dev);
 struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type);
 void fail_usermsg(struct chunkdata *cd);
 void end_usermsg(struct chunkdata *cd);
-void get_usermsg_get_key(struct chunkdata *cd, unsigned long long *cid);
-void get_usermsg_update_key(struct chunkdata *cd, unsigned long long *cid,
+void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid);
+void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 			unsigned *length, compress_t *compression, char key[]);
-void set_usermsg_set_key(struct convergent_dev *dev, chunk_t cid,
+void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 			unsigned length, compress_t compression, char key[]);
 int reserve_chunks(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);

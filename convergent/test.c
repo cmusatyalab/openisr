@@ -76,19 +76,19 @@ int main(int argc, char **argv)
 			continue;
 		}
 		switch (message.type) {
-		case ISR_MSGTYPE_GET_KEY:
+		case ISR_MSGTYPE_GET_META:
 			printf("Sending   chunk %8llu key ", message.chunk);
 			printkey(chunks[message.chunk].key, setup.hash_len);
 			memcpy(message.key, chunks[message.chunk].key,
 						setup.hash_len);
 			message.length=chunks[message.chunk].length;
 			message.compression=chunks[message.chunk].compression;
-			message.type=ISR_MSGTYPE_SET_KEY;
+			message.type=ISR_MSGTYPE_SET_META;
 			if (write(fd, &message, sizeof(message)) !=
 						sizeof(message))
 				printf("Error on write\n");
 			break;
-		case ISR_MSGTYPE_UPDATE_KEY:
+		case ISR_MSGTYPE_UPDATE_META:
 			printf("Receiving chunk %8llu key ", message.chunk);
 			printkey(message.key, setup.hash_len);
 			memcpy(chunks[message.chunk].key, message.key,

@@ -6,6 +6,8 @@
 #include <linux/miscdevice.h>
 #include "convergent.h"
 
+/* XXX if userspace goes away immediately after registration, device creation
+   wedges. */
 static void shutdown_dev(struct convergent_dev *dev)
 {
 	dev->flags |= DEV_SHUTDOWN;
@@ -76,11 +78,11 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 		}
 		switch (msg.type) {
 		/* XXX rename these messages */
-		case ISR_MSGTYPE_GET_KEY:
-			get_usermsg_get_key(cd, &msg.chunk);
+		case ISR_MSGTYPE_GET_META:
+			get_usermsg_get_meta(cd, &msg.chunk);
 			break;
-		case ISR_MSGTYPE_UPDATE_KEY:
-			get_usermsg_update_key(cd, &msg.chunk, &msg.length,
+		case ISR_MSGTYPE_UPDATE_META:
+			get_usermsg_update_meta(cd, &msg.chunk, &msg.length,
 						&msg.compression, msg.key);
 			break;
 		default:
@@ -122,7 +124,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 				return -EFAULT;
 		}
 		
-		if (msg.type != ISR_MSGTYPE_SET_KEY) {
+		if (msg.type != ISR_MSGTYPE_SET_META) {
 			if (i > 0)
 				break;
 			else
@@ -132,7 +134,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 		ndebug("Setting key");
 		
 		spin_lock_bh(&dev->lock);
-		set_usermsg_set_key(dev, msg.chunk, msg.length,
+		set_usermsg_set_meta(dev, msg.chunk, msg.length,
 					msg.compression, msg.key);
 		spin_unlock_bh(&dev->lock);
 	}

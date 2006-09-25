@@ -46,9 +46,9 @@ struct isr_message {
 };
 
 /* Kernel to user */
-#define ISR_MSGTYPE_GET_KEY      ((msgtype_t) 0x0000)
-#define ISR_MSGTYPE_UPDATE_KEY   ((msgtype_t) 0x0001)
+#define ISR_MSGTYPE_GET_META     ((msgtype_t) 0x0000)
+#define ISR_MSGTYPE_UPDATE_META  ((msgtype_t) 0x0001)
 /* User to kernel */
-#define ISR_MSGTYPE_SET_KEY      ((msgtype_t) 0x1000)
+#define ISR_MSGTYPE_SET_META     ((msgtype_t) 0x1000)
 
 #endif
