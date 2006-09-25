@@ -5,6 +5,7 @@
 #include "convergent.h"
 
 /* XXX this needs to go away. */
+/* XXX race between user and softirq kmaps? */
 static void scatterlist_transfer(struct convergent_dev *dev,
 			struct scatterlist *sg, void *buf, int dir)
 {
@@ -103,8 +104,8 @@ static int compress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *s
 
 /* XXX this should be converted to use scatterlists rather than a vmalloc
    buffer */
-static int decompress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *sg,
-			unsigned len)
+static int decompress_chunk_zlib(struct convergent_dev *dev,
+			struct scatterlist *sg, unsigned len)
 {
 	z_stream strm;
 	int ret;
@@ -137,6 +138,25 @@ static int decompress_chunk_zlib(struct convergent_dev *dev, struct scatterlist 
 		return -EIO;
 	scatterlist_transfer(dev, sg, dev->buf_uncompressed, WRITE);
 	return 0;
+}
+
+/* For some reason, the cryptoapi digest functions expect nsg rather than
+   nbytes.  However, when we're hashing compressed data, we may want the
+   hash to include only part of a page.  Thus this nonsense. */
+/* XXX verify this against test vectors */
+void crypto_hash(struct convergent_dev *dev, struct scatterlist *sg,
+			unsigned nbytes, u8 *out)
+{
+	int i;
+	unsigned saved;
+	
+	BUG_ON(!spin_is_locked(&dev->lock));
+	for (i=0; sg[i].length < nbytes; i++)
+		nbytes -= sg[i].length;
+	saved=sg[i].length;
+	sg[i].length=nbytes;
+	crypto_digest_digest(dev->hash, sg, i + 1, out);
+	sg[i].length=saved;
 }
 
 /* Guaranteed to return data which is an even multiple of the crypto

@@ -264,15 +264,12 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 	int ret;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
-	/* XXX don't compute hash over whole chunk */
-	if (type == WRITE)
-		crypto_digest_digest(dev->hash, sg, chunk_pages(dev), cd->key);
-	if (crypto_cipher_setkey(dev->cipher, cd->key, dev->hash_len))
-		BUG();
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	if (type == READ) {
 		debug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->chunk);
+		if (crypto_cipher_setkey(dev->cipher, cd->key, dev->hash_len))
+			BUG();
 		if (crypto_cipher_decrypt(dev->cipher, sg, sg, cd->size))
 			BUG();
 		if (decompress_chunk(dev, sg, cd->compression, cd->size))
@@ -290,6 +287,9 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 		}
 		debug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->chunk);
+		crypto_hash(dev, sg, cd->size, cd->key);
+		if (crypto_cipher_setkey(dev->cipher, cd->key, dev->hash_len))
+			BUG();
 		if (crypto_cipher_encrypt(dev->cipher, sg, sg, cd->size))
 			BUG();
 	}

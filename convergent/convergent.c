@@ -17,6 +17,7 @@ static mempool_t *io_pool;
 int blk_major;
 
 /* supports high memory pages */
+/* XXX race between user and softirq kmaps? */
 static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 			unsigned soffset, unsigned doffset, unsigned len)
 {

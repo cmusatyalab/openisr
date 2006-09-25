@@ -220,6 +220,8 @@ struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);
 int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
 			compress_t compress);
 void transform_free(struct convergent_dev *dev);
+void crypto_hash(struct convergent_dev *dev, struct scatterlist *sg,
+			unsigned nbytes, u8 *out);
 int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type);
 int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
