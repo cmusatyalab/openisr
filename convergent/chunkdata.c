@@ -392,12 +392,6 @@ static void queue_for_user(struct chunkdata *cd)
 	wake_up_interruptible(&cd->table->dev->waiting_users);
 }
 
-int have_usermsg(struct convergent_dev *dev)
-{
-	BUG_ON(!spin_is_locked(&dev->lock));
-	return (!list_empty(&dev->chunkdata->user));
-}
-
 struct chunkdata *next_usermsg(struct convergent_dev *dev, unsigned *type)
 {
 	struct chunkdata *cd;

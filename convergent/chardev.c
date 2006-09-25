@@ -41,7 +41,6 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	struct isr_message msg;
 	DEFINE_WAIT(wait);
 	int i;
-	int need_wait;
 	int ret;
 	struct chunkdata *cd;
 	
@@ -57,8 +56,8 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 		
 		spin_lock_bh(&dev->lock);
 		ndebug("Trying to get chunk");
-		/* XXX clean up */
-		while (!have_usermsg(dev)) {
+		cd=next_usermsg(dev, &msg.type);
+		while (cd == NULL) {
 			spin_unlock_bh(&dev->lock);
 			if (i > 0)
 				goto out;
@@ -67,20 +66,15 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 			spin_lock_bh(&dev->lock);
 			prepare_to_wait(&dev->waiting_users, &wait,
 						TASK_INTERRUPTIBLE);
-			need_wait=!have_usermsg(dev);
+			cd=next_usermsg(dev, &msg.type);
 			spin_unlock_bh(&dev->lock);
-			if (need_wait)
+			if (cd == NULL)
 				schedule();
 			finish_wait(&dev->waiting_users, &wait);
 			if (signal_pending(current))
 				return -ERESTARTSYS;
 			spin_lock_bh(&dev->lock);
 		}
-		cd=next_usermsg(dev, &msg.type);
-		/* XXX this is wrong: we need to get rid of have_usermsg()
-		   and pull directly from next_usermsg(): have_usermsg() uses
-		   a bogus test */
-		BUG_ON(cd == NULL);
 		switch (msg.type) {
 		case ISR_MSGTYPE_GET_KEY:
 			get_usermsg_get_key(cd, &msg.chunk);
