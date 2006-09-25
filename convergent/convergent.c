@@ -354,11 +354,7 @@ void convergent_dev_dtr(struct convergent_dev *dev)
 	/* Run the timer one more time to make sure everything's cleaned out
 	   now that the gendisk is gone */
 	io_cleaner((unsigned long)dev);
-	compression_free(dev);
-	if (dev->hash)
-		crypto_free_tfm(dev->hash);
-	if (dev->cipher)
-		crypto_free_tfm(dev->cipher);
+	transform_free(dev);
 	if (dev->queue)
 		blk_cleanup_queue(dev->queue);
 	if (dev->chunk_bdev)
@@ -373,50 +369,9 @@ static struct block_device_operations convergent_ops = {
 	.release =	convergent_release,
 };
 
-/* XXX should this be in chardev.c?  */
-static int convergent_configure_crypto(struct convergent_dev *dev,
-			unsigned cipher, unsigned hash, unsigned compress)
-{
-	char *cipher_name;
-	unsigned cipher_mode;
-	char *hash_name;
-	
-	switch (cipher) {
-	case ISR_CIPHER_BLOWFISH:
-		cipher_name="blowfish";
-		cipher_mode=CRYPTO_TFM_MODE_CBC;
-		break;
-	default:
-		return -EINVAL;
-	}
-	
-	switch (hash) {
-	case ISR_HASH_SHA1:
-		hash_name="sha1";
-		break;
-	default:
-		return -EINVAL;
-	}
-	
-	switch (compress) {
-	case ISR_COMPRESS_NONE:
-	case ISR_COMPRESS_ZLIB:
-		break;
-	default:
-		return -EINVAL;
-	}
-	dev->cipher=crypto_alloc_tfm(cipher_name, cipher_mode);
-	dev->hash=crypto_alloc_tfm(hash_name, 0);
-	if (dev->cipher == NULL || dev->hash == NULL)
-		return -EINVAL;
-	dev->hash_len=crypto_tfm_alg_digestsize(dev->hash);
-	dev->compression=compress;
-	return 0;
-}
-
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
-			unsigned cipher, unsigned hash, unsigned compress)
+			cipher_t cipher, hash_t hash, compress_t compress)
 {
 	struct convergent_dev *dev;
 	sector_t capacity;
@@ -495,17 +450,10 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	blk_queue_max_sectors(dev->queue,
 				chunk_sectors(dev) * (MAX_CHUNKS_PER_IO - 1));
 	
-	ndebug("Allocating crypto");
-	ret=convergent_configure_crypto(dev, cipher, hash, compress);
+	ndebug("Allocating transforms");
+	ret=transform_alloc(dev, cipher, hash, compress);
 	if (ret) {
-		log(KERN_ERR, "could not configure crypto");
-		goto bad;
-	}
-	
-	ndebug("Allocating compression");
-	ret=compression_alloc(dev);
-	if (ret) {
-		log(KERN_ERR, "could not configure compression");
+		log(KERN_ERR, "could not configure transforms");
 		goto bad;
 	}
 	

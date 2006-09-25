@@ -2,7 +2,7 @@ ifneq ($(KERNELRELEASE),)
 
 obj-m := isr-convergent.o
 isr-convergent-objs := convergent.o workqueue.o chunkdata.o chardev.o
-isr-convergent-objs += compression.o revision.o
+isr-convergent-objs += transform.o revision.o
 
 else
 
@@ -17,11 +17,12 @@ all: module test
 module:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
-test: test.c
-	$(CC) $(CFLAGS) -o $@ $^
+test: test.c convergent-user.h
+	$(CC) $(CFLAGS) -o $@ test.c
 
 .PHONY: clean
 clean:
+	rm -f test
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
 
 # This is a hack.  The include directive forces make to always execute

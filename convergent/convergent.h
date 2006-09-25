@@ -37,10 +37,11 @@ struct convergent_dev {
 	atomic_t refcount;
 	
 	struct crypto_tfm *cipher;
+	unsigned cipher_block;
 	struct crypto_tfm *hash;
 	unsigned hash_len;
 	
-	unsigned compression;
+	compress_t compression;
 	void *buf_compressed;
 	void *buf_uncompressed;
 	void *zlib_deflate;
@@ -181,11 +182,21 @@ static inline unsigned io_chunks(struct convergent_io *io)
 	return io->last_chunk - io->first_chunk + 1;
 }
 
+/* The number of pad bytes needed for data of length @len bytes */
+static inline unsigned crypto_pad(struct convergent_dev *dev, unsigned len)
+{
+	unsigned partial=len % dev->cipher_block;
+	if (partial)
+		return dev->cipher_block - partial;
+	else
+		return 0;
+}
+
 /* convergent.c */
 extern int blk_major;
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
-			unsigned cipher, unsigned hash, unsigned compress);
+			cipher_t cipher, hash_t hash, compress_t compress);
 void convergent_dev_dtr(struct convergent_dev *dev);
 
 /* chardev.c */
@@ -203,25 +214,26 @@ int chunkdata_start(void);
 void chunkdata_shutdown(void);
 int chunkdata_alloc_table(struct convergent_dev *dev);
 void chunkdata_free_table(struct convergent_dev *dev);
-void configure_chunk(struct convergent_dev *dev, chunk_t cid, char key[]);
-struct chunkdata *next_usermsg(struct convergent_dev *dev, unsigned *type);
+struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type);
 void fail_usermsg(struct chunkdata *cd);
 void end_usermsg(struct chunkdata *cd);
 void get_usermsg_get_key(struct chunkdata *cd, unsigned long long *cid);
 void get_usermsg_update_key(struct chunkdata *cd, unsigned long long *cid,
-			unsigned *length, unsigned *compression, char key[]);
+			unsigned *length, compress_t *compression, char key[]);
 void set_usermsg_set_key(struct convergent_dev *dev, chunk_t cid,
-			unsigned length, unsigned compression, char key[]);
+			unsigned length, compress_t compression, char key[]);
 int reserve_chunks(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);
 
-/* compression.c */
-int compression_alloc(struct convergent_dev *dev);
-void compression_free(struct convergent_dev *dev);
-int compress(struct convergent_dev *dev, struct scatterlist *sg);
-int decompress(struct convergent_dev *dev, struct scatterlist *sg,
-			int type, unsigned compressed_len);
+/* transform.c */
+int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
+			compress_t compress);
+void transform_free(struct convergent_dev *dev);
+int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
+			compress_t type);
+int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
+			compress_t type, unsigned len);
 
 /* revision.c */
 extern char *svn_branch;

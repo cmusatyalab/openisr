@@ -11,6 +11,11 @@
 #define ISR_REGISTER	1
 #define ISR_UNREGISTER	2
 
+typedef unsigned short cipher_t;
+typedef unsigned short hash_t;
+typedef unsigned short compress_t;
+typedef unsigned short msgtype_t;
+
 struct isr_setup {
 	char chunk_device[MAX_DEVICE_LEN];    /* to kernel */
 	unsigned chunksize;                   /* to kernel */
@@ -27,24 +32,23 @@ struct isr_setup {
 	unsigned hash_len;                    /* to user */
 };
 
-/* XXX need more compact data structure - use fewer bits for these */
-#define ISR_CIPHER_BLOWFISH      0x0001
-#define ISR_HASH_SHA1            0x0001
-#define ISR_COMPRESS_NONE        0x0001
-#define ISR_COMPRESS_ZLIB        0x0002
+#define ISR_CIPHER_BLOWFISH      ((cipher_t)  0x0001)
+#define ISR_HASH_SHA1            ((hash_t)    0x0001)
+#define ISR_COMPRESS_NONE        ((compress_t)0x0001)
+#define ISR_COMPRESS_ZLIB        ((compress_t)0x0002)
 
 struct isr_message {
-	unsigned type;
+	msgtype_t type;
+	compress_t compression;
 	unsigned long long chunk;
 	unsigned length;
-	unsigned compression;
 	char key[MAX_HASH_LEN];
 };
 
 /* Kernel to user */
-#define ISR_MSGTYPE_GET_KEY      0x0000
-#define ISR_MSGTYPE_UPDATE_KEY   0x0001
+#define ISR_MSGTYPE_GET_KEY      ((msgtype_t) 0x0000)
+#define ISR_MSGTYPE_UPDATE_KEY   ((msgtype_t) 0x0001)
 /* User to kernel */
-#define ISR_MSGTYPE_SET_KEY      0x1000
+#define ISR_MSGTYPE_SET_KEY      ((msgtype_t) 0x1000)
 
 #endif

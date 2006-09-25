@@ -34,7 +34,7 @@ struct chunkdata {
 	struct chunkdata_table *table;
 	chunk_t chunk;
 	unsigned size;         /* compressed size before padding */
-	unsigned compression;  /* compression type */
+	compress_t compression;/* compression type */
 	struct list_head pending;
 	atomic_t completed;    /* bytes, for I/O */
 	int error;             /* for I/O */
@@ -256,16 +256,6 @@ bad:
 		tasklet_schedule(&cd->callback);
 }
 
-static int get_crypto_pad(struct convergent_dev *dev, unsigned data_len)
-{
-	unsigned blocksize=crypto_tfm_alg_blocksize(dev->cipher);
-	unsigned partial=data_len % blocksize;
-	if (partial)
-		return blocksize - partial;
-	else
-		return 0;
-}
-
 static void chunk_tfm(struct chunkdata *cd, int type)
 {
 	struct convergent_dev *dev=cd->table->dev;
@@ -281,16 +271,17 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 		BUG();
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	if (type == READ) {
-		padding=get_crypto_pad(dev, cd->size);
+		padding=crypto_pad(dev, cd->size);
 		debug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size + padding, cd->chunk);
 		if (crypto_cipher_decrypt(dev->cipher, sg, sg,
 					cd->size + padding))
 			BUG();
-		if (decompress(dev, sg, cd->compression, cd->size))
+		if (decompress_chunk(dev, sg, cd->compression, cd->size))
 			BUG(); /* XXX */
 	} else {
-		ret=compress(dev, sg);
+		cd->compression=dev->compression;
+		ret=compress_chunk(dev, sg, cd->compression);
 		if (ret == -EFBIG) {
 			cd->size=dev->chunksize;
 			cd->compression=ISR_COMPRESS_NONE;
@@ -298,9 +289,8 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 			BUG();  /* XXX */
 		} else {
 			cd->size=ret;
-			cd->compression=dev->compression;
 		}
-		padding=get_crypto_pad(dev, cd->size);
+		padding=crypto_pad(dev, cd->size);
 		debug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size + padding, cd->chunk);
 		if (crypto_cipher_encrypt(dev->cipher, sg, sg,
@@ -425,7 +415,7 @@ static void queue_for_user(struct chunkdata *cd)
 	wake_up_interruptible(&cd->table->dev->waiting_users);
 }
 
-struct chunkdata *next_usermsg(struct convergent_dev *dev, unsigned *type)
+struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type)
 {
 	struct chunkdata *cd;
 	
@@ -472,7 +462,7 @@ void get_usermsg_get_key(struct chunkdata *cd, unsigned long long *cid)
 }
 
 void get_usermsg_update_key(struct chunkdata *cd, unsigned long long *cid,
-			unsigned *length, unsigned *compression, char key[])
+			unsigned *length, compress_t *compression, char key[])
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
 	BUG_ON(cd->state != ST_STORE_META);
@@ -483,7 +473,7 @@ void get_usermsg_update_key(struct chunkdata *cd, unsigned long long *cid,
 }
 
 void set_usermsg_set_key(struct convergent_dev *dev, chunk_t cid,
-			unsigned length, unsigned compression, char key[])
+			unsigned length, compress_t compression, char key[])
 {
 	struct chunkdata *cd;
 	

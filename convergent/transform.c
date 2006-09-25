@@ -1,9 +1,8 @@
 #include <linux/highmem.h>
 #include <linux/vmalloc.h>
+#include <linux/crypto.h>
 #include <linux/zlib.h>
 #include "convergent.h"
-
-/* XXX rename to transform.c, move chunk_tfm in */
 
 /* XXX this needs to go away. */
 static void scatterlist_transfer(struct convergent_dev *dev,
@@ -23,10 +22,9 @@ static void scatterlist_transfer(struct convergent_dev *dev,
 	}
 }
 
-/* Compress one chunk */
 /* XXX this should be converted to use scatterlists rather than a vmalloc
    buffer */
-static int compress_zlib(struct convergent_dev *dev, struct scatterlist *sg)
+static int compress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *sg)
 {
 	z_stream strm;
 	int ret;
@@ -59,10 +57,9 @@ static int compress_zlib(struct convergent_dev *dev, struct scatterlist *sg)
 	return size;
 }
 
-/* Decompress one chunk */
 /* XXX this should be converted to use scatterlists rather than a vmalloc
    buffer */
-static int decompress_zlib(struct convergent_dev *dev, struct scatterlist *sg,
+static int decompress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *sg,
 			unsigned compressed_len)
 {
 	z_stream strm;
@@ -94,37 +91,75 @@ static int decompress_zlib(struct convergent_dev *dev, struct scatterlist *sg,
 }
 
 /* XXX we need decent crypto padding */
-int compress(struct convergent_dev *dev, struct scatterlist *sg)
-{
-	switch (dev->compression) {
-	case ISR_COMPRESS_NONE:
-		return dev->chunksize;
-	case ISR_COMPRESS_ZLIB:
-		return compress_zlib(dev, sg);
-	default:
-		BUG();
-		return -EIO;
-	}
-}
-
-int decompress(struct convergent_dev *dev, struct scatterlist *sg,
-			int type, unsigned compressed_len)
+int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
+			compress_t type)
 {
 	switch (type) {
 	case ISR_COMPRESS_NONE:
-		if (compressed_len != dev->chunksize)
-			return -EIO;
-		return 0;
+		return dev->chunksize;
 	case ISR_COMPRESS_ZLIB:
-		return decompress_zlib(dev, sg, compressed_len);
+		return compress_chunk_zlib(dev, sg);
 	default:
 		BUG();
 		return -EIO;
 	}
 }
 
-int compression_alloc(struct convergent_dev *dev)
+int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
+			compress_t type, unsigned len)
 {
+	switch (type) {
+	case ISR_COMPRESS_NONE:
+		if (len != dev->chunksize)
+			return -EIO;
+		return 0;
+	case ISR_COMPRESS_ZLIB:
+		return decompress_chunk_zlib(dev, sg, len);
+	default:
+		BUG();
+		return -EIO;
+	}
+}
+
+int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
+			compress_t compress)
+{
+	char *cipher_name;
+	unsigned cipher_mode;
+	char *hash_name;
+	
+	switch (cipher) {
+	case ISR_CIPHER_BLOWFISH:
+		cipher_name="blowfish";
+		cipher_mode=CRYPTO_TFM_MODE_CBC;
+		break;
+	default:
+		return -EINVAL;
+	}
+	
+	switch (hash) {
+	case ISR_HASH_SHA1:
+		hash_name="sha1";
+		break;
+	default:
+		return -EINVAL;
+	}
+	
+	switch (compress) {
+	case ISR_COMPRESS_NONE:
+	case ISR_COMPRESS_ZLIB:
+		break;
+	default:
+		return -EINVAL;
+	}
+	dev->cipher=crypto_alloc_tfm(cipher_name, cipher_mode);
+	dev->hash=crypto_alloc_tfm(hash_name, 0);
+	if (dev->cipher == NULL || dev->hash == NULL)
+		return -EINVAL;
+	dev->cipher_block=crypto_tfm_alg_blocksize(dev->cipher);
+	dev->hash_len=crypto_tfm_alg_digestsize(dev->hash);
+	dev->compression=compress;
+	
 	/* XXX this is not ideal, but there's no good way to support
 	   scatterlists in LZF without hacking the code. */
 	dev->buf_compressed=vmalloc(dev->chunksize);
@@ -144,7 +179,7 @@ int compression_alloc(struct convergent_dev *dev)
 	return 0;
 }
 
-void compression_free(struct convergent_dev *dev)
+void transform_free(struct convergent_dev *dev)
 {
 	if (dev->zlib_inflate)
 		kfree(dev->zlib_inflate);
@@ -154,4 +189,8 @@ void compression_free(struct convergent_dev *dev)
 		vfree(dev->buf_uncompressed);
 	if (dev->buf_compressed)
 		vfree(dev->buf_compressed);
+	if (dev->hash)
+		crypto_free_tfm(dev->hash);
+	if (dev->cipher)
+		crypto_free_tfm(dev->cipher);
 }
