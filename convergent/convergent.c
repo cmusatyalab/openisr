@@ -234,7 +234,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 		io->flags |= IO_WRITE;
 	INIT_LIST_HEAD(&io->lh_freed);
 	nsegs=blk_rq_map_sg(dev->queue, req, io->orig_sg);
-	debug("%d phys segs, %d coalesced segs", req->nr_phys_segments, nsegs);
+	ndebug("%d phys segs, %d coalesced segs", req->nr_phys_segments, nsegs);
 	
 	bytes=0;
 	remaining=(unsigned)req->nr_sectors * 512;

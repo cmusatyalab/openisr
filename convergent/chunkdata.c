@@ -262,7 +262,7 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	if (type == READ) {
-		debug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
+		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->chunk);
 		if (crypto_cipher(dev, cd->sg, cd->key, cd->size, READ))
 			BUG();
@@ -279,7 +279,7 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 		} else {
 			cd->size=ret;
 		}
-		debug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
+		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->chunk);
 		crypto_hash(dev, cd->sg, cd->size, cd->key);
 		if (crypto_cipher(dev, cd->sg, cd->key, cd->size, WRITE))

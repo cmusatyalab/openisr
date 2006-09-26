@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 #include "convergent-user.h"
 
 struct chunk {
@@ -15,6 +16,8 @@ struct chunk {
 };
 
 static struct chunk *chunks;
+static unsigned received_size;
+static unsigned received;
 
 void printkey(char *key, int len)
 {
@@ -22,7 +25,14 @@ void printkey(char *key, int len)
 	
 	for (i=0; i<len; i++)
 		printf("%.2hhx", key[i]);
-	printf("\n");
+}
+
+void sighandler(int signal)
+{
+	if (signal == SIGQUIT) {
+		printf("Average compressed size: %.0f bytes\n",
+					received_size * 1.0 / received);
+	}
 }
 
 int main(int argc, char **argv)
@@ -68,6 +78,7 @@ int main(int argc, char **argv)
 		chunks[u].length=setup.chunksize;
 		chunks[u].compression=ISR_COMPRESS_NONE;
 	}
+	signal(SIGQUIT, &sighandler);
 	while (1) {
 		ret=read(fd, &message, sizeof(message));
 		if (ret != sizeof(message)) {
@@ -79,6 +90,9 @@ int main(int argc, char **argv)
 		case ISR_MSGTYPE_GET_META:
 			printf("Sending   chunk %8llu key ", message.chunk);
 			printkey(chunks[message.chunk].key, setup.hash_len);
+			printf(" size %6u comp %u\n",
+					chunks[message.chunk].length,
+					chunks[message.chunk].compression);
 			memcpy(message.key, chunks[message.chunk].key,
 						setup.hash_len);
 			message.length=chunks[message.chunk].length;
@@ -91,10 +105,15 @@ int main(int argc, char **argv)
 		case ISR_MSGTYPE_UPDATE_META:
 			printf("Receiving chunk %8llu key ", message.chunk);
 			printkey(message.key, setup.hash_len);
+			printf(" size %6u comp %u\n",
+						message.length,
+						message.compression);
 			memcpy(chunks[message.chunk].key, message.key,
 						setup.hash_len);
 			chunks[message.chunk].length=message.length;
 			chunks[message.chunk].compression=message.compression;
+			received++;
+			received_size += message.length;
 			break;
 		default:
 			printf("Unknown message type\n");
