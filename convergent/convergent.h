@@ -204,6 +204,7 @@ int chunkdata_start(void);
 void chunkdata_shutdown(void);
 int chunkdata_alloc_table(struct convergent_dev *dev);
 void chunkdata_free_table(struct convergent_dev *dev);
+int have_usermsg(struct convergent_dev *dev);
 struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type);
 void fail_usermsg(struct chunkdata *cd);
 void end_usermsg(struct chunkdata *cd);

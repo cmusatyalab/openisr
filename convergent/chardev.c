@@ -72,12 +72,11 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 			if (cd == NULL)
 				schedule();
 			finish_wait(&dev->waiting_users, &wait);
-			if (signal_pending(current))
+			if (cd == NULL && signal_pending(current))
 				return -ERESTARTSYS;
 			spin_lock_bh(&dev->lock);
 		}
 		switch (msg.type) {
-		/* XXX rename these messages */
 		case ISR_MSGTYPE_GET_META:
 			get_usermsg_get_meta(cd, &msg.chunk);
 			break;
@@ -190,7 +189,15 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 
 static unsigned chr_poll(struct file *filp, poll_table *wait)
 {
-	return -EINVAL;  /* XXX */
+	struct convergent_dev *dev=filp->private_data;
+	int mask=POLLOUT | POLLWRNORM;
+	
+	poll_wait(filp, &dev->waiting_users, wait);
+	spin_lock_bh(&dev->lock);
+	if (have_usermsg(dev))
+		mask |= POLLIN | POLLRDNORM;
+	spin_unlock_bh(&dev->lock);
+	return mask;
 }
 
 static int chr_check_flags(int flags)

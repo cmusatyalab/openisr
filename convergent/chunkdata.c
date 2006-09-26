@@ -403,6 +403,20 @@ static void queue_for_user(struct chunkdata *cd)
 	wake_up_interruptible(&cd->table->dev->waiting_users);
 }
 
+int have_usermsg(struct convergent_dev *dev)
+{
+	struct chunkdata *cd;
+	
+	BUG_ON(!spin_is_locked(&dev->lock));
+	list_for_each_entry(cd, &dev->chunkdata->user, lh_user) {
+		if (cd->flags & CD_USER)
+			continue;
+		else
+			return 1;
+	}
+	return 0;
+}
+
 struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type)
 {
 	struct chunkdata *cd;

@@ -1,12 +1,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <sys/poll.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <errno.h>
 #include "convergent-user.h"
 
 struct chunk {
@@ -18,6 +20,8 @@ struct chunk {
 static struct chunk *chunks;
 static unsigned received_size;
 static unsigned received;
+static int pipefds[2];
+static struct pollfd pollfds[2];
 
 void printkey(char *key, int len)
 {
@@ -32,6 +36,9 @@ void sighandler(int signal)
 	if (signal == SIGQUIT) {
 		printf("Average compressed size: %.0f bytes\n",
 					received_size * 1.0 / received);
+	} else {
+		/* Race-free method of catching signals */
+		write(pipefds[1], "a", 1);
 	}
 }
 
@@ -78,8 +85,26 @@ int main(int argc, char **argv)
 		chunks[u].length=setup.chunksize;
 		chunks[u].compression=ISR_COMPRESS_NONE;
 	}
+	if (pipe(pipefds)) {
+		perror("Creating pipe");
+		return 1;
+	}
 	signal(SIGQUIT, &sighandler);
+	signal(SIGINT, &sighandler);
+	signal(SIGTERM, &sighandler);
+	pollfds[0].fd=fd;
+	pollfds[1].fd=pipefds[0];
+	pollfds[0].events=pollfds[1].events=POLLIN;
 	while (1) {
+		ret=poll(pollfds, 2, -1);
+		if (ret == -1 && errno == EINTR)
+			continue;
+		else if (ret == -1)
+			perror("poll");
+		if (pollfds[1].revents)
+			break;
+		if (!pollfds[0].revents)
+			continue;
 		ret=read(fd, &message, sizeof(message));
 		if (ret != sizeof(message)) {
 			printf("read() returned %d, expected %d", ret,
