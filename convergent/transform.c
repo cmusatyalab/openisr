@@ -140,25 +140,6 @@ static int decompress_chunk_zlib(struct convergent_dev *dev,
 	return 0;
 }
 
-/* For some reason, the cryptoapi digest functions expect nsg rather than
-   nbytes.  However, when we're hashing compressed data, we may want the
-   hash to include only part of a page.  Thus this nonsense. */
-/* XXX verify this against test vectors */
-void crypto_hash(struct convergent_dev *dev, struct scatterlist *sg,
-			unsigned nbytes, u8 *out)
-{
-	int i;
-	unsigned saved;
-	
-	BUG_ON(!spin_is_locked(&dev->lock));
-	for (i=0; sg[i].length < nbytes; i++)
-		nbytes -= sg[i].length;
-	saved=sg[i].length;
-	sg[i].length=nbytes;
-	crypto_digest_digest(dev->hash, sg, i + 1, out);
-	sg[i].length=saved;
-}
-
 /* Guaranteed to return data which is an even multiple of the crypto
    block size. */
 int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
@@ -191,6 +172,45 @@ int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 		BUG();
 		return -EIO;
 	}
+}
+
+/* For some reason, the cryptoapi digest functions expect nsg rather than
+   nbytes.  However, when we're hashing compressed data, we may want the
+   hash to include only part of a page.  Thus this nonsense. */
+/* XXX verify this against test vectors */
+void crypto_hash(struct convergent_dev *dev, struct scatterlist *sg,
+			unsigned nbytes, u8 *out)
+{
+	int i;
+	unsigned saved;
+	
+	BUG_ON(!spin_is_locked(&dev->lock));
+	for (i=0; sg[i].length < nbytes; i++)
+		nbytes -= sg[i].length;
+	saved=sg[i].length;
+	sg[i].length=nbytes;
+	crypto_digest_digest(dev->hash, sg, i + 1, out);
+	sg[i].length=saved;
+}
+
+int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
+			char key[], unsigned len, int dir)
+{
+	char iv[8]={0}; /* XXX */
+	int ret;
+	
+	BUG_ON(!spin_is_locked(&dev->lock));
+	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
+	ret=crypto_cipher_setkey(dev->cipher, key, dev->hash_len);
+	if (ret)
+		return ret;
+	if (dir == READ)
+		ret=crypto_cipher_decrypt(dev->cipher, sg, sg, len);
+	else
+		ret=crypto_cipher_encrypt(dev->cipher, sg, sg, len);
+	if (ret)
+		return ret;
+	return 0;
 }
 
 int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,

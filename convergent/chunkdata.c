@@ -1,7 +1,6 @@
 #include <linux/slab.h>
 #include <linux/mempool.h>
 #include <linux/bio.h>
-#include <linux/crypto.h>
 #include <linux/timer.h>
 #include <linux/wait.h>
 #include "convergent.h"
@@ -259,24 +258,19 @@ bad:
 static void chunk_tfm(struct chunkdata *cd, int type)
 {
 	struct convergent_dev *dev=cd->table->dev;
-	struct scatterlist *sg=cd->sg;
-	char iv[8]={0}; /* XXX */
 	int ret;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
-	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	if (type == READ) {
 		debug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->chunk);
-		if (crypto_cipher_setkey(dev->cipher, cd->key, dev->hash_len))
+		if (crypto_cipher(dev, cd->sg, cd->key, cd->size, READ))
 			BUG();
-		if (crypto_cipher_decrypt(dev->cipher, sg, sg, cd->size))
-			BUG();
-		if (decompress_chunk(dev, sg, cd->compression, cd->size))
+		if (decompress_chunk(dev, cd->sg, cd->compression, cd->size))
 			BUG(); /* XXX */
 	} else {
 		cd->compression=dev->compression;
-		ret=compress_chunk(dev, sg, cd->compression);
+		ret=compress_chunk(dev, cd->sg, cd->compression);
 		if (ret == -EFBIG) {
 			cd->size=dev->chunksize;
 			cd->compression=ISR_COMPRESS_NONE;
@@ -287,10 +281,8 @@ static void chunk_tfm(struct chunkdata *cd, int type)
 		}
 		debug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->chunk);
-		crypto_hash(dev, sg, cd->size, cd->key);
-		if (crypto_cipher_setkey(dev->cipher, cd->key, dev->hash_len))
-			BUG();
-		if (crypto_cipher_encrypt(dev->cipher, sg, sg, cd->size))
+		crypto_hash(dev, cd->sg, cd->size, cd->key);
+		if (crypto_cipher(dev, cd->sg, cd->key, cd->size, WRITE))
 			BUG();
 	}
 }
