@@ -1,6 +1,7 @@
 #include <linux/slab.h>
 #include <linux/mempool.h>
 #include <linux/bio.h>
+#include <linux/interrupt.h>
 #include <linux/timer.h>
 #include <linux/wait.h>
 #include "convergent.h"

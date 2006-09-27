@@ -16,6 +16,7 @@
 #define SUPPORTED_COMPRESSION (ISR_COMPRESS_NONE | ISR_COMPRESS_ZLIB)
 
 #include <linux/blkdev.h>
+#include <linux/interrupt.h>
 #include "convergent-user.h"
 
 /* XXX convert chunk_t canonical name from chunk to cid */
