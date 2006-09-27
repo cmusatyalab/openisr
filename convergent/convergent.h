@@ -209,6 +209,7 @@ int have_usermsg(struct convergent_dev *dev);
 struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type);
 void fail_usermsg(struct chunkdata *cd);
 void end_usermsg(struct chunkdata *cd);
+void shutdown_usermsg(struct convergent_dev *dev);
 void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid);
 void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 			unsigned *length, compress_t *compression, char key[]);

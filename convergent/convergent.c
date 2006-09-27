@@ -176,20 +176,19 @@ static void convergent_process_chunk(unsigned long data)
 	
 	spin_lock_bh(&dev->lock);
 	
-	/* The device might have been shut down since the io was first
-	   set up */
-	if (dev->flags & DEV_SHUTDOWN) {
-		chunk->error=-EIO;
+	/* The underlying chunk I/O might have errored out */
+	if (chunk->error) {
+		debug("process_chunk I/O error: chunk " SECTOR_FORMAT,
+					chunk->chunk);
 		convergent_complete_chunk(chunk);
 		spin_unlock_bh(&dev->lock);
 		return;
 	}
 	
-	debug("process_chunk called: chunk " SECTOR_FORMAT ", offset %u, "
+	ndebug("process_chunk called: chunk " SECTOR_FORMAT ", offset %u, "
 				"length %u", chunk->chunk, chunk->offset,
 				chunk->len);
 	
-	/* XXX error handling */
 	chunk_sg=get_scatterlist(chunk);
 	if (io->flags & IO_WRITE) {
 		scatterlist_copy(io->orig_sg, chunk_sg, chunk->orig_offset,
@@ -259,7 +258,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 		bytes += chunk->len;
 	}
 	
-	debug("setup_io called: %lu sectors over " SECTOR_FORMAT
+	ndebug("setup_io called: %lu sectors over " SECTOR_FORMAT
 				" chunks at chunk " SECTOR_FORMAT,
 				req->nr_sectors,
 				io->last_chunk - io->first_chunk + 1,
@@ -445,9 +444,13 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	   This works fine when scatterlist_copy() kmaps low memory but
 	   will die if it kmaps high memory.  Instead, we tell blk_rq_map_sg()
 	   not to cross page boundaries when coalescing segments. */
-	/* XXX this has a minimum of PAGE_CACHE_SIZE - 1, which might be
-	   larger than PAGE_SIZE */
 	blk_queue_segment_boundary(dev->queue, PAGE_SIZE - 1);
+	/* blk_rq_map_sg() enforces a minimum boundary of PAGE_CACHE_SIZE.
+	   If that ever becomes larger than PAGE_SIZE, the above call
+	   won't do the right thing for us and we'll need to modify
+	   scatterlist_copy() to divide each scatterlist entry into its
+	   constituent pages. */
+	BUILD_BUG_ON(PAGE_SIZE != PAGE_CACHE_SIZE);
 	blk_queue_max_sectors(dev->queue,
 				chunk_sectors(dev) * (MAX_CHUNKS_PER_IO - 1));
 	

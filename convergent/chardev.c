@@ -10,11 +10,14 @@
    wedges. */
 static void shutdown_dev(struct convergent_dev *dev)
 {
+	spin_lock_bh(&dev->lock);
 	dev->flags |= DEV_SHUTDOWN;
+	spin_unlock_bh(&dev->lock);
 	if (atomic_dec_and_test(&dev->refcount)) {
 		convergent_dev_dtr(dev);
 	} else {
 		spin_lock_bh(&dev->lock);
+		shutdown_usermsg(dev);
 		blk_start_queue(dev->queue);
 		spin_unlock_bh(&dev->lock);
 	}
@@ -43,6 +46,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	DEFINE_WAIT(wait);
 	int i;
 	int ret;
+	int do_end;
 	struct chunkdata *cd;
 	
 	ndebug("Entering chr_read");
@@ -79,12 +83,15 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 		switch (msg.type) {
 		case ISR_MSGTYPE_GET_META:
 			get_usermsg_get_meta(cd, &msg.chunk);
+			do_end=0;
 			break;
 		case ISR_MSGTYPE_UPDATE_META:
 			get_usermsg_update_meta(cd, &msg.chunk, &msg.length,
 						&msg.compression, msg.key);
+			do_end=1;
 			break;
 		default:
+			do_end=1;  /* make compiler happy */
 			BUG();
 		}
 		spin_unlock_bh(&dev->lock);
@@ -92,7 +99,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 		spin_lock_bh(&dev->lock);
 		if (ret)
 			fail_usermsg(cd);
-		else
+		else if (do_end)
 			end_usermsg(cd);
 		spin_unlock_bh(&dev->lock);
 	}
@@ -175,6 +182,9 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		filp->private_data=dev;
 		break;
 	case ISR_UNREGISTER:
+		/* XXX should error out if there are other users, which means
+		   read should return if the device is closed while sleeping,
+		   which is strange */
 		if (dev == NULL)
 			return -ENXIO;
 		
@@ -200,11 +210,6 @@ static unsigned chr_poll(struct file *filp, poll_table *wait)
 	return mask;
 }
 
-static int chr_check_flags(int flags)
-{
-	return -EINVAL;  /* XXX */
-}
-
 static struct file_operations convergent_char_ops = {
 	.owner =		THIS_MODULE,
 	.open =			chr_open,
@@ -213,7 +218,6 @@ static struct file_operations convergent_char_ops = {
 	.release =		chr_release,
 	.llseek =		no_llseek,
 	.poll =			chr_poll,
-	.check_flags =		chr_check_flags,
 	.unlocked_ioctl =	chr_ioctl,
 	.compat_ioctl =		NULL,  /* XXX */
 	/* XXX AIO? */

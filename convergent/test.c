@@ -107,7 +107,7 @@ int main(int argc, char **argv)
 			continue;
 		ret=read(fd, &message, sizeof(message));
 		if (ret != sizeof(message)) {
-			printf("read() returned %d, expected %d", ret,
+			printf("read() returned %d, expected %d\n", ret,
 						sizeof(message));
 			continue;
 		}
