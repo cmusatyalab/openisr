@@ -105,30 +105,29 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	
 	/* Steal the LRU chunk */
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
-		/* XXX */
-		if (list_empty(&cd->pending) &&
-					(cd->state == ST_INVALID ||
-					cd->state == ST_CLEAN)) {
-			list_del_init(&cd->lh_bucket);
-			list_add(&cd->lh_bucket,
-					&table->hash[hash(table, chunk)]);
-			chunkdata_hit(cd);
-			cd->chunk=chunk;
-			cd->flags=0;
-			cd->state=ST_INVALID;
-			return cd;
+		if (!list_empty(&cd->pending))
+			continue;
+		switch (cd->state) {
+		case ST_INVALID:
+		case ST_CLEAN:
+		case ST_ERROR:
+			break;
+		default:
+			continue;
 		}
+
+		list_del_init(&cd->lh_bucket);
+		list_add(&cd->lh_bucket,
+				&table->hash[hash(table, chunk)]);
+		chunkdata_hit(cd);
+		cd->chunk=chunk;
+		cd->flags=0;
+		cd->state=ST_INVALID;
+		return cd;
 	}
 	
 	/* Can't get a chunk */
 	return NULL;
-}
-
-static void chunkdata_invalidate(struct chunkdata *cd)
-{
-	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
-	list_del_init(&cd->lh_bucket);
-	cd->state=ST_INVALID;
 }
 
 /* XXX might want to support high memory pages.  on the other hand, those
@@ -629,8 +628,6 @@ again:
 		/* I/O error occurred; data not valid */
 		if (chunk != NULL)
 			try_start_io(chunk->parent);
-		else
-			chunkdata_invalidate(cd);
 	}
 }
 

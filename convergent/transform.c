@@ -259,11 +259,6 @@ int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
 	/* The deflate workspace size is too large for kmalloc */
 	dev->zlib_deflate=vmalloc(zlib_deflate_workspacesize());
 	dev->zlib_inflate=kmalloc(zlib_inflate_workspacesize(), GFP_KERNEL);
-	debug("deflatesize %u inflatesize %u", zlib_deflate_workspacesize(),
-				zlib_inflate_workspacesize());
-	debug("compressed %p uncompressed %p deflate %p inflate %p",
-				dev->buf_compressed, dev->buf_uncompressed,
-				dev->zlib_deflate, dev->zlib_inflate);
 	if (dev->buf_compressed == NULL || dev->buf_uncompressed == NULL ||
 				dev->zlib_deflate == NULL ||
 				dev->zlib_inflate == NULL)
