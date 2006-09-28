@@ -132,7 +132,7 @@ int setup(struct params *params, char *storefile)
 
 int run(char *storefile)
 {
-	int storefd, ctlfd, ret;
+	int storefd, ctlfd, ret, dirty=0;
 	struct isr_setup setup;
 	struct isr_message message;
 	struct params params;
@@ -194,15 +194,24 @@ int run(char *storefile)
 	pollfds[1].fd=pipefds[0];
 	pollfds[0].events=pollfds[1].events=POLLIN;
 	while (1) {
-		ret=poll(pollfds, 2, -1);
-		if (ret == -1 && errno == EINTR)
+		ret=poll(pollfds, 2, 1000);
+		if (ret == -1 && errno == EINTR) {
 			continue;
-		else if (ret == -1)
+		} else if (ret == -1) {
 			perror("poll");
+		} else if (ret == 0 && dirty) {
+			printf("Sync\n");
+			if (msync(mapped, storefilelen, MS_ASYNC))
+				perror("Writing store file");
+			dirty=0;
+		} else if (ret == 0) {
+			continue;
+		}
 		if (pollfds[1].revents)
 			break;
 		if (!pollfds[0].revents)
 			continue;
+		
 		ret=read(ctlfd, &message, sizeof(message));
 		if (ret != sizeof(message)) {
 			printf("read() returned %d, expected %d\n", ret,
@@ -237,6 +246,7 @@ int run(char *storefile)
 			chunks[message.chunk].compression=message.compression;
 			received++;
 			received_size += message.length;
+			dirty=1;
 			break;
 		default:
 			printf("Unknown message type\n");
