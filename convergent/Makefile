@@ -18,7 +18,7 @@ module:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
 test: test.c convergent-user.h
-	$(CC) $(CFLAGS) -o $@ test.c
+	$(CC) $(CFLAGS) -lssl -o $@ test.c
 
 .PHONY: clean
 clean:

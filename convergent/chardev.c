@@ -202,6 +202,8 @@ static unsigned chr_poll(struct file *filp, poll_table *wait)
 	struct convergent_dev *dev=filp->private_data;
 	int mask=POLLOUT | POLLWRNORM;
 	
+	if (dev == NULL)
+		return POLLERR;
 	poll_wait(filp, &dev->waiting_users, wait);
 	spin_lock_bh(&dev->lock);
 	if (have_usermsg(dev))
