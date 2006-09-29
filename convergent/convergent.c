@@ -5,6 +5,7 @@
 #include <linux/blkdev.h>
 #include <linux/highmem.h>
 #include <linux/fs.h>
+#include <linux/device.h>
 #include <linux/crypto.h>
 #include <linux/mempool.h>
 #include <linux/interrupt.h>
@@ -14,6 +15,7 @@
 static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
 static kmem_cache_t *io_cache;
 static mempool_t *io_pool;
+static struct class *class;
 int blk_major;
 
 /* supports high memory pages */
@@ -105,6 +107,26 @@ static void queue_stop(struct convergent_dev *dev)
 	local_irq_save(interrupt_state);
 	blk_stop_queue(dev->queue);
 	local_irq_restore(interrupt_state);
+}
+
+struct convergent_dev *convergent_dev_get(struct convergent_dev *dev)
+{
+	if (dev == NULL)
+		return NULL;
+	if (class_device_get(dev->class_dev) == NULL)
+		return NULL;
+	return dev;
+}
+
+/* @unlink is true if we should remove the sysfs entries - that is, if
+   the character device is going away or the ctr has errored out.  This
+   must be called with @unlink true exactly once per device. */
+void convergent_dev_put(struct convergent_dev *dev, int unlink)
+{
+	if (unlink)
+		class_device_unregister(dev->class_dev);
+	else
+		class_device_put(dev->class_dev);
 }
 
 static void io_cleaner(unsigned long data)
@@ -304,12 +326,15 @@ static void convergent_request(request_queue_t *q)
 
 static int convergent_open(struct inode *ino, struct file *filp)
 {
-	struct convergent_dev *dev=ino->i_bdev->bd_disk->private_data;
+	struct convergent_dev *dev;
 	
-	/* XXX racy? */
-	if (dev->flags & DEV_SHUTDOWN)
+	dev=convergent_dev_get(ino->i_bdev->bd_disk->private_data);
+	if (dev == NULL)
 		return -ENODEV;
-	atomic_inc(&dev->refcount);
+	if (dev->flags & DEV_SHUTDOWN) {
+		convergent_dev_put(dev, 0);
+		return -ENODEV;
+	}
 	return 0;
 }
 
@@ -317,8 +342,7 @@ static int convergent_release(struct inode *ino, struct file *filp)
 {
 	struct convergent_dev *dev=ino->i_bdev->bd_disk->private_data;
 	
-	if (atomic_dec_and_test(&dev->refcount))
-		convergent_dev_dtr(dev);
+	convergent_dev_put(dev, 0);
 	return 0;
 }
 
@@ -341,11 +365,13 @@ static void free_devnum(int devnum)
 	clear_bit(devnum, devnums);
 }
 
-void convergent_dev_dtr(struct convergent_dev *dev)
+/* Called by dev->class_dev's release callback */
+static void convergent_dev_dtr(struct class_device *class_dev)
 {
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	
 	debug("Dtr called");
 	/* XXX racy? */
-	/* XXX doesn't make sure the add_disk job has run */
 	if (dev->gendisk)
 		del_gendisk(dev->gendisk);
 	chunkdata_free_table(dev);
@@ -360,7 +386,9 @@ void convergent_dev_dtr(struct convergent_dev *dev)
 	if (dev->chunk_bdev)
 		close_bdev_excl(dev->chunk_bdev);
 	free_devnum(dev->devnum);
+	kfree(class_dev);
 	kfree(dev);
+	module_put(THIS_MODULE);
 }
 
 static struct block_device_operations convergent_ops = {
@@ -380,16 +408,39 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	
 	debug("Ctr starting");
 	
+	/* If the userspace process goes away right after the ctr returns, the
+	   device will still exist until delayed_add_disk runs but the module
+	   could be unloaded.  To get around this, we get an extra reference
+	   to the module here and put it in the dtr. */
+	if (!try_module_get(THIS_MODULE)) {
+		ret=-ENOPKG;
+		goto early_fail_module;
+	}
+	
 	devnum=alloc_devnum();
-	if (devnum < 0)
-		return ERR_PTR(-EMFILE);
+	if (devnum < 0) {
+		ret=-EMFILE;
+		goto early_fail_devnum;
+	}
 	
 	dev=kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (dev == NULL) {
-		free_devnum(devnum);
-		return ERR_PTR(-ENOMEM);
+		ret=-ENOMEM;
+		goto early_fail_devalloc;
 	}
 	
+	dev->class_dev=class_device_create(class, NULL, 0, NULL,
+					DEVICE_NAME "%c", 'a' + devnum);
+	if (IS_ERR(dev->class_dev)) {
+		ret=PTR_ERR(dev->class_dev);
+		goto early_fail_classdev;
+	}
+	class_set_devdata(dev->class_dev, dev);
+	/* Use class-wide release function */
+	dev->class_dev->release=NULL;
+	
+	/* Now we have refcounting, so all further errors should deallocate
+	   through the destructor */
 	spin_lock_init(&dev->lock);
 	INIT_LIST_HEAD(&dev->freed_ios);
 	init_waitqueue_head(&dev->waiting_users);
@@ -416,7 +467,6 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	dev->chunksize=chunksize;
 	dev->cachesize=cachesize;
 	dev->offset=offset;
-	atomic_set(&dev->refcount, 1);
 	debug("chunksize %u, cachesize %u, backdev %s, offset " SECTOR_FORMAT,
 				chunksize, cachesize, devnode, offset);
 	
@@ -476,7 +526,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	dev->gendisk->major=blk_major;
 	dev->gendisk->first_minor=devnum*MINORS_PER_DEVICE;
 	dev->gendisk->minors=MINORS_PER_DEVICE;
-	sprintf(dev->gendisk->disk_name, DEVICE_NAME "%c", 'a' + devnum);
+	sprintf(dev->gendisk->disk_name, "%s", dev->class_dev->class_id);
 	dev->gendisk->fops=&convergent_ops;
 	dev->gendisk->queue=dev->queue;
 	/* Make sure the capacity, after offset adjustment, is a multiple
@@ -493,7 +543,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	/* add_disk() initiates I/O to read the partition tables, so userspace
 	   needs to be able to process key requests while it is running.
 	   If we called add_disk() directly here, we would deadlock. */
-	ret=delayed_add_disk(dev->gendisk);
+	ret=delayed_add_disk(dev);
 	if (ret) {
 		log(KERN_ERR, "couldn't schedule gendisk registration");
 		goto bad;
@@ -501,7 +551,16 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	
 	return dev;
 bad:
-	convergent_dev_dtr(dev);
+	convergent_dev_put(dev, 1);
+	return ERR_PTR(ret);
+	/* Until we have a refcount, we can't fail through the destructor */
+early_fail_classdev:
+	kfree(dev);
+early_fail_devalloc:
+	free_devnum(devnum);
+early_fail_devnum:
+	module_put(THIS_MODULE);
+early_fail_module:
 	return ERR_PTR(ret);
 }
 
@@ -524,6 +583,13 @@ static int __init convergent_init(void)
 		ret=-ENOMEM;
 		goto bad_mempool;
 	}
+	
+	class=class_create(THIS_MODULE, DEVICE_NAME);
+	if (IS_ERR(class)) {
+		ret=PTR_ERR(class);
+		goto bad_class;
+	}
+	class->release=convergent_dev_dtr;
 	
 	ret=chunkdata_start();
 	if (ret) {
@@ -560,6 +626,8 @@ bad_blkdev:
 bad_workqueue:
 	chunkdata_shutdown();
 bad_chunkdata:
+	class_destroy(class);
+bad_class:
 	mempool_destroy(io_pool);
 bad_mempool:
 	if (kmem_cache_destroy(io_cache))
@@ -580,6 +648,8 @@ static void __exit convergent_shutdown(void)
 	workqueue_shutdown();
 	
 	chunkdata_shutdown();
+	
+	class_destroy(class);
 	
 	mempool_destroy(io_pool);
 	if (kmem_cache_destroy(io_cache))

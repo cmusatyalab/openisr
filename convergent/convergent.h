@@ -24,6 +24,7 @@
 typedef sector_t chunk_t;
 
 struct convergent_dev {
+	struct class_device *class_dev;
 	struct gendisk *gendisk;
 	request_queue_t *queue;
 	spinlock_t lock;
@@ -35,7 +36,6 @@ struct convergent_dev {
 	chunk_t chunks;
 	int devnum;
 	unsigned flags;	/* XXX racy */
-	atomic_t refcount;
 	
 	struct crypto_tfm *cipher;
 	unsigned cipher_block;
@@ -188,7 +188,8 @@ extern int blk_major;
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
 			cipher_t cipher, hash_t hash, compress_t compress);
-void convergent_dev_dtr(struct convergent_dev *dev);
+struct convergent_dev *convergent_dev_get(struct convergent_dev *dev);
+void convergent_dev_put(struct convergent_dev *dev, int unlink);
 
 /* chardev.c */
 int chardev_start(void);
@@ -198,7 +199,7 @@ void chardev_shutdown(void);
 int workqueue_start(void);
 void workqueue_shutdown(void);
 void submit(struct bio *bio);
-int delayed_add_disk(struct gendisk *disk);
+int delayed_add_disk(struct convergent_dev *dev);
 
 /* chunkdata.c */
 int chunkdata_start(void);

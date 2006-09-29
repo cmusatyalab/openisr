@@ -6,21 +6,14 @@
 #include <linux/miscdevice.h>
 #include "convergent.h"
 
-/* XXX if userspace goes away immediately after registration, device creation
-   wedges. */
 static void shutdown_dev(struct convergent_dev *dev)
 {
 	spin_lock_bh(&dev->lock);
 	dev->flags |= DEV_SHUTDOWN;
+	shutdown_usermsg(dev);
+	blk_start_queue(dev->queue);
 	spin_unlock_bh(&dev->lock);
-	if (atomic_dec_and_test(&dev->refcount)) {
-		convergent_dev_dtr(dev);
-	} else {
-		spin_lock_bh(&dev->lock);
-		shutdown_usermsg(dev);
-		blk_start_queue(dev->queue);
-		spin_unlock_bh(&dev->lock);
-	}
+	convergent_dev_put(dev, 1);
 }
 
 static int chr_open(struct inode *ino, struct file *filp)

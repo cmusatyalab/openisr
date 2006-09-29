@@ -24,8 +24,10 @@ static void job_handle_bio(void *data)
 static void job_handle_gendisk(void *data)
 {
 	struct job *job=data;
+	struct convergent_dev *dev=job->data;
 	
-	add_disk(job->data);
+	add_disk(dev->gendisk);
+	convergent_dev_put(dev, 0);
 	mempool_free(job, job_pool);
 }
 
@@ -66,16 +68,21 @@ void submit(struct bio *bio)
 	queue_work(queue, &job->work);
 }
 
-int delayed_add_disk(struct gendisk *disk)
+int delayed_add_disk(struct convergent_dev *dev)
 {
 	struct job *job;
 	
 	might_sleep();
+	/* Make sure the dev isn't freed until add_disk() completes */
+	if (convergent_dev_get(dev) == NULL)
+		return -EFAULT;
 	job=mempool_alloc(job_pool, GFP_KERNEL);
-	if (job == NULL)
+	if (job == NULL) {
+		convergent_dev_put(dev, 0);
 		return -ENOMEM;
+	}
 	INIT_WORK(&job->work, job_handle_gendisk, job);
-	job->data=disk;
+	job->data=dev;
 	/* We use the shared queue in order to prevent deadlock: if we
 	   used our own queue, add_disk() would block its own I/O to the
 	   partition table. */
