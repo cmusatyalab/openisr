@@ -263,36 +263,51 @@ bad:
 		tasklet_schedule(&cd->callback);
 }
 
-static void chunk_tfm(struct chunkdata *cd, int type)
+static int chunk_tfm(struct chunkdata *cd, int type)
 {
 	struct convergent_dev *dev=cd->table->dev;
 	int ret;
+	char hash[MAX_HASH_LEN];
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	if (type == READ) {
 		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->chunk);
-		if (crypto_cipher(dev, cd->sg, cd->key, cd->size, READ))
-			BUG();
-		if (decompress_chunk(dev, cd->sg, cd->compression, cd->size))
-			BUG(); /* XXX */
+		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, READ);
+		if (ret)
+			return ret;
+		/* Make sure decrypted data matches key */
+		crypto_hash(dev, cd->sg, cd->size, hash);
+		if (memcmp(cd->key, hash, dev->hash_len)) {
+			debug("Chunk " SECTOR_FORMAT ": Key doesn't match "
+						"decrypted data", cd->chunk);
+			return -EIO;
+		}
+		ret=decompress_chunk(dev, cd->sg, cd->compression, cd->size);
+		if (ret)
+			return ret;
 	} else {
-		cd->compression=dev->compression;
-		ret=compress_chunk(dev, cd->sg, cd->compression);
+		/* If compression or encryption errors out, we don't try to
+		   recover the data because the cd will go into ST_ERROR state
+		   anyway and no one will be allowed to read it. */
+		ret=compress_chunk(dev, cd->sg, dev->compression);
 		if (ret == -EFBIG) {
 			cd->size=dev->chunksize;
 			cd->compression=ISR_COMPRESS_NONE;
 		} else if (ret < 0) {
-			BUG();  /* XXX */
+			return ret;
 		} else {
 			cd->size=ret;
+			cd->compression=dev->compression;
 		}
 		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->chunk);
 		crypto_hash(dev, cd->sg, cd->size, cd->key);
-		if (crypto_cipher(dev, cd->sg, cd->key, cd->size, WRITE))
-			BUG();
+		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, WRITE);
+		if (ret)
+			return ret;
 	}
+	return 0;
 }
 
 /* XXX */
@@ -308,7 +323,8 @@ static void chunkdata_complete_io(unsigned long data)
 	   just did write-back, we need to decrypt again to keep the data
 	   clean. */
 	if (!cd->error)
-		chunk_tfm(cd, READ);
+		if (chunk_tfm(cd, READ))
+			cd->error=-EIO;
 	
 	/* XXX arguably we should report write errors to userspace */
 	if (cd->error)
@@ -606,8 +622,13 @@ again:
 		} else {
 			debug("Writing out chunk " SECTOR_FORMAT, cd->chunk);
 			cd->state=ST_STORE_DATA;
-			chunk_tfm(cd, WRITE);
-			issue_chunk_io(cd);
+			if (chunk_tfm(cd, WRITE)) {
+				cd->state=ST_ERROR;
+				cd->error=-EIO;
+				goto again;
+			} else {
+				issue_chunk_io(cd);
+			}
 		}
 	case ST_STORE_DATA:
 		break;

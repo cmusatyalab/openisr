@@ -73,8 +73,10 @@ static int compress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *s
 	strm.workspace=dev->zlib_deflate;
 	/* XXX keep persistent stream structures? */
 	ret=zlib_deflateInit(&strm, Z_DEFAULT_COMPRESSION);
-	if (ret != Z_OK)
-		return -ENOMEM; /* XXX */
+	if (ret != Z_OK) {
+		debug("zlib_deflateInit failed");
+		return -EIO;
+	}
 	strm.next_in=dev->buf_uncompressed;
 	strm.avail_in=dev->chunksize;
 	strm.next_out=dev->buf_compressed;
@@ -86,6 +88,7 @@ static int compress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *s
 		/* Compressed data larger than uncompressed data */
 		return -EFBIG;
 	} else if (ret != Z_STREAM_END || ret2 != Z_OK) {
+		debug("zlib compression failed");
 		return -EIO;
 	}
 	ret=crypto_pad(dev, dev->buf_compressed, size, dev->chunksize);
@@ -121,8 +124,10 @@ static int decompress_chunk_zlib(struct convergent_dev *dev,
 	strm.workspace=dev->zlib_inflate;
 	/* XXX keep persistent stream structures? */
 	ret=zlib_inflateInit(&strm);
-	if (ret != Z_OK)
-		return -ENOMEM; /* XXX */
+	if (ret != Z_OK) {
+		debug("zlib_inflateInit failed");
+		return -EIO;
+	}
 	strm.next_in=dev->buf_compressed;
 	strm.avail_in=size;
 	strm.next_out=dev->buf_uncompressed;
@@ -130,9 +135,7 @@ static int decompress_chunk_zlib(struct convergent_dev *dev,
 	ret=zlib_inflate(&strm, Z_FINISH);
 	size=strm.total_out;
 	ret2=zlib_inflateEnd(&strm);
-	if (ret == Z_MEM_ERROR)
-		return -ENOMEM;
-	else if (ret != Z_STREAM_END || ret2 != Z_OK)
+	if (ret != Z_STREAM_END || ret2 != Z_OK)
 		return -EIO;
 	if (size != dev->chunksize)
 		return -EIO;
