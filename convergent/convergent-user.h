@@ -7,9 +7,10 @@
 /* XXX consider 64-bit kernel with 32-bit userland */
 
 /* XXX should be unique */
-#define ISR_VERSION	0
 #define ISR_REGISTER	1
 #define ISR_UNREGISTER	2
+
+#define ISR_INTERFACE_VERSION 0
 
 typedef unsigned short cipher_t;
 typedef unsigned short hash_t;

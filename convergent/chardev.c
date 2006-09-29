@@ -148,9 +148,6 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 	struct isr_setup setup;
 	
 	switch (cmd) {
-	case ISR_VERSION:
-		/* XXX use sysfs instead? */
-		break;
 	case ISR_REGISTER:
 		if (dev != NULL)
 			return -EBUSY;

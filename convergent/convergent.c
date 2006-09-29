@@ -15,7 +15,7 @@
 static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
 static kmem_cache_t *io_cache;
 static mempool_t *io_pool;
-static struct class *class;
+static struct class class;
 int blk_major;
 
 /* supports high memory pages */
@@ -324,6 +324,38 @@ static void convergent_request(request_queue_t *q)
 	}
 }
 
+static void class_release_dummy(struct class *class)
+{
+	/* Dummy function: class is allocated statically because
+	   class_create() doesn't allow us to specify class attributes,
+	   so we don't need a destructor, but if we don't have one the kernel
+	   will sometimes whine to the log */
+	return;
+}
+
+static ssize_t attr_show_version(struct class *c, char *buf)
+{
+	if (c != &class)
+		return -EINVAL;
+	return sprintf(buf, "%u\n", ISR_INTERFACE_VERSION);
+}
+
+static struct class_attribute class_attrs[] = {
+	__ATTR(version, S_IRUGO, attr_show_version, NULL),
+	__ATTR_NULL
+};
+
+static ssize_t attr_show_chunksize(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return sprintf(buf, "%u\n", dev->chunksize);
+}
+
+static struct class_device_attribute class_dev_attrs[] = {
+	__ATTR(chunksize, S_IRUGO, attr_show_chunksize, NULL),
+	__ATTR_NULL
+};
+
 static int convergent_open(struct inode *ino, struct file *filp)
 {
 	struct convergent_dev *dev;
@@ -429,7 +461,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		goto early_fail_devalloc;
 	}
 	
-	dev->class_dev=class_device_create(class, NULL, 0, NULL,
+	dev->class_dev=class_device_create(&class, NULL, 0, NULL,
 					DEVICE_NAME "%c", 'a' + devnum);
 	if (IS_ERR(dev->class_dev)) {
 		ret=PTR_ERR(dev->class_dev);
@@ -584,12 +616,15 @@ static int __init convergent_init(void)
 		goto bad_mempool;
 	}
 	
-	class=class_create(THIS_MODULE, DEVICE_NAME);
-	if (IS_ERR(class)) {
-		ret=PTR_ERR(class);
+	class.name=DEVICE_NAME;
+	class.owner=THIS_MODULE;
+	class.class_release=class_release_dummy;
+	class.release=convergent_dev_dtr;
+	class.class_attrs=class_attrs;
+	class.class_dev_attrs=class_dev_attrs;
+	ret=class_register(&class);
+	if (ret)
 		goto bad_class;
-	}
-	class->release=convergent_dev_dtr;
 	
 	ret=chunkdata_start();
 	if (ret) {
@@ -626,7 +661,7 @@ bad_blkdev:
 bad_workqueue:
 	chunkdata_shutdown();
 bad_chunkdata:
-	class_destroy(class);
+	class_unregister(&class);
 bad_class:
 	mempool_destroy(io_pool);
 bad_mempool:
@@ -649,7 +684,7 @@ static void __exit convergent_shutdown(void)
 	
 	chunkdata_shutdown();
 	
-	class_destroy(class);
+	class_unregister(&class);
 	
 	mempool_destroy(io_pool);
 	if (kmem_cache_destroy(io_cache))
