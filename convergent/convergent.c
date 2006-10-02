@@ -120,13 +120,19 @@ struct convergent_dev *convergent_dev_get(struct convergent_dev *dev)
 
 /* @unlink is true if we should remove the sysfs entries - that is, if
    the character device is going away or the ctr has errored out.  This
-   must be called with @unlink true exactly once per device. */
+   must be called with @unlink true exactly once per device.  The dev lock
+   MUST NOT be held. */
 void convergent_dev_put(struct convergent_dev *dev, int unlink)
 {
-	if (unlink)
+	if (unlink) {
+		BUG_ON(in_atomic());
 		class_device_unregister(dev->class_dev);
-	else
-		class_device_put(dev->class_dev);
+	} else {
+		if (in_atomic())
+			delayed_put(dev);
+		else
+			class_device_put(dev->class_dev);
+	}
 }
 
 static void io_cleaner(unsigned long data)
@@ -135,6 +141,7 @@ static void io_cleaner(unsigned long data)
 	struct convergent_io *io;
 	struct convergent_io *next;
 	int i;
+	int need_release_ref=0;
 	
 	spin_lock_bh(&dev->lock);
 	list_for_each_entry_safe(io, next, &dev->freed_ios, lh_freed) {
@@ -149,7 +156,15 @@ static void io_cleaner(unsigned long data)
 		dev->flags &= ~DEV_LOWMEM;
 		queue_start(dev);
 	}
+	if ((dev->flags & DEV_SHUTDOWN) && !(dev->flags & DEV_CD_SHUTDOWN) &&
+				!chunkdata_is_busy(dev)) {
+		dev->flags |= DEV_CD_SHUTDOWN;
+		/* Must not release ref with the lock held */
+		need_release_ref=1;
+	}
 	spin_unlock_bh(&dev->lock);
+	if (need_release_ref)
+		convergent_dev_put(dev, 0);
 	if (!(dev->flags & DEV_KILLCLEANER))
 		mod_timer(&dev->cleaner, jiffies + CLEANER_SWEEP);
 	else
@@ -418,7 +433,7 @@ static void convergent_dev_dtr(struct class_device *class_dev)
 	if (dev->chunk_bdev)
 		close_bdev_excl(dev->chunk_bdev);
 	free_devnum(dev->devnum);
-	kfree(class_dev);
+	kfree(dev->class_dev);
 	kfree(dev);
 	module_put(THIS_MODULE);
 }

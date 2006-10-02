@@ -60,12 +60,14 @@ enum dev_bits {
 	__DEV_KILLCLEANER,  /* Cleaner should not reschedule itself */
 	__DEV_LOWMEM,       /* Queue stopped until requests freed */
 	__DEV_SHUTDOWN,     /* Userspace keying daemon has gone away */
+	__DEV_CD_SHUTDOWN,  /* chunkdata's dev reference has been released */
 };
 
 /* convergent_dev flags */
 #define DEV_KILLCLEANER     (1 << __DEV_KILLCLEANER)
 #define DEV_LOWMEM          (1 << __DEV_LOWMEM)
 #define DEV_SHUTDOWN        (1 << __DEV_SHUTDOWN)
+#define DEV_CD_SHUTDOWN     (1 << __DEV_CD_SHUTDOWN)
 
 struct convergent_io_chunk {
 	struct list_head lh_pending;
@@ -200,12 +202,14 @@ int workqueue_start(void);
 void workqueue_shutdown(void);
 void submit(struct bio *bio);
 int delayed_add_disk(struct convergent_dev *dev);
+void delayed_put(struct convergent_dev *dev);
 
 /* chunkdata.c */
 int chunkdata_start(void);
 void chunkdata_shutdown(void);
 int chunkdata_alloc_table(struct convergent_dev *dev);
 void chunkdata_free_table(struct convergent_dev *dev);
+int chunkdata_is_busy(struct convergent_dev *dev);
 int have_usermsg(struct convergent_dev *dev);
 struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type);
 void fail_usermsg(struct chunkdata *cd);

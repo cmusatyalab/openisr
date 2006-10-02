@@ -51,6 +51,8 @@ struct chunkdata {
 struct chunkdata_table {
 	struct convergent_dev *dev;
 	unsigned buckets;
+	unsigned pending_count;  /* number of chunk_ios pending */
+	unsigned busy_count;     /* number of chunks not INVALID/CLEAN/ERROR */
 	struct list_head lru;
 	struct list_head user;
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
@@ -85,6 +87,44 @@ static void chunkdata_hit(struct chunkdata *cd)
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
 	list_move_tail(&cd->lh_lru, &cd->table->lru);
+}
+
+static void __transition(struct chunkdata *cd, enum cd_state new_state)
+{
+	enum cd_state states[2]={cd->state, new_state};
+	int busy[2];
+	int i;
+	
+	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	for (i=0; i<2; i++) {
+		switch (states[i]) {
+		case ST_INVALID:
+		case ST_CLEAN:
+		case ST_ERROR:
+			busy[i]=0;
+			break;
+		default:
+			busy[i]=1;
+			break;
+		}
+	}
+	if (busy[0] && !busy[1])
+		cd->table->busy_count--;
+	if (!busy[0] && busy[1])
+		cd->table->busy_count++;
+	cd->state=new_state;
+}
+
+static void transition(struct chunkdata *cd, enum cd_state new_state)
+{
+	BUG_ON(new_state == ST_ERROR);
+	__transition(cd, new_state);
+}
+
+static void transition_error(struct chunkdata *cd, int error)
+{
+	cd->error=error;
+	__transition(cd, ST_ERROR);
 }
 
 static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
@@ -122,7 +162,7 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 		chunkdata_hit(cd);
 		cd->chunk=chunk;
 		cd->flags=0;
-		cd->state=ST_INVALID;
+		transition(cd, ST_INVALID);
 		return cd;
 	}
 	
@@ -316,23 +356,25 @@ static void run_chunk(struct chunkdata *cd);
 static void chunkdata_complete_io(unsigned long data)
 {
 	struct chunkdata *cd=(void*)data;
+	int error;
 	
 	spin_lock_bh(&cd->table->dev->lock);
 	
+	error=cd->error;
 	/* XXX we have a bit of a problem: we encrypt in-place.  so if we
 	   just did write-back, we need to decrypt again to keep the data
 	   clean. */
-	if (!cd->error)
+	if (!error)
 		if (chunk_tfm(cd, READ))
-			cd->error=-EIO;
+			error=-EIO;
 	
 	/* XXX arguably we should report write errors to userspace */
-	if (cd->error)
-		cd->state=ST_ERROR;
+	if (error)
+		transition_error(cd, error);
 	else if (cd->state == ST_LOAD_DATA)
-		cd->state=ST_CLEAN;
+		transition(cd, ST_CLEAN);
 	else if (cd->state == ST_STORE_DATA)
-		cd->state=ST_DIRTY_META;
+		transition(cd, ST_DIRTY_META);
 	else
 		BUG();
 	
@@ -407,17 +449,17 @@ static void try_start_io(struct convergent_io *io)
 			if (chunk->flags & CHUNK_READ)
 				continue;
 			else
-				cd->state=ST_DIRTY;
+				transition(cd, ST_DIRTY);
 			break;
 		case ST_ERROR:
 			if (chunk->flags & CHUNK_READ)
 				chunk->error=cd->error;
 			else
-				cd->state=ST_DIRTY;
+				transition(cd, ST_DIRTY);
 			break;
 		case ST_CLEAN:
 			if (io->flags & IO_WRITE)
-				cd->state=ST_DIRTY;
+				transition(cd, ST_DIRTY);
 			break;
 		case ST_DIRTY:
 			break;
@@ -430,8 +472,7 @@ static void try_start_io(struct convergent_io *io)
 			chunk->error=-EIO;
 			/* Subsequent reads to this chunk must not be allowed
 			   to return stale data. */
-			cd->error=-EIO;
-			cd->state=ST_ERROR;
+			transition_error(cd, -EIO);
 		}
 		
 		chunk->flags |= CHUNK_STARTED;
@@ -493,12 +534,11 @@ void fail_usermsg(struct chunkdata *cd)
 	cd->flags &= ~CD_USER;
 }
 
-static void __end_usermsg(struct chunkdata *cd, enum cd_state next_state)
+static void __end_usermsg(struct chunkdata *cd)
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
 	BUG_ON(list_empty(&cd->lh_user));
 	cd->flags &= ~CD_USER;
-	cd->state=next_state;
 	list_del_init(&cd->lh_user);
 	run_chunk(cd);
 }
@@ -511,7 +551,8 @@ void end_usermsg(struct chunkdata *cd)
 	BUG_ON(!(cd->flags & CD_USER));
 	switch (cd->state) {
 	case ST_STORE_META:
-		__end_usermsg(cd, ST_CLEAN);
+		transition(cd, ST_CLEAN);
+		__end_usermsg(cd);
 		break;
 	default:
 		BUG();
@@ -526,8 +567,8 @@ void shutdown_usermsg(struct convergent_dev *dev)
 	BUG_ON(!spin_is_locked(&dev->lock));
 	BUG_ON(!(dev->flags & DEV_SHUTDOWN));
 	list_for_each_entry_safe(cd, next, &dev->chunkdata->user, lh_user) {
-		cd->error=-EIO;
-		__end_usermsg(cd, ST_ERROR);
+		transition_error(cd, -EIO);
+		__end_usermsg(cd);
 	}
 }
 
@@ -565,7 +606,8 @@ void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 	cd->size=length;
 	cd->compression=compression;
 	memcpy(cd->key, key, dev->hash_len);
-	__end_usermsg(cd, ST_META);
+	transition(cd, ST_META);
+	__end_usermsg(cd);
 }
 
 /* XXX need to make sure everything is eventually written back */
@@ -583,10 +625,9 @@ again:
 			/* No key or data */
 			debug("Requesting key for chunk " SECTOR_FORMAT,
 						cd->chunk);
-			cd->state=ST_LOAD_META;
+			transition(cd, ST_LOAD_META);
 			if (queue_for_user(cd)) {
-				cd->error=-EIO;
-				cd->state=ST_ERROR;
+				transition_error(cd, -EIO);
 				goto again;
 			}
 		}
@@ -601,7 +642,7 @@ again:
 				   in. */
 				debug("Reading in chunk " SECTOR_FORMAT,
 							cd->chunk);
-				cd->state=ST_LOAD_DATA;
+				transition(cd, ST_LOAD_DATA);
 				issue_chunk_io(cd);
 			} else {
 				try_start_io(chunk->parent);
@@ -621,10 +662,9 @@ again:
 			try_start_io(chunk->parent);
 		} else {
 			debug("Writing out chunk " SECTOR_FORMAT, cd->chunk);
-			cd->state=ST_STORE_DATA;
+			transition(cd, ST_STORE_DATA);
 			if (chunk_tfm(cd, WRITE)) {
-				cd->state=ST_ERROR;
-				cd->error=-EIO;
+				transition_error(cd, -EIO);
 				goto again;
 			} else {
 				issue_chunk_io(cd);
@@ -636,10 +676,9 @@ again:
 		/* We just wrote out data but haven't written out metadata
 		   yet.  We can't do anything else with this chunk until
 		   we write out metadata. */
-		cd->state=ST_STORE_META;
+		transition(cd, ST_STORE_META);
 		if (queue_for_user(cd)) {
-			cd->error=-EIO;
-			cd->state=ST_ERROR;
+			transition_error(cd, -EIO);
 			goto again;
 		}
 		break;
@@ -668,6 +707,7 @@ int reserve_chunks(struct convergent_io *io)
 		if (cd == NULL)
 			goto bad;
 		list_add_tail(&chunk->lh_pending, &cd->pending);
+		dev->chunkdata->pending_count++;
 	}
 	for (i=0; i<io_chunks(io); i++) {
 		cur=io->first_chunk + i;
@@ -681,6 +721,7 @@ bad:
 	while (--i >= 0) {
 		chunk=&io->chunks[i];
 		list_del_init(&chunk->lh_pending);
+		dev->chunkdata->pending_count--;
 	}
 	/* XXX this isn't strictly nomem */
 	return -ENOMEM;
@@ -695,6 +736,7 @@ void unreserve_chunk(struct convergent_io_chunk *chunk)
 	cd=chunkdata_get(dev->chunkdata, chunk->chunk);
 	BUG_ON(!pending_head_is(cd, chunk));
 	list_del_init(&chunk->lh_pending);
+	dev->chunkdata->pending_count--;
 	run_chunk(cd);
 }
 
@@ -707,6 +749,12 @@ struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
 	cd=chunkdata_get(dev->chunkdata, chunk->chunk);
 	BUG_ON(cd == NULL || !pending_head_is(cd, chunk));
 	return cd->sg;
+}
+
+int chunkdata_is_busy(struct convergent_dev *dev)
+{
+	BUG_ON(!spin_is_locked(&dev->lock));
+	return (dev->chunkdata->pending_count || dev->chunkdata->busy_count);
 }
 
 void chunkdata_free_table(struct convergent_dev *dev)
@@ -746,6 +794,8 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 	if (table == NULL)
 		return -ENOMEM;
 	table->buckets=buckets;
+	table->pending_count=0;
+	table->busy_count=0;
 	INIT_LIST_HEAD(&table->lru);
 	INIT_LIST_HEAD(&table->user);
 	for (i=0; i<buckets; i++)
@@ -775,6 +825,11 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 					(unsigned long)cd);
 		list_add(&cd->lh_lru, &table->lru);
 	}
+	/* chunkdata holds a reference to dev, since it would be bad for
+	   dev to disappear out from under us while we're still processing
+	   tasklets and endio callbacks.  This reference is released by
+	   the io_cleaner function (!). */
+	convergent_dev_get(dev);
 	return 0;
 }
 

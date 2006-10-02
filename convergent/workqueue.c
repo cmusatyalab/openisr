@@ -31,6 +31,15 @@ static void job_handle_gendisk(void *data)
 	mempool_free(job, job_pool);
 }
 
+static void job_handle_put(void *data)
+{
+	struct job *job=data;
+	struct convergent_dev *dev=job->data;
+	
+	convergent_dev_put(dev, 0);
+	mempool_free(job, job_pool);
+}
+
 void workqueue_shutdown(void)
 {
 	if (job_pool)
@@ -88,4 +97,15 @@ int delayed_add_disk(struct convergent_dev *dev)
 	   partition table. */
 	schedule_work(&job->work);
 	return 0;
+}
+
+/* Intended to be called from atomic context */
+void delayed_put(struct convergent_dev *dev)
+{
+	struct job *job=mempool_alloc(job_pool, GFP_ATOMIC);
+	if (job == NULL)
+		BUG();  /* XXX */
+	INIT_WORK(&job->work, job_handle_put, job);
+	job->data=dev;
+	queue_work(queue, &job->work);
 }
