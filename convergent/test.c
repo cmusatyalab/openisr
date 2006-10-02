@@ -31,6 +31,7 @@ struct chunk {
 
 static unsigned received_size;
 static unsigned received;
+static int dirty;
 static int pipefds[2];
 
 void printkey(char *key, int len)
@@ -130,9 +131,42 @@ int setup(struct params *params, char *storefile)
 	return 0;
 }
 
+/* Returns true if a reply needs to be sent */
+int handle_message(struct chunk *chunk, struct isr_message *message,
+				unsigned hash_len)
+{
+	switch (message->type) {
+	case ISR_MSGTYPE_GET_META:
+		printf("Sending   chunk %8llu key ", message->chunk);
+		printkey(chunk->key, hash_len);
+		printf(" size %6u comp %u\n", chunk->length,
+					chunk->compression);
+		memcpy(message->key, chunk->key, hash_len);
+		message->length=chunk->length;
+		message->compression=chunk->compression;
+		message->type=ISR_MSGTYPE_SET_META;
+		return 1;
+	case ISR_MSGTYPE_UPDATE_META:
+		printf("Receiving chunk %8llu key ", message->chunk);
+		printkey(message->key, hash_len);
+		printf(" size %6u comp %u\n", message->length,
+					message->compression);
+		memcpy(chunk->key, message->key, hash_len);
+		chunk->length=message->length;
+		chunk->compression=message->compression;
+		received++;
+		received_size += message->length;
+		dirty=1;
+		return 0;
+	default:
+		printf("Unknown message type\n");
+		return 0;
+	}
+}
+
 int run(char *storefile)
 {
-	int storefd, ctlfd, ret, dirty=0;
+	int storefd, ctlfd, ret;
 	struct isr_setup setup;
 	struct isr_message message;
 	struct params params;
@@ -224,39 +258,11 @@ int run(char *storefile)
 						sizeof(message));
 			continue;
 		}
-		switch (message.type) {
-		case ISR_MSGTYPE_GET_META:
-			printf("Sending   chunk %8llu key ", message.chunk);
-			printkey(chunks[message.chunk].key, setup.hash_len);
-			printf(" size %6u comp %u\n",
-					chunks[message.chunk].length,
-					chunks[message.chunk].compression);
-			memcpy(message.key, chunks[message.chunk].key,
-						setup.hash_len);
-			message.length=chunks[message.chunk].length;
-			message.compression=chunks[message.chunk].compression;
-			message.type=ISR_MSGTYPE_SET_META;
+		if (handle_message(&chunks[message.chunk], &message,
+					setup.hash_len)) {
 			if (write(ctlfd, &message, sizeof(message)) !=
 						sizeof(message))
 				printf("Error on write\n");
-			break;
-		case ISR_MSGTYPE_UPDATE_META:
-			printf("Receiving chunk %8llu key ", message.chunk);
-			printkey(message.key, setup.hash_len);
-			printf(" size %6u comp %u\n",
-						message.length,
-						message.compression);
-			memcpy(chunks[message.chunk].key, message.key,
-						setup.hash_len);
-			chunks[message.chunk].length=message.length;
-			chunks[message.chunk].compression=message.compression;
-			received++;
-			received_size += message.length;
-			dirty=1;
-			break;
-		default:
-			printf("Unknown message type\n");
-			continue;
 		}
 	}
 	printf("Exiting\n");
