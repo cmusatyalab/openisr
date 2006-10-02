@@ -94,7 +94,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 			BUG();
 		}
 		spin_unlock_bh(&dev->lock);
-		ret=copy_to_user(buf, &msg, sizeof(msg));
+		ret=copy_to_user(buf + i * sizeof(msg), &msg, sizeof(msg));
 		spin_lock_bh(&dev->lock);
 		if (ret)
 			fail_usermsg(cd);
@@ -122,7 +122,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 	count /= sizeof(msg);
 	
 	for (i=0; i<count; i++) {
-		if (copy_from_user(&msg, buf, sizeof(msg))) {
+		if (copy_from_user(&msg, buf + i * sizeof(msg), sizeof(msg))) {
 			if (i > 0)
 				break;
 			else

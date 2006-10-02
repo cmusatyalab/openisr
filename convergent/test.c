@@ -14,6 +14,8 @@
 #include <openssl/evp.h>
 #include "convergent-user.h"
 
+#define MESSAGE_BATCH 64
+
 struct params {
 	char control_device[MAX_DEVICE_LEN];
 	char chunk_device[MAX_DEVICE_LEN];
@@ -133,6 +135,7 @@ int setup(struct params *params, char *storefile)
 
 /* Returns true if a reply needs to be sent */
 int handle_message(struct chunk *chunk, struct isr_message *message,
+				struct isr_message *message_out,
 				unsigned hash_len)
 {
 	switch (message->type) {
@@ -141,10 +144,11 @@ int handle_message(struct chunk *chunk, struct isr_message *message,
 		printkey(chunk->key, hash_len);
 		printf(" size %6u comp %u\n", chunk->length,
 					chunk->compression);
-		memcpy(message->key, chunk->key, hash_len);
-		message->length=chunk->length;
-		message->compression=chunk->compression;
-		message->type=ISR_MSGTYPE_SET_META;
+		memcpy(message_out->key, chunk->key, hash_len);
+		message_out->chunk=message->chunk;
+		message_out->length=chunk->length;
+		message_out->compression=chunk->compression;
+		message_out->type=ISR_MSGTYPE_SET_META;
 		return 1;
 	case ISR_MSGTYPE_UPDATE_META:
 		printf("Receiving chunk %8llu key ", message->chunk);
@@ -159,16 +163,17 @@ int handle_message(struct chunk *chunk, struct isr_message *message,
 		dirty=1;
 		return 0;
 	default:
-		printf("Unknown message type\n");
+		printf("Unknown message type %x\n", message->type);
 		return 0;
 	}
 }
 
 int run(char *storefile)
 {
-	int storefd, ctlfd, ret;
+	int storefd, ctlfd, ret, count, in, out;
 	struct isr_setup setup;
-	struct isr_message message;
+	struct isr_message message_in[MESSAGE_BATCH];
+	struct isr_message message_out[MESSAGE_BATCH];
 	struct params params;
 	struct chunk *chunks;
 	struct pollfd pollfds[2];
@@ -227,6 +232,7 @@ int run(char *storefile)
 	pollfds[0].fd=ctlfd;
 	pollfds[1].fd=pipefds[0];
 	pollfds[0].events=pollfds[1].events=POLLIN;
+	printf("Starting\n");
 	while (1) {
 		ret=poll(pollfds, 2, 1000);
 		if (ret == -1 && errno == EINTR) {
@@ -252,16 +258,25 @@ int run(char *storefile)
 		if (!(pollfds[0].revents & POLLIN))
 			continue;
 		
-		ret=read(ctlfd, &message, sizeof(message));
-		if (ret != sizeof(message)) {
-			printf("read() returned %d, expected %d\n", ret,
-						sizeof(message));
+		count=read(ctlfd, &message_in, sizeof(message_in));
+		if (count < 0 || (count % sizeof(message_in[0]))) {
+			printf("read() returned %d, message size %d\n", ret,
+						sizeof(message_in[0]));
 			continue;
 		}
-		if (handle_message(&chunks[message.chunk], &message,
-					setup.hash_len)) {
-			if (write(ctlfd, &message, sizeof(message)) !=
-						sizeof(message))
+		count /= sizeof(message_in[0]);
+		printf("Read %d\n", count);
+		for (in=0, out=0; in<count; in++) {
+			if (handle_message(&chunks[message_in[in].chunk],
+						&message_in[in],
+						&message_out[out],
+						setup.hash_len))
+				out++;
+		}
+		if (out) {
+			printf("Write %d\n", out);
+			out *= sizeof(message_out[0]);
+			if (write(ctlfd, &message_out, out) != out)
 				printf("Error on write\n");
 		}
 	}
