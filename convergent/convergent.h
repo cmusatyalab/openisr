@@ -226,6 +226,7 @@ void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 int reserve_chunks(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);
+ssize_t print_states(struct convergent_dev *dev, char *buf, int len);
 
 /* transform.c */
 int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,

@@ -26,6 +26,7 @@ enum cd_state {
 	ST_DIRTY_META,       /* Metadata is dirty */
 	ST_STORE_META,       /* Storing metadata */
 	ST_ERROR,            /* I/O error occurred; data not valid */
+	NR_STATES
 };
 
 struct chunkdata {
@@ -51,6 +52,7 @@ struct chunkdata {
 struct chunkdata_table {
 	struct convergent_dev *dev;
 	unsigned buckets;
+	unsigned state_count[NR_STATES];
 	struct list_head lru;
 	struct list_head user;
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
@@ -110,6 +112,8 @@ static void __transition(struct chunkdata *cd, enum cd_state new_state)
 		user_put(cd->table->dev);
 	if (!busy[0] && busy[1])
 		user_get(cd->table->dev);
+	cd->table->state_count[cd->state]--;
+	cd->table->state_count[new_state]++;
 	cd->state=new_state;
 }
 
@@ -608,7 +612,6 @@ void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 	__end_usermsg(cd);
 }
 
-/* XXX need to make sure everything is eventually written back */
 static void run_chunk(struct chunkdata *cd)
 {
 	struct convergent_io_chunk *chunk;
@@ -686,6 +689,9 @@ again:
 		/* I/O error occurred; data not valid */
 		if (chunk != NULL)
 			try_start_io(chunk->parent);
+		break;
+	case NR_STATES:
+		BUG();
 	}
 }
 
@@ -749,6 +755,19 @@ struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
 	return cd->sg;
 }
 
+ssize_t print_states(struct convergent_dev *dev, char *buf, int len)
+{
+	int i;
+	int count=0;
+	
+	for (i=0; i<NR_STATES; i++) {
+		count += snprintf(buf+count, len-count, "%s%u", i ? " " : "",
+					dev->chunkdata->state_count[i]);
+	}
+	count += snprintf(buf+count, PAGE_SIZE, "\n");
+	return count;
+}
+
 void chunkdata_free_table(struct convergent_dev *dev)
 {
 	struct chunkdata_table *table=dev->chunkdata;
@@ -762,7 +781,6 @@ void chunkdata_free_table(struct convergent_dev *dev)
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
 		/* XXX flags check */
 		BUG_ON(!list_empty(&cd->pending));
-		/* XXX dirty writeouts */
 		/* Wait for the tasklet to finish if it hasn't already */
 		/* XXX necessary? */
 		tasklet_disable(&cd->callback);
@@ -781,7 +799,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 	unsigned buckets=dev->cachesize;  /* XXX is this reasonable? */
 	int i;
 	
-	table=kmalloc(sizeof(*table) + buckets * sizeof(table->hash[0]),
+	table=kzalloc(sizeof(*table) + buckets * sizeof(table->hash[0]),
 				GFP_KERNEL);
 	if (table == NULL)
 		return -ENOMEM;
@@ -797,7 +815,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		/* We don't use a lookaside cache for struct cachedata because
 		   they don't come and go; we pre-allocate and then they sit
 		   around. */
-		cd=kmalloc(sizeof(*cd) + chunk_pages(dev) * sizeof(cd->sg[0]),
+		cd=kzalloc(sizeof(*cd) + chunk_pages(dev) * sizeof(cd->sg[0]),
 					GFP_KERNEL);
 		if (cd == NULL)
 			return -ENOMEM;
@@ -815,6 +833,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 					(unsigned long)cd);
 		list_add(&cd->lh_lru, &table->lru);
 	}
+	table->state_count[ST_INVALID]=dev->cachesize;
 	/* chunkdata holds a reference to dev, since it would be bad for
 	   dev to disappear out from under us while we're still processing
 	   tasklets and endio callbacks.  This reference is released by

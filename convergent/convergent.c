@@ -367,7 +367,7 @@ static ssize_t attr_show_version(struct class *c, char *buf)
 {
 	if (c != &class)
 		return -EINVAL;
-	return sprintf(buf, "%u\n", ISR_INTERFACE_VERSION);
+	return snprintf(buf, PAGE_SIZE, "%u\n", ISR_INTERFACE_VERSION);
 }
 
 static struct class_attribute class_attrs[] = {
@@ -378,11 +378,18 @@ static struct class_attribute class_attrs[] = {
 static ssize_t attr_show_chunksize(struct class_device *class_dev, char *buf)
 {
 	struct convergent_dev *dev=class_get_devdata(class_dev);
-	return sprintf(buf, "%u\n", dev->chunksize);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->chunksize);
+}
+
+static ssize_t attr_show_states(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return print_states(dev, buf, PAGE_SIZE);
 }
 
 static struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(chunksize, S_IRUGO, attr_show_chunksize, NULL),
+	__ATTR(states, S_IRUGO, attr_show_states, NULL),
 	__ATTR_NULL
 };
 

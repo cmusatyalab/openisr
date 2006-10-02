@@ -112,7 +112,7 @@ int setup(struct params *params, char *storefile)
 	chunk.compression=ISR_COMPRESS_NONE;
 	fprintf(stderr, "Initializing %llu chunks", params->chunks);
 	for (tmp=0; tmp<params->chunks; tmp++) {
-		if (!(tmp % 1000))
+		if (!(tmp % (params->chunks / 20)))
 			fprintf(stderr, ".");
 		if (write(chunkfd, crypted, params->chunksize)
 					!= (int)params->chunksize) {
