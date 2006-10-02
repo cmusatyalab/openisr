@@ -187,7 +187,7 @@ static inline unsigned io_chunks(struct convergent_io *io)
 	return io->last_chunk - io->first_chunk + 1;
 }
 
-/* convergent.c */
+/* init.c */
 extern int blk_major;
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
@@ -196,6 +196,13 @@ struct convergent_dev *convergent_dev_get(struct convergent_dev *dev);
 void convergent_dev_put(struct convergent_dev *dev, int unlink);
 void user_get(struct convergent_dev *dev);
 void user_put(struct convergent_dev *dev);
+
+/* request.c */
+int request_start(void);
+void request_shutdown(void);
+void cleaner_start(struct convergent_dev *dev);
+void cleaner_stop(struct convergent_dev *dev);
+void convergent_request(request_queue_t *q);
 
 /* chardev.c */
 int chardev_start(void);
