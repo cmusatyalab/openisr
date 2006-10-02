@@ -49,6 +49,8 @@ struct convergent_dev {
 	void *zlib_inflate;
 	
 	struct chunkdata_table *chunkdata;
+	/* Count of activities that need the userspace process to be there */
+	unsigned need_user;
 	wait_queue_head_t waiting_users;
 	
 	/* XXX make this a global object?  we'd need a list of devs */
@@ -192,6 +194,8 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 			cipher_t cipher, hash_t hash, compress_t compress);
 struct convergent_dev *convergent_dev_get(struct convergent_dev *dev);
 void convergent_dev_put(struct convergent_dev *dev, int unlink);
+void user_get(struct convergent_dev *dev);
+void user_put(struct convergent_dev *dev);
 
 /* chardev.c */
 int chardev_start(void);
@@ -209,7 +213,6 @@ int chunkdata_start(void);
 void chunkdata_shutdown(void);
 int chunkdata_alloc_table(struct convergent_dev *dev);
 void chunkdata_free_table(struct convergent_dev *dev);
-int chunkdata_is_busy(struct convergent_dev *dev);
 int have_usermsg(struct convergent_dev *dev);
 struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type);
 void fail_usermsg(struct chunkdata *cd);

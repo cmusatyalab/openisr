@@ -51,8 +51,6 @@ struct chunkdata {
 struct chunkdata_table {
 	struct convergent_dev *dev;
 	unsigned buckets;
-	unsigned pending_count;  /* number of chunk_ios pending */
-	unsigned busy_count;     /* number of chunks not INVALID/CLEAN/ERROR */
 	struct list_head lru;
 	struct list_head user;
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
@@ -109,9 +107,9 @@ static void __transition(struct chunkdata *cd, enum cd_state new_state)
 		}
 	}
 	if (busy[0] && !busy[1])
-		cd->table->busy_count--;
+		user_put(cd->table->dev);
 	if (!busy[0] && busy[1])
-		cd->table->busy_count++;
+		user_get(cd->table->dev);
 	cd->state=new_state;
 }
 
@@ -707,7 +705,7 @@ int reserve_chunks(struct convergent_io *io)
 		if (cd == NULL)
 			goto bad;
 		list_add_tail(&chunk->lh_pending, &cd->pending);
-		dev->chunkdata->pending_count++;
+		user_get(dev);
 	}
 	for (i=0; i<io_chunks(io); i++) {
 		cur=io->first_chunk + i;
@@ -721,7 +719,7 @@ bad:
 	while (--i >= 0) {
 		chunk=&io->chunks[i];
 		list_del_init(&chunk->lh_pending);
-		dev->chunkdata->pending_count--;
+		user_put(dev);
 	}
 	/* XXX this isn't strictly nomem */
 	return -ENOMEM;
@@ -736,7 +734,7 @@ void unreserve_chunk(struct convergent_io_chunk *chunk)
 	cd=chunkdata_get(dev->chunkdata, chunk->chunk);
 	BUG_ON(!pending_head_is(cd, chunk));
 	list_del_init(&chunk->lh_pending);
-	dev->chunkdata->pending_count--;
+	user_put(dev);
 	run_chunk(cd);
 }
 
@@ -749,12 +747,6 @@ struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
 	cd=chunkdata_get(dev->chunkdata, chunk->chunk);
 	BUG_ON(cd == NULL || !pending_head_is(cd, chunk));
 	return cd->sg;
-}
-
-int chunkdata_is_busy(struct convergent_dev *dev)
-{
-	BUG_ON(!spin_is_locked(&dev->lock));
-	return (dev->chunkdata->pending_count || dev->chunkdata->busy_count);
 }
 
 void chunkdata_free_table(struct convergent_dev *dev)
@@ -794,8 +786,6 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 	if (table == NULL)
 		return -ENOMEM;
 	table->buckets=buckets;
-	table->pending_count=0;
-	table->busy_count=0;
 	INIT_LIST_HEAD(&table->lru);
 	INIT_LIST_HEAD(&table->user);
 	for (i=0; i<buckets; i++)

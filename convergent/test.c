@@ -207,9 +207,15 @@ int run(char *storefile)
 		} else if (ret == 0) {
 			continue;
 		}
-		if (pollfds[1].revents)
-			break;
-		if (!pollfds[0].revents)
+		if (pollfds[1].revents) {
+			pollfds[1].events=0;
+			pollfds[0].events |= POLLPRI;
+			printf("Shutdown requested\n");
+		}
+		if (pollfds[0].revents & POLLPRI)
+			if (!ioctl(ctlfd, ISR_UNREGISTER))
+				break;
+		if (!(pollfds[0].revents & POLLIN))
 			continue;
 		
 		ret=read(ctlfd, &message, sizeof(message));

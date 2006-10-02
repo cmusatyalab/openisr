@@ -6,14 +6,20 @@
 #include <linux/miscdevice.h>
 #include "convergent.h"
 
-static void shutdown_dev(struct convergent_dev *dev)
+static int shutdown_dev(struct convergent_dev *dev, int force)
 {
 	spin_lock_bh(&dev->lock);
+	if (!force && dev->need_user != 0) {
+		spin_unlock_bh(&dev->lock);
+		return -EBUSY;
+	}
+	debug("Shutting down chardev");
 	dev->flags |= DEV_SHUTDOWN;
 	shutdown_usermsg(dev);
 	blk_start_queue(dev->queue);
 	spin_unlock_bh(&dev->lock);
 	convergent_dev_put(dev, 1);
+	return 0;
 }
 
 static int chr_open(struct inode *ino, struct file *filp)
@@ -27,7 +33,7 @@ static int chr_release(struct inode *ino, struct file *filp)
 	struct convergent_dev *dev=filp->private_data;
 	
 	if (dev != NULL)
-		shutdown_dev(dev);
+		shutdown_dev(dev, 1);
 	return 0;
 }
 
@@ -146,6 +152,7 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 {
 	struct convergent_dev *dev=filp->private_data;
 	struct isr_setup setup;
+	int ret;
 	
 	switch (cmd) {
 	case ISR_REGISTER:
@@ -178,8 +185,10 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		if (dev == NULL)
 			return -ENXIO;
 		
-		shutdown_dev(dev);
-		
+		ret=shutdown_dev(dev, 0);
+		if (ret)
+			return ret;
+		filp->private_data=NULL;
 		break;
 	default:
 		return -ENOTTY;
@@ -198,6 +207,8 @@ static unsigned chr_poll(struct file *filp, poll_table *wait)
 	spin_lock_bh(&dev->lock);
 	if (have_usermsg(dev))
 		mask |= POLLIN | POLLRDNORM;
+	if (dev->need_user == 0)
+		mask |= POLLPRI;
 	spin_unlock_bh(&dev->lock);
 	return mask;
 }

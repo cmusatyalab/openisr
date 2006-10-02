@@ -135,6 +135,21 @@ void convergent_dev_put(struct convergent_dev *dev, int unlink)
 	}
 }
 
+void user_get(struct convergent_dev *dev)
+{
+	BUG_ON(!spin_is_locked(&dev->lock));
+	dev->need_user++;
+	ndebug("need_user now %u", dev->need_user);
+}
+
+void user_put(struct convergent_dev *dev)
+{
+	BUG_ON(!spin_is_locked(&dev->lock));
+	if (!--dev->need_user)
+		wake_up_interruptible(&dev->waiting_users);
+	ndebug("need_user now %u", dev->need_user);
+}
+
 static void io_cleaner(unsigned long data)
 {
 	struct convergent_dev *dev=(void*)data;
@@ -157,7 +172,7 @@ static void io_cleaner(unsigned long data)
 		queue_start(dev);
 	}
 	if ((dev->flags & DEV_SHUTDOWN) && !(dev->flags & DEV_CD_SHUTDOWN) &&
-				!chunkdata_is_busy(dev)) {
+				!dev->need_user) {
 		dev->flags |= DEV_CD_SHUTDOWN;
 		/* Must not release ref with the lock held */
 		need_release_ref=1;
@@ -378,17 +393,25 @@ static int convergent_open(struct inode *ino, struct file *filp)
 	dev=convergent_dev_get(ino->i_bdev->bd_disk->private_data);
 	if (dev == NULL)
 		return -ENODEV;
+	spin_lock_bh(&dev->lock);
 	if (dev->flags & DEV_SHUTDOWN) {
+		spin_unlock_bh(&dev->lock);
 		convergent_dev_put(dev, 0);
 		return -ENODEV;
+	} else {
+		user_get(dev);
+		spin_unlock_bh(&dev->lock);
+		return 0;
 	}
-	return 0;
 }
 
 static int convergent_release(struct inode *ino, struct file *filp)
 {
 	struct convergent_dev *dev=ino->i_bdev->bd_disk->private_data;
 	
+	spin_lock_bh(&dev->lock);
+	user_put(dev);
+	spin_unlock_bh(&dev->lock);
 	convergent_dev_put(dev, 0);
 	return 0;
 }
