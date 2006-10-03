@@ -39,6 +39,12 @@
 #ifndef LZF_H
 #define LZF_H
 
+#include <asm/types.h>
+
+/* Use a small hash table for greater speed */
+#define LZF_HLOG 13
+typedef const u8 *LZF_STATE[1 << (LZF_HLOG)];
+
 /***********************************************************************
 **
 **	lzf -- an extremely fast/free compression/decompression-method
@@ -47,8 +53,6 @@
 **	This algorithm is believed to be patent-free.
 **
 ***********************************************************************/
-
-#define LZF_VERSION 0x0105 /* 1.5 */
 
 /*
  * Compress in_len bytes stored at the memory block starting at
@@ -69,14 +73,11 @@
  *
  * The buffers must not be overlapping.
  *
- * If the option LZF_STATE_ARG is enabled, an extra argument must be
- * supplied which is not reflected in this header file. Refer to lzfP.h
- * and lzf_c.c.
- *
  */
 unsigned int 
 lzf_compress (const void *const in_data,  unsigned int in_len,
-              void             *out_data, unsigned int out_len);
+              void             *out_data, unsigned int out_len,
+              LZF_STATE        *htab);
 
 /*
  * Decompress data compressed with some version of the lzf_compress

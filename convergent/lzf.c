@@ -36,16 +36,24 @@
  * of this file under either the BSD or the GPL.
  */
 
-#include "lzfP.h"
+#include <asm/types.h>
+#include <linux/string.h>
+#include "lzf.h"
+
+/* From lzf.h */
+#define HLOG LZF_HLOG
+/* Attempt to be platform-independent */
+#define STRICT_ALIGN 1
+/* We need this in order to be deterministic */
+#define INIT_HTAB 1
+#define ULTRA_FAST 1
+#define USE_MEMCPY 1
+#define LZF_STATE_ARG 1
+#define CHECK_INPUT 1
 
 #define HSIZE (1 << (HLOG))
 
-#if AVOID_ERRNO
-# define SET_ERRNO(n)
-#else
-# include <errno.h>
-# define SET_ERRNO(n) errno = (n)
-#endif
+#define SET_ERRNO(n)
 
 /*
  * don't play with this unless you benchmark!
@@ -53,11 +61,9 @@
  * the hashing function might seem strange, just believe me
  * it works ;)
  */
-#ifndef FRST
-# define FRST(p) (((p[0]) << 8) | p[1])
-# define NEXT(v,p) (((v) << 8) | p[2])
-# define IDX(h) ((((h ^ (h << 5)) >> (3*8 - HLOG)) - h*5) & (HSIZE - 1))
-#endif
+#define FRST(p) (((p[0]) << 8) | p[1])
+#define NEXT(v,p) (((v) << 8) | p[2])
+#define IDX(h) ((((h ^ (h << 5)) >> (3*8 - HLOG)) - h*5) & (HSIZE - 1))
 /*
  * IDX works because it is very similar to a multiplicative hash, e.g.
  * ((h * 57321 >> (3*8 - HLOG)) & (HSIZE - 1))
@@ -66,13 +72,6 @@
  * the next one is also quite good, albeit slow ;)
  * (int)(cos(h & 0xffffff) * 1e6)
  */
-
-#if 0
-/* original lzv-like hash function, much worse and thus slower */
-# define FRST(p) (p[0] << 5) ^ p[1]
-# define NEXT(v,p) ((v) << 5) ^ p[2]
-# define IDX(h) ((h) & (HSIZE - 1))
-#endif
 
 #define        MAX_LIT        (1 <<  5)
 #define        MAX_OFF        (1 << 13)
