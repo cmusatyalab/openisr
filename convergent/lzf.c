@@ -36,7 +36,8 @@
  * of this file under either the BSD or the GPL.
  */
 
-#include <asm/types.h>
+#include <linux/types.h>
+#include <linux/errno.h>
 #include <linux/string.h>
 #include "lzf.h"
 
@@ -46,6 +47,7 @@
 #define STRICT_ALIGN 1
 /* We need this in order to be deterministic */
 #define INIT_HTAB 1
+#define VERY_FAST 1
 #define ULTRA_FAST 1
 #define USE_MEMCPY 1
 #define LZF_STATE_ARG 1
@@ -88,7 +90,7 @@ unsigned int
 lzf_compress (const void *const in_data, unsigned int in_len,
 	      void *out_data, unsigned int out_len
 #if LZF_STATE_ARG
-              , LZF_STATE *htab
+              , LZF_STATE htab
 #endif
               )
 {

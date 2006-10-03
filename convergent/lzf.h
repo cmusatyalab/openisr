@@ -79,7 +79,7 @@ typedef const u8 *LZF_STATE[1 << (LZF_HLOG)];
 unsigned int 
 lzf_compress (const void *const in_data,  unsigned int in_len,
               void             *out_data, unsigned int out_len,
-              LZF_STATE        *htab);
+              LZF_STATE        htab);
 
 /*
  * Decompress data compressed with some version of the lzf_compress
