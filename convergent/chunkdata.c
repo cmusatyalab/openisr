@@ -43,7 +43,7 @@ struct chunkdata {
 	struct tasklet_struct callback;
 	unsigned flags;
 	enum cd_state state;
-	char key[MAX_HASH_LEN];
+	char key[ISR_MAX_HASH_LEN];
 	/* XXX hack that lets us not manage yet another allocation */
 	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
 	struct scatterlist sg[0];
@@ -309,7 +309,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 {
 	struct convergent_dev *dev=cd->table->dev;
 	int ret;
-	char hash[MAX_HASH_LEN];
+	char hash[ISR_MAX_HASH_LEN];
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	if (type == READ) {

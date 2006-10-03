@@ -17,8 +17,8 @@
 #define MESSAGE_BATCH 64
 
 struct params {
-	char control_device[MAX_DEVICE_LEN];
-	char chunk_device[MAX_DEVICE_LEN];
+	char control_device[ISR_MAX_DEVICE_LEN];
+	char chunk_device[ISR_MAX_DEVICE_LEN];
 	unsigned chunksize;
 	unsigned cachesize;
 	unsigned long long offset;
@@ -26,7 +26,7 @@ struct params {
 };
 
 struct chunk {
-	char key[MAX_HASH_LEN];
+	char key[ISR_MAX_HASH_LEN];
 	unsigned length;
 	unsigned compression;
 };
@@ -194,7 +194,7 @@ int run(char *storefile)
 		perror("Opening device");
 		return 1;
 	}
-	memcpy(setup.chunk_device, params.chunk_device, MAX_DEVICE_LEN);
+	memcpy(setup.chunk_device, params.chunk_device, ISR_MAX_DEVICE_LEN);
 	setup.chunksize=params.chunksize;
 	setup.cachesize=params.cachesize;
 	setup.offset=params.offset;
@@ -203,7 +203,7 @@ int run(char *storefile)
 	setup.compress_default=ISR_COMPRESS_LZF;
 	setup.compress_required=ISR_COMPRESS_NONE | ISR_COMPRESS_ZLIB |
 				ISR_COMPRESS_LZF;
-	ret=ioctl(ctlfd, ISR_REGISTER, &setup);
+	ret=ioctl(ctlfd, ISR_IOC_REGISTER, &setup);
 	if (ret) {
 		perror("Registering device");
 		return 1;
@@ -254,7 +254,7 @@ int run(char *storefile)
 			printf("Shutdown requested\n");
 		}
 		if (pollfds[0].revents & POLLPRI)
-			if (!ioctl(ctlfd, ISR_UNREGISTER))
+			if (!ioctl(ctlfd, ISR_IOC_UNREGISTER))
 				break;
 		if (!(pollfds[0].revents & POLLIN))
 			continue;
@@ -290,10 +290,12 @@ int main(int argc, char **argv)
 	struct params params;
 	
 	if (argc == 7) {
-		memset(params.control_device, 0, MAX_DEVICE_LEN);
-		memset(params.chunk_device, 0, MAX_DEVICE_LEN);
-		snprintf(params.control_device, MAX_DEVICE_LEN, "%s", argv[2]);
-		snprintf(params.chunk_device, MAX_DEVICE_LEN, "%s", argv[3]);
+		memset(params.control_device, 0, ISR_MAX_DEVICE_LEN);
+		memset(params.chunk_device, 0, ISR_MAX_DEVICE_LEN);
+		snprintf(params.control_device, ISR_MAX_DEVICE_LEN, "%s",
+					argv[2]);
+		snprintf(params.chunk_device, ISR_MAX_DEVICE_LEN, "%s",
+					argv[3]);
 		params.chunksize=atoi(argv[4]);
 		params.cachesize=atoi(argv[5]);
 		params.offset=atoi(argv[6]);

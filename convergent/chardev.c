@@ -155,13 +155,13 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 	int ret;
 	
 	switch (cmd) {
-	case ISR_REGISTER:
+	case ISR_IOC_REGISTER:
 		if (dev != NULL)
 			return -EBUSY;
 		if (copy_from_user(&setup, (void __user *)arg, sizeof(setup)))
 			return -EFAULT;
-		if (strnlen(setup.chunk_device, MAX_DEVICE_LEN)
-					== MAX_DEVICE_LEN)
+		if (strnlen(setup.chunk_device, ISR_MAX_DEVICE_LEN)
+					== ISR_MAX_DEVICE_LEN)
 			return -EINVAL;
 		dev=convergent_dev_ctr(setup.chunk_device, setup.chunksize,
 					setup.cachesize,
@@ -178,7 +178,7 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 			BUG();
 		filp->private_data=dev;
 		break;
-	case ISR_UNREGISTER:
+	case ISR_IOC_UNREGISTER:
 		/* XXX should error out if there are other users, which means
 		   read should return if the device is closed while sleeping,
 		   which is strange */
@@ -222,7 +222,7 @@ static struct file_operations convergent_char_ops = {
 	.llseek =		no_llseek,
 	.poll =			chr_poll,
 	.unlocked_ioctl =	chr_ioctl,
-	.compat_ioctl =		NULL,  /* XXX */
+	.compat_ioctl =		chr_ioctl,
 	/* XXX AIO? */
 };
 
