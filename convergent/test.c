@@ -82,6 +82,10 @@ int setup(struct params *params, char *storefile)
 		perror("Getting chunk device size");
 		return 1;
 	}
+	if (params->offset * 512 >= tmp) {
+		printf("Offset beyond end of device\n");
+		return 1;
+	}
 	params->chunks = ((tmp - (params->offset * 512)) &
 				~((unsigned long long)params->chunksize - 1))
 				/ params->chunksize;

@@ -26,7 +26,7 @@ struct isr_setup {
 	cipher_t cipher;                      /* to kernel */
 	hash_t hash;                          /* to kernel */
 	compress_t compress_default;          /* to kernel */
-	compress_t compress_required;         /* to kernel */  /* XXX not checked */
+	compress_t compress_required;         /* to kernel */
 	__u64 chunks;                         /* to user */
 	__u32 major;                          /* to user */
 	__u32 first_minor;                    /* to user */

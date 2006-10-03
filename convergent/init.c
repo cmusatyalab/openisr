@@ -27,6 +27,9 @@ struct convergent_dev *convergent_dev_get(struct convergent_dev *dev)
    MUST NOT be held. */
 void convergent_dev_put(struct convergent_dev *dev, int unlink)
 {
+	ndebug("dev_put, refs %d, unlink %d",
+			atomic_read(&dev->class_dev->kobj.kref.refcount),
+			unlink);
 	if (unlink) {
 		BUG_ON(in_atomic());
 		class_device_unregister(dev->class_dev);
@@ -148,8 +151,14 @@ static void convergent_dev_dtr(struct class_device *class_dev)
 	
 	debug("Dtr called");
 	/* XXX racy? */
-	if (dev->gendisk)
-		del_gendisk(dev->gendisk);
+	if (dev->gendisk) {
+		if (dev->gendisk->flags & GENHD_FL_UP) {
+			del_gendisk(dev->gendisk);
+		} else {
+			/* Disk was created but not yet added */
+			put_disk(dev->gendisk);
+		}
+	}
 	chunkdata_free_table(dev);
 	cleaner_stop(dev);
 	transform_free(dev);
@@ -248,6 +257,20 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		dev->chunk_bdev=NULL;
 		goto bad;
 	}
+	/* This is how the BLKGETSIZE64 ioctl is implemented, but
+	   bd_inode is labeled "will die" in fs.h */
+	capacity=dev->chunk_bdev->bd_inode->i_size / 512;
+	if (capacity <= offset) {
+		log(KERN_ERR, "specified offset is >= disk capacity");
+		ret=-EINVAL;
+		goto bad;
+	}
+	/* Make sure the capacity, after offset adjustment, is a multiple
+	   of the chunksize */
+	capacity=(capacity - offset) & ~(loff_t)(chunk_sectors(dev) - 1);
+	debug("Chunk partition capacity: " SECTOR_FORMAT " MB", capacity >> 11);
+	dev->chunks=chunk_of(dev, capacity);
+	
 	ndebug("Allocating queue");
 	dev->queue=blk_init_queue(convergent_request, &dev->lock);
 	if (dev->queue == NULL) {
@@ -292,7 +315,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	if (dev->gendisk == NULL) {
 		log(KERN_ERR, "couldn't allocate gendisk");
 		ret=-ENOMEM;
-		goto bad;
+		goto bad_put_chunkdata;
 	}
 	dev->gendisk->major=blk_major;
 	dev->gendisk->first_minor=devnum*MINORS_PER_DEVICE;
@@ -300,16 +323,8 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	sprintf(dev->gendisk->disk_name, "%s", dev->class_dev->class_id);
 	dev->gendisk->fops=&convergent_ops;
 	dev->gendisk->queue=dev->queue;
-	/* Make sure the capacity, after offset adjustment, is a multiple
-	   of the chunksize */
-	/* This is how the BLKGETSIZE64 ioctl is implemented, but
-	   bd_inode is labeled "will die" in fs.h */
-	capacity=((dev->chunk_bdev->bd_inode->i_size / 512) - offset)
-				& ~(loff_t)(chunk_sectors(dev) - 1);
-	debug("Chunk partition capacity: " SECTOR_FORMAT " MB", capacity >> 11);
-	set_capacity(dev->gendisk, capacity);
-	dev->chunks=chunk_of(dev, capacity);
 	dev->gendisk->private_data=dev;
+	set_capacity(dev->gendisk, capacity);
 	ndebug("Adding disk");
 	/* add_disk() initiates I/O to read the partition tables, so userspace
 	   needs to be able to process key requests while it is running.
@@ -317,10 +332,15 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	ret=delayed_add_disk(dev);
 	if (ret) {
 		log(KERN_ERR, "couldn't schedule gendisk registration");
-		goto bad;
+		goto bad_put_chunkdata;
 	}
 	
 	return dev;
+	
+bad_put_chunkdata:
+	/* Once chunkdata has been started, there's an extra reference to
+	   the dev that needs to be released or it won't be freed. */
+	convergent_dev_put(dev, 0);
 bad:
 	convergent_dev_put(dev, 1);
 	return ERR_PTR(ret);
