@@ -135,7 +135,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 				err=-EINVAL;
 				goto out;
 			}
-			if (!compression_type_ok(msg.compression)) {
+			if (!compression_type_ok(dev, msg.compression)) {
 				err=-EINVAL;
 				goto out;
 			}
@@ -176,7 +176,8 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		dev=convergent_dev_ctr(setup.chunk_device, setup.chunksize,
 					setup.cachesize,
 					(sector_t)setup.offset, setup.cipher,
-					setup.hash, setup.compress_default);
+					setup.hash, setup.compress_default,
+					setup.compress_required);
 		if (IS_ERR(dev))
 			return PTR_ERR(dev);
 		setup.major=blk_major;

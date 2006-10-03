@@ -269,20 +269,23 @@ int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
 	return 0;
 }
 
-int compression_type_ok(compress_t compress)
+int compression_type_ok(struct convergent_dev *dev, compress_t compress)
 {
-	switch (compress) {
-	case ISR_COMPRESS_NONE:
-	case ISR_COMPRESS_ZLIB:
-	case ISR_COMPRESS_LZF:
-		return 1;
-	default:
+	/* Make sure only one bit is set */
+	if (compress & (compress - 1))
 		return 0;
-	}
+	/* Make sure we have been configured to accept the bit */
+	if (!(compress & dev->supported_compression))
+		return 0;
+	return 1;
 }
 
+#define SUPPORTED_COMPRESSION  (ISR_COMPRESS_NONE | \
+				ISR_COMPRESS_ZLIB | \
+				ISR_COMPRESS_LZF)
 int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
-			compress_t compress)
+			compress_t default_compress,
+			compress_t supported_compress)
 {
 	char *cipher_name;
 	unsigned cipher_mode;
@@ -294,6 +297,7 @@ int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
 		cipher_mode=CRYPTO_TFM_MODE_CBC;
 		break;
 	default:
+		log(KERN_ERR, "Unsupported cipher requested");
 		return -EINVAL;
 	}
 	
@@ -302,11 +306,22 @@ int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
 		hash_name="sha1";
 		break;
 	default:
+		log(KERN_ERR, "Unsupported hash requested");
 		return -EINVAL;
 	}
 	
-	if (!compression_type_ok(compress))
+	if ((supported_compress & SUPPORTED_COMPRESSION)
+				!= supported_compress) {
+		log(KERN_ERR, "Unsupported compression algorithm requested");
 		return -EINVAL;
+	}
+	dev->supported_compression=supported_compress;
+	if (!compression_type_ok(dev, default_compress)) {
+		log(KERN_ERR, "Requested invalid default compression "
+					"algorithm");
+		return -EINVAL;
+	}
+	dev->default_compression=default_compress;
 	
 	dev->cipher=crypto_alloc_tfm(cipher_name, cipher_mode);
 	dev->hash=crypto_alloc_tfm(hash_name, 0);
@@ -314,21 +329,31 @@ int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
 		return -EINVAL;
 	dev->cipher_block=crypto_tfm_alg_blocksize(dev->cipher);
 	dev->hash_len=crypto_tfm_alg_digestsize(dev->hash);
-	dev->compression=compress;
 	
-	/* XXX this is not ideal, but there's no good way to support
-	   scatterlists in LZF without hacking the code. */
-	dev->buf_compressed=vmalloc(dev->chunksize);
-	dev->buf_uncompressed=vmalloc(dev->chunksize);
-	/* The deflate workspace size is too large for kmalloc */
-	dev->zlib_deflate=vmalloc(zlib_deflate_workspacesize());
-	dev->zlib_inflate=kmalloc(zlib_inflate_workspacesize(), GFP_KERNEL);
-	dev->lzf_compress=kmalloc(sizeof(LZF_STATE), GFP_KERNEL);
-	if (dev->buf_compressed == NULL || dev->buf_uncompressed == NULL ||
-				dev->zlib_deflate == NULL ||
-				dev->zlib_inflate == NULL ||
-				dev->lzf_compress == NULL)
-		return -ENOMEM;
+	if (dev->supported_compression != ISR_COMPRESS_NONE) {
+		/* XXX this is not ideal, but there's no good way to support
+		   scatterlists in LZF without hacking the code. */
+		dev->buf_compressed=vmalloc(dev->chunksize);
+		dev->buf_uncompressed=vmalloc(dev->chunksize);
+		if (dev->buf_compressed == NULL ||
+					dev->buf_uncompressed == NULL)
+			return -ENOMEM;
+	}
+	
+	if (dev->supported_compression & ISR_COMPRESS_ZLIB) {
+		/* The deflate workspace size is too large for kmalloc */
+		dev->zlib_deflate=vmalloc(zlib_deflate_workspacesize());
+		dev->zlib_inflate=kmalloc(zlib_inflate_workspacesize(),
+					GFP_KERNEL);
+		if (dev->zlib_deflate == NULL || dev->zlib_inflate == NULL)
+			return -ENOMEM;
+	}
+	
+	if (dev->supported_compression & ISR_COMPRESS_LZF) {
+		dev->lzf_compress=kmalloc(sizeof(LZF_STATE), GFP_KERNEL);
+		if (dev->lzf_compress == NULL)
+			return -ENOMEM;
+	}
 	return 0;
 }
 

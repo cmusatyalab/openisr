@@ -332,7 +332,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 		/* If compression or encryption errors out, we don't try to
 		   recover the data because the cd will go into ST_ERROR state
 		   anyway and no one will be allowed to read it. */
-		ret=compress_chunk(dev, cd->sg, dev->compression);
+		ret=compress_chunk(dev, cd->sg, dev->default_compression);
 		if (ret == -EFBIG) {
 			cd->size=dev->chunksize;
 			cd->compression=ISR_COMPRESS_NONE;
@@ -340,7 +340,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 			return ret;
 		} else {
 			cd->size=ret;
-			cd->compression=dev->compression;
+			cd->compression=dev->default_compression;
 		}
 		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->chunk);

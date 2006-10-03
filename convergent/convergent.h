@@ -13,8 +13,6 @@
 #define DEVICE_NAME "openisr"
 #define SUBMIT_QUEUE "convergent-io"
 
-#define SUPPORTED_COMPRESSION (ISR_COMPRESS_NONE | ISR_COMPRESS_ZLIB)
-
 #include <linux/blkdev.h>
 #include <linux/interrupt.h>
 #include "convergent-user.h"
@@ -42,7 +40,8 @@ struct convergent_dev {
 	struct crypto_tfm *hash;
 	unsigned hash_len;
 	
-	compress_t compression;
+	compress_t default_compression;
+	compress_t supported_compression;
 	void *buf_compressed;
 	void *buf_uncompressed;
 	void *zlib_deflate;
@@ -192,7 +191,9 @@ static inline unsigned io_chunks(struct convergent_io *io)
 extern int blk_major;
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
-			cipher_t cipher, hash_t hash, compress_t compress);
+			cipher_t cipher, hash_t hash,
+			compress_t default_compress,
+			compress_t supported_compress);
 struct convergent_dev *convergent_dev_get(struct convergent_dev *dev);
 void convergent_dev_put(struct convergent_dev *dev, int unlink);
 void user_get(struct convergent_dev *dev);
@@ -238,7 +239,8 @@ ssize_t print_states(struct convergent_dev *dev, char *buf, int len);
 
 /* transform.c */
 int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
-			compress_t compress);
+			compress_t default_compress,
+			compress_t supported_compress);
 void transform_free(struct convergent_dev *dev);
 int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
 			char key[], unsigned len, int dir);
@@ -248,7 +250,7 @@ int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type);
 int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type, unsigned len);
-int compression_type_ok(compress_t compress);
+int compression_type_ok(struct convergent_dev *dev, compress_t compress);
 
 /* revision.c */
 extern char *svn_branch;

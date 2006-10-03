@@ -171,7 +171,9 @@ static struct block_device_operations convergent_ops = {
 
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
-			cipher_t cipher, hash_t hash, compress_t compress)
+			cipher_t cipher, hash_t hash,
+			compress_t default_compress,
+			compress_t supported_compress)
 {
 	struct convergent_dev *dev;
 	sector_t capacity;
@@ -273,7 +275,8 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 				chunk_sectors(dev) * (MAX_CHUNKS_PER_IO - 1));
 	
 	ndebug("Allocating transforms");
-	ret=transform_alloc(dev, cipher, hash, compress);
+	ret=transform_alloc(dev, cipher, hash, default_compress,
+				supported_compress);
 	if (ret) {
 		log(KERN_ERR, "could not configure transforms");
 		goto bad;
