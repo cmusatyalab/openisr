@@ -113,6 +113,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 	struct convergent_dev *dev=filp->private_data;
 	struct isr_message msg;
 	int i;
+	int err=0;
 	
 	ndebug("Entering chr_write");
 	if (dev == NULL)
@@ -123,26 +124,35 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 	
 	for (i=0; i<count; i++) {
 		if (copy_from_user(&msg, buf + i * sizeof(msg), sizeof(msg))) {
-			if (i > 0)
-				break;
-			else
-				return -EFAULT;
+			err=-EFAULT;
+			goto out;
 		}
 		
-		if (msg.type != ISR_MSGTYPE_SET_META) {
-			if (i > 0)
-				break;
-			else
-				return -EINVAL;
+		switch (msg.type) {
+		case ISR_MSGTYPE_SET_META:
+			if (msg.chunk >= dev->chunks ||
+						msg.length > dev->chunksize) {
+				err=-EINVAL;
+				goto out;
+			}
+			if (!compression_type_ok(msg.compression)) {
+				err=-EINVAL;
+				goto out;
+			}
+			
+			spin_lock_bh(&dev->lock);
+			set_usermsg_set_meta(dev, msg.chunk, msg.length,
+						msg.compression, msg.key);
+			spin_unlock_bh(&dev->lock);
+			break;
+		default:
+			err=-EINVAL;
+			goto out;
 		}
-		/* XXX validate structure */
-		ndebug("Setting key");
-		
-		spin_lock_bh(&dev->lock);
-		set_usermsg_set_meta(dev, msg.chunk, msg.length,
-					msg.compression, msg.key);
-		spin_unlock_bh(&dev->lock);
 	}
+out:
+	if (err && i == 0)
+		return err;
 	ndebug("Leaving chr_write: %d", i * sizeof(msg));
 	return i * sizeof(msg);
 }
@@ -179,9 +189,6 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		filp->private_data=dev;
 		break;
 	case ISR_IOC_UNREGISTER:
-		/* XXX should error out if there are other users, which means
-		   read should return if the device is closed while sleeping,
-		   which is strange */
 		if (dev == NULL)
 			return -ENXIO;
 		

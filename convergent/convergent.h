@@ -248,6 +248,7 @@ int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type);
 int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type, unsigned len);
+int compression_type_ok(compress_t compress);
 
 /* revision.c */
 extern char *svn_branch;

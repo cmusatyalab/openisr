@@ -269,6 +269,18 @@ int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
 	return 0;
 }
 
+int compression_type_ok(compress_t compress)
+{
+	switch (compress) {
+	case ISR_COMPRESS_NONE:
+	case ISR_COMPRESS_ZLIB:
+	case ISR_COMPRESS_LZF:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
 int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
 			compress_t compress)
 {
@@ -293,14 +305,9 @@ int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
 		return -EINVAL;
 	}
 	
-	switch (compress) {
-	case ISR_COMPRESS_NONE:
-	case ISR_COMPRESS_ZLIB:
-	case ISR_COMPRESS_LZF:
-		break;
-	default:
+	if (!compression_type_ok(compress))
 		return -EINVAL;
-	}
+	
 	dev->cipher=crypto_alloc_tfm(cipher_name, cipher_mode);
 	dev->hash=crypto_alloc_tfm(hash_name, 0);
 	if (dev->cipher == NULL || dev->hash == NULL)
