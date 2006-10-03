@@ -54,7 +54,7 @@
  * For best compression, use 15 or 16 (or more).
  */
 #ifndef HLOG
-# define HLOG 15
+# define HLOG 13
 #endif
 
 /*
@@ -75,14 +75,14 @@
  * possibly disable this for text data.
  */
 #ifndef ULTRA_FAST
-# define ULTRA_FAST 0
+# define ULTRA_FAST 1
 #endif
 
 /*
  * Unconditionally aligning does not cost very much, so do it if unsure
  */
 #ifndef STRICT_ALIGN
-# define STRICT_ALIGN !(defined(__i386) || defined (__amd64))
+# define STRICT_ALIGN 1
 #endif
 
 /*
@@ -90,7 +90,7 @@
  * this is usually a loss, even with glibc's optimized memcpy
  */
 #ifndef USE_MEMCPY
-# define USE_MEMCPY 0
+# define USE_MEMCPY 1
 #endif
 
 /*
@@ -98,7 +98,7 @@
  * modern cpus and large (>>64k) blocks)
  */
 #ifndef INIT_HTAB
-# define INIT_HTAB 0
+# define INIT_HTAB 1
 #endif
 
 /*
@@ -107,7 +107,7 @@
  * the documentation in lzf.h.
  */
 #ifndef AVOID_ERRNO
-# define AVOID_ERRNO 0
+# define AVOID_ERRNO 1
 #endif
 
 /*
@@ -116,7 +116,7 @@
  * NOTE: this breaks the prototype in lzf.h.
  */
 #ifndef LZF_STATE_ARG
-# define LZF_STATE_ARG 0
+# define LZF_STATE_ARG 1
 #endif
 
 /*

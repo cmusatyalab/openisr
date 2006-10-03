@@ -40,6 +40,13 @@
 
 #define HSIZE (1 << (HLOG))
 
+#if AVOID_ERRNO
+# define SET_ERRNO(n)
+#else
+# include <errno.h>
+# define SET_ERRNO(n) errno = (n)
+#endif
+
 /*
  * don't play with this unless you benchmark!
  * decompression is not dependent on the hash function
@@ -239,4 +246,97 @@ lzf_compress (const void *const in_data, unsigned int in_len,
     }
 
   return op - (u8 *) out_data;
+}
+
+unsigned int 
+lzf_decompress (const void *const in_data,  unsigned int in_len,
+                void             *out_data, unsigned int out_len)
+{
+  u8 const *ip = (const u8 *)in_data;
+  u8       *op = (u8 *)out_data;
+  u8 const *const in_end  = ip + in_len;
+  u8       *const out_end = op + out_len;
+
+  do
+    {
+      unsigned int ctrl = *ip++;
+
+      if (ctrl < (1 << 5)) /* literal run */
+        {
+          ctrl++;
+
+          if (op + ctrl > out_end)
+            {
+              SET_ERRNO (E2BIG);
+              return 0;
+            }
+
+#if CHECK_INPUT
+          if (ip + ctrl > in_end)
+            {
+              SET_ERRNO (EINVAL);
+              return 0;
+            }
+#endif
+
+#if USE_MEMCPY
+          memcpy (op, ip, ctrl);
+          op += ctrl;
+          ip += ctrl;
+#else
+          do
+            *op++ = *ip++;
+          while (--ctrl);
+#endif
+        }
+      else /* back reference */
+        {
+          unsigned int len = ctrl >> 5;
+
+          u8 *ref = op - ((ctrl & 0x1f) << 8) - 1;
+
+#if CHECK_INPUT
+          if (ip >= in_end)
+            {
+              SET_ERRNO (EINVAL);
+              return 0;
+            }
+#endif
+          if (len == 7)
+            {
+              len += *ip++;
+#if CHECK_INPUT
+              if (ip >= in_end)
+                {
+                  SET_ERRNO (EINVAL);
+                  return 0;
+                }
+#endif
+            }
+
+          ref -= *ip++;
+
+          if (op + len + 2 > out_end)
+            {
+              SET_ERRNO (E2BIG);
+              return 0;
+            }
+
+          if (ref < (u8 *)out_data)
+            {
+              SET_ERRNO (EINVAL);
+              return 0;
+            }
+
+          *op++ = *ref++;
+          *op++ = *ref++;
+
+          do
+            *op++ = *ref++;
+          while (--len);
+        }
+    }
+  while (ip < in_end);
+
+  return op - (u8 *)out_data;
 }
