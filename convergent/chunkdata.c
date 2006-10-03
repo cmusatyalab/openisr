@@ -366,7 +366,11 @@ static void chunkdata_complete_io(unsigned long data)
 	/* XXX we have a bit of a problem: we encrypt in-place.  so if we
 	   just did write-back, we need to decrypt again to keep the data
 	   clean. */
-	if (!error)
+	if (error)
+		log(KERN_ERR, "I/O error %s chunk " SECTOR_FORMAT,
+					cd->state == ST_LOAD_DATA ?
+					"reading" : "writing", cd->chunk);
+	else
 		if (chunk_tfm(cd, READ))
 			error=-EIO;
 	

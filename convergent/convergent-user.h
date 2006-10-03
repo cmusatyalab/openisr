@@ -37,6 +37,7 @@ struct isr_setup {
 #define ISR_HASH_SHA1            ((hash_t)    0x0001)
 #define ISR_COMPRESS_NONE        ((compress_t)0x0001)
 #define ISR_COMPRESS_ZLIB        ((compress_t)0x0002)
+#define ISR_COMPRESS_LZF         ((compress_t)0x0004)
 
 struct isr_message {
 	msgtype_t type;

@@ -47,6 +47,7 @@ struct convergent_dev {
 	void *buf_uncompressed;
 	void *zlib_deflate;
 	void *zlib_inflate;
+	void *lzf_compress;
 	
 	struct chunkdata_table *chunkdata;
 	/* Count of activities that need the userspace process to be there */

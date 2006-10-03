@@ -3,6 +3,7 @@
 #include <linux/crypto.h>
 #include <linux/zlib.h>
 #include "convergent.h"
+#include "lzf.h"
 
 /* XXX this needs to go away. */
 /* XXX race between user and softirq kmaps? */
@@ -59,9 +60,11 @@ static int crypto_unpad(struct convergent_dev *dev, void *buf, int len)
 	return len - padlen;
 }
 
+/* XXX consolidate duplicate code between this and lzf? */
 /* XXX this should be converted to use scatterlists rather than a vmalloc
    buffer */
-static int compress_chunk_zlib(struct convergent_dev *dev, struct scatterlist *sg)
+static int compress_chunk_zlib(struct convergent_dev *dev,
+			struct scatterlist *sg)
 {
 	z_stream strm;
 	int ret;
@@ -143,6 +146,52 @@ static int decompress_chunk_zlib(struct convergent_dev *dev,
 	return 0;
 }
 
+static int compress_chunk_lzf(struct convergent_dev *dev,
+			struct scatterlist *sg)
+{
+	int size;
+	
+	BUG_ON(!spin_is_locked(&dev->lock));
+	scatterlist_transfer(dev, sg, dev->buf_uncompressed, READ);
+	size=lzf_compress(dev->buf_uncompressed, dev->chunksize,
+				dev->buf_compressed, dev->chunksize,
+				dev->lzf_compress);
+	if (size == 0) {
+		/* Compressed data larger than uncompressed data */
+		return -EFBIG;
+	}
+	size=crypto_pad(dev, dev->buf_compressed, size, dev->chunksize);
+	if (size < 0) {
+		/* We tried padding the compresstext, but that made it
+		   at least as large as chunksize */
+		return size;
+	}
+	/* We write the whole chunk out to disk, so make sure we're not
+	   leaking data. */
+	memset(dev->buf_compressed + size, 0, dev->chunksize - size);
+	scatterlist_transfer(dev, sg, dev->buf_compressed, WRITE);
+	return size;
+}
+
+static int decompress_chunk_lzf(struct convergent_dev *dev,
+			struct scatterlist *sg, unsigned len)
+{
+	int size;
+	
+	BUG_ON(!spin_is_locked(&dev->lock));
+	/* XXX don't need to transfer whole scatterlist */
+	scatterlist_transfer(dev, sg, dev->buf_compressed, READ);
+	size=crypto_unpad(dev, dev->buf_compressed, len);
+	if (size < 0)
+		return -EIO;
+	size=lzf_decompress(dev->buf_compressed, size,
+				dev->buf_uncompressed, dev->chunksize);
+	if (size != dev->chunksize)
+		return -EIO;
+	scatterlist_transfer(dev, sg, dev->buf_uncompressed, WRITE);
+	return 0;
+}
+
 /* Guaranteed to return data which is an even multiple of the crypto
    block size. */
 int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
@@ -154,6 +203,8 @@ int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 		return dev->chunksize;
 	case ISR_COMPRESS_ZLIB:
 		return compress_chunk_zlib(dev, sg);
+	case ISR_COMPRESS_LZF:
+		return compress_chunk_lzf(dev, sg);
 	default:
 		BUG();
 		return -EIO;
@@ -171,6 +222,8 @@ int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 		return 0;
 	case ISR_COMPRESS_ZLIB:
 		return decompress_chunk_zlib(dev, sg, len);
+	case ISR_COMPRESS_LZF:
+		return decompress_chunk_lzf(dev, sg, len);
 	default:
 		BUG();
 		return -EIO;
@@ -243,6 +296,7 @@ int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
 	switch (compress) {
 	case ISR_COMPRESS_NONE:
 	case ISR_COMPRESS_ZLIB:
+	case ISR_COMPRESS_LZF:
 		break;
 	default:
 		return -EINVAL;
@@ -262,15 +316,19 @@ int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
 	/* The deflate workspace size is too large for kmalloc */
 	dev->zlib_deflate=vmalloc(zlib_deflate_workspacesize());
 	dev->zlib_inflate=kmalloc(zlib_inflate_workspacesize(), GFP_KERNEL);
+	dev->lzf_compress=kmalloc(sizeof(LZF_STATE), GFP_KERNEL);
 	if (dev->buf_compressed == NULL || dev->buf_uncompressed == NULL ||
 				dev->zlib_deflate == NULL ||
-				dev->zlib_inflate == NULL)
+				dev->zlib_inflate == NULL ||
+				dev->lzf_compress == NULL)
 		return -ENOMEM;
 	return 0;
 }
 
 void transform_free(struct convergent_dev *dev)
 {
+	if (dev->lzf_compress)
+		kfree(dev->lzf_compress);
 	if (dev->zlib_inflate)
 		kfree(dev->zlib_inflate);
 	if (dev->zlib_deflate)

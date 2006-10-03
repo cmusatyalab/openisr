@@ -200,8 +200,9 @@ int run(char *storefile)
 	setup.offset=params.offset;
 	setup.cipher=ISR_CIPHER_BLOWFISH;
 	setup.hash=ISR_HASH_SHA1;
-	setup.compress_default=ISR_COMPRESS_ZLIB;
-	setup.compress_required=ISR_COMPRESS_NONE | ISR_COMPRESS_ZLIB;
+	setup.compress_default=ISR_COMPRESS_LZF;
+	setup.compress_required=ISR_COMPRESS_NONE | ISR_COMPRESS_ZLIB |
+				ISR_COMPRESS_LZF;
 	ret=ioctl(ctlfd, ISR_REGISTER, &setup);
 	if (ret) {
 		perror("Registering device");
