@@ -69,7 +69,9 @@ typedef const u8 *LZF_STATE[1 << (LZF_HLOG)];
  * even diferent runs, thus might result in different compressed strings
  * depending on the phase of the moon or similar factors. However, all
  * these strings are architecture-independent and will result in the
- * original data when decompressed using lzf_decompress.
+ * original data when decompressed using lzf_decompress.  [Marc
+ * says that setting INIT_HTAB and specifying a particular set of
+ * configuration options will make LZF deterministic. -BG]
  *
  * The buffers must not be overlapping.
  *
@@ -85,16 +87,14 @@ lzf_compress (const void *const in_data,  unsigned int in_len,
  * will be stored at out_data up to a maximum of out_len characters.
  *
  * If the output buffer is not large enough to hold the decompressed
- * data, a 0 is returned and errno is set to E2BIG. Otherwise the number
- * of decompressed bytes (i.e. the original length of the data) is
- * returned.
+ * data, -E2BIG is returned. Otherwise the number of decompressed bytes
+ * (i.e. the original length of the data) is returned.
  *
- * If an error in the compressed data is detected, a zero is returned and
- * errno is set to EINVAL.
+ * If an error in the compressed data is detected, -EINVAL is returned.
  *
  * This function is very fast, about as fast as a copying loop.
  */
-unsigned int 
+int 
 lzf_decompress (const void *const in_data,  unsigned int in_len,
                 void             *out_data, unsigned int out_len);
 
