@@ -16,6 +16,7 @@
 #include <linux/blkdev.h>
 #include <linux/interrupt.h>
 #include "convergent-user.h"
+#include "kcompat.h"
 
 typedef sector_t chunk_t;
 
