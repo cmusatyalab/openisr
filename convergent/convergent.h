@@ -17,8 +17,6 @@
 #include <linux/interrupt.h>
 #include "convergent-user.h"
 
-/* XXX convert chunk_t canonical name from chunk to cid */
-
 typedef sector_t chunk_t;
 
 struct convergent_dev {
@@ -75,7 +73,7 @@ struct convergent_io_chunk {
 	struct list_head lh_pending;
 	struct convergent_io *parent;
 	struct tasklet_struct callback;
-	chunk_t chunk;
+	chunk_t cid;
 	unsigned orig_offset;  /* byte offset into orig_sg */
 	unsigned offset;       /* byte offset into chunk */
 	unsigned len;          /* bytes */
@@ -100,8 +98,8 @@ struct convergent_io {
 	struct list_head lh_freed;
 	struct convergent_dev *dev;
 	unsigned flags;
-	chunk_t first_chunk;
-	chunk_t last_chunk;
+	chunk_t first_cid;
+	chunk_t last_cid;
 	unsigned prio;
 	struct request *orig_req;
 	struct scatterlist orig_sg[MAX_SEGS_PER_IO];
@@ -174,17 +172,16 @@ static inline chunk_t chunk_of(struct convergent_dev *dev, sector_t sect)
 }
 
 /* The sector number corresponding to the first sector of @chunk */
-static inline sector_t chunk_to_sector(struct convergent_dev *dev,
-			chunk_t chunk)
+static inline sector_t chunk_to_sector(struct convergent_dev *dev, chunk_t cid)
 {
 	unsigned shift=fls(chunk_sectors(dev)) - 1;
-	return chunk << shift;
+	return cid << shift;
 }
 
 /* The number of chunks in this io */
 static inline unsigned io_chunks(struct convergent_io *io)
 {
-	return io->last_chunk - io->first_chunk + 1;
+	return io->last_cid - io->first_cid + 1;
 }
 
 /* init.c */

@@ -146,7 +146,7 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 	BUG_ON(!spin_is_locked(&io->dev->lock));
 	
 	chunk->flags |= CHUNK_COMPLETED;
-	ndebug("Completing chunk " SECTOR_FORMAT, chunk->chunk);
+	ndebug("Completing chunk " SECTOR_FORMAT, chunk->cid);
 	
 	for (i=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
@@ -154,8 +154,7 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 			continue;
 		if (!(chunk->flags & CHUNK_COMPLETED))
 			return;
-		ndebug("end_that_request for chunk " SECTOR_FORMAT,
-					chunk->chunk);
+		ndebug("end_that_request for chunk " SECTOR_FORMAT, chunk->cid);
 		end_that_request(io->orig_req,
 					chunk->error ? chunk->error : 1,
 					chunk->len / 512);
@@ -183,14 +182,14 @@ static void convergent_process_chunk(unsigned long data)
 	/* The underlying chunk I/O might have errored out */
 	if (chunk->error) {
 		debug("process_chunk I/O error: chunk " SECTOR_FORMAT,
-					chunk->chunk);
+					chunk->cid);
 		convergent_complete_chunk(chunk);
 		spin_unlock_bh(&dev->lock);
 		return;
 	}
 	
 	ndebug("process_chunk called: chunk " SECTOR_FORMAT ", offset %u, "
-				"length %u", chunk->chunk, chunk->offset,
+				"length %u", chunk->cid, chunk->offset,
 				chunk->len);
 	
 	chunk_sg=get_scatterlist(chunk);
@@ -230,8 +229,8 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	io->dev=dev;
 	io->orig_req=req;
 	io->flags=0;
-	io->first_chunk=chunk_of(dev, req->sector);
-	io->last_chunk=chunk_of(dev, req->sector + req->nr_sectors - 1);
+	io->first_cid=chunk_of(dev, req->sector);
+	io->last_cid=chunk_of(dev, req->sector + req->nr_sectors - 1);
 	io->prio=req->ioprio;
 	if (rq_data_dir(req))
 		io->flags |= IO_WRITE;
@@ -244,7 +243,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	for (i=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
 		chunk->parent=io;
-		chunk->chunk=io->first_chunk + i;
+		chunk->cid=io->first_cid + i;
 		chunk->orig_offset=bytes;
 		if (i == 0)
 			chunk->offset=chunk_offset(dev, req->sector);

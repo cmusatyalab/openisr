@@ -34,7 +34,7 @@ struct chunkdata {
 	struct list_head lh_lru;
 	struct list_head lh_user;
 	struct chunkdata_table *table;
-	chunk_t chunk;
+	chunk_t cid;
 	unsigned size;         /* compressed size before padding */
 	compress_t compression;/* compression type */
 	struct list_head pending;
@@ -62,9 +62,9 @@ struct chunkdata_table {
 static struct bio_set *bio_pool;
 
 
-static unsigned hash(struct chunkdata_table *table, chunk_t chunk)
+static unsigned hash(struct chunkdata_table *table, chunk_t cid)
 {
-	return chunk % table->buckets;
+	return cid % table->buckets;
 }
 
 static inline struct convergent_io_chunk *pending_head(struct chunkdata *cd)
@@ -130,7 +130,7 @@ static void transition_error(struct chunkdata *cd, int error)
 }
 
 static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
-			chunk_t chunk)
+			chunk_t cid)
 {
 	struct chunkdata *cd;
 	struct chunkdata *next;
@@ -138,8 +138,8 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	BUG_ON(!spin_is_locked(&table->dev->lock));
 	
 	/* See if the chunk is in the table already */
-	list_for_each_entry(cd, &table->hash[hash(table, chunk)], lh_bucket) {
-		if (cd->chunk == chunk) {
+	list_for_each_entry(cd, &table->hash[hash(table, cid)], lh_bucket) {
+		if (cd->cid == cid) {
 			chunkdata_hit(cd);
 			return cd;
 		}
@@ -159,10 +159,9 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 		}
 
 		list_del_init(&cd->lh_bucket);
-		list_add(&cd->lh_bucket,
-				&table->hash[hash(table, chunk)]);
+		list_add(&cd->lh_bucket, &table->hash[hash(table, cid)]);
 		chunkdata_hit(cd);
-		cd->chunk=chunk;
+		cd->cid=cid;
 		cd->flags=0;
 		transition(cd, ST_INVALID);
 		return cd;
@@ -230,7 +229,7 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 		return NULL;
 
 	bio->bi_bdev=dev->chunk_bdev;
-	bio->bi_sector=chunk_to_sector(dev, cd->chunk) + dev->offset + offset;
+	bio->bi_sector=chunk_to_sector(dev, cd->cid) + dev->offset + offset;
 	ndebug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
 	bio->bi_rw=dir;
 	if (dir == READ) {
@@ -314,7 +313,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 	BUG_ON(!spin_is_locked(&dev->lock));
 	if (type == READ) {
 		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
-					cd->size, cd->chunk);
+					cd->size, cd->cid);
 		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, READ);
 		if (ret)
 			return ret;
@@ -322,7 +321,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 		crypto_hash(dev, cd->sg, cd->size, hash);
 		if (memcmp(cd->key, hash, dev->hash_len)) {
 			debug("Chunk " SECTOR_FORMAT ": Key doesn't match "
-						"decrypted data", cd->chunk);
+						"decrypted data", cd->cid);
 			return -EIO;
 		}
 		ret=decompress_chunk(dev, cd->sg, cd->compression, cd->size);
@@ -343,7 +342,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 			cd->compression=dev->default_compression;
 		}
 		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
-					cd->size, cd->chunk);
+					cd->size, cd->cid);
 		crypto_hash(dev, cd->sg, cd->size, cd->key);
 		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, WRITE);
 		if (ret)
@@ -369,7 +368,7 @@ static void chunkdata_complete_io(unsigned long data)
 	if (error)
 		log(KERN_ERR, "I/O error %s chunk " SECTOR_FORMAT,
 					cd->state == ST_LOAD_DATA ?
-					"reading" : "writing", cd->chunk);
+					"reading" : "writing", cd->cid);
 	else
 		if (chunk_tfm(cd, READ))
 			error=-EIO;
@@ -423,7 +422,7 @@ static int io_has_reservation(struct convergent_io *io)
 		if ((chunk->flags & CHUNK_DEAD) ||
 					(chunk->flags & CHUNK_STARTED))
 			continue;
-		cd=chunkdata_get(io->dev->chunkdata, chunk->chunk);
+		cd=chunkdata_get(io->dev->chunkdata, chunk->cid);
 		if (cd == NULL || !pending_head_is(cd, chunk))
 			return 0;
 	}
@@ -448,7 +447,7 @@ static void try_start_io(struct convergent_io *io)
 		if ((chunk->flags & CHUNK_DEAD) ||
 					(chunk->flags & CHUNK_STARTED))
 			continue;
-		cd=chunkdata_get(io->dev->chunkdata, chunk->chunk);
+		cd=chunkdata_get(io->dev->chunkdata, chunk->cid);
 		
 		switch (cd->state) {
 		case ST_META:
@@ -582,7 +581,7 @@ void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid)
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
 	BUG_ON(cd->state != ST_LOAD_META);
-	*cid=cd->chunk;
+	*cid=cd->cid;
 }
 
 void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
@@ -590,7 +589,7 @@ void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
 	BUG_ON(cd->state != ST_STORE_META);
-	*cid=cd->chunk;
+	*cid=cd->cid;
 	*length=cd->size;
 	*compression=cd->compression;
 	memcpy(key, cd->key, cd->table->dev->hash_len);
@@ -629,7 +628,7 @@ again:
 		if (chunk != NULL) {
 			/* No key or data */
 			debug("Requesting key for chunk " SECTOR_FORMAT,
-						cd->chunk);
+						cd->cid);
 			transition(cd, ST_LOAD_META);
 			if (queue_for_user(cd)) {
 				transition_error(cd, -EIO);
@@ -646,7 +645,7 @@ again:
 				/* The first-in-queue needs the chunk read
 				   in. */
 				debug("Reading in chunk " SECTOR_FORMAT,
-							cd->chunk);
+							cd->cid);
 				transition(cd, ST_LOAD_DATA);
 				issue_chunk_io(cd);
 			} else {
@@ -666,7 +665,7 @@ again:
 		if (chunk != NULL) {
 			try_start_io(chunk->parent);
 		} else {
-			debug("Writing out chunk " SECTOR_FORMAT, cd->chunk);
+			debug("Writing out chunk " SECTOR_FORMAT, cd->cid);
 			transition(cd, ST_STORE_DATA);
 			if (chunk_tfm(cd, WRITE)) {
 				transition_error(cd, -EIO);
@@ -702,24 +701,24 @@ again:
 int reserve_chunks(struct convergent_io *io)
 {
 	struct convergent_dev *dev=io->dev;
-	chunk_t cur;
+	chunk_t cid;
 	struct convergent_io_chunk *chunk;
 	struct chunkdata *cd;
 	int i;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	for (i=0; i<io_chunks(io); i++) {
-		cur=io->first_chunk + i;
+		cid=io->first_cid + i;
 		chunk=&io->chunks[i];
-		cd=chunkdata_get(dev->chunkdata, cur);
+		cd=chunkdata_get(dev->chunkdata, cid);
 		if (cd == NULL)
 			goto bad;
 		list_add_tail(&chunk->lh_pending, &cd->pending);
 		user_get(dev);
 	}
 	for (i=0; i<io_chunks(io); i++) {
-		cur=io->first_chunk + i;
-		cd=chunkdata_get(dev->chunkdata, cur);
+		cid=io->first_cid + i;
+		cd=chunkdata_get(dev->chunkdata, cid);
 		BUG_ON(cd == NULL);
 		run_chunk(cd);
 	}
@@ -741,7 +740,7 @@ void unreserve_chunk(struct convergent_io_chunk *chunk)
 	struct chunkdata *cd;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
-	cd=chunkdata_get(dev->chunkdata, chunk->chunk);
+	cd=chunkdata_get(dev->chunkdata, chunk->cid);
 	BUG_ON(!pending_head_is(cd, chunk));
 	list_del_init(&chunk->lh_pending);
 	user_put(dev);
@@ -754,7 +753,7 @@ struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
 	struct chunkdata *cd;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
-	cd=chunkdata_get(dev->chunkdata, chunk->chunk);
+	cd=chunkdata_get(dev->chunkdata, chunk->cid);
 	BUG_ON(cd == NULL || !pending_head_is(cd, chunk));
 	return cd->sg;
 }
