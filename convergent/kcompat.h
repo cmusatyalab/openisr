@@ -50,8 +50,6 @@ static inline void kzalloc(size_t size, gfp_t gfp)
 #define end_that_request_last(req, uptodate) end_that_request_last(req)
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
-/* XXX cryptoapi changes */
-#endif
+/* XXX cryptoapi will significantly change in 2.6.19 */
 
 #endif
