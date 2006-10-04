@@ -44,9 +44,7 @@ struct chunkdata {
 	unsigned flags;
 	enum cd_state state;
 	char key[ISR_MAX_HASH_LEN];
-	/* XXX hack that lets us not manage yet another allocation */
-	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
-	struct scatterlist sg[0];
+	struct scatterlist *sg;
 };
 
 struct chunkdata_table {
@@ -55,8 +53,7 @@ struct chunkdata_table {
 	unsigned state_count[NR_STATES];
 	struct list_head lru;
 	struct list_head user;
-	/* THIS MUST BE THE LAST MEMBER OF THE STRUCTURE */
-	struct list_head hash[0];
+	struct list_head *hash;
 };
 
 static struct bio_set *bio_pool;
@@ -83,6 +80,18 @@ static inline int pending_head_is(struct chunkdata *cd,
 	return (pending_head(cd) == chunk);
 }
 
+static inline int is_idle_state(enum cd_state state)
+{
+	switch (state) {
+	case ST_INVALID:
+	case ST_CLEAN:
+	case ST_ERROR:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
 static void chunkdata_hit(struct chunkdata *cd)
 {
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
@@ -92,25 +101,15 @@ static void chunkdata_hit(struct chunkdata *cd)
 static void __transition(struct chunkdata *cd, enum cd_state new_state)
 {
 	enum cd_state states[2]={cd->state, new_state};
-	int busy[2];
+	int idle[2];
 	int i;
 	
 	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
-	for (i=0; i<2; i++) {
-		switch (states[i]) {
-		case ST_INVALID:
-		case ST_CLEAN:
-		case ST_ERROR:
-			busy[i]=0;
-			break;
-		default:
-			busy[i]=1;
-			break;
-		}
-	}
-	if (busy[0] && !busy[1])
+	for (i=0; i<2; i++)
+		idle[i]=is_idle_state(states[i]);
+	if (!idle[0] && idle[1])
 		user_put(cd->table->dev);
-	if (!busy[0] && busy[1])
+	if (idle[0] && !idle[1])
 		user_get(cd->table->dev);
 	cd->table->state_count[cd->state]--;
 	cd->table->state_count[new_state]++;
@@ -147,17 +146,9 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	
 	/* Steal the LRU chunk */
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
-		if (!list_empty(&cd->pending))
+		if (!list_empty(&cd->pending) || !is_idle_state(cd->state))
 			continue;
-		switch (cd->state) {
-		case ST_INVALID:
-		case ST_CLEAN:
-		case ST_ERROR:
-			break;
-		default:
-			continue;
-		}
-
+		
 		list_del_init(&cd->lh_bucket);
 		list_add(&cd->lh_bucket, &table->hash[hash(table, cid)]);
 		chunkdata_hit(cd);
@@ -173,7 +164,7 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 
 /* XXX might want to support high memory pages.  on the other hand, those
    might force bounce buffering */
-static int alloc_chunk_pages(struct chunkdata *cd)
+static int alloc_chunk_buffer(struct chunkdata *cd)
 {
 	struct convergent_dev *dev=cd->table->dev;
 	int i;
@@ -181,6 +172,10 @@ static int alloc_chunk_pages(struct chunkdata *cd)
 	unsigned residual;
 	struct scatterlist *sg=NULL;  /* initialization to avoid warning */
 	
+	BUG_ON(cd->sg != NULL);
+	cd->sg=kmalloc(npages * sizeof(cd->sg[0]), GFP_KERNEL);
+	if (cd->sg == NULL)
+		return -ENOMEM;
 	for (i=0; i<npages; i++) {
 		sg=&cd->sg[i];
 		sg->page=alloc_page(GFP_KERNEL);
@@ -198,16 +193,20 @@ static int alloc_chunk_pages(struct chunkdata *cd)
 bad:
 	while (--i >= 0)
 		__free_page(cd->sg[i].page);
+	kfree(cd->sg);
 	return -ENOMEM;
 }
 
-static void free_chunk_pages(struct chunkdata *cd)
+static void free_chunk_buffer(struct chunkdata *cd)
 {
 	struct convergent_dev *dev=cd->table->dev;
 	int i;
-
+	
+	if (cd->sg == NULL)
+		return;
 	for (i=0; i<chunk_pages(dev); i++)
 		__free_page(cd->sg[i].page);
+	kfree(cd->sg);
 }
 
 static void bio_destructor(struct bio *bio)
@@ -779,19 +778,16 @@ void chunkdata_free_table(struct convergent_dev *dev)
 	
 	if (table == NULL)
 		return;
-	/* XXX locking? */
 	BUG_ON(!list_empty(&table->user));
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
-		/* XXX flags check */
 		BUG_ON(!list_empty(&cd->pending));
-		/* Wait for the tasklet to finish if it hasn't already */
-		/* XXX necessary? */
-		tasklet_disable(&cd->callback);
+		BUG_ON(!is_idle_state(cd->state));
 		list_del(&cd->lh_bucket);
 		list_del(&cd->lh_lru);
-		free_chunk_pages(cd);
+		free_chunk_buffer(cd);
 		kfree(cd);
 	}
+	kfree(table->hash);
 	kfree(table);
 }
 
@@ -802,24 +798,30 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 	unsigned buckets=dev->cachesize;  /* XXX is this reasonable? */
 	int i;
 	
-	table=kzalloc(sizeof(*table) + buckets * sizeof(table->hash[0]),
-				GFP_KERNEL);
+	table=kzalloc(sizeof(*table), GFP_KERNEL);
 	if (table == NULL)
 		return -ENOMEM;
-	table->buckets=buckets;
 	INIT_LIST_HEAD(&table->lru);
 	INIT_LIST_HEAD(&table->user);
-	for (i=0; i<buckets; i++)
-		INIT_LIST_HEAD(&table->hash[i]);
 	table->dev=dev;
 	dev->chunkdata=table;
+	/* Allocation failures after this point will result in a
+	   partially-built structure which will be cleaned up by
+	   chunkdata_free_table().  Be careful of initialization order
+	   when modifying */
+	
+	table->hash=kmalloc(buckets * sizeof(table->hash[0]), GFP_KERNEL);
+	if (table->hash == NULL)
+		return -ENOMEM;
+	table->buckets=buckets;
+	for (i=0; i<buckets; i++)
+		INIT_LIST_HEAD(&table->hash[i]);
 	
 	for (i=0; i<dev->cachesize; i++) {
 		/* We don't use a lookaside cache for struct cachedata because
 		   they don't come and go; we pre-allocate and then they sit
 		   around. */
-		cd=kzalloc(sizeof(*cd) + chunk_pages(dev) * sizeof(cd->sg[0]),
-					GFP_KERNEL);
+		cd=kzalloc(sizeof(*cd), GFP_KERNEL);
 		if (cd == NULL)
 			return -ENOMEM;
 		cd->table=table;
@@ -828,13 +830,11 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		INIT_LIST_HEAD(&cd->lh_lru);
 		INIT_LIST_HEAD(&cd->lh_user);
 		INIT_LIST_HEAD(&cd->pending);
-		if (alloc_chunk_pages(cd)) {
-			kfree(cd);
-			return -ENOMEM;
-		}
+		list_add(&cd->lh_lru, &table->lru);
 		tasklet_init(&cd->callback, chunkdata_complete_io,
 					(unsigned long)cd);
-		list_add(&cd->lh_lru, &table->lru);
+		if (alloc_chunk_buffer(cd))
+			return -ENOMEM;
 	}
 	table->state_count[ST_INVALID]=dev->cachesize;
 	/* chunkdata holds a reference to dev, since it would be bad for

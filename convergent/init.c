@@ -235,8 +235,12 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		ret=-EINVAL;
 		goto bad;
 	}
-	/* XXX we need a minimum too */
-	/* XXX must not be smaller than MAX_CHUNKS_PER_IO */
+	if (cachesize < MIN_CONCURRENT_REQS * MAX_CHUNKS_PER_IO) {
+		log(KERN_ERR, "cache size may not be smaller than %u",
+				MIN_CONCURRENT_REQS * MAX_CHUNKS_PER_IO);
+		ret=-EINVAL;
+		goto bad;
+	}
 	if (cachesize > CD_MAX_CHUNKS) {
 		log(KERN_ERR, "cache size may not be larger than %u",
 					CD_MAX_CHUNKS);

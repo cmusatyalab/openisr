@@ -127,8 +127,6 @@ enum io_bits {
 #endif
 #define ndebug(args...) do {} while (0)
 
-/* XXX clean these out */
-
 /* 512-byte sectors per chunk */
 static inline sector_t chunk_sectors(struct convergent_dev *dev)
 {
