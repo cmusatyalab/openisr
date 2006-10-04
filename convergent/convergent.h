@@ -9,9 +9,9 @@
 #define MINORS_PER_DEVICE 16
 #define CD_MAX_CHUNKS 8192  /* XXX make this based on MB RAM in the box */
 #define CLEANER_SWEEP (HZ/2)
-#define MODULE_NAME "isr-convergent"
+#define MODULE_NAME "openisr"
 #define DEVICE_NAME "openisr"
-#define SUBMIT_QUEUE "convergent-io"
+#define SUBMIT_QUEUE "openisr-io"
 
 #include <linux/blkdev.h>
 #include <linux/interrupt.h>
