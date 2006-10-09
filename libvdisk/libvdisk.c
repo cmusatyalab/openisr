@@ -18,8 +18,7 @@
 #include "revision.h"
 
 #define DEBUG
-/* XXX */
-#define MAXPATHLEN 256
+#define MAXPATHLEN 512
 
 static int (*open_real)(const char *pathname, int flags, ...);
 static int (*ioctl_real)(int fd, int request, ...);
@@ -40,19 +39,18 @@ static struct {
 static char *realdev=NULL;
 
 /**** Debug and message stuff ****/
-/* XXX convert to function? */
-#define warn(s, args...) do { \
-	fprintf(stderr, "libvdisk (%d): ", getpid()); \
-	fprintf(stderr, s , ## args); \
-	fprintf(stderr, "\n"); \
-	} while (0)
+
+#define warn(s, args...) \
+	fprintf(stderr, "libvdisk (%d): " s "\n", getpid(), ## args)
 #define ndebug(s, args...) do {} while (0)
 
 #ifdef DEBUG
-#define debug(s, args...) warn(s , ## args)
+#define debug(s, args...) warn(s, ## args)
 #else
 #define debug(s, args...) do {} while (0)
 #endif
+
+/**** Initialization ****/
 
 static void _get_symbol(void **dest, char *name)
 {
@@ -69,7 +67,7 @@ static void _get_symbol(void **dest, char *name)
 static void __attribute__((constructor)) libvdisk_init(void)
 {
 	char *path;
-
+	
 	warn("Initializing (" SVN_BRANCH ", rev " SVN_REVISION ")");
 	GET_SYMBOL(open);
 	GET_SYMBOL(ioctl);
@@ -81,12 +79,13 @@ static void __attribute__((constructor)) libvdisk_init(void)
 	GET_SYMBOL(__xstat64);
 	GET_SYMBOL(__lxstat);
 	GET_SYMBOL(__lxstat64);
-
+	
 	path=getenv("VDISK_DEVICE");
 	if (path != NULL) {
 		realdev=strndup(path, MAXPATHLEN);
 		if (realdev == NULL) {
-			warn("Failed to read VDISK_DEVICE; no remapping will be done");
+			warn("Failed to read VDISK_DEVICE; no remapping "
+						"will be done");
 		}
 	} else {
 		warn("VDISK_DEVICE not set; no remapping will be done");
@@ -405,10 +404,13 @@ int ioctl(int fd, unsigned long request, ...)
 	switch (request) {
 	case HDIO_GETGEO:
 	case HDIO_GET_IDENTITY:
+		/* There's no good way to check whether arg is a valid pointer
+		   in the same way the kernel would, so an invalid arg will
+		   produce SIGSEGV rather than EFAULT.  We do the obvious
+		   check, even though it's a bit silly. */
 		if ((void*)arg == NULL) {
-			/* XXX? */
 			ret=-1;
-			err=EINVAL;
+			err=EFAULT;
 			break;
 		}
 		ret=ioctl_real(fd, BLKGETSIZE64, &size);
@@ -436,4 +438,3 @@ int ioctl(int fd, unsigned long request, ...)
 	errno=err;
 	return ret;
 }
-
