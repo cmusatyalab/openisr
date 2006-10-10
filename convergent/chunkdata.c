@@ -254,6 +254,7 @@ static void issue_chunk_io(struct chunkdata *cd)
 	unsigned offset=0;
 	int i=0;
 	int dir;
+	int err;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	
@@ -274,11 +275,15 @@ static void issue_chunk_io(struct chunkdata *cd)
 	/* We can't assume that we can fit the entire chunk io in one
 	   bio: it depends on the queue restrictions of the underlying
 	   device */
+	/* XXX is it okay to be failing requests with -ENOMEM?  or should we
+	   be doing some sort of retry? */
 	while (offset < dev->chunksize) {
 		if (bio == NULL) {
 			bio=bio_create(cd, dir, offset/512);
-			if (bio == NULL)
-				goto bad;
+			if (bio == NULL) {
+				err=-ENOMEM;
+				goto out;
+			}
 		}
 		if (bio_add_page(bio, cd->sg[i].page,
 					cd->sg[i].length,
@@ -287,20 +292,25 @@ static void issue_chunk_io(struct chunkdata *cd)
 			i++;
 		} else {
 			debug("Submitting multiple bios");
-			submit(bio);
+			err=submit(bio);
+			if (err) {
+				offset -= bio->bi_size;
+				goto out;
+			}
 			bio=NULL;
 		}
 	}
 	BUG_ON(bio == NULL);
-	submit(bio);
-	return;
-	
-bad:
-	/* XXX make this sane */
-	cd->error=-ENOMEM;
-	if (atomic_add_return(dev->chunksize - offset, &cd->completed)
-				== dev->chunksize)
-		tasklet_schedule(&cd->callback);
+	err=submit(bio);
+	if (err)
+		offset -= bio->bi_size;
+out:
+	if (err) {
+		cd->error=err;
+		if (atomic_add_return(dev->chunksize - offset, &cd->completed)
+					== dev->chunksize)
+			tasklet_schedule(&cd->callback);
+	}
 }
 
 static int chunk_tfm(struct chunkdata *cd, int type)

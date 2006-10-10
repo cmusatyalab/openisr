@@ -34,10 +34,15 @@ void convergent_dev_put(struct convergent_dev *dev, int unlink)
 		BUG_ON(in_atomic());
 		class_device_unregister(dev->class_dev);
 	} else {
-		if (in_atomic())
-			delayed_put(dev);
-		else
+		if (in_atomic()) {
+			/* delayed_put() can fail if memory is low.  If that
+			   happens, have the io_cleaner retry the put
+			   periodically until it succeeds. */
+			if (delayed_put(dev))
+				atomic_inc(&dev->pending_puts);
+		} else {
 			class_device_put(dev->class_dev);
+		}
 	}
 }
 
@@ -150,6 +155,7 @@ static void convergent_dev_dtr(struct class_device *class_dev)
 	struct convergent_dev *dev=class_get_devdata(class_dev);
 	
 	debug("Dtr called");
+	BUG_ON(atomic_read(&dev->pending_puts) != 0);
 	/* XXX racy? */
 	if (dev->gendisk) {
 		if (dev->gendisk->flags & GENHD_FL_UP) {
@@ -225,6 +231,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	/* Now we have refcounting, so all further errors should deallocate
 	   through the destructor */
 	spin_lock_init(&dev->lock);
+	atomic_set(&dev->pending_puts, 0);
 	INIT_LIST_HEAD(&dev->freed_ios);
 	init_waitqueue_head(&dev->waiting_users);
 	cleaner_start(dev);

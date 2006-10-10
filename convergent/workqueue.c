@@ -67,14 +67,16 @@ int __init workqueue_start(void)
 }
 
 /* Intended to be called from atomic context */
-void submit(struct bio *bio)
+int submit(struct bio *bio)
 {
 	struct job *job=mempool_alloc(job_pool, GFP_ATOMIC);
 	if (job == NULL)
-		BUG();  /* XXX */
+		return -ENOMEM;
 	INIT_WORK(&job->work, job_handle_bio, job);
 	job->data=bio;
-	queue_work(queue, &job->work);
+	if (!queue_work(queue, &job->work))
+		BUG();
+	return 0;
 }
 
 int delayed_add_disk(struct convergent_dev *dev)
@@ -95,17 +97,20 @@ int delayed_add_disk(struct convergent_dev *dev)
 	/* We use the shared queue in order to prevent deadlock: if we
 	   used our own queue, add_disk() would block its own I/O to the
 	   partition table. */
-	schedule_work(&job->work);
+	if (!schedule_work(&job->work))
+		BUG();
 	return 0;
 }
 
 /* Intended to be called from atomic context */
-void delayed_put(struct convergent_dev *dev)
+int delayed_put(struct convergent_dev *dev)
 {
 	struct job *job=mempool_alloc(job_pool, GFP_ATOMIC);
 	if (job == NULL)
-		BUG();  /* XXX */
+		return -ENOMEM;
 	INIT_WORK(&job->work, job_handle_put, job);
 	job->data=dev;
-	queue_work(queue, &job->work);
+	if (!queue_work(queue, &job->work))
+		BUG();
+	return 0;
 }

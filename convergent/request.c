@@ -130,7 +130,7 @@ static void io_cleaner(unsigned long data)
 		need_release_ref=1;
 	}
 	spin_unlock_bh(&dev->lock);
-	if (need_release_ref)
+	if (need_release_ref || atomic_add_unless(&dev->pending_puts, -1, 0))
 		convergent_dev_put(dev, 0);
 	if (!(dev->flags & DEV_KILLCLEANER))
 		mod_timer(&dev->cleaner, jiffies + CLEANER_SWEEP);

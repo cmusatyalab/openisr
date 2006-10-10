@@ -33,6 +33,7 @@ struct convergent_dev {
 	chunk_t chunks;
 	int devnum;
 	unsigned flags;	/* XXX racy */
+	atomic_t pending_puts;  /* convergent_dev_put() */
 	
 	struct crypto_tfm *cipher;
 	unsigned cipher_block;
@@ -209,9 +210,9 @@ void chardev_shutdown(void);
 /* workqueue.c */
 int workqueue_start(void);
 void workqueue_shutdown(void);
-void submit(struct bio *bio);
+int submit(struct bio *bio);
 int delayed_add_disk(struct convergent_dev *dev);
-void delayed_put(struct convergent_dev *dev);
+int delayed_put(struct convergent_dev *dev);
 
 /* chunkdata.c */
 int chunkdata_start(void);
