@@ -368,7 +368,7 @@ static void chunkdata_complete_io(void *data)
 	struct chunkdata *cd=data;
 	int error;
 	
-	spin_lock_bh(&cd->table->dev->lock);
+	spin_lock(&cd->table->dev->lock);
 	
 	error=cd->error;
 	/* XXX we have a bit of a problem: we encrypt in-place.  so if we
@@ -393,7 +393,7 @@ static void chunkdata_complete_io(void *data)
 		BUG();
 	
 	run_chunk(cd);
-	spin_unlock_bh(&cd->table->dev->lock);
+	spin_unlock(&cd->table->dev->lock);
 }
 
 /* May be called from hardirq context */

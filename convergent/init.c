@@ -108,14 +108,14 @@ static int convergent_open(struct inode *ino, struct file *filp)
 	dev=convergent_dev_get(ino->i_bdev->bd_disk->private_data);
 	if (dev == NULL)
 		return -ENODEV;
-	spin_lock_bh(&dev->lock);
+	spin_lock(&dev->lock);
 	if (dev->flags & DEV_SHUTDOWN) {
-		spin_unlock_bh(&dev->lock);
+		spin_unlock(&dev->lock);
 		convergent_dev_put(dev, 0);
 		return -ENODEV;
 	} else {
 		user_get(dev);
-		spin_unlock_bh(&dev->lock);
+		spin_unlock(&dev->lock);
 		return 0;
 	}
 }
@@ -124,9 +124,9 @@ static int convergent_release(struct inode *ino, struct file *filp)
 {
 	struct convergent_dev *dev=ino->i_bdev->bd_disk->private_data;
 	
-	spin_lock_bh(&dev->lock);
+	spin_lock(&dev->lock);
 	user_put(dev);
-	spin_unlock_bh(&dev->lock);
+	spin_unlock(&dev->lock);
 	convergent_dev_put(dev, 0);
 	return 0;
 }

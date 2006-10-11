@@ -108,7 +108,7 @@ static void io_cleaner(void* data)
 	struct convergent_dev *dev=data;
 	int need_release_ref=0;
 	
-	spin_lock_bh(&dev->lock);
+	spin_lock(&dev->lock);
 	/* XXX perhaps it wouldn't hurt to make the timer more frequent */
 	if (dev->flags & DEV_LOWMEM) {
 		dev->flags &= ~DEV_LOWMEM;
@@ -120,7 +120,7 @@ static void io_cleaner(void* data)
 		/* Must not release ref with the lock held */
 		need_release_ref=1;
 	}
-	spin_unlock_bh(&dev->lock);
+	spin_unlock(&dev->lock);
 	if (need_release_ref || atomic_add_unless(&dev->pending_puts, -1, 0))
 		convergent_dev_put(dev, 0);
 	if (!(dev->flags & DEV_KILLCLEANER))
@@ -167,14 +167,14 @@ static void convergent_process_chunk(void *data)
 	struct convergent_dev *dev=io->dev;
 	struct scatterlist *chunk_sg;
 	
-	spin_lock_bh(&dev->lock);
+	spin_lock(&dev->lock);
 	
 	/* The underlying chunk I/O might have errored out */
 	if (chunk->error) {
 		debug("process_chunk I/O error: chunk " SECTOR_FORMAT,
 					chunk->cid);
 		convergent_complete_chunk(chunk);
-		spin_unlock_bh(&dev->lock);
+		spin_unlock(&dev->lock);
 		return;
 	}
 	
@@ -191,7 +191,7 @@ static void convergent_process_chunk(void *data)
 					chunk->orig_offset, chunk->len);
 	}
 	convergent_complete_chunk(chunk);
-	spin_unlock_bh(&dev->lock);
+	spin_unlock(&dev->lock);
 }
 
 /* Do initial setup, memory allocations, anything that can fail. */
