@@ -97,6 +97,7 @@ enum chunk_bits {
 
 struct convergent_io {
 	struct convergent_dev *dev;
+	struct work_struct callback;
 	unsigned flags;
 	chunk_t first_cid;
 	chunk_t last_cid;

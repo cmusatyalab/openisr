@@ -707,36 +707,44 @@ again:
 	}
 }
 
+/* Workqueue callback */
+static void process_pending_reservation(void *data)
+{
+	struct convergent_io *io=data;
+	struct convergent_dev *dev=io->dev;
+	struct chunkdata *cd;
+	int i;
+	
+	spin_lock(&dev->lock);
+	for (i=0; i<io_chunks(io); i++) {
+		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
+		BUG_ON(cd == NULL);
+		run_chunk(cd);
+	}
+	spin_unlock(&dev->lock);
+}
+
 int reserve_chunks(struct convergent_io *io)
 {
 	struct convergent_dev *dev=io->dev;
-	chunk_t cid;
-	struct convergent_io_chunk *chunk;
 	struct chunkdata *cd;
 	int i;
 	
 	BUG_ON(!spin_is_locked(&dev->lock));
 	for (i=0; i<io_chunks(io); i++) {
-		cid=io->first_cid + i;
-		chunk=&io->chunks[i];
-		cd=chunkdata_get(dev->chunkdata, cid);
+		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
 		if (cd == NULL)
 			goto bad;
-		list_add_tail(&chunk->lh_pending, &cd->pending);
+		list_add_tail(&io->chunks[i].lh_pending, &cd->pending);
 		user_get(dev);
 	}
-	for (i=0; i<io_chunks(io); i++) {
-		cid=io->first_cid + i;
-		cd=chunkdata_get(dev->chunkdata, cid);
-		BUG_ON(cd == NULL);
-		run_chunk(cd);
-	}
+	INIT_WORK(&io->callback, process_pending_reservation, io);
+	queue_for_thread(&io->callback);
 	return 0;
 	
 bad:
 	while (--i >= 0) {
-		chunk=&io->chunks[i];
-		list_del_init(&chunk->lh_pending);
+		list_del_init(&io->chunks[i].lh_pending);
 		user_put(dev);
 	}
 	/* XXX this isn't strictly nomem */
