@@ -9,7 +9,7 @@ struct job {
 	void *data;
 };
 
-static struct workqueue_struct *queue;
+struct workqueue_struct *queue;
 static kmem_cache_t *job_cache;
 static mempool_t *job_pool;
 

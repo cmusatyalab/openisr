@@ -54,7 +54,7 @@ struct convergent_dev {
 	wait_queue_head_t waiting_users;
 	
 	/* XXX make this a global object?  we'd need a list of devs */
-	struct timer_list cleaner;
+	struct work_struct cleaner;
 };
 
 enum dev_bits {
@@ -206,6 +206,7 @@ int chardev_start(void);
 void chardev_shutdown(void);
 
 /* workqueue.c */
+extern struct workqueue_struct *queue;
 int workqueue_start(void);
 void workqueue_shutdown(void);
 int submit(struct bio *bio);

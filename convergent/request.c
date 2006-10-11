@@ -103,9 +103,9 @@ static void queue_stop(struct convergent_dev *dev)
 }
 
 /* XXX restructure this */
-static void io_cleaner(unsigned long data)
+static void io_cleaner(void* data)
 {
-	struct convergent_dev *dev=(void*)data;
+	struct convergent_dev *dev=data;
 	int need_release_ref=0;
 	
 	spin_lock_bh(&dev->lock);
@@ -124,7 +124,7 @@ static void io_cleaner(unsigned long data)
 	if (need_release_ref || atomic_add_unless(&dev->pending_puts, -1, 0))
 		convergent_dev_put(dev, 0);
 	if (!(dev->flags & DEV_KILLCLEANER))
-		mod_timer(&dev->cleaner, jiffies + CLEANER_SWEEP);
+		queue_delayed_work(queue, &dev->cleaner, CLEANER_SWEEP);
 	else
 		debug("Timer shutting down");
 }
@@ -295,19 +295,17 @@ void convergent_request(request_queue_t *q)
 
 void cleaner_start(struct convergent_dev *dev)
 {
-	init_timer(&dev->cleaner);
-	dev->cleaner.function=io_cleaner;
-	dev->cleaner.data=(unsigned long)dev;
-	dev->cleaner.expires=jiffies + CLEANER_SWEEP;
-	add_timer(&dev->cleaner);
+	INIT_WORK(&dev->cleaner, io_cleaner, dev);
+	queue_delayed_work(queue, &dev->cleaner, CLEANER_SWEEP);
 }
 
 void cleaner_stop(struct convergent_dev *dev)
 {
 	dev->flags |= DEV_KILLCLEANER;
-	del_timer_sync(&dev->cleaner);
+	cancel_delayed_work(&dev->cleaner);
+	flush_workqueue(queue);
 	/* Run the timer one more time to make sure everything's cleaned out */
-	io_cleaner((unsigned long)dev);
+	io_cleaner(dev);
 }
 
 int __init request_start(void)
