@@ -5,7 +5,7 @@
 #include <linux/highmem.h>
 #include <linux/fs.h>
 #include <linux/mempool.h>
-#include <linux/interrupt.h>
+#include <linux/workqueue.h>
 #include "convergent.h"
 
 static kmem_cache_t *io_cache;
@@ -102,22 +102,13 @@ static void queue_stop(struct convergent_dev *dev)
 	local_irq_restore(interrupt_state);
 }
 
+/* XXX restructure this */
 static void io_cleaner(unsigned long data)
 {
 	struct convergent_dev *dev=(void*)data;
-	struct convergent_io *io;
-	struct convergent_io *next;
-	int i;
 	int need_release_ref=0;
 	
 	spin_lock_bh(&dev->lock);
-	list_for_each_entry_safe(io, next, &dev->freed_ios, lh_freed) {
-		list_del(&io->lh_freed);
-		/* Wait for the tasklets to finish if they haven't already */
-		for (i=0; i<io_chunks(io); i++)
-			tasklet_disable(&io->chunks[i].callback);
-		mempool_free(io, io_pool);
-	}
 	/* XXX perhaps it wouldn't hurt to make the timer more frequent */
 	if (dev->flags & DEV_LOWMEM) {
 		dev->flags &= ~DEV_LOWMEM;
@@ -164,15 +155,14 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 		   chunk. */
 		unreserve_chunk(chunk);
 	}
-	/* All chunks in this io are completed.  Schedule the io to
-	   be freed the next time the cleaner runs */
-	list_add_tail(&io->lh_freed, &io->dev->freed_ios);
+	/* All chunks in this io are completed. */
+	mempool_free(io, io_pool);
 }
 
-/* Process one chunk from an io.  Tasklet. */
-static void convergent_process_chunk(unsigned long data)
+/* Process one chunk from an io.  Called from workqueue. */
+static void convergent_process_chunk(void *data)
 {
-	struct convergent_io_chunk *chunk=(void*)data;
+	struct convergent_io_chunk *chunk=data;
 	struct convergent_io *io=chunk->parent;
 	struct convergent_dev *dev=io->dev;
 	struct scatterlist *chunk_sg;
@@ -234,7 +224,6 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	io->prio=req->ioprio;
 	if (rq_data_dir(req))
 		io->flags |= IO_WRITE;
-	INIT_LIST_HEAD(&io->lh_freed);
 	nsegs=blk_rq_map_sg(dev->queue, req, io->orig_sg);
 	ndebug("%d phys segs, %d coalesced segs", req->nr_phys_segments, nsegs);
 	
@@ -255,8 +244,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 			chunk->flags |= CHUNK_READ;
 		chunk->error=0;
 		INIT_LIST_HEAD(&chunk->lh_pending);
-		tasklet_init(&chunk->callback, convergent_process_chunk,
-					(unsigned long)chunk);
+		INIT_WORK(&chunk->callback, convergent_process_chunk, chunk);
 		remaining -= chunk->len;
 		bytes += chunk->len;
 	}

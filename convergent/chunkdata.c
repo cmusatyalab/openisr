@@ -40,7 +40,7 @@ struct chunkdata {
 	struct list_head pending;
 	atomic_t completed;    /* bytes, for I/O */
 	int error;
-	struct tasklet_struct callback;
+	struct work_struct callback;
 	unsigned flags;
 	enum cd_state state;
 	char key[ISR_MAX_HASH_LEN];
@@ -309,7 +309,7 @@ out:
 		cd->error=err;
 		if (atomic_add_return(dev->chunksize - offset, &cd->completed)
 					== dev->chunksize)
-			tasklet_schedule(&cd->callback);
+			queue_for_thread(&cd->callback);
 	}
 }
 
@@ -362,10 +362,10 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 
 /* XXX */
 static void run_chunk(struct chunkdata *cd);
-/* Runs in tasklet (softirq) context */
-static void chunkdata_complete_io(unsigned long data)
+/* Runs in workqueue (user) context */
+static void chunkdata_complete_io(void *data)
 {
-	struct chunkdata *cd=(void*)data;
+	struct chunkdata *cd=data;
 	int error;
 	
 	spin_lock_bh(&cd->table->dev->lock);
@@ -411,7 +411,7 @@ static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error)
 	/* Can't call BUG() in interrupt */
 	WARN_ON(completed > cd->table->dev->chunksize);
 	if (completed >= cd->table->dev->chunksize)
-		tasklet_schedule(&cd->callback);
+		queue_for_thread(&cd->callback);
 	return 0;
 }
 
@@ -490,7 +490,7 @@ static void try_start_io(struct convergent_io *io)
 		}
 		
 		chunk->flags |= CHUNK_STARTED;
-		tasklet_schedule(&io->chunks[i].callback);
+		queue_for_thread(&io->chunks[i].callback);
 	}
 }
 
@@ -841,15 +841,14 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		INIT_LIST_HEAD(&cd->lh_user);
 		INIT_LIST_HEAD(&cd->pending);
 		list_add(&cd->lh_lru, &table->lru);
-		tasklet_init(&cd->callback, chunkdata_complete_io,
-					(unsigned long)cd);
+		INIT_WORK(&cd->callback, chunkdata_complete_io, cd);
 		if (alloc_chunk_buffer(cd))
 			return -ENOMEM;
 	}
 	table->state_count[ST_INVALID]=dev->cachesize;
 	/* chunkdata holds a reference to dev, since it would be bad for
 	   dev to disappear out from under us while we're still processing
-	   tasklets and endio callbacks.  This reference is released by
+	   workqueue jobs and endio callbacks.  This reference is released by
 	   the io_cleaner function (!). */
 	convergent_dev_get(dev);
 	return 0;

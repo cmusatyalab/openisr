@@ -14,7 +14,7 @@
 #define SUBMIT_QUEUE "openisr-io"
 
 #include <linux/blkdev.h>
-#include <linux/interrupt.h>
+#include <linux/workqueue.h>
 #include "convergent-user.h"
 #include "kcompat.h"
 
@@ -55,7 +55,6 @@ struct convergent_dev {
 	
 	/* XXX make this a global object?  we'd need a list of devs */
 	struct timer_list cleaner;
-	struct list_head freed_ios;
 };
 
 enum dev_bits {
@@ -74,7 +73,7 @@ enum dev_bits {
 struct convergent_io_chunk {
 	struct list_head lh_pending;
 	struct convergent_io *parent;
-	struct tasklet_struct callback;
+	struct work_struct callback;
 	chunk_t cid;
 	unsigned orig_offset;  /* byte offset into orig_sg */
 	unsigned offset;       /* byte offset into chunk */
@@ -97,7 +96,6 @@ enum chunk_bits {
 #define CHUNK_DEAD            (1 << __CHUNK_DEAD)
 
 struct convergent_io {
-	struct list_head lh_freed;
 	struct convergent_dev *dev;
 	unsigned flags;
 	chunk_t first_cid;
@@ -213,6 +211,7 @@ void workqueue_shutdown(void);
 int submit(struct bio *bio);
 int delayed_add_disk(struct convergent_dev *dev);
 int delayed_put(struct convergent_dev *dev);
+void queue_for_thread(struct work_struct *work);
 
 /* chunkdata.c */
 int chunkdata_start(void);

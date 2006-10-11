@@ -114,3 +114,9 @@ int delayed_put(struct convergent_dev *dev)
 		BUG();
 	return 0;
 }
+
+void queue_for_thread(struct work_struct *work)
+{
+	if (!queue_work(queue, work))
+		BUG();
+}
