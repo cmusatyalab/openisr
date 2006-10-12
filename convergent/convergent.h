@@ -33,7 +33,6 @@ struct convergent_dev {
 	chunk_t chunks;
 	int devnum;
 	unsigned flags;	/* XXX racy */
-	atomic_t pending_puts;  /* convergent_dev_put() */
 	
 	struct crypto_tfm *cipher;
 	unsigned cipher_block;

@@ -121,7 +121,7 @@ static void io_cleaner(void* data)
 		need_release_ref=1;
 	}
 	spin_unlock(&dev->lock);
-	if (need_release_ref || atomic_add_unless(&dev->pending_puts, -1, 0))
+	if (need_release_ref)
 		convergent_dev_put(dev, 0);
 	if (!(dev->flags & DEV_KILLCLEANER))
 		queue_delayed_work(queue, &dev->cleaner, CLEANER_SWEEP);
