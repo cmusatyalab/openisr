@@ -194,6 +194,13 @@ static void convergent_process_chunk(void *data)
 	spin_unlock(&dev->lock);
 }
 
+/* Workqueue callback */
+static void launch_wrapper(void *data)
+{
+	struct convergent_io *io=data;
+	launch_pending_reservation(io);
+}
+
 /* Do initial setup, memory allocations, anything that can fail. */
 static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 {
@@ -244,7 +251,8 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 			chunk->flags |= CHUNK_READ;
 		chunk->error=0;
 		INIT_LIST_HEAD(&chunk->lh_pending);
-		INIT_WORK(&chunk->callback, convergent_process_chunk, chunk);
+		INIT_WORK(&chunk->cb_process_chunk, convergent_process_chunk,
+					chunk);
 		remaining -= chunk->len;
 		bytes += chunk->len;
 	}
@@ -261,6 +269,8 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 		mempool_free(io, io_pool);
 		return -ENOMEM;
 	}
+	INIT_WORK(&io->cb_launch_io, launch_wrapper, io);
+	queue_for_thread(&io->cb_launch_io);
 	return 0;
 }
 

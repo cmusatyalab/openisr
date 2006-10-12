@@ -40,7 +40,7 @@ struct chunkdata {
 	struct list_head pending;
 	atomic_t completed;    /* bytes, for I/O */
 	int error;
-	struct work_struct callback;
+	struct work_struct cb_complete_io;
 	unsigned flags;
 	enum cd_state state;
 	char key[ISR_MAX_HASH_LEN];
@@ -309,7 +309,7 @@ out:
 		cd->error=err;
 		if (atomic_add_return(dev->chunksize - offset, &cd->completed)
 					== dev->chunksize)
-			queue_for_thread(&cd->callback);
+			queue_for_thread(&cd->cb_complete_io);
 	}
 }
 
@@ -411,7 +411,7 @@ static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error)
 	/* Can't call BUG() in interrupt */
 	WARN_ON(completed > cd->table->dev->chunksize);
 	if (completed >= cd->table->dev->chunksize)
-		queue_for_thread(&cd->callback);
+		queue_for_thread(&cd->cb_complete_io);
 	return 0;
 }
 
@@ -490,7 +490,8 @@ static void try_start_io(struct convergent_io *io)
 		}
 		
 		chunk->flags |= CHUNK_STARTED;
-		queue_for_thread(&io->chunks[i].callback);
+		/* This is done via callback only to prevent stack overflows */
+		queue_for_thread(&io->chunks[i].cb_process_chunk);
 	}
 }
 
@@ -707,23 +708,7 @@ again:
 	}
 }
 
-/* Workqueue callback */
-static void process_pending_reservation(void *data)
-{
-	struct convergent_io *io=data;
-	struct convergent_dev *dev=io->dev;
-	struct chunkdata *cd;
-	int i;
-	
-	spin_lock(&dev->lock);
-	for (i=0; i<io_chunks(io); i++) {
-		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
-		BUG_ON(cd == NULL);
-		run_chunk(cd);
-	}
-	spin_unlock(&dev->lock);
-}
-
+/* Called via request function, with the restrictions that implies */
 int reserve_chunks(struct convergent_io *io)
 {
 	struct convergent_dev *dev=io->dev;
@@ -738,8 +723,6 @@ int reserve_chunks(struct convergent_io *io)
 		list_add_tail(&io->chunks[i].lh_pending, &cd->pending);
 		user_get(dev);
 	}
-	INIT_WORK(&io->callback, process_pending_reservation, io);
-	queue_for_thread(&io->callback);
 	return 0;
 	
 bad:
@@ -749,6 +732,22 @@ bad:
 	}
 	/* XXX this isn't strictly nomem */
 	return -ENOMEM;
+}
+
+/* Called from user context */
+void launch_pending_reservation(struct convergent_io *io)
+{
+	struct convergent_dev *dev=io->dev;
+	struct chunkdata *cd;
+	int i;
+	
+	spin_lock(&dev->lock);
+	for (i=0; i<io_chunks(io); i++) {
+		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
+		BUG_ON(cd == NULL);
+		run_chunk(cd);
+	}
+	spin_unlock(&dev->lock);
 }
 
 void unreserve_chunk(struct convergent_io_chunk *chunk)
@@ -849,7 +848,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		INIT_LIST_HEAD(&cd->lh_user);
 		INIT_LIST_HEAD(&cd->pending);
 		list_add(&cd->lh_lru, &table->lru);
-		INIT_WORK(&cd->callback, chunkdata_complete_io, cd);
+		INIT_WORK(&cd->cb_complete_io, chunkdata_complete_io, cd);
 		if (alloc_chunk_buffer(cd))
 			return -ENOMEM;
 	}

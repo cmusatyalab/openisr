@@ -73,7 +73,7 @@ enum dev_bits {
 struct convergent_io_chunk {
 	struct list_head lh_pending;
 	struct convergent_io *parent;
-	struct work_struct callback;
+	struct work_struct cb_process_chunk;
 	chunk_t cid;
 	unsigned orig_offset;  /* byte offset into orig_sg */
 	unsigned offset;       /* byte offset into chunk */
@@ -97,7 +97,7 @@ enum chunk_bits {
 
 struct convergent_io {
 	struct convergent_dev *dev;
-	struct work_struct callback;
+	struct work_struct cb_launch_io;
 	unsigned flags;
 	chunk_t first_cid;
 	chunk_t last_cid;
@@ -231,6 +231,7 @@ void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 			unsigned length, compress_t compression, char key[]);
 int reserve_chunks(struct convergent_io *io);
+void launch_pending_reservation(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);
 ssize_t print_states(struct convergent_dev *dev, char *buf, int len);
