@@ -96,7 +96,6 @@ enum chunk_bits {
 
 struct convergent_io {
 	struct convergent_dev *dev;
-	struct work_struct cb_launch_io;
 	unsigned flags;
 	chunk_t first_cid;
 	chunk_t last_cid;
@@ -211,7 +210,6 @@ int workqueue_start(void);
 void workqueue_shutdown(void);
 int submit(struct bio *bio);
 int delayed_add_disk(struct convergent_dev *dev);
-int delayed_put(struct convergent_dev *dev);
 void queue_for_thread(struct work_struct *work);
 
 /* chunkdata.c */

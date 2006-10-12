@@ -33,6 +33,7 @@ struct chunkdata {
 	struct list_head lh_bucket;
 	struct list_head lh_lru;
 	struct list_head lh_user;
+	struct list_head lh_need_update;
 	struct chunkdata_table *table;
 	chunk_t cid;
 	unsigned size;         /* compressed size before padding */
@@ -53,7 +54,9 @@ struct chunkdata_table {
 	unsigned state_count[NR_STATES];
 	struct list_head lru;
 	struct list_head user;
+	struct list_head need_update;
 	struct list_head *hash;
+	struct work_struct runner;
 };
 
 static struct bio_set *bio_pool;
@@ -126,6 +129,18 @@ static void transition_error(struct chunkdata *cd, int error)
 {
 	cd->error=error;
 	__transition(cd, ST_ERROR);
+}
+
+static void update_chunk(struct chunkdata *cd)
+{
+	struct chunkdata_table *table=cd->table;
+	
+	BUG_ON(!spin_is_locked(&table->dev->lock));
+	if (!list_empty(&cd->lh_need_update))
+		return;
+	list_add_tail(&cd->lh_need_update, &table->need_update);
+	/* Ignore return value: if it's already queued, that's fine */
+	queue_work(queue, &table->runner);
 }
 
 static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
@@ -360,8 +375,6 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 	return 0;
 }
 
-/* XXX */
-static void run_chunk(struct chunkdata *cd);
 /* Runs in workqueue (user) context */
 static void chunkdata_complete_io(void *data)
 {
@@ -392,7 +405,7 @@ static void chunkdata_complete_io(void *data)
 	else
 		BUG();
 	
-	run_chunk(cd);
+	update_chunk(cd);
 	spin_unlock(&cd->table->dev->lock);
 }
 
@@ -555,7 +568,7 @@ static void __end_usermsg(struct chunkdata *cd)
 	BUG_ON(list_empty(&cd->lh_user));
 	cd->flags &= ~CD_USER;
 	list_del_init(&cd->lh_user);
-	run_chunk(cd);
+	update_chunk(cd);
 }
 
 void end_usermsg(struct chunkdata *cd)
@@ -708,6 +721,22 @@ again:
 	}
 }
 
+/* Workqueue callback */
+static void run_chunks(void *data)
+{
+	struct convergent_dev *dev=data;
+	struct chunkdata *cd;
+	struct chunkdata *next;
+	
+	spin_lock(&dev->lock);
+	list_for_each_entry_safe(cd, next, &dev->chunkdata->need_update,
+				lh_need_update) {
+		list_del_init(&cd->lh_need_update);
+		run_chunk(cd);
+	}
+	spin_unlock(&dev->lock);
+}
+
 /* Called via request function, with the restrictions that implies */
 int reserve_chunks(struct convergent_io *io)
 {
@@ -734,20 +763,18 @@ bad:
 	return -ENOMEM;
 }
 
-/* Called from user context */
 void launch_pending_reservation(struct convergent_io *io)
 {
 	struct convergent_dev *dev=io->dev;
 	struct chunkdata *cd;
 	int i;
 	
-	spin_lock(&dev->lock);
+	BUG_ON(!spin_is_locked(&dev->lock));
 	for (i=0; i<io_chunks(io); i++) {
 		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
 		BUG_ON(cd == NULL);
-		run_chunk(cd);
+		update_chunk(cd);
 	}
-	spin_unlock(&dev->lock);
 }
 
 void unreserve_chunk(struct convergent_io_chunk *chunk)
@@ -760,7 +787,7 @@ void unreserve_chunk(struct convergent_io_chunk *chunk)
 	BUG_ON(!pending_head_is(cd, chunk));
 	list_del_init(&chunk->lh_pending);
 	user_put(dev);
-	run_chunk(cd);
+	update_chunk(cd);
 }
 
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
@@ -820,6 +847,8 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		return -ENOMEM;
 	INIT_LIST_HEAD(&table->lru);
 	INIT_LIST_HEAD(&table->user);
+	INIT_LIST_HEAD(&table->need_update);
+	INIT_WORK(&table->runner, run_chunks, dev);
 	table->dev=dev;
 	dev->chunkdata=table;
 	/* Allocation failures after this point will result in a
@@ -846,6 +875,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		INIT_LIST_HEAD(&cd->lh_bucket);
 		INIT_LIST_HEAD(&cd->lh_lru);
 		INIT_LIST_HEAD(&cd->lh_user);
+		INIT_LIST_HEAD(&cd->lh_need_update);
 		INIT_LIST_HEAD(&cd->pending);
 		list_add(&cd->lh_lru, &table->lru);
 		INIT_WORK(&cd->cb_complete_io, chunkdata_complete_io, cd);

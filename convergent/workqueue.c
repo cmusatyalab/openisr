@@ -93,6 +93,7 @@ int delayed_add_disk(struct convergent_dev *dev)
 	return 0;
 }
 
+/* XXX */
 void queue_for_thread(struct work_struct *work)
 {
 	if (!queue_work(queue, work))

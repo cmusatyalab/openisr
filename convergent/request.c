@@ -26,9 +26,6 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	if (len == 0)
 		return;
 	
-	/* The choice of kmap slots here is rather arbitrary.  There
-	   "shouldn't" be any conflicts, since slots are per-CPU and should
-	   only be used atomically. */
 	while (soffset >= src->length) {
 		soffset -= src->length;
 		src++;
@@ -196,13 +193,6 @@ static void convergent_process_chunk(void *data)
 	spin_unlock(&dev->lock);
 }
 
-/* Workqueue callback */
-static void launch_wrapper(void *data)
-{
-	struct convergent_io *io=data;
-	launch_pending_reservation(io);
-}
-
 /* Do initial setup, memory allocations, anything that can fail. */
 static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 {
@@ -271,8 +261,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 		mempool_free(io, io_pool);
 		return -ENOMEM;
 	}
-	INIT_WORK(&io->cb_launch_io, launch_wrapper, io);
-	queue_for_thread(&io->cb_launch_io);
+	launch_pending_reservation(io);
 	return 0;
 }
 
