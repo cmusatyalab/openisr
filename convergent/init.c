@@ -222,6 +222,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	/* Now we have refcounting, so all further errors should deallocate
 	   through the destructor */
 	spin_lock_init(&dev->lock);
+	spin_lock_init(&dev->queue_lock);
 	init_waitqueue_head(&dev->waiting_users);
 	cleaner_start(dev);
 	dev->devnum=devnum;
@@ -272,7 +273,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	dev->chunks=chunk_of(dev, capacity);
 	
 	ndebug("Allocating queue");
-	dev->queue=blk_init_queue(convergent_request, &dev->lock);
+	dev->queue=blk_init_queue(convergent_request, &dev->queue_lock);
 	if (dev->queue == NULL) {
 		log(KERN_ERR, "couldn't allocate request queue");
 		ret=-ENOMEM;

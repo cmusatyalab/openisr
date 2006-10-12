@@ -84,7 +84,7 @@ static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 
 static void queue_start(struct convergent_dev *dev)
 {
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!spin_is_locked(&dev->queue_lock));
 	if (dev->flags & DEV_LOWMEM)
 		return;
 	blk_start_queue(dev->queue);
@@ -94,7 +94,7 @@ static void queue_stop(struct convergent_dev *dev)
 {
 	unsigned long interrupt_state;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!spin_is_locked(&dev->queue_lock));
 	/* Interrupts must be disabled to stop the queue */
 	local_irq_save(interrupt_state);
 	blk_stop_queue(dev->queue);
@@ -107,6 +107,7 @@ static void io_cleaner(void* data)
 	struct convergent_dev *dev=data;
 	int need_release_ref=0;
 	
+	spin_lock_bh(&dev->queue_lock);
 	spin_lock(&dev->lock);
 	/* XXX perhaps it wouldn't hurt to make the timer more frequent */
 	if (dev->flags & DEV_LOWMEM) {
@@ -120,6 +121,7 @@ static void io_cleaner(void* data)
 		need_release_ref=1;
 	}
 	spin_unlock(&dev->lock);
+	spin_unlock_bh(&dev->queue_lock);
 	if (need_release_ref)
 		convergent_dev_put(dev, 0);
 	if (!(dev->flags & DEV_KILLCLEANER))
@@ -133,6 +135,7 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 	int i;
 	struct convergent_io *io=chunk->parent;
 	
+	BUG_ON(!spin_is_locked(&io->dev->queue_lock));
 	BUG_ON(!spin_is_locked(&io->dev->lock));
 	
 	chunk->flags |= CHUNK_COMPLETED;
@@ -189,8 +192,12 @@ static void convergent_process_chunk(void *data)
 		scatterlist_copy(chunk_sg, io->orig_sg, chunk->offset,
 					chunk->orig_offset, chunk->len);
 	}
+	spin_unlock(&dev->lock);
+	spin_lock_bh(&dev->queue_lock);
+	spin_lock(&dev->lock);
 	convergent_complete_chunk(chunk);
 	spin_unlock(&dev->lock);
+	spin_unlock_bh(&dev->queue_lock);
 }
 
 /* Do initial setup, memory allocations, anything that can fail. */
@@ -203,8 +210,10 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	unsigned nsegs;
 	int i;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!spin_is_locked(&dev->queue_lock));
 	BUG_ON(req->nr_phys_segments > MAX_SEGS_PER_IO);
+	/* dev->lock does not protect against irqs */
+	BUG_ON(in_interrupt());
 	
 	if (dev->flags & DEV_SHUTDOWN) {
 		end_that_request(req, 0, req->nr_sectors);
@@ -255,13 +264,16 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 				io->last_chunk - io->first_chunk + 1,
 				io->first_chunk);
 	
+	spin_lock(&dev->lock);
 	if (reserve_chunks(io)) {
 		/* Couldn't allocate chunkdata for this io, so we have to
 		   tear the whole thing down */
+		spin_unlock(&dev->lock);
 		mempool_free(io, io_pool);
 		return -ENOMEM;
 	}
 	launch_pending_reservation(io);
+	spin_unlock(&dev->lock);
 	return 0;
 }
 

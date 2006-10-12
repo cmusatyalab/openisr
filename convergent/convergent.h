@@ -24,9 +24,10 @@ struct convergent_dev {
 	struct class_device *class_dev;
 	struct gendisk *gendisk;
 	request_queue_t *queue;
-	spinlock_t lock;
+	spinlock_t queue_lock;
 	struct block_device *chunk_bdev;
 	
+	spinlock_t lock;
 	unsigned chunksize;
 	unsigned cachesize;
 	sector_t offset;
