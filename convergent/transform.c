@@ -6,21 +6,22 @@
 #include "lzf.h"
 
 /* XXX this needs to go away. */
-/* XXX race between user and softirq kmaps? */
 static void scatterlist_transfer(struct convergent_dev *dev,
 			struct scatterlist *sg, void *buf, int dir)
 {
 	void *page;
 	int i;
 	
+	/* We use KM_USER0 */
+	BUG_ON(in_interrupt());
 	for (i=0; i<chunk_pages(dev); i++) {
 		BUG_ON(sg[i].offset != 0);
-		page=kmap_atomic(sg[i].page, KM_SOFTIRQ0);
+		page=kmap_atomic(sg[i].page, KM_USER0);
 		if (dir == READ)
 			memcpy(buf + i * PAGE_SIZE, page, sg[i].length);
 		else
 			memcpy(page, buf + i * PAGE_SIZE, sg[i].length);
-		kunmap_atomic(page, KM_SOFTIRQ0);
+		kunmap_atomic(page, KM_USER0);
 	}
 }
 
