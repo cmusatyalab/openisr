@@ -46,7 +46,7 @@ void printkey(char *key, int len)
 
 void sighandler(int signal)
 {
-	if (signal == SIGQUIT) {
+	if (signal == SIGUSR1) {
 		printf("Average compressed size: %.0f bytes\n",
 					received_size * 1.0 / received);
 	} else {
@@ -231,7 +231,7 @@ int run(char *storefile)
 		perror("Creating pipe");
 		return 1;
 	}
-	signal(SIGQUIT, &sighandler);
+	signal(SIGUSR1, &sighandler);
 	signal(SIGINT, &sighandler);
 	signal(SIGTERM, &sighandler);
 	pollfds[0].fd=ctlfd;
