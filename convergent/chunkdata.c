@@ -56,7 +56,7 @@ struct chunkdata_table {
 	struct list_head user;
 	struct list_head need_update;
 	struct list_head *hash;
-	struct work_struct runner;
+	struct work_struct cb_run_chunks;
 };
 
 static struct bio_set *bio_pool;
@@ -140,7 +140,7 @@ static void update_chunk(struct chunkdata *cd)
 		return;
 	list_add_tail(&cd->lh_need_update, &table->need_update);
 	/* Ignore return value: if it's already queued, that's fine */
-	queue_work(queue, &table->runner);
+	queue_work(queue, &table->cb_run_chunks);
 }
 
 static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
@@ -848,7 +848,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 	INIT_LIST_HEAD(&table->lru);
 	INIT_LIST_HEAD(&table->user);
 	INIT_LIST_HEAD(&table->need_update);
-	INIT_WORK(&table->runner, run_chunks, dev);
+	INIT_WORK(&table->cb_run_chunks, run_chunks, dev);
 	table->dev=dev;
 	dev->chunkdata=table;
 	/* Allocation failures after this point will result in a
