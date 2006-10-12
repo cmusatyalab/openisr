@@ -223,6 +223,9 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	   through the destructor */
 	spin_lock_init(&dev->lock);
 	spin_lock_init(&dev->queue_lock);
+	INIT_LIST_HEAD(&dev->requests);
+	spin_lock_init(&dev->requests_lock);
+	INIT_WORK(&dev->cb_run_requests, convergent_run_requests, dev);
 	init_waitqueue_head(&dev->waiting_users);
 	cleaner_start(dev);
 	dev->devnum=devnum;

@@ -9,6 +9,7 @@
 #define MINORS_PER_DEVICE 16
 #define CD_MAX_CHUNKS 8192  /* XXX make this based on MB RAM in the box */
 #define CLEANER_SWEEP (HZ/2)
+#define LOWMEM_WAIT_TIME (HZ/10)
 #define MODULE_NAME "openisr"
 #define DEVICE_NAME "openisr"
 #define SUBMIT_QUEUE "openisr-io"
@@ -26,6 +27,10 @@ struct convergent_dev {
 	request_queue_t *queue;
 	spinlock_t queue_lock;
 	struct block_device *chunk_bdev;
+	
+	struct list_head requests;
+	spinlock_t requests_lock;
+	struct work_struct cb_run_requests;
 	
 	spinlock_t lock;
 	unsigned chunksize;
@@ -59,14 +64,12 @@ struct convergent_dev {
 
 enum dev_bits {
 	__DEV_KILLCLEANER,  /* Cleaner should not reschedule itself */
-	__DEV_LOWMEM,       /* Queue stopped until requests freed */
 	__DEV_SHUTDOWN,     /* Userspace keying daemon has gone away */
 	__DEV_CD_SHUTDOWN,  /* chunkdata's dev reference has been released */
 };
 
 /* convergent_dev flags */
 #define DEV_KILLCLEANER     (1 << __DEV_KILLCLEANER)
-#define DEV_LOWMEM          (1 << __DEV_LOWMEM)
 #define DEV_SHUTDOWN        (1 << __DEV_SHUTDOWN)
 #define DEV_CD_SHUTDOWN     (1 << __DEV_CD_SHUTDOWN)
 
@@ -200,6 +203,7 @@ void request_shutdown(void);
 void cleaner_start(struct convergent_dev *dev);
 void cleaner_stop(struct convergent_dev *dev);
 void convergent_request(request_queue_t *q);
+void convergent_run_requests(void *data);
 
 /* chardev.c */
 int chardev_start(void);

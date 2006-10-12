@@ -72,33 +72,16 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 
 static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 {
+	spinlock_t *lock=req->q->queue_lock;
 	int ret;
 
-	BUG_ON(!spin_is_locked(req->q->queue_lock));
 	BUG_ON(!list_empty(&req->queuelist));
+	spin_lock_bh(lock);
 	ret=end_that_request_first(req, uptodate, nr_sectors);
 	if (!ret)
 		end_that_request_last(req, uptodate);
+	spin_unlock_bh(lock);
 	return ret;
-}
-
-static void queue_start(struct convergent_dev *dev)
-{
-	BUG_ON(!spin_is_locked(&dev->queue_lock));
-	if (dev->flags & DEV_LOWMEM)
-		return;
-	blk_start_queue(dev->queue);
-}
-
-static void queue_stop(struct convergent_dev *dev)
-{
-	unsigned long interrupt_state;
-	
-	BUG_ON(!spin_is_locked(&dev->queue_lock));
-	/* Interrupts must be disabled to stop the queue */
-	local_irq_save(interrupt_state);
-	blk_stop_queue(dev->queue);
-	local_irq_restore(interrupt_state);
 }
 
 /* XXX restructure this */
@@ -107,13 +90,7 @@ static void io_cleaner(void* data)
 	struct convergent_dev *dev=data;
 	int need_release_ref=0;
 	
-	spin_lock_bh(&dev->queue_lock);
 	spin_lock(&dev->lock);
-	/* XXX perhaps it wouldn't hurt to make the timer more frequent */
-	if (dev->flags & DEV_LOWMEM) {
-		dev->flags &= ~DEV_LOWMEM;
-		queue_start(dev);
-	}
 	if ((dev->flags & DEV_SHUTDOWN) && !(dev->flags & DEV_CD_SHUTDOWN) &&
 				!dev->need_user) {
 		dev->flags |= DEV_CD_SHUTDOWN;
@@ -121,7 +98,6 @@ static void io_cleaner(void* data)
 		need_release_ref=1;
 	}
 	spin_unlock(&dev->lock);
-	spin_unlock_bh(&dev->queue_lock);
 	if (need_release_ref)
 		convergent_dev_put(dev, 0);
 	if (!(dev->flags & DEV_KILLCLEANER))
@@ -135,7 +111,6 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 	int i;
 	struct convergent_io *io=chunk->parent;
 	
-	BUG_ON(!spin_is_locked(&io->dev->queue_lock));
 	BUG_ON(!spin_is_locked(&io->dev->lock));
 	
 	chunk->flags |= CHUNK_COMPLETED;
@@ -192,12 +167,8 @@ static void convergent_process_chunk(void *data)
 		scatterlist_copy(chunk_sg, io->orig_sg, chunk->offset,
 					chunk->orig_offset, chunk->len);
 	}
-	spin_unlock(&dev->lock);
-	spin_lock_bh(&dev->queue_lock);
-	spin_lock(&dev->lock);
 	convergent_complete_chunk(chunk);
 	spin_unlock(&dev->lock);
-	spin_unlock_bh(&dev->queue_lock);
 }
 
 /* Do initial setup, memory allocations, anything that can fail. */
@@ -210,10 +181,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	unsigned nsegs;
 	int i;
 	
-	BUG_ON(!spin_is_locked(&dev->queue_lock));
 	BUG_ON(req->nr_phys_segments > MAX_SEGS_PER_IO);
-	/* dev->lock does not protect against irqs */
-	BUG_ON(in_interrupt());
 	
 	if (dev->flags & DEV_SHUTDOWN) {
 		end_that_request(req, 0, req->nr_sectors);
@@ -277,14 +245,16 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	return 0;
 }
 
-/* Called with queue lock held */
-void convergent_request(request_queue_t *q)
+/* Workqueue callback */
+void convergent_run_requests(void *data)
 {
-	struct convergent_dev *dev=q->queuedata;
+	struct convergent_dev *dev=data;
 	struct request *req;
+	struct request *next;
 	
-	while ((req = elv_next_request(q)) != NULL) {
-		blkdev_dequeue_request(req);
+	spin_lock(&dev->requests_lock);
+	list_for_each_entry_safe(req, next, &dev->requests, queuelist) {
+		list_del_init(&req->queuelist);
 		if (!blk_fs_request(req)) {
 			/* XXX */
 			debug("Skipping non-fs request");
@@ -296,14 +266,35 @@ void convergent_request(request_queue_t *q)
 		case -ENXIO:
 			break;
 		case -ENOMEM:
-			dev->flags |= DEV_LOWMEM;
-			queue_stop(dev);
-			elv_requeue_request(q, req);
-			return;
+			list_add(&req->queuelist, &dev->requests);
+			/* Come back later when we're happier */
+			queue_delayed_work(queue, &dev->cb_run_requests,
+						LOWMEM_WAIT_TIME);
+			goto out;
 		default:
 			BUG();
 		}
 	}
+out:
+	spin_unlock(&dev->requests_lock);
+}
+
+/* Called with queue lock held */
+void convergent_request(request_queue_t *q)
+{
+	struct convergent_dev *dev=q->queuedata;
+	struct request *req;
+	
+	/* We don't spin_lock_bh() the requests lock */
+	BUG_ON(in_interrupt());
+	spin_lock(&dev->requests_lock);
+	while ((req = elv_next_request(q)) != NULL) {
+		blkdev_dequeue_request(req);
+		list_add_tail(&req->queuelist, &dev->requests);
+	}
+	/* Duplicate enqueue requests will be ignored */
+	queue_work(queue, &dev->cb_run_requests);
+	spin_unlock(&dev->requests_lock);
 }
 
 void cleaner_start(struct convergent_dev *dev)
