@@ -16,7 +16,6 @@ static int shutdown_dev(struct convergent_dev *dev, int force)
 	debug("Shutting down chardev");
 	dev->flags |= DEV_SHUTDOWN;
 	shutdown_usermsg(dev);
-	blk_start_queue(dev->queue);
 	spin_unlock(&dev->lock);
 	convergent_dev_put(dev, 1);
 	return 0;

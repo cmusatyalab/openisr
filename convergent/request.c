@@ -70,16 +70,24 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	kunmap_atomic(dbuf - 1, KM_USER1);
 }
 
+static int __end_that_request(struct request *req, int uptodate, int nr_sectors)
+{
+	int ret;
+	
+	BUG_ON(!list_empty(&req->queuelist));
+	ret=end_that_request_first(req, uptodate, nr_sectors);
+	if (!ret)
+		end_that_request_last(req, uptodate);
+	return ret;
+}
+
 static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 {
 	spinlock_t *lock=req->q->queue_lock;
 	int ret;
-
-	BUG_ON(!list_empty(&req->queuelist));
+	
 	spin_lock_bh(lock);
-	ret=end_that_request_first(req, uptodate, nr_sectors);
-	if (!ret)
-		end_that_request_last(req, uptodate);
+	ret=__end_that_request(req, uptodate, nr_sectors);
 	spin_unlock_bh(lock);
 	return ret;
 }
@@ -251,10 +259,17 @@ void convergent_run_requests(void *data)
 	struct convergent_dev *dev=data;
 	struct request *req;
 	struct request *next;
+	int need_put;
 	
+	if (convergent_dev_get(dev) == NULL)
+		return;
 	spin_lock(&dev->requests_lock);
 	list_for_each_entry_safe(req, next, &dev->requests, queuelist) {
 		list_del_init(&req->queuelist);
+		need_put=list_empty(&dev->requests);
+		spin_unlock(&dev->requests_lock);
+		if (need_put)
+			convergent_dev_put(dev, 0);
 		if (!blk_fs_request(req)) {
 			/* XXX */
 			debug("Skipping non-fs request");
@@ -266,6 +281,9 @@ void convergent_run_requests(void *data)
 		case -ENXIO:
 			break;
 		case -ENOMEM:
+			spin_lock(&dev->requests_lock);
+			if (list_empty(&dev->requests))
+				convergent_dev_get(dev);
 			list_add(&req->queuelist, &dev->requests);
 			/* Come back later when we're happier */
 			queue_delayed_work(queue, &dev->cb_run_requests,
@@ -274,9 +292,11 @@ void convergent_run_requests(void *data)
 		default:
 			BUG();
 		}
+		spin_lock(&dev->requests_lock);
 	}
 out:
 	spin_unlock(&dev->requests_lock);
+	convergent_dev_put(dev, 0);
 }
 
 /* Called with queue lock held */
@@ -284,17 +304,27 @@ void convergent_request(request_queue_t *q)
 {
 	struct convergent_dev *dev=q->queuedata;
 	struct request *req;
+	int need_queue=0;
 	
 	/* We don't spin_lock_bh() the requests lock */
 	BUG_ON(in_interrupt());
-	spin_lock(&dev->requests_lock);
 	while ((req = elv_next_request(q)) != NULL) {
 		blkdev_dequeue_request(req);
-		list_add_tail(&req->queuelist, &dev->requests);
+		if (dev->flags & DEV_SHUTDOWN) {
+			__end_that_request(req, 0, req->nr_sectors);
+		} else {
+			spin_lock(&dev->requests_lock);
+			if (list_empty(&dev->requests))
+				convergent_dev_get(dev);
+			list_add_tail(&req->queuelist, &dev->requests);
+			spin_unlock(&dev->requests_lock);
+			need_queue=1;
+		}
 	}
-	/* Duplicate enqueue requests will be ignored */
-	queue_work(queue, &dev->cb_run_requests);
-	spin_unlock(&dev->requests_lock);
+	if (need_queue) {
+		/* Duplicate enqueue requests will be ignored */
+		queue_work(queue, &dev->cb_run_requests);
+	}
 }
 
 void cleaner_start(struct convergent_dev *dev)
