@@ -72,7 +72,7 @@ static int compress_chunk_zlib(struct convergent_dev *dev,
 	int ret2;
 	int size;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	scatterlist_transfer(dev, sg, dev->buf_uncompressed, READ);
 	strm.workspace=dev->zlib_deflate;
 	/* XXX keep persistent stream structures? */
@@ -119,7 +119,7 @@ static int decompress_chunk_zlib(struct convergent_dev *dev,
 	int ret2;
 	int size;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	/* XXX don't need to transfer whole scatterlist */
 	scatterlist_transfer(dev, sg, dev->buf_compressed, READ);
 	size=crypto_unpad(dev, dev->buf_compressed, len);
@@ -152,7 +152,7 @@ static int compress_chunk_lzf(struct convergent_dev *dev,
 {
 	int size;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	scatterlist_transfer(dev, sg, dev->buf_uncompressed, READ);
 	size=lzf_compress(dev->buf_uncompressed, dev->chunksize,
 				dev->buf_compressed, dev->chunksize,
@@ -179,7 +179,7 @@ static int decompress_chunk_lzf(struct convergent_dev *dev,
 {
 	int size;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	/* XXX don't need to transfer whole scatterlist */
 	scatterlist_transfer(dev, sg, dev->buf_compressed, READ);
 	size=crypto_unpad(dev, dev->buf_compressed, len);
@@ -198,7 +198,7 @@ static int decompress_chunk_lzf(struct convergent_dev *dev,
 int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type)
 {
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	switch (type) {
 	case ISR_COMPRESS_NONE:
 		return dev->chunksize;
@@ -215,7 +215,7 @@ int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type, unsigned len)
 {
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	switch (type) {
 	case ISR_COMPRESS_NONE:
 		if (len != dev->chunksize)
@@ -241,7 +241,7 @@ void crypto_hash(struct convergent_dev *dev, struct scatterlist *sg,
 	int i;
 	unsigned saved;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	for (i=0; sg[i].length < nbytes; i++)
 		nbytes -= sg[i].length;
 	saved=sg[i].length;
@@ -256,7 +256,7 @@ int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
 	char iv[8]={0}; /* XXX */
 	int ret;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
 	ret=crypto_cipher_setkey(dev->cipher, key, dev->hash_len);
 	if (ret)

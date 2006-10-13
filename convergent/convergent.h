@@ -32,7 +32,7 @@ struct convergent_dev {
 	spinlock_t requests_lock;
 	struct work_struct cb_run_requests;
 	
-	spinlock_t lock;
+	struct mutex lock;
 	unsigned chunksize;
 	unsigned cachesize;
 	sector_t offset;

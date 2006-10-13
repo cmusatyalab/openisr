@@ -40,14 +40,14 @@ void convergent_dev_put(struct convergent_dev *dev, int unlink)
 
 void user_get(struct convergent_dev *dev)
 {
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	dev->need_user++;
 	ndebug("need_user now %u", dev->need_user);
 }
 
 void user_put(struct convergent_dev *dev)
 {
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	if (!--dev->need_user)
 		wake_up_interruptible(&dev->waiting_users);
 	ndebug("need_user now %u", dev->need_user);
@@ -99,14 +99,14 @@ static int convergent_open(struct inode *ino, struct file *filp)
 	dev=convergent_dev_get(ino->i_bdev->bd_disk->private_data);
 	if (dev == NULL)
 		return -ENODEV;
-	spin_lock(&dev->lock);
+	mutex_lock(&dev->lock);
 	if (dev->flags & DEV_SHUTDOWN) {
-		spin_unlock(&dev->lock);
+		mutex_unlock(&dev->lock);
 		convergent_dev_put(dev, 0);
 		return -ENODEV;
 	} else {
 		user_get(dev);
-		spin_unlock(&dev->lock);
+		mutex_unlock(&dev->lock);
 		return 0;
 	}
 }
@@ -115,9 +115,9 @@ static int convergent_release(struct inode *ino, struct file *filp)
 {
 	struct convergent_dev *dev=ino->i_bdev->bd_disk->private_data;
 	
-	spin_lock(&dev->lock);
+	mutex_lock(&dev->lock);
 	user_put(dev);
-	spin_unlock(&dev->lock);
+	mutex_unlock(&dev->lock);
 	convergent_dev_put(dev, 0);
 	return 0;
 }
@@ -223,7 +223,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	
 	/* Now we have refcounting, so all further errors should deallocate
 	   through the destructor */
-	spin_lock_init(&dev->lock);
+	mutex_init(&dev->lock);
 	spin_lock_init(&dev->queue_lock);
 	INIT_LIST_HEAD(&dev->requests);
 	spin_lock_init(&dev->requests_lock);

@@ -98,14 +98,14 @@ static void io_cleaner(void* data)
 	struct convergent_dev *dev=data;
 	int need_release_ref=0;
 	
-	spin_lock(&dev->lock);
+	mutex_lock(&dev->lock);
 	if ((dev->flags & DEV_SHUTDOWN) && !(dev->flags & DEV_CD_SHUTDOWN) &&
 				!dev->need_user) {
 		dev->flags |= DEV_CD_SHUTDOWN;
 		/* Must not release ref with the lock held */
 		need_release_ref=1;
 	}
-	spin_unlock(&dev->lock);
+	mutex_unlock(&dev->lock);
 	if (need_release_ref)
 		convergent_dev_put(dev, 0);
 	if (!(dev->flags & DEV_KILLCLEANER))
@@ -119,7 +119,7 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 	int i;
 	struct convergent_io *io=chunk->parent;
 	
-	BUG_ON(!spin_is_locked(&io->dev->lock));
+	BUG_ON(!mutex_is_locked(&io->dev->lock));
 	
 	chunk->flags |= CHUNK_COMPLETED;
 	ndebug("Completing chunk " SECTOR_FORMAT, chunk->cid);
@@ -151,7 +151,7 @@ void convergent_process_chunk(struct convergent_io_chunk *chunk)
 	struct convergent_dev *dev=io->dev;
 	struct scatterlist *chunk_sg;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	
 	/* The underlying chunk I/O might have errored out */
 	if (chunk->error) {
@@ -235,15 +235,15 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 				io->last_chunk - io->first_chunk + 1,
 				io->first_chunk);
 	
-	spin_lock(&dev->lock);
+	mutex_lock(&dev->lock);
 	if (reserve_chunks(io)) {
 		/* Couldn't allocate chunkdata for this io, so we have to
 		   tear the whole thing down */
-		spin_unlock(&dev->lock);
+		mutex_unlock(&dev->lock);
 		mempool_free(io, io_pool);
 		return -ENOMEM;
 	}
-	spin_unlock(&dev->lock);
+	mutex_unlock(&dev->lock);
 	return 0;
 }
 

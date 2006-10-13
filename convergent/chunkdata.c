@@ -97,7 +97,7 @@ static inline int is_idle_state(enum cd_state state)
 
 static void chunkdata_hit(struct chunkdata *cd)
 {
-	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	list_move_tail(&cd->lh_lru, &cd->table->lru);
 }
 
@@ -107,7 +107,7 @@ static void __transition(struct chunkdata *cd, enum cd_state new_state)
 	int idle[2];
 	int i;
 	
-	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	for (i=0; i<2; i++)
 		idle[i]=is_idle_state(states[i]);
 	if (!idle[0] && idle[1])
@@ -135,7 +135,7 @@ static void update_chunk(struct chunkdata *cd)
 {
 	struct chunkdata_table *table=cd->table;
 	
-	BUG_ON(!spin_is_locked(&table->dev->lock));
+	BUG_ON(!mutex_is_locked(&table->dev->lock));
 	if (!list_empty(&cd->lh_need_update))
 		return;
 	list_add_tail(&cd->lh_need_update, &table->need_update);
@@ -149,7 +149,7 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	struct chunkdata *cd;
 	struct chunkdata *next;
 	
-	BUG_ON(!spin_is_locked(&table->dev->lock));
+	BUG_ON(!mutex_is_locked(&table->dev->lock));
 	
 	/* See if the chunk is in the table already */
 	list_for_each_entry(cd, &table->hash[hash(table, cid)], lh_bucket) {
@@ -236,7 +236,7 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 	struct bio *bio;
 	struct convergent_io_chunk *chunk;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	/* XXX could alloc smaller bios if we're looping */
 	bio=bio_alloc_bioset(GFP_ATOMIC, chunk_pages(dev), bio_pool);
 	if (bio == NULL)
@@ -271,7 +271,7 @@ static void issue_chunk_io(struct chunkdata *cd)
 	int dir;
 	int err;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	
 	if (cd->state == ST_LOAD_DATA) {
 		dir=READ;
@@ -334,7 +334,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 	int ret;
 	char hash[ISR_MAX_HASH_LEN];
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	if (type == READ) {
 		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->cid);
@@ -381,7 +381,7 @@ static void chunkdata_complete_io(void *data)
 	struct chunkdata *cd=data;
 	int error;
 	
-	spin_lock(&cd->table->dev->lock);
+	mutex_lock(&cd->table->dev->lock);
 	
 	error=cd->error;
 	/* XXX we have a bit of a problem: we encrypt in-place.  so if we
@@ -406,7 +406,7 @@ static void chunkdata_complete_io(void *data)
 		BUG();
 	
 	update_chunk(cd);
-	spin_unlock(&cd->table->dev->lock);
+	mutex_unlock(&cd->table->dev->lock);
 }
 
 /* May be called from hardirq context */
@@ -436,7 +436,7 @@ static int io_has_reservation(struct convergent_io *io)
 	struct chunkdata *cd;
 	int i;
 	
-	BUG_ON(!spin_is_locked(&io->dev->lock));
+	BUG_ON(!mutex_is_locked(&io->dev->lock));
 	for (i=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
 		/* CHUNK_STARTED is an optimization: if set, we know it's
@@ -457,7 +457,7 @@ static void try_start_io(struct convergent_io *io)
 	struct chunkdata *cd;
 	int i;
 	
-	BUG_ON(!spin_is_locked(&io->dev->lock));
+	BUG_ON(!mutex_is_locked(&io->dev->lock));
 	
 	/* See if this io can run yet at all. */
 	if (!io_has_reservation(io))
@@ -510,7 +510,7 @@ static void try_start_io(struct convergent_io *io)
 /* Returns error if the queue is shut down */
 static int queue_for_user(struct chunkdata *cd)
 {
-	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	BUG_ON(!list_empty(&cd->lh_user));
 	BUG_ON(cd->state != ST_LOAD_META && cd->state != ST_STORE_META);
 	if (cd->table->dev->flags & DEV_SHUTDOWN)
@@ -524,7 +524,7 @@ int have_usermsg(struct convergent_dev *dev)
 {
 	struct chunkdata *cd;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	list_for_each_entry(cd, &dev->chunkdata->user, lh_user) {
 		if (cd->flags & CD_USER)
 			continue;
@@ -538,7 +538,7 @@ struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type)
 {
 	struct chunkdata *cd;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	list_for_each_entry(cd, &dev->chunkdata->user, lh_user) {
 		if (cd->flags & CD_USER)
 			continue;
@@ -556,14 +556,14 @@ struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type)
 
 void fail_usermsg(struct chunkdata *cd)
 {
-	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	BUG_ON(!(cd->flags & CD_USER));
 	cd->flags &= ~CD_USER;
 }
 
 static void __end_usermsg(struct chunkdata *cd)
 {
-	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	BUG_ON(list_empty(&cd->lh_user));
 	cd->flags &= ~CD_USER;
 	list_del_init(&cd->lh_user);
@@ -591,7 +591,7 @@ void shutdown_usermsg(struct convergent_dev *dev)
 	struct chunkdata *cd;
 	struct chunkdata *next;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	BUG_ON(!(dev->flags & DEV_SHUTDOWN));
 	list_for_each_entry_safe(cd, next, &dev->chunkdata->user, lh_user) {
 		transition_error(cd, -EIO);
@@ -601,7 +601,7 @@ void shutdown_usermsg(struct convergent_dev *dev)
 
 void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid)
 {
-	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	BUG_ON(cd->state != ST_LOAD_META);
 	*cid=cd->cid;
 }
@@ -609,7 +609,7 @@ void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid)
 void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 			unsigned *length, compress_t *compression, char key[])
 {
-	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	BUG_ON(cd->state != ST_STORE_META);
 	*cid=cd->cid;
 	*length=cd->size;
@@ -622,7 +622,7 @@ void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 {
 	struct chunkdata *cd;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	cd=chunkdata_get(dev->chunkdata, cid);
 	if (cd == NULL || !(cd->flags & CD_USER) ||
 				cd->state != ST_LOAD_META) {
@@ -641,7 +641,7 @@ static void run_chunk(struct chunkdata *cd)
 {
 	struct convergent_io_chunk *chunk;
 	
-	BUG_ON(!spin_is_locked(&cd->table->dev->lock));
+	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	chunk=pending_head(cd);
 	
 again:
@@ -727,13 +727,13 @@ static void run_chunks(void *data)
 	struct chunkdata *cd;
 	struct chunkdata *next;
 	
-	spin_lock(&dev->lock);
+	mutex_lock(&dev->lock);
 	list_for_each_entry_safe(cd, next, &dev->chunkdata->need_update,
 				lh_need_update) {
 		list_del_init(&cd->lh_need_update);
 		run_chunk(cd);
 	}
-	spin_unlock(&dev->lock);
+	mutex_unlock(&dev->lock);
 }
 
 int reserve_chunks(struct convergent_io *io)
@@ -742,7 +742,7 @@ int reserve_chunks(struct convergent_io *io)
 	struct chunkdata *cd;
 	int i;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	for (i=0; i<io_chunks(io); i++) {
 		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
 		if (cd == NULL)
@@ -771,7 +771,7 @@ void unreserve_chunk(struct convergent_io_chunk *chunk)
 	struct convergent_dev *dev=chunk->parent->dev;
 	struct chunkdata *cd;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	cd=chunkdata_get(dev->chunkdata, chunk->cid);
 	BUG_ON(!pending_head_is(cd, chunk));
 	list_del_init(&chunk->lh_pending);
@@ -784,7 +784,7 @@ struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
 	struct convergent_dev *dev=chunk->parent->dev;
 	struct chunkdata *cd;
 	
-	BUG_ON(!spin_is_locked(&dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	cd=chunkdata_get(dev->chunkdata, chunk->cid);
 	BUG_ON(cd == NULL || !pending_head_is(cd, chunk));
 	return cd->sg;

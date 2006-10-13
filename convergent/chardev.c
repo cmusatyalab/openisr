@@ -8,15 +8,15 @@
 
 static int shutdown_dev(struct convergent_dev *dev, int force)
 {
-	spin_lock(&dev->lock);
+	mutex_lock(&dev->lock);
 	if (!force && dev->need_user != 0) {
-		spin_unlock(&dev->lock);
+		mutex_unlock(&dev->lock);
 		return -EBUSY;
 	}
 	debug("Shutting down chardev");
 	dev->flags |= DEV_SHUTDOWN;
 	shutdown_usermsg(dev);
-	spin_unlock(&dev->lock);
+	mutex_unlock(&dev->lock);
 	convergent_dev_put(dev, 1);
 	return 0;
 }
@@ -57,26 +57,26 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	for (i=0; i<count; i++) {
 		memset(&msg, 0, sizeof(msg));
 		
-		spin_lock(&dev->lock);
+		mutex_lock(&dev->lock);
 		ndebug("Trying to get chunk");
 		cd=next_usermsg(dev, &msg.type);
 		while (cd == NULL) {
-			spin_unlock(&dev->lock);
+			mutex_unlock(&dev->lock);
 			if (i > 0)
 				goto out;
 			if (filp->f_flags & O_NONBLOCK)
 				return -EAGAIN;
-			spin_lock(&dev->lock);
+			mutex_lock(&dev->lock);
 			prepare_to_wait(&dev->waiting_users, &wait,
 						TASK_INTERRUPTIBLE);
 			cd=next_usermsg(dev, &msg.type);
-			spin_unlock(&dev->lock);
+			mutex_unlock(&dev->lock);
 			if (cd == NULL)
 				schedule();
 			finish_wait(&dev->waiting_users, &wait);
 			if (cd == NULL && signal_pending(current))
 				return -ERESTARTSYS;
-			spin_lock(&dev->lock);
+			mutex_lock(&dev->lock);
 		}
 		switch (msg.type) {
 		case ISR_MSGTYPE_GET_META:
@@ -92,14 +92,14 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 			do_end=1;  /* make compiler happy */
 			BUG();
 		}
-		spin_unlock(&dev->lock);
+		mutex_unlock(&dev->lock);
 		ret=copy_to_user(buf + i * sizeof(msg), &msg, sizeof(msg));
-		spin_lock(&dev->lock);
+		mutex_lock(&dev->lock);
 		if (ret)
 			fail_usermsg(cd);
 		else if (do_end)
 			end_usermsg(cd);
-		spin_unlock(&dev->lock);
+		mutex_unlock(&dev->lock);
 	}
 out:
 	ndebug("Leaving chr_read: %d", i * sizeof(msg));
@@ -139,10 +139,10 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 				goto out;
 			}
 			
-			spin_lock(&dev->lock);
+			mutex_lock(&dev->lock);
 			set_usermsg_set_meta(dev, msg.chunk, msg.length,
 						msg.compression, msg.key);
-			spin_unlock(&dev->lock);
+			mutex_unlock(&dev->lock);
 			break;
 		default:
 			err=-EINVAL;
@@ -211,12 +211,12 @@ static unsigned chr_poll(struct file *filp, poll_table *wait)
 	if (dev == NULL)
 		return POLLERR;
 	poll_wait(filp, &dev->waiting_users, wait);
-	spin_lock(&dev->lock);
+	mutex_lock(&dev->lock);
 	if (have_usermsg(dev))
 		mask |= POLLIN | POLLRDNORM;
 	if (dev->need_user == 0)
 		mask |= POLLPRI;
-	spin_unlock(&dev->lock);
+	mutex_unlock(&dev->lock);
 	return mask;
 }
 
