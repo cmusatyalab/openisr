@@ -144,22 +144,20 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 	mempool_free(io, io_pool);
 }
 
-/* Process one chunk from an io.  Called from workqueue. */
-static void convergent_process_chunk(void *data)
+/* Process one chunk from an io. */
+void convergent_process_chunk(struct convergent_io_chunk *chunk)
 {
-	struct convergent_io_chunk *chunk=data;
 	struct convergent_io *io=chunk->parent;
 	struct convergent_dev *dev=io->dev;
 	struct scatterlist *chunk_sg;
 	
-	spin_lock(&dev->lock);
+	BUG_ON(!spin_is_locked(&dev->lock));
 	
 	/* The underlying chunk I/O might have errored out */
 	if (chunk->error) {
 		debug("process_chunk I/O error: chunk " SECTOR_FORMAT,
 					chunk->cid);
 		convergent_complete_chunk(chunk);
-		spin_unlock(&dev->lock);
 		return;
 	}
 	
@@ -176,7 +174,6 @@ static void convergent_process_chunk(void *data)
 					chunk->orig_offset, chunk->len);
 	}
 	convergent_complete_chunk(chunk);
-	spin_unlock(&dev->lock);
 }
 
 /* Do initial setup, memory allocations, anything that can fail. */
@@ -228,8 +225,6 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 			chunk->flags |= CHUNK_READ;
 		chunk->error=0;
 		INIT_LIST_HEAD(&chunk->lh_pending);
-		INIT_WORK(&chunk->cb_process_chunk, convergent_process_chunk,
-					chunk);
 		remaining -= chunk->len;
 		bytes += chunk->len;
 	}

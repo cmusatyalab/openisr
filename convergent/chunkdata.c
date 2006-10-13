@@ -503,8 +503,7 @@ static void try_start_io(struct convergent_io *io)
 		}
 		
 		chunk->flags |= CHUNK_STARTED;
-		/* This is done via callback only to prevent stack overflows */
-		queue_for_thread(&io->chunks[i].cb_process_chunk);
+		convergent_process_chunk(&io->chunks[i]);
 	}
 }
 

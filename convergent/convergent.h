@@ -76,7 +76,6 @@ enum dev_bits {
 struct convergent_io_chunk {
 	struct list_head lh_pending;
 	struct convergent_io *parent;
-	struct work_struct cb_process_chunk;
 	chunk_t cid;
 	unsigned orig_offset;  /* byte offset into orig_sg */
 	unsigned offset;       /* byte offset into chunk */
@@ -204,6 +203,7 @@ void cleaner_start(struct convergent_dev *dev);
 void cleaner_stop(struct convergent_dev *dev);
 void convergent_request(request_queue_t *q);
 void convergent_run_requests(void *data);
+void convergent_process_chunk(struct convergent_io_chunk *chunk);
 
 /* chardev.c */
 int chardev_start(void);
