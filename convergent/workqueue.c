@@ -13,14 +13,6 @@ struct workqueue_struct *queue;
 static kmem_cache_t *job_cache;
 static mempool_t *job_pool;
 
-static void job_handle_bio(void *data)
-{
-	struct job *job=data;
-	
-	generic_make_request(job->data);
-	mempool_free(job, job_pool);
-}
-
 static void job_handle_gendisk(void *data)
 {
 	struct job *job=data;
@@ -54,19 +46,6 @@ int __init workqueue_start(void)
 		workqueue_shutdown();
 		return -ENOMEM;
 	}
-	return 0;
-}
-
-/* Intended to be called from atomic context */
-int submit(struct bio *bio)
-{
-	struct job *job=mempool_alloc(job_pool, GFP_ATOMIC);
-	if (job == NULL)
-		return -ENOMEM;
-	INIT_WORK(&job->work, job_handle_bio, job);
-	job->data=bio;
-	if (!queue_work(queue, &job->work))
-		BUG();
 	return 0;
 }
 

@@ -269,7 +269,6 @@ static void issue_chunk_io(struct chunkdata *cd)
 	unsigned offset=0;
 	int i=0;
 	int dir;
-	int err;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	
@@ -295,10 +294,8 @@ static void issue_chunk_io(struct chunkdata *cd)
 	while (offset < dev->chunksize) {
 		if (bio == NULL) {
 			bio=bio_create(cd, dir, offset/512);
-			if (bio == NULL) {
-				err=-ENOMEM;
-				goto out;
-			}
+			if (bio == NULL)
+				goto bad;
 		}
 		if (bio_add_page(bio, cd->sg[i].page,
 					cd->sg[i].length,
@@ -307,25 +304,19 @@ static void issue_chunk_io(struct chunkdata *cd)
 			i++;
 		} else {
 			debug("Submitting multiple bios");
-			err=submit(bio);
-			if (err) {
-				offset -= bio->bi_size;
-				goto out;
-			}
+			generic_make_request(bio);
 			bio=NULL;
 		}
 	}
 	BUG_ON(bio == NULL);
-	err=submit(bio);
-	if (err)
-		offset -= bio->bi_size;
-out:
-	if (err) {
-		cd->error=err;
-		if (atomic_add_return(dev->chunksize - offset, &cd->completed)
-					== dev->chunksize)
-			queue_for_thread(&cd->cb_complete_io);
-	}
+	generic_make_request(bio);
+	return;
+	
+bad:
+	cd->error=-ENOMEM;
+	if (atomic_add_return(dev->chunksize - offset, &cd->completed)
+				== dev->chunksize)
+		queue_for_thread(&cd->cb_complete_io);
 }
 
 static int chunk_tfm(struct chunkdata *cd, int type)

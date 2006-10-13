@@ -213,7 +213,6 @@ void chardev_shutdown(void);
 extern struct workqueue_struct *queue;
 int workqueue_start(void);
 void workqueue_shutdown(void);
-int submit(struct bio *bio);
 int delayed_add_disk(struct convergent_dev *dev);
 void queue_for_thread(struct work_struct *work);
 
