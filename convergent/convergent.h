@@ -233,7 +233,6 @@ void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 			unsigned length, compress_t compression, char key[]);
 int reserve_chunks(struct convergent_io *io);
-void launch_pending_reservation(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);
 ssize_t print_states(struct convergent_dev *dev, char *buf, int len);

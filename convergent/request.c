@@ -248,7 +248,6 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 		mempool_free(io, io_pool);
 		return -ENOMEM;
 	}
-	launch_pending_reservation(io);
 	spin_unlock(&dev->lock);
 	return 0;
 }
@@ -258,13 +257,15 @@ void convergent_run_requests(void *data)
 {
 	struct convergent_dev *dev=data;
 	struct request *req;
-	struct request *next;
 	int need_put;
 	
 	if (convergent_dev_get(dev) == NULL)
 		return;
 	spin_lock(&dev->requests_lock);
-	list_for_each_entry_safe(req, next, &dev->requests, queuelist) {
+	/* We don't use the "safe" iterator because the next pointer might
+	   change out from under us between iterations */
+	while (!list_empty(&dev->requests)) {
+		req=list_entry(dev->requests.next, struct request, queuelist);
 		list_del_init(&req->queuelist);
 		need_put=list_empty(&dev->requests);
 		spin_unlock(&dev->requests_lock);

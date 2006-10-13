@@ -737,7 +737,6 @@ static void run_chunks(void *data)
 	spin_unlock(&dev->lock);
 }
 
-/* Called via request function, with the restrictions that implies */
 int reserve_chunks(struct convergent_io *io)
 {
 	struct convergent_dev *dev=io->dev;
@@ -752,6 +751,11 @@ int reserve_chunks(struct convergent_io *io)
 		list_add_tail(&io->chunks[i].lh_pending, &cd->pending);
 		user_get(dev);
 	}
+	for (i=0; i<io_chunks(io); i++) {
+		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
+		BUG_ON(cd == NULL);
+		update_chunk(cd);
+	}
 	return 0;
 	
 bad:
@@ -761,20 +765,6 @@ bad:
 	}
 	/* XXX this isn't strictly nomem */
 	return -ENOMEM;
-}
-
-void launch_pending_reservation(struct convergent_io *io)
-{
-	struct convergent_dev *dev=io->dev;
-	struct chunkdata *cd;
-	int i;
-	
-	BUG_ON(!spin_is_locked(&dev->lock));
-	for (i=0; i<io_chunks(io); i++) {
-		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
-		BUG_ON(cd == NULL);
-		update_chunk(cd);
-	}
 }
 
 void unreserve_chunk(struct convergent_io_chunk *chunk)

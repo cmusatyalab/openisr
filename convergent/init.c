@@ -148,6 +148,7 @@ static void convergent_dev_dtr(struct class_device *class_dev)
 	
 	debug("Dtr called");
 	BUG_ON(!(dev->flags & DEV_SHUTDOWN));
+	BUG_ON(!list_empty(&dev->requests));
 	/* XXX racy? */
 	if (dev->gendisk) {
 		if (dev->gendisk->flags & GENHD_FL_UP) {
