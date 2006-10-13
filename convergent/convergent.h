@@ -27,6 +27,7 @@ struct convergent_dev {
 	request_queue_t *queue;
 	spinlock_t queue_lock;
 	struct block_device *chunk_bdev;
+	struct work_struct cb_add_disk;
 	
 	struct list_head requests;
 	spinlock_t requests_lock;
@@ -185,6 +186,7 @@ static inline unsigned io_chunks(struct convergent_io *io)
 }
 
 /* init.c */
+extern struct workqueue_struct *wkqueue;
 extern int blk_major;
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
@@ -208,13 +210,6 @@ void convergent_process_chunk(struct convergent_io_chunk *chunk);
 /* chardev.c */
 int chardev_start(void);
 void chardev_shutdown(void);
-
-/* workqueue.c */
-extern struct workqueue_struct *queue;
-int workqueue_start(void);
-void workqueue_shutdown(void);
-int delayed_add_disk(struct convergent_dev *dev);
-void queue_for_thread(struct work_struct *work);
 
 /* chunkdata.c */
 int chunkdata_start(void);

@@ -5,7 +5,6 @@
 #include <linux/highmem.h>
 #include <linux/fs.h>
 #include <linux/mempool.h>
-#include <linux/workqueue.h>
 #include "convergent.h"
 
 static kmem_cache_t *io_cache;
@@ -109,7 +108,7 @@ static void io_cleaner(void* data)
 	if (need_release_ref)
 		convergent_dev_put(dev, 0);
 	if (!(dev->flags & DEV_KILLCLEANER))
-		queue_delayed_work(queue, &dev->cleaner, CLEANER_SWEEP);
+		queue_delayed_work(wkqueue, &dev->cleaner, CLEANER_SWEEP);
 	else
 		debug("Timer shutting down");
 }
@@ -282,7 +281,7 @@ void convergent_run_requests(void *data)
 				convergent_dev_get(dev);
 			list_add(&req->queuelist, &dev->requests);
 			/* Come back later when we're happier */
-			queue_delayed_work(queue, &dev->cb_run_requests,
+			queue_delayed_work(wkqueue, &dev->cb_run_requests,
 						LOWMEM_WAIT_TIME);
 			goto out;
 		default:
@@ -319,21 +318,21 @@ void convergent_request(request_queue_t *q)
 	}
 	if (need_queue) {
 		/* Duplicate enqueue requests will be ignored */
-		queue_work(queue, &dev->cb_run_requests);
+		queue_work(wkqueue, &dev->cb_run_requests);
 	}
 }
 
 void cleaner_start(struct convergent_dev *dev)
 {
 	INIT_WORK(&dev->cleaner, io_cleaner, dev);
-	queue_delayed_work(queue, &dev->cleaner, CLEANER_SWEEP);
+	queue_delayed_work(wkqueue, &dev->cleaner, CLEANER_SWEEP);
 }
 
 void cleaner_stop(struct convergent_dev *dev)
 {
 	dev->flags |= DEV_KILLCLEANER;
 	cancel_delayed_work(&dev->cleaner);
-	flush_workqueue(queue);
+	flush_workqueue(wkqueue);
 	/* Run the timer one more time to make sure everything's cleaned out */
 	io_cleaner(dev);
 }

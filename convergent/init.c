@@ -11,6 +11,7 @@
 
 static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
 static struct class class;
+struct workqueue_struct *wkqueue;
 int blk_major;
 
 struct convergent_dev *convergent_dev_get(struct convergent_dev *dev)
@@ -139,6 +140,15 @@ static int alloc_devnum(void)
 static void free_devnum(int devnum)
 {
 	clear_bit(devnum, devnums);
+}
+
+/* Workqueue callback */
+static void convergent_add_disk(void *data)
+{
+	struct convergent_dev *dev=data;
+	
+	add_disk(dev->gendisk);
+	convergent_dev_put(dev, 0);
 }
 
 /* Called by dev->class_dev's release callback */
@@ -331,15 +341,20 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	dev->gendisk->queue=dev->queue;
 	dev->gendisk->private_data=dev;
 	set_capacity(dev->gendisk, capacity);
+	
 	ndebug("Adding disk");
 	/* add_disk() initiates I/O to read the partition tables, so userspace
 	   needs to be able to process key requests while it is running.
 	   If we called add_disk() directly here, we would deadlock. */
-	ret=delayed_add_disk(dev);
-	if (ret) {
-		log(KERN_ERR, "couldn't schedule gendisk registration");
-		goto bad_put_chunkdata;
-	}
+	INIT_WORK(&dev->cb_add_disk, convergent_add_disk, dev);
+	/* Make sure the dev isn't freed until add_disk() completes */
+	if (convergent_dev_get(dev) == NULL)
+		BUG();
+	/* We use the shared queue in order to prevent deadlock: if we
+	   used our own queue, add_disk() would block its own I/O to the
+	   partition table. */
+	if (!schedule_work(&dev->cb_add_disk))
+		BUG();
 	
 	return dev;
 	
@@ -388,9 +403,10 @@ static int __init convergent_init(void)
 		goto bad_chunkdata;
 	}
 	
-	ret=workqueue_start();
-	if (ret) {
-		log(KERN_ERR, "couldn't start I/O submission thread");
+	wkqueue=create_workqueue(SUBMIT_QUEUE);
+	if (wkqueue == NULL) {
+		ret=-ENOMEM;
+		log(KERN_ERR, "couldn't start kernel thread");
 		goto bad_workqueue;
 	}
 	
@@ -413,7 +429,7 @@ bad_chrdev:
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
 bad_blkdev:
-	workqueue_shutdown();
+	destroy_workqueue(wkqueue);
 bad_workqueue:
 	chunkdata_shutdown();
 bad_chunkdata:
@@ -433,7 +449,7 @@ static void __exit convergent_shutdown(void)
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
 	
-	workqueue_shutdown();
+	destroy_workqueue(wkqueue);
 	
 	chunkdata_shutdown();
 	

@@ -140,7 +140,7 @@ static void update_chunk(struct chunkdata *cd)
 		return;
 	list_add_tail(&cd->lh_need_update, &table->need_update);
 	/* Ignore return value: if it's already queued, that's fine */
-	queue_work(queue, &table->cb_run_chunks);
+	queue_work(wkqueue, &table->cb_run_chunks);
 }
 
 static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
@@ -315,8 +315,10 @@ static void issue_chunk_io(struct chunkdata *cd)
 bad:
 	cd->error=-ENOMEM;
 	if (atomic_add_return(dev->chunksize - offset, &cd->completed)
-				== dev->chunksize)
-		queue_for_thread(&cd->cb_complete_io);
+				== dev->chunksize) {
+		if (!queue_work(wkqueue, &cd->cb_complete_io))
+			BUG();
+	}
 }
 
 static int chunk_tfm(struct chunkdata *cd, int type)
@@ -414,8 +416,10 @@ static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error)
 				nbytes, completed, error);
 	/* Can't call BUG() in interrupt */
 	WARN_ON(completed > cd->table->dev->chunksize);
-	if (completed >= cd->table->dev->chunksize)
-		queue_for_thread(&cd->cb_complete_io);
+	if (completed >= cd->table->dev->chunksize) {
+		if (!queue_work(wkqueue, &cd->cb_complete_io))
+			WARN_ON(1);
+	}
 	return 0;
 }
 

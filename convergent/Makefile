@@ -1,8 +1,8 @@
 ifneq ($(KERNELRELEASE),)
 
 obj-m := openisr.o
-openisr-objs := init.o request.o workqueue.o chunkdata.o chardev.o
-openisr-objs += transform.o revision.o lzf.o
+openisr-objs := init.o request.o chunkdata.o chardev.o transform.o lzf.o
+openisr-objs += revision.o 
 
 else
 
