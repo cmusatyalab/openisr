@@ -91,28 +91,6 @@ static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 	return ret;
 }
 
-/* XXX restructure this */
-static void io_cleaner(void* data)
-{
-	struct convergent_dev *dev=data;
-	int need_release_ref=0;
-	
-	mutex_lock(&dev->lock);
-	if ((dev->flags & DEV_SHUTDOWN) && !(dev->flags & DEV_CD_SHUTDOWN) &&
-				!dev->need_user) {
-		dev->flags |= DEV_CD_SHUTDOWN;
-		/* Must not release ref with the lock held */
-		need_release_ref=1;
-	}
-	mutex_unlock(&dev->lock);
-	if (need_release_ref)
-		convergent_dev_put(dev, 0);
-	if (!(dev->flags & DEV_KILLCLEANER))
-		queue_delayed_work(wkqueue, &dev->cleaner, CLEANER_SWEEP);
-	else
-		debug("Timer shutting down");
-}
-
 static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 {
 	int i;
@@ -320,21 +298,6 @@ void convergent_request(request_queue_t *q)
 		/* Duplicate enqueue requests will be ignored */
 		queue_work(wkqueue, &dev->cb_run_requests);
 	}
-}
-
-void cleaner_start(struct convergent_dev *dev)
-{
-	INIT_WORK(&dev->cleaner, io_cleaner, dev);
-	queue_delayed_work(wkqueue, &dev->cleaner, CLEANER_SWEEP);
-}
-
-void cleaner_stop(struct convergent_dev *dev)
-{
-	dev->flags |= DEV_KILLCLEANER;
-	cancel_delayed_work(&dev->cleaner);
-	flush_workqueue(wkqueue);
-	/* Run the timer one more time to make sure everything's cleaned out */
-	io_cleaner(dev);
 }
 
 int __init request_start(void)

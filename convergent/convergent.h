@@ -8,7 +8,6 @@
 #define DEVICES 16  /* If this is more than 26, ctr will need to be fixed */
 #define MINORS_PER_DEVICE 16
 #define CD_MAX_CHUNKS 8192  /* XXX make this based on MB RAM in the box */
-#define CLEANER_SWEEP (HZ/2)
 #define LOWMEM_WAIT_TIME (HZ/10)
 #define MODULE_NAME "openisr"
 #define DEVICE_NAME "openisr"
@@ -58,21 +57,16 @@ struct convergent_dev {
 	/* Count of activities that need the userspace process to be there */
 	unsigned need_user;
 	wait_queue_head_t waiting_users;
-	
-	/* XXX make this a global object?  we'd need a list of devs */
-	struct work_struct cleaner;
 };
 
 enum dev_bits {
-	__DEV_KILLCLEANER,  /* Cleaner should not reschedule itself */
 	__DEV_SHUTDOWN,     /* Userspace keying daemon has gone away */
-	__DEV_CD_SHUTDOWN,  /* chunkdata's dev reference has been released */
+	__DEV_HAVE_CD_REF,  /* chunkdata holds a dev reference */
 };
 
 /* convergent_dev flags */
-#define DEV_KILLCLEANER     (1 << __DEV_KILLCLEANER)
 #define DEV_SHUTDOWN        (1 << __DEV_SHUTDOWN)
-#define DEV_CD_SHUTDOWN     (1 << __DEV_CD_SHUTDOWN)
+#define DEV_HAVE_CD_REF     (1 << __DEV_HAVE_CD_REF)
 
 struct convergent_io_chunk {
 	struct list_head lh_pending;
@@ -201,8 +195,6 @@ void user_put(struct convergent_dev *dev);
 /* request.c */
 int request_start(void);
 void request_shutdown(void);
-void cleaner_start(struct convergent_dev *dev);
-void cleaner_stop(struct convergent_dev *dev);
 void convergent_request(request_queue_t *q);
 void convergent_run_requests(void *data);
 void convergent_process_chunk(struct convergent_io_chunk *chunk);

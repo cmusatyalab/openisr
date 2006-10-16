@@ -52,6 +52,7 @@ struct chunkdata_table {
 	struct convergent_dev *dev;
 	unsigned buckets;
 	unsigned state_count[NR_STATES];
+	unsigned busy_count;
 	struct list_head lru;
 	struct list_head user;
 	struct list_head need_update;
@@ -110,10 +111,14 @@ static void __transition(struct chunkdata *cd, enum cd_state new_state)
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	for (i=0; i<2; i++)
 		idle[i]=is_idle_state(states[i]);
-	if (!idle[0] && idle[1])
+	if (!idle[0] && idle[1]) {
 		user_put(cd->table->dev);
-	if (idle[0] && !idle[1])
+		cd->table->busy_count--;
+	}
+	if (idle[0] && !idle[1]) {
 		user_get(cd->table->dev);
+		cd->table->busy_count++;
+	}
 	cd->table->state_count[cd->state]--;
 	cd->table->state_count[new_state]++;
 	cd->state=new_state;
@@ -721,6 +726,7 @@ static void run_chunks(void *data)
 	struct convergent_dev *dev=data;
 	struct chunkdata *cd;
 	struct chunkdata *next;
+	int need_release=0;
 	
 	mutex_lock(&dev->lock);
 	list_for_each_entry_safe(cd, next, &dev->chunkdata->need_update,
@@ -728,7 +734,15 @@ static void run_chunks(void *data)
 		list_del_init(&cd->lh_need_update);
 		run_chunk(cd);
 	}
+	if ((dev->flags & DEV_HAVE_CD_REF) &&
+				dev->chunkdata->busy_count == 0 &&
+				list_empty(&dev->chunkdata->need_update)) {
+		dev->flags &= ~DEV_HAVE_CD_REF;
+		need_release=1;
+	}
 	mutex_unlock(&dev->lock);
+	if (need_release)
+		convergent_dev_put(dev, 0);
 }
 
 int reserve_chunks(struct convergent_io *io)
@@ -744,6 +758,11 @@ int reserve_chunks(struct convergent_io *io)
 			goto bad;
 		list_add_tail(&io->chunks[i].lh_pending, &cd->pending);
 		user_get(dev);
+	}
+	if (!(dev->flags & DEV_HAVE_CD_REF)) {
+		dev->flags |= DEV_HAVE_CD_REF;
+		if (convergent_dev_get(dev) == NULL)
+			BUG();
 	}
 	for (i=0; i<io_chunks(io); i++) {
 		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
@@ -867,11 +886,6 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 			return -ENOMEM;
 	}
 	table->state_count[ST_INVALID]=dev->cachesize;
-	/* chunkdata holds a reference to dev, since it would be bad for
-	   dev to disappear out from under us while we're still processing
-	   workqueue jobs and endio callbacks.  This reference is released by
-	   the io_cleaner function (!). */
-	convergent_dev_get(dev);
 	return 0;
 }
 

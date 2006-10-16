@@ -169,7 +169,6 @@ static void convergent_dev_dtr(struct class_device *class_dev)
 		}
 	}
 	chunkdata_free_table(dev);
-	cleaner_stop(dev);
 	transform_free(dev);
 	if (dev->queue)
 		blk_cleanup_queue(dev->queue);
@@ -239,7 +238,6 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	spin_lock_init(&dev->requests_lock);
 	INIT_WORK(&dev->cb_run_requests, convergent_run_requests, dev);
 	init_waitqueue_head(&dev->waiting_users);
-	cleaner_start(dev);
 	dev->devnum=devnum;
 	
 	if (chunksize < 512 || (chunksize & (chunksize - 1)) != 0) {
