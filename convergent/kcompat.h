@@ -50,6 +50,27 @@ static inline void kzalloc(size_t size, gfp_t gfp)
 #define end_that_request_last(req, uptodate) end_that_request_last(req)
 #endif
 
-/* XXX cryptoapi will significantly change in 2.6.19 */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
+#include <asm/semaphore.h>
+#define MUTEX struct semaphore
+#define mutex_init(lock) init_MUTEX(lock)
+#define mutex_lock(lock) down(lock)
+#define mutex_lock_interruptible(lock) down_interruptible(lock)
+#define mutex_unlock(lock) up(lock)
+
+static inline int mutex_is_locked(MUTEX *lock)
+{
+	if (down_trylock(lock)) {
+		return 1;
+	} else {
+		up(lock);
+		return 0;
+	}
+}
+#else
+#define MUTEX struct mutex
+#endif
+
+/* XXX changes for 2.6.19: cryptoapi, workqueue functions */
 
 #endif
