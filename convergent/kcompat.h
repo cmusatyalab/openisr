@@ -7,8 +7,8 @@
 #error Kernels older than 2.6.16 are not supported
 #endif
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,16)
-#error Kernels newer than 2.6.16 are not supported
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
+#error Kernels newer than 2.6.18 are not supported
 #endif
 
 

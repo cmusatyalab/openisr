@@ -5,3 +5,4 @@ revision.c
 .tmp_versions
 *.mod.c
 *.ko
+Module.symvers

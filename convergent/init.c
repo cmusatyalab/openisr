@@ -70,8 +70,24 @@ static ssize_t attr_show_version(struct class *c, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%u\n", ISR_INTERFACE_VERSION);
 }
 
+static ssize_t attr_show_branch(struct class *c, char *buf)
+{
+	if (c != &class)
+		return -EINVAL;
+	return snprintf(buf, PAGE_SIZE, "%s\n", svn_branch);
+}
+
+static ssize_t attr_show_revision(struct class *c, char *buf)
+{
+	if (c != &class)
+		return -EINVAL;
+	return snprintf(buf, PAGE_SIZE, "%s\n", svn_revision);
+}
+
 static struct class_attribute class_attrs[] = {
 	__ATTR(version, S_IRUGO, attr_show_version, NULL),
+	__ATTR(branch, S_IRUGO, attr_show_branch, NULL),
+	__ATTR(revision, S_IRUGO, attr_show_revision, NULL),
 	__ATTR_NULL
 };
 
@@ -465,7 +481,6 @@ module_init(convergent_init);
 module_exit(convergent_shutdown);
 
 MODULE_AUTHOR("Benjamin Gilbert <bgilbert@cs.cmu.edu>");
-MODULE_DESCRIPTION("stacking block device for convergent encryption "
-			"and compression");
+MODULE_DESCRIPTION("OpenISR virtual block device");
 /* We must use a GPL-compatible license to use the crypto API */
 MODULE_LICENSE("GPL");

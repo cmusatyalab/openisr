@@ -28,12 +28,6 @@ static int shutdown_dev(struct convergent_dev *dev, int force)
 	return 0;
 }
 
-static int chr_open(struct inode *ino, struct file *filp)
-{
-	nonseekable_open(ino, filp);
-	return 0;
-}
-
 static int chr_release(struct inode *ino, struct file *filp)
 {
 	struct convergent_dev *dev=filp->private_data;
@@ -233,7 +227,7 @@ static unsigned chr_poll(struct file *filp, poll_table *wait)
 
 static struct file_operations convergent_char_ops = {
 	.owner =		THIS_MODULE,
-	.open =			chr_open,
+	.open =			nonseekable_open,
 	.read =			chr_read,
 	.write =		chr_write,
 	.release =		chr_release,
