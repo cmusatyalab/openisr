@@ -379,7 +379,7 @@ static void chunkdata_complete_io(void *data)
 	struct chunkdata *cd=data;
 	int error;
 	
-	mutex_lock(&cd->table->dev->lock);
+	mutex_lock_workqueue(&cd->table->dev->lock);
 	
 	error=cd->error;
 	/* XXX we have a bit of a problem: we encrypt in-place.  so if we
@@ -728,7 +728,7 @@ static void run_chunks(void *data)
 	struct chunkdata *next;
 	int need_release=0;
 	
-	mutex_lock(&dev->lock);
+	mutex_lock_workqueue(&dev->lock);
 	list_for_each_entry_safe(cd, next, &dev->chunkdata->need_update,
 				lh_need_update) {
 		list_del_init(&cd->lh_need_update);

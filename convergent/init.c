@@ -100,7 +100,10 @@ static int convergent_open(struct inode *ino, struct file *filp)
 	dev=convergent_dev_get(ino->i_bdev->bd_disk->private_data);
 	if (dev == NULL)
 		return -ENODEV;
-	mutex_lock(&dev->lock);
+	if (mutex_lock_interruptible(&dev->lock)) {
+		convergent_dev_put(dev, 0);
+		return -ERESTARTSYS;
+	}
 	if (dev->flags & DEV_SHUTDOWN) {
 		mutex_unlock(&dev->lock);
 		convergent_dev_put(dev, 0);
@@ -116,6 +119,8 @@ static int convergent_release(struct inode *ino, struct file *filp)
 {
 	struct convergent_dev *dev=ino->i_bdev->bd_disk->private_data;
 	
+	/* Our return value is ignored, so we must use the uninterruptible
+	   variant */
 	mutex_lock(&dev->lock);
 	user_put(dev);
 	mutex_unlock(&dev->lock);

@@ -110,6 +110,15 @@ enum io_bits {
 /* convergent_io flags */
 #define IO_WRITE           (1 << __IO_WRITE)
 
+static inline void mutex_lock_workqueue(MUTEX *lock)
+{
+	/* Workqueue threads can't receive signals, so they should never
+	   be interrupted.  On the other hand, if they're in uninterruptible
+	   sleep they contribute to the load average. */
+	if (mutex_lock_interruptible(lock))
+		BUG();
+}
+
 #ifdef CONFIG_LBD
 #define SECTOR_FORMAT "%llu"
 #else

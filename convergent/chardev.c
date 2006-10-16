@@ -8,10 +8,17 @@
 
 static int shutdown_dev(struct convergent_dev *dev, int force)
 {
-	mutex_lock(&dev->lock);
-	if (!force && dev->need_user != 0) {
-		mutex_unlock(&dev->lock);
-		return -EBUSY;
+	if (force) {
+		/* We're being called by a release() method, so we must
+		   succeed. */
+		mutex_lock(&dev->lock);
+	} else {
+		if (mutex_lock_interruptible(&dev->lock))
+			return -ERESTARTSYS;
+		if (dev->need_user != 0) {
+			mutex_unlock(&dev->lock);
+			return -EBUSY;
+		}
 	}
 	debug("Shutting down chardev");
 	dev->flags |= DEV_SHUTDOWN;
@@ -44,6 +51,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	DEFINE_WAIT(wait);
 	int i;
 	int ret;
+	int err=0;
 	int do_end;
 	struct chunkdata *cd;
 	
@@ -54,29 +62,28 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 		return -EINVAL;
 	count /= sizeof(msg);
 	
+	if (mutex_lock_interruptible(&dev->lock))
+		return -ERESTARTSYS;
 	for (i=0; i<count; i++) {
 		memset(&msg, 0, sizeof(msg));
 		
-		mutex_lock(&dev->lock);
 		ndebug("Trying to get chunk");
-		cd=next_usermsg(dev, &msg.type);
-		while (cd == NULL) {
-			mutex_unlock(&dev->lock);
+		while ((cd=next_usermsg(dev, &msg.type)) == NULL) {
 			if (i > 0)
 				goto out;
-			if (filp->f_flags & O_NONBLOCK)
-				return -EAGAIN;
-			mutex_lock(&dev->lock);
+			if (filp->f_flags & O_NONBLOCK) {
+				ret=-EAGAIN;
+				goto out;
+			}
 			prepare_to_wait(&dev->waiting_users, &wait,
 						TASK_INTERRUPTIBLE);
-			cd=next_usermsg(dev, &msg.type);
 			mutex_unlock(&dev->lock);
-			if (cd == NULL)
-				schedule();
+			schedule();
 			finish_wait(&dev->waiting_users, &wait);
-			if (cd == NULL && signal_pending(current))
+			if (signal_pending(current))
 				return -ERESTARTSYS;
-			mutex_lock(&dev->lock);
+			if (mutex_lock_interruptible(&dev->lock))
+				return -ERESTARTSYS;
 		}
 		switch (msg.type) {
 		case ISR_MSGTYPE_GET_META:
@@ -92,16 +99,19 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 			do_end=1;  /* make compiler happy */
 			BUG();
 		}
-		mutex_unlock(&dev->lock);
 		ret=copy_to_user(buf + i * sizeof(msg), &msg, sizeof(msg));
-		mutex_lock(&dev->lock);
-		if (ret)
+		if (ret) {
+			err=-EFAULT;
 			fail_usermsg(cd);
-		else if (do_end)
+			goto out;
+		} else if (do_end) {
 			end_usermsg(cd);
-		mutex_unlock(&dev->lock);
+		}
 	}
 out:
+	mutex_unlock(&dev->lock);
+	if (err && i == 0)
+		return err;
 	ndebug("Leaving chr_read: %d", i * sizeof(msg));
 	return i * sizeof(msg);
 }
@@ -121,6 +131,8 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 		return -EINVAL;
 	count /= sizeof(msg);
 	
+	if (mutex_lock_interruptible(&dev->lock))
+		return -ERESTARTSYS;
 	for (i=0; i<count; i++) {
 		if (copy_from_user(&msg, buf + i * sizeof(msg), sizeof(msg))) {
 			err=-EFAULT;
@@ -138,11 +150,8 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 				err=-EINVAL;
 				goto out;
 			}
-			
-			mutex_lock(&dev->lock);
 			set_usermsg_set_meta(dev, msg.chunk, msg.length,
 						msg.compression, msg.key);
-			mutex_unlock(&dev->lock);
 			break;
 		default:
 			err=-EINVAL;
@@ -150,6 +159,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 		}
 	}
 out:
+	mutex_unlock(&dev->lock);
 	if (err && i == 0)
 		return err;
 	ndebug("Leaving chr_write: %d", i * sizeof(msg));
@@ -211,6 +221,7 @@ static unsigned chr_poll(struct file *filp, poll_table *wait)
 	if (dev == NULL)
 		return POLLERR;
 	poll_wait(filp, &dev->waiting_users, wait);
+	/* There doesn't seem to be a good way to make this interruptible */
 	mutex_lock(&dev->lock);
 	if (have_usermsg(dev))
 		mask |= POLLIN | POLLRDNORM;

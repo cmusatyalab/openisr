@@ -212,7 +212,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 				io->last_chunk - io->first_chunk + 1,
 				io->first_chunk);
 	
-	mutex_lock(&dev->lock);
+	mutex_lock_workqueue(&dev->lock);
 	if (reserve_chunks(io)) {
 		/* Couldn't allocate chunkdata for this io, so we have to
 		   tear the whole thing down */
