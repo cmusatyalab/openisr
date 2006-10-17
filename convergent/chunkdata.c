@@ -895,10 +895,10 @@ int __init chunkdata_start(void)
 	/* XXX a global pool means that layering convergent on top of
 	   convergent could result in deadlocks.  we may want to prevent
 	   this in the registration interface. */
-	bio_pool=bioset_create(4 * MIN_CONCURRENT_REQS,
+	bio_pool=bioset_create_wrapper(4 * MIN_CONCURRENT_REQS,
 				4 * MIN_CONCURRENT_REQS, 4);
-	if (bio_pool == NULL)
-		return -ENOMEM;
+	if (IS_ERR(bio_pool))
+		return PTR_ERR(bio_pool);
 	
 	return 0;
 }

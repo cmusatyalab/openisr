@@ -5,8 +5,8 @@
 
 /***** Supported-version checks **********************************************/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,12)
-#error Kernels older than 2.6.12 are not supported
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)
+#error Kernels older than 2.6.11 are not supported
 #endif
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
@@ -114,6 +114,24 @@ static inline void class_dev_set_release(struct class_device *cd,
 #endif
 
 /***** Request queue/bio *****************************************************/
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,12)
+/* XXX this may introduce low-memory deadlocks.  theoretically we could
+   reimplement bio_alloc() to avoid this. */
+#define bio_alloc_bioset(mask, vecs, set) bio_alloc(mask, vecs)
+#define bioset_create_wrapper(biosz, bvecsz, scale) (NULL)
+#define bioset_free(bset) do {} while (0)
+#else
+static inline struct bio_set *bioset_create_wrapper(int bio_cnt, int bvec_cnt,
+			int scale)
+{
+	struct bio_set *bset=bioset_create(bio_cnt, bvec_cnt, scale);
+	if (bset == NULL)
+		return ERR_PTR(-ENOMEM);
+	return bset;
+}
+#endif
+
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
 /* I/O priorities appear to be unimplemented */
