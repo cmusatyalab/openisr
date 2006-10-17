@@ -65,7 +65,7 @@ static struct bio_set *bio_pool;
 
 static unsigned hash(struct chunkdata_table *table, chunk_t cid)
 {
-	return cid % table->buckets;
+	return (unsigned)cid % table->buckets;
 }
 
 static inline struct convergent_io_chunk *pending_head(struct chunkdata *cd)
