@@ -179,7 +179,7 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	io->flags=0;
 	io->first_cid=chunk_of(dev, req->sector);
 	io->last_cid=chunk_of(dev, req->sector + req->nr_sectors - 1);
-	io->prio=req->ioprio;
+	io->prio=req_get_prio(req);
 	if (rq_data_dir(req))
 		io->flags |= IO_WRITE;
 	nsegs=blk_rq_map_sg(dev->queue, req, io->orig_sg);

@@ -56,10 +56,9 @@ void user_put(struct convergent_dev *dev)
 
 static void class_release_dummy(struct class *class)
 {
-	/* Dummy function: class is allocated statically because
-	   class_create() doesn't allow us to specify class attributes,
-	   so we don't need a destructor, but if we don't have one the kernel
-	   will sometimes whine to the log */
+	/* Dummy function: class is allocated statically, so we don't need
+	   a destructor, but if we don't have one the kernel will sometimes
+	   whine to the log */
 	return;
 }
 
@@ -241,8 +240,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		goto early_fail_devalloc;
 	}
 	
-	dev->class_dev=class_device_create(&class, NULL, 0, NULL,
-					DEVICE_NAME "%c", 'a' + devnum);
+	dev->class_dev=create_class_dev(&class, DEVICE_NAME "%c", 'a' + devnum);
 	if (IS_ERR(dev->class_dev)) {
 		ret=PTR_ERR(dev->class_dev);
 		goto early_fail_classdev;
@@ -406,8 +404,10 @@ static int __init convergent_init(void)
 	if (ret)
 		goto bad_request;
 	
+	/* class_create() doesn't let us preregister class attrs and doesn't
+	   exist before 2.6.13 */
 	class.name=DEVICE_NAME;
-	class.owner=THIS_MODULE;
+	class_set_owner(&class);
 	class.class_release=class_release_dummy;
 	class.release=convergent_dev_dtr;
 	class.class_attrs=class_attrs;

@@ -5,8 +5,8 @@
 
 /***** Supported-version checks **********************************************/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
-#error Kernels older than 2.6.13 are not supported
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,12)
+#error Kernels older than 2.6.12 are not supported
 #endif
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
@@ -57,14 +57,48 @@ static inline int mutex_is_locked(MUTEX *lock)
 /***** Device model/sysfs ****************************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
-/* XXX class registration interface */
+static inline struct class_device *create_class_dev(struct class *cls,
+			char *fmt, ...)
+{
+	struct class_device *class_dev=kzalloc(sizeof(*class_dev), GFP_KERNEL);
+	va_list ap;
+	int ret;
+	
+	if (class_dev == NULL)
+		return ERR_PTR(-ENOMEM);
+	class_dev->class=cls;
+	va_start(ap, fmt);
+	printk(KERN_ERR "class_id size %d", sizeof(class_dev->class_id));
+	vsnprintf(class_dev->class_id, sizeof(class_dev->class_id), fmt, ap);
+	va_end(ap);
+	
+	ret=class_device_register(class_dev);
+	if (ret) {
+		kfree(class_dev);
+		return ERR_PTR(ret);
+	}
+	return class_dev;
+}
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
+#define create_class_dev(cls, fmt, args...) \
+			class_device_create(cls, 0, NULL, fmt, ## args)
+#else
+#define create_class_dev(cls, fmt, args...) \
+			class_device_create(cls, NULL, 0, NULL, fmt, ## args)
+#endif
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
+static inline void class_set_owner(struct class *cls) {}
+#else
+static inline void class_set_owner(struct class *cls)
+{
+	cls->owner=THIS_MODULE;
+}
 #endif
 
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
-#define class_device_create(cls, parent, devt, dev, fmt, args...) \
-	class_device_create(cls, devt, dev, fmt, ## args)
-
 /* In 2.6.15 and up, struct class_device has its own per-dev release method
    which is called in preference to the one in the class, and which is
    also *set by the initialization code* for reasons passing understanding.
@@ -80,6 +114,15 @@ static inline void class_dev_set_release(struct class_device *cd,
 #endif
 
 /***** Request queue/bio *****************************************************/
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
+/* I/O priorities appear to be unimplemented */
+#define bio_set_prio(bio, prio) do {} while (0)
+#define req_get_prio(req) (0)
+#else
+#define req_get_prio(req) (req->ioprio)
+#endif
+
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14)
 #define BIO_DESTRUCTOR(name, bioset)
