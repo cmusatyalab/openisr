@@ -15,7 +15,7 @@
 
 /***** Memory allocation *****************************************************/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14)
 typedef unsigned gfp_t;
 #endif
 
