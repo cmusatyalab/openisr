@@ -5,8 +5,8 @@
 
 /***** Supported-version checks **********************************************/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)
-#error Kernels older than 2.6.11 are not supported
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,10)
+#error Kernels older than 2.6.10 are not supported
 #endif
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
@@ -186,8 +186,9 @@ static inline void bio_set_destructor(struct bio *bio,
 
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)
-/* XXX unlocked_ioctl(), compat_ioctl().  do we need to register a
-   compatibility shim for the ioctls to work on mixed-mode systems? */
+/* XXX do we need to register a compatibility shim for old-style ioctls to
+   work on mixed-mode systems? */
+/* XXX implicit cast when converting from old ioctl on 64-bit systems? */
 #endif
 
 /***** cryptoapi *************************************************************/

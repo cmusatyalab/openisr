@@ -207,6 +207,12 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 	return 0;
 }
 
+static int chr_old_ioctl(struct inode *ino, struct file *filp, unsigned cmd,
+			unsigned long arg)
+{
+	return chr_ioctl(filp, cmd, arg);
+}
+
 static unsigned chr_poll(struct file *filp, poll_table *wait)
 {
 	struct convergent_dev *dev=filp->private_data;
@@ -233,8 +239,13 @@ static struct file_operations convergent_char_ops = {
 	.release =		chr_release,
 	.llseek =		no_llseek,
 	.poll =			chr_poll,
+	.ioctl =		chr_old_ioctl,
+#ifdef HAVE_UNLOCKED_IOCTL
 	.unlocked_ioctl =	chr_ioctl,
+#endif
+#ifdef HAVE_COMPAT_IOCTL
 	.compat_ioctl =		chr_ioctl,
+#endif
 	/* XXX AIO? */
 };
 
