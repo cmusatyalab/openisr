@@ -229,10 +229,7 @@ static void free_chunk_buffer(struct chunkdata *cd)
 	kfree(cd->sg);
 }
 
-static void bio_destructor(struct bio *bio)
-{
-	bio_free(bio, bio_pool);
-}
+BIO_DESTRUCTOR(bio_destructor, bio_pool)
 
 static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error);
 static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
@@ -258,7 +255,7 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 	}
 	bio->bi_end_io=convergent_endio_func;
 	bio->bi_private=cd;
-	bio->bi_destructor=bio_destructor;
+	bio_set_destructor(bio, bio_destructor);
 	return bio;
 }
 

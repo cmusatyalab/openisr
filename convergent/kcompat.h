@@ -3,8 +3,8 @@
 
 #include <linux/version.h>
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
-#error Kernels older than 2.6.16 are not supported
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
+#error Kernels older than 2.6.13 are not supported
 #endif
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
@@ -33,9 +33,43 @@
 typedef unsigned gfp_t;
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
+#define class_device_create(cls, parent, devt, dev, fmt, args...) \
+	class_device_create(cls, devt, dev, fmt, ## args)
+
+/* In 2.6.15 and up, struct class_device has its own per-dev release method
+   which is called in preference to the one in the class, and which is
+   also *set by the initialization code* for reasons passing understanding.
+   Older kernels just use the parent class' device release method. */
+static inline void class_dev_set_release(struct class_device *cd,
+			void (*func)(struct class_device *dev)) {}
+#else
+static inline void class_dev_set_release(struct class_device *cd,
+			void (*func)(struct class_device *dev))
+{
+	cd->release=func;
+}
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14)
+#define BIO_DESTRUCTOR(name, bioset)
+/* The default destructor handles this, since struct bio has a bi_set member
+   which points to the bioset into which the bio should be freed. */
+#define bio_set_destructor(bio, dtr) do {} while (0)
+#else
+#define BIO_DESTRUCTOR(name, bioset) \
+		static void name(struct bio *bio) {bio_free(bio, bioset);}
+
+static inline void bio_set_destructor(struct bio *bio,
+			void (*dtr)(struct bio *bio))
+{
+	bio->bi_destructor=dtr;
+}
+#endif
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14)
 #include <linux/types.h>
-static inline void kzalloc(size_t size, gfp_t gfp)
+static inline void *kzalloc(size_t size, gfp_t gfp)
 {
 	void *ptr=kmalloc(size, gfp);
 	if (ptr != NULL)

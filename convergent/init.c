@@ -249,7 +249,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	}
 	class_set_devdata(dev->class_dev, dev);
 	/* Use class-wide release function */
-	dev->class_dev->release=NULL;
+	class_dev_set_release(dev->class_dev, NULL);
 	
 	/* Now we have refcounting, so all further errors should deallocate
 	   through the destructor */
