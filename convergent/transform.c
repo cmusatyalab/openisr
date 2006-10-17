@@ -1,5 +1,6 @@
 #include <linux/highmem.h>
 #include <linux/vmalloc.h>
+#include <linux/interrupt.h>
 #include <linux/crypto.h>
 #include <linux/zlib.h>
 #include "convergent.h"

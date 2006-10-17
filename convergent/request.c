@@ -3,6 +3,7 @@
 #include <linux/genhd.h>
 #include <linux/blkdev.h>
 #include <linux/highmem.h>
+#include <linux/interrupt.h>
 #include <linux/fs.h>
 #include <linux/mempool.h>
 #include "convergent.h"
