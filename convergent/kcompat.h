@@ -5,8 +5,8 @@
 
 /***** Supported-version checks **********************************************/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,10)
-#error Kernels older than 2.6.10 are not supported
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,8)
+#error Kernels older than 2.6.8 are not supported
 #endif
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
@@ -179,11 +179,6 @@ static inline void bio_set_destructor(struct bio *bio,
 /* XXX 2.6.19 workqueue changes */
 
 /***** file_operations methods ***********************************************/
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,8)
-/* XXX nonseekable_open() */
-#endif
-
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)
 /* XXX do we need to register a compatibility shim for old-style ioctls to

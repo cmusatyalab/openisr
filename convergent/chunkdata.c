@@ -39,7 +39,7 @@ struct chunkdata {
 	unsigned size;         /* compressed size before padding */
 	compress_t compression;/* compression type */
 	struct list_head pending;
-	atomic_t completed;    /* bytes, for I/O */
+	atomic_t remaining;    /* bytes, for I/O */
 	int error;
 	struct work_struct cb_complete_io;
 	unsigned flags;
@@ -284,7 +284,7 @@ static void issue_chunk_io(struct chunkdata *cd)
 	}
 	
 	cd->error=0;
-	atomic_set(&cd->completed, 0);
+	atomic_set(&cd->remaining, dev->chunksize);
 	
 	/* XXX test against very small maximum seg count on target, etc. */
 	ndebug("Submitting clone bio(s)");
@@ -316,11 +316,9 @@ static void issue_chunk_io(struct chunkdata *cd)
 	
 bad:
 	cd->error=-ENOMEM;
-	if (atomic_add_return(dev->chunksize - offset, &cd->completed)
-				== dev->chunksize) {
+	if (atomic_sub_and_test(dev->chunksize - offset, &cd->remaining))
 		if (!queue_work(wkqueue, &cd->cb_complete_io))
 			BUG();
-	}
 }
 
 static int chunk_tfm(struct chunkdata *cd, int type)
@@ -408,19 +406,15 @@ static void chunkdata_complete_io(void *data)
 static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error)
 {
 	struct chunkdata *cd=bio->bi_private;
-	int completed;
 	if (error && !cd->error) {
 		/* Racy, but who cares */
 		cd->error=error;
 	}
-	completed=atomic_add_return(nbytes, &cd->completed);
-	ndebug("Clone bio completion: %u bytes, total now %u; err %d",
-				nbytes, completed, error);
-	/* Can't call BUG() in interrupt */
-	WARN_ON(completed > cd->table->dev->chunksize);
-	if (completed >= cd->table->dev->chunksize) {
-		if (!queue_work(wkqueue, &cd->cb_complete_io))
+	if (atomic_sub_and_test(nbytes, &cd->remaining)) {
+		if (!queue_work(wkqueue, &cd->cb_complete_io)) {
+			/* Can't call BUG() in interrupt */
 			WARN_ON(1);
+		}
 	}
 	return 0;
 }
