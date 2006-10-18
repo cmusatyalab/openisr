@@ -98,6 +98,12 @@ static ssize_t attr_show_chunksize(struct class_device *class_dev, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->chunksize);
 }
 
+static ssize_t attr_show_cachesize(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->cachesize);
+}
+
 static ssize_t attr_show_states(struct class_device *class_dev, char *buf)
 {
 	struct convergent_dev *dev=class_get_devdata(class_dev);
@@ -125,7 +131,8 @@ static ssize_t attr_show_compression(struct class_device *class_dev, char *buf)
 
 /* All of these can run before the ctr has finished! */
 static struct class_device_attribute class_dev_attrs[] = {
-	__ATTR(chunksize, S_IRUGO, attr_show_chunksize, NULL),
+	__ATTR(chunk_size, S_IRUGO, attr_show_chunksize, NULL),
+	__ATTR(cache_entries, S_IRUGO, attr_show_cachesize, NULL),
 	__ATTR(states, S_IRUGO, attr_show_states, NULL),
 	__ATTR(cipher, S_IRUGO, attr_show_cipher, NULL),
 	__ATTR(hash, S_IRUGO, attr_show_hash, NULL),
