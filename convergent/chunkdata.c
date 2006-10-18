@@ -34,6 +34,7 @@ struct chunkdata {
 	struct list_head lh_lru;
 	struct list_head lh_user;
 	struct list_head lh_need_update;
+	struct list_head lh_pending_completion;
 	struct chunkdata_table *table;
 	chunk_t cid;
 	unsigned size;         /* compressed size before padding */
@@ -41,7 +42,6 @@ struct chunkdata {
 	struct list_head pending;
 	atomic_t remaining;    /* bytes, for I/O */
 	int error;
-	struct work_struct cb_complete_io;
 	unsigned flags;
 	enum cd_state state;
 	char key[ISR_MAX_HASH_LEN];
@@ -56,8 +56,11 @@ struct chunkdata_table {
 	struct list_head lru;
 	struct list_head user;
 	struct list_head need_update;
+	struct list_head pending_completion;
+	spinlock_t pending_completion_lock;
 	struct list_head *hash;
 	struct work_struct cb_run_chunks;
+	struct work_struct cb_complete_io;
 };
 
 static struct bio_set *bio_pool;
@@ -259,6 +262,7 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 	return bio;
 }
 
+static void chunk_io_make_progress(struct chunkdata *cd, unsigned nbytes);
 /* We read or write the whole chunk, even if we don't need all of the sectors
    due to compression.  This ensures that the I/O elevator can still coalesce
    our requests, which is more important than minimizing the requested
@@ -316,9 +320,7 @@ static void issue_chunk_io(struct chunkdata *cd)
 	
 bad:
 	cd->error=-ENOMEM;
-	if (atomic_sub_and_test(dev->chunksize - offset, &cd->remaining))
-		if (!queue_work(wkqueue, &cd->cb_complete_io))
-			BUG();
+	chunk_io_make_progress(cd, dev->chunksize - offset);
 }
 
 static int chunk_tfm(struct chunkdata *cd, int type)
@@ -371,35 +373,69 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 /* Runs in workqueue (user) context */
 static void chunkdata_complete_io(void *data)
 {
-	struct chunkdata *cd=data;
+	struct convergent_dev *dev=data;
+	struct chunkdata_table *table=dev->chunkdata;
+	struct chunkdata *cd;
 	int error;
+	unsigned long flags;
 	
-	mutex_lock_workqueue(&cd->table->dev->lock);
+	mutex_lock_workqueue(&dev->lock);
+	spin_lock_irqsave(&table->pending_completion_lock, flags);
+	/* Don't use "safe" iterator, because the saved next pointer might
+	   have changed out from under us between iterations */
+	while (!list_empty(&table->pending_completion)) {
+		cd=list_entry(table->pending_completion.next, struct chunkdata,
+					lh_pending_completion);
+		list_del_init(&cd->lh_pending_completion);
+		spin_unlock_irqrestore(&table->pending_completion_lock, flags);
+		
+		error=cd->error;
+		/* XXX we have a bit of a problem: we encrypt in-place.  so if
+		   we just did write-back, we need to decrypt again to keep the
+		   data clean. */
+		if (error)
+			log(KERN_ERR, "I/O error %s chunk " SECTOR_FORMAT,
+						cd->state == ST_LOAD_DATA ?
+						"reading" : "writing", cd->cid);
+		else
+			if (chunk_tfm(cd, READ))
+				error=-EIO;
+		
+		/* XXX arguably we should report write errors to userspace */
+		if (error)
+			transition_error(cd, error);
+		else if (cd->state == ST_LOAD_DATA)
+			transition(cd, ST_CLEAN);
+		else if (cd->state == ST_STORE_DATA)
+			transition(cd, ST_DIRTY_META);
+		else
+			BUG();
+		
+		update_chunk(cd);
+		spin_lock_irqsave(&table->pending_completion_lock, flags);
+	}
+	spin_unlock_irqrestore(&table->pending_completion_lock, flags);
+	mutex_unlock(&dev->lock);
+}
+
+/* May be called from hardirq context or user context for the same
+   convergent_dev */
+static void chunk_io_make_progress(struct chunkdata *cd, unsigned nbytes)
+{
+	unsigned long flags;
 	
-	error=cd->error;
-	/* XXX we have a bit of a problem: we encrypt in-place.  so if we
-	   just did write-back, we need to decrypt again to keep the data
-	   clean. */
-	if (error)
-		log(KERN_ERR, "I/O error %s chunk " SECTOR_FORMAT,
-					cd->state == ST_LOAD_DATA ?
-					"reading" : "writing", cd->cid);
-	else
-		if (chunk_tfm(cd, READ))
-			error=-EIO;
-	
-	/* XXX arguably we should report write errors to userspace */
-	if (error)
-		transition_error(cd, error);
-	else if (cd->state == ST_LOAD_DATA)
-		transition(cd, ST_CLEAN);
-	else if (cd->state == ST_STORE_DATA)
-		transition(cd, ST_DIRTY_META);
-	else
-		BUG();
-	
-	update_chunk(cd);
-	mutex_unlock(&cd->table->dev->lock);
+	if (atomic_sub_and_test(nbytes, &cd->remaining)) {
+		/* Can't call BUG() in interrupt */
+		WARN_ON(!list_empty(&cd->lh_pending_completion));
+		spin_lock_irqsave(&cd->table->pending_completion_lock, flags);
+		list_add_tail(&cd->lh_pending_completion,
+					&cd->table->pending_completion);
+		spin_unlock_irqrestore(&cd->table->pending_completion_lock,
+					flags);
+		/* Duplicate scheduling is okay, so we ignore the return
+		   value */
+		queue_work(wkqueue, &cd->table->cb_complete_io);
+	}
 }
 
 /* May be called from hardirq context */
@@ -410,12 +446,7 @@ static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error)
 		/* Racy, but who cares */
 		cd->error=error;
 	}
-	if (atomic_sub_and_test(nbytes, &cd->remaining)) {
-		if (!queue_work(wkqueue, &cd->cb_complete_io)) {
-			/* Can't call BUG() in interrupt */
-			WARN_ON(1);
-		}
-	}
+	chunk_io_make_progress(cd, nbytes);
 	return 0;
 }
 
@@ -842,7 +873,10 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 	INIT_LIST_HEAD(&table->lru);
 	INIT_LIST_HEAD(&table->user);
 	INIT_LIST_HEAD(&table->need_update);
+	INIT_LIST_HEAD(&table->pending_completion);
+	spin_lock_init(&table->pending_completion_lock);
 	INIT_WORK(&table->cb_run_chunks, run_chunks, dev);
+	INIT_WORK(&table->cb_complete_io, chunkdata_complete_io, dev);
 	table->dev=dev;
 	dev->chunkdata=table;
 	/* Allocation failures after this point will result in a
@@ -870,9 +904,9 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		INIT_LIST_HEAD(&cd->lh_lru);
 		INIT_LIST_HEAD(&cd->lh_user);
 		INIT_LIST_HEAD(&cd->lh_need_update);
+		INIT_LIST_HEAD(&cd->lh_pending_completion);
 		INIT_LIST_HEAD(&cd->pending);
 		list_add(&cd->lh_lru, &table->lru);
-		INIT_WORK(&cd->cb_complete_io, chunkdata_complete_io, cd);
 		if (alloc_chunk_buffer(cd))
 			return -ENOMEM;
 	}
