@@ -4,6 +4,7 @@
 #include <linux/genhd.h>
 #include <linux/blkdev.h>
 #include <linux/fs.h>
+#include <linux/mm.h>
 #include <linux/device.h>
 #include <linux/wait.h>
 #include <linux/interrupt.h>
@@ -11,6 +12,7 @@
 
 static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
 static struct class class;
+static atomic_t cache_pages;
 struct workqueue_struct *wkqueue;
 int blk_major;
 
@@ -108,6 +110,18 @@ static struct class_device_attribute class_dev_attrs[] = {
 	__ATTR_NULL
 };
 
+/* Returns int because atomic_t is an int */
+static int get_system_page_count(void)
+{
+	struct sysinfo s;
+	
+	si_meminfo(&s);
+	BUG_ON(s.mem_unit != PAGE_SIZE);
+	/* If we have more than 8 TB of RAM, we can't use atomic_t anymore */
+	BUG_ON(s.totalram >= ((unsigned)(1 << 31)) - 1);
+	return (int)s.totalram;
+}
+
 static int convergent_open(struct inode *ino, struct file *filp)
 {
 	struct convergent_dev *dev;
@@ -177,7 +191,6 @@ static void convergent_dev_dtr(struct class_device *class_dev)
 	struct convergent_dev *dev=class_get_devdata(class_dev);
 	
 	debug("Dtr called");
-	BUG_ON(!(dev->flags & DEV_SHUTDOWN));
 	BUG_ON(!list_empty(&dev->requests));
 	/* XXX racy? */
 	if (dev->gendisk) {
@@ -194,6 +207,7 @@ static void convergent_dev_dtr(struct class_device *class_dev)
 		blk_cleanup_queue(dev->queue);
 	if (dev->chunk_bdev)
 		close_bdev_excl(dev->chunk_bdev);
+	atomic_sub(dev->cachesize * chunk_pages(dev), &cache_pages);
 	free_devnum(dev->devnum);
 	kfree(dev->class_dev);
 	kfree(dev);
@@ -214,6 +228,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 {
 	struct convergent_dev *dev;
 	sector_t capacity;
+	int pages=get_system_page_count();
 	int devnum;
 	int ret;
 	
@@ -264,21 +279,40 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		ret=-EINVAL;
 		goto bad;
 	}
+	dev->chunksize=chunksize;
 	if (cachesize < MIN_CONCURRENT_REQS * MAX_CHUNKS_PER_IO) {
 		log(KERN_ERR, "cache size may not be smaller than %u",
 				MIN_CONCURRENT_REQS * MAX_CHUNKS_PER_IO);
 		ret=-EINVAL;
 		goto bad;
 	}
-	if (cachesize > CD_MAX_CHUNKS) {
-		log(KERN_ERR, "cache size may not be larger than %u",
-					CD_MAX_CHUNKS);
-		ret=-EINVAL;
+	if (cachesize * chunk_pages(dev) > pages * MAX_DEV_ALLOCATION_MULT /
+				MAX_DEV_ALLOCATION_DIV) {
+		log(KERN_ERR, "cache size may not be larger than %u/%u of "
+					"system RAM", MAX_DEV_ALLOCATION_MULT,
+					MAX_DEV_ALLOCATION_DIV);
+		/* Abuse of return code, but userspace needs to be able to
+		   distinguish this case */
+		ret=-ENOSPC;
 		goto bad;
 	}
-	dev->chunksize=chunksize;
 	dev->cachesize=cachesize;
-	dev->offset=offset;
+	/* The dtr subtracts this off again only if chunksize and cachesize
+	   are nonzero */
+	atomic_add(cachesize * chunk_pages(dev), &cache_pages);
+	/* This is racy wrt multiple simultaneous ctr calls, but it's
+	   conservatively racy: multiple ctr calls may fail when one of them
+	   should have succeeded */
+	if (atomic_read(&cache_pages) > pages * MAX_ALLOCATION_MULT /
+				MAX_ALLOCATION_DIV) {
+		log(KERN_ERR, "will not allocate more than %u/%u of system RAM "
+					"for cache", MAX_ALLOCATION_MULT,
+					MAX_ALLOCATION_DIV);
+		/* Abuse of return code, but userspace needs to be able to
+		   distinguish this case */
+		ret=-ENOSPC;
+		goto bad;
+	}
 	debug("chunksize %u, cachesize %u, backdev %s, offset " SECTOR_FORMAT,
 				chunksize, cachesize, devnode, offset);
 	
@@ -298,6 +332,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 		ret=-EINVAL;
 		goto bad;
 	}
+	dev->offset=offset;
 	/* Make sure the capacity, after offset adjustment, is a multiple
 	   of the chunksize */
 	capacity=(capacity - offset) & ~(loff_t)(chunk_sectors(dev) - 1);
@@ -399,6 +434,8 @@ static int __init convergent_init(void)
 	
 	debug("===================================================");
 	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
+	
+	atomic_set(&cache_pages, 0);
 	
 	ret=request_start();
 	if (ret)

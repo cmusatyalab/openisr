@@ -7,7 +7,10 @@
 #define MIN_CONCURRENT_REQS 2  /* XXX */
 #define DEVICES 16  /* If this is more than 26, ctr will need to be fixed */
 #define MINORS_PER_DEVICE 16
-#define CD_MAX_CHUNKS 8192  /* XXX make this based on MB RAM in the box */
+#define MAX_DEV_ALLOCATION_MULT 1  /* don't allocate > 10% RAM per device */
+#define MAX_DEV_ALLOCATION_DIV 10
+#define MAX_ALLOCATION_MULT 3  /* don't allocate > 30% RAM total */
+#define MAX_ALLOCATION_DIV 10
 #define LOWMEM_WAIT_TIME (HZ/10)
 #define MODULE_NAME "openisr"
 #define DEVICE_NAME "openisr"

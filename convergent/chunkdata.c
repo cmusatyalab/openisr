@@ -185,8 +185,8 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	return NULL;
 }
 
-/* XXX might want to support high memory pages.  on the other hand, those
-   might force bounce buffering */
+/* Allocated buffer pages may be in high memory and thus may not have a
+   kernel mapping */
 static int alloc_chunk_buffer(struct chunkdata *cd)
 {
 	struct convergent_dev *dev=cd->table->dev;
@@ -201,7 +201,7 @@ static int alloc_chunk_buffer(struct chunkdata *cd)
 		return -ENOMEM;
 	for (i=0; i<npages; i++) {
 		sg=&cd->sg[i];
-		sg->page=alloc_page(GFP_KERNEL);
+		sg->page=alloc_page(GFP_KERNEL | __GFP_HIGHMEM);
 		if (sg->page == NULL)
 			goto bad;
 		sg->offset=0;
