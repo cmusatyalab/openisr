@@ -104,9 +104,32 @@ static ssize_t attr_show_states(struct class_device *class_dev, char *buf)
 	return print_states(dev, buf, PAGE_SIZE);
 }
 
+static ssize_t attr_show_cipher(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%s\n", get_cipher_name(dev));
+}
+
+static ssize_t attr_show_hash(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%s\n", get_hash_name(dev));
+}
+
+static ssize_t attr_show_compression(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%s\n",
+				get_default_compression_name(dev));
+}
+
+/* All of these can run before the ctr has finished! */
 static struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(chunksize, S_IRUGO, attr_show_chunksize, NULL),
 	__ATTR(states, S_IRUGO, attr_show_states, NULL),
+	__ATTR(cipher, S_IRUGO, attr_show_cipher, NULL),
+	__ATTR(hash, S_IRUGO, attr_show_hash, NULL),
+	__ATTR(compression, S_IRUGO, attr_show_compression, NULL),
 	__ATTR_NULL
 };
 
@@ -366,8 +389,11 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 				chunk_sectors(dev) * (MAX_CHUNKS_PER_IO - 1));
 	
 	ndebug("Allocating transforms");
-	ret=transform_alloc(dev, cipher, hash, default_compress,
-				supported_compress);
+	dev->cipher_type=cipher;
+	dev->hash_type=hash;
+	dev->default_compression=default_compress;
+	dev->supported_compression=supported_compress;
+	ret=transform_alloc(dev);
 	if (ret) {
 		log(KERN_ERR, "could not configure transforms");
 		goto bad;

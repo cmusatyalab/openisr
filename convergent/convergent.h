@@ -43,6 +43,8 @@ struct convergent_dev {
 	int devnum;
 	unsigned flags;	/* XXX racy */
 	
+	cipher_t cipher_type;
+	hash_t hash_type;
 	struct crypto_tfm *cipher;
 	unsigned cipher_block;
 	struct crypto_tfm *hash;
@@ -236,9 +238,7 @@ struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);
 ssize_t print_states(struct convergent_dev *dev, char *buf, int len);
 
 /* transform.c */
-int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
-			compress_t default_compress,
-			compress_t supported_compress);
+int transform_alloc(struct convergent_dev *dev);
 void transform_free(struct convergent_dev *dev);
 int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
 			char key[], unsigned len, int dir);
@@ -248,6 +248,9 @@ int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type);
 int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type, unsigned len);
+char *get_cipher_name(struct convergent_dev *dev);
+char *get_hash_name(struct convergent_dev *dev);
+char *get_default_compression_name(struct convergent_dev *dev);
 int compression_type_ok(struct convergent_dev *dev, compress_t compress);
 
 /* revision.c */

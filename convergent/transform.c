@@ -271,6 +271,77 @@ int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
 	return 0;
 }
 
+#define set_if_requested(lhs, rhs) do {if (lhs != NULL) *lhs=rhs;} while (0)
+static int cipher_lookup(cipher_t type, char **user_name, char **api_name,
+			unsigned *mode)
+{
+	switch (type) {
+	case ISR_CIPHER_BLOWFISH:
+		set_if_requested(user_name, "blowfish");
+		set_if_requested(api_name, "blowfish");
+		set_if_requested(mode, CRYPTO_TFM_MODE_CBC);
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+char *get_cipher_name(struct convergent_dev *dev)
+{
+	char *ret;
+	if (!cipher_lookup(dev->cipher_type, &ret, NULL, NULL))
+		return ret;
+	return "unknown";
+}
+
+static int hash_lookup(hash_t type, char **user_name, char **api_name)
+{
+	switch (type) {
+	case ISR_HASH_SHA1:
+		set_if_requested(user_name, "sha1");
+		set_if_requested(api_name, "sha1");
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+char *get_hash_name(struct convergent_dev *dev)
+{
+	char *ret;
+	if (!hash_lookup(dev->hash_type, &ret, NULL))
+		return ret;
+	return "unknown";
+}
+
+static int compression_lookup(compress_t type, char **user_name)
+{
+	switch (type) {
+	case ISR_COMPRESS_NONE:
+		set_if_requested(user_name, "none");
+		break;
+	case ISR_COMPRESS_ZLIB:
+		set_if_requested(user_name, "zlib");
+		break;
+	case ISR_COMPRESS_LZF:
+		set_if_requested(user_name, "lzf");
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+char *get_default_compression_name(struct convergent_dev *dev)
+{
+	char *ret;
+	if (!compression_lookup(dev->default_compression, &ret))
+		return ret;
+	return "unknown";
+}
+
 int compression_type_ok(struct convergent_dev *dev, compress_t compress)
 {
 	/* Make sure only one bit is set */
@@ -285,45 +356,35 @@ int compression_type_ok(struct convergent_dev *dev, compress_t compress)
 #define SUPPORTED_COMPRESSION  (ISR_COMPRESS_NONE | \
 				ISR_COMPRESS_ZLIB | \
 				ISR_COMPRESS_LZF)
-int transform_alloc(struct convergent_dev *dev, cipher_t cipher, hash_t hash,
-			compress_t default_compress,
-			compress_t supported_compress)
+int transform_alloc(struct convergent_dev *dev)
 {
 	char *cipher_name;
 	unsigned cipher_mode;
 	char *hash_name;
+	int ret;
 	
-	switch (cipher) {
-	case ISR_CIPHER_BLOWFISH:
-		cipher_name="blowfish";
-		cipher_mode=CRYPTO_TFM_MODE_CBC;
-		break;
-	default:
+	ret=cipher_lookup(dev->cipher_type, NULL, &cipher_name, &cipher_mode);
+	if (ret) {
 		log(KERN_ERR, "Unsupported cipher requested");
-		return -EINVAL;
+		return ret;
 	}
 	
-	switch (hash) {
-	case ISR_HASH_SHA1:
-		hash_name="sha1";
-		break;
-	default:
+	ret=hash_lookup(dev->hash_type, NULL, &hash_name);
+	if (ret) {
 		log(KERN_ERR, "Unsupported hash requested");
 		return -EINVAL;
 	}
 	
-	if ((supported_compress & SUPPORTED_COMPRESSION)
-				!= supported_compress) {
+	if ((dev->supported_compression & SUPPORTED_COMPRESSION)
+				!= dev->supported_compression) {
 		log(KERN_ERR, "Unsupported compression algorithm requested");
 		return -EINVAL;
 	}
-	dev->supported_compression=supported_compress;
-	if (!compression_type_ok(dev, default_compress)) {
+	if (!compression_type_ok(dev, dev->default_compression)) {
 		log(KERN_ERR, "Requested invalid default compression "
 					"algorithm");
 		return -EINVAL;
 	}
-	dev->default_compression=default_compress;
 	
 	dev->cipher=crypto_alloc_tfm(cipher_name, cipher_mode);
 	dev->hash=crypto_alloc_tfm(hash_name, 0);

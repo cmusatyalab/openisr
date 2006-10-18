@@ -831,6 +831,13 @@ ssize_t print_states(struct convergent_dev *dev, char *buf, int len)
 	int i;
 	int count=0;
 	
+	/* XXX if we wanted to be precise about this, we should have the ctr
+	   take the dev lock and then have this function lock it before
+	   running */
+	if (dev->chunkdata == NULL) {
+		/* ctr is still running */
+		return 0;
+	}
 	for (i=0; i<NR_STATES; i++) {
 		count += snprintf(buf+count, len-count, "%s%u", i ? " " : "",
 					dev->chunkdata->state_count[i]);
