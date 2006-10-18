@@ -68,7 +68,6 @@ static inline struct class_device *create_class_dev(struct class *cls,
 		return ERR_PTR(-ENOMEM);
 	class_dev->class=cls;
 	va_start(ap, fmt);
-	printk(KERN_ERR "class_id size %d", sizeof(class_dev->class_id));
 	vsnprintf(class_dev->class_id, sizeof(class_dev->class_id), fmt, ap);
 	va_end(ap);
 	
