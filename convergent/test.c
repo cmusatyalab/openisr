@@ -172,7 +172,7 @@ int handle_message(struct chunk *chunk, struct isr_message *message,
 	}
 }
 
-int run(char *storefile)
+int run(char *storefile, compress_t compress)
 {
 	int storefd, ctlfd, ret, count, in, out;
 	struct isr_setup setup;
@@ -204,7 +204,7 @@ int run(char *storefile)
 	setup.offset=params.offset;
 	setup.cipher=ISR_CIPHER_BLOWFISH;
 	setup.hash=ISR_HASH_SHA1;
-	setup.compress_default=ISR_COMPRESS_NONE;
+	setup.compress_default=compress;
 	setup.compress_required=ISR_COMPRESS_NONE | ISR_COMPRESS_ZLIB |
 				ISR_COMPRESS_LZF;
 	ret=ioctl(ctlfd, ISR_IOC_REGISTER, &setup);
@@ -289,9 +289,18 @@ int run(char *storefile)
 	return 0;
 }
 
+int usage(char *prog)
+{
+	printf("Usage: %s storefile ctldev chunkdev chunksize "
+				"cachesize offset\n", prog);
+	printf("Usage: %s storefile {none|zlib|lzf}\n", prog);
+	return 1;
+}
+
 int main(int argc, char **argv)
 {
 	struct params params;
+	compress_t compress;
 	
 	if (argc == 7) {
 		memset(params.control_device, 0, ISR_MAX_DEVICE_LEN);
@@ -304,12 +313,17 @@ int main(int argc, char **argv)
 		params.cachesize=atoi(argv[5]);
 		params.offset=atoi(argv[6]);
 		return setup(&params, argv[1]);
-	} else if (argc == 2) {
-		return run(argv[1]);
+	} else if (argc == 3) {
+		if (!strcmp(argv[2], "none"))
+			compress=ISR_COMPRESS_NONE;
+		else if (!strcmp(argv[2], "zlib"))
+			compress=ISR_COMPRESS_ZLIB;
+		else if (!strcmp(argv[2], "lzf"))
+			compress=ISR_COMPRESS_LZF;
+		else
+			return usage(argv[0]);
+		return run(argv[1], compress);
 	} else {
-		printf("Usage: %s storefile ctldev chunkdev chunksize "
-					"cachesize offset\n", argv[0]);
-		printf("Usage: %s storefile\n", argv[0]);
-		return 1;
+		return usage(argv[0]);
 	}
 }
