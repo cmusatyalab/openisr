@@ -35,6 +35,7 @@ static unsigned received_size;
 static unsigned received;
 static int dirty;
 static int pipefds[2];
+static int verbose;
 
 void printkey(char *key, int len)
 {
@@ -144,10 +145,12 @@ int handle_message(struct chunk *chunk, struct isr_message *message,
 {
 	switch (message->type) {
 	case ISR_MSGTYPE_GET_META:
-		printf("Sending   chunk %8llu key ", message->chunk);
-		printkey(chunk->key, hash_len);
-		printf(" size %6u comp %u\n", chunk->length,
-					chunk->compression);
+		if (verbose) {
+			printf("Sending   chunk %8llu key ", message->chunk);
+			printkey(chunk->key, hash_len);
+			printf(" size %6u comp %u\n", chunk->length,
+						chunk->compression);
+		}
 		memcpy(message_out->key, chunk->key, hash_len);
 		message_out->chunk=message->chunk;
 		message_out->length=chunk->length;
@@ -155,10 +158,12 @@ int handle_message(struct chunk *chunk, struct isr_message *message,
 		message_out->type=ISR_MSGTYPE_SET_META;
 		return 1;
 	case ISR_MSGTYPE_UPDATE_META:
-		printf("Receiving chunk %8llu key ", message->chunk);
-		printkey(message->key, hash_len);
-		printf(" size %6u comp %u\n", message->length,
-					message->compression);
+		if (verbose) {
+			printf("Receiving chunk %8llu key ", message->chunk);
+			printkey(message->key, hash_len);
+			printf(" size %6u comp %u\n", message->length,
+						message->compression);
+		}
 		memcpy(chunk->key, message->key, hash_len);
 		chunk->length=message->length;
 		chunk->compression=message->compression;
