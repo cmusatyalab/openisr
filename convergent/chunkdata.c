@@ -20,6 +20,7 @@ enum cd_state {
 	ST_LOAD_META,        /* Loading metadata */
 	ST_META,             /* Have metadata but not data */
 	ST_LOAD_DATA,        /* Loading data */
+	ST_ENCRYPTED,        /* Have metadata and clean, encrypted data */
 	ST_CLEAN,            /* Have metadata and data */
 	ST_DIRTY,            /* Data is dirty */
 	ST_STORE_DATA,       /* Storing data */
@@ -91,6 +92,7 @@ static inline int is_idle_state(enum cd_state state)
 {
 	switch (state) {
 	case ST_INVALID:
+	case ST_ENCRYPTED:
 	case ST_CLEAN:
 	case ST_ERROR:
 		return 1;
@@ -376,7 +378,6 @@ static void chunkdata_complete_io(void *data)
 	struct convergent_dev *dev=data;
 	struct chunkdata_table *table=dev->chunkdata;
 	struct chunkdata *cd;
-	int error;
 	unsigned long flags;
 	
 	mutex_lock_workqueue(&dev->lock);
@@ -389,27 +390,20 @@ static void chunkdata_complete_io(void *data)
 		list_del_init(&cd->lh_pending_completion);
 		spin_unlock_irqrestore(&table->pending_completion_lock, flags);
 		
-		error=cd->error;
-		/* XXX we have a bit of a problem: we encrypt in-place.  so if
-		   we just did write-back, we need to decrypt again to keep the
-		   data clean. */
-		if (error)
+		if (cd->error) {
 			log(KERN_ERR, "I/O error %s chunk " SECTOR_FORMAT,
 						cd->state == ST_LOAD_DATA ?
 						"reading" : "writing", cd->cid);
-		else
-			if (chunk_tfm(cd, READ))
-				error=-EIO;
-		
-		/* XXX arguably we should report write errors to userspace */
-		if (error)
-			transition_error(cd, error);
-		else if (cd->state == ST_LOAD_DATA)
-			transition(cd, ST_CLEAN);
-		else if (cd->state == ST_STORE_DATA)
+			/* XXX arguably we should report write errors to
+			   userspace */
+			transition_error(cd, cd->error);
+		} else if (cd->state == ST_LOAD_DATA) {
+			transition(cd, ST_ENCRYPTED);
+		} else if (cd->state == ST_STORE_DATA) {
 			transition(cd, ST_DIRTY_META);
-		else
+		} else {
 			BUG();
+		}
 		
 		update_chunk(cd);
 		spin_lock_irqsave(&table->pending_completion_lock, flags);
@@ -495,6 +489,7 @@ static void try_start_io(struct convergent_io *io)
 		
 		switch (cd->state) {
 		case ST_META:
+		case ST_ENCRYPTED:
 			if (chunk->flags & CHUNK_READ)
 				continue;
 			else
@@ -600,7 +595,10 @@ void end_usermsg(struct chunkdata *cd)
 	BUG_ON(!(cd->flags & CD_USER));
 	switch (cd->state) {
 	case ST_STORE_META:
-		transition(cd, ST_CLEAN);
+		/* We encrypted the data in-place to do write-back, and if
+		   we won't need this chunk again there's no point in wasting
+		   cycles decrypting it */
+		transition(cd, ST_ENCRYPTED);
 		__end_usermsg(cd);
 		break;
 	default:
@@ -698,6 +696,22 @@ again:
 		}
 		break;
 	case ST_LOAD_DATA:
+		break;
+	case ST_ENCRYPTED:
+		/* Have metadata and encrypted data */
+		if (chunk != NULL) {
+			if (chunk->flags & CHUNK_READ) {
+				/* The first-in-queue needs to be able to
+				   read the chunk */
+				if (chunk_tfm(cd, READ))
+					transition_error(cd, -EIO);
+				else
+					transition(cd, ST_CLEAN);
+				goto again;
+			} else {
+				try_start_io(chunk->parent);
+			}
+		}
 		break;
 	case ST_CLEAN:
 		/* Have metadata and data */
