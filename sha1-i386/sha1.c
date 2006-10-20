@@ -41,15 +41,14 @@
 #include <linux/crypto.h>
 
 /* Writes a 32-bit integer, in network, big-endian, byte order */
-#define WRITE_UINT32(p, i)			\
-do {						\
-  (p)[0] = ((i) >> 24) & 0xff;			\
-  (p)[1] = ((i) >> 16) & 0xff;			\
-  (p)[2] = ((i) >> 8) & 0xff;			\
-  (p)[3] = (i) & 0xff;				\
-} while(0)
-
-/* SHA1 */
+/* XXX can we replace this with an existing function? */
+static inline void write_uint32(char *p, uint32_t i)
+{
+  (p)[0] = ((i) >> 24) & 0xff;
+  (p)[1] = ((i) >> 16) & 0xff;
+  (p)[2] = ((i) >> 8) & 0xff;
+  (p)[3] = (i) & 0xff;
+}
 
 #define SHA1_DIGEST_SIZE 20
 #define SHA1_DATA_SIZE 64
@@ -67,13 +66,11 @@ struct sha1_ctx
 
 /* Internal compression function. STATE points to 5 uint32_t words,
    and DATA points to 64 bytes of input data, possibly unaligned. */
-void
-_nettle_sha1_compress(uint32_t *state, const uint8_t *data);
+void _nettle_sha1_compress(uint32_t *state, const uint8_t *data);
 
 /* Initialize the SHA values */
 
-void
-sha1_init(void *data)
+static void sha1_init(void *data)
 {
   struct sha1_ctx *ctx=data;
   /* Set the h-vars to their initial values */
@@ -92,8 +89,7 @@ sha1_init(void *data)
 
 #define SHA1_INCR(ctx) ((ctx)->count_high += !++(ctx)->count_low)
 
-void
-sha1_update(void *data, const uint8_t *buffer, unsigned length)
+static void sha1_update(void *data, const uint8_t *buffer, unsigned length)
 {
   struct sha1_ctx *ctx=data;
   if (ctx->index)
@@ -132,8 +128,7 @@ sha1_update(void *data, const uint8_t *buffer, unsigned length)
 /* Final wrapup - pad to SHA1_DATA_SIZE-byte boundary with the bit pattern
    1 0* (64-bit count of bits processed, MSB-first) */
 
-static void
-sha1_final(struct sha1_ctx *ctx)
+static void sha1_final(struct sha1_ctx *ctx)
 {
   uint32_t bitcount_high;
   uint32_t bitcount_low;
@@ -165,14 +160,13 @@ sha1_final(struct sha1_ctx *ctx)
   /* This is slightly inefficient, as the numbers are converted to
      big-endian format, and will be converted back by the compression
      function. It's probably not worth the effort to fix this. */
-  WRITE_UINT32(ctx->block + (SHA1_DATA_SIZE - 8), bitcount_high);
-  WRITE_UINT32(ctx->block + (SHA1_DATA_SIZE - 4), bitcount_low);
+  write_uint32(ctx->block + (SHA1_DATA_SIZE - 8), bitcount_high);
+  write_uint32(ctx->block + (SHA1_DATA_SIZE - 4), bitcount_low);
 
   _nettle_sha1_compress(ctx->digest, ctx->block);
 }
 
-void
-sha1_digest(void *data, uint8_t *digest)
+static void sha1_digest(void *data, uint8_t *digest)
 {
   struct sha1_ctx *ctx=data;
   unsigned i;
@@ -180,7 +174,7 @@ sha1_digest(void *data, uint8_t *digest)
   sha1_final(ctx);
   
   for (i = 0; i < SHA1_DIGEST_SIZE / 4; i++, digest += 4)
-    WRITE_UINT32(digest, ctx->digest[i]);
+    write_uint32(digest, ctx->digest[i]);
 
   sha1_init(ctx);
 }
