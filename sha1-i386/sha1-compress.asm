@@ -4,15 +4,6 @@ dnl FORTRAN style comment character
 define(<C>, <
 dnl>)dnl
 
-define(<PROLOGUE>,
-<.globl $1
-.type $1,%function
-$1:>)
-
-define(<EPILOGUE>,
-<.L$1end:
-.size $1, .L$1end - $1>)
-
 C OFFSET(i)
 C Expands to 4*i, or to the empty string if i is zero
 define(<OFFSET>, <ifelse($1,0,,eval(4*$1))>)
@@ -137,9 +128,11 @@ C adding, and then rotating back.
 
 	C _nettle_sha1_compress(uint32_t *state, uint8_t *data)
 	
-	.text
-	.align 16
-PROLOGUE(_nettle_sha1_compress)
+.text
+.align 16
+.globl _nettle_sha1_compress
+.type _nettle_sha1_compress,%function
+_nettle_sha1_compress:
 	C save all registers that need to be saved
 	
 	pushl	%ebx		C  80(%esp)
@@ -281,7 +274,6 @@ PROLOGUE(_nettle_sha1_compress)
 	popl	%ebp
 	popl	%ebx
 	ret
-EPILOGUE(_nettle_sha1_compress)
 
 C  It's possible to shave of half of the stores to tmp in the evaluation of f3,
 C  although it's probably not worth the effort. This is the trick: 
