@@ -24,25 +24,13 @@
  * MA 02111-1307, USA.
  */
 
-/* Here's the first paragraph of Peter Gutmann's posting,
- * <30ajo5$oe8@ccu2.auckland.ac.nz>: 
- *
- * The following is my SHA (FIPS 180) code updated to allow use of the "fixed"
- * SHA, thanks to Jim Gillogly and an anonymous contributor for the information on
- * what's changed in the new version.  The fix is a simple change which involves
- * adding a single rotate in the initial expansion function.  It is unknown
- * whether this is an optimal solution to the problem which was discovered in the
- * SHA or whether it's simply a bandaid which fixes the problem with a minimum of
- * effort (for example the reengineering of a great many Capstone chips).
- */
-
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/crypto.h>
 
 /* Writes a 32-bit integer, in network, big-endian, byte order */
 /* XXX can we replace this with an existing function? */
-static inline void write_uint32(char *p, uint32_t i)
+static inline void write_uint32(char *p, u32 i)
 {
 	(p)[0] = ((i) >> 24) & 0xff;
 	(p)[1] = ((i) >> 16) & 0xff;
@@ -57,15 +45,15 @@ static inline void write_uint32(char *p, uint32_t i)
 #define _SHA1_DIGEST_LENGTH 5
 
 struct sha1_ctx {
-	uint32_t digest[_SHA1_DIGEST_LENGTH];	/* Message digest */
-	uint32_t count_low, count_high;		/* 64-bit block count */
-	uint8_t block[SHA1_DATA_SIZE];		/* SHA1 data buffer */
+	u32 digest[_SHA1_DIGEST_LENGTH];	/* Message digest */
+	u32 count_low, count_high;		/* 64-bit block count */
+	u8 block[SHA1_DATA_SIZE];		/* SHA1 data buffer */
 	unsigned int index;			/* index into buffer */
 };
 
-/* Internal compression function. STATE points to 5 uint32_t words,
+/* Compression function, written in assembly. STATE points to 5 u32 words,
    and DATA points to 64 bytes of input data, possibly unaligned. */
-void _nettle_sha1_compress(uint32_t * state, const uint8_t * data);
+void sha1_compress(u32 * state, const u8 * data);
 
 /* Initialize the SHA values */
 
@@ -88,7 +76,7 @@ static void sha1_init(void *data)
 
 #define SHA1_INCR(ctx) ((ctx)->count_high += !++(ctx)->count_low)
 
-static void sha1_update(void *data, const uint8_t * buffer, unsigned length)
+static void sha1_update(void *data, const u8 * buffer, unsigned length)
 {
 	struct sha1_ctx *ctx = data;
 	if (ctx->index) {
@@ -101,7 +89,7 @@ static void sha1_update(void *data, const uint8_t * buffer, unsigned length)
 		} else {
 			memcpy(ctx->block + ctx->index, buffer, left);
 			
-			_nettle_sha1_compress(ctx->digest, ctx->block);
+			sha1_compress(ctx->digest, ctx->block);
 			SHA1_INCR(ctx);
 			
 			buffer += left;
@@ -109,7 +97,7 @@ static void sha1_update(void *data, const uint8_t * buffer, unsigned length)
 		}
 	}
 	while (length >= SHA1_DATA_SIZE) {
-		_nettle_sha1_compress(ctx->digest, buffer);
+		sha1_compress(ctx->digest, buffer);
 		SHA1_INCR(ctx);
 		
 		buffer += SHA1_DATA_SIZE;
@@ -122,11 +110,11 @@ static void sha1_update(void *data, const uint8_t * buffer, unsigned length)
 
 /* Final wrapup - pad to SHA1_DATA_SIZE-byte boundary with the bit pattern
    1 0* (64-bit count of bits processed, MSB-first) */
-static void sha1_final(void *data, uint8_t * digest)
+static void sha1_final(void *data, u8 * digest)
 {
 	struct sha1_ctx *ctx = data;
-	uint32_t bitcount_high;
-	uint32_t bitcount_low;
+	u32 bitcount_high;
+	u32 bitcount_low;
 	unsigned i;
 	
 	i = ctx->index;
@@ -142,7 +130,7 @@ static void sha1_final(void *data, uint8_t * digest)
 		   pad with another one */
 		memset(ctx->block + i, 0, SHA1_DATA_SIZE - i);
 		
-		_nettle_sha1_compress(ctx->digest, ctx->block);
+		sha1_compress(ctx->digest, ctx->block);
 		i = 0;
 	}
 	if (i < (SHA1_DATA_SIZE - 8))
@@ -158,7 +146,7 @@ static void sha1_final(void *data, uint8_t * digest)
 	write_uint32(ctx->block + (SHA1_DATA_SIZE - 8), bitcount_high);
 	write_uint32(ctx->block + (SHA1_DATA_SIZE - 4), bitcount_low);
 	
-	_nettle_sha1_compress(ctx->digest, ctx->block);
+	sha1_compress(ctx->digest, ctx->block);
 	
 	for (i = 0; i < SHA1_DIGEST_SIZE / 4; i++, digest += 4)
 		write_uint32(digest, ctx->digest[i]);

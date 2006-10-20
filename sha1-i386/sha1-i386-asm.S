@@ -102,7 +102,7 @@
 //   e += a <<< 5 + f( b, c, d ) + k + w;
 //   b <<<= 30
 //
-// Using the TMP register for the roll can be avoided, by rotating
+// Using the TMP register for the roll could be avoided, by rotating
 // %a in place, adding, and then rotating back.
 #define ROUND(a,b,c,d,e,f,k,w)					\
 	addl	k, e;						\
@@ -117,10 +117,9 @@
 	// _nettle_sha1_compress(uint32_t *state, uint8_t *data)
 	
 .text
-.align 16
-.globl _nettle_sha1_compress
-.type _nettle_sha1_compress,%function
-_nettle_sha1_compress:
+.align 4
+.globl sha1_compress
+sha1_compress:
 	// save all registers that need to be saved
 	
 	pushl	%ebx		//  80(%esp)
