@@ -122,8 +122,9 @@ static void sha1_update(void *data, const uint8_t * buffer, unsigned length)
 
 /* Final wrapup - pad to SHA1_DATA_SIZE-byte boundary with the bit pattern
    1 0* (64-bit count of bits processed, MSB-first) */
-static void sha1_final(struct sha1_ctx *ctx)
+static void sha1_final(void *data, uint8_t * digest)
 {
+	struct sha1_ctx *ctx = data;
 	uint32_t bitcount_high;
 	uint32_t bitcount_low;
 	unsigned i;
@@ -158,19 +159,12 @@ static void sha1_final(struct sha1_ctx *ctx)
 	write_uint32(ctx->block + (SHA1_DATA_SIZE - 4), bitcount_low);
 	
 	_nettle_sha1_compress(ctx->digest, ctx->block);
-}
-
-static void sha1_digest(void *data, uint8_t * digest)
-{
-	struct sha1_ctx *ctx = data;
-	unsigned i;
-	
-	sha1_final(ctx);
 	
 	for (i = 0; i < SHA1_DIGEST_SIZE / 4; i++, digest += 4)
 		write_uint32(digest, ctx->digest[i]);
 	
-	sha1_init(ctx);
+	/* Wipe context */
+	memset(ctx, 0, sizeof(*ctx));
 }
 
 static struct crypto_alg alg = {
@@ -186,7 +180,7 @@ static struct crypto_alg alg = {
 	.dia_digestsize	=	SHA1_DIGEST_SIZE,
 	.dia_init	=	sha1_init,
 	.dia_update	=	sha1_update,
-	.dia_final	=	sha1_digest } }
+	.dia_final	=	sha1_final } }
 };
 
 static int __init init(void)
