@@ -1,3 +1,22 @@
+changequote(<,>)dnl
+
+dnl FORTRAN style comment character
+define(<C>, <
+dnl>)dnl
+
+define(<PROLOGUE>,
+<.globl $1
+.type $1,%function
+$1:>)
+
+define(<EPILOGUE>,
+<.L$1end:
+.size $1, .L$1end - $1>)
+
+C OFFSET(i)
+C Expands to 4*i, or to the empty string if i is zero
+define(<OFFSET>, <ifelse($1,0,,eval(4*$1))>)
+
 C nettle, low-level cryptographics library
 C 
 C Copyright (C) 2004, Niels Möller
