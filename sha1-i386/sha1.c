@@ -36,28 +36,12 @@
  * effort (for example the reengineering of a great many Capstone chips).
  */
 
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
-
-#include <assert.h>
-#include <stdlib.h>
-#include <string.h>
+#include <linux/kernel.h>
+#include <linux/string.h>
 
 #include "sha.h"
 
 #include "macros.h"
-
-/* A block, treated as a sequence of 32-bit words. */
-#define SHA1_DATA_LENGTH 16
-
-/* SHA initial values */
-
-#define h0init  0x67452301L
-#define h1init  0xEFCDAB89L
-#define h2init  0x98BADCFEL
-#define h3init  0x10325476L
-#define h4init  0xC3D2E1F0L
 
 /* Initialize the SHA values */
 
@@ -65,11 +49,11 @@ void
 sha1_init(struct sha1_ctx *ctx)
 {
   /* Set the h-vars to their initial values */
-  ctx->digest[ 0 ] = h0init;
-  ctx->digest[ 1 ] = h1init;
-  ctx->digest[ 2 ] = h2init;
-  ctx->digest[ 3 ] = h3init;
-  ctx->digest[ 4 ] = h4init;
+  ctx->digest[ 0 ] = 0x67452301L;
+  ctx->digest[ 1 ] = 0xEFCDAB89L;
+  ctx->digest[ 2 ] = 0x98BADCFEL;
+  ctx->digest[ 3 ] = 0x10325476L;
+  ctx->digest[ 4 ] = 0xC3D2E1F0L;
 
   /* Initialize bit count */
   ctx->count_low = ctx->count_high = 0;
@@ -132,7 +116,7 @@ sha1_final(struct sha1_ctx *ctx)
   /* Set the first char of padding to 0x80.  This is safe since there is
      always at least one byte free */
 
-  assert(i < SHA1_DATA_SIZE);
+  BUG_ON(i >= SHA1_DATA_SIZE);
   ctx->block[i++] = 0x80;
 
   if (i > (SHA1_DATA_SIZE - 8))
@@ -168,7 +152,7 @@ sha1_digest(struct sha1_ctx *ctx,
   unsigned words;
   unsigned leftover;
   
-  assert(length <= SHA1_DIGEST_SIZE);
+  BUG_ON(length > SHA1_DIGEST_SIZE);
 
   sha1_final(ctx);
   
@@ -183,14 +167,14 @@ sha1_digest(struct sha1_ctx *ctx,
       uint32_t word;
       unsigned j = leftover;
       
-      assert(i < _SHA1_DIGEST_LENGTH);
+      BUG_ON(i >= _SHA1_DIGEST_LENGTH);
       
       word = ctx->digest[i];
       
       switch (leftover)
 	{
 	default:
-	  abort();
+	  BUG();
 	case 3:
 	  digest[--j] = (word >> 8) & 0xff;
 	  /* Fall through */
