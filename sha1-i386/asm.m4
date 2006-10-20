@@ -5,11 +5,11 @@ define(<C>, <
 dnl>)dnl
 
 define(<PROLOGUE>,
-<.globl C_NAME($1)
-.type C_NAME($1),%function
-C_NAME($1):>)
+<.globl $1
+.type $1,%function
+$1:>)
 
 define(<EPILOGUE>,
 <.L$1end:
-.size C_NAME($1), .L$1end - C_NAME($1)>)
+.size $1, .L$1end - $1>)
 
