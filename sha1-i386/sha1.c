@@ -41,12 +41,9 @@ static inline void write_uint32(char *p, u32 i)
 #define SHA1_DIGEST_SIZE 20
 #define SHA1_DATA_SIZE 64
 
-/* Digest is kept internally as 5 32-bit words. */
-#define _SHA1_DIGEST_LENGTH 5
-
 struct sha1_ctx {
-	u32 digest[_SHA1_DIGEST_LENGTH];	/* Message digest */
-	u32 count_low, count_high;		/* 64-bit block count */
+	u32 digest[SHA1_DIGEST_SIZE / 4];	/* Message digest */
+	u64 count;				/* Blocks processed */
 	u8 block[SHA1_DATA_SIZE];		/* SHA1 data buffer */
 	unsigned int index;			/* index into buffer */
 };
@@ -67,14 +64,12 @@ static void sha1_init(void *data)
 	ctx->digest[3] = 0x10325476L;
 	ctx->digest[4] = 0xC3D2E1F0L;
 	
-	/* Initialize bit count */
-	ctx->count_low = ctx->count_high = 0;
+	/* Initialize block count */
+	ctx->count = 0;
 	
 	/* Initialize buffer */
 	ctx->index = 0;
 }
-
-#define SHA1_INCR(ctx) ((ctx)->count_high += !++(ctx)->count_low)
 
 static void sha1_update(void *data, const u8 * buffer, unsigned length)
 {
@@ -88,18 +83,15 @@ static void sha1_update(void *data, const u8 * buffer, unsigned length)
 			return;	/* Finished */
 		} else {
 			memcpy(ctx->block + ctx->index, buffer, left);
-			
 			sha1_compress(ctx->digest, ctx->block);
-			SHA1_INCR(ctx);
-			
+			ctx->count++;
 			buffer += left;
 			length -= left;
 		}
 	}
 	while (length >= SHA1_DATA_SIZE) {
 		sha1_compress(ctx->digest, buffer);
-		SHA1_INCR(ctx);
-		
+		ctx->count++;
 		buffer += SHA1_DATA_SIZE;
 		length -= SHA1_DATA_SIZE;
 	}
@@ -113,15 +105,13 @@ static void sha1_update(void *data, const u8 * buffer, unsigned length)
 static void sha1_final(void *data, u8 * digest)
 {
 	struct sha1_ctx *ctx = data;
-	u32 bitcount_high;
-	u32 bitcount_low;
+	u64 bitcount;
 	unsigned i;
 	
 	i = ctx->index;
 	
 	/* Set the first char of padding to 0x80.  This is safe since there is
 	   always at least one byte free */
-	
 	BUG_ON(i >= SHA1_DATA_SIZE);
 	ctx->block[i++] = 0x80;
 	
@@ -129,7 +119,6 @@ static void sha1_final(void *data, u8 * digest)
 		/* No room for length in this block. Process it and
 		   pad with another one */
 		memset(ctx->block + i, 0, SHA1_DATA_SIZE - i);
-		
 		sha1_compress(ctx->digest, ctx->block);
 		i = 0;
 	}
@@ -137,14 +126,13 @@ static void sha1_final(void *data, u8 * digest)
 		memset(ctx->block + i, 0, (SHA1_DATA_SIZE - 8) - i);
 	
 	/* There are 512 = 2^9 bits in one block */
-	bitcount_high = (ctx->count_high << 9) | (ctx->count_low >> 23);
-	bitcount_low = (ctx->count_low << 9) | (ctx->index << 3);
+	bitcount = (ctx->count << 9) | (ctx->index << 3);
 	
 	/* This is slightly inefficient, as the numbers are converted to
 	   big-endian format, and will be converted back by the compression
 	   function. It's probably not worth the effort to fix this. */
-	write_uint32(ctx->block + (SHA1_DATA_SIZE - 8), bitcount_high);
-	write_uint32(ctx->block + (SHA1_DATA_SIZE - 4), bitcount_low);
+	write_uint32(ctx->block + (SHA1_DATA_SIZE - 8), bitcount >> 32);
+	write_uint32(ctx->block + (SHA1_DATA_SIZE - 4), bitcount);
 	
 	sha1_compress(ctx->digest, ctx->block);
 	
@@ -161,7 +149,7 @@ static struct crypto_alg alg = {
 	.cra_priority	=	200,
 	.cra_flags	=	CRYPTO_ALG_TYPE_DIGEST,
 	.cra_blocksize	=	SHA1_DATA_SIZE,
-	.cra_ctxsize	=	sizeof(struct sha1_ctx),  /* XXX align? */
+	.cra_ctxsize	=	sizeof(struct sha1_ctx),
 	.cra_module	=	THIS_MODULE,
 	.cra_list	=	LIST_HEAD_INIT(alg.cra_list),
 	.cra_u		=	{ .digest = {
