@@ -38,16 +38,44 @@
 
 #include <linux/kernel.h>
 #include <linux/string.h>
+#include <linux/crypto.h>
 
-#include "sha.h"
+/* Writes a 32-bit integer, in network, big-endian, byte order */
+#define WRITE_UINT32(p, i)			\
+do {						\
+  (p)[0] = ((i) >> 24) & 0xff;			\
+  (p)[1] = ((i) >> 16) & 0xff;			\
+  (p)[2] = ((i) >> 8) & 0xff;			\
+  (p)[3] = (i) & 0xff;				\
+} while(0)
 
-#include "macros.h"
+/* SHA1 */
+
+#define SHA1_DIGEST_SIZE 20
+#define SHA1_DATA_SIZE 64
+
+/* Digest is kept internally as 5 32-bit words. */
+#define _SHA1_DIGEST_LENGTH 5
+
+struct sha1_ctx
+{
+  uint32_t digest[_SHA1_DIGEST_LENGTH];   /* Message digest */
+  uint32_t count_low, count_high;         /* 64-bit block count */
+  uint8_t block[SHA1_DATA_SIZE];          /* SHA1 data buffer */
+  unsigned int index;                     /* index into buffer */
+};
+
+/* Internal compression function. STATE points to 5 uint32_t words,
+   and DATA points to 64 bytes of input data, possibly unaligned. */
+void
+_nettle_sha1_compress(uint32_t *state, const uint8_t *data);
 
 /* Initialize the SHA values */
 
 void
-sha1_init(struct sha1_ctx *ctx)
+sha1_init(void *data)
 {
+  struct sha1_ctx *ctx=data;
   /* Set the h-vars to their initial values */
   ctx->digest[ 0 ] = 0x67452301L;
   ctx->digest[ 1 ] = 0xEFCDAB89L;
@@ -65,9 +93,9 @@ sha1_init(struct sha1_ctx *ctx)
 #define SHA1_INCR(ctx) ((ctx)->count_high += !++(ctx)->count_low)
 
 void
-sha1_update(struct sha1_ctx *ctx,
-	    unsigned length, const uint8_t *buffer)
+sha1_update(void *data, const uint8_t *buffer, unsigned length)
 {
+  struct sha1_ctx *ctx=data;
   if (ctx->index)
     { /* Try to fill partial block */
       unsigned left = SHA1_DATA_SIZE - ctx->index;
@@ -144,46 +172,47 @@ sha1_final(struct sha1_ctx *ctx)
 }
 
 void
-sha1_digest(struct sha1_ctx *ctx,
-	    unsigned length,
-	    uint8_t *digest)
+sha1_digest(void *data, uint8_t *digest)
 {
+  struct sha1_ctx *ctx=data;
   unsigned i;
-  unsigned words;
-  unsigned leftover;
   
-  BUG_ON(length > SHA1_DIGEST_SIZE);
-
   sha1_final(ctx);
   
-  words = length / 4;
-  leftover = length % 4;
-
-  for (i = 0; i < words; i++, digest += 4)
+  for (i = 0; i < SHA1_DIGEST_SIZE / 4; i++, digest += 4)
     WRITE_UINT32(digest, ctx->digest[i]);
 
-  if (leftover)
-    {
-      uint32_t word;
-      unsigned j = leftover;
-      
-      BUG_ON(i >= _SHA1_DIGEST_LENGTH);
-      
-      word = ctx->digest[i];
-      
-      switch (leftover)
-	{
-	default:
-	  BUG();
-	case 3:
-	  digest[--j] = (word >> 8) & 0xff;
-	  /* Fall through */
-	case 2:
-	  digest[--j] = (word >> 16) & 0xff;
-	  /* Fall through */
-	case 1:
-	  digest[--j] = (word >> 24) & 0xff;
-	}
-    }
   sha1_init(ctx);
 }
+
+static struct crypto_alg alg = {
+	.cra_name	=	"sha1",
+	.cra_driver_name=	"sha1-i386",
+	.cra_priority	=	200,
+	.cra_flags	=	CRYPTO_ALG_TYPE_DIGEST,
+	.cra_blocksize	=	SHA1_DATA_SIZE,
+	.cra_ctxsize	=	sizeof(struct sha1_ctx),  /* XXX align? */
+	.cra_module	=	THIS_MODULE,
+	.cra_list	=	LIST_HEAD_INIT(alg.cra_list),
+	.cra_u		=	{ .digest = {
+	.dia_digestsize	=	SHA1_DIGEST_SIZE,
+	.dia_init	=	sha1_init,
+	.dia_update	=	sha1_update,
+	.dia_final	=	sha1_digest } }
+};
+
+static int __init init(void)
+{
+	return crypto_register_alg(&alg);
+}
+
+static void __exit fini(void)
+{
+	crypto_unregister_alg(&alg);
+}
+
+module_init(init);
+module_exit(fini);
+
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("x86-optimized SHA1 hash algorithm");
