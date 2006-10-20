@@ -28,16 +28,6 @@
 #include <linux/string.h>
 #include <linux/crypto.h>
 
-/* Writes a 32-bit integer, in network, big-endian, byte order */
-/* XXX can we replace this with an existing function? */
-static inline void write_uint32(char *p, u32 i)
-{
-	(p)[0] = ((i) >> 24) & 0xff;
-	(p)[1] = ((i) >> 16) & 0xff;
-	(p)[2] = ((i) >> 8) & 0xff;
-	(p)[3] = (i) & 0xff;
-}
-
 #define SHA1_DIGEST_SIZE 20
 #define SHA1_DATA_SIZE 64
 
@@ -52,7 +42,12 @@ struct sha1_ctx {
    and DATA points to 64 bytes of input data, possibly unaligned. */
 void sha1_compress(u32 * state, const u8 * data);
 
-/* Initialize the SHA values */
+/* Writes a 32-bit integer to an arbitrary pointer in big-endian byte order */
+static inline void write_u32_be(void *ptr, u32 i)
+{
+	u32 *p=ptr;
+	*p=cpu_to_be32(i);
+}
 
 static void sha1_init(void *data)
 {
@@ -131,13 +126,13 @@ static void sha1_final(void *data, u8 * digest)
 	/* This is slightly inefficient, as the numbers are converted to
 	   big-endian format, and will be converted back by the compression
 	   function. It's probably not worth the effort to fix this. */
-	write_uint32(ctx->block + (SHA1_DATA_SIZE - 8), bitcount >> 32);
-	write_uint32(ctx->block + (SHA1_DATA_SIZE - 4), bitcount);
+	write_u32_be(ctx->block + (SHA1_DATA_SIZE - 8), bitcount >> 32);
+	write_u32_be(ctx->block + (SHA1_DATA_SIZE - 4), bitcount);
 	
 	sha1_compress(ctx->digest, ctx->block);
 	
 	for (i = 0; i < SHA1_DIGEST_SIZE / 4; i++, digest += 4)
-		write_uint32(digest, ctx->digest[i]);
+		write_u32_be(digest, ctx->digest[i]);
 	
 	/* Wipe context */
 	memset(ctx, 0, sizeof(*ctx));
