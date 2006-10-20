@@ -8,6 +8,13 @@ else
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 
+.PHONY: all
+all: assembly module
+
+.PHONY: assembly
+assembly:
+	m4 asm.m4 config.m4 machine.m4 sha1-compress.asm > sha1-i386-asm.S
+
 .PHONY: module
 module:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules

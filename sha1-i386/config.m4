@@ -1,4 +1,3 @@
-define(<srcdir>, <<.>>)dnl
 define(<C_NAME>, <><$1>)
 define(<ELF_STYLE>, <yes>)
 define(<TYPE_FUNCTION>, <%function>)
