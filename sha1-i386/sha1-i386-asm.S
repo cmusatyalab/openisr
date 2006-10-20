@@ -34,15 +34,15 @@
 #define K3VALUE	$0x8F1BBCDC		// Rounds 40-59
 #define K4VALUE	$0xCA62C1D6		// Rounds 60-79
 
-#define SETOFFSET(i) off = 4*(i);
+#define OFFSET(i) 4*(i)
 
 // Reads the input via TMP2 into register, byteswaps it, and stores it in
 // the DATA array.
 #define SWAP(index, register)				\
-	SETOFFSET(index);				\
+	off=OFFSET(index);				\
 	movl	off(TMP2), register;			\
 	bswap	register;				\
-	movl	register, off(DATA);
+	movl	register, off(DATA)
 
 // expand(i) is the expansion function
 //
@@ -52,13 +52,13 @@
 //
 // Result is stored back in W[i], and also left in TMP, the only
 // register that is used.
-#define EXPAND(i)					\
-	SETOFFSET(i % 16)	 movl	off(DATA), TMP;	\
-	SETOFFSET((i + 2) % 16)	 xorl	off(DATA), TMP;	\
-	SETOFFSET((i + 8) % 16)	 xorl	off(DATA), TMP;	\
-	SETOFFSET((i + 13) % 16) xorl	off(DATA), TMP;	\
-	roll	$1, TMP;				\
-	SETOFFSET(i % 16)	 movl	TMP, off(DATA);
+#define EXPAND(i)						\
+	off=OFFSET(i % 16);	 	movl	off(DATA), TMP;	\
+	off=OFFSET((i + 2) % 16);	xorl	off(DATA), TMP;	\
+	off=OFFSET((i + 8) % 16);	xorl	off(DATA), TMP;	\
+	off=OFFSET((i + 13) % 16);	xorl	off(DATA), TMP;	\
+	roll	$1, TMP;					\
+	off=OFFSET(i % 16);	 	movl	TMP, off(DATA)
 
 // The f functions,
 //
@@ -69,24 +69,24 @@
 //
 // The macro Fk(x,y,z) computes = fk(x,y,z). 
 // Result is left in TMP.
-#define F1(x,y,z)					\
-	movl	z, TMP;					\
-	xorl	y, TMP;					\
-	andl	x, TMP;					\
-	xorl	z, TMP;
+#define F1(x,y,z)						\
+	movl	z, TMP;						\
+	xorl	y, TMP;						\
+	andl	x, TMP;						\
+	xorl	z, TMP
 
-#define F2(x,y,z)					\
-	movl	x, TMP;					\
-	xorl	y, TMP;					\
-	xorl	z, TMP;
+#define F2(x,y,z)						\
+	movl	x, TMP;						\
+	xorl	y, TMP;						\
+	xorl	z, TMP
 
-#define F3(x,y,z)					\
-	movl	x, TMP2;				\
-	andl	y, TMP2;				\
-	movl	x, TMP;					\
-	orl	y, TMP;					\
-	andl	z, TMP;					\
-	orl	TMP2, TMP;
+#define F3(x,y,z)						\
+	movl	x, TMP2;					\
+	andl	y, TMP2;					\
+	movl	x, TMP;						\
+	orl	y, TMP;						\
+	andl	z, TMP;						\
+	orl	TMP2, TMP
 
 // The form of one sha1 round is
 //
@@ -104,14 +104,14 @@
 //
 // Using the TMP register for the roll can be avoided, by rotating
 // %a in place, adding, and then rotating back.
-#define ROUND(a,b,c,d,e,f,k,w)				\
-	addl	k, e;					\
-	addl	w, e;					\
-	f(b,c,d);					\
-	addl	TMP, e;					\
-	movl	a, TMP;					\
-	roll	$5, TMP;				\
-	addl	TMP, e;					\
+#define ROUND(a,b,c,d,e,f,k,w)					\
+	addl	k, e;						\
+	addl	w, e;						\
+	f(b,c,d);						\
+	addl	TMP, e;						\
+	movl	a, TMP;						\
+	roll	$5, TMP;					\
+	addl	TMP, e;						\
 	roll	$30, b;
 
 	// _nettle_sha1_compress(uint32_t *state, uint8_t *data)
@@ -133,10 +133,10 @@ _nettle_sha1_compress:
 	// Load and byteswap data
 	movl	92(%esp), TMP2
 
-	SWAP( 0, %eax) SWAP( 1, %ebx) SWAP( 2, %ecx) SWAP( 3, %edx)
-	SWAP( 4, %eax) SWAP( 5, %ebx) SWAP( 6, %ecx) SWAP( 7, %edx)
-	SWAP( 8, %eax) SWAP( 9, %ebx) SWAP(10, %ecx) SWAP(11, %edx)
-	SWAP(12, %eax) SWAP(13, %ebx) SWAP(14, %ecx) SWAP(15, %edx)
+	SWAP( 0, %eax); SWAP( 1, %ebx); SWAP( 2, %ecx); SWAP( 3, %edx)
+	SWAP( 4, %eax); SWAP( 5, %ebx); SWAP( 6, %ecx); SWAP( 7, %edx)
+	SWAP( 8, %eax); SWAP( 9, %ebx); SWAP(10, %ecx); SWAP(11, %edx)
+	SWAP(12, %eax); SWAP(13, %ebx); SWAP(14, %ecx); SWAP(15, %edx)
 
 	// load the state vector
 	movl	88(%esp),TMP
@@ -147,106 +147,106 @@ _nettle_sha1_compress:
 	movl	16(TMP), SE
 
 	movl	K1VALUE, TMP2	
-	SETOFFSET( 0) ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
-	SETOFFSET( 1) ROUND(SE, SA, SB, SC, SD, F1, TMP2, off(DATA))
-	SETOFFSET( 2) ROUND(SD, SE, SA, SB, SC, F1, TMP2, off(DATA))
-	SETOFFSET( 3) ROUND(SC, SD, SE, SA, SB, F1, TMP2, off(DATA))
-	SETOFFSET( 4) ROUND(SB, SC, SD, SE, SA, F1, TMP2, off(DATA))
+	off=OFFSET( 0); ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
+	off=OFFSET( 1); ROUND(SE, SA, SB, SC, SD, F1, TMP2, off(DATA))
+	off=OFFSET( 2); ROUND(SD, SE, SA, SB, SC, F1, TMP2, off(DATA))
+	off=OFFSET( 3); ROUND(SC, SD, SE, SA, SB, F1, TMP2, off(DATA))
+	off=OFFSET( 4); ROUND(SB, SC, SD, SE, SA, F1, TMP2, off(DATA))
 
-	SETOFFSET( 5) ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
-	SETOFFSET( 6) ROUND(SE, SA, SB, SC, SD, F1, TMP2, off(DATA))
-	SETOFFSET( 7) ROUND(SD, SE, SA, SB, SC, F1, TMP2, off(DATA))
-	SETOFFSET( 8) ROUND(SC, SD, SE, SA, SB, F1, TMP2, off(DATA))
-	SETOFFSET( 9) ROUND(SB, SC, SD, SE, SA, F1, TMP2, off(DATA))
+	off=OFFSET( 5); ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
+	off=OFFSET( 6); ROUND(SE, SA, SB, SC, SD, F1, TMP2, off(DATA))
+	off=OFFSET( 7); ROUND(SD, SE, SA, SB, SC, F1, TMP2, off(DATA))
+	off=OFFSET( 8); ROUND(SC, SD, SE, SA, SB, F1, TMP2, off(DATA))
+	off=OFFSET( 9); ROUND(SB, SC, SD, SE, SA, F1, TMP2, off(DATA))
 
-	SETOFFSET(10) ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
-	SETOFFSET(11) ROUND(SE, SA, SB, SC, SD, F1, TMP2, off(DATA))
-	SETOFFSET(12) ROUND(SD, SE, SA, SB, SC, F1, TMP2, off(DATA))
-	SETOFFSET(13) ROUND(SC, SD, SE, SA, SB, F1, TMP2, off(DATA))
-	SETOFFSET(14) ROUND(SB, SC, SD, SE, SA, F1, TMP2, off(DATA))
+	off=OFFSET(10); ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
+	off=OFFSET(11); ROUND(SE, SA, SB, SC, SD, F1, TMP2, off(DATA))
+	off=OFFSET(12); ROUND(SD, SE, SA, SB, SC, F1, TMP2, off(DATA))
+	off=OFFSET(13); ROUND(SC, SD, SE, SA, SB, F1, TMP2, off(DATA))
+	off=OFFSET(14); ROUND(SB, SC, SD, SE, SA, F1, TMP2, off(DATA))
 
-	SETOFFSET(15) ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
-	EXPAND(16) ROUND(SE, SA, SB, SC, SD, F1, TMP2, TMP)
-	EXPAND(17) ROUND(SD, SE, SA, SB, SC, F1, TMP2, TMP)
-	EXPAND(18) ROUND(SC, SD, SE, SA, SB, F1, TMP2, TMP)
-	EXPAND(19) ROUND(SB, SC, SD, SE, SA, F1, TMP2, TMP)
+	off=OFFSET(15); ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
+	EXPAND(16); ROUND(SE, SA, SB, SC, SD, F1, TMP2, TMP)
+	EXPAND(17); ROUND(SD, SE, SA, SB, SC, F1, TMP2, TMP)
+	EXPAND(18); ROUND(SC, SD, SE, SA, SB, F1, TMP2, TMP)
+	EXPAND(19); ROUND(SB, SC, SD, SE, SA, F1, TMP2, TMP)
 
 	// TMP2 is free to use in these rounds
 	movl	K2VALUE, TMP2
-	EXPAND(20) ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
-	EXPAND(21) ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
-	EXPAND(22) ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
-	EXPAND(23) ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
-	EXPAND(24) ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
+	EXPAND(20); ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
+	EXPAND(21); ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
+	EXPAND(22); ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
+	EXPAND(23); ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
+	EXPAND(24); ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
 
-	EXPAND(25) ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
-	EXPAND(26) ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
-	EXPAND(27) ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
-	EXPAND(28) ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
-	EXPAND(29) ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
+	EXPAND(25); ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
+	EXPAND(26); ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
+	EXPAND(27); ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
+	EXPAND(28); ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
+	EXPAND(29); ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
 
-	EXPAND(30) ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
-	EXPAND(31) ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
-	EXPAND(32) ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
-	EXPAND(33) ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
-	EXPAND(34) ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
+	EXPAND(30); ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
+	EXPAND(31); ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
+	EXPAND(32); ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
+	EXPAND(33); ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
+	EXPAND(34); ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
 
-	EXPAND(35) ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
-	EXPAND(36) ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
-	EXPAND(37) ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
-	EXPAND(38) ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
-	EXPAND(39) ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
+	EXPAND(35); ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
+	EXPAND(36); ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
+	EXPAND(37); ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
+	EXPAND(38); ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
+	EXPAND(39); ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
 
 	// We have to put this constant on the stack
 	movl	K3VALUE, TMP3
-	EXPAND(40) ROUND(SA, SB, SC, SD, SE, F3, TMP3, TMP)
-	EXPAND(41) ROUND(SE, SA, SB, SC, SD, F3, TMP3, TMP)
-	EXPAND(42) ROUND(SD, SE, SA, SB, SC, F3, TMP3, TMP)
-	EXPAND(43) ROUND(SC, SD, SE, SA, SB, F3, TMP3, TMP)
-	EXPAND(44) ROUND(SB, SC, SD, SE, SA, F3, TMP3, TMP)
+	EXPAND(40); ROUND(SA, SB, SC, SD, SE, F3, TMP3, TMP)
+	EXPAND(41); ROUND(SE, SA, SB, SC, SD, F3, TMP3, TMP)
+	EXPAND(42); ROUND(SD, SE, SA, SB, SC, F3, TMP3, TMP)
+	EXPAND(43); ROUND(SC, SD, SE, SA, SB, F3, TMP3, TMP)
+	EXPAND(44); ROUND(SB, SC, SD, SE, SA, F3, TMP3, TMP)
 
-	EXPAND(45) ROUND(SA, SB, SC, SD, SE, F3, TMP3, TMP)
-	EXPAND(46) ROUND(SE, SA, SB, SC, SD, F3, TMP3, TMP)
-	EXPAND(47) ROUND(SD, SE, SA, SB, SC, F3, TMP3, TMP)
-	EXPAND(48) ROUND(SC, SD, SE, SA, SB, F3, TMP3, TMP)
-	EXPAND(49) ROUND(SB, SC, SD, SE, SA, F3, TMP3, TMP)
+	EXPAND(45); ROUND(SA, SB, SC, SD, SE, F3, TMP3, TMP)
+	EXPAND(46); ROUND(SE, SA, SB, SC, SD, F3, TMP3, TMP)
+	EXPAND(47); ROUND(SD, SE, SA, SB, SC, F3, TMP3, TMP)
+	EXPAND(48); ROUND(SC, SD, SE, SA, SB, F3, TMP3, TMP)
+	EXPAND(49); ROUND(SB, SC, SD, SE, SA, F3, TMP3, TMP)
 
-	EXPAND(50) ROUND(SA, SB, SC, SD, SE, F3, TMP3, TMP)
-	EXPAND(51) ROUND(SE, SA, SB, SC, SD, F3, TMP3, TMP)
-	EXPAND(52) ROUND(SD, SE, SA, SB, SC, F3, TMP3, TMP)
-	EXPAND(53) ROUND(SC, SD, SE, SA, SB, F3, TMP3, TMP)
-	EXPAND(54) ROUND(SB, SC, SD, SE, SA, F3, TMP3, TMP)
+	EXPAND(50); ROUND(SA, SB, SC, SD, SE, F3, TMP3, TMP)
+	EXPAND(51); ROUND(SE, SA, SB, SC, SD, F3, TMP3, TMP)
+	EXPAND(52); ROUND(SD, SE, SA, SB, SC, F3, TMP3, TMP)
+	EXPAND(53); ROUND(SC, SD, SE, SA, SB, F3, TMP3, TMP)
+	EXPAND(54); ROUND(SB, SC, SD, SE, SA, F3, TMP3, TMP)
 
-	EXPAND(55) ROUND(SA, SB, SC, SD, SE, F3, TMP3, TMP)
-	EXPAND(56) ROUND(SE, SA, SB, SC, SD, F3, TMP3, TMP)
-	EXPAND(57) ROUND(SD, SE, SA, SB, SC, F3, TMP3, TMP)
-	EXPAND(58) ROUND(SC, SD, SE, SA, SB, F3, TMP3, TMP)
-	EXPAND(59) ROUND(SB, SC, SD, SE, SA, F3, TMP3, TMP)
+	EXPAND(55); ROUND(SA, SB, SC, SD, SE, F3, TMP3, TMP)
+	EXPAND(56); ROUND(SE, SA, SB, SC, SD, F3, TMP3, TMP)
+	EXPAND(57); ROUND(SD, SE, SA, SB, SC, F3, TMP3, TMP)
+	EXPAND(58); ROUND(SC, SD, SE, SA, SB, F3, TMP3, TMP)
+	EXPAND(59); ROUND(SB, SC, SD, SE, SA, F3, TMP3, TMP)
 
 	movl	K4VALUE, TMP2
-	EXPAND(60) ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
-	EXPAND(61) ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
-	EXPAND(62) ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
-	EXPAND(63) ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
-	EXPAND(64) ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
+	EXPAND(60); ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
+	EXPAND(61); ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
+	EXPAND(62); ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
+	EXPAND(63); ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
+	EXPAND(64); ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
 
-	EXPAND(65) ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
-	EXPAND(66) ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
-	EXPAND(67) ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
-	EXPAND(68) ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
-	EXPAND(69) ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
+	EXPAND(65); ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
+	EXPAND(66); ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
+	EXPAND(67); ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
+	EXPAND(68); ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
+	EXPAND(69); ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
 
-	EXPAND(70) ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
-	EXPAND(71) ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
-	EXPAND(72) ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
-	EXPAND(73) ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
-	EXPAND(74) ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
+	EXPAND(70); ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
+	EXPAND(71); ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
+	EXPAND(72); ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
+	EXPAND(73); ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
+	EXPAND(74); ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
 
-	EXPAND(75) ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
-	EXPAND(76) ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
-	EXPAND(77) ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
-	EXPAND(78) ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
-	EXPAND(79) ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
+	EXPAND(75); ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
+	EXPAND(76); ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
+	EXPAND(77); ROUND(SD, SE, SA, SB, SC, F2, TMP2, TMP)
+	EXPAND(78); ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
+	EXPAND(79); ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
 
 	// Update the state vector
 	movl	88(%esp),TMP
