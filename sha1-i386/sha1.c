@@ -44,10 +44,10 @@
 /* XXX can we replace this with an existing function? */
 static inline void write_uint32(char *p, uint32_t i)
 {
-  (p)[0] = ((i) >> 24) & 0xff;
-  (p)[1] = ((i) >> 16) & 0xff;
-  (p)[2] = ((i) >> 8) & 0xff;
-  (p)[3] = (i) & 0xff;
+	(p)[0] = ((i) >> 24) & 0xff;
+	(p)[1] = ((i) >> 16) & 0xff;
+	(p)[2] = ((i) >> 8) & 0xff;
+	(p)[3] = (i) & 0xff;
 }
 
 #define SHA1_DIGEST_SIZE 20
@@ -56,127 +56,121 @@ static inline void write_uint32(char *p, uint32_t i)
 /* Digest is kept internally as 5 32-bit words. */
 #define _SHA1_DIGEST_LENGTH 5
 
-struct sha1_ctx
-{
-  uint32_t digest[_SHA1_DIGEST_LENGTH];   /* Message digest */
-  uint32_t count_low, count_high;         /* 64-bit block count */
-  uint8_t block[SHA1_DATA_SIZE];          /* SHA1 data buffer */
-  unsigned int index;                     /* index into buffer */
+struct sha1_ctx {
+	uint32_t digest[_SHA1_DIGEST_LENGTH];	/* Message digest */
+	uint32_t count_low, count_high;		/* 64-bit block count */
+	uint8_t block[SHA1_DATA_SIZE];		/* SHA1 data buffer */
+	unsigned int index;			/* index into buffer */
 };
 
 /* Internal compression function. STATE points to 5 uint32_t words,
    and DATA points to 64 bytes of input data, possibly unaligned. */
-void _nettle_sha1_compress(uint32_t *state, const uint8_t *data);
+void _nettle_sha1_compress(uint32_t * state, const uint8_t * data);
 
 /* Initialize the SHA values */
 
 static void sha1_init(void *data)
 {
-  struct sha1_ctx *ctx=data;
-  /* Set the h-vars to their initial values */
-  ctx->digest[ 0 ] = 0x67452301L;
-  ctx->digest[ 1 ] = 0xEFCDAB89L;
-  ctx->digest[ 2 ] = 0x98BADCFEL;
-  ctx->digest[ 3 ] = 0x10325476L;
-  ctx->digest[ 4 ] = 0xC3D2E1F0L;
-
-  /* Initialize bit count */
-  ctx->count_low = ctx->count_high = 0;
-  
-  /* Initialize buffer */
-  ctx->index = 0;
+	struct sha1_ctx *ctx = data;
+	/* Set the h-vars to their initial values */
+	ctx->digest[0] = 0x67452301L;
+	ctx->digest[1] = 0xEFCDAB89L;
+	ctx->digest[2] = 0x98BADCFEL;
+	ctx->digest[3] = 0x10325476L;
+	ctx->digest[4] = 0xC3D2E1F0L;
+	
+	/* Initialize bit count */
+	ctx->count_low = ctx->count_high = 0;
+	
+	/* Initialize buffer */
+	ctx->index = 0;
 }
 
 #define SHA1_INCR(ctx) ((ctx)->count_high += !++(ctx)->count_low)
 
-static void sha1_update(void *data, const uint8_t *buffer, unsigned length)
+static void sha1_update(void *data, const uint8_t * buffer, unsigned length)
 {
-  struct sha1_ctx *ctx=data;
-  if (ctx->index)
-    { /* Try to fill partial block */
-      unsigned left = SHA1_DATA_SIZE - ctx->index;
-      if (length < left)
-	{
-	  memcpy(ctx->block + ctx->index, buffer, length);
-	  ctx->index += length;
-	  return; /* Finished */
+	struct sha1_ctx *ctx = data;
+	if (ctx->index) {
+		/* Try to fill partial block */
+		unsigned left = SHA1_DATA_SIZE - ctx->index;
+		if (length < left) {
+			memcpy(ctx->block + ctx->index, buffer, length);
+			ctx->index += length;
+			return;	/* Finished */
+		} else {
+			memcpy(ctx->block + ctx->index, buffer, left);
+			
+			_nettle_sha1_compress(ctx->digest, ctx->block);
+			SHA1_INCR(ctx);
+			
+			buffer += left;
+			length -= left;
+		}
 	}
-      else
-	{
-	  memcpy(ctx->block + ctx->index, buffer, left);
-
-	  _nettle_sha1_compress(ctx->digest, ctx->block);
-	  SHA1_INCR(ctx);
-
-	  buffer += left;
-	  length -= left;
+	while (length >= SHA1_DATA_SIZE) {
+		_nettle_sha1_compress(ctx->digest, buffer);
+		SHA1_INCR(ctx);
+		
+		buffer += SHA1_DATA_SIZE;
+		length -= SHA1_DATA_SIZE;
 	}
-    }
-  while (length >= SHA1_DATA_SIZE)
-    {
-      _nettle_sha1_compress(ctx->digest, buffer);
-      SHA1_INCR(ctx);
-
-      buffer += SHA1_DATA_SIZE;
-      length -= SHA1_DATA_SIZE;
-    }
-  if ((ctx->index = length))     /* This assignment is intended */
-    /* Buffer leftovers */
-    memcpy(ctx->block, buffer, length);
+	if ((ctx->index = length))  /* This assignment is intended */
+		/* Buffer leftovers */
+		memcpy(ctx->block, buffer, length);
 }
-	  
+
 /* Final wrapup - pad to SHA1_DATA_SIZE-byte boundary with the bit pattern
    1 0* (64-bit count of bits processed, MSB-first) */
-
 static void sha1_final(struct sha1_ctx *ctx)
 {
-  uint32_t bitcount_high;
-  uint32_t bitcount_low;
-  unsigned i;
-  
-  i = ctx->index;
-  
-  /* Set the first char of padding to 0x80.  This is safe since there is
-     always at least one byte free */
-
-  BUG_ON(i >= SHA1_DATA_SIZE);
-  ctx->block[i++] = 0x80;
-
-  if (i > (SHA1_DATA_SIZE - 8))
-    { /* No room for length in this block. Process it and
-	 pad with another one */
-      memset(ctx->block + i, 0, SHA1_DATA_SIZE - i);
-      
-      _nettle_sha1_compress(ctx->digest, ctx->block);
-      i = 0;
-    }
-  if (i < (SHA1_DATA_SIZE - 8))
-    memset(ctx->block + i, 0, (SHA1_DATA_SIZE - 8) - i);
-
-  /* There are 512 = 2^9 bits in one block */  
-  bitcount_high = (ctx->count_high << 9) | (ctx->count_low >> 23);
-  bitcount_low = (ctx->count_low << 9) | (ctx->index << 3);
-
-  /* This is slightly inefficient, as the numbers are converted to
-     big-endian format, and will be converted back by the compression
-     function. It's probably not worth the effort to fix this. */
-  write_uint32(ctx->block + (SHA1_DATA_SIZE - 8), bitcount_high);
-  write_uint32(ctx->block + (SHA1_DATA_SIZE - 4), bitcount_low);
-
-  _nettle_sha1_compress(ctx->digest, ctx->block);
+	uint32_t bitcount_high;
+	uint32_t bitcount_low;
+	unsigned i;
+	
+	i = ctx->index;
+	
+	/* Set the first char of padding to 0x80.  This is safe since there is
+	   always at least one byte free */
+	
+	BUG_ON(i >= SHA1_DATA_SIZE);
+	ctx->block[i++] = 0x80;
+	
+	if (i > (SHA1_DATA_SIZE - 8)) {
+		/* No room for length in this block. Process it and
+		   pad with another one */
+		memset(ctx->block + i, 0, SHA1_DATA_SIZE - i);
+		
+		_nettle_sha1_compress(ctx->digest, ctx->block);
+		i = 0;
+	}
+	if (i < (SHA1_DATA_SIZE - 8))
+		memset(ctx->block + i, 0, (SHA1_DATA_SIZE - 8) - i);
+	
+	/* There are 512 = 2^9 bits in one block */
+	bitcount_high = (ctx->count_high << 9) | (ctx->count_low >> 23);
+	bitcount_low = (ctx->count_low << 9) | (ctx->index << 3);
+	
+	/* This is slightly inefficient, as the numbers are converted to
+	   big-endian format, and will be converted back by the compression
+	   function. It's probably not worth the effort to fix this. */
+	write_uint32(ctx->block + (SHA1_DATA_SIZE - 8), bitcount_high);
+	write_uint32(ctx->block + (SHA1_DATA_SIZE - 4), bitcount_low);
+	
+	_nettle_sha1_compress(ctx->digest, ctx->block);
 }
 
-static void sha1_digest(void *data, uint8_t *digest)
+static void sha1_digest(void *data, uint8_t * digest)
 {
-  struct sha1_ctx *ctx=data;
-  unsigned i;
-  
-  sha1_final(ctx);
-  
-  for (i = 0; i < SHA1_DIGEST_SIZE / 4; i++, digest += 4)
-    write_uint32(digest, ctx->digest[i]);
-
-  sha1_init(ctx);
+	struct sha1_ctx *ctx = data;
+	unsigned i;
+	
+	sha1_final(ctx);
+	
+	for (i = 0; i < SHA1_DIGEST_SIZE / 4; i++, digest += 4)
+		write_uint32(digest, ctx->digest[i]);
+	
+	sha1_init(ctx);
 }
 
 static struct crypto_alg alg = {
