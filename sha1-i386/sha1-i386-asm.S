@@ -114,14 +114,12 @@
 	addl	TMP, e;						\
 	roll	$30, b;
 
-	// _nettle_sha1_compress(uint32_t *state, uint8_t *data)
-	
+// sha1_compress(uint32_t *state, uint8_t *data)
 .text
 .align 4
 .globl sha1_compress
 sha1_compress:
 	// save all registers that need to be saved
-	
 	pushl	%ebx		//  80(%esp)
 	pushl	%ebp		//  76(%esp)
 	pushl	%esi		//  72(%esp)
