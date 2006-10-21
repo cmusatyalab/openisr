@@ -133,5 +133,5 @@ module_init(init);
 module_exit(fini);
 
 MODULE_AUTHOR("Benjamin Gilbert <bgilbert@cs.cmu.edu>");
-MODULE_DESCRIPTION("OpenISR virtual block device");
+MODULE_DESCRIPTION("CryptoAPI SHA-1 userspace test driver");
 MODULE_LICENSE("GPL");
