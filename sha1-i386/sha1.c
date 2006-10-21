@@ -28,6 +28,15 @@
 #include <linux/string.h>
 #include <linux/crypto.h>
 
+#include <linux/version.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
+#define CONTEXT_TYPE void
+#define PRIVATE_DATA(arg) (arg)
+#else
+#define CONTEXT_TYPE struct crypto_tfm
+#define PRIVATE_DATA(arg) crypto_tfm_ctx(arg)
+#endif
+
 #define SHA1_DIGEST_SIZE 20
 #define SHA1_DATA_SIZE 64
 
@@ -49,9 +58,9 @@ static inline void write_u32_be(void *ptr, u32 i)
 	*p=cpu_to_be32(i);
 }
 
-static void sha1_init(void *data)
+static void sha1_init(CONTEXT_TYPE *data)
 {
-	struct sha1_ctx *ctx = data;
+	struct sha1_ctx *ctx = PRIVATE_DATA(data);
 	/* Set the h-vars to their initial values */
 	ctx->digest[0] = 0x67452301L;
 	ctx->digest[1] = 0xEFCDAB89L;
@@ -66,9 +75,9 @@ static void sha1_init(void *data)
 	ctx->index = 0;
 }
 
-static void sha1_update(void *data, const u8 * buffer, unsigned length)
+static void sha1_update(CONTEXT_TYPE *data, const u8 * buffer, unsigned length)
 {
-	struct sha1_ctx *ctx = data;
+	struct sha1_ctx *ctx = PRIVATE_DATA(data);
 	if (ctx->index) {
 		/* Try to fill partial block */
 		unsigned left = SHA1_DATA_SIZE - ctx->index;
@@ -97,9 +106,9 @@ static void sha1_update(void *data, const u8 * buffer, unsigned length)
 
 /* Final wrapup - pad to SHA1_DATA_SIZE-byte boundary with the bit pattern
    1 0* (64-bit count of bits processed, MSB-first) */
-static void sha1_final(void *data, u8 * digest)
+static void sha1_final(CONTEXT_TYPE *data, u8 * digest)
 {
-	struct sha1_ctx *ctx = data;
+	struct sha1_ctx *ctx = PRIVATE_DATA(data);
 	u64 bitcount;
 	unsigned i;
 	
@@ -140,12 +149,17 @@ static void sha1_final(void *data, u8 * digest)
 
 static struct crypto_alg alg = {
 	.cra_name	=	"sha1",
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,15)
 	.cra_driver_name=	"sha1-i386",
 	.cra_priority	=	200,
+#endif
 	.cra_flags	=	CRYPTO_ALG_TYPE_DIGEST,
 	.cra_blocksize	=	SHA1_DATA_SIZE,
 	.cra_ctxsize	=	sizeof(struct sha1_ctx),
 	.cra_module	=	THIS_MODULE,
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,12)
+	.cra_alignmask	=	3,
+#endif
 	.cra_list	=	LIST_HEAD_INIT(alg.cra_list),
 	.cra_u		=	{ .digest = {
 	.dia_digestsize	=	SHA1_DIGEST_SIZE,
