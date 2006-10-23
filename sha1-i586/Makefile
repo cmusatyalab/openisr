@@ -1,7 +1,7 @@
 ifneq ($(KERNELRELEASE),)
 
-obj-m := sha1-i386.o
-sha1-i386-objs := sha1-i386-asm.o sha1.o
+obj-m := sha1-i586.o
+sha1-i586-objs := sha1-i586-asm.o sha1.o
 
 else
 
