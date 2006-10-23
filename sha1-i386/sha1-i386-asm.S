@@ -36,14 +36,13 @@
 /* Reads the input via TMP2 into register, byteswaps it, and stores it in
    the DATA array. */
 #define SWAP(index, register)					\
-	off=OFFSET(index);					\
-	movl	off(TMP2), register;				\
+	movl	OFFSET(index)(TMP2), register;			\
 	bswap	register;					\
-	movl	register, off(DATA)
+	movl	register, OFFSET(index)(DATA)
 
 /* Sets the workspace word at the given index to zero. */
 #define CLEAR(index)						\
-	off=OFFSET(index);		movl	$0, off(DATA)
+	movl	$0, OFFSET(index)(DATA)
 
 /*
  * expand(i) is the expansion function
@@ -56,12 +55,12 @@
  * register that is used.
  */
 #define EXPAND(i)						\
-	off=OFFSET(i % 16);	 	movl	off(DATA), TMP;	\
-	off=OFFSET((i + 2) % 16);	xorl	off(DATA), TMP;	\
-	off=OFFSET((i + 8) % 16);	xorl	off(DATA), TMP;	\
-	off=OFFSET((i + 13) % 16);	xorl	off(DATA), TMP;	\
+	movl	OFFSET(i % 16)(DATA), TMP;			\
+	xorl	OFFSET((i + 2) % 16)(DATA), TMP;		\
+	xorl	OFFSET((i + 8) % 16)(DATA), TMP;		\
+	xorl	OFFSET((i + 13) % 16)(DATA), TMP;		\
 	roll	$1, TMP;					\
-	off=OFFSET(i % 16);	 	movl	TMP, off(DATA)
+	movl	TMP, OFFSET(i % 16)(DATA)
 
 /*
  * The f functions,
@@ -151,25 +150,25 @@ sha1_compress:
 	movl	16(TMP), SE
 
 	movl	K1VALUE, TMP2	
-	off=OFFSET( 0); ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
-	off=OFFSET( 1); ROUND(SE, SA, SB, SC, SD, F1, TMP2, off(DATA))
-	off=OFFSET( 2); ROUND(SD, SE, SA, SB, SC, F1, TMP2, off(DATA))
-	off=OFFSET( 3); ROUND(SC, SD, SE, SA, SB, F1, TMP2, off(DATA))
-	off=OFFSET( 4); ROUND(SB, SC, SD, SE, SA, F1, TMP2, off(DATA))
+	ROUND(SA, SB, SC, SD, SE, F1, TMP2, OFFSET( 0)(DATA))
+	ROUND(SE, SA, SB, SC, SD, F1, TMP2, OFFSET( 1)(DATA))
+	ROUND(SD, SE, SA, SB, SC, F1, TMP2, OFFSET( 2)(DATA))
+	ROUND(SC, SD, SE, SA, SB, F1, TMP2, OFFSET( 3)(DATA))
+	ROUND(SB, SC, SD, SE, SA, F1, TMP2, OFFSET( 4)(DATA))
 
-	off=OFFSET( 5); ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
-	off=OFFSET( 6); ROUND(SE, SA, SB, SC, SD, F1, TMP2, off(DATA))
-	off=OFFSET( 7); ROUND(SD, SE, SA, SB, SC, F1, TMP2, off(DATA))
-	off=OFFSET( 8); ROUND(SC, SD, SE, SA, SB, F1, TMP2, off(DATA))
-	off=OFFSET( 9); ROUND(SB, SC, SD, SE, SA, F1, TMP2, off(DATA))
+	ROUND(SA, SB, SC, SD, SE, F1, TMP2, OFFSET( 5)(DATA))
+	ROUND(SE, SA, SB, SC, SD, F1, TMP2, OFFSET( 6)(DATA))
+	ROUND(SD, SE, SA, SB, SC, F1, TMP2, OFFSET( 7)(DATA))
+	ROUND(SC, SD, SE, SA, SB, F1, TMP2, OFFSET( 8)(DATA))
+	ROUND(SB, SC, SD, SE, SA, F1, TMP2, OFFSET( 9)(DATA))
 
-	off=OFFSET(10); ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
-	off=OFFSET(11); ROUND(SE, SA, SB, SC, SD, F1, TMP2, off(DATA))
-	off=OFFSET(12); ROUND(SD, SE, SA, SB, SC, F1, TMP2, off(DATA))
-	off=OFFSET(13); ROUND(SC, SD, SE, SA, SB, F1, TMP2, off(DATA))
-	off=OFFSET(14); ROUND(SB, SC, SD, SE, SA, F1, TMP2, off(DATA))
+	ROUND(SA, SB, SC, SD, SE, F1, TMP2, OFFSET(10)(DATA))
+	ROUND(SE, SA, SB, SC, SD, F1, TMP2, OFFSET(11)(DATA))
+	ROUND(SD, SE, SA, SB, SC, F1, TMP2, OFFSET(12)(DATA))
+	ROUND(SC, SD, SE, SA, SB, F1, TMP2, OFFSET(13)(DATA))
+	ROUND(SB, SC, SD, SE, SA, F1, TMP2, OFFSET(14)(DATA))
 
-	off=OFFSET(15); ROUND(SA, SB, SC, SD, SE, F1, TMP2, off(DATA))
+	ROUND(SA, SB, SC, SD, SE, F1, TMP2, OFFSET(15)(DATA))
 	EXPAND(16); ROUND(SE, SA, SB, SC, SD, F1, TMP2, TMP)
 	EXPAND(17); ROUND(SD, SE, SA, SB, SC, F1, TMP2, TMP)
 	EXPAND(18); ROUND(SC, SD, SE, SA, SB, F1, TMP2, TMP)
