@@ -1,27 +1,16 @@
-/* sha1.c
+/*
+ * x86-optimized SHA1 hash algorithm
  *
- * The sha1 hash function.
- * Defined by http://www.itl.nist.gov/fipspubs/fip180-1.htm.
- */
-
-/* nettle, low-level cryptographics library
+ * Originally from Nettle
+ * Ported to CryptoAPI by Benjamin Gilbert <bgilbert@cs.cmu.edu>
  *
  * Copyright (C) 2001 Peter Gutmann, Andrew Kuchling, Niels Möller
- *  
- * The nettle library is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2.1 of the License, or (at your
+ * Copyright (c) 2006 Carnegie Mellon University
+ * 
+ * This file is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU Lesser General Public License as published by the
+ * Free Software Foundation; either version 2.1 of the License, or (at your
  * option) any later version.
- * 
- * The nettle library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU Lesser General Public License
- * along with the nettle library; see the file COPYING.LIB.  If not, write to
- * the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
- * MA 02111-1307, USA.
  */
 
 #include <linux/kernel.h>
@@ -47,8 +36,8 @@ struct sha1_ctx {
 	unsigned int index;			/* index into buffer */
 };
 
-/* Compression function, written in assembly. STATE points to 5 u32 words,
-   and DATA points to 64 bytes of input data, possibly unaligned. */
+/* Compression function. STATE points to 5 u32 words, and DATA points to
+   64 bytes of input data, possibly unaligned. */
 void sha1_compress(u32 * state, const u8 * data);
 
 /* Writes a 32-bit integer to an arbitrary pointer in big-endian byte order */
@@ -61,6 +50,7 @@ static inline void write_u32_be(void *ptr, u32 i)
 static void sha1_init(CONTEXT_TYPE *data)
 {
 	struct sha1_ctx *ctx = PRIVATE_DATA(data);
+	
 	/* Set the h-vars to their initial values */
 	ctx->digest[0] = 0x67452301L;
 	ctx->digest[1] = 0xEFCDAB89L;
@@ -99,7 +89,7 @@ static void sha1_update(CONTEXT_TYPE *data, const u8 * buffer, unsigned length)
 		buffer += SHA1_DATA_SIZE;
 		length -= SHA1_DATA_SIZE;
 	}
-	if ((ctx->index = length))  /* This assignment is intended */
+	if ((ctx->index = length))
 		/* Buffer leftovers */
 		memcpy(ctx->block, buffer, length);
 }
@@ -110,9 +100,7 @@ static void sha1_final(CONTEXT_TYPE *data, u8 * digest)
 {
 	struct sha1_ctx *ctx = PRIVATE_DATA(data);
 	u64 bitcount;
-	unsigned i;
-	
-	i = ctx->index;
+	unsigned i = ctx->index;
 	
 	/* Set the first char of padding to 0x80.  This is safe since there is
 	   always at least one byte free */

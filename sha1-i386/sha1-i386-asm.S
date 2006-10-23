@@ -1,23 +1,19 @@
-// nettle, low-level cryptographics library
-// 
-// Copyright (C) 2004, Niels Möller
-//  
-// The nettle library is free software; you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation; either version 2.1 of the License, or (at your
-// option) any later version.
-// 
-// The nettle library is distributed in the hope that it will be useful, but
-// WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-// or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
-// License for more details.
-// 
-// You should have received a copy of the GNU Lesser General Public License
-// along with the nettle library; see the file COPYING.LIB.  If not, write to
-// the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
-// MA 02111-1307, USA.
+/*
+ * x86-optimized SHA1 hash algorithm
+ *
+ * Originally from Nettle
+ * Ported from M4 to cpp by Benjamin Gilbert <bgilbert@cs.cmu.edu>
+ *
+ * Copyright (C) 2004, Niels Möller
+ * Copyright (c) 2006 Carnegie Mellon University
+ * 
+ * This file is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU Lesser General Public License as published by the
+ * Free Software Foundation; either version 2.1 of the License, or (at your
+ * option) any later version.
+ */
 
-// Register usage
+/* Register usage */
 #define SA	%eax
 #define SB	%ebx
 #define SC	%ecx
@@ -25,33 +21,36 @@
 #define SE	%ebp
 #define DATA	%esp
 #define TMP	%edi
-#define TMP2	%esi			// Used by SWAP and F3
+#define TMP2	%esi			/* Used by SWAP and F3 */
 #define TMP3	64(%esp)
 
-// Constants
-#define K1VALUE	$0x5A827999		// Rounds  0-19
-#define K2VALUE	$0x6ED9EBA1		// Rounds 20-39
-#define K3VALUE	$0x8F1BBCDC		// Rounds 40-59
-#define K4VALUE	$0xCA62C1D6		// Rounds 60-79
+/* Constants */
+#define K1VALUE	$0x5A827999		/* Rounds  0-19 */
+#define K2VALUE	$0x6ED9EBA1		/* Rounds 20-39 */
+#define K3VALUE	$0x8F1BBCDC		/* Rounds 40-59 */
+#define K4VALUE	$0xCA62C1D6		/* Rounds 60-79 */
 
+/* Convert stack offsets in words to offsets in bytes */
 #define OFFSET(i) 4*(i)
 
-// Reads the input via TMP2 into register, byteswaps it, and stores it in
-// the DATA array.
+/* Reads the input via TMP2 into register, byteswaps it, and stores it in
+   the DATA array. */
 #define SWAP(index, register)				\
 	off=OFFSET(index);				\
 	movl	off(TMP2), register;			\
 	bswap	register;				\
 	movl	register, off(DATA)
 
-// expand(i) is the expansion function
-//
-//   W[i] = (W[i - 16] ^ W[i - 14] ^ W[i - 8] ^ W[i - 3]) <<< 1
-//
-// where W[i] is stored in DATA[i mod 16].
-//
-// Result is stored back in W[i], and also left in TMP, the only
-// register that is used.
+/*
+ * expand(i) is the expansion function
+ *
+ *   W[i] = (W[i - 16] ^ W[i - 14] ^ W[i - 8] ^ W[i - 3]) <<< 1
+ *
+ * where W[i] is stored in DATA[i mod 16].
+ *
+ * Result is stored back in W[i], and also left in TMP, the only
+ * register that is used.
+ */
 #define EXPAND(i)						\
 	off=OFFSET(i % 16);	 	movl	off(DATA), TMP;	\
 	off=OFFSET((i + 2) % 16);	xorl	off(DATA), TMP;	\
@@ -60,15 +59,17 @@
 	roll	$1, TMP;					\
 	off=OFFSET(i % 16);	 	movl	TMP, off(DATA)
 
-// The f functions,
-//
-//  f1(x,y,z) = z ^ (x & (y ^ z))
-//  f2(x,y,z) = x ^ y ^ z
-//  f3(x,y,z) = (x & y) | (z & (x | y))
-//  f4 = f2
-//
-// The macro Fk(x,y,z) computes = fk(x,y,z). 
-// Result is left in TMP.
+/*
+ * The f functions,
+ *
+ *  f1(x,y,z) = z ^ (x & (y ^ z))
+ *  f2(x,y,z) = x ^ y ^ z
+ *  f3(x,y,z) = (x & y) | (z & (x | y))
+ *  f4 = f2
+ *
+ * The macro Fk(x,y,z) computes = fk(x,y,z). 
+ * Result is left in TMP.
+ */
 #define F1(x,y,z)						\
 	movl	z, TMP;						\
 	xorl	y, TMP;						\
@@ -88,22 +89,24 @@
 	andl	z, TMP;						\
 	orl	TMP2, TMP
 
-// The form of one sha1 round is
-//
-//   a' = e + a <<< 5 + f( b, c, d ) + k + w;
-//   b' = a;
-//   c' = b <<< 30;
-//   d' = c;
-//   e' = d;
-//
-// where <<< denotes rotation. We permute our variables, so that we
-// instead get
-//
-//   e += a <<< 5 + f( b, c, d ) + k + w;
-//   b <<<= 30
-//
-// Using the TMP register for the roll could be avoided, by rotating
-// %a in place, adding, and then rotating back.
+/*
+ * The form of one sha1 round is
+ *
+ *   a' = e + a <<< 5 + f( b, c, d ) + k + w;
+ *   b' = a;
+ *   c' = b <<< 30;
+ *   d' = c;
+ *   e' = d;
+ *
+ * where <<< denotes rotation. We permute our variables, so that we
+ * instead get
+ *
+ *   e += a <<< 5 + f( b, c, d ) + k + w;
+ *   b <<<= 30
+ *
+ * Using the TMP register for the rotate could be avoided, by rotating
+ * %a in place, adding, and then rotating back.
+ */
 #define ROUND(a,b,c,d,e,f,k,w)					\
 	addl	k, e;						\
 	addl	w, e;						\
@@ -114,20 +117,20 @@
 	addl	TMP, e;						\
 	roll	$30, b;
 
-// sha1_compress(uint32_t *state, uint8_t *data)
+/* sha1_compress(uint32_t *state, uint8_t *data) */
 .text
 .align 4
 .globl sha1_compress
 sha1_compress:
-	// save all registers that need to be saved
-	pushl	%ebx		//  80(%esp)
-	pushl	%ebp		//  76(%esp)
-	pushl	%esi		//  72(%esp)
-	pushl	%edi		//  68(%esp)
+	/* save all registers that need to be saved */
+	pushl	%ebx		/* 80(%esp) */
+	pushl	%ebp		/* 76(%esp) */
+	pushl	%esi		/* 72(%esp) */
+	pushl	%edi		/* 68(%esp) */
 
-	subl	$68, %esp	//  %esp = W
+	subl	$68, %esp	/* %esp = W */
 
-	// Load and byteswap data
+	/* Load and byteswap data */
 	movl	92(%esp), TMP2
 
 	SWAP( 0, %eax); SWAP( 1, %ebx); SWAP( 2, %ecx); SWAP( 3, %edx)
@@ -135,7 +138,7 @@ sha1_compress:
 	SWAP( 8, %eax); SWAP( 9, %ebx); SWAP(10, %ecx); SWAP(11, %edx)
 	SWAP(12, %eax); SWAP(13, %ebx); SWAP(14, %ecx); SWAP(15, %edx)
 
-	// load the state vector
+	/* load the state vector */
 	movl	88(%esp),TMP
 	movl	(TMP),   SA
 	movl	4(TMP),  SB
@@ -168,7 +171,7 @@ sha1_compress:
 	EXPAND(18); ROUND(SC, SD, SE, SA, SB, F1, TMP2, TMP)
 	EXPAND(19); ROUND(SB, SC, SD, SE, SA, F1, TMP2, TMP)
 
-	// TMP2 is free to use in these rounds
+	/* TMP2 is free to use in these rounds */
 	movl	K2VALUE, TMP2
 	EXPAND(20); ROUND(SA, SB, SC, SD, SE, F2, TMP2, TMP)
 	EXPAND(21); ROUND(SE, SA, SB, SC, SD, F2, TMP2, TMP)
@@ -194,7 +197,7 @@ sha1_compress:
 	EXPAND(38); ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
 	EXPAND(39); ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
 
-	// We have to put this constant on the stack
+	/* We have to put this constant on the stack */
 	movl	K3VALUE, TMP3
 	EXPAND(40); ROUND(SA, SB, SC, SD, SE, F3, TMP3, TMP)
 	EXPAND(41); ROUND(SE, SA, SB, SC, SD, F3, TMP3, TMP)
@@ -245,7 +248,7 @@ sha1_compress:
 	EXPAND(78); ROUND(SC, SD, SE, SA, SB, F2, TMP2, TMP)
 	EXPAND(79); ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
 
-	// Update the state vector
+	/* Update the state vector */
 	movl	88(%esp),TMP
 	addl	SA, (TMP) 
 	addl	SB, 4(TMP) 
@@ -260,57 +263,59 @@ sha1_compress:
 	popl	%ebx
 	ret
 
-//  It's possible to shave of half of the stores to tmp in the evaluation of f3,
-//  although it's probably not worth the effort. This is the trick: 
-//  
-//  round(a,b,c,d,e,f,k) modifies only b,e.
-//  
-//  round(a,b,c,d,e,f3,k)
-//  round(e,a,b,c,d,f3,k)
-//  
-//  ; f3(b,c,d) = (b & c) | (d & (b | c))
-//  
-//    movl b, tmp
-//    andl c, tmp
-//    movl tmp, tmp2
-//    movl b, tmp
-//    orl  c, tmp
-//    andl d, tmp
-//    orl tmp2, tmp
-//  
-//  and corresponding code for f3(a,b,c)
-//  
-//  Use the register allocated for c as a temporary?
-//  
-//    movl c, tmp2
-//  ; f3(b,c,d) = (b & c) | (d & (b | c))
-//    movl b, tmp
-//    orl  c, tmp
-//    andl b, c
-//    andl d, tmp
-//    orl  c, tmp
-//  
-//  ; f3(a,b,c) = (a & b) | (c & (a | b))
-//    movl b, tmp
-//    andl a, tmp
-//    movl a, c
-//    orl  b, c
-//    andl tmp2, c
-//    orl  c, tmp
-//  
-//    movl tmp2, c
-//  
-//  Before: 14 instr, 2 store, 2 load
-//  After: 13 instr, 1 store, 2 load
-//  
-//  Final load can be folded into the next round,
-//  
-//  round(d,e,a,b,c,f3,k)
-//  
-//    c += d <<< 5 + f(e, a, b) + k + w
-//  
-//  if we arrange to have w placed directly into the register
-//  corresponding to w. That way we save one more instruction, total save
-//  of two instructions, one of which is a store, per two rounds. For the
-//  twenty rounds involving f3, that's 20 instructions, 10 of which are
-//  stores, or about 1.5 %.
+/*
+ * It's possible to shave of half of the stores to tmp in the evaluation of f3,
+ * although it's probably not worth the effort. This is the trick: 
+ * 
+ * round(a,b,c,d,e,f,k,w) modifies only b,e.
+ * 
+ * round(a,b,c,d,e,f3,k,w)
+ * round(e,a,b,c,d,f3,k,w)
+ * 
+ * ; f3(b,c,d) = (b & c) | (d & (b | c))
+ * 
+ *   movl b, tmp
+ *   andl c, tmp
+ *   movl tmp, tmp2
+ *   movl b, tmp
+ *   orl  c, tmp
+ *   andl d, tmp
+ *   orl tmp2, tmp
+ * 
+ * and corresponding code for f3(a,b,c)
+ * 
+ * Use the register allocated for c as a temporary?
+ * 
+ *   movl c, tmp2
+ * ; f3(b,c,d) = (b & c) | (d & (b | c))
+ *   movl b, tmp
+ *   orl  c, tmp
+ *   andl b, c
+ *   andl d, tmp
+ *   orl  c, tmp
+ * 
+ * ; f3(a,b,c) = (a & b) | (c & (a | b))
+ *   movl b, tmp
+ *   andl a, tmp
+ *   movl a, c
+ *   orl  b, c
+ *   andl tmp2, c
+ *   orl  c, tmp
+ * 
+ *   movl tmp2, c
+ * 
+ * Before: 14 instr, 2 store, 2 load
+ * After: 13 instr, 1 store, 2 load
+ * 
+ * Final load can be folded into the next round,
+ * 
+ * round(d,e,a,b,c,f3,k)
+ * 
+ *   c += d <<< 5 + f(e, a, b) + k + w
+ * 
+ * if we arrange to have w placed directly into the register
+ * corresponding to w. That way we save one more instruction, total save
+ * of two instructions, one of which is a store, per two rounds. For the
+ * twenty rounds involving f3, that's 20 instructions, 10 of which are
+ * stores, or about 1.5 %.
+ */
