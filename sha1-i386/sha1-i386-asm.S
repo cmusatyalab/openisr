@@ -35,11 +35,15 @@
 
 /* Reads the input via TMP2 into register, byteswaps it, and stores it in
    the DATA array. */
-#define SWAP(index, register)				\
-	off=OFFSET(index);				\
-	movl	off(TMP2), register;			\
-	bswap	register;				\
+#define SWAP(index, register)					\
+	off=OFFSET(index);					\
+	movl	off(TMP2), register;				\
+	bswap	register;					\
 	movl	register, off(DATA)
+
+/* Sets the workspace word at the given index to zero. */
+#define CLEAR(index)						\
+	off=OFFSET(index);		movl	$0, off(DATA)
 
 /*
  * expand(i) is the expansion function
@@ -117,7 +121,7 @@
 	addl	TMP, e;						\
 	roll	$30, b;
 
-/* sha1_compress(uint32_t *state, uint8_t *data) */
+/* sha1_compress(u32 *state, u8 *data) */
 .text
 .align 4
 .globl sha1_compress
@@ -255,6 +259,12 @@ sha1_compress:
 	addl	SC, 8(TMP) 
 	addl	SD, 12(TMP) 
 	addl	SE, 16(TMP)
+
+	/* Clear the workspace for security */
+	CLEAR( 0); CLEAR( 1); CLEAR( 2); CLEAR( 3);
+	CLEAR( 4); CLEAR( 5); CLEAR( 6); CLEAR( 7);
+	CLEAR( 8); CLEAR( 9); CLEAR(10); CLEAR(11);
+	CLEAR(12); CLEAR(13); CLEAR(14); CLEAR(15);
 
 	addl	$68, %esp
 	popl	%edi

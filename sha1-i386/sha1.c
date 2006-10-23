@@ -36,9 +36,9 @@ struct sha1_ctx {
 	unsigned int index;			/* index into buffer */
 };
 
-/* Compression function. STATE points to 5 u32 words, and DATA points to
+/* Compression function. @state points to 5 u32 words, and @data points to
    64 bytes of input data, possibly unaligned. */
-void sha1_compress(u32 * state, const u8 * data);
+asmlinkage void sha1_compress(u32 *state, const u8 *data);
 
 /* Writes a 32-bit integer to an arbitrary pointer in big-endian byte order */
 static inline void write_u32_be(void *ptr, u32 i)
@@ -65,7 +65,7 @@ static void sha1_init(CONTEXT_TYPE *data)
 	ctx->index = 0;
 }
 
-static void sha1_update(CONTEXT_TYPE *data, const u8 * buffer, unsigned length)
+static void sha1_update(CONTEXT_TYPE *data, const u8 *buffer, unsigned length)
 {
 	struct sha1_ctx *ctx = PRIVATE_DATA(data);
 	if (ctx->index) {
@@ -96,7 +96,7 @@ static void sha1_update(CONTEXT_TYPE *data, const u8 * buffer, unsigned length)
 
 /* Final wrapup - pad to SHA1_DATA_SIZE-byte boundary with the bit pattern
    1 0* (64-bit count of bits processed, MSB-first) */
-static void sha1_final(CONTEXT_TYPE *data, u8 * digest)
+static void sha1_final(CONTEXT_TYPE *data, u8 *digest)
 {
 	struct sha1_ctx *ctx = PRIVATE_DATA(data);
 	u64 bitcount;
