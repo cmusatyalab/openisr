@@ -3,6 +3,7 @@
 #include <linux/bio.h>
 #include <linux/interrupt.h>
 #include <linux/timer.h>
+#include <linux/time.h>
 #include <linux/wait.h>
 #include "convergent.h"
 
@@ -45,6 +46,7 @@ struct chunkdata {
 	int error;
 	unsigned flags;
 	enum cd_state state;
+	u64 state_begin;       /* usec since epoch */
 	char key[ISR_MAX_HASH_LEN];
 	struct scatterlist *sg;
 };
@@ -53,6 +55,8 @@ struct chunkdata_table {
 	struct convergent_dev *dev;
 	unsigned buckets;
 	unsigned state_count[NR_STATES];
+	unsigned state_time_us[NR_STATES];
+	unsigned state_time_samples[NR_STATES];
 	unsigned busy_count;
 	struct list_head lru;
 	struct list_head user;
@@ -66,6 +70,14 @@ struct chunkdata_table {
 
 static struct bio_set *bio_pool;
 
+
+static u64 current_time_usec(void)
+{
+	struct timeval curtime;
+	
+	do_gettimeofday(&curtime);
+	return curtime.tv_sec * USEC_PER_SEC + curtime.tv_usec;
+}
 
 static unsigned hash(struct chunkdata_table *table, chunk_t cid)
 {
@@ -110,10 +122,13 @@ static void chunkdata_hit(struct chunkdata *cd)
 static void __transition(struct chunkdata *cd, enum cd_state new_state)
 {
 	enum cd_state states[2]={cd->state, new_state};
+	u64 curtime=current_time_usec();
 	int idle[2];
 	int i;
 	
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
+	cd->table->state_time_us[cd->state] += curtime - cd->state_begin;
+	cd->table->state_time_samples[cd->state]++;
 	for (i=0; i<2; i++)
 		idle[i]=is_idle_state(states[i]);
 	if (!idle[0] && idle[1]) {
@@ -127,6 +142,7 @@ static void __transition(struct chunkdata *cd, enum cd_state new_state)
 	cd->table->state_count[cd->state]--;
 	cd->table->state_count[new_state]++;
 	cd->state=new_state;
+	cd->state_begin=curtime;
 }
 
 static void transition(struct chunkdata *cd, enum cd_state new_state)
@@ -865,6 +881,32 @@ ssize_t print_states(struct convergent_dev *dev, char *buf, int len)
 	return count;
 }
 
+ssize_t print_state_times(struct convergent_dev *dev, char *buf, int len)
+{
+	int i;
+	int count=0;
+	unsigned time;
+	unsigned samples;
+	
+	/* XXX poor locking discipline during setup */
+	if (dev->chunkdata == NULL) {
+		/* ctr is still running */
+		return 0;
+	}
+	mutex_lock(&dev->lock);
+	for (i=0; i<NR_STATES; i++) {
+		time=dev->chunkdata->state_time_us[i];
+		samples=dev->chunkdata->state_time_samples[i];
+		dev->chunkdata->state_time_us[i]=0;
+		dev->chunkdata->state_time_samples[i]=0;
+		count += snprintf(buf+count, len-count, "%s%u", i ? " " : "",
+					samples ? time / samples : 0);
+	}
+	count += snprintf(buf+count, PAGE_SIZE, "\n");
+	mutex_unlock(&dev->lock);
+	return count;
+}
+
 void chunkdata_free_table(struct convergent_dev *dev)
 {
 	struct chunkdata_table *table=dev->chunkdata;
@@ -891,6 +933,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 	struct chunkdata_table *table;
 	struct chunkdata *cd;
 	unsigned buckets=dev->cachesize;  /* XXX is this reasonable? */
+	u64 curtime=current_time_usec();
 	int i;
 	
 	table=kzalloc(sizeof(*table), GFP_KERNEL);
@@ -926,6 +969,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 			return -ENOMEM;
 		cd->table=table;
 		cd->state=ST_INVALID;
+		cd->state_begin=curtime;
 		INIT_LIST_HEAD(&cd->lh_bucket);
 		INIT_LIST_HEAD(&cd->lh_lru);
 		INIT_LIST_HEAD(&cd->lh_user);

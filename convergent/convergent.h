@@ -236,6 +236,7 @@ int reserve_chunks(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);
 ssize_t print_states(struct convergent_dev *dev, char *buf, int len);
+ssize_t print_state_times(struct convergent_dev *dev, char *buf, int len);
 
 /* transform.c */
 int transform_alloc(struct convergent_dev *dev);

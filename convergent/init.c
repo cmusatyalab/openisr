@@ -110,6 +110,12 @@ static ssize_t attr_show_states(struct class_device *class_dev, char *buf)
 	return print_states(dev, buf, PAGE_SIZE);
 }
 
+static ssize_t attr_show_state_times(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return print_state_times(dev, buf, PAGE_SIZE);
+}
+
 static ssize_t attr_show_cipher(struct class_device *class_dev, char *buf)
 {
 	struct convergent_dev *dev=class_get_devdata(class_dev);
@@ -134,6 +140,7 @@ static struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(chunk_size, S_IRUGO, attr_show_chunksize, NULL),
 	__ATTR(cache_entries, S_IRUGO, attr_show_cachesize, NULL),
 	__ATTR(states, S_IRUGO, attr_show_states, NULL),
+	__ATTR(state_times, S_IRUGO, attr_show_state_times, NULL),
 	__ATTR(cipher, S_IRUGO, attr_show_cipher, NULL),
 	__ATTR(hash, S_IRUGO, attr_show_hash, NULL),
 	__ATTR(compression, S_IRUGO, attr_show_compression, NULL),
