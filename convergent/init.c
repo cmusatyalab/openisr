@@ -346,7 +346,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	debug("chunksize %u, cachesize %u, backdev %s, offset " SECTOR_FORMAT,
 				chunksize, cachesize, devnode, offset);
 	
-	debug("Opening %s", devnode);
+	ndebug("Opening %s", devnode);
 	dev->chunk_bdev=open_bdev_excl(devnode, 0, dev);
 	if (IS_ERR(dev->chunk_bdev)) {
 		log(KERN_ERR, "couldn't open %s", devnode);

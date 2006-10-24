@@ -133,7 +133,7 @@ void convergent_process_chunk(struct convergent_io_chunk *chunk)
 	
 	/* The underlying chunk I/O might have errored out */
 	if (chunk->error) {
-		debug("process_chunk I/O error: chunk " SECTOR_FORMAT,
+		ndebug("process_chunk I/O error: chunk " SECTOR_FORMAT,
 					chunk->cid);
 		convergent_complete_chunk(chunk);
 		return;

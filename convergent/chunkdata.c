@@ -669,7 +669,7 @@ again:
 	case ST_INVALID:
 		if (chunk != NULL) {
 			/* No key or data */
-			debug("Requesting key for chunk " SECTOR_FORMAT,
+			ndebug("Requesting key for chunk " SECTOR_FORMAT,
 						cd->cid);
 			transition(cd, ST_LOAD_META);
 			if (queue_for_user(cd)) {
@@ -686,7 +686,7 @@ again:
 			if (chunk->flags & CHUNK_READ) {
 				/* The first-in-queue needs the chunk read
 				   in. */
-				debug("Reading in chunk " SECTOR_FORMAT,
+				ndebug("Reading in chunk " SECTOR_FORMAT,
 							cd->cid);
 				transition(cd, ST_LOAD_DATA);
 				issue_chunk_io(cd);
@@ -723,7 +723,7 @@ again:
 		if (chunk != NULL) {
 			try_start_io(chunk->parent);
 		} else {
-			debug("Writing out chunk " SECTOR_FORMAT, cd->cid);
+			ndebug("Writing out chunk " SECTOR_FORMAT, cd->cid);
 			transition(cd, ST_STORE_DATA);
 			if (chunk_tfm(cd, WRITE)) {
 				transition_error(cd, -EIO);
