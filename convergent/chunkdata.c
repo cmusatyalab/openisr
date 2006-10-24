@@ -308,7 +308,6 @@ static void issue_chunk_io(struct chunkdata *cd)
 	cd->error=0;
 	atomic_set(&cd->remaining, dev->chunksize);
 	
-	/* XXX test against very small maximum seg count on target, etc. */
 	ndebug("Submitting clone bio(s)");
 	/* We can't assume that we can fit the entire chunk io in one
 	   bio: it depends on the queue restrictions of the underlying
@@ -327,7 +326,8 @@ static void issue_chunk_io(struct chunkdata *cd)
 			offset += cd->sg[i].length;
 			i++;
 		} else {
-			debug("Submitting multiple bios");
+			ndebug("Submitting multiple bios: %u/%u", offset,
+						dev->chunksize);
 			generic_make_request(bio);
 			bio=NULL;
 		}

@@ -210,8 +210,8 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 	ndebug("setup_io called: %lu sectors over " SECTOR_FORMAT
 				" chunks at chunk " SECTOR_FORMAT,
 				req->nr_sectors,
-				io->last_chunk - io->first_chunk + 1,
-				io->first_chunk);
+				io->last_cid - io->first_cid + 1,
+				io->first_cid);
 	
 	mutex_lock_workqueue(&dev->lock);
 	if (reserve_chunks(io)) {
