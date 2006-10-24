@@ -392,6 +392,15 @@ int transform_alloc(struct convergent_dev *dev)
 		return -EINVAL;
 	dev->cipher_block=crypto_tfm_alg_blocksize(dev->cipher);
 	dev->hash_len=crypto_tfm_alg_digestsize(dev->hash);
+	if (dev->hash_type == ISR_HASH_SHA1 &&
+				sha1_impl_is_suboptimal(dev->hash)) {
+		/* Actually, the presence of sha1-i586.ko only matters
+		   when the device is created, since that's when the tfm
+		   is allocated.  Does anyone have better wording for this? */
+		printk(KERN_NOTICE "%s: Using unoptimized SHA1; load "
+					"sha1-i586.ko to improve performance\n",
+					dev->class_dev->class_id);
+	}
 	
 	if (dev->supported_compression != ISR_COMPRESS_NONE) {
 		/* XXX this is not ideal, but there's no good way to support

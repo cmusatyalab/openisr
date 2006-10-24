@@ -187,6 +187,32 @@ static inline void bio_set_destructor(struct bio *bio,
 
 /***** cryptoapi *************************************************************/
 
+#if (!defined(CONFIG_X86) && !defined(CONFIG_UML_X86)) || defined(CONFIG_64BIT)
+static inline int sha1_impl_is_suboptimal(struct crypto_tfm *tfm)
+{
+	/* No optimized implementation exists */
+	return 0;
+}
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16)
+#include <linux/crypto.h>
+static inline int sha1_impl_is_suboptimal(struct crypto_tfm *tfm)
+{
+	/* There's a driver name field we can look at */
+	return strcmp(tfm->__crt_alg->cra_driver_name, "sha1-i586") ? 1 : 0;
+}
+#else
+#include <linux/crypto.h>
+static inline int sha1_impl_is_suboptimal(struct crypto_tfm *tfm)
+{
+	/* There's no driver name field, but optimized sha1 can never be
+	   compiled into the kernel, so we look at struct module */
+	if (tfm->__crt_alg->cra_module == NULL)
+		return 1;
+	return strcmp(tfm->__crt_alg->cra_module->name, "sha1_i586") ? 1 : 0;
+}
+#endif
+
+
 /* XXX 2.6.19 */
 
 /*****************************************************************************/
