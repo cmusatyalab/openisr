@@ -11,7 +11,7 @@ PWD := $(shell pwd)
 CFLAGS = -O2 -g -W -Wall -Wstrict-prototypes
 
 .PHONY: all
-all: module test
+all: module test readstats
 
 .PHONY: module
 module:
@@ -19,6 +19,9 @@ module:
 
 test: test.c convergent-user.h
 	$(CC) $(CFLAGS) -lssl -o $@ test.c
+
+readstats: readstats.c
+	$(CC) $(CFLAGS) -o $@ $^
 
 .PHONY: clean
 clean:
