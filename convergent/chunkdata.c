@@ -764,6 +764,11 @@ static void run_chunks(void *data)
 	struct chunkdata *next;
 	int need_release=0;
 	
+	/* Hack: make sure we don't have a higher priority than interactive
+	   processes (e.g. the X server) because they'll become somewhat
+	   less interactive under high I/O load */
+	set_user_nice(current, 0);
+	
 	mutex_lock_workqueue(&dev->lock);
 	list_for_each_entry_safe(cd, next, &dev->chunkdata->need_update,
 				lh_need_update) {
