@@ -99,40 +99,39 @@ static void __attribute__((constructor)) libvdisk_init(void)
 #define wordof(fd) (fd/BITS_PER_WORD)
 #define bitof(fd) (fd%BITS_PER_WORD)
 
-/* Must be called with fdmap lock held */
-static void _fdmap_make_space(int fd)
+/* Must be called with fdmap lock held.  Returns -1 and sets errno on error. */
+static int _fdmap_make_space(int fd)
 {
 	unsigned newsize;
 	unsigned *newmap;
 	
-	if (fd < 0 || (unsigned)fd < fdmap.words*BITS_PER_WORD)
-		return;
-
+	if (fd < 0) {
+		errno=EINVAL;
+		return -1;
+	}
+	if ((unsigned)fd < fdmap.words*BITS_PER_WORD)
+		return 0;
+	
 	newsize=2*fdmap.words;
 	if (newsize == 0) newsize=1;
 	if ((unsigned)fd >= newsize*BITS_PER_WORD)
 		newsize=(fd/BITS_PER_WORD)+1;
 	debug("Resizing fdmap from %d to %d", fdmap.words, newsize);
-	newmap=malloc(newsize*BYTES_PER_WORD);
+	newmap=realloc(fdmap.map, newsize*BYTES_PER_WORD);
 	if (newmap == NULL) {
-		/* XXX */
-		warn("Aiee, map allocation failed!");
-		return;
+		errno=ENOMEM;
+		return -1;
 	}
-	memset(newmap, 0, newsize*BYTES_PER_WORD);
-	if (fdmap.map != NULL) {
-		memcpy(newmap, fdmap.map, fdmap.words*BYTES_PER_WORD);
-		free(fdmap.map);
-	}
+	memset(newmap+fdmap.words, 0, (newsize-fdmap.words)*BYTES_PER_WORD);
 	fdmap.map=newmap;
 	fdmap.words=newsize;
+	return 0;
 }
 
 static int _fd_active(int fd)
 {
-	if (fd < 0)
+	if (_fdmap_make_space(fd))
 		return 0;
-	_fdmap_make_space(fd);
 	return ((fdmap.map[wordof(fd)] & (1 << bitof(fd))) != 0);	
 }
 
@@ -147,19 +146,21 @@ static int fd_active(int fd)
 
 static void add_fd(int fd)
 {
-	if (fd < 0)
-		return;
 	pthread_mutex_lock(&fdmap.lock);
-	_fdmap_make_space(fd);
-	debug("Adding %d to fdmap", fd);
-	fdmap.map[wordof(fd)] |= (1 << bitof(fd));
+	if (_fdmap_make_space(fd)) {
+		if (errno == ENOMEM)
+			warn("Couldn't add fd to map: allocation failed");
+		/* else errno == EINVAL, meaning fd < 0, so do nothing */
+	} else {
+		debug("Adding %d to fdmap", fd);
+		fdmap.map[wordof(fd)] |= (1 << bitof(fd));
+	}
 	pthread_mutex_unlock(&fdmap.lock);
 }
 
 static void remove_fd(int fd)
 {
 	pthread_mutex_lock(&fdmap.lock);
-	_fdmap_make_space(fd);
 	if (_fd_active(fd)) {
 		debug("Removing %d from fdmap", fd);
 		fdmap.map[wordof(fd)] &= ~(1 << bitof(fd));
@@ -283,6 +284,9 @@ static void fill_driveid(struct hd_driveid *id, uint64_t sects)
 	} while (0)
 
 /**** Wrapped functions ****/
+
+/* NOTE: All of these functions must save and restore errno across
+   library calls */
 
 int open(const char *pathname, int flags, ...)
 {
@@ -438,7 +442,6 @@ int ioctl(int fd, unsigned long request, ...)
 		break;
 	default:
 		ret=ioctl_real(fd, request, arg);
-		/* We need to save and restore errno across library calls */
 		err=errno;
 	}
 	if (request != FIONREAD)
