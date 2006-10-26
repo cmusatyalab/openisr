@@ -1,0 +1,39 @@
+   ISR - Internet Suspend/Resume
+   http://isr.cmu.edu
+
+
+This directory contains programs that run on ISR client hosts:
+
+The ISR client program
+
+isr			- The main ISR client program
+Isr.pm			- Generic ISR config file
+Isruser.pm		- User-specific ISR config file
+HTTPSSH.pm		- HTTP/SSH version of the ISR storage API
+CODA.pm                 - CODA version of the ISR storage API
+
+Other files:
+
+isr.1			- ISR man page
+isr_setup		- The ISR client and server setup program
+isr_gui			- GUI wrapper for the isr program
+LICENSE			- ISR open source license
+vulpes			- Vulpes binary
+vulpes_stop		- /etc/rc.d/init.d Vulpes shutdown script
+
+
+NAME
+       isr - Internet Suspend/Resume client program
+
+SYNOPSIS
+       isr  command  [-acdhlxqrV]  [-p parcel] [-u userid] [-n nameserver] [-v
+       version]
+
+       Commands: auth, checkin (ci), checkout  (co),  checkp,  clean,  deauth,
+       discard, disconnect, hoard, ls, passwd, reset, resume, run, stat, sync,
+       update
+
+ACKNOWLEDGMENTS
+       ISR was developed by Michael  Kozuch  and  Casey  Helfrich  from  Intel
+       Research Pittsburgh, David O'Hallaron, Mahedev (Satya) Satyananrayanan,
+       and Matt Toups from Carnegie Mellon, and Partho Nath from Penn State.

@@ -1,0 +1,2459 @@
+#!/usr/bin/perl
+###################################################################
+# isr - The ISR client program
+#
+# $Id: isr,v 1.153 2006/02/01 08:09:37 mtoups Exp $
+###################################################################
+
+#
+#                  Internet Suspend/Resume (Release 1.1)
+#           A system for capture and transport of PC state
+#
+#          Copyright (c) 2004-2005, Carnegie Mellon University
+#              Copyright (c) 2002-2004, Intel Corporation
+#                         All Rights Reserved
+#
+# This software is distributed under the terms of the Eclipse Public
+# License, Version 1.0 which can be found in the file named LICENSE.
+# ANY USE, REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES
+# RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
+#
+
+#####################
+# Section 0: Prologue
+#####################
+
+use Sys::Hostname;
+use Getopt::Long;
+use IO::Socket;
+use File::stat;
+use Term::ANSIColor qw(:constants);
+use POSIX ":sys_wait_h";
+use POSIX ":signal_h";
+use lib "/usr/local/isr/bin";
+use Isr;
+use Isruser;
+use strict;
+
+$| = 1; # Autoflush output on every print statement
+
+
+# Function prototypes
+sub checkout ($$$$);
+sub checkin ($$$);
+sub sync ($$$);
+sub discard ($$$);
+sub disconnect ($$$$);
+sub listparcels ($$$$$);
+sub authenticate ($);
+sub deauthenticate ();
+sub passwd ($);
+sub release ($$$);
+sub clean ($$$$);
+sub resetclient ($$$);
+sub cleanclient ($$$$);
+sub update ();
+sub killvulpes ();
+sub hoard ($$$);
+sub statparcel ($$$);
+sub get_parcelnames ($$);
+sub get_parcelcfg ($$$);
+sub parse_parcelcfg ($$$);
+sub emit_hdk_progressmeter ($$);
+sub reset_cursor ();
+sub progress ($$);
+sub build_cache ($$$);
+sub hdksize ($$$);
+sub hdkmodified ($$$);
+sub connected ();
+sub get_dirnum ($$);
+sub get_chunknum ($$);
+sub get_value ($$);
+sub get_vulpespid ();
+sub check_conflicts ($$);
+sub conflicting ($$$$$$);
+sub block_sigint ();
+sub unblock_sigint ($);
+sub block_sigtstp ();
+sub cleantmp ();
+sub err ($);
+sub unix_err ($);
+sub errexit ($);
+sub unix_errexit ($);
+sub system_errexit ($);
+sub system_err ($);
+sub message ($$);
+sub usage ($);
+sub mysystem ($);
+
+#########################
+# Section 1. Main routine
+#########################
+
+# Local variables
+my $isrdir;
+my $isrhome;
+my $parceldir;
+my $result;
+my $progname; 
+my $unused;
+my $prot;
+my $revision = '$Revision: 1.153 $'; # Set by CVS at commit time
+
+# Command line arguments that are private to this module
+my $command;        
+my $disconnected;    # Run disconnected
+my $help;            # Print help info
+my $longflag;        # Print default number of versions for ls long format
+my $longvers;        # Print specific number of versions for ls long format
+my $nameserver;      # Name server domain name
+my $revisionflag;    # Print revision number?
+my $guiflag;         # Hidden flag to help track gui use
+my $version;         # Rollback version
+my $checkstate;      # Optionally check content consistency in some cmds
+my $quiet;           # No output except for errors
+my $noautoflag;      # Don't automatically start/stop VMWare at launch time
+my $allflag;         # Reset() should delete all state, including hoard cache
+
+# Write once globals that are visible in this module only. These globals are
+# needed to cleanly handle logging and exceptional termination.
+my $pid;            # Pid of child created in mysystem
+my $vulpespid;      # Pid of Vulpes process
+my $hostid;         # Unique hostid from $Isr::HOSTID file
+my $sessionid=0;    # Unique session id (nonce from lock operation)
+my $userid;         # ISR userid
+my $parcel;         # parcel name
+my $killvulpes=0;   # Set by run command, tells SIGINT handler to kill Vulpes
+
+# Read-only command line arguments that are visible to other modules.
+our $verbose;       # Verbosity level
+our $nocheckstate;  # Skip state  consistency check in ci, sync, disconnect
+our $bwlimit;       # Bandwidth limit (KBytes/sec) in ci and sync
+
+#
+# Read/write global variable: At any point in time, this hash contains
+# the key/value pairs from the name server for the current parcel. For
+# each command except listparcels, %cfg is initialized exactly once, 
+# and only by calls to parse_parcelcfg.
+#
+our %cfg = ();  
+
+#####
+# Some initialization steps
+#
+
+#
+# Install a signal handler that catches ctrl-c
+#
+$SIG{"INT"} = sub {
+    print "\n";
+    cleantmp();
+    if ($killvulpes) {
+	killvulpes();
+	print("Cleanly shutdown Vulpes.\n")
+	    if $verbose;
+    }
+    system("sync");
+    system("sync");
+    message("EXIT", "SIGINT"); 
+    exit 1; 
+};
+
+#
+# Make sure that the client has an existing hostid file
+# that contains a reasonable nonce value.
+#
+if (!-e "$Isr::ISRCLIENTBIN/$Isr::HOSTID") {
+    $hostid = "999999";
+    err("The client host is misconfigured. Missing $Isr::HOSTID file.");
+}
+else {
+    open(INFILE, "$Isr::ISRCLIENTBIN/$Isr::HOSTID")
+	or errexit("Unable to open $Isr::HOSTID");
+    $hostid = <INFILE>;
+    chomp($hostid);
+    close(INFILE);
+    if ($hostid <= 0) {
+	errexit("The client host is misconfigured. Invalid hostid nonce ($hostid).");
+    }
+}
+
+#####
+# Various defaults
+#
+
+#
+# Check if the user is running as root
+#
+if ((getpwuid($<))[0] eq "root") {  # Reminder: '$<' is the UID 
+    cleantmp();
+    errexit("Root is not allowed to run the isr client program.");
+}
+
+# The default ISR userid is defined by $Isr::USERID.
+# If this is empty, then the default is the Unix login name.
+# Override using the -u flag.
+$userid = $Isr::USERID;
+if (!$userid) {
+    $userid = $ENV{USER};           
+}
+
+# Strip off pathname from the program name
+($progname = $0) =~ s#.*/##s; # Strip off path from program name
+$verbose = 1;               # By default, we print a few messages
+$help = 0;                  # By default, no help
+$nocheckstate = 0;          # By default, check state on ci, sync, disconnect
+
+# 
+# Log the fact that we are starting the client program
+#
+message("ENTER", "@ARGV");
+
+#
+# Handle the case where the user calls the program with no arguments
+#
+if (@ARGV == 0) {
+    print("$progname: Try '$progname --help' for more information.\n");
+    message("INFO", "Help");
+    message("EXIT", "0");
+    cleantmp();
+    exit 0;
+}
+
+#
+# Parse the command line
+#
+Getopt::Long::Configure("no_ignore_case", "bundling_override");
+$result = GetOptions(
+		     "a|allstate"     => \$allflag,
+		     "b|bwlimit=i"    => \$bwlimit,
+		     "c|checkstate+"  => \$checkstate,
+		     "x|nocheckstate" => \$nocheckstate,
+		     "d|disconnected" => \$disconnected,
+		     "h|help+"        => \$help,
+		     "l|long"         => \$longflag,
+		     "L|longvers=i"   => \$longvers,
+		     "n|nameserver=s" => \$nameserver,
+		     "p|parcel=s"     => \$parcel,  
+		     "q|quiet"        => \$quiet,
+		     "r|revision"     => \$revisionflag,
+		     "u|userid=s"     => \$userid,
+		     "V|verbose+"     => \$verbose,
+		     "v|version=i"    => \$version,
+		     "g|guiflag"      => \$guiflag,
+		     "X|noauto"       => \$noautoflag
+		     );
+
+if ($quiet) {
+    $verbose = 0;
+}
+if ($result == 0 or $help) {
+    usage("");
+}
+
+#
+# Print revision numbers of the ISR client and its modules, then exit
+#
+if ($revisionflag) {
+    ($unused, $revision) = split(" ", $revision); 
+    print("$progname:$revision "); 
+    foreach $prot ("HTTPSSH", "CODA") {
+	do "$Isr::ISRCLIENTBIN/$prot.pm"
+	    or errexit("Unable to load module $prot.pm");
+	print "$prot.pm:", isr_revision(), " ";
+    }
+    print "\n";
+    message("EXIT", "printed version info");
+    cleantmp();
+    exit 0;
+}
+
+#
+# Extract the command name
+#
+if (@ARGV == 0) {
+    usage("Missing command.");
+}
+if (@ARGV > 1) {
+    usage("Too many commands.");
+}
+$command = $ARGV[0];
+
+#
+# The resume command should catch and ignore ctrl-z, which will crash
+# VMWare if typed in the window where it was started
+#
+if ($command eq "resume" or $command eq "run") {
+    $SIG{"TSTP"} = sub {
+	print "Ignoring ctrl-z\n"
+	    if $verbose;
+    };
+
+}
+
+#
+# Handle the special case where someone types "isr help"
+#
+if ($command eq "help") {
+    usage("");
+}
+
+#
+# Set the the directory where ISR parcels will be stored and if
+# it doesn't yet exist, create an empty one.
+#
+$isrhome = "$ENV{HOME}/.isr";
+$isrdir = "$isrhome/$userid";
+
+if (!-e $isrhome) {
+    mysystem("mkdir $isrhome") == 0
+	or errexit("Unable to make $isrhome");
+}
+if (!-e $isrdir) {
+    mysystem("mkdir $isrdir") == 0
+	or errexit("Unable to make $isrdir");
+}
+if (!-d $isrdir) {
+    errexit("$isrdir is not a directory");
+}
+
+#
+# Override the defaults in Isr.pm if necessary
+#
+if ($nameserver) {
+    $Isr::NAMESRV = $nameserver;
+}
+
+#
+#
+# Assign aliases
+#
+if ($command eq "ci") {
+    $command = "checkin"
+}    
+if ($command eq "co") {
+    $command = "checkout"
+}    
+if ($command eq "checkp") {
+    $command = "checkparcel"
+}    
+
+
+#####
+# Some basic correctness checking
+#
+
+
+#
+# Most commands require a parcel on the command line. Exclude
+# the set of command that DON'T.
+#
+if ($command ne "ls" and
+    $command ne "auth" and
+    $command ne "deauth" and
+    $command ne "passwd" and
+    $command ne "reset" and 
+    $command ne "update" and
+    !$parcel) {
+    usage("Missing parcel name (-p)");
+}
+
+#
+# Some commands expect the parcel to already be checked out
+#
+if ($command eq "checkin" or
+    $command eq "sync" or
+    $command eq "disconnect" or
+    $command eq "run" or
+    $command eq "commit" or
+    $command eq "stat" or
+    $command eq "discard") {
+    if (!-e "$isrdir/$parcel") {
+	errexit("Parcel $userid/$parcel not checked out. Checkout or resume first.");
+    }
+}
+
+#
+# Most commands require a network connection
+#
+if (($command eq "checkout") or
+    ($command eq "checkin") or 
+    ($command eq "sync") or
+    ($command eq "disconnect") or
+    ($command eq "checkparcel") or
+    ($command eq "commit") or
+    ($command eq "reset") or
+    ($command eq "ls") or
+    ($command eq "auth") or
+    ($command eq "passwd") or
+    ($command eq "update") or
+    ($command eq "run" and !$disconnected) or
+
+    # This one is a little tricky. Resume will need a network connection
+    # if the requested parcel is not currently checked out, or if the
+    # parcel is checked out and we're not planning on running disconnected.
+    ($command eq "resume" and 
+     ((!-e "$isrdir/$parcel") or 
+      (-e "$isrdir/$parcel" and !$disconnected))) ) {
+	 print "Checking network connection...\n"
+	     if $verbose > 1;
+	 connected() 
+	     or errexit("You do not appear to have a network connection.");
+     }
+
+
+#
+# Some ISR commands can safely run concurrently, and others cannot. 
+# Check the concurrency constraints here before executing the command.
+#
+check_conflicts($command, $parcel);
+
+#####
+# Process the command
+#
+
+#
+# Set the session ID to the nonce value if the parcel is 
+# checked out, zero otherwise.
+#
+$sessionid = 0;
+if (-e "$isrdir/$parcel/nonce") {
+    $sessionid = `cat $isrdir/$parcel/nonce`;
+    chomp($sessionid);
+}
+
+#
+# Now process the ISR command. Notice that most commands take the same three
+# args (userid, parcel, isrdir), followed by one or more optional args.
+#
+message("BEGIN", $command);
+
+# Basic commands
+if ($command eq "checkout") {
+    update();
+    checkout($userid, $parcel, $isrdir, $version);
+} 
+elsif ($command eq "resume") {
+    update();
+    checkout($userid, $parcel, $isrdir, $version);
+    run($userid, $parcel, $isrdir, $disconnected);
+} 
+elsif ($command eq "run") { # Deprecated, use resume instead
+    run($userid, $parcel, $isrdir, $disconnected);
+} 
+elsif ($command eq "checkin") {
+    checkin($userid, $parcel, $isrdir);
+} 
+elsif ($command eq "sync") {
+    sync($userid, $parcel, $isrdir);
+} 
+elsif ($command eq "discard") {
+    discard($userid, $parcel, $isrdir);
+}
+elsif ($command eq "hoard") {
+    hoard($userid, $parcel, $isrdir);
+}
+elsif ($command eq "stat") {
+    statparcel($userid, $parcel, $isrdir);
+}
+elsif ($command eq "disconnect") {
+    disconnect($userid, $parcel, $isrdir, $nocheckstate);
+}
+elsif ($command eq "checkparcel") {
+    checkparcel($userid, $parcel, $isrdir, $version, $checkstate);
+}
+elsif ($command eq "ls") {
+    listparcels($userid, $parcel, $isrdir, $longflag, $longvers);
+}
+elsif ($command eq "auth") {
+    authenticate($userid);
+}
+elsif ($command eq "deauth") {
+    deauthenticate();
+}
+elsif ($command eq "update") {
+    update();
+}
+elsif ($command eq "passwd") {
+    passwd($userid);
+}
+elsif ($command eq "reset") {
+    resetclient($userid, $parcel, $isrdir);
+}
+elsif ($command eq "clean") {
+    cleanclient($userid, $parcel, $isrdir, $allflag);
+}
+
+# Everything else
+else {
+    usage("$command is an invalid command.");
+}    
+
+#
+# Clean up and exit
+#
+message("END", $command);
+message("EXIT", "0");
+cleantmp();
+exit 0;
+
+
+##########################################
+# Section 2. Definition of client commands
+##########################################
+
+#
+# checkout - Lock a parcel and copy it from the server to the client
+#
+sub checkout ($$$$) {
+    my $userid = shift;     # login name
+    my $parcel = shift;     # parcel name
+    my $isrdir = shift;     # absolute path of local ISR home dir
+    my $version = shift;    # rollback version (optional)
+
+    my $parceldir = "$isrdir/$parcel";
+    my $hoarddir = "$isrdir/$parcel-hoard";
+    my $lastdir = "$parceldir/last";
+    my $diskinfo = `df -P -k $isrhome | tail -n 1`;
+    my ($diskpartition, $diskblocks, $diskused, $diskspace, $diskpercent, $diskroot) = split(" ", $diskinfo);
+
+    my $errmsg;
+    my $target;
+    my $cfgsize;
+    my $tmpfile;
+    my $cfg_sha1value;
+    my $key_sha1value;
+    my $clientname = hostname();
+
+    # If the parcel is already checked out on this machine, return immediately
+    if (-e $parceldir) {
+	print(GREEN, "Success: Parcel $userid/$parcel already checked out on this host. Ready to run.\n", RESET)
+	    if $verbose;
+	return;
+    }
+
+    # Fetch and parse the config file from the name server and 
+    # load protocol specific storage module
+    print "Fetching configuration data for $userid/$parcel from name server.\n"
+	if $verbose;
+    get_parcelcfg($userid, $parcel, "$isrdir/parcel.cfg");
+    %cfg = parse_parcelcfg("$isrdir/parcel.cfg", $userid, $parcel);
+
+    # Before going any further, make sure we have a protocol level
+    # connection to the content server and a consistent parcel.
+    if (!isr_connected_contentsrv()) {
+	errexit("The content server appears to be down.");
+    }
+    if (!isr_connected_parcel($userid, $parcel)) {
+	errexit("The remote parcel is not available.");
+    }
+
+    # Confirm that there is enough disk space.
+    if ($diskspace < $cfg{MAXKB}) {
+	errexit("Not enough disk space [$diskspace/$cfg{MAXKB} KB available]");
+    }
+
+    # From this point on, the operation should not be interrupted by the user
+    block_sigint();
+
+    # Grab the lock from the content server
+    print("Acquiring lock from content server.\n")
+	if $verbose;
+
+    if (isr_srun($userid, "lock", 
+		 "-p $userid/$parcel -n $clientname -a", 
+		 "$isrdir/nonce", 0) != 0) {
+	mysystem("rm -f $isrdir/nonce");
+	errexit("Unable to acquire lock for $parcel.");
+    }
+
+    # Use the nonce from the lock operation as the unique session id
+    if (-e "$isrdir/nonce") {
+	$sessionid = `cat $isrdir/nonce`;
+	chomp($sessionid);
+    }
+
+    # If requested, roll back to a previous version on the server
+    if ($version) {
+	if ($version < 1) {
+	    clean($userid, $parcel, $isrdir, 0);
+	    errexit("Version numbers must be greater than zero.");
+	}
+	print("Rolling back to version $version.\n")
+	    if $verbose;
+	if (isr_srun($userid, "rollback", 
+		     "-p $userid/$parcel -v $version -k $cfg{KEYROOT}", 
+		     "", 0) != 0) {
+	    clean($userid, $parcel, $isrdir, 0);
+	    errexit("Unable to roll back to version $version");
+	}
+    }
+
+    # Set up the client's parcel directory. If anything goes wrong erase 
+    # all traces of the parcel on the client and release its lock.
+    if (mysystem("mkdir --parents $parceldir") != 0) {
+	clean($userid, $parcel, $isrdir, 0);
+	system_errexit("Unable to create parcel dir $parceldir.");
+    }
+    if (mysystem("mkdir --parents $lastdir") != 0) {
+	clean($userid, $parcel, $isrdir, 0);
+	system_errexit("Unable to create last dir $lastdir.");
+    }
+    if (mysystem("mkdir --parents $lastdir/hdk") != 0) {
+	clean($userid, $parcel, $isrdir, 0);
+	system_errexit("Unable to create last dir $lastdir/hdk.");
+    }
+
+    if (mysystem("mv $isrdir/nonce $parceldir") != 0) {
+	clean($userid, $parcel, $isrdir, 0);
+	system_errexit("Unable to move $isrdir/nonce to $parceldir");
+    }
+    if (mysystem("mv $isrdir/parcel.cfg $parceldir") != 0) {
+	clean($userid, $parcel, $isrdir, 0);
+	system_errexit("Unable to move $isrdir/parcel.cfg to $parceldir");
+    }
+
+    #
+    # Save the keyroot in the parcel directory (otherwise we would
+    # need to include the actual keyroot on the command line)
+    #
+    open(KEYROOT, ">$lastdir/keyroot") 
+	or errexit("Unable to open $lastdir/keyroot for writing");
+    print KEYROOT "$cfg{KEYROOT}";
+    close(KEYROOT);
+
+    #
+    # Fetch the parcel's virtualization files from the content server
+    #
+    $tmpfile = "/tmp/stat.$$";
+    if (isr_srun($userid, "stat", 
+		 "-f $userid/$parcel/last/cfg.tgz.enc",
+		 $tmpfile ,0) != 0) {
+	unlink($tmpfile);
+	clean($userid, $parcel, $isrdir, 0);
+	errexit("Unable to stat cfg.tgz.enc file on content server");
+    }
+    $cfgsize = int(get_value($tmpfile, "SIZE")/(1<<20));
+    $cfg_sha1value = get_value($tmpfile, "SHA1");
+    unlink($tmpfile);
+
+    $tmpfile = "/tmp/stat2.$$";
+    if (isr_srun($userid, "stat", 
+		 "-f $userid/$parcel/last/keyring.enc",
+		 $tmpfile ,0) != 0) {
+	unlink($tmpfile);
+	clean($userid, $parcel, $isrdir, 0);
+	errexit("Unable to stat keyring.enc file on content server");
+    }
+    $key_sha1value = get_value($tmpfile, "SHA1");
+    unlink($tmpfile);
+
+    #
+    # Look aside to see if the memory image and/or keyring is available 
+    #
+    print "Fetching virtual machine memory image ($cfgsize MB)...\n"
+	if $verbose;
+
+    if (-e "$hoarddir/$cfg_sha1value") {
+	print "Found local match for encrypted memory image.\n"
+	    if $verbose;
+	mysystem("mv $hoarddir/$cfg_sha1value $lastdir/cfg.tgz.enc");
+    }
+
+    if (-e "$hoarddir/$key_sha1value") {
+	print "Found local match for encrypted keyring.\n"
+	    if $verbose;
+	mysystem("mv $hoarddir/$key_sha1value $lastdir/keyring.enc");
+    }    
+
+    #
+    # Fetch the memory and meta files to a temp file and then commit
+    #
+    system("rm -f $lastdir/tmpfile");
+    foreach $target ("keyring.enc", "hdk/index.lev1", "cfg.tgz.enc") {
+	if (!-e "$lastdir/$target") {
+	    print "Fetching $target...\n"
+		if ($verbose > 1);
+
+	    # Show a progress meter only for the big cfg file
+	    if ($target eq "cfg.tgz.enc") {
+		isr_sget($userid, "last/$target", "$lastdir/tmpfile", 1) == $Isr::ESUCCESS
+	    }
+	    else {
+		isr_sget($userid, "last/$target", "$lastdir/tmpfile", 0) == $Isr::ESUCCESS
+		or errexit("Unable to fetch $target file");
+	    }
+	    system("mv $lastdir/tmpfile $lastdir/$target") == 0
+		or errexit("Unable to commit $lastdir/$target");
+	}
+    }
+    
+    #
+    # Decrypt the virtualization and Vulpes files
+    #
+    print("Decrypting virtual machine memory image...\n")
+	if $verbose;
+    foreach $target ("keyring", "cfg.tgz") {
+	if (mysystem("openssl enc -d -bf -in $lastdir/${target}.enc -out $lastdir/$target -pass file:$lastdir/keyroot -nosalt") != 0) {
+	    errexit("Did not find a $target.enc file to decrypt");
+	}
+	if (mysystem("rm $lastdir/$target.enc") != 0) {
+	    clean($userid, $parcel, $isrdir, 0);
+	    system_errexit("Unable to remove $target.enc.");
+	}
+    }
+
+    #
+    # Keyroot no longer needed, get rid of it
+    #
+    mysystem("rm -f $lastdir/keyroot") == 0
+	or system_errexit("Unable to delete $lastdir/keyroot.");
+
+    #
+    # Unpack the memory image and other virtual machine files
+    #
+    print("Uncompressing virtual machine memory image...\n")
+	if $verbose;
+
+    mysystem("tar -xzf $lastdir/cfg.tgz --directory $lastdir") == 0
+	or system_errexit("Unable to unpack $lastdir/$target.");
+    mysystem("rm -f $lastdir/cfg.tgz") == 0
+	or errexit("Unable to delete compressed files from $lastdir");
+
+    # Clean up and return
+    mysystem("sync");
+    print(GREEN, "Success: Parcel $userid/$parcel now checked out (and lock acquired).\n", RESET)
+	if $verbose;
+    return;
+}
+
+#
+# run - Execute a parcel on the client
+#
+sub run ($$$$) {
+    my $userid = shift;       # login name
+    my $parcel = shift;       # parcel name
+    my $isrdir = shift;       # absolute path of user's local ISR home dir
+    my $disconnected = shift; # true if we want to run disconnected 
+
+    my $numdirs;
+    my $target;
+    my @files;
+    my $dirname;
+    my $cfgfile;  # VMWare configuration file
+    my $numfiles;
+    my $numvulpes;
+    my $numchunks;
+    my $maxchunks;
+    my $chunksize;
+    my $i;
+    my $iters;
+    my $sigset;
+    
+    my $parceldir = "$isrdir/$parcel";
+    my $lastdir = "$parceldir/last";
+    my $cachedir = "$parceldir/cache";
+    my $vulpescmd = "$Isr::ISRCLIENTBIN/vulpes";
+    my $cdcache_file = "$parceldir/$Isr::CONSISTENT_DIRTYCACHE_FILE";
+
+    # Block receipt of the SIGTSTP (ctrl-z)
+    block_sigtstp();
+
+    # Reset the consistent dirty cache flag, since any temporary dirty
+    # cache directory is about to become inconsistent with the local cache.
+    system("rm -f $cdcache_file");
+
+    # Make sure there are no other Vulpes processes running
+    if (get_vulpespid() != 0) {
+	errexit("Vulpes is already running on this machine.");
+    }
+
+    # Parse the parcel config file that we got from the name server during
+    # checkout and load the protocol-specific module
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+
+    # If the user wants to run connected, then before going any further, 
+    # make sure we have a protocol level connection to the content server
+    # and a consistent parcel.
+    if (!$disconnected and !isr_connected_contentsrv()) {
+	errexit("The content server appears to be down.");
+    }
+    if (!$disconnected and !isr_connected_parcel($userid, $parcel)) {
+	errexit("The remote parcel is not available.");
+    }
+
+    # Make sure that Vulpes is where we expect it to be, that Fauxide
+    # is loaded, and that /dev/hdk exists.
+    if (!-e $vulpescmd or !-x $vulpescmd ) {
+	errexit("Could not find an executable Vulpes binary.");
+    }
+    mysystem("touch /dev/hdk");
+    if (mysystem("/sbin/lsmod | grep -q '^fauxide'") == 0 and
+        mysystem("/sbin/lsmod | grep -q '^isr'") == 0) {
+            system_errexit("The Fauxide kernel module does not appear to be loaded.");
+    }
+
+    # If the user wants to run disconnected, they better have all of their
+    # disk blocks hoarded in the local or hoard cache
+    if ($disconnected) {
+	($numchunks, $maxchunks, $chunksize) = 
+	    hdksize($userid, $parcel, $isrdir); 
+
+	# If the local cache is not fully populated, then make sure
+	# the hoard cache is fully populated
+	if ($numchunks != $maxchunks) {
+	    if (isr_stathoard($userid, $parcel, $isrdir) != $maxchunks) {
+		errexit("Running disconnected without a fully hoarded parcel.\nPlease run \"isr disconnect -p $parcel\" first.");
+	    }
+	}
+	print("Running disconnected...\n")
+	    if $verbose;
+    }
+
+    # Create a Vulpes cache if one doesn't already exist
+    # This operation must not be interrupted by the user
+    print("Initializing local cache.\n")
+	if $verbose;
+    $numdirs = get_value("$lastdir/hdk/index.lev1", "NUMDIRS");
+
+    $sigset = block_sigint();
+    build_cache($cachedir, $lastdir, $numdirs);
+    unblock_sigint($sigset);
+
+    # Make sure there is exactly one VMWare config file
+    opendir(DIR, "$cachedir/cfg")
+	or unix_errexit("Unable to open $cachedir/cfg");
+    @files = grep(/\.vmx$/, readdir(DIR));
+    closedir(DIR);
+    $numfiles = @files;
+    if ($numfiles != 1) {
+	errexit("Found $numfiles virtual machine config files, but expected exactly one.");
+    }
+    $cfgfile = $files[0];
+
+    # Launch Vulpes. 
+    print("Launching Vulpes...\n")
+	if $verbose;
+    $killvulpes = 1;  # Tells the SIGINT handler to cleanly terminate Vulpes
+    isr_run_vulpes($userid, $parceldir, $disconnected) == 0
+	or errexit("Unable to launch Vulpes.");	
+	
+    # Determine Vulpes PID and make sure there is exactly 1 Vulpes process
+    $vulpespid = get_vulpespid();
+    if ($vulpespid == 0) {
+	errexit("Unable to launch Vulpes.");
+    }
+    if ($vulpespid < 0) {
+	$numvulpes = -$vulpespid;
+	errexit("Found $numvulpes Vulpes processes, but expected exactly one.")
+    }
+
+    # Launch VMWare
+    print "Launching VMWare...\n"
+	if $verbose;
+    if ($noautoflag) {
+	mysystem("$Isr::VMCOMMAND $cachedir/cfg/$cfgfile") == 0
+	    or system_errexit("VMWare terminated abnormally.");
+    }
+    else {
+	mysystem("$Isr::VMCOMMAND -X $cachedir/cfg/$cfgfile") == 0
+	    or system_errexit("VMWare terminated abnormally.");
+    }
+
+    # Wait here until the user suspends VMWare
+    print "Shutting down VMware.\n"
+	if $verbose;
+    
+    # Shut down Vulpes after syncing to flush out Fauxide buffers
+    print "Syncing file system...\n"
+	if $verbose;
+    killvulpes();
+    message("INFO", "Sent SIGUSR2 signal to Vulpes (pid=$vulpespid)");
+
+    # Wait until the Vulpes process is gone
+    print "Shutting down Vulpes (pid=$vulpespid)"
+	if $verbose;
+    $iters = 0;
+    while (1) {
+	$iters++;
+	if ($iters > 60) {
+	    print "\n";
+	    errexit("Unable to shutdown Vulpes");
+	}
+	print "."
+	    if $verbose;
+	$vulpespid = get_vulpespid();
+	if ($vulpespid == 0) {
+	    last;
+	}
+	sleep(1);
+    }
+    print "\n"
+	if $verbose;
+
+    # Clean up and return
+    return;
+}
+
+#
+# checkin - Sync and then release parcel
+#
+sub checkin ($$$) {
+    my $userid = shift;     # login name
+    my $parcel = shift;     # parcel name
+    my $isrdir = shift;     # absolute path of local ISR home dir
+
+    my $parceldir = "$isrdir/$parcel";
+
+    # Parse config file that was retrieved during checkout and
+    # load the protocol-specific module
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+
+    # Sync the dirty blocks on the server
+    sync($userid, $parcel, $isrdir) == $Isr::ESUCCESS
+	or errexit("Sync of parcel $userid/$parcel failed.");
+
+    # Release the lock on the parcel
+    release($userid, $parcel, $isrdir) == $Isr::ESUCCESS
+	or errexit("Release of parcel $userid/$parcel failed.");
+}
+
+#
+# sync - Make local state clean
+#
+sub sync ($$$) {
+    my $userid = shift;     # login name
+    my $parcel = shift;     # parcel name
+    my $isrdir = shift;     # absolute path of local ISR home dir
+
+    my $parceldir = "$isrdir/$parcel";
+
+    # Parse config file that was retrieved during checkout
+    # and load the protocol specific module
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+
+    # Now call the protocol-specific sync function
+    isr_sync($userid, $parcel, $isrdir) == $Isr::ESUCCESS
+	or errexit("Sync of parcel $userid/$parcel failed.");
+    
+    # Append the session log to the persistent log in remote storage
+    # and if successful delete the session log. 
+    message("INFO", "Uploading session log");
+    print "Uploading session log...\n"
+	if $verbose;
+    if (isr_sput($userid, "$isrdir/$Isr::LOGFILE", 
+		 "../session.log", 1, 1) == 0) {
+	if (isr_srun($userid, "catlog", 
+		     "-u $userid -f session.log", "", 0) == 0) {
+	    unlink("$isrdir/$Isr::LOGFILE");
+	}
+    }
+	
+    print(GREEN, "Success: Sync completed. Parcel checkpointed (but not released).\n", RESET)
+	if $verbose;
+
+    return $Isr::ESUCCESS;
+}
+
+#
+# upload - Upload the contents of the local cache to the server (DEBUG only)
+#
+sub upload ($$$) {
+    my $userid = shift;     # login name
+    my $parcel = shift;     # parcel name
+    my $isrdir = shift;     # absolute path of local ISR home dir
+
+    my $parceldir = "$isrdir/$parcel";
+
+    # Parse config file that was retrieved during checkout
+    # and load the protocol specific module
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+
+    # Now call the protocol-specific sync function
+    isr_priv_upload($userid, $parcel, $isrdir);
+    
+    return $Isr::ESUCCESS;
+}
+
+#
+# discard - Remove the Vulpes cache
+#
+sub discard ($$$) {
+    my $userid = shift;
+    my $parcel = shift;
+    my $isrdir = shift;
+
+    my $reply;
+    my $parceldir = "$isrdir/$parcel";
+    my $cachedir = "$parceldir/cache";
+    my $cdcache_file = "$parceldir/$Isr::CONSISTENT_DIRTYCACHE_FILE";
+
+    # Give users a chance to change their minds.
+    if ($verbose) {
+	$reply = query("This command deletes local session state on this host. Proceed?");
+	if ($reply eq "n") {
+	    return;
+	}
+    }
+
+    # This operation should not be interrupted by the user
+    block_sigint();
+
+    # Delete the local cache
+    if (-e $cachedir) {
+	mysystem("rm -rf $cachedir");
+    }
+
+    #
+    # Reset the consistent dirty cache flag, since any temporary dirty
+    # cache directory can no longer be consistent with an empty local cache.
+    #
+    mysystem("rm -f $cdcache_file");
+
+    print(GREEN, "Success: Local changes to parcel $userid/$parcel discarded.\n", RESET)
+	if $verbose;
+
+}
+
+#
+# disconnect - Prepare the host to disconnect from a parcel
+#
+sub disconnect ($$$$) {
+    my $userid = shift;       # login name
+    my $parcel = shift;       # parcel name
+    my $isrdir = shift;       # absolute path of local ISR home dir
+    my $nocheckstate = shift; # optionally skip consistency check
+
+    my $numchunks;
+    my $maxchunks;
+    my $chunksize;
+
+    my $parceldir = "$isrdir/$parcel";
+    my $lastdir = "$parceldir/last";
+    my $cachedir = "$parceldir/cache";
+    
+    my $parceldir = "$isrdir/$parcel";
+
+    # Parse config file that was retrieved during checkout and load
+    # protocol specific storage module
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+
+    print "Preparing client host to run parcel $userid/$parcel disconnected...\n";
+    
+    if (!$nocheckstate) {
+	print "Hint: Use the -x option to skip the lengthy consistency check.\n";
+    }
+
+
+    # Hoard the parcel if it's not already hoarded
+    ($numchunks, $maxchunks, $chunksize) = 
+	hdksize($userid, $parcel, $isrdir); 
+    if (isr_stathoard($userid, $parcel, $isrdir) < $maxchunks) {
+	isr_hoard($userid, $parcel, $isrdir);
+    }
+
+    # Optionally check the hoard cache for consistency
+    if (!$nocheckstate) {
+	isr_checkhoard($userid, $parcel, $isrdir, 1, 0);
+    }
+
+    # Print the appropriate success message
+    if (!$nocheckstate) {
+	print(GREEN, "Success: You can safely run disconnected.\n", RESET)
+	    if $verbose;
+    }
+    else {
+	print(GREEN, "Success: You can now run disconnected.\n", RESET)
+	    if $verbose;
+    }
+}
+
+#
+# listparcels - list information about a user's parcels
+#
+sub listparcels ($$$$$) {
+    my $userid = shift;      # login name
+    my $parcelname = shift;  # parcel name (all parcels if undefined or "")
+    my $isrdir = shift;      
+    my $longflag = shift;    # use default # of versions for long ls format
+    my $longvers = shift;    # use specific # of versions for long ls format
+
+    my $line;
+    my $item;
+    my $found;
+    my $tmpfile;
+    my $lsargs;
+    
+    my @parcels = ();
+
+    # Build the argument list for the server-side ls opertion
+    $lsargs = "";
+    if ($longvers) {
+	$lsargs = "-L $longvers";
+    }
+    elsif ($longflag) {
+	$lsargs = "-L $Isr::LSVERSIONS";
+    }
+
+
+    # Build the list of parcels for this user
+    $tmpfile = "/tmp/parcels.txt.$$";
+    get_parcelnames($userid, $tmpfile);
+    open(INFILE, $tmpfile)
+	or unix_errexit("Unable to open $tmpfile");
+    while ($line = <INFILE>) {
+	chomp($line);
+	push(@parcels, $line);
+    }
+    close(INFILE);
+    unlink($tmpfile);
+
+    # Display information about each parcel
+    print "Parcels for $userid on name server $Isr::NAMESRV:\n";
+    $found = 0;
+    foreach $parcel (@parcels) {
+	if (!$parcelname or (($parcelname and ($parcel eq $parcelname)))) {
+	    $found = 1;
+
+	    # Get the parcel.cfg file from the name server and then parse it
+	    # and load the protocol specific module
+	    print("Fetching configuration data for $userid/$parcel from nameserver.\n")
+		if $verbose > 1;
+	    $tmpfile = "/tmp/parcel.cfg.$$";
+	    get_parcelcfg($userid, $parcel, $tmpfile);
+	    %cfg = parse_parcelcfg($tmpfile, $userid, $parcel);
+	    unlink($tmpfile);
+
+	    # Run the remote ls program on the server
+	    $tmpfile = "/tmp/ls.$$";
+	    if (isr_srun($userid, "ls", 
+		     "-u $userid -p $parcel $lsargs", $tmpfile, 0) != 0) {
+		unlink($tmpfile);
+		err("Unable to list $parcel");
+	    }
+	    else {
+		$line = `cat $tmpfile`;
+		unlink($tmpfile);
+		# In the output for ls, replace [server] with [server:protocol]
+		# the server name is any combination of letters, numbers, _ and -
+		$line =~ s/\[([\w-]+)\]/\[$1:$cfg{PROTOCOL}\]/; 
+		print "$line";
+	    }
+	}
+    }
+    if ($parcel and !$found) {
+	errexit("Parcel not found.");
+    }
+}
+
+
+#
+# authenticate - Perform the SSH magic
+#
+sub authenticate ($) {
+    my $userid = shift;
+
+    mysystem("ssh -A -l $userid $Isr::NAMESRV ssh-add") == 0
+	or system_errexit("Unable to run ssh-add on the name server ($Isr::NAMESRV)");
+
+    return 0;
+}
+
+#
+# deauthenticate - Remove all SSH keys
+#
+sub deauthenticate () {
+
+    mysystem("ssh-add -D") == 0
+	or system_errexit("Unable to run \"ssh-add -D\" on local machine");
+
+    return 0;
+}
+
+#
+# release - Erase all traces of a parcel from the client and do a 
+#           soft release (i.e., with nonce) of its lock.
+#
+sub release ($$$) {
+    my $userid = shift;
+    my $parcel = shift;
+    my $isrdir = shift; 
+
+    my $nonce;
+
+    my $parceldir = "$isrdir/$parcel";
+
+    # This operation should not be interrupted by the user
+    block_sigint();
+
+    # Get the nonce
+    if (!-e "$parceldir/nonce") {
+	errexit("$parceldir/nonce does not exist.");
+    }
+    $nonce = `cat $parceldir/nonce`;
+    chomp($nonce);
+    if (!$nonce) {
+	err("Empty client nonce\n");
+    }
+
+    # Release the lock on the parcel using the nonce (soft release)
+    print "Releasing parcel lock...\n"
+	if $verbose;
+    if (clean($userid, $parcel, $isrdir, $nonce) == 0) {
+	print(GREEN, "Success: Parcel $userid/$parcel is now checked in (and lock released).\n", RESET)
+	    if $verbose;
+    }
+
+    return 0;
+}
+
+#
+# killvulpes - Cleanly kill all Vulpes processes
+#
+sub killvulpes () {
+    system("sync");
+    system("sync");
+    system("killall -s USR2 vulpes > /dev/null 2>&1");
+    system("sync");
+}
+
+#
+# hoard - Copy all server disk blocks to the local client cache
+#
+sub hoard ($$$) {
+    my $userid = shift;
+    my $parcel = shift;
+    my $isrdir = shift;
+
+    my $parcelcfgfile; 
+    my $retval;
+
+    my $parceldir = "$isrdir/$parcel";
+
+    # If the parcel is not currently checked out, then fetch a
+    # temporary copy of parcel.cfg from the nameserver, otherwise use
+    # the parcel.cfg file hat was fetched during checkout
+
+    $parcelcfgfile = "$parceldir/parcel.cfg";
+    if (!-e $parceldir) {
+	$parcelcfgfile = "$isrdir/$parcel-parcel.cfg.$$";
+	print "Fetching configuration data for $userid/$parcel from name server.\n"
+	    if $verbose;
+	get_parcelcfg($userid, $parcel, $parcelcfgfile);
+    } 
+
+    # Parse the config file and load the protocol-specific storage module
+    %cfg = parse_parcelcfg($parcelcfgfile, $userid, $parcel);
+
+    # Delete the temporary parcel.cfg file if necessary
+    if (!-e $parceldir) {
+	unlink($parcelcfgfile);
+    }    
+
+    # Ask the system to hoard all hdk blocks into local store. If the
+    # hoard operation returns an error code, then either the network
+    # connection is down, the server is down, a chunk in the hoard
+    # somehow got corrupted, or a concurrent checkin created a new
+    # version on the server while the hoard was underway. In any case,
+    # we will restart the hoard operation until it succeeds.
+    while (1) {
+	$retval = isr_hoard($userid, $parcel, $isrdir);
+	if ($retval == $Isr::ESUCCESS) {
+	    last; 
+	}
+	print "Sleeping $Isr::HOARD_SLEEP secs before restarting hoard...\n"
+	    if $verbose;
+	mysystem("sleep $Isr::HOARD_SLEEP");
+    }
+
+    # The hoard finished without any errors. Declare success
+    print (GREEN, "Success: The parcel $userid/$parcel is now fully hoarded on this host.\n", RESET)
+	if $verbose;
+}
+
+#
+# checkparcel - Check a remote parcel for consistency
+#
+sub checkparcel ($$$) {
+    my $userid = shift;
+    my $parcel = shift;
+    my $isrdir = shift;
+    my $version = shift;
+    my $checkstate = shift;
+
+    my $parcelcfgfile; 
+    my $versionflag;
+    my $checkstateflag;
+    
+    my $parceldir = "$isrdir/$parcel";
+
+    #
+    # If the parcel is not currently checked out, then fetch a
+    # temporary copy of parcel.cfg from the nameserver. Otherwise use
+    # the parcel.cfg file hat was fetched during checkout
+    #
+    $parcelcfgfile = "$parceldir/parcel.cfg";
+    if (!-e $parceldir) {
+	$parcelcfgfile = "$isrdir/$parcel-parcel.cfg.$$";
+	print "Fetching configuration data for $userid/$parcel from name server.\n"
+	    if $verbose;
+	get_parcelcfg($userid, $parcel, $parcelcfgfile);
+    } 
+
+    # Parse the config file and load the protocol-specific storage module
+    %cfg = parse_parcelcfg($parcelcfgfile, $userid, $parcel);
+
+    # Delete the temporary parcel.cfg file if necessary
+    if (!-e $parceldir) {
+	unlink($parcelcfgfile);
+    }    
+
+    #
+    # Ask the server the to check the consistency of the parcel
+    #
+    $versionflag = "";
+    if ($version) {
+	$versionflag = "-v $version";
+    }
+
+    $checkstateflag = "";
+    if ($checkstate) {
+	$checkstateflag = "-c";
+    }
+    isr_srun($userid,
+	     "checkparcel", 
+	     "-p $userid/$parcel -k $main::cfg{KEYROOT} -V $versionflag $checkstateflag",
+	     "", 0) == 0
+		 or errexit("There is something wrong with parcel $userid/$parcel on the server.");
+
+    print(GREEN, "Success: The parcel $userid/$parcel on the server looks OK.\n", RESET)
+	if $verbose;
+}
+
+#
+# statparcel - Report general statistics about the cache and if requested, 
+#              run a content consistency check on the chunks
+#
+sub statparcel ($$$) {
+    my $userid = shift;
+    my $parcel = shift;
+    my $isrdir = shift;
+
+    my $parceldir = "$isrdir/$parcel";
+
+    # Parse config file that was retrieved during checkout and load
+    # protocol specific storage module
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+
+    isr_statparcel($userid, $parcel, $isrdir, $checkstate);
+}
+
+#
+# passwd - Change the user's ISR passwd on the name server
+#
+sub passwd ($) {
+    my $userid = shift;
+
+    print "Changing password for ISR userid $userid:\n";
+    mysystem("ssh -l $userid $Isr::NAMESRV passwd") == 0
+	or errexit("Unable to change ISR password.");
+}
+
+#
+# update - downloads latest version of isr_setup* 
+#          and runs an "isr_setup update"
+#
+#          In the future it will check version numbers
+#
+sub update () {
+    
+    my $serverversionline;
+    my $localversionline;
+    my $criticalline;
+    my $serverversion;
+    my $localversion;
+    my $tag;
+    my $versionsrv;
+
+    my $performupdate = "n";
+    my $needsupdate = 0;
+    my $iscritical = 0;
+
+    # Don't check for updates in disconnected mode
+    if ($disconnected) {
+	return;
+    }
+    
+    # If the local VERSION file does not exist, then never perform update
+    if (!-e "$Isr::ISRCLIENTBIN/VERSION") {
+	return;
+    }
+
+    # Grab the VERSION file from the update server
+    $versionsrv = "/tmp/VERSION.srv.$$";
+    if (mysystem("curl -f -s -G $Isr::UPDATEURL/client/VERSION > $versionsrv") != 0) {
+	unlink($versionsrv);
+	err("Unable to contact update server. No updates occurred");
+	return;
+    }
+
+    # Extract the version number from the remote VERSION file on update server
+    $serverversionline = `head -n 1 $versionsrv`;
+    chomp($serverversionline);
+    $serverversionline =~ s/\s+//g; # remove any whitespace
+    ($tag, $serverversion) = split("=", $serverversionline);
+
+    # Extract the version number from the local VERSION file
+    $localversionline = `head -n 1 $Isr::ISRCLIENTBIN/VERSION`;
+    chomp($localversionline);
+    $localversionline =~ s/\s+//g; # remove any whitespace
+    ($tag, $localversion) = split("=", $localversionline);
+
+    # Extract the critical flag from the remote VERSION file
+    $criticalline = `head -n 2 $versionsrv | tail -n 1`; 
+    chomp($criticalline);
+    $criticalline =~ s/\s+//g; # remove any whitespace
+    ($tag, $iscritical) = split("=", $criticalline);
+
+    # If the remote and local versions differ, then update
+    if ($localversion < $serverversion) {
+	$needsupdate = 1;
+	print RED, "Your system is currently running Release $localversion of the ISR software.\n", RESET;
+	print RED, "A newer release (Release $serverversion) is now available:\n", RESET;
+	mysystem("fgrep -v '=' $versionsrv | more");
+	print RED, "We would like to automatically update your system with the new release.\n", RESET;
+	$performupdate = query("Do you wish to proceed with the update?");
+    }
+    
+    mysystem("rm -f $versionsrv");
+
+    if($needsupdate and $performupdate eq "y") {
+	message("INFO", "Version skew detected, updating client software...");
+	chdir($Isr::ISRCLIENTBIN);
+	if (mysystem("curl -f -s -G -O $Isr::UPDATEURL/isr_setup") != 0) {
+	    err("Unable to download the setup script from update server. No updates occurred.");
+	    return;
+	}
+	mysystem("chmod 755 isr_setup");
+	mysystem("./isr_setup update");
+	mysystem("rm -rf isr_setup");
+ 	message("INFO", "ISR client software updated. Rerun checkout or resume");
+	message("EXIT", "0");
+	exit 0;
+    }
+    elsif ($needsupdate == 0 and $command eq "update") {
+	message("INFO", "ISR software is up to date.");
+	print GREEN, "Your ISR software is up to date.\n", RESET;
+    }
+    elsif ($iscritical eq 1) {
+	message("INFO", "Critical version skew detected, forcing client exit...");
+	print RED, "This is a critical update, please run ", RESET;
+	print BLUE, "isr update ", RESET;
+	print RED, "on the command line\n", RESET;
+	message("EXIT", "0");
+	exit 0;
+    }
+}
+
+#
+# resetclient - Resets the ISR runtime
+#
+sub resetclient ($$$) {
+    my $userid = shift;
+    my $parcel = shift;
+    my $isrdir = shift;
+
+    print("Terminating any Vulpes processes.\n")
+	if $verbose;
+    killvulpes();
+
+    print("Terminating any VMWare processes.\n")
+	if $verbose;
+    system("killall vmware > /dev/null 2>&1");
+
+    print("Terminating any ISR processes.\n")
+	if $verbose;
+    system("killall isr > /dev/null 2>&1");
+}
+
+#
+# cleanclient - Remove all traces of a parcel's session state
+#
+sub cleanclient($$$$) {    
+    my $userid = shift;
+    my $parcel = shift;
+    my $isrdir = shift;
+    my $allflag = shift;
+
+    my $reply;
+    my $hoarddir = "$isrdir/$parcel-hoard";
+
+    # Give users a chance to change their minds.
+    if ($verbose) {
+	$reply = query("This command deletes local session state on this host. Proceed?");
+	if ($reply eq "n") {
+	    return;
+	}
+    }
+
+    # Remove the parcel's session state
+    print("Removing session state and releasing server lock...\n")
+	if $verbose;
+    if (clean($userid, $parcel, $isrdir, 0) > 0) {
+	return;
+    }
+
+    # Remove any cruft that might be in the /tmp directory
+    cleantmp();
+
+    # Optionally remove the parcel's hoard cache, too
+    if ($allflag) {
+	print("Deleting hoard cache...\n")
+	    if $verbose;
+	system("rm -rf $hoarddir > /dev/null 2>&1");
+    }
+
+    print(GREEN, "Success: Parcel $userid/$parcel erased from client and server lock released.\n", RESET)
+	if $verbose;
+}
+
+#############################
+# Section 3. Helper functions
+#############################
+
+#####
+# Misc helper functions
+# 
+
+#
+# clean - Erase all traces of a parcel from the client and do a soft
+#         (with nonce) or hard (no nonce) release of its lock.
+#
+sub clean ($$$$) {
+    my $userid = shift;
+    my $parcel = shift;
+    my $isrdir = shift;
+    my $nonce = shift;     # nonce (optional)
+
+    my $errors = 0;
+    my $clientname = hostname();
+
+    my $parceldir = "$isrdir/$parcel";
+
+    # Make sure the current working directory exists
+    chdir($isrdir);
+    
+    # Get a fresh parcel.cfg file from the name server in case the
+    # user has accidently erased his local copy
+    my $tmpfile = "/tmp/parcel.cfg.$$";
+    get_parcelcfg($userid, $parcel, $tmpfile);
+    %cfg = parse_parcelcfg($tmpfile, $userid, $parcel);
+    unlink($tmpfile);
+
+    # Now remove all traces of the parcel on the client and unlock it
+    if (mysystem("rm -rf $parceldir") != 0) {
+	err("Unable to remove $parcel.");
+	$errors++;
+    }
+
+
+    # If the caller supplied a nonce, then request a soft release
+    if ($nonce) {
+	if (isr_srun($userid, 
+		     "lock", 
+		     "-p $userid/$parcel -n $clientname -r $nonce", 
+		     "", 0) != 0) {
+	    err("Unable to release lock for $parcel. Use 'isr clean' to force the release.");
+	    $errors++;
+	}
+    }
+
+    # No nonce supplied, request a hard release
+    else {
+	if (isr_srun($userid, "lock", 
+		 "-p $userid/$parcel -n $clientname -R", "", 0) != 0) {
+	    errexit("Unable to release lock for $parcel.");
+	    $errors++;
+	}
+    }
+
+    return $errors;
+}
+
+#
+# load_keyring - Build a keyring array in memory
+#                Returns the list [@tags, @keys]
+#
+sub load_keyring {
+    my $keyringfile = shift;
+
+    my $entries;
+    my $tag;
+    my $key;
+    my $line;
+    my $pair;
+
+    my @keyring = ();
+
+    open(INFILE, $keyringfile)
+	or unix_errexit("Unable to open $keyringfile");
+    $entries = 0;
+    while ($line = <INFILE>) {
+	chomp($line);
+	($tag, $key) = split(" ", $line);
+	$keyring[$entries] = [$tag, $key];
+	$entries++;
+    }
+    close INFILE
+	or unix_errexit("Unable to close $keyringfile");
+
+    return (@keyring);
+}
+
+#
+# get_parcelnames - Get the list of a user's parcels
+#
+sub get_parcelnames ($$) {
+    my $userid = shift;
+    my $outfile = shift;
+
+    mysystem("ssh -l $userid $Isr::NAMESRV $Isr::ISRSERVERBIN/isr_nsrv_listparcels.pl -u $userid > $outfile") == 0
+	or system_errexit("Unable to run isr_nsrv_listparcels.pl on the name server ($Isr::NAMESRV)");
+}
+
+#
+# get_parcelcfg - Retrieve parcel configuration file from the name server
+#
+sub get_parcelcfg ($$$) {
+    my $userid = shift;
+    my $parcel = shift;
+    my $outfile = shift; # Put the retrieved file here
+
+    mysystem("ssh -l $userid $Isr::NAMESRV $Isr::ISRSERVERBIN/isr_nsrv_getconfig.pl -p $parcel -u $userid > $outfile") == 0
+	or system_errexit("Parcel $userid/$parcel does not exist on the name server ($Isr::NAMESRV).");
+}
+
+#
+# parse_parcelcfg - Read a local parcel.cfg file and return a hash containing 
+#                   its key/value pairs. Delete the file if there are any
+#                   problems.
+#
+sub parse_parcelcfg ($$$) {
+    my $infile = shift;
+    my $userid = shift;
+    my $parcel = shift;
+
+    my $line;
+    my $key;
+    my $value;
+
+    my %cfg = ();
+
+    # Load the key/value pairs into the hash
+    open (INFILE, $infile) 
+	or errexit("Config file $infile not found.");
+    while ($line = <INFILE>) {
+	chomp($line);
+	$line =~ s/\s+//g; # remove any whitespace
+
+	# Skip comment lines
+	if ($line =~ /^\#/) {
+	    next;
+	}
+
+	# Otherwise parse out key and value
+	($key, $value) = split("=", $line);
+	if (defined $value) {
+	    $cfg{$key} = $value;
+	}
+    }
+    unless (close(INFILE)) {
+	unlink($infile);
+	unix_errexit("Unable to close $infile.");
+    }
+
+    # Every parcel has a PROTOCOL entry
+    unless ($cfg{PROTOCOL}) {
+	unlink($infile);
+	errexit("Missing PROTOCOL entry in parcel.cfg for parcel $userid/$parcel.");
+    }
+
+    # Every parcel has a MAXKB entry
+    unless ($cfg{MAXKB}) {
+	unlink($infile);
+	errexit("Missing MAXKB entry in parcel.cfg for parcel $userid/$parcel.");
+    }
+
+    # Load the protocol-specific module
+    do "$Isr::ISRCLIENTBIN/$cfg{PROTOCOL}.pm"
+	or errexit("Unable to load module $cfg{PROTOCOL}.pm in parse_parcelcfg for parcel $userid/$parcel");
+
+    # Do a protocol-specific check of the remaining values
+    if (isr_checkcfg(\%cfg) != $Isr::ESUCCESS) {
+	unlink($infile);
+	exit $Isr::EINVAL;
+    }
+
+    # Every read and write path gets appended with the userid and parcel
+    $cfg{RPATH} .= "/$userid/$parcel";
+    $cfg{WPATH} .= "/$userid/$parcel";
+
+    # Return the hash of key/value pairs to the caller
+    return %cfg;
+}
+
+#
+# emit_hdk_progressmeter - Prints a progress meter for an hdk operation
+#
+sub emit_hdk_progressmeter ($$) {
+    my $numbytes  = shift;  # How many bytes are in the cache
+    my $maxbytes = shift;   # The maximum cache size
+
+    my $str = progress($numbytes, $maxbytes);
+
+    if ($verbose > 0) {
+	print $str, "\n";
+	printf("\e[A"); # ANSI escape sequence moves cursor up one row
+    }
+}
+
+#
+# reset_cursor - resets the cursor after the last progress meter output
+#
+sub reset_cursor () {
+    if ($verbose > 0) {
+	print "\n";
+    }
+}
+
+#
+# progress - Build and return an hdk progress string
+#
+sub progress ($$) {
+    my $numbytes = shift;
+    my $maxbytes = shift;
+
+    my $percent;
+    my $num_mbytes = int($numbytes/(1<<20));
+    my $max_mbytes = int($maxbytes/(1<<20));
+
+    if ($max_mbytes) {
+	$percent = sprintf("%d", int(($numbytes/$maxbytes)*100));
+    }
+    else {
+	$percent = 0;
+    }
+    return "  $percent% ($num_mbytes/$max_mbytes MB)";
+}
+
+#
+# build_cache - Create a local Vulpes cache if one doesn't exist already
+#
+sub build_cache ($$$) {
+    my $cachedir = shift;
+    my $lastdir = shift;
+    my $numdirs = shift;
+
+    my $target;
+    my $i;
+    my $dirname;
+
+    if (!-e $cachedir) {
+	mysystem("mkdir --parents $cachedir") == 0
+	    or system_errexit("Unable to make $cachedir.");
+    }
+
+    # Copy the virtualization files from lastdir to cachedir
+    if (!-e "$cachedir/cfg") {
+	print("Copying virtual machine memory image...\n")
+	    if $verbose;
+	
+	mysystem("mkdir $cachedir/cfg") == 0
+	    or system_errexit("Unable to make $cachedir/cfg");
+	mysystem("cp $lastdir/cfg/* $cachedir/cfg") == 0
+	    or system_errexit("Unable to copy virtualization config files.");
+    }
+
+    # Build the local hdk directory (protocol specific)
+    isr_make_hdk($cachedir, $lastdir, $numdirs); 
+
+    # Copy the keyring files
+    if (!-e "$cachedir/keyring") {
+	mysystem("cp -p $lastdir/keyring $cachedir") == 0
+	    or system_errexit("Unable to copy $lastdir/keyring");
+    }
+}
+
+#
+# hdksize - Computes information about the local hdk cache
+#           returns the list ($numchunks, $maxchunks, $chunksize (in bytes))
+#         
+sub hdksize ($$$) {
+    my $userid = shift;
+    my $parcel = shift;
+    my $isrdir = shift;
+
+    my $numchunks;
+    my $i;
+    my $dirname;
+
+    my $parceldir = "$isrdir/$parcel";
+    my $lastdir = "$parceldir/last";
+    my $cachedir = "$parceldir/cache";
+
+    my $numdirs = get_value("$lastdir/hdk/index.lev1", "NUMDIRS");
+    my $chunksperdir = get_value("$lastdir/hdk/index.lev1", "CHUNKSPERDIR");
+    my $chunksize = get_value("$lastdir/hdk/index.lev1", "CHUNKSIZE");
+
+    my @files = ();
+
+    # hdk cache is trivialy empty
+    if (!-e $cachedir) {
+	return (0, $numdirs*$chunksperdir, $chunksize);
+    }
+
+    # Count the number of chunks in the cache
+    $numchunks = 0;
+    for ($i = 0; $i < $numdirs; $i++) {
+	$dirname = sprintf("%04d", $i);
+	if (opendir(DIR, "$cachedir/hdk/$dirname")) {
+	    @files = grep(/\d+/, readdir(DIR)); # enumerate the chunk files only
+	    closedir(DIR);
+	    $numchunks += @files;
+	}
+    }
+    return ($numchunks, $numdirs*$chunksperdir, $chunksize);
+}
+
+#
+# hdkmodified - Computes information about dirty chunks in hdk cache. Returns
+#        the list ($numdirtychunks, $numchunks, $chunksize (in bytes))
+#         
+sub hdkmodified ($$$) {
+    my $userid = shift;
+    my $parcel = shift;
+    my $isrdir = shift;
+
+    my $offset;
+    my $dirtyblocks;
+    my $actualblocks;
+    my $chunkname;
+    my $dirname;
+    my $line1;
+    my $line2;
+
+    my $parceldir = "$isrdir/$parcel";
+    my $lastdir = "$parceldir/last";
+    my $cachedir = "$parceldir/cache";
+
+    my $numdirs = get_value("$lastdir/hdk/index.lev1", "NUMDIRS");
+    my $chunksize = get_value("$lastdir/hdk/index.lev1", "CHUNKSIZE");
+    my $chunksperdir = get_value("$lastdir/hdk/index.lev1", "CHUNKSPERDIR");
+
+    # hdk cache is trivially empty
+    if (!-e $cachedir) {
+	return (0, 0, $chunksize);
+    }
+    
+    # Count the number of dirty files in the cache
+    open(INFILE1, "$cachedir/keyring")
+        or unix_errexit("Unable to open $cachedir/keyring");
+    open(INFILE2, "$lastdir/keyring")
+        or unix_errexit("Unable to open $lastdir/keyring");
+    $offset = 0;
+    $dirtyblocks = 0;
+    $actualblocks = 0;
+    while ($line1 = <INFILE1>) {
+        $line2 = <INFILE2>;
+	$dirname = sprintf("%04d", get_dirnum($offset, $chunksperdir));
+	$chunkname = sprintf("%04d", get_chunknum($offset, $chunksperdir));
+	if (-e "$cachedir/hdk/$dirname/$chunkname") {
+	    $actualblocks++;
+	}
+        if ($line1 ne $line2) {
+            $dirtyblocks++;
+        }
+        $offset++;
+    }
+    close INFILE1
+        or unix_errexit("Unable to close $cachedir/keyring");
+    close INFILE2
+        or unix_errexit("Unable to close $lastdir/keyring");
+    
+    return ($dirtyblocks, $actualblocks, $chunksize);
+}
+
+#
+# connected - Returns true if the client has a network connection.
+#             We have to fork a child and timeout on the wait() 
+#             because the bind client coopts SIGALRM signals. 
+#
+sub connected () {
+    my $pid;
+    my $childpid;
+    my $eval_result;
+
+    $pid = fork();
+
+    # The child tries to establish a connection with root serve
+    # on the name server 
+    if ($pid == 0) { 
+	my $socket = IO::Socket::INET->new(PeerAddr => "$Isr::NAMESRV",
+					   PeerPort => "22",
+					   Proto    => "tcp",
+					   Type     => SOCK_STREAM);
+	exit;
+    }
+
+    # The parent waits a few seconds for the child to complete, then times out
+    $SIG{'ALRM'} = sub {die "timeout"};
+    alarm($Isr::CONNECT_TIMEOUT);
+    eval {
+	waitpid($pid, 0);
+    };
+
+    # Determine if the child established a connection in the allotted time.
+    alarm(0);
+    $eval_result = $@;
+    if ($eval_result =~ /timeout/) {
+	kill(9, $pid);
+	return 0;
+    }
+    else {
+	return 1;
+    }
+}
+
+#
+# get_dirnum - converts a keyring offset to a directory number
+#
+sub get_dirnum ($$) {
+    my $offset = shift;
+    my $chunksperdir = shift;
+
+    return int($offset / $chunksperdir);
+}
+
+#
+# get_chunknum - converts a keyring offset to a chunk number
+#
+sub get_chunknum ($$) {
+    my $offset = shift;
+    my $chunksperdir = shift;
+
+    return $offset % $chunksperdir;
+}
+
+#
+# get_value - Given key, return corresponding value in a file with key=value pairs
+#
+sub get_value ($$) {
+    my $indexfile = shift;
+    my $search_key = shift;
+
+    my $line;
+    my $line_key;
+    my $line_value;
+    my $return_value = -1;
+
+    open(INFILE, $indexfile)
+        or unix_errexit("Unable to open $indexfile in get_value");
+
+    while ($line = <INFILE>) {
+        chomp($line);
+        ($line_key, $line_value) = split("=", $line);
+        if ($line_key eq $search_key) {
+	    $return_value = $line_value;
+	    last;
+        }
+    }
+
+    close(INFILE)
+        or unix_errexit("Unable to close $indexfile");
+
+    if ($return_value == -1) {
+        errexit("get_value unable to find key=$search_key in $indexfile.");
+    }
+
+    return $return_value;
+}
+
+
+#
+# get_vulpespid - Returns the PID of the current Vulpes process, zero
+#                 if there are no Vulpes processes, and -x if there are 
+#                 x > 1 running Vulpes processes. Thus, it returns !0 iff
+#                 there is a least one running Vulpes process.
+#
+sub get_vulpespid () {
+    my $psout;
+    my $numvulpes;
+
+    $psout = `ps -C vulpes -o pid=`; 
+    chomp($psout);
+    $numvulpes = `echo "$psout" | wc -w`;
+    chomp($numvulpes);
+    if ($numvulpes == 1) {
+	return $psout;
+    }
+    elsif ($numvulpes == 0) { 
+	return 0;
+    }
+    else {
+	return -$numvulpes;
+    }
+}
+
+
+#
+# block_sigint - Block receipt of SIGINT (ctrl-c) and return sigmask
+# 
+sub block_sigint () {
+    my $sigset = POSIX::SigSet->new(SIGINT);
+
+    sigprocmask(SIG_BLOCK, $sigset)
+	or errexit("Could not block SIGINT");
+    return $sigset;
+}
+
+#
+# unblock_sigint - Unblock receipt of SIGINT
+#
+sub unblock_sigint ($) {
+    my $sigset = shift;
+
+    sigprocmask(SIG_UNBLOCK, $sigset) 
+	or errexit("Could not unblock SIGINT");
+}
+
+#
+# block_sigtstp - Block receipt of SIGTSTP (ctrl-z) and return sigmask
+# 
+sub block_sigtstp () {
+    my $sigset = POSIX::SigSet->new(SIGTSTP);
+
+    sigprocmask(SIG_BLOCK, $sigset)
+	or errexit("Could not block SIGTSTP");
+    return $sigset;
+}
+
+#
+# check_conflicts - Make sure that running this isr process will not
+#                   conflict with other running isr processes
+#
+sub check_conflicts ($$) {
+    my $cmd= shift;
+    my $parcel = shift;
+
+    my $psline;
+    my $pspid;
+    my $pscmd;
+    my $psargs;
+    my $psparcel;
+    my $psuserid;
+
+    #
+    # List running isr processes in the form: PID followed by shell command
+    #
+    if (open(PS, "ps --no-headers -C isr -o pid -o cmd= |") == 0) {
+	err("Unable to run ps command to check process conflicts");
+	return;
+    }
+    
+    #
+    # Check each running isr process for a conflict with the current process
+    #
+    while ($psline = <PS>) {
+
+	# Extract the PID, command name, and optional parcel name from the 
+	# output line from the ps command
+
+	#$psline =~ /(\d+).+isr\s+(\w+)\s+/;
+
+        # the above line didn't work very well because it assumes that the 
+        # command name follows immediately after the "isr" part of the line.
+        #  but, users like me do things like this:
+        #  isr -u mtoups resume -p parcel
+        # which wouldn't match ... then we 'conflict' by default
+
+        # so... i'm going to strip off the pid, the 'isr' command, and then
+        # call everything else @ARGV -- which will then get processed by 
+        # GetOptions (same as the real program) and then leave only the
+        # command left over
+
+        $psline =~ /(\d+).+isr(.+)/;
+	$pspid = $1;
+	$psargs = $2;
+
+        @ARGV = split /\s+/, $psargs;
+        # do we care about "result" for this? -mt 
+        $result = GetOptions(
+                     "a|allstate"     => ,
+                     "b|bwlimit=i"    => ,
+                     "c|checkstate+"  => ,
+                     "x|nocheckstate" => ,
+                     "d|disconnected" => ,
+                     "h|help+"        => ,
+                     "l|long"         => ,
+                     "L|longvers=i"   => ,
+                     "n|nameserver=s" => ,
+                     "p|parcel=s"     => \$psparcel,
+                     "q|quiet"        => ,
+                     "r|revision"     => ,
+                     "u|userid=s"     => \$psuserid,
+                     "V|verbose+"     => ,
+                     "v|version=i"    => ,
+                     "g|guiflag"      => ,
+                     "X|noauto"       =>
+                     );
+
+        $pscmd = $ARGV[1];
+
+        # below lines are now obsolete also -- we'll let GetOptions 
+        # find psparcel for us --matt
+
+	#if ($psline =~ /(\-p|\-\-parcel|\-parcel)\s+(\w+)/) {
+	#    $psparcel = $2;
+	#}
+
+	# If the parcels conflict, then print message and exit
+	if (conflicting($$, $cmd, $parcel, $pspid, $pscmd, $psparcel)) {
+	    errexit("Conflicts with existing process \"isr $pscmd -p $psparcel\" (pid=$pspid)"); 
+	}
+    }
+    close(PS);
+}
+
+#
+# conflicting - Returns true if the current process (pid) conflicts with 
+#               an already existing process (pspid) culled from ps
+#
+sub conflicting($$$$$$) {
+    my $pid = shift;
+    my $cmd = shift;
+    my $parcel = shift;
+    my $pspid = shift;
+    my$pscmd = shift;
+    my $psparcel = shift;
+
+    # A command never conflicts with itself
+    if ($pid == $pspid) {
+	return 0;
+    }
+
+    # Some commands conflict with everything
+    if ($cmd eq "update" or $pscmd eq "update") {
+	return 1;
+    }
+
+    # Some commands never conflict, regardless of the parcels they manipulate
+    if ($cmd eq "ls" or $pscmd eq "ls" or
+	$cmd eq "auth" or $pscmd eq "auth" or
+	$cmd eq "checkparcel" or $pscmd eq "checkparcel" or
+	$cmd eq "deauth" or $pscmd eq "deauth" or
+	$cmd eq "reset" or $pscmd eq "reset" or
+	$cmd eq "stat" or $pscmd eq "stat" or
+	$cmd eq "passwd" or $pscmd eq "passwd") {
+	return 0;
+    }
+
+    # Resume always conflicts with itself, regardless of the parcel 
+    # the two instances are manipulating
+    if ($cmd eq "resume" and $pscmd eq "resume") {
+	return 1;
+    }
+
+    # For the remaining commands, different parcels implies no
+    # conflict If two commands operate on the same parcel, then they
+    # are in conflict, except in cases where exactly one of those
+    # commands is hoarding.
+    if ($parcel ne $psparcel) {
+	return 0;
+    }
+    else {
+	if (($cmd eq "hoard") or ($pscmd eq "hoard")) {
+	    if (!($cmd eq "hoard" and $pscmd eq "hoard")) {
+		return 0;
+	    }	
+	    else {
+		return 1;
+	    }
+	}
+    }
+
+    # Be conservative and assume a conflict
+    return 1;
+}
+
+#
+# cleantmp - Clean up any stray tmp files created by this process
+#
+sub cleantmp () {
+    system("rm -f /tmp/*.$$");
+    system("rm -rf /tmp/parcel* /tmp/VERSION.srv /tmp/ls.* > /dev/null 2>&1");
+    system("rm -rf $isrdir/tmplast*");
+}
+
+######
+# Error reporting routines
+#
+
+#
+# err - Print an error message without exiting
+#
+sub err ($) {
+    my $msg = shift;
+
+    my $progname;
+
+    # Strip any path information from the program name
+    ($progname = $0) =~ s#.*/##s; 
+
+    print "[$progname] Warning: $msg\n";
+    message("ERROR", "[$progname] Warning: $msg");
+}
+
+#
+# unix_err - Print an error message (with Unix strerr)
+#
+sub unix_err ($) {
+    my $msg = shift;
+
+    my $progname;
+
+    # Strip any path information from the program name
+    ($progname = $0) =~ s#.*/##s; 
+
+    print "[$progname] Warning: $msg ($!)\n";
+    message("ERROR", "[$progname] Warning: $msg");
+}
+
+#
+# errexit - Print an error message and exit
+#
+sub errexit ($) {
+    my $msg = shift;
+
+    my $progname;
+
+    # Strip any path information from the program name
+    ($progname = $0) =~ s#.*/##s; 
+
+    print RED, "[$progname] Error: $msg\n", RESET;
+    message("ERROR", "[$progname] Error: $msg");
+    message("EXIT" , "$Isr::EINVAL");
+    cleantmp();
+    exit $Isr::EINVAL;
+}
+
+#
+# unix_errexit - Print an error message (with Unix strerr) and exit
+#
+sub unix_errexit ($) {
+    my $msg = shift;
+
+    my $progname;
+
+    # Strip any path information from the program name
+    ($progname = $0) =~ s#.*/##s; 
+
+    print RED, "[$progname] Error: $msg ($!)\n", RESET;
+    message("ERROR", "[$progname] Error: $msg ($!)");
+    message("EXIT", "$Isr::EINVAL");
+    cleantmp();
+    exit $Isr::EINVAL;
+}
+
+#
+# system_errexit - Print an error and exit after the system() function fails
+#
+sub system_errexit ($) {
+    my $msg = shift;
+
+    my $exit_value = $? >> 8;
+    my $progname;
+
+    # Strip any path information from the program name
+    ($progname = $0) =~ s#.*/##s; 
+
+    # $? is the wait() style return value. $! is strerr[errno]
+    # $exit_value  = $? >> 8;
+    # $signal_num  = $? & 127;
+    # $dumped_core = $? & 128;
+    print RED, "[$progname] Error: $msg\n", RESET;
+    message("ERROR", "[$progname] Error: $msg");
+    message("EXIT", "$exit_value");
+
+    # Pass the callee's exit value back to the caller
+    cleantmp();
+    exit $exit_value; 
+}
+
+#
+# system_err - Print an error after the system() function fails
+#
+sub system_err ($) {
+    my $msg = shift;
+
+    my $exit_value = $? >> 8;
+    my $progname;
+
+    # Strip any path information from the program name
+    ($progname = $0) =~ s#.*/##s; 
+
+    # $? is the wait() style return value. $! is strerr[errno]
+    # $exit_value  = $? >> 8;
+    # $signal_num  = $? & 127;
+    # $dumped_core = $? & 128;
+    print RED, "[$progname] Error: $msg\n", RESET;
+    message("ERROR", "[$progname] Error: $msg");
+}
+
+#
+# message - Emits a message to the ISR client side session log
+#
+sub message($$) {
+    my $event = shift;
+    my $msg = shift;
+
+    my $date = localtime();
+    my $isrdir = "$ENV{HOME}/.isr/$userid";
+    my $string = message_string();
+
+    open(LOG, ">>$isrdir/$Isr::LOGFILE")
+	or return;
+    print LOG "$date|$event|$string|$msg\n";
+    close(LOG);
+}
+
+#
+# message_string - returns the inner fields of a log message string
+#
+sub message_string {
+    my $hostname = hostname();
+
+    return "$userid|$$|$hostid:$sessionid|$hostname|$cfg{PROTOCOL}|$Isr::NAMESRV|$parcel";
+}
+
+#
+# mysystem - Version of Unix 'system' function that can be 
+#            interrupted with ctrl-c
+#
+sub mysystem ($) {
+    my $cmd = shift;
+
+    if (!defined($pid = fork())) {
+	unix_errexit("Unable to fork in mysystem");
+    } 
+
+    # Child
+    elsif ($pid == 0) {
+	exec($cmd);
+	unix_errexit("Unable to exec $cmd in mysystem");
+    } 
+
+    # Parent
+    waitpid($pid, 0);
+    return $?; # Return exit status of the child
+}
+
+#
+# query - Ask the user a question and return the reply
+#
+sub query {
+    my $question = shift;
+
+    my $reply;
+
+    print RED, "$question (y/n): ", RESET;
+    $reply = <STDIN>;
+    chomp($reply);
+
+    # Keep asking until the user replies either y or n
+    while ($reply ne "y" and $reply ne "n") {
+	print RED, "$question (y/n): ", RESET;
+	$reply = <STDIN>;
+	chomp($reply);
+    }
+    return $reply;
+}
+
+#
+# mypause - Pause and then continue on 'y' and exit on 'n'
+#
+sub mypause($) {
+    my $msg = shift;
+
+    my $reply;
+
+    if ($main::verbose > 1) {
+	$reply = query($msg);
+	if ($reply eq "n") {
+	    exit;
+	}
+    }
+}
+
+#
+# usage - Print help message and terminate
+#
+sub usage ($) {
+    my $msg = shift;
+    my $progname;
+
+    # Strip any path information from the program name
+    ($progname = $0) =~ s#.*/##s; 
+
+    if ($msg) {
+        print RED, "Error: $msg\n", RESET;
+    }
+
+    message ("INFO", "Usage");
+
+    print RED, "Usage: $progname command [options...]\n", RESET;
+    print BLUE, "Commands: auth, checkin (ci), checkout (co), checkp, clean, deauth, discard,\n", RESET;
+    print BLUE, "          disconnect, hoard, ls, passwd, reset, resume, stat, sync, update\n", RESET;
+    if ($help > 0) {
+	print "Basic commands:\n";
+	print "  auth       Authenticate to the ISR servers (once per X session only).\n";
+	print "  checkin    Sync parcel to server and release lock (-b optional).\n";
+	print "  checkout   Fetch parcel from server and acquire its lock (-v optional).\n";
+	print "  checkp     Check parcel on server for consistency (-v and -c optional).\n";
+	print "  clean      Remove parcel from client and release its lock (-a optional).\n";
+	print "  deauth     Remove authentication credentials from your client.\n";
+	print "  discard    Discard all local changes to parcel since last checkout or sync.\n";
+	print "  disconnect Prepare the client to run a parcel disconnected (-x optional).\n";
+	print "  hoard      Fetch entire virtual disk so you can run disconnected.\n";
+	print "  ls         List info about your parcels (-p, -l and -L optional).\n";
+	print "  passwd     Change your ISR password on the default nameserver.\n";
+ 	print "  reset      Reset ISR runtime.\n";
+ 	print "  resume     Checkout (if necessary) and run a parcel (-v and -d optional).\n";
+	print "  stat       Display information about local ISR state (-c optional).\n";
+	print "  sync       Make new parcel version on server w/o releasing lock (-b optional).\n";
+	print "  update     Install a new version of ISR, if available.\n";
+    }
+    print "Options:\n";
+    print "  -a,--allstate      Remove all hoarded state from client [clean].\n";
+    print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [ci, sync].\n";
+    print "  -c,--checkstate    Do additional consistency check [checkp, stat].\n";
+    print "  -d,--disconnected  Run disconnected (after hoarding) [resume].\n";
+    print "  -h,--help          Print help message.\n";
+    print "  -l,--long          Long listing with default number of versions [ls].\n";
+    print "  -L,--longvers      Long listing with specific number of versions [ls].\n";
+    print "  -n,--nameserver    Name server domain name (optional).\n";    
+    print "  -p,--parcel        Parcel name (required by most commands).\n";    
+    print "  -q,--quiet         Run silently (except if things go wrong).\n";    
+    print "  -r,--revision      Print revision number and exit.\n";    
+    print "  -u,--user          Your ISR user name (defaults to your login name).\n";    
+    print "  -v,--version       Rollback to or check version [co, checkp].\n";
+    print "  -V,--verbose       Increment verbosity level.\n";
+    print "  -x,--nocheckstate  Skip consistency check [ci, sync, disconnect].\n";
+    print "  -X,--noauto        Don't automatically start/stop VMWare [resume].\n";
+    print "\n";
+    
+    message("EXIT", "0");
+    cleantmp();
+    exit 0;
+
+}
+

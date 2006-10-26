@@ -1,0 +1,26 @@
+#!/bin/bash
+#
+# vulpes - This shell script enables the clean shutdown of vulpes
+#
+# Author:  Casey Helfrich <casey.j.helfrich@intel.com>
+#
+
+# source function library
+. /etc/rc.d/init.d/functions
+
+stop() {
+	echo -n $"Terminating vulpes: "
+	killall -s USR2 vulpes
+	retval=$?
+	echo
+	return $retval
+}
+
+case "$1" in
+  stop) 
+	stop
+	;;
+  *)
+	echo $"Usage: $0 {stop}"
+	exit 1
+esac

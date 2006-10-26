@@ -1,0 +1,643 @@
+.\" =========================================================================
+.\" Copyright (c) 2004-2005 Carnegie Mellon University.
+.\" Copyright (c) 2003-2004 Intel Corp.  All rights reserved.
+.\"
+.\" See the accompanying file LICENSE, version 2004.10.05 or later
+.\" (the contents of which are also included in isr) for terms of use.
+.\" ==========================================================================
+.\"
+.\" $Id: isr.1,v 1.41 2005/10/02 14:33:52 mtoups Exp $
+.\"
+.TH ISR 1 "Aug 24, 2005"
+.LO 1
+
+.SH NAME
+isr \- Internet Suspend/Resume client program
+
+.SH SYNOPSIS
+.B isr 
+.I command
+.RB [ \-acdhlxqrV ]
+.RB [ \-p
+.IR parcel ]
+.RB [ \-u
+.IR userid ]
+.RB [ \-n
+.IR nameserver ]
+.RB [ \-v
+.IR version ]
+
+.I Commands: 
+.B auth, checkin (ci), checkout (co), checkp, clean, deauth, discard, disconnect, hoard, ls, passwd, reset, resume, run, stat, sync, update
+
+.SH DESCRIPTION
+An Internet Suspend/Resume (ISR) system is a collection of
+virtual machine
+.I parcels
+in a 
+.I remote store 
+consisting of a collection of 
+.I content servers, 
+a well-known 
+.I nameserver
+that contains location information about each parcel, and a 
+set of 
+.I client hosts,
+each loaded with the 
+.B isr
+client program and a 
+.I virtual machine monitor.  
+A parcel is a file tree that represents all of the state of some
+virtual machine in execution.  The remote store maintains checkpointed
+versions of each parcel.
+
+Each ISR user has a unique
+.I ISR userid
+and a corresponding 
+.I ISR password
+on the nameserver.
+Distinct ISR userids own disjoint sets of parcels. Parcels are not
+shared across ISR userids. At any point in time, a parcel can be
+checked out on at most one client host. A simple locking mechanism
+enforces this policy.
+
+
+The 
+.B isr
+client program provides commands to 
+.I checkout 
+(download) parcels from the remote
+store to the client host, 
+.I run 
+parcels on the client host, 
+.I checkin 
+(upload) parcels from the client
+host back to the remote store, query the status of parcels,
+authenticate to the ISR system, and change the ISR password.
+Downloading and running a parcel is known as 
+.I resuming
+the parcel. 
+Locally suspending the virtual machine monitor 
+and then uploading the parcel back
+to the server is known as
+.I suspending
+the parcel.
+
+The 
+.B isr
+client program also provides a command to
+.B hoard
+parcel state into a persistent 
+.I hoard cache
+on the client host.
+Each parcel has its own separate hoard cache. 
+A fully-hoarded parcel contains the entire virtual disk state 
+in its hoard cache, and thus can be
+resumed
+.I disconnected,
+without a network connection. Use the 
+.B stat
+command to view the state of a parcel's hoard cache on your client. 
+
+You can safely attempt to interrupt any
+.B isr
+command at any time by typing control-c (SIGINT).  Regions of commands
+that should not be interrupted will ignore these SIGINT signals.
+
+On a particular client host, the
+.I default nameserver
+is given by the 
+.I NAMESRV 
+variable in 
+.I /usr/local/isr/bin/Isr.pm. 
+If necessary, however, this can be overridden by
+the
+.B -n 
+command line option.
+
+By default, the 
+.I current ISR userid
+is the current Unix login name. This can be overridden by 
+setting the
+.I USERID
+variable in 
+.I /usr/local/isr/bin/Isruser.pm,
+which in turn can be overridden by specifying the  
+.B -u
+option on the command line.
+
+.SH COMMANDS 
+
+.TP
+.BI "isr auth"
+Authenticate to the ISR servers. You will be prompted for your ISR
+password.  Run this command once, at the beginning of each X session
+to avoid having to keep typing your ISR password.
+
+
+.TP
+.BI "isr checkin(ci) -p " "parcel " " [-b " "KBytes/s" "]"
+Checkin a 
+.I parcel 
+to the remote store. This command creates a new checkpointed version
+of the parcel in the remote store, and then releases a lock on the
+parcel so that it can be resumed by other client hosts.
+The 
+.BI -b 
+.I KBytes/s
+option limits the upload bandwidth to 
+.I KBytes/s.
+
+The
+.B checkin
+command is 
+.I idempotent, 
+meaning that it can be safely interrupted with ctrl-c and rerun until
+it successfully completes.
+
+.TP
+.BI "isr checkout(co) -p " "parcel" " [-v " "oldversion" "]"
+Download  a 
+.I parcel 
+from the remote store without running it. 
+The
+.B -v
+option allows you to rollback to previous parcel versions, 
+as described in the documentation for the 
+.B resume
+command. The 
+.B checkout
+command is normally subsumed by the 
+.B resume 
+command. However, it can be useful in some situations.
+For example, you might want to 
+use the 
+.B stat
+command (which requires the parcel to be checked out) 
+before you actually run the parcel.
+
+
+.TP
+.BI "isr checkp -p " "parcel" " [-v " "version" "] [-c]" 
+This is a debugging command that checks a 
+.I version
+of a 
+.I parcel 
+on the server for consistency. Checks the most recent version
+by default. The 
+.B -c
+option performs an additional (and time-consuming) content consistency
+check.
+
+.TP
+.BI "isr clean -p " "parcel" " [-a]"
+Remove  
+.I parcel 
+from the client host and forcibly release its
+server lock. The 
+.B -a
+option removes 
+.I all 
+local parcel state, including any persistent state in the parcel's
+hoard cache. This command can be used to release the lock on a parcel
+from any machine, which is handy if you've forgotten to checkin the
+parcel and want to use it from another machine.
+
+.TP
+.BI "isr deauth" 
+Remove the authentication credentials that were established by the
+.B auth
+command.
+
+.TP
+.BI "isr discard -p " "parcel"
+Discard all local client changes to 
+.I parcel 
+since the last 
+.B checkout
+or 
+.B sync.  
+This command can be useful for speeding up the
+.B checkin 
+command after brief ISR sessions where you don't need to save any of
+the changes you made. It is also useful for "micro-rollbacks" that allow 
+you to recover from mistakes during the current session. For example, 
+if you inadvertently type "rm -rf /bin" as root in the guest, the
+.B
+discard 
+command will allow you to rollback to the parcel that existed at the time
+of the most recent 
+.B
+checkout 
+or
+.B
+sync
+command.
+
+.TP
+.BI "isr disconnect -p " "parcel" " [-x]"
+Prepare the host client so that it can safely 
+.B resume 
+.I parcel 
+disconnected from the network. You should always run this command before
+attempting to resume a parcel in disconnected mode.  By default, the
+.B disconnect 
+command is somewhat conservative, performing a lengthy internal
+consistency check of the hoard cache. You can skip the consistency
+check with the
+.B -x
+option. 
+
+.TP
+.BI "isr hoard -p " "parcel"
+Fetch the parcel's entire virtual disk into the parcel's 
+.I hoard cache
+on the client. This command
+fetches only the blocks that are missing on the client. You can kill
+it with
+.B ctrl-c
+and rerun it as many times as you wish without any ill effects. 
+
+You can hoard a parcel anytime and anywhere, even if other
+.B isr 
+commands are currently running, and even if the parcel is not
+currently checked out on the client host.
+
+.TP
+.BI "isr ls [-p " " parcel" "] [-l|-L " "n" "]"
+List information about your parcels. By default, this command displays
+the status of all of the user's parcels that are managed by the
+default nameserver. The display identifies the nameserver, and then for
+each parcel, prints a single line with the name, the location of the
+content server in the remote store, the current lock status
+.I (acquired 
+or 
+.I released), 
+the user and client host that last changed the lock status, and the
+time of that change.  
+
+The
+.B -p
+option requests information about a specific parcel.
+The 
+.B -L
+option requests a long listing format, printing 
+additional information about the 
+.I n
+most recent parcel versions.
+The 
+.B -l 
+option is similar, printing information for some
+small default number of the most recent versions.
+
+
+.TP
+.BI "isr passwd " 
+Change your ISR password.
+This command does 
+.B NOT 
+change the password of the Unix login
+account on your client host. (Use the local
+.B passwd
+command for that.)  
+
+.TP
+.BI "isr reset -p " "parcel" " [-a]"
+This command resets the ISR runtime.
+If the client gets into an inconsistent state, try this command
+before rebooting.
+  
+.TP
+.BI "isr resume -p " "parcel" " [-v " "oldversion" "] [-dX]"
+Checkout a 
+.I parcel
+(if necessary) and then run it. 
+This command acquires a lock on the parcel and
+downloads the minimum amount of virtual machine state needed to
+run the parcel on the client host. Any additional state that the parcel
+needs while it is running will be demand paged from the remote store.
+
+By default, the 
+.B resume
+command downloads the most recent parcel
+version. However, you can rollback to previous parcel versions using
+the
+.BI -v 
+.I oldversion
+option. Let 
+.I lastversion
+be the most recent parcel version on the remote store. Then
+.B -v 
+.I oldversion
+causes the remote store to first create a new version
+.I lastversion+1
+that is an identical copy  of version
+.I oldversion.
+This new version, which is now the most recent version, 
+is then downloaded as before. 
+
+By default, the 
+.B resume 
+command requires a network connection. 
+However, if the parcel is fully
+.B hoarded
+then you can use the 
+.B -d
+option to resume
+.I disconnected.
+Running the 
+.B disconnect
+or
+.B hoard
+commands before resuming disconnected will ensure that 
+the parcel is fully hoarded. 
+
+
+The 
+.B -X 
+option is useful for configuring the virtual machine monitor,
+landing control in the virtual machine monitor when the
+the parcel is resumed and suspended.
+
+.TP
+.BI "isr stat -p " "parcel" " [-c]"
+Display information about the local state of a 
+.I parcel,
+such as the amount of state demand paged from the remote
+store, the amount of dirty state, the amount of state that
+is hoarded in the persistent hoard cache. The 
+.B -c
+option will also check the consistency of the local 
+cache and the hoard cache. The
+.I parcel
+must be checked out in order to use the
+.B stat
+command.
+
+.TP
+.BI "isr sync -p " "parcel " " [-b " "KBytes/s" "]"
+Save a new checkpointed version of 
+.I 
+parcel 
+in the remote store, without releasing the lock or 
+.B discarding 
+any of the current local state. You can
+.B sync
+as often as you like between 
+.B run
+commands. 
+The 
+.BI -b 
+.I KBytes/s
+option limits the upload bandwidth to 
+.I KBytes/s.
+
+The
+.B sync
+command is 
+.I idempotent, 
+meaning that it can be safely interrupted with ctrl-c and rerun until
+it successfully completes.
+
+
+.TP
+.BI "isr update"
+Install a new version of the ISR client software, if it is available.
+
+.SH OPTIONS
+Each option has equivalent short and long forms.
+.TP
+.B -a/--allstate
+Remove all parcel state, including any persistent state in the 
+hoard cache, during the
+.B reset
+command. 
+
+.TP
+.BI -b/--bwlimit " KBytes/s"
+Limit upload bandwidth 
+during
+.B checkin
+and 
+.B sync
+to 
+.I KBytes/s.
+
+
+.TP
+.B -c/--checkstate
+Perform an additional content consistency check during the 
+.B stat
+command
+and 
+.B checkparcel
+commands.
+
+.TP
+.B -d/--disconnected
+.B Resume
+disconnected (after hoarding).
+
+.TP
+.B -h/--help
+Print detailed usage information and exit. 
+
+.TP
+.B -l/--long
+Use long listing format for the 
+.B ls
+command, printing information about some small default 
+number of the most recent parcel versions.
+
+.TP
+.BI -L/--longvers " n"
+Use long listing format for the 
+.B ls
+command, printing information about the 
+.I n
+most recent parcel versions.
+
+.TP
+.BI -n/--nameserver " name"
+Override the default nameserver to be 
+.I name,
+which is either a fully qualified domain name or an IP address.
+
+.TP
+.BI -p/--parcel " parcel"
+Specify the name of the parcel.
+This option is required by most commands.
+(Use the 
+.B isr ls
+command to get the list of available parcels.)
+
+.TP
+.B -q/--quiet
+Run silently (except if things go wrong).
+
+.TP
+.B -r/--revision
+Print information about the client program's revision level and then exit.
+.TP
+.BI -u/--user " userid"
+By default, the current ISR userid is the current Unix login name
+or the value of the
+.I USERID
+variable in 
+.I /usr/local/isr/bin/Isruser.pm.
+This
+option overrides both of these and sets the current ISR userid to be
+.I userid.
+
+.TP
+.BI -v/--version " version"
+Optional parcel version number for the 
+.B checkout
+and
+.B checkp
+commands. For 
+.B checkout
+it determines the parcel
+.I version 
+to rollback to. For
+.B checkp
+it determines the parcel
+.I version
+to check for consistency.
+
+.TP
+.B -V/--verbose
+Increment the verbosity level. 
+
+.TP
+.B -x/--nocheckstate
+This option speeds up the 
+.B disconnect
+command by skipping the lengthy internal consistency check
+of the hoard cache. 
+
+It is provided as a debugging option to the
+.B sync
+and 
+.B ci
+commands, in which case it skips the content consistency check
+of a parcel before and after a new version is committed to the server.
+
+.TP
+.B -X/--noauto
+When the parcel is resumed, control lands in the virtual machine monitor
+instead of the parcel. Similarly, when the parcel is suspended,
+control lands back in the monitor instead of returning to 
+.B isr.
+This is a debugging option that is not intended for everyday use.
+
+.SH EXAMPLES
+
+In the following, suppose that your Unix login name is 
+.I isruser
+and that your ISR userid is 
+.I bovik.
+Then here is how you might use
+.B isr
+during a typical day: 
+
+After arriving at work, you login to your ISR client host using the
+Linux login name
+.I isruser
+and then start up X windows. Next, you will need to 
+authenticate to the ISR servers,
+
+.RS
+\fCisruser> isr auth\fP
+.RE
+
+which prompts you for your ISR password.  You are now authenticated
+and will not need to type this password again until you either explicitly
+.B deauth
+or terminate the X session.  
+
+After listing your available parcels,
+
+.RS
+\fCisruser> isr ls\fP
+.RE
+
+you decide to resume the Windows parcel called 
+.I winxp
+in connected mode:
+
+.RS
+\fCisruser> isr resume -p winxp\fP
+.RE
+
+This downloads parcel
+.I winxp
+(if necessary)
+and executes it inside the virtual machine monitor (VMM).
+
+After running the parcel all morning, you realize you need to head out
+to a lunch meeting in a conference room with poor wireless
+connectivity. So you suspend the current running parcel, which causes
+the VMM to return control to the Linux shell.  After making sure that
+it is safe to run disconnected (i.e., your parcel state is hoarded), 
+
+.RS
+\fCisruser> isr disconnect -p winxp -x\fP
+.RE
+
+you unplug the network cable, carry your laptop to the noon meeting, 
+and then run you parcel disconnected during the meeting:
+
+.RS
+\fCisruser> isr resume -p winxp -d\fP
+.RE
+
+After the meeting, you head back to the office, plug your network
+cable back in, and create a checkpointed version of your current
+parcel state on the remote store:
+
+.RS
+\fCisruser> isr sync -p winxp\fP
+.RE
+
+After running connected for the rest of the day, it's time to head
+home. So you terminate the ISR session by checking in your parcel:
+
+.RS
+\fCisruser> isr ci -p winxp\fP
+.RE
+
+Once home, you login to your home ISR client, authenticate to the ISR
+servers, and then checkout the parcel that you were working on at work:
+
+.RS
+\fCisruser> isr resume -p winxp\fP
+.RE
+
+And so on...
+
+.SH FILES
+.TP
+.I /usr/local/isr/bin/isr
+The ISR client program.
+
+.TP
+.I /usr/local/isr/bin/Isr.pm
+Configuration file that specifies system-specific information
+
+.TP
+.I /usr/local/isr/bin/Isruser.pm
+Configuration file that specifies user-specific information such
+as the default ISR userid on this machine.
+
+.TP
+.I /usr/local/isr/bin/vulpes
+The user level process that demand pages state from the
+remote store while the parcel is running.
+
+.SH ACKNOWLEDGMENTS
+ISR was developed by Michael Kozuch and Casey Helfrich from Intel
+Research Pittsburgh, David O'Hallaron, Mahedev (Satya) Satyananrayanan,
+and Matt Toups from Carnegie Mellon, and Partho Nath from Penn State. 
+
+.\" end of file
