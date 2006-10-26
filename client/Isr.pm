@@ -4,7 +4,7 @@ package Isr;
 # Isr.pm - Module that exports system-level config info to 
 #          ISR clients
 #
-# $Id: Isr.pm,v 1.20 2005/11/02 17:01:13 mtoups Exp $
+# $Id$
 ##############################################################
 
 # Default name server domain name (override with -n)

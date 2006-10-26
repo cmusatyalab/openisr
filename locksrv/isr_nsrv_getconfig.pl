@@ -3,7 +3,7 @@
 ###################################################################
 # isr_nsrv_getconfig.pl - Fetch the parcel.cfg file from name server
 #
-# $Id: isr_nsrv_getconfig.pl,v 1.6 2004/11/05 18:52:39 droh Exp $
+# $Id$
 ###################################################################
 
 #

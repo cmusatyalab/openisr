@@ -4,7 +4,7 @@ package Isr;
 # Isruser.pm - Module that exports user-level config info 
 #              to ISR clients
 #
-# $Id: Isruser.pm,v 1.5 2005/09/16 18:20:43 mtoups Exp $
+# $Id$
 ##############################################################
 
 # Default userid (override with -u)

@@ -3,7 +3,7 @@
 ###################################################################
 # isr_nsrv_listparcels.pl - List the parcels available to a user
 #
-# $Id: isr_nsrv_listparcels.pl,v 1.6 2004/11/05 18:52:39 droh Exp $
+# $Id$
 ###################################################################
 
 #
