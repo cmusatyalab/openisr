@@ -238,7 +238,6 @@ static int stat_wrapper(int ver, const char *filename, void *buf,
 
 #define min(a,b) ((a) < (b) ? (a) : (b))
 
-/* XXX do we need geometry compatibility with fauxide? */
 static void fill_geo(struct hd_geometry *geo, uint64_t sects)
 {
 	uint64_t cyls;
