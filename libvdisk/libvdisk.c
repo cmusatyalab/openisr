@@ -17,7 +17,7 @@
 #include <pthread.h>
 #include "revision.h"
 
-#define DEBUG
+#undef DEBUG
 #define MAXPATHLEN 512
 
 static int (*open_real)(const char *pathname, int flags, ...);
@@ -235,9 +235,9 @@ static int stat_wrapper(int ver, const char *filename, void *buf,
 	return ret;
 }
 
-/* XXX in case of small disks we should make an effort to waste less space */
+#define min(a,b) ((a) < (b) ? (a) : (b))
+
 /* XXX do we need geometry compatibility with fauxide? */
-/* XXX fdisk params are wrong.  check what fauxide does */
 static void fill_geo(struct hd_geometry *geo, uint64_t sects)
 {
 	uint64_t cyls;
@@ -245,25 +245,33 @@ static void fill_geo(struct hd_geometry *geo, uint64_t sects)
 	geo->heads=255;
 	geo->sectors=63;
 	/* We must round down in case of a partial cylinder */
-	cyls=sects/(geo->heads*geo->sectors);
-	/* This makes no sense, but matches what the kernel does */
-	geo->cylinders=cyls % 65536;
+	cyls=sects / (geo->heads * geo->sectors);
+	geo->cylinders=min(cyls, 65535);
 }
 
+/* Based on a very loose reading of ATA-7 draft 4a and ATA-4 draft 18
+   (the last version that provided C/H/S values). */
 static void fill_driveid(struct hd_driveid *id, uint64_t sects)
 {
 	uint64_t cyls;
 	memset(id, 0, sizeof(*id));
-	id->heads=16;
-	id->sectors=63;
-	cyls=sects/(id->heads*id->sectors);
-	id->cyls=cyls;
-	if (cyls > 16383)
-		id->cyls=16383;
-	id->capability=0x2;  /* LBA */
-	id->lba_capacity=sects;
-	if (sects > ((uint32_t)-1))
-		id->lba_capacity=((uint32_t)-1);
+	id->heads=id->cur_heads=16;
+	id->sectors=id->cur_sectors=63;
+	/* We must round down in case of a partial cylinder */
+	cyls=sects / (id->heads * id->sectors);
+	id->cyls=id->cur_cyls=min(cyls, 16383);
+	/* The ATA standard pads these with spaces, but the kernel converts
+	   the spaces to nulls, and in the "model" case ensures that the string
+	   is null-terminated.  To be safe we make all of the strings
+	   null-terminated. */
+	snprintf(id->model,     40, "libvdisk");
+	snprintf(id->fw_rev,     8, "0");
+	snprintf(id->serial_no, 20, "0");
+	id->capability=0x2;        /* LBA */
+	id->command_set_2=0x4400;  /* 48-bit LBA */
+	id->lba_capacity=min(sects, 0x0fffffff);
+	id->cur_capacity0=(unsigned short)(id->lba_capacity & 0xffff);
+	id->cur_capacity1=(unsigned short)(id->lba_capacity >> 16);
 	id->lba_capacity_2=sects;
 }
 
