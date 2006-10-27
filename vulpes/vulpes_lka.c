@@ -61,7 +61,7 @@ static vulpes_lka_return_t copy_file(const char *dest, const char *src)
   int bytes_remaining;
   int bytes_read=0;
   
-  // Check the existence of the source file
+  /* Check the existence of the source file */
   int inf=open(src, O_RDONLY);
   if(inf == -1) {
 #ifdef DEBUG
@@ -74,13 +74,13 @@ static vulpes_lka_return_t copy_file(const char *dest, const char *src)
 #endif
   }
 
-  // Determine the bytes_remaining
+  /* Determine the bytes_remaining */
   if(( bytes_remaining = get_filesize(inf)) == 0) {
     close(inf);
     return VULPES_LKA_RETURN_ERROR;
   }
   
-  // Open the destination for writing
+  /* Open the destination for writing */
   int outf = open(dest, O_RDWR|O_CREAT|O_EXCL|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
   if(outf == -1) {
     int tmp=errno;
@@ -88,18 +88,18 @@ static vulpes_lka_return_t copy_file(const char *dest, const char *src)
     return ((tmp==EEXIST) ? VULPES_LKA_RETURN_FILE_EXISTS : VULPES_LKA_RETURN_FILE_OPEN_FAILED);
   }
   
-  // Copy the source to the destination
+  /* Copy the source to the destination */
   while((bytes_remaining > 0) 
 	&& ((bytes_read=read(inf, rdbuf, rdbuf_size)) > 0)) {
     int to_write = bytes_read;
     int written;
     
-    // write bytes_read bytes
+    /* write bytes_read bytes */
     while(to_write > 0) {
-      // do the write
+      /* do the write */
       written = write(outf, rdbuf, to_write);
       
-      // check the bytes written
+      /* check the bytes written */
       if(written > 0) {
 	to_write -= written;
       } else {
@@ -127,28 +127,27 @@ copy_to_file(struct lka_provider *prov, const void *tag,
   char *cptr;
   int i;
 
-  // Form the source file name
-  // Check the source file name bound
+  /* Form the source file name.  Check the source file name bound. */
   switch(prov->tag_type) {
   case VULPES_LKA_TAG_SHA1:
     {
       unsigned char *sha1value = (unsigned char*)tag;
 
-      // A 20-byte SHA-1 tag will become a 40-byte ASCII name + up to 3 slashes
+      /* A 20-byte SHA-1 tag will become a 40-byte ASCII name + up to 3 slashes */
       if(strlen(prov->root) + 40 + 3 + 1 > sizeof(buffer)) return VULPES_LKA_RETURN_ERROR;
-      // Copy the root
+      /* Copy the root */
       strncpy(buffer, prov->root, MAX_LKA_STRING_LEN);
       cptr=buffer+strlen(buffer);
-      // Append a slash
+      /* Append a slash */
       *cptr++='/';
-      // Convert the tag to a filename
+      /* Convert the tag to a filename */
       for(i=0; i<20; i++) {
 	int bytes;
 	bytes = sprintf(cptr, "%02X", sha1value[i]);
 	if(bytes >= 0) cptr+=bytes;
 	else return VULPES_LKA_RETURN_ERROR;
       }
-      // Add a null for safety
+      /* Add a null for safety */
       *cptr++='\0';
     }
     break;
@@ -156,10 +155,10 @@ copy_to_file(struct lka_provider *prov, const void *tag,
     return VULPES_LKA_RETURN_ERROR;
   }
 
-  // Copy the source to the destination
+  /* Copy the source to the destination */
   result = copy_file(dst_filename, buffer);
 
-  // Copy the source file name
+  /* Copy the source file name */
   if((result==VULPES_LKA_RETURN_SUCCESS) && (src_filename!=NULL)) {
     char *srcbuf;
     int srcbuf_size;
@@ -223,7 +222,7 @@ vulpes_lka_add(vulpes_lka_svc_t svc, lka_type_t type, vulpes_lka_tag_t tag_type,
 
   if(svc == NULL) return VULPES_LKA_RETURN_ERROR;
 
-  // check the length of root
+  /* check the length of root */
   len=strlen(root);
   if((len > MAX_LKA_STRING_LEN) || (len == 0)) {
     return VULPES_LKA_RETURN_ERROR;
@@ -231,7 +230,7 @@ vulpes_lka_add(vulpes_lka_svc_t svc, lka_type_t type, vulpes_lka_tag_t tag_type,
   
   switch (type) {
   case LKA_HFS:
-    // ensure that root is an absolute path
+    /* ensure that root is an absolute path */
     if(root[0] != '/') return VULPES_LKA_RETURN_ERROR;
     break;
   default:
