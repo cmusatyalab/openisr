@@ -16,6 +16,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #ifndef VULPES_MAP_H_
 #define VULPES_MAP_H_
 
+#include "fauxide.h"
 #include "vulpes_lka.h"
 
 typedef int transfer_type_t;

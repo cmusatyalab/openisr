@@ -21,15 +21,11 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <sys/stat.h>
 #include <errno.h>
 #include <zlib.h>
-
 #include "fauxide.h"
 #include "vulpes_map.h"
 #include "vulpes_fids.h"
 #include "vulpes_lev1_encryption.h"
 #include "vulpes_lev1.h"
-#include <curl/curl.h>
-#include <curl/types.h>
-#include <curl/easy.h>
 #include "vulpes_log.h"
 #include <sys/time.h>
 
@@ -84,99 +80,10 @@ static int form_chunk_file_name(char *buffer, int bufsize,
 				const char *rootname,
 				unsigned dir, unsigned chunk);
 
-
-/* various functions to enable HTTP transport via the CURL library */
-typedef struct curl_buffer_s {
-  char *buf;
-  size_t size;
-  size_t maxsize;
-} curl_buffer_t;
-static CURL *curl_handle;
-static curl_buffer_t* curl_buffer;
-static char curl_error_buffer[CURL_ERROR_SIZE];
-
-static void destroy_curl(void)
-{
-  curl_easy_cleanup(curl_handle);
-  free(curl_buffer->buf);
-  free(curl_buffer);
-}
-
-/* the curl writeback function */
-/* TODO: should check for buffer overflows and report it back somehow */
-size_t curl_write_callback_function(char* curlbuf, size_t size, size_t nitems,
-				    void *myPtr)
-{
-  size_t totSize = size*nitems;
-  curl_buffer_t* ptr = (curl_buffer_t *)myPtr;
-  
-  char* nxtWrite= &(ptr->buf[ptr->size]);
-  if (totSize > ptr->maxsize - ptr->size)
-      totSize = ptr->maxsize - ptr->size;
-  memcpy(nxtWrite,curlbuf,totSize);
-  ptr->size += totSize;
-  
-  return totSize;
-}
-
-/* warning: not thread-safe(same as rest of vulpes!) */
-static __inline
-void init_curl(const vulpes_mapping_t *map_ptr)
-{
-  /*if (doneOnce)
-    return;
-    else
-    doneOnce++;
-    
-    curl_global_init(CURL_GLOBAL_ALL);*/
-  
-  /* init the curl session */
-  curl_handle = curl_easy_init();
-  
-  /* announce vulpes as "the agent"*/
-  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "vulpes-agent/1.0");
-  
-  /* disable use of signals - dont want bad interactions with vulpes */
-  curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1);
-  
-  /* disable internal progress meter if any */
-  curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1);
-  
-  /* curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1);*/
-  
-  /* dont die when you have low speed networks */
-  curl_easy_setopt(curl_handle,CURLOPT_CONNECTTIMEOUT, 60);
-  curl_easy_setopt(curl_handle,CURLOPT_TIMEOUT, 60);
-  
-  /* set up the error buffer to trap errors */
-  memset(curl_error_buffer, 0, CURL_ERROR_SIZE);
-  curl_easy_setopt(curl_handle, CURLOPT_ERRORBUFFER, curl_error_buffer);
-  
-  /* set up proxies if any */
-  if ( (map_ptr->proxy_name) && (map_ptr->proxy_port))
-    {
-      curl_easy_setopt(curl_handle, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
-      curl_easy_setopt(curl_handle, CURLOPT_PROXY, (map_ptr->proxy_name));
-      curl_easy_setopt(curl_handle, CURLOPT_PROXYPORT, map_ptr->proxy_port);
-    }
-  
-  /* disable Nagle's algorithm 
-     curl_easy_setopt(curl_handle, CURLOPT_TCP_NODELAY, 1);*/
-  
-  lev1_mapping_special_t *spec= (lev1_mapping_special_t *) map_ptr->special;
-  curl_buffer = (curl_buffer_t*) malloc(sizeof(curl_buffer_t));
-  curl_buffer->size=0;
-  curl_buffer->maxsize=1.002*spec->chunksize_bytes+20;
-  curl_buffer->buf = malloc (curl_buffer->maxsize);
-  
-  /* register my write function */
-  curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_write_callback_function);
-  
-  /* pass the curl_buffer as the place to write to in callback function */
-  curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)curl_buffer);
-  
-  /* atexit(destroy_curl);*/
-}
+/* XXX for now */
+extern int local_get(char *buf, int *bufsize, const char *file);
+extern int http_get(const vulpes_mapping_t *map_ptr, char *buf, int *bufsize,
+	  	const char *url);
 
 /* AUXILLIARY FUNCTIONS */
 static __inline int cdp_is_rw(chunk_data_t * cdp)
@@ -500,8 +407,11 @@ valid_chunk_file(const unsigned char *filename,
 static int 
 lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr, unsigned chunk_num)
 {
-  int transport_medium=map_ptr->trxfer;
   lev1_mapping_special_t *spec;
+  char *buf;
+  int buflen;
+  int ret;
+  int fd;
   
   spec = (lev1_mapping_special_t *) map_ptr->special;
   
@@ -567,123 +477,65 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
     }
   }
   
-  if (transport_medium == LOCAL_TRANSPORT)
-    {
-#define LEV1COPYFILEBUFLEN 4096
-      char buf[LEV1COPYFILEBUFLEN];
-      int buflen = LEV1COPYFILEBUFLEN;
-      
-      int in_f;
-      int out_f;
-      int num;
-      
-      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","local_begin: %s %s",src,dst);
-      in_f = open(src, O_RDONLY);
-      if (in_f == -1) {
-	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","local: unable to open input %s",src);
-	return -1;
-      }
-      
-      out_f = open(dst, ( O_CREAT | O_RDWR | O_TRUNC), 0660);
-      if (out_f == -1) {
-	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","local: unable to open output %s",dst);
-	return -1;
-      }
-      
-      
-      while ((num = read(in_f, buf, buflen)) != 0) {
-	if (num == -1) {
-	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","local: unable to read input %s",src);
-	  return -1;
-	}
-	
-	if (write(out_f, buf, num) != num) {
-	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","local: unable to write output %s",dst);
-	  return -1;
-	}
-      }
-      
-      close(out_f);
-      close(in_f);
-      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","local_end: %s %s",src,dst);
-      
-      return 0;
-    }
+  buflen=1.002*spec->chunksize_bytes+20;
+  buf=malloc(buflen);
+  if (buf == NULL) {
+    vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","malloc failed");
+    return -1;
+  }
   
-  if (transport_medium == HTTP_TRANSPORT)
-    {
-      CURLcode retVal;
-      int retstatus=-1;
+  vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","begin_transport: %s %s",src,dst);
+  switch (map_ptr->trxfer) {
+  case LOCAL_TRANSPORT:
+    ret=local_get(buf, &buflen, src);
+    break;
+  case HTTP_TRANSPORT:
+    ret=http_get(map_ptr, buf, &buflen, src);
+    break;
+  default:
+    vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","unknown transport");
+    ret=-1;
+  }
+  vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","end_transport: %s %s",src,dst);
+  if (ret) {
+    goto out;
+  }
+  /* buflen has been updated with the length of the data */
+  
+  /* check retrieved data for validity */
+  if(!valid_chunk_buffer(buf, buflen, map_ptr, chunk_num)) {
+    vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","failure: %s buffer not valid",src);
+    ret=-1;
+    goto out;
+  }
 
-      /* init curl session */
-      init_curl(map_ptr);
-      
-      /* specify REMOTE FILE to get */
-      curl_easy_setopt(curl_handle, CURLOPT_URL, src);
-      
-      /* perform the get */
-      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","http_begin: %s %s",src,dst);
-      retVal=curl_easy_perform(curl_handle);
-      vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","http_end: %s %s",src,dst);
-      
-      /* check for get errors */
-      if ((strlen(curl_error_buffer)!=0) || (retVal!=0)) {
-	/* problems */
-	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","http: curl %s",
-		   curl_error_buffer);
-	/*
-	printf("Curl Error: %s\n",curl_error_buffer);
-	if (retVal!=0)
-	  printf("%s on error code %s\n",curl_error_buffer,
-		 curl_easy_strerror(retVal)); 
-	*/
-	retstatus=-1;
-      } else if(! valid_chunk_buffer(curl_buffer->buf, curl_buffer->size,
-				    map_ptr, chunk_num)) {
-	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","http get failure: %s buffer not valid",
-		   src);
-	retstatus=-1;
-      } else {
-	/* open cache file */
-	int fd; 
-	if ((fd=open(dst, O_CREAT|O_TRUNC|O_WRONLY,0660)) < 2) {
-	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","http copy failure: unable to open output %s",
-		     dst);
-	  close(fd);
-	  destroy_curl();
-	  return -1;
-	}
-
-	/* write to cache */
-	if(write(fd,curl_buffer->buf,curl_buffer->size) == curl_buffer->size) {
-	  vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","http copy success: %s %s",
-		     src,dst);
-	  /* close the cache file */
-	  close(fd);
-	  retstatus=0;
-	} else {
-	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","http copy failure: unable to write output %s",
-		     dst);
-	  /* delete the cache file */
-	  close(fd);
-	  if(unlink(dst)) {
-	    /* this is really serious. we've put a bad file in the cache 
-	       and can't remove it.
-	       TODO: ensure that we shut down from here */
-	    vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
-		       "!!! http unlink failure!!!: unable to unlink output %s",dst);
-	  }
-	  retstatus=-1;
-	}
-
+  /* open destination cache file */
+  if ((fd=open(dst, O_CREAT|O_TRUNC|O_WRONLY,0660)) == -1) {
+    vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","unable to open output %s",dst);
+    ret=-1;
+    goto out;
+  }
+  
+  /* write to cache */
+  if(write(fd, buf, buflen) != buflen) {
+      vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","unable to write output %s",dst);
+      /* delete the cache file */
+      close(fd);
+      if(unlink(dst)) {
+	/* this is really serious. we've put a bad file in the cache 
+	   and can't remove it.
+	   XXX: ensure that we shut down from here */
+	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
+		   "!!! unlink failure!!!: unable to unlink output %s",dst);
       }
-
-      /* return from http transport */
-      destroy_curl();
-      return retstatus;
-    }
-      
-  return -1;/* if we havent caught the transport type yet - return error */
+      ret=-1;
+  }
+  close(fd);
+  vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","end: %s %s",src,dst);
+  
+out:
+  free(buf);
+  return ret;
 }
 
 int lev1_reclaim(fid_t fid, void *data, int chunk_num)
