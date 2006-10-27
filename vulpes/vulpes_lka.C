@@ -17,13 +17,13 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <list>
 #include <string.h>
 #include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
 
 #include "vulpes_lka.h"
 #include "vulpes_log.h"
+#include "vulpes_util.h"
 
 /*
  * DEFINES
@@ -86,18 +86,6 @@ public:
 /*
  * LOCAL FUNCTIONS
  */
-static off_t get_filesize(int fileno)
-{
-    struct stat filestat;
-    
-    /* Get file statistics */
-    if (fstat(fileno, &filestat)) {
-      return (off_t) 0;
-    }
-
-    return filestat.st_size;
-}
-
 static vulpes_lka_return_t copy_file(const char *dest, const char *src)
 {
   const int rdbuf_size=4096;

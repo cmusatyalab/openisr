@@ -18,7 +18,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <sys/stat.h>
 #include <errno.h>
 #include <zlib.h>
 #include "fauxide.h"
@@ -27,6 +26,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #include "vulpes_lev1_encryption.h"
 #include "vulpes_lev1.h"
 #include "vulpes_log.h"
+#include "vulpes_util.h"
 #include <sys/time.h>
 
 /* #define DEBUG */
@@ -235,43 +235,6 @@ int one_chunk(const lev1_mapping_special_t * spec,
 		      1));
   
   return (start == end);
-}
-
-static __inline int is_dir(const char *name)
-{
-  struct stat s;
-  int result = 0;
-  
-  if (stat(name, &s) == 0) {
-    result = S_ISDIR(s.st_mode);
-  }
-  
-  return result;
-}
-
-static __inline int is_file(const char *name)
-{
-  struct stat s;
-  int result = 0;
-  
-  if (stat(name, &s) == 0) {
-    result = S_ISREG(s.st_mode);
-  }
-  
-  return result;
-}
-
-static __inline
-off_t get_filesize(int fileno)
-{
-    struct stat filestat;
-    
-    /* Get file statistics */
-    if (fstat(fileno, &filestat)) {
-      return (off_t) 0;
-    }
-
-    return filestat.st_size;
 }
 
 static __inline
