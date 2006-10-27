@@ -13,9 +13,9 @@ ACCEPTANCE OF THIS AGREEMENT
 
 */
 
-#include <exception>
-#include <list>
+#include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -32,56 +32,24 @@ ACCEPTANCE OF THIS AGREEMENT
 /* #define DEBUG 1 */
 
 const int MAX_LKA_STRING_LEN=256;
-const char *lka_prov_str_hfs_sha1="hfs-sha-1";
 
 /*
  * TYPES
  */
 
-// CLASS: lka_provider
-class lka_provider {
-protected:
-  vulpes_lka_tag_t r_tag_t;
+/* XXX overly simple-minded linked list */
+struct lka_svc {
+  struct lka_provider *next;
+};
+
+struct lka_provider {
+  struct lka_provider *next;
+  char *root;
+  lka_type_t type;
+  vulpes_lka_tag_t tag_type;
   unsigned r_accesses;
   unsigned r_hits;
-
-public:
-  lka_provider(vulpes_lka_tag_t tagt) : r_tag_t(tagt), r_accesses(0), r_hits(0) {}
-  virtual ~lka_provider(void) {
-    vulpes_log(LOG_STATS,"LOOKASIDE","lookup requests: %u",r_accesses);
-    vulpes_log(LOG_STATS,"LOOKASIDE","lookup hits: %u",r_hits);
-  }
-
-  inline virtual vulpes_lka_tag_t 
-  tag_type(void) const {return r_tag_t;}
-
-  virtual vulpes_lka_return_t
-  copy_to_file(vulpes_lka_tag_t tagt, 
-	       const void *tag, const char *dst_filename, 
-	       char **src_filename) {
-    ++r_accesses;
-    return VULPES_LKA_RETURN_TAG_NOTFOUND;}
 };
-
-// CLASS: hfs_lka_provider
-class hfs_lka_provider : public lka_provider {
-protected:
-  char *pathroot;
-
-  vulpes_lka_return_t
-  p_copy_to_file(vulpes_lka_tag_t tagt, 
-		 const void *tag, const char *dst_filename, 
-		 char **src_filename);
-public:
-  hfs_lka_provider(vulpes_lka_tag_t tagt, const char *root) throw(std::exception);
-  ~hfs_lka_provider(void);
-
-  vulpes_lka_return_t
-  copy_to_file(vulpes_lka_tag_t tagt, 
-	       const void *tag, const char *dst_filename,
-	       char **src_filename);
-};
-
 
 /*
  * LOCAL FUNCTIONS
@@ -150,68 +118,31 @@ static vulpes_lka_return_t copy_file(const char *dest, const char *src)
   return ((bytes_remaining==0) ? VULPES_LKA_RETURN_SUCCESS : VULPES_LKA_RETURN_ERROR);
 }
 
-/*
- * MEMBER FUNCTIONS
- */
-
-hfs_lka_provider::hfs_lka_provider(vulpes_lka_tag_t tagt, const char *root) throw(std::exception)
-  : lka_provider(tagt)
-{
-  int rootlen;
-
-  // check the length of root
-  rootlen=strlen(root);
-  if((rootlen > MAX_LKA_STRING_LEN) || (rootlen == 0)) {
-    throw std::exception();
-  }
-
-  // ensure that root is an absolute path
-  if(root[0] != '/') {
-    throw std::exception();
-  }
-
-  // allocate the pathroot string
-  pathroot=new char[rootlen+1];
-
-  // copy the string
-  strncpy(pathroot, root, rootlen);
-  pathroot[rootlen]='\0';
-}
-
-hfs_lka_provider::~hfs_lka_provider(void)
-{
-  delete[] pathroot;
-}
-
-inline vulpes_lka_return_t
-hfs_lka_provider::p_copy_to_file(vulpes_lka_tag_t tagt, 
-				 const void *tag, const char *dst_filename,
-				 char **src_filename)
+static vulpes_lka_return_t
+copy_to_file(struct lka_provider *prov, const void *tag,
+             const char *dst_filename, char **src_filename)
 {
   vulpes_lka_return_t result = VULPES_LKA_RETURN_ERROR;
   char buffer[2*MAX_LKA_STRING_LEN+1];
   char *cptr;
-
-  // Check the type
-  if(tagt != tag_type())
-    return VULPES_LKA_RETURN_TAG_NOTFOUND;
+  int i;
 
   // Form the source file name
   // Check the source file name bound
-  switch(tagt) {
+  switch(prov->tag_type) {
   case VULPES_LKA_TAG_SHA1:
     {
       unsigned char *sha1value = (unsigned char*)tag;
 
       // A 20-byte SHA-1 tag will become a 40-byte ASCII name + up to 3 slashes
-      if(sizeof(pathroot) + 40 + 3 + 1 > sizeof(buffer)) return VULPES_LKA_RETURN_ERROR;
+      if(strlen(prov->root) + 40 + 3 + 1 > sizeof(buffer)) return VULPES_LKA_RETURN_ERROR;
       // Copy the root
-      strncpy(buffer, pathroot, MAX_LKA_STRING_LEN);
+      strncpy(buffer, prov->root, MAX_LKA_STRING_LEN);
       cptr=buffer+strlen(buffer);
       // Append a slash
       *cptr++='/';
       // Convert the tag to a filename
-      for(int i=0; i<20; i++) {
+      for(i=0; i<20; i++) {
 	int bytes;
 	bytes = sprintf(cptr, "%02X", sha1value[i]);
 	if(bytes >= 0) cptr+=bytes;
@@ -245,27 +176,6 @@ hfs_lka_provider::p_copy_to_file(vulpes_lka_tag_t tagt,
   return result;
 }
 
-vulpes_lka_return_t
-hfs_lka_provider::copy_to_file(vulpes_lka_tag_t tagt, 
-			       const void *tag, const char *dst_filename,
-			       char **src_filename)
-{
-  vulpes_lka_return_t result = p_copy_to_file(tagt, tag, dst_filename, 
-					      src_filename);
-
-  ++r_accesses;
-  if(result == VULPES_LKA_RETURN_SUCCESS) 
-    ++r_hits;
-
-  return result;
-}
-
-
-/*
- * GLOBALS
- */
-typedef std::list<lka_provider*> lka_provider_list_t;
-
 /*
  * EXPORTED FUNCTIONS
  */
@@ -274,85 +184,79 @@ typedef std::list<lka_provider*> lka_provider_list_t;
 vulpes_lka_svc_t
 vulpes_lka_open(void)
 {
-  lka_provider_list_t *provlist;
-
-  provlist=new lka_provider_list_t();
-
-  return provlist;
+  struct lka_svc *svc=malloc(sizeof(*svc));
+  if (svc == NULL)
+    return NULL;
+  memset(svc, 0, sizeof(*svc));
+  return svc;
 }
 
 /* Close the lka service */
 vulpes_lka_return_t
 vulpes_lka_close(vulpes_lka_svc_t svc)
 {
-  lka_provider_list_t *provlist;
-  lka_provider *tmp;
-  lka_provider_list_t::reverse_iterator riter;
+  struct lka_provider *prov;
+  struct lka_provider *tmp;
 
   if(svc == NULL) return VULPES_LKA_RETURN_ERROR;
-
-  provlist=(lka_provider_list_t *)svc;
-
-  for(riter=provlist->rbegin(); riter!=provlist->rend(); riter++) {
-    tmp = *riter;
-    provlist->pop_back();
-    delete tmp;
+  prov=svc->next;
+  while (prov != NULL) {
+    vulpes_log(LOG_STATS,"LOOKASIDE","lookup requests: %u",prov->r_accesses);
+    vulpes_log(LOG_STATS,"LOOKASIDE","lookup hits: %u",prov->r_hits);
+    tmp=prov;
+    prov=prov->next;
+    free(tmp->root);
+    free(tmp);
   }
-
-  delete provlist;
-
+  free(svc);
   return VULPES_LKA_RETURN_SUCCESS;
 }
 
 /* Add an LKA database to the service */
 vulpes_lka_return_t
-vulpes_lka_add(vulpes_lka_svc_t svc, const char *lka_identifier)
+vulpes_lka_add(vulpes_lka_svc_t svc, lka_type_t type, vulpes_lka_tag_t tag_type,
+               const char *root)
 {
-  lka_provider_list_t *provlist;
-  char buffer[MAX_LKA_STRING_LEN+1];
   int len;
-  lka_provider *tmp;
-  char *cptr;
+  struct lka_provider *cur;
+  struct lka_provider *tmp;
 
   if(svc == NULL) return VULPES_LKA_RETURN_ERROR;
 
-  provlist=(lka_provider_list_t *)svc;
-
-  // check the length of lka_identifier
-  len=strlen(lka_identifier);
+  // check the length of root
+  len=strlen(root);
   if((len > MAX_LKA_STRING_LEN) || (len == 0)) {
     return VULPES_LKA_RETURN_ERROR;
   }
-
-  // copy the lka_identifier
-  strncpy(buffer, lka_identifier, MAX_LKA_STRING_LEN+1);
-
-  // Find the ':' separator
-  cptr=index(buffer, ':');
-  if(cptr==NULL) return VULPES_LKA_RETURN_ERROR;
-  // Replace the ':' with a NULL
-  *cptr='\0';
-  // buffer is now a type-string and ++cptr is the rootname
-  ++cptr;
-
-  // Create a new provider, tmp, that can be added to the provider_list
-  try {
-    // "switch" on the type-string in buffer
-    if(strncmp(buffer, lka_prov_str_hfs_sha1, MAX_LKA_STRING_LEN)==0) {
-      tmp=new hfs_lka_provider(VULPES_LKA_TAG_SHA1, cptr);
-/*
-    } else if(strncmp(buffer, lka_prov_str_hdbfs_sha1, MAX_LKA_STRING_LEN)==0) {
-      tmp=new hdbfs_lka_provider(VULPES_LKA_TAG_SHA1, cptr);
-*/
-    } else {
-      return VULPES_LKA_RETURN_ERROR;
-    }
-  } catch(std::exception &e) {
-      return VULPES_LKA_RETURN_ERROR;
+  
+  switch (type) {
+  case LKA_HFS:
+    // ensure that root is an absolute path
+    if(root[0] != '/') return VULPES_LKA_RETURN_ERROR;
+    break;
+  default:
+    return VULPES_LKA_RETURN_ERROR;
   }
 
-  // If we got here, we have a tmp provider to be inserted
-  provlist->push_back(tmp);
+  tmp=malloc(sizeof(*tmp));
+  if (tmp == NULL) return VULPES_LKA_RETURN_ERROR;
+  memset(tmp, 0, sizeof(*tmp));
+  tmp->root=strdup(root);
+  if (tmp->root == NULL) {
+    free(tmp);
+    return VULPES_LKA_RETURN_ERROR;
+  }
+  tmp->type=type;
+  tmp->tag_type=tag_type;
+  
+  if (svc->next == NULL) {
+    svc->next=tmp;
+  } else {
+    cur=svc->next;
+    while (cur->next != NULL)
+      cur=cur->next;
+    cur->next=tmp;
+  }
 
   return VULPES_LKA_RETURN_SUCCESS;
 }
@@ -363,17 +267,22 @@ vulpes_lka_copy(vulpes_lka_svc_t svc, vulpes_lka_tag_t tag_type,
 		const void *tag, const char *dst_filename,
 		char **src_filename)
 {
-  lka_provider_list_t *provlist;
-  lka_provider_list_t::iterator iter;
+  struct lka_provider *prov;
 
   if(svc == NULL) return VULPES_LKA_RETURN_ERROR;
-
-  provlist=(lka_provider_list_t *)svc;
-
-  for(iter=provlist->begin(); iter!=provlist->end(); iter++)
-    if((*iter)->copy_to_file(tag_type, tag, dst_filename, src_filename)
-       == VULPES_LKA_RETURN_SUCCESS)
-      return VULPES_LKA_RETURN_SUCCESS;
+  prov=svc->next;
+  
+  while (prov != NULL) {
+    if (prov->tag_type == tag_type) {
+      prov->r_accesses++;
+      if (copy_to_file(prov, tag, dst_filename, src_filename)
+	  == VULPES_LKA_RETURN_SUCCESS) {
+        prov->r_hits++;
+	return VULPES_LKA_RETURN_SUCCESS;
+      }
+    }
+    prov=prov->next;
+  }
 
   return VULPES_LKA_RETURN_ERROR;
 }

@@ -1,5 +1,4 @@
 CC=gcc
-CCC=g++
 
 CFLAGS= -MMD -g -O2 -Wall -Wstrict-prototypes -D_GNU_SOURCE -D_LARGEFILE_SOURCE
 
@@ -11,7 +10,7 @@ BINDIR=$(ISR_HOME)/local/bin
 APP=vulpes
 UTILS=keyring-utils
 
-SRCS=revision.c vulpes.c vulpes_fauxide.c vulpes_transport_http.c vulpes_transport_local.c vulpes_lev1.c vulpes_fids.c vulpes_lev1_encryption.c vulpes_log.c vulpes_util.c # vulpes_simple.c 
+SRCS=revision.c vulpes.c vulpes_fauxide.c vulpes_transport_http.c vulpes_transport_local.c vulpes_lev1.c vulpes_fids.c vulpes_lev1_encryption.c vulpes_log.c vulpes_util.c vulpes_lka.c # vulpes_simple.c 
 
 OBJS=$(SRCS:.c=.o)
 ASS=$(SRCS:.c=.s)
@@ -66,11 +65,8 @@ install:
 	@mkdir -p $(BINDIR)
 	@cp $(APP) $(BINDIR)
 
-vulpes_lka.o: vulpes_lka.C
-	$(CCC) $(CFLAGS) $< -c -o $@
-
-vulpes: $(OBJS) vulpes_lka.o 
-	$(CCC) -o $@ $(LFLAGS) $^
+vulpes: $(OBJS)
+	$(CC) -o $@ $(LFLAGS) $^
 
 keyring-utils: processchunk
 

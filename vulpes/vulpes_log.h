@@ -16,10 +16,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #ifndef VULPES_LOG_H
 #define VULPES_LOG_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 typedef enum {
   LOG_ERRORS=0,
   LOG_STATS=1,
@@ -39,8 +35,4 @@ int log_msgtype_active(logmsg_t msgtype);
 
 void vulpes_log(logmsg_t msgtype, const char *msghdr, const char *format, ...);
   
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
-
 #endif

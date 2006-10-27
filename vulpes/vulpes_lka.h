@@ -17,12 +17,8 @@ ACCEPTANCE OF THIS AGREEMENT
 #ifndef VULPES_LKA_H_
 #define VULPES_LKA_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 /* LKA service type */
-typedef void* vulpes_lka_svc_t;
+typedef struct lka_svc *vulpes_lka_svc_t;
   
 /* Type to relay the type of LKA tags */
 typedef int vulpes_lka_tag_t;
@@ -40,7 +36,11 @@ typedef int vulpes_lka_return_t;
 #define VULPES_LKA_RETURN_FILE_CLOSE_FAILED 4
 #define VULPES_LKA_RETURN_FILE_WRITE_FAILED 5
 #define VULPES_LKA_RETURN_ERROR        127
-  
+
+typedef int lka_type_t;
+
+#define LKA_HFS 0
+
 /* Initialize the lka service */
 vulpes_lka_svc_t
 vulpes_lka_open(void);
@@ -51,7 +51,8 @@ vulpes_lka_close(vulpes_lka_svc_t svc);
 
 /* Add an LKA database to the service */
 vulpes_lka_return_t
-vulpes_lka_add(vulpes_lka_svc_t svc, const char *lka_identifier);
+vulpes_lka_add(vulpes_lka_svc_t svc, lka_type_t type, vulpes_lka_tag_t tag_type,
+               const char *root);
 
 /* Copy a file matching the tag to the dst_filename */
 /* If src_filename is not NULL, *src_filename will point to 
@@ -61,9 +62,5 @@ vulpes_lka_return_t
 vulpes_lka_copy(vulpes_lka_svc_t svc, vulpes_lka_tag_t tag_type, 
 		const void *tag, const char *dst_filename,
 		char **src_filename);
-
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
 
 #endif /* VULPES_LKA_H_ */

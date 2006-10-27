@@ -168,7 +168,7 @@ static void usage(const char *progname)
     printf("\t\tIf debug is chosen, then log messages for chosen loglevel(s)\n");
     printf("\t\twill be written out to the logfile without any buffering\n");
   printf("\t[--pid]\n");
-  printf("\t[--lka <lkatype:lkadir>]\n");
+  printf("\t[--lka <lkatype> <lkadir>]\n");
     printf("\t\tlkatype must be hfs-sha-1\n");
   printf("\t[--proxy proxy_server port-number]\n");
     printf("\t\tproxy_server is the ip address or the hostname of the proxy\n");
@@ -357,17 +357,20 @@ int main(int argc, char *argv[])
       break;
     case 'l':
       /* lka */
-      requiredArgs+=2;
-      if (optind+0 >= argc) {
+      requiredArgs+=3;
+      if (optind+1 >= argc) {
 	PARSE_ERROR("failed to parse lka option.");
       }
+      /* XXX this is lame */
+      if (strcmp("hfs-sha-1", argv[optind++]))
+	PARSE_ERROR("invalid LKA type.");
       if(mapping.lka_svc == NULL)
 	if((mapping.lka_svc = vulpes_lka_open()) == NULL)
 	  printf("WARNING: unable to open lka service.\n");
       if(mapping.lka_svc != NULL)
-	if(vulpes_lka_add(mapping.lka_svc, argv[optind]) != VULPES_LKA_RETURN_SUCCESS)
+	if(vulpes_lka_add(mapping.lka_svc, LKA_HFS, VULPES_LKA_TAG_SHA1,
+	    argv[optind++]) != VULPES_LKA_RETURN_SUCCESS)
 	  printf("WARNING: unable to add lka database %s.\n", argv[optind]);
-      optind++;
       break;
     case 'm':
       /* help */
