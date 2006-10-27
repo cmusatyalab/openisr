@@ -303,7 +303,7 @@ sub isr_run_vulpes ($$$) {
 
     # Check for existence of the hoard directory and set the Vulpes lka flag
     if (-d $lkadir) {
-        $lkaopt = "--lka hfs-sha-1:$lkadir";
+        $lkaopt = "--lka hfs-sha-1 $lkadir";
         print("\tUsing hoard $lkadir.\n")
 	    if $main::verbose > 1;
     }
