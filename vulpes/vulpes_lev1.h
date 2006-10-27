@@ -34,39 +34,4 @@ ACCEPTANCE OF THIS AGREEMENT
 #define MAX_DIRLENGTH 256
 #define NULL_FID -1
 
-
-/*typedef struct lev1_mapping_special_s {
-    char index_name[MAX_INDEX_NAME_LENGTH];
-    unsigned version;
-    unsigned chunksize_bytes;
-    unsigned chunksperdir;
-    unsigned numchunks;
-    unsigned numdirs;
-    vulpes_volsize_t volsize;	// sectors
-    unsigned chunksize;		// sectors
-    fid_id_t **fnp;		// fnp[][]
-} lev1_mapping_special_t;
-
-struct lev1_mapping_special_s {
-    char index_name[MAX_INDEX_NAME_LENGTH];
-    unsigned version;
-    unsigned chunksize_bytes;
-    unsigned chunksperdir;
-    unsigned numchunks;
-    unsigned numdirs;
-    vulpes_volsize_t volsize;
-    unsigned chunksize;
-    int verbose;
-    int compressed_chunks;
-    int shadow;
-    chunk_data_t **cd;
-};
-typedef  struct lev1_mapping_special_s lev1_mapping_special_t;
-
-void get_dir_chunk(const lev1_mapping_special_t * spec, unsigned sect_num,
-		   unsigned *dir, unsigned *chunk);
- int form_chunk_file_name(char *buffer, int bufsize,
-			     const char *rootname,
-			     unsigned dir, unsigned chunk,
-			     const char *suffix, const vulpes_mapping_t* map_ptr);*/
 #endif
