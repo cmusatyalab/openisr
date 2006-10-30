@@ -24,11 +24,14 @@ ACCEPTANCE OF THIS AGREEMENT
 #include "vulpes_map.h"
 #include "vulpes_fids.h"
 #include "vulpes_lev1_encryption.h"
-#include "vulpes_lev1.h"
 #include "vulpes_lka.h"
 #include "vulpes_log.h"
 #include "vulpes_util.h"
 #include <sys/time.h>
+
+#define MAX_INDEX_NAME_LENGTH 256
+#define MAX_CHUNK_NAME_LENGTH 512
+#define MAX_DIRLENGTH 256
 
 const unsigned CHUNK_STATUS_ACCESSED = 0x0001;	/* This chunk has been accessed this session */
 const unsigned CHUNK_STATUS_DIRTY = 0x0002;	/* This chunk has been written this session */
