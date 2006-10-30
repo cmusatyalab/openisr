@@ -19,34 +19,31 @@ ACCEPTANCE OF THIS AGREEMENT
 
 #include "vulpes.h"
 
-/* LKA service type */
-typedef struct lka_svc *vulpes_lka_svc_t;
-  
 /* Type to relay the type of LKA tags */
-typedef int vulpes_lka_tag_t;
+enum lka_tag {
+  LKA_TAG_UNKNOWN=0,
+  LKA_TAG_SHA1,
+};
 
-#define VULPES_LKA_TAG_UNKNOWN 0
-#define VULPES_LKA_TAG_SHA1    1
-  
-typedef int lka_type_t;
-
-#define LKA_HFS 0
+enum lka_type {
+  LKA_HFS,
+};
 
 /* Initialize the lka service */
-vulpes_lka_svc_t vulpes_lka_open(void);
+struct lka_svc *vulpes_lka_open(void);
 
 /* Close the lka service */
-vulpes_err_t vulpes_lka_close(vulpes_lka_svc_t svc);
+vulpes_err_t vulpes_lka_close(struct lka_svc *svc);
 
 /* Add an LKA database to the service */
-vulpes_err_t vulpes_lka_add(vulpes_lka_svc_t svc, lka_type_t type,
-                            vulpes_lka_tag_t tag_type, const char *root);
+vulpes_err_t vulpes_lka_add(struct lka_svc *svc, enum lka_type type,
+                            enum lka_tag tag_type, const char *root);
 
 /* Read in a file matching the tag to the given buffer */
 /* If src_filename is not NULL, *src_filename will point to 
    a malloc'ed array which contains the name of the source file.
    NOTE: The calling function should call free() on *src_filename. */
-vulpes_err_t vulpes_lka_lookup(vulpes_lka_svc_t svc, vulpes_lka_tag_t tag_type, 
+vulpes_err_t vulpes_lka_lookup(struct lka_svc *svc, enum lka_tag tag_type, 
 		const void *tag, void *buf, int *bufsize,
 		char **src_filename);
 

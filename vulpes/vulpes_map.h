@@ -18,31 +18,32 @@ ACCEPTANCE OF THIS AGREEMENT
 
 #include "fauxide.h"
 
-typedef int transfer_type_t;
-#define NO_TRANSPORT         0
-#define LOCAL_TRANSPORT      1
-#define HTTP_TRANSPORT       2
+typedef enum transfer_type {
+  NO_TRANSPORT=0,
+  LOCAL_TRANSPORT,
+  HTTP_TRANSPORT,
+} transfer_type_t;
 
-typedef int mapping_type_t;
-#define NO_MAPPING           0
-#define SIMPLE_FILE_MAPPING  1
-#define SIMPLE_DISK_MAPPING  2
-#define LEV1_MAPPING         3
-#define LEV1V_MAPPING        4
+typedef enum mapping_type {
+  NO_MAPPING=0,
+  SIMPLE_FILE_MAPPING,
+  SIMPLE_DISK_MAPPING,
+  LEV1_MAPPING,
+  LEV1V_MAPPING,
+} mapping_type_t;
 
-typedef struct vulpes_mapping_s vulpes_mapping_t;
+struct vulpes_mapping;
 
-typedef int (*vulpes_open_func_t) (vulpes_mapping_t *);
-typedef vulpes_volsize_t(*vulpes_volsize_func_t) (const vulpes_mapping_t
+typedef int (*vulpes_open_func_t) (struct vulpes_mapping *);
+typedef vulpes_volsize_t(*vulpes_volsize_func_t) (const struct vulpes_mapping
 						  *);
-typedef int (*vulpes_read_func_t) (const vulpes_mapping_t *,
+typedef int (*vulpes_read_func_t) (const struct vulpes_mapping *,
 				   vulpes_cmdblk_t *);
-typedef int (*vulpes_write_func_t) (const vulpes_mapping_t *,
+typedef int (*vulpes_write_func_t) (const struct vulpes_mapping *,
 				    const vulpes_cmdblk_t *);
-typedef int (*vulpes_close_func_t) (vulpes_mapping_t *);
+typedef int (*vulpes_close_func_t) (struct vulpes_mapping *);
 
-struct vulpes_mapping_s {
-	
+struct vulpes_mapping {
   transfer_type_t trxfer;	/* Set by main */
   mapping_type_t type;	        /* Set by main */
   char* proxy_name;             /*Set by main */

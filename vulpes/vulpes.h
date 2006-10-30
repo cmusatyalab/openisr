@@ -15,7 +15,7 @@
 #endif
 
 extern volatile int exit_pending;
-extern vulpes_mapping_t mapping;
+extern struct vulpes_mapping mapping;
 
 int set_signal_handler(int sig, void (*handler)(int sig));
 void tally_sector_accesses(unsigned write, unsigned num);

@@ -33,13 +33,13 @@ ACCEPTANCE OF THIS AGREEMENT
 #include "vulpes_lka.h"
 
 /* EXTERNS */
-extern int initialize_lev1_mapping(vulpes_mapping_t * map_ptr);
+extern int initialize_lev1_mapping(struct vulpes_mapping *map_ptr);
 extern int fauxide_init(void);
 extern void fauxide_run(void);
 extern void fauxide_shutdown(void);
 extern int fauxide_rescue(const char *device_name);
 #ifdef VULPES_SIMPLE_DEFINED
-extern int initialize_simple_mapping(vulpes_mapping_t * map_ptr);
+extern int initialize_simple_mapping(struct vulpes_mapping *map_ptr);
 #endif
 extern const char *svn_revision;
 extern const char *svn_branch;
@@ -54,7 +54,7 @@ static unsigned long long sectors_accessed = 0;
 
 const char *vulpes_version = "0.60";
 
-vulpes_mapping_t mapping;
+struct vulpes_mapping mapping;
 extern char *optarg;
 extern int optind, opterr, optopt;
 
@@ -368,7 +368,7 @@ int main(int argc, char *argv[])
 	if((mapping.lka_svc = vulpes_lka_open()) == NULL)
 	  printf("WARNING: unable to open lka service.\n");
       if(mapping.lka_svc != NULL)
-	if(vulpes_lka_add(mapping.lka_svc, LKA_HFS, VULPES_LKA_TAG_SHA1,
+	if(vulpes_lka_add(mapping.lka_svc, LKA_HFS, LKA_TAG_SHA1,
 	    argv[optind++]) != VULPES_SUCCESS)
 	  printf("WARNING: unable to add lka database %s.\n", argv[optind]);
       break;

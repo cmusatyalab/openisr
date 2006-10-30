@@ -44,8 +44,8 @@ struct lka_svc {
 struct lka_provider {
   struct lka_provider *next;
   char *root;
-  lka_type_t type;
-  vulpes_lka_tag_t tag_type;
+  enum lka_type type;
+  enum lka_tag tag_type;
   unsigned r_accesses;
   unsigned r_hits;
 };
@@ -64,7 +64,7 @@ static vulpes_err_t file_lookup(struct lka_provider *prov, const void *tag,
 
   /* Form the source file name.  Check the source file name bound. */
   switch(prov->tag_type) {
-  case VULPES_LKA_TAG_SHA1:
+  case LKA_TAG_SHA1:
     {
       unsigned char *sha1value = (unsigned char*)tag;
 
@@ -120,7 +120,7 @@ static vulpes_err_t file_lookup(struct lka_provider *prov, const void *tag,
  */
 
 /* Initialize the lka service */
-vulpes_lka_svc_t vulpes_lka_open(void)
+struct lka_svc *vulpes_lka_open(void)
 {
   struct lka_svc *svc=malloc(sizeof(*svc));
   if (svc == NULL)
@@ -130,7 +130,7 @@ vulpes_lka_svc_t vulpes_lka_open(void)
 }
 
 /* Close the lka service */
-vulpes_err_t vulpes_lka_close(vulpes_lka_svc_t svc)
+vulpes_err_t vulpes_lka_close(struct lka_svc *svc)
 {
   struct lka_provider *prov;
   struct lka_provider *tmp;
@@ -150,8 +150,8 @@ vulpes_err_t vulpes_lka_close(vulpes_lka_svc_t svc)
 }
 
 /* Add an LKA database to the service */
-vulpes_err_t vulpes_lka_add(vulpes_lka_svc_t svc, lka_type_t type,
-                            vulpes_lka_tag_t tag_type, const char *root)
+vulpes_err_t vulpes_lka_add(struct lka_svc *svc, enum lka_type type,
+                            enum lka_tag tag_type, const char *root)
 {
   int len;
   struct lka_provider *cur;
@@ -198,7 +198,7 @@ vulpes_err_t vulpes_lka_add(vulpes_lka_svc_t svc, lka_type_t type,
 }
 
 /* Copy a file matching the tag to the dst_filename */
-vulpes_err_t vulpes_lka_lookup(vulpes_lka_svc_t svc, vulpes_lka_tag_t tag_type, 
+vulpes_err_t vulpes_lka_lookup(struct lka_svc *svc, enum lka_tag tag_type, 
 		const void *tag, void *buf, int *bufsize,
 		char **src_filename)
 {

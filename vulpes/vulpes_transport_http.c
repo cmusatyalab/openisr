@@ -34,7 +34,7 @@ static size_t curl_write_callback_function(char* curlbuf, size_t size,
 }
 
 /* warning: not thread-safe(same as rest of vulpes!) */
-static void init_curl(const vulpes_mapping_t *map_ptr,
+static void init_curl(const struct vulpes_mapping *map_ptr,
   		char *buf, int bufsize)
 {
   /* init the curl session */
@@ -88,8 +88,8 @@ static void destroy_curl(void)
   free(curl_buffer);
 }
 
-vulpes_err_t http_get(const vulpes_mapping_t *map_ptr, char *buf, int *bufsize,
-	  	const char *url)
+vulpes_err_t http_get(const struct vulpes_mapping *map_ptr, char *buf,
+                      int *bufsize, const char *url)
 {
   CURLcode retVal;
   vulpes_err_t retstatus=VULPES_IOERR;

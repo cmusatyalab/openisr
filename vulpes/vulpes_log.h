@@ -16,7 +16,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #ifndef VULPES_LOG_H
 #define VULPES_LOG_H
 
-typedef enum {
+enum logmsgtype {
   LOG_ERRORS=0,
   LOG_STATS=1,
   LOG_BASIC=2,
@@ -24,16 +24,17 @@ typedef enum {
   LOG_KEYS=4,
   LOG_TRANSPORT=5,
   LOG_FAUXIDE_REQ=7
-} logmsg_t ;
+};
   
 int vulpes_log_init(const char *fname, const char *info_str, 
 		    unsigned logfile_mask, unsigned stdout_mask);
 
 int vulpes_log_close(void);
 
-int log_msgtype_active(logmsg_t msgtype);
+int log_msgtype_active(enum logmsgtype msgtype);
 
-void vulpes_log(logmsg_t msgtype, const char *msghdr, const char *format, ...);
+void vulpes_log(enum logmsgtype msgtype, const char *msghdr,
+                const char *format, ...);
   
 #ifdef DEBUG
 #define vulpes_debug(type, hdr, fmt, args...) vulpes_log(type, hdr, fmt, ## args)

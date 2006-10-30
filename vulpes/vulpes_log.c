@@ -25,15 +25,15 @@ ACCEPTANCE OF THIS AGREEMENT
 
 #define MAX_FNAME_SIZE 128
 
-typedef struct log_s {
+struct log {
   char fname[MAX_FNAME_SIZE+1];
   char *infostr;
   FILE *logf;
   unsigned logf_mask;
   unsigned stdout_mask;
-} log_t;
+};
 
-static log_t gl_log = {"/dev/null", NULL, NULL, 0, 1};
+static struct log gl_log = {"/dev/null", NULL, NULL, 0, 1};
 
 /*
  * LOCAL FUNCTIONS
@@ -53,7 +53,7 @@ static void vulpes_timestamp(char timestamp_coarse[128], char timestamp_fine[32]
 }
 
 static __inline
-int vulpes_log_fflush_needed(logmsg_t msgtype)
+int vulpes_log_fflush_needed(enum logmsgtype msgtype)
 {
   return (int)((msgtype==LOG_BASIC) || (msgtype==LOG_ERRORS));
 }
@@ -119,23 +119,24 @@ int vulpes_log_close(void)
 }
 
 static __inline
-int log_msgtype_active_file(logmsg_t msgtype)
+int log_msgtype_active_file(enum logmsgtype msgtype)
 {
   return (((1<<msgtype) & gl_log.logf_mask) ? 1 : 0);
 }
 
 static __inline
-int log_msgtype_active_stdout(logmsg_t msgtype)
+int log_msgtype_active_stdout(enum logmsgtype msgtype)
 {
   return (((1<<msgtype) & gl_log.stdout_mask) ? 1 : 0);
 }
 
-int log_msgtype_active(logmsg_t msgtype)
+int log_msgtype_active(enum logmsgtype msgtype)
 {
   return (log_msgtype_active_file(msgtype) || log_msgtype_active_stdout(msgtype));
 }
 
-void vulpes_log(logmsg_t msgtype, const char *msghdr, const char *format, ...)
+void vulpes_log(enum logmsgtype msgtype, const char *msghdr,
+                const char *format, ...)
 {
   unsigned writefile, writestdout;
   char timestamp_coarse[128];

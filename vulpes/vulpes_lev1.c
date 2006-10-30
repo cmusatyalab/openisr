@@ -75,7 +75,7 @@ static int form_chunk_file_name(char *buffer, int bufsize,
 
 /* XXX for now */
 extern vulpes_err_t local_get(char *buf, int *bufsize, const char *file);
-extern vulpes_err_t http_get(const vulpes_mapping_t *map_ptr, char *buf,
+extern vulpes_err_t http_get(const struct vulpes_mapping *map_ptr, char *buf,
                 int *bufsize, const char *url);
 
 /* AUXILLIARY FUNCTIONS */
@@ -285,7 +285,7 @@ printf_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, u
 #endif
 
 static void
-print_check_tag_error(const vulpes_mapping_t *map_ptr, unsigned chunk_num,
+print_check_tag_error(const struct vulpes_mapping *map_ptr, unsigned chunk_num,
 		      const unsigned char *tag)
 {
   lev1_mapping_special_t *spec;
@@ -309,7 +309,7 @@ print_check_tag_error(const vulpes_mapping_t *map_ptr, unsigned chunk_num,
 
 static int
 valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize, 
-		  const vulpes_mapping_t *map_ptr, unsigned chunk_num)
+		  const struct vulpes_mapping *map_ptr, unsigned chunk_num)
 {
   int bufvalid = 0;
   keyring_t *keyring;
@@ -331,7 +331,8 @@ valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize,
 }
 
 static int 
-lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr, unsigned chunk_num)
+lev1_copy_file(const char *src, const char *dst,
+               const struct vulpes_mapping *map_ptr, unsigned chunk_num)
 {
   lev1_mapping_special_t *spec;
   char *buf;
@@ -368,7 +369,7 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
       }
 #endif
 
-      err = vulpes_lka_lookup(map_ptr->lka_svc, VULPES_LKA_TAG_SHA1, 
+      err = vulpes_lka_lookup(map_ptr->lka_svc, LKA_TAG_SHA1, 
 				tag, buf, &buflen, &lka_src_file);
       if(err == VULPES_SUCCESS) {
 	if(valid_chunk_buffer(buf, buflen, map_ptr, chunk_num)) {
@@ -597,7 +598,7 @@ static __inline void binToHex(unsigned char* bin, unsigned char hex[2])
  */
 /* returns 0 if okay else -1 on bad exit */
 static __inline
-int open_chunk_file(const vulpes_mapping_t * map_ptr,
+int open_chunk_file(const struct vulpes_mapping *map_ptr,
 		    const vulpes_cmdblk_t * cmdblk, int open_for_writing)
 {
   char chunk_name[MAX_CHUNK_NAME_LENGTH];
@@ -829,14 +830,14 @@ int open_chunk_file(const vulpes_mapping_t * map_ptr,
 
 /* INTERFACE FUNCTIONS */
 
-vulpes_volsize_t lev1_volsize_func(const vulpes_mapping_t * map_ptr)
+vulpes_volsize_t lev1_volsize_func(const struct vulpes_mapping *map_ptr)
 {
   return ((const lev1_mapping_special_t *) map_ptr->special)->volsize;
 }
 
 /* returns -1 if an error occurs
  *  returns  0 on a normal exit */
-int lev1_open_func(vulpes_mapping_t * map_ptr)
+int lev1_open_func(struct vulpes_mapping *map_ptr)
 {
   lev1_mapping_special_t *spec;
   unsigned long long volsize_bytes;
@@ -961,7 +962,7 @@ int lev1_open_func(vulpes_mapping_t * map_ptr)
   return result;
 }
 
-int lev1_close_func(vulpes_mapping_t * map_ptr)
+int lev1_close_func(struct vulpes_mapping *map_ptr)
 {
   char chunk_name[MAX_CHUNK_NAME_LENGTH];
   lev1_mapping_special_t *spec;
@@ -1027,7 +1028,7 @@ int lev1_close_func(vulpes_mapping_t * map_ptr)
   return result;
 }
 
-int lev1_read_func(const vulpes_mapping_t * map_ptr,
+int lev1_read_func(const struct vulpes_mapping *map_ptr,
 		   vulpes_cmdblk_t * cmdblk)
 {
   lev1_mapping_special_t *spec;
@@ -1082,7 +1083,7 @@ int lev1_read_func(const vulpes_mapping_t * map_ptr,
   return 0;
 }
 
-int lev1_write_func(const vulpes_mapping_t * map_ptr,
+int lev1_write_func(const struct vulpes_mapping *map_ptr,
 		    const vulpes_cmdblk_t * cmdblk)
 {
   lev1_mapping_special_t *spec;
@@ -1143,7 +1144,7 @@ int lev1_write_func(const vulpes_mapping_t * map_ptr,
 }
 
 
-int initialize_lev1_mapping(vulpes_mapping_t * map_ptr)
+int initialize_lev1_mapping(struct vulpes_mapping *map_ptr)
 {
   lev1_mapping_special_t *spec;
   
