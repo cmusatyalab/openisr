@@ -355,60 +355,57 @@ void lev1_updateKey(struct keyring *kr, unsigned char new_key[20], unsigned char
   memcpy(kr->keyRing[keyNum].key, new_key, 20);
 }
 
-lev1_encrypt_ret_t 
-lev1_get_tag(struct keyring *kr, int keyNum, unsigned char **tag)
+vulpes_err_t lev1_get_tag(struct keyring *kr, int keyNum, unsigned char **tag)
 {
   /* set tag to NULL in case of error */
   *tag=NULL;
   
   if (kr == NULL) {
-      return LEV1_ENCRYPT_E_NO_ENCRY;
+      return VULPES_INVALID;
   }
 
   if (keyNum > kr->numKeys) {
-      return LEV1_ENCRYPT_E_KEY_NO_EXIST;
+      return VULPES_NOKEY;
   }
 
   /* no error -- set tag */
   *tag = kr->keyRing[keyNum].tag;
 
-  return LEV1_ENCRYPT_SUCCESS;
+  return VULPES_SUCCESS;
 }
 
-lev1_encrypt_ret_t 
-lev1_get_key(struct keyring *kr, int keyNum, unsigned char **key)
+vulpes_err_t lev1_get_key(struct keyring *kr, int keyNum, unsigned char **key)
 {
   /* set key to NULL in case of error */
   *key=NULL;
   
   if (kr == NULL) {
-      return LEV1_ENCRYPT_E_NO_ENCRY;
+      return VULPES_INVALID;
   }
 
   if (keyNum > kr->numKeys) {
-      return LEV1_ENCRYPT_E_KEY_NO_EXIST;
+      return VULPES_NOKEY;
   }
 
   /* no error -- set key */
   *key = kr->keyRing[keyNum].key;
 
-  return LEV1_ENCRYPT_SUCCESS;
+  return VULPES_SUCCESS;
 }
 
-lev1_encrypt_ret_t 
+vulpes_err_t 
 lev1_check_tag(struct keyring *kr, int keyNum, const unsigned char *tag)
 {
   if (kr == NULL) {
-      return LEV1_ENCRYPT_E_NO_ENCRY;
+      return VULPES_INVALID;
   }
 
   if (keyNum > kr->numKeys) {
-      return LEV1_ENCRYPT_E_KEY_NO_EXIST;
+      return VULPES_NOKEY;
   }
 
   return ((memcmp(kr->keyRing[keyNum].tag, tag, 20) == 0) 
-	  ? LEV1_ENCRYPT_SUCCESS 
-	  : LEV1_ENCRYPT_E_NO_TAG_MATCH);
+	  ? VULPES_SUCCESS : VULPES_TAGFAIL);
 }
 
 /* Called with 

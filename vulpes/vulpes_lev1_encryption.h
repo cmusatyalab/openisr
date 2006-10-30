@@ -16,6 +16,8 @@ ACCEPTANCE OF THIS AGREEMENT
 #ifndef VULPES_LEV1_ENCRYPT
 #define VULPES_LEV1_ENCRYPT
 
+#include "vulpes.h"
+
 /*
  * TYPEDEFS
  */
@@ -30,20 +32,12 @@ struct keyring {
   int numKeys;
 };
 
-typedef int lev1_encrypt_ret_t;
-
-/* lev1_encrypt_ret_t values */
-#define LEV1_ENCRYPT_SUCCESS             0
-#define LEV1_ENCRYPT_E_KEY_NO_EXIST      -1
-#define LEV1_ENCRYPT_E_NO_TAG_MATCH      -2
-#define LEV1_ENCRYPT_E_NO_ENCRY          -3
-
 struct keyring* lev1_initEncryption(char *keyring_name);	
 int lev1_cleanupKeys(struct keyring *kr, char *keyring_name); 
 
-lev1_encrypt_ret_t lev1_get_tag(struct keyring *kr, int keyNum, unsigned char **tag);
-lev1_encrypt_ret_t lev1_check_tag(struct keyring *kr, int keyNum, const unsigned char *tag);
-lev1_encrypt_ret_t lev1_get_key(struct keyring *kr, int keyNum, unsigned char **key);
+vulpes_err_t lev1_get_tag(struct keyring *kr, int keyNum, unsigned char **tag);
+vulpes_err_t lev1_check_tag(struct keyring *kr, int keyNum, const unsigned char *tag);
+vulpes_err_t lev1_get_key(struct keyring *kr, int keyNum, unsigned char **key);
 void lev1_updateKey(struct keyring *kr, unsigned char new_key[20], unsigned char new_tag[20],
 		    int keyNum); 
 

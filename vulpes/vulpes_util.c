@@ -69,6 +69,10 @@ char *vulpes_strerror(vulpes_err_t err)
     return "Invalid parameter";
   case VULPES_NOMEM:
     return "Out of memory";
+  case VULPES_NOKEY:
+    return "No such key in keyring";
+  case VULPES_TAGFAIL:
+    return "Tag did not match data";
   }
   return "(Unknown)";
 }

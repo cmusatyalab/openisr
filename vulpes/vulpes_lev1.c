@@ -295,7 +295,7 @@ print_check_tag_error(const struct vulpes_mapping *map_ptr, unsigned chunk_num,
 
   spec = (struct lev1_mapping *) map_ptr->special;
   
-  if(lev1_get_tag(spec->keyring, chunk_num, &kr_tag) == LEV1_ENCRYPT_SUCCESS) {
+  if(lev1_get_tag(spec->keyring, chunk_num, &kr_tag) == VULPES_SUCCESS) {
     for(i=0; i<20; i++) {
       sprintf(&(s_tag[2*i]), "%02x", tag[i]);
       sprintf(&(s_kr_tag[2*i]), "%02x", kr_tag[i]);
@@ -319,7 +319,7 @@ valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize,
   keyring = spec->keyring;
 
   dgst = digest(buffer, bufsize);
-  bufvalid = (lev1_check_tag(keyring, chunk_num, dgst) == LEV1_ENCRYPT_SUCCESS);
+  bufvalid = (lev1_check_tag(keyring, chunk_num, dgst) == VULPES_SUCCESS);
   if(! bufvalid) {
     print_check_tag_error(map_ptr, chunk_num, dgst);
   }
@@ -353,7 +353,7 @@ lev1_copy_file(const char *src, const char *dst,
   if(map_ptr->lka_svc != NULL) {
     unsigned char *tag;
     
-    if(lev1_get_tag(spec->keyring, chunk_num, &tag)==LEV1_ENCRYPT_SUCCESS) {
+    if(lev1_get_tag(spec->keyring, chunk_num, &tag)==VULPES_SUCCESS) {
       char *lka_src_file;
 
 #ifdef DEBUG
@@ -747,7 +747,7 @@ int open_chunk_file(const struct vulpes_mapping *map_ptr,
 
   tag = digest(encryptedFile, fSize);
   
-  if (lev1_check_tag(spec->keyring, chunk_num, tag) != LEV1_ENCRYPT_SUCCESS){
+  if (lev1_check_tag(spec->keyring, chunk_num, tag) != VULPES_SUCCESS){
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","lev1_check_tag() failed: %d",chunk_num);
     /* #ifdef DEBUG */
     {
@@ -756,7 +756,7 @@ int open_chunk_file(const struct vulpes_mapping *map_ptr,
       unsigned char *kr_tag;
       int i;
       
-      if(lev1_get_tag(spec->keyring, chunk_num, &kr_tag) == LEV1_ENCRYPT_SUCCESS) {
+      if(lev1_get_tag(spec->keyring, chunk_num, &kr_tag) == VULPES_SUCCESS) {
 	for(i=0; i<20; i++) {
 	  sprintf(&(s_tag[2*i]), "%02x", tag[i]);
 	  sprintf(&(s_kr_tag[2*i]), "%02x", kr_tag[i]);
@@ -770,7 +770,7 @@ int open_chunk_file(const struct vulpes_mapping *map_ptr,
     return -1;
   }
   
-  if (lev1_get_key(spec->keyring, chunk_num, &key) != LEV1_ENCRYPT_SUCCESS){
+  if (lev1_get_key(spec->keyring, chunk_num, &key) != VULPES_SUCCESS){
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","lev1_get_key() failed: %d",chunk_num);
     return -1;
   }

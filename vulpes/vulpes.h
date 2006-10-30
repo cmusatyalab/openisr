@@ -5,7 +5,6 @@
    interfaces, this should be cleaned up a bit. */
 
 #include <stdio.h>
-#include "vulpes_map.h"
 
 #undef VERBOSE_DEBUG
 #ifdef VERBOSE_DEBUG
@@ -27,6 +26,8 @@ typedef enum vulpes_err {
   VULPES_NOTFOUND,
   VULPES_INVALID,
   VULPES_NOMEM,
+  VULPES_NOKEY,
+  VULPES_TAGFAIL,
 } vulpes_err_t;
 
 #endif
