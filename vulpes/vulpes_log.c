@@ -52,8 +52,7 @@ static void vulpes_timestamp(char timestamp_coarse[128], char timestamp_fine[32]
   *index(timestamp_coarse, '\n')='\0';
 }
 
-static __inline
-int vulpes_log_fflush_needed(enum logmsgtype msgtype)
+static inline int vulpes_log_fflush_needed(enum logmsgtype msgtype)
 {
   return (int)((msgtype==LOG_BASIC) || (msgtype==LOG_ERRORS));
 }
@@ -118,14 +117,12 @@ int vulpes_log_close(void)
   return 0;
 }
 
-static __inline
-int log_msgtype_active_file(enum logmsgtype msgtype)
+static inline int log_msgtype_active_file(enum logmsgtype msgtype)
 {
   return (((1<<msgtype) & gl_log.logf_mask) ? 1 : 0);
 }
 
-static __inline
-int log_msgtype_active_stdout(enum logmsgtype msgtype)
+static inline int log_msgtype_active_stdout(enum logmsgtype msgtype)
 {
   return (((1<<msgtype) & gl_log.stdout_mask) ? 1 : 0);
 }

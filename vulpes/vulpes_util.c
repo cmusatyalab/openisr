@@ -1,5 +1,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include "vulpes.h"
 
@@ -75,4 +76,50 @@ char *vulpes_strerror(vulpes_err_t err)
     return "Tag did not match data";
   }
   return "(Unknown)";
+}
+
+void binToHex(unsigned char* bin, unsigned char hex[2])
+{
+	int i;
+	unsigned char tmp;
+
+	tmp = *bin;
+	i = ((int)tmp)/16;
+	if (i<10)
+		hex[0] = '0' + i;
+	else
+		hex[0] = 'A' + (i-10);
+	i = ((int)tmp)%16;
+	if (i<10)
+		hex[1] = '0' + i;
+	else
+		hex[1] = 'A' + (i-10);
+}
+
+/* This function has to be really fast! */
+unsigned char hexToBin(unsigned char* hex)
+{
+	int i,j;
+
+	if ((hex[0]>='0')&&(hex[0]<='9'))
+		i = hex[0]-'0';
+	else
+		if ((hex[0]>='A')&&(hex[0]<='F'))
+			i = 10 + hex[0]-'A';
+		else
+		{
+			printf("Keyring invalid: %c \n",hex[0]);
+			exit(1);
+		};
+	if ((hex[1]>='0')&&(hex[1]<='9'))
+		j = hex[1]-'0';
+	else
+		if ((hex[1]>='A')&&(hex[1]<='F'))
+			j = 10 + hex[1]-'A';
+		else
+		{
+			printf("Keyring invalid: %c \n",hex[1]);
+			exit(1);
+		};
+	return ((unsigned char)(16*i + j));
 }

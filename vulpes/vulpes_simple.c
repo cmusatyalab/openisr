@@ -28,7 +28,7 @@ ACCEPTANCE OF THIS AGREEMENT
 
 typedef int simple_mapping_special_t;
 
-static inline int long_seek(int fid, unsigned long long lloffset)
+static int long_seek(int fid, unsigned long long lloffset)
 {
     const off_t max_offset = 0x7fffffff;
 

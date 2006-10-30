@@ -17,17 +17,8 @@ ACCEPTANCE OF THIS AGREEMENT
 
 #include <stdlib.h>
 #include <stdio.h>
+#include "vulpes.h"
 #include "vulpes_log.h"
-
-/* #define VERBOSE_DEBUG  */
-#ifdef VERBOSE_DEBUG
-#include <stdio.h>
-#define VULPES_DEBUG(fmt, args...)     printf("[vulpes] " fmt, ## args)
-#else
-#define VULPES_DEBUG(fmt, args...)     ;
-#endif
-
-#define VULPES_FIDS_C
 #include "vulpes_fids.h"
 
 #define MAX_OPEN_FIDS          128
@@ -48,7 +39,7 @@ static int r_num_open_fids = 0;
 static fid_id_t mru = NULL_FID_ID;
 static fid_id_t lru = NULL_FID_ID;
 
-__inline int reclaim_fid(fid_id_t ptr)
+static int reclaim_fid(fid_id_t ptr)
 {
   VULPES_DEBUG("fidsvc: reclaiming fnp %d.\n", (int) ptr);
   
@@ -56,7 +47,7 @@ __inline int reclaim_fid(fid_id_t ptr)
 				    fid_array[ptr].reclaim_data, fid_array[ptr].index);
 }
 
-__inline void init_fid(fid_id_t ptr)
+static void init_fid(fid_id_t ptr)
 {
   fid_array[ptr].parent = NULL_FID_ID;
   fid_array[ptr].reclaim = NULL;
@@ -66,26 +57,26 @@ __inline void init_fid(fid_id_t ptr)
   fid_array[ptr].child = NULL_FID_ID;
 }
 
-__inline int fidsvc_num_open(void)
+inline int fidsvc_num_open(void)
 {
   return r_num_open_fids;
 }
 
-__inline fid_id_t set_mru(fid_id_t fnp)
+static inline fid_id_t set_mru(fid_id_t fnp)
 {
   VULPES_DEBUG("fidsvc: setting mru to %d.\n", (int) fnp);
   
   return (mru = fnp);
 }
 
-__inline fid_id_t set_lru(fid_id_t fnp)
+static inline fid_id_t set_lru(fid_id_t fnp)
 {
   VULPES_DEBUG("fidsvc: setting lru to %d.\n", (int) fnp);
   
   return (lru = fnp);
 }
 
-__inline fid_t fidsvc_get(fid_id_t fnp)
+fid_t fidsvc_get(fid_id_t fnp)
 {
   fid_id_t parent, child;
   
@@ -115,7 +106,6 @@ __inline fid_t fidsvc_get(fid_id_t fnp)
   return fid_array[fnp].fid;
 }
 
-__inline
 fid_id_t fidsvc_register(int fid, fidsvc_reclamation_func_t reclaim,
 			 void *reclaim_data, int index)
 {
@@ -176,7 +166,7 @@ fid_id_t fidsvc_register(int fid, fidsvc_reclamation_func_t reclaim,
   return ptr;
 }
 
-__inline int fidsvc_remove(fid_id_t fnp)
+int fidsvc_remove(fid_id_t fnp)
 {
   fid_id_t parent, child;
   int result;

@@ -30,16 +30,10 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <fcntl.h>
 #include <stdlib.h>
 #include <openssl/blowfish.h>
+#include "vulpes.h"
 #include "vulpes_log.h"
+#include "vulpes_util.h"
 
-
-/* DEFINES */
-/* #define VERBOSE_DEBUG */
-#ifdef VERBOSE_DEBUG
-#define VULPES_DEBUG(fmt, args...)     printf("[vulpes] " fmt, ## args)
-#else
-#define VULPES_DEBUG(fmt, args...)     ;
-#endif
 
 /* LOCAL VARIABLES */
 static const char digestName[] = "sha1";
@@ -167,52 +161,6 @@ int vulpes_decrypt(const unsigned char *const inString,
 
 /* Routines to read and write from the keyring file */
 
-static __inline void binToHex(unsigned char* bin, unsigned char hex[2])
-{
-	int i;
-	unsigned char tmp;
-
-	tmp = *bin;
-	i = ((int)tmp)/16;
-	if (i<10)
-		hex[0] = '0' + i;
-	else
-		hex[0] = 'A' + (i-10);
-	i = ((int)tmp)%16;
-	if (i<10)
-		hex[1] = '0' + i;
-	else
-		hex[1] = 'A' + (i-10);
-}
-
-/* This function has to be really fast! */
-static __inline unsigned char hexToBin(unsigned char* hex)
-{
-	int i,j;
-
-	if ((hex[0]>='0')&&(hex[0]<='9'))
-		i = hex[0]-'0';
-	else
-		if ((hex[0]>='A')&&(hex[0]<='F'))
-			i = 10 + hex[0]-'A';
-		else
-		{
-			printf("Keyring invalid: %c \n",hex[0]);
-			exit(1);
-		};
-	if ((hex[1]>='0')&&(hex[1]<='9'))
-		j = hex[1]-'0';
-	else
-		if ((hex[1]>='A')&&(hex[1]<='F'))
-			j = 10 + hex[1]-'A';
-		else
-		{
-			printf("Keyring invalid: %c \n",hex[1]);
-			exit(1);
-		};
-	return ((unsigned char)(16*i + j));
-}
-	
 /* reads the hex file, converts to binary and returns pointer */
 static unsigned char* 
 vulpes_read_hex_keyring(int fd, int *keysRead)

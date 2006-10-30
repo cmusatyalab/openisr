@@ -62,8 +62,6 @@ struct lev1_mapping {
 
 static unsigned writes_before_read = 0;
 
-static void get_dir_chunk(const struct lev1_mapping * spec,
-			  unsigned sect_num, unsigned *dir, unsigned *chunk);
 static void get_dir_chunk_from_chunk_num(const struct lev1_mapping * spec,
 					 unsigned chunk_num, unsigned *dir, unsigned *chunk);
 static unsigned get_chunk_number(const struct lev1_mapping * spec,
@@ -78,18 +76,18 @@ extern vulpes_err_t http_get(const struct vulpes_mapping *map_ptr, char *buf,
                 int *bufsize, const char *url);
 
 /* AUXILLIARY FUNCTIONS */
-static __inline int cdp_is_rw(struct chunk_data * cdp)
+static inline int cdp_is_rw(struct chunk_data * cdp)
 {
   return ((cdp->status & CHUNK_STATUS_RW) == CHUNK_STATUS_RW);
 }
 
-static __inline int cdp_is_accessed(struct chunk_data * cdp)
+static inline int cdp_is_accessed(struct chunk_data * cdp)
 {
   return ((cdp->status & CHUNK_STATUS_ACCESSED) ==
 	  CHUNK_STATUS_ACCESSED);
 }
 
-static __inline int cdp_is_dirty(struct chunk_data * cdp)
+static inline int cdp_is_dirty(struct chunk_data * cdp)
 {
   int result;
 
@@ -105,56 +103,56 @@ static __inline int cdp_is_dirty(struct chunk_data * cdp)
   return result;
 }
 
-static __inline void mark_cdp_accessed(struct chunk_data * cdp)
+static inline void mark_cdp_accessed(struct chunk_data * cdp)
 {
   cdp->status |= CHUNK_STATUS_ACCESSED;
 }
 
-static __inline void mark_cdp_dirty(struct chunk_data * cdp)
+static inline void mark_cdp_dirty(struct chunk_data * cdp)
 {
   cdp->status |= CHUNK_STATUS_DIRTY;
 }
 
-static __inline void mark_cdp_readwrite(struct chunk_data * cdp)
+static inline void mark_cdp_readwrite(struct chunk_data * cdp)
 {
   cdp->status |= CHUNK_STATUS_RW;
 }
 
-static __inline void mark_cdp_readonly(struct chunk_data * cdp)
+static inline void mark_cdp_readonly(struct chunk_data * cdp)
 {
   cdp->status &= ~CHUNK_STATUS_RW;
 }
 
-static __inline int cdp_present(struct chunk_data * cdp)
+static inline int cdp_present(struct chunk_data * cdp)
 {
   return ((cdp->status & CHUNK_STATUS_PRESENT) ==
 	  CHUNK_STATUS_PRESENT);
 }
 
-static __inline int cdp_lka_copy(struct chunk_data * cdp)
+static inline int cdp_lka_copy(struct chunk_data * cdp)
 {
   return ((cdp->status & CHUNK_STATUS_LKA_COPY) ==
 	  CHUNK_STATUS_LKA_COPY);
 }
 
-static __inline void mark_cdp_lka_copy(struct chunk_data * cdp)
+static inline void mark_cdp_lka_copy(struct chunk_data * cdp)
 {
   cdp->status |= CHUNK_STATUS_LKA_COPY;
 }
 
-static __inline void mark_cdp_not_lka_copy(struct chunk_data * cdp)
+static inline void mark_cdp_not_lka_copy(struct chunk_data * cdp)
 {
   cdp->status &= ~CHUNK_STATUS_LKA_COPY;
 }
 
-static __inline
+static inline
 unsigned get_chunk_number(const struct lev1_mapping * spec,
 			  unsigned sect_num)
 {
   return sect_num / spec->chunksize;
 }
 
-static __inline
+static inline
 void get_dir_chunk_from_chunk_num(const struct lev1_mapping * spec,
 				  unsigned chunk_num, unsigned *dir, unsigned *chunk)
 {
@@ -163,7 +161,7 @@ void get_dir_chunk_from_chunk_num(const struct lev1_mapping * spec,
 }
 
 
-static __inline
+static
 struct chunk_data *get_cdp_from_chunk_num(const struct lev1_mapping * spec,
 					  unsigned chunk_num)
 {
@@ -176,20 +174,9 @@ struct chunk_data *get_cdp_from_chunk_num(const struct lev1_mapping * spec,
 
   return cdp;
 }
-  
 
-static __inline
-void get_dir_chunk(const struct lev1_mapping * spec,
-		   unsigned sect_num, unsigned *dir, unsigned *chunk)
-{
-  unsigned chunk_num;		/* absolute chunk numbers */
-  
-  chunk_num = get_chunk_number(spec, sect_num);
-  
-  get_dir_chunk_from_chunk_num(spec, chunk_num, dir, chunk);
-}
 
-static __inline void mark_cdp_present(struct chunk_data * cdp)
+static inline void mark_cdp_present(struct chunk_data * cdp)
 {
   cdp->status |= CHUNK_STATUS_PRESENT;
 }
@@ -214,8 +201,7 @@ static int form_index_name(const char *dirname,
   return 0;
 }
 
-static __inline
-int one_chunk(const struct lev1_mapping * spec,
+static int one_chunk(const struct lev1_mapping * spec,
 	      const vulpes_cmdblk_t * cmdblk)
 {
   unsigned start, end;	/* absolute chunk numbers */
@@ -229,8 +215,7 @@ int one_chunk(const struct lev1_mapping * spec,
   return (start == end);
 }
 
-static __inline
-int form_dir_name(char *buffer, int bufsize,
+static int form_dir_name(char *buffer, int bufsize,
 		  const char *rootname, unsigned dir)
 {
   int result;
@@ -245,8 +230,7 @@ int form_dir_name(char *buffer, int bufsize,
   return 0;
 }
 
-static __inline
-int form_chunk_file_name(char *buffer, int bufsize,
+static int form_chunk_file_name(char *buffer, int bufsize,
 			 const char *rootname,
 			 unsigned dir, unsigned chunk)
 {
@@ -567,24 +551,6 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
   return 0;
 }
 
-static __inline void binToHex(unsigned char* bin, unsigned char hex[2])
-{
-  int i;
-  unsigned char tmp;
-  
-  tmp = *bin;
-  i = ((int)tmp)/16;
-  if (i<10)
-    hex[0] = '0' + i;
-  else
-    hex[0] = 'A' + (i-10);
-  i = ((int)tmp)%16;
-  if (i<10)
-    hex[1] = '0' + i;
-  else
-    hex[1] = 'A' + (i-10);
-}
-
 
 /* In earlier version we returned the FID (an int)
  * but with new versions, we are always going to
@@ -596,8 +562,7 @@ static __inline void binToHex(unsigned char* bin, unsigned char hex[2])
  * memory
  */
 /* returns 0 if okay else -1 on bad exit */
-static __inline
-int open_chunk_file(const struct vulpes_mapping *map_ptr,
+static int open_chunk_file(const struct vulpes_mapping *map_ptr,
 		    const vulpes_cmdblk_t * cmdblk, int open_for_writing)
 {
   char chunk_name[MAX_CHUNK_NAME_LENGTH];

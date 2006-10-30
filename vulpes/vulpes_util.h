@@ -8,5 +8,7 @@ int is_file(const char *name);
 off_t get_filesize(int fd);
 vulpes_err_t read_file(int fd, char *buf, int *bufsize);
 char *vulpes_strerror(vulpes_err_t err);
+void binToHex(unsigned char* bin, unsigned char hex[2]);
+unsigned char hexToBin(unsigned char* hex);
 
 #endif
