@@ -18,19 +18,19 @@ ACCEPTANCE OF THIS AGREEMENT
 
 #include "fauxide.h"
 
-typedef enum transfer_type {
+enum transfer_type {
   NO_TRANSPORT=0,
   LOCAL_TRANSPORT,
   HTTP_TRANSPORT,
-} transfer_type_t;
+};
 
-typedef enum mapping_type {
+enum mapping_type {
   NO_MAPPING=0,
   SIMPLE_FILE_MAPPING,
   SIMPLE_DISK_MAPPING,
   LEV1_MAPPING,
   LEV1V_MAPPING,
-} mapping_type_t;
+};
 
 struct vulpes_mapping;
 
@@ -44,9 +44,9 @@ typedef int (*vulpes_write_func_t) (const struct vulpes_mapping *,
 typedef int (*vulpes_close_func_t) (struct vulpes_mapping *);
 
 struct vulpes_mapping {
-  transfer_type_t trxfer;	/* Set by main */
-  mapping_type_t type;	        /* Set by main */
-  char* proxy_name;             /*Set by main */
+  enum transfer_type trxfer;	/* Set by main */
+  enum mapping_type type;       /* Set by main */
+  char* proxy_name;             /* Set by main */
   long  proxy_port;             /* set by main */
   
   char *device_name;		/* Set by main */

@@ -96,9 +96,9 @@ void tally_sector_accesses(unsigned write, unsigned num)
 #endif
 }
 
-static mapping_type_t char_to_mapping_type(const char *name)
+static enum mapping_type char_to_mapping_type(const char *name)
 {
-  mapping_type_t result = NO_MAPPING;
+  enum mapping_type result = NO_MAPPING;
   
   if (strcmp("lev1", name) == 0) {
     result = LEV1_MAPPING;
