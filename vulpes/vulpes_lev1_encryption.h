@@ -27,7 +27,6 @@ struct keyring_entry {
 };
 
 struct keyring {
-  char keyRingFileName[256];
   struct keyring_entry *keyRing;
   int numKeys;
 };
