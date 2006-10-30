@@ -19,16 +19,16 @@ ACCEPTANCE OF THIS AGREEMENT
 /*
  * TYPEDEFS
  */
-typedef struct keyring_entry_s {
+struct keyring_entry {
     unsigned char tag[20];/* was called as o2 earlier */
     unsigned char key[20];/* was called as o1 earlier */
-} keyring_entry_t;
+};
 
-typedef struct keyring_s {
+struct keyring {
   char keyRingFileName[256];
-  keyring_entry_t *keyRing;
+  struct keyring_entry *keyRing;
   int numKeys;
-} keyring_t;
+};
 
 typedef int lev1_encrypt_ret_t;
 
@@ -38,13 +38,13 @@ typedef int lev1_encrypt_ret_t;
 #define LEV1_ENCRYPT_E_NO_TAG_MATCH      -2
 #define LEV1_ENCRYPT_E_NO_ENCRY          -3
 
-keyring_t* lev1_initEncryption(char *keyring_name);	
-int lev1_cleanupKeys(keyring_t *kr, char *keyring_name); 
+struct keyring* lev1_initEncryption(char *keyring_name);	
+int lev1_cleanupKeys(struct keyring *kr, char *keyring_name); 
 
-lev1_encrypt_ret_t lev1_get_tag(keyring_t *kr, int keyNum, unsigned char **tag);
-lev1_encrypt_ret_t lev1_check_tag(keyring_t *kr, int keyNum, const unsigned char *tag);
-lev1_encrypt_ret_t lev1_get_key(keyring_t *kr, int keyNum, unsigned char **key);
-void lev1_updateKey(keyring_t *kr, unsigned char new_key[20], unsigned char new_tag[20],
+lev1_encrypt_ret_t lev1_get_tag(struct keyring *kr, int keyNum, unsigned char **tag);
+lev1_encrypt_ret_t lev1_check_tag(struct keyring *kr, int keyNum, const unsigned char *tag);
+lev1_encrypt_ret_t lev1_get_key(struct keyring *kr, int keyNum, unsigned char **key);
+void lev1_updateKey(struct keyring *kr, unsigned char new_key[20], unsigned char new_tag[20],
 		    int keyNum); 
 
 unsigned char *digest(const unsigned char *mesg, unsigned mesgLen);

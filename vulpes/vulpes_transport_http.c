@@ -7,13 +7,13 @@
 #include "vulpes_log.h"
 #include "vulpes_map.h"
 
-typedef struct curl_buffer_s {
+struct curl_buffer {
   char *buf;
   size_t size;
   size_t maxsize;
-} curl_buffer_t;
+};
 static CURL *curl_handle;
-static curl_buffer_t* curl_buffer;
+static struct curl_buffer *curl_buffer;
 static char curl_error_buffer[CURL_ERROR_SIZE];
 
 /* the curl writeback function */
@@ -22,7 +22,7 @@ static size_t curl_write_callback_function(char* curlbuf, size_t size,
 			size_t nitems, void *myPtr)
 {
   size_t totSize = size*nitems;
-  curl_buffer_t* ptr = (curl_buffer_t *)myPtr;
+  struct curl_buffer *ptr = (struct curl_buffer *)myPtr;
   
   char* nxtWrite= &(ptr->buf[ptr->size]);
   if (totSize > ptr->maxsize - ptr->size)
@@ -70,7 +70,7 @@ static void init_curl(const struct vulpes_mapping *map_ptr,
   /* disable Nagle's algorithm 
      curl_easy_setopt(curl_handle, CURLOPT_TCP_NODELAY, 1);*/
   
-  curl_buffer = (curl_buffer_t*) malloc(sizeof(curl_buffer_t));
+  curl_buffer = (struct curl_buffer*) malloc(sizeof(struct curl_buffer));
   curl_buffer->size=0;
   curl_buffer->maxsize=bufsize;
   curl_buffer->buf=buf;

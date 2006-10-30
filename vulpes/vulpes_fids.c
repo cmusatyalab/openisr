@@ -32,9 +32,7 @@ ACCEPTANCE OF THIS AGREEMENT
 
 #define MAX_OPEN_FIDS          128
 
-typedef struct fid_node_s fid_node_t;
-
-struct fid_node_s {
+struct fid_node {
   fid_id_t parent;
   fidsvc_reclamation_func_t reclaim;
   void *reclaim_data;
@@ -43,7 +41,7 @@ struct fid_node_s {
   int index;
 };
 
-static fid_node_t fid_array[MAX_OPEN_FIDS];
+static struct fid_node fid_array[MAX_OPEN_FIDS];
 
 static int r_num_open_fids = 0;
 

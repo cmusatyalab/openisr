@@ -326,7 +326,7 @@ vulpes_write_hex_keyring(int fd, unsigned char* binaryKeyring, int howManyKeys)
 /*
  * This is called only on chunk-file close  
  */
-void lev1_updateKey(keyring_t *kr, unsigned char new_key[20], unsigned char new_tag[20],
+void lev1_updateKey(struct keyring *kr, unsigned char new_key[20], unsigned char new_tag[20],
 		    int keyNum)
 {
   unsigned char old_tag_log[41], tag_log[41];
@@ -356,7 +356,7 @@ void lev1_updateKey(keyring_t *kr, unsigned char new_key[20], unsigned char new_
 }
 
 lev1_encrypt_ret_t 
-lev1_get_tag(keyring_t *kr, int keyNum, unsigned char **tag)
+lev1_get_tag(struct keyring *kr, int keyNum, unsigned char **tag)
 {
   /* set tag to NULL in case of error */
   *tag=NULL;
@@ -376,7 +376,7 @@ lev1_get_tag(keyring_t *kr, int keyNum, unsigned char **tag)
 }
 
 lev1_encrypt_ret_t 
-lev1_get_key(keyring_t *kr, int keyNum, unsigned char **key)
+lev1_get_key(struct keyring *kr, int keyNum, unsigned char **key)
 {
   /* set key to NULL in case of error */
   *key=NULL;
@@ -396,7 +396,7 @@ lev1_get_key(keyring_t *kr, int keyNum, unsigned char **key)
 }
 
 lev1_encrypt_ret_t 
-lev1_check_tag(keyring_t *kr, int keyNum, const unsigned char *tag)
+lev1_check_tag(struct keyring *kr, int keyNum, const unsigned char *tag)
 {
   if (kr == NULL) {
       return LEV1_ENCRYPT_E_NO_ENCRY;
@@ -418,7 +418,7 @@ lev1_check_tag(keyring_t *kr, int keyNum, const unsigned char *tag)
 *  a of now: keyring is not encrypted, so the second parm is NULL, and third is zero
 *  Returns 1 on success, 0 otherwise
 */  
-static int lev1_getKeyRingFile(keyring_t *kr, char *userPath, char *user_key, int userKeyLen)
+static int lev1_getKeyRingFile(struct keyring *kr, char *userPath, char *user_key, int userKeyLen)
 {
   int fdes;
   char fname[256];
@@ -444,7 +444,7 @@ static int lev1_getKeyRingFile(keyring_t *kr, char *userPath, char *user_key, in
 	vulpes_log(LOG_ERRORS,"LEV1_GETKEYRING","could not open keyring: %s",fname);
 	return 0;
       }
-    kr->keyRing = (keyring_entry_t *)  vulpes_read_hex_keyring(fdes,&(kr->numKeys));
+    kr->keyRing = (struct keyring_entry *)  vulpes_read_hex_keyring(fdes,&(kr->numKeys));
     if (!kr->keyRing)
       return 0;
     close(fdes);
@@ -473,8 +473,8 @@ static int lev1_getKeyRingFile(keyring_t *kr, char *userPath, char *user_key, in
    vulpes_decrypt(fileContent, fsize, &decrypted, &tmp, user_key,
    userKeyLen);
    
-   kr->numKeys = fsize / sizeof(keyring_entry_t);
-   kr->keyRing = (keyring_entry_t *) malloc(fsize);
+   kr->numKeys = fsize / sizeof(struct keyring_entry);
+   kr->keyRing = (struct keyring_entry *) malloc(fsize);
    memcpy(kr->keyRing, decrypted, tmp);
    free(decrypted);
    decrypted = NULL;
@@ -483,7 +483,7 @@ static int lev1_getKeyRingFile(keyring_t *kr, char *userPath, char *user_key, in
 
 
 /* returns -1 on error or 0 otherwise on success */
-static int writeKeyRingFile(keyring_t *kr, char *userPath, char *user_key,
+static int writeKeyRingFile(struct keyring *kr, char *userPath, char *user_key,
 			    int userKeyLen)
 {
   int fdes, tmp ;
@@ -513,7 +513,7 @@ static int writeKeyRingFile(keyring_t *kr, char *userPath, char *user_key,
     tmp = ftruncate(fdes,0);
     
     /* NOT REQUIRED ANYMORE
-       write(fdes, (void *) keyRing, numKeys * (sizeof(keyring_entry_t)));  */
+       write(fdes, (void *) keyRing, numKeys * (sizeof(struct keyring_entry)));  */
     if (tmp==-1) {
       vulpes_log(LOG_ERRORS,"WRITEKEYRINGFILE","could not truncate keyring file for writeback: %s", fname);
       return -1;
@@ -533,7 +533,7 @@ static int writeKeyRingFile(keyring_t *kr, char *userPath, char *user_key,
   printf("warning: running UNSUPPORTED CODE in vulpes_lev1_encryption.c: bailing out\n");
   return -1;
   /* comment out code below - its unsupported
-     vulpes_encrypt((unsigned char *) keyRing, numKeys * sizeof(keyring_entry_t),
+     vulpes_encrypt((unsigned char *) keyRing, numKeys * sizeof(struct keyring_entry),
      &decrypted, &tmp, user_key, userKeyLen);
      
      fname[0] = '\0';
@@ -546,15 +546,15 @@ static int writeKeyRingFile(keyring_t *kr, char *userPath, char *user_key,
      decrypted = NULL;*/
 }
 
-/* returns a new keyring_t */
-keyring_t *lev1_initEncryption(char *keyring_name)
+/* returns a new struct keyring */
+struct keyring *lev1_initEncryption(char *keyring_name)
 {
-  keyring_t *kr = NULL;
+  struct keyring *kr = NULL;
 
   if(keyring_name == NULL)
     return NULL;
 
-  kr = malloc(sizeof(keyring_t));
+  kr = malloc(sizeof(struct keyring));
   if(kr == NULL) return NULL;
 
   kr->keyRingFileName[0] = '\0';
@@ -569,7 +569,7 @@ keyring_t *lev1_initEncryption(char *keyring_name)
 }
 
 /* returns -1 on error or 0 on success */
-int lev1_cleanupKeys(keyring_t *kr, char *keyring_name)
+int lev1_cleanupKeys(struct keyring *kr, char *keyring_name)
 {
   int i;
   
