@@ -2,32 +2,25 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include "vulpes.h"
 #include "vulpes_log.h"
+#include "vulpes_util.h"
 
-int local_get(char *buf, int *bufsize, const char *file)
+vulpes_err_t local_get(char *buf, int *bufsize, const char *file)
 {
   int fd;
-  int count;
+  vulpes_err_t err;
   
   fd = open(file, O_RDONLY);
   if (fd == -1) {
     vulpes_log(LOG_ERRORS,"LOCAL_GET","unable to open input %s",file);
-    return -1;
+    return VULPES_IOERR;
   }
-  count=read(fd, buf, *bufsize);
-  if (count == -1) {
-    vulpes_log(LOG_ERRORS,"LOCAL_GET","unable to read input %s",file);
-    return -1;
-  }
-  if (count == *bufsize) {
-    /* Make sure we're at EOF */
-    if (lseek(fd, 0, SEEK_END) != count) {
-      vulpes_log(LOG_ERRORS,"LOCAL_GET","file larger than buffer: %s",file);
-      return -1;
-    }
+  err=read_file(fd, buf, bufsize);
+  if (err) {
+    vulpes_log(LOG_ERRORS,"LOCAL_GET","unable to read input %s: %s",file,vulpes_strerror(err));
+    return err;
   }
   close(fd);
-  *bufsize=count;
-  
-  return 0;
+  return VULPES_SUCCESS;
 }

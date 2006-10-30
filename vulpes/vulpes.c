@@ -369,7 +369,7 @@ int main(int argc, char *argv[])
 	  printf("WARNING: unable to open lka service.\n");
       if(mapping.lka_svc != NULL)
 	if(vulpes_lka_add(mapping.lka_svc, LKA_HFS, VULPES_LKA_TAG_SHA1,
-	    argv[optind++]) != VULPES_LKA_RETURN_SUCCESS)
+	    argv[optind++]) != VULPES_SUCCESS)
 	  printf("WARNING: unable to add lka database %s.\n", argv[optind]);
       break;
     case 'm':
@@ -482,7 +482,7 @@ int main(int argc, char *argv[])
 
   /* Close the LKA service */
   if(mapping.lka_svc != NULL)
-    if(vulpes_lka_close(mapping.lka_svc) != VULPES_LKA_RETURN_SUCCESS)
+    if(vulpes_lka_close(mapping.lka_svc) != VULPES_SUCCESS)
       vulpes_log(LOG_ERRORS,"VULPES_MAIN","failure during lka_close().");    
   
   /* Close the fidsvc */

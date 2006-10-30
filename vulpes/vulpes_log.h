@@ -35,4 +35,10 @@ int log_msgtype_active(logmsg_t msgtype);
 
 void vulpes_log(logmsg_t msgtype, const char *msghdr, const char *format, ...);
   
+#ifdef DEBUG
+#define vulpes_debug(type, hdr, fmt, args...) vulpes_log(type, hdr, fmt, ## args)
+#else
+#define vulpes_debug(type, hdr, fmt, args...) do {} while (0)
+#endif
+
 #endif

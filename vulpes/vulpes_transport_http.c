@@ -3,6 +3,7 @@
 #include <curl/easy.h>
 #include <stdlib.h>
 #include <string.h>
+#include "vulpes.h"
 #include "vulpes_log.h"
 #include "vulpes_map.h"
 
@@ -87,11 +88,11 @@ static void destroy_curl(void)
   free(curl_buffer);
 }
 
-int http_get(const vulpes_mapping_t *map_ptr, char *buf, int *bufsize,
+vulpes_err_t http_get(const vulpes_mapping_t *map_ptr, char *buf, int *bufsize,
 	  	const char *url)
 {
   CURLcode retVal;
-  int retstatus=-1;
+  vulpes_err_t retstatus=VULPES_IOERR;
 
   /* init curl session */
   init_curl(map_ptr, buf, *bufsize);
@@ -110,7 +111,7 @@ int http_get(const vulpes_mapping_t *map_ptr, char *buf, int *bufsize,
     goto out;
   }
   *bufsize=curl_buffer->size;
-  retstatus=0;
+  retstatus=VULPES_SUCCESS;
 
 out:
   destroy_curl();

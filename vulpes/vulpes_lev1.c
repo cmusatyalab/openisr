@@ -25,17 +25,10 @@ ACCEPTANCE OF THIS AGREEMENT
 #include "vulpes_fids.h"
 #include "vulpes_lev1_encryption.h"
 #include "vulpes_lev1.h"
+#include "vulpes_lka.h"
 #include "vulpes_log.h"
 #include "vulpes_util.h"
 #include <sys/time.h>
-
-/* #define DEBUG */
-/* #define VERBOSE_DEBUG */
-#ifdef VERBOSE_DEBUG
-#define VULPES_DEBUG(fmt, args...)     printf("[vulpes] " fmt, ## args)
-#else
-#define VULPES_DEBUG(fmt, args...)     ;
-#endif
 
 const unsigned CHUNK_STATUS_ACCESSED = 0x0001;	/* This chunk has been accessed this session */
 const unsigned CHUNK_STATUS_DIRTY = 0x0002;	/* This chunk has been written this session */
@@ -81,9 +74,9 @@ static int form_chunk_file_name(char *buffer, int bufsize,
 				unsigned dir, unsigned chunk);
 
 /* XXX for now */
-extern int local_get(char *buf, int *bufsize, const char *file);
-extern int http_get(const vulpes_mapping_t *map_ptr, char *buf, int *bufsize,
-	  	const char *url);
+extern vulpes_err_t local_get(char *buf, int *bufsize, const char *file);
+extern vulpes_err_t http_get(const vulpes_mapping_t *map_ptr, char *buf,
+                int *bufsize, const char *url);
 
 /* AUXILLIARY FUNCTIONS */
 static __inline int cdp_is_rw(chunk_data_t * cdp)
@@ -337,53 +330,30 @@ valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize,
   return bufvalid;
 }
 
-static int
-valid_chunk_file(const unsigned char *filename, 
-		 const vulpes_mapping_t *map_ptr, unsigned chunk_num)
-{
-  int f;
-  int fsize;
-  unsigned char *buf;
-  int result;
-
-  if(!is_file(filename)) return 0;
-
-  if((f=open(filename, O_RDONLY)) < 0) return 0;
-
-  fsize = get_filesize(f);
-
-  buf=malloc(fsize);
-  if(buf == NULL) return 0;
-
-  result = read(f, buf, fsize);
-  if(result != fsize) return 0;
-
-  result = valid_chunk_buffer(buf, fsize, map_ptr, chunk_num);
-
-  free(buf);
-
-  close(f);
-
-  return result;
-}
-
 static int 
 lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr, unsigned chunk_num)
 {
   lev1_mapping_special_t *spec;
   char *buf;
   int buflen;
-  int ret;
   int fd;
+  vulpes_err_t err;
   
   spec = (lev1_mapping_special_t *) map_ptr->special;
   
+  buflen=1.002*spec->chunksize_bytes+20;
+  buf=malloc(buflen);
+  if (buf == NULL) {
+    vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","malloc failed");
+    return -1;
+  }
+  
   /* first check the lka database(s) */
+  /* XXX clean this up */
   if(map_ptr->lka_svc != NULL) {
     unsigned char *tag;
     
     if(lev1_get_tag(spec->keyring, chunk_num, &tag)==LEV1_ENCRYPT_SUCCESS) {
-      vulpes_lka_return_t lka_ret;
       char *lka_src_file;
 
 #ifdef DEBUG
@@ -398,10 +368,10 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
       }
 #endif
 
-      lka_ret = vulpes_lka_copy(map_ptr->lka_svc, VULPES_LKA_TAG_SHA1, 
-				tag, dst, &lka_src_file);
-      if(lka_ret == VULPES_LKA_RETURN_SUCCESS) {
-	if(valid_chunk_file(dst, map_ptr, chunk_num)) {
+      err = vulpes_lka_lookup(map_ptr->lka_svc, VULPES_LKA_TAG_SHA1, 
+				tag, buf, &buflen, &lka_src_file);
+      if(err == VULPES_SUCCESS) {
+	if(valid_chunk_buffer(buf, buflen, map_ptr, chunk_num)) {
 	  /* LKA hit */
 	  chunk_data_t *cdp;
 	  
@@ -414,21 +384,13 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
 		     "SERIOUS, NON-FATAL ERROR - lka lookup hit from %s failed tag match for %s",
 		     ((lka_src_file == NULL) ? "<src>" : lka_src_file), 
 		     dst);
-	  lka_ret = VULPES_LKA_RETURN_ERROR;
-
-	  /* unlink dst here */
-	  if(unlink(dst)) {
-	    vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
-		       "SERIOUS ERROR - unable to unlink file %s", dst);
-	    /* Fall through and see if recovery is possible
-	       (through an overwrite to the file) */
-	  }
+	  err = VULPES_IOERR;
 	}
 
 	/* free the source name buffer */
 	if(lka_src_file != NULL) free(lka_src_file);
 
-	if(lka_ret == VULPES_LKA_RETURN_SUCCESS) return 0;
+	if(err == VULPES_SUCCESS) goto have_data;
 	/* else, fall through */
       } else {
 	/* LKA miss */
@@ -440,27 +402,20 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
     }
   }
   
-  buflen=1.002*spec->chunksize_bytes+20;
-  buf=malloc(buflen);
-  if (buf == NULL) {
-    vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","malloc failed");
-    return -1;
-  }
-  
   vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","begin_transport: %s %s",src,dst);
   switch (map_ptr->trxfer) {
   case LOCAL_TRANSPORT:
-    ret=local_get(buf, &buflen, src);
+    err=local_get(buf, &buflen, src);
     break;
   case HTTP_TRANSPORT:
-    ret=http_get(map_ptr, buf, &buflen, src);
+    err=http_get(map_ptr, buf, &buflen, src);
     break;
   default:
     vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","unknown transport");
-    ret=-1;
+    err=VULPES_INVALID;
   }
   vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","end_transport: %s %s",src,dst);
-  if (ret) {
+  if (err) {
     goto out;
   }
   /* buflen has been updated with the length of the data */
@@ -468,14 +423,16 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
   /* check retrieved data for validity */
   if(!valid_chunk_buffer(buf, buflen, map_ptr, chunk_num)) {
     vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","failure: %s buffer not valid",src);
-    ret=-1;
+    err=VULPES_IOERR;
     goto out;
   }
 
+have_data:
   /* open destination cache file */
+  /* XXX O_EXCL? */
   if ((fd=open(dst, O_CREAT|O_TRUNC|O_WRONLY,0660)) == -1) {
     vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","unable to open output %s",dst);
-    ret=-1;
+    err=VULPES_IOERR;
     goto out;
   }
   
@@ -491,14 +448,14 @@ lev1_copy_file(const char *src, const char *dst, const vulpes_mapping_t *map_ptr
 	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
 		   "!!! unlink failure!!!: unable to unlink output %s",dst);
       }
-      ret=-1;
+      err=VULPES_IOERR;
   }
   close(fd);
   vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","end: %s %s",src,dst);
   
 out:
   free(buf);
-  return ret;
+  return err ? -1 : 0;
 }
 
 int lev1_reclaim(fid_t fid, void *data, int chunk_num)

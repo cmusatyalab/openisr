@@ -17,7 +17,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #define VULPES_MAP_H_
 
 #include "fauxide.h"
-#include "vulpes_lka.h"
 
 typedef int transfer_type_t;
 #define NO_TRANSPORT         0
@@ -64,7 +63,7 @@ struct vulpes_mapping_s {
   vulpes_close_func_t close_func;	/* Set in initialize */
   
   int verbose;			/* Set by main -- currently not used */
-  vulpes_lka_svc_t lka_svc;     /* Set by main */
+  struct lka_svc *lka_svc;     /* Set by main */
   void *special;		/* Set in open_func */
 };
 
