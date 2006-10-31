@@ -1021,119 +1021,7 @@ vulpes_volsize_t lev1_volsize_func(void)
   return spec->volsize;
 }
 
-/* returns -1 if an error occurs
- *  returns  0 on a normal exit */
-int lev1_open_func(void)
-{
-  struct lev1_mapping *spec=config.special;
-  unsigned long long volsize_bytes;
-  int parse_error = 0;
-  int result = 0;
-  FILE *f;
-  unsigned u;
-  
-  /* Form index_name */
-  result = form_index_name(config.cache_name);
-  
-  /* result =  0 means good
-   *  result = -1 means error */
-  if (result !=0 ) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to form lev1 index name");
-    return -1;
-  }
-  
-  /* Open index file */
-  f = fopen(spec->index_name, "r");
-  if (f == NULL) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open index file %s",spec->index_name);
-    return -1;
-  }
-  
-  /* Scan index file */
-  if (fscanf(f, "VERSION= %u\n", &spec->version) != 1) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to parse version from index file %s",spec->index_name);
-    fclose(f);
-    return -1;
-  }
-  if (spec->version != 1) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unknown lev1 version number: %s",spec->index_name);
-    fclose(f);
-    return -1;
-  }
-  
-  if (fscanf(f, "CHUNKSIZE= %u\n", &spec->chunksize_bytes) != 1)
-    parse_error = 1;
-  if (fscanf(f, "CHUNKSPERDIR= %u\n", &spec->chunksperdir) != 1)
-    parse_error = 1;
-  if (fscanf(f, "VOLSIZE= %llu\n", &volsize_bytes) != 1)
-    parse_error = 1;
-  if (fscanf(f, "NUMCHUNKS= %u\n", &spec->numchunks) != 1)
-    parse_error = 1;
-  if (fscanf(f, "NUMDIRS= %u\n", &spec->numdirs) != 1)
-    parse_error = 1;
-  
-  if (parse_error) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","bad parse: %s",spec->index_name);
-    result = -1;
-  } else {
-    unsigned long long tmp_volsize;
-    
-    /* compute derivative values */
-    if (spec->chunksize_bytes % FAUXIDE_HARDSECT_SIZE != 0) {
-      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","bad chunksize: %u",spec->chunksize_bytes);
-      result = -1;
-    } else {
-      spec->chunksize =
-	spec->chunksize_bytes / FAUXIDE_HARDSECT_SIZE;
-    }
-    
-    tmp_volsize = spec->chunksize * spec->numchunks;
-    if (tmp_volsize > MAX_VOLSIZE_VALUE) {
-      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","lev1 volsize too big: %llu", tmp_volsize);
-      result = -1;
-    } else {
-      spec->volsize = (vulpes_volsize_t) tmp_volsize;
-    }
-  }
-  fclose(f);
-  
-  /* Check if the cache root directory exists */
-  if (!is_dir(config.cache_name)) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open dir: %s", config.cache_name);
-    result = -1;
-  } else {
-    char dirname[MAX_DIRLENGTH];
-    unsigned d;
-    
-    /* check the subdirectories  -- create if needed */
-    for (d = 0; d < spec->numdirs; d++) {
-      form_dir_name(dirname, MAX_DIRLENGTH, config.cache_name, d);
-      if (!is_dir(dirname)) {
-	if (mkdir(dirname, 0770)) {
-	  vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to mkdir: %s", dirname);
-	  result = -1;
-	  break;
-	}
-      }
-    }
-  }
-  
-  /* Allocate the chunk_data array */
-  spec->cd = malloc(spec->numchunks * sizeof(struct chunk_data));
-  if (spec->cd == NULL) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to allocate chunk_data array");
-    return -1;
-  }
-  for (u = 0; u < spec->numchunks; u++) {
-    spec->cd[u].fnp = NULL_FID_ID;
-    spec->cd[u].status = 0;
-    spec->cd[u].buffer = NULL;
-  }
-  
-  return result;
-}
-
-int lev1_close_func(void)
+int lev1_shutdown_func(void)
 {
   char chunk_name[MAX_CHUNK_NAME_LENGTH];
   struct lev1_mapping *spec=config.special;
@@ -1300,6 +1188,12 @@ int lev1_write_func(const vulpes_cmdblk_t * cmdblk)
 int initialize_lev1_mapping(void)
 {
   struct lev1_mapping *spec;
+  unsigned long long volsize_bytes;
+  unsigned long long tmp_volsize;
+  int parse_error = 0;
+  FILE *f;
+  unsigned u;
+  char dirname[MAX_DIRLENGTH];
   
   /* Allocate special */
   spec = config.special = malloc(sizeof(struct lev1_mapping));
@@ -1327,16 +1221,98 @@ int initialize_lev1_mapping(void)
     vulpes_log(LOG_BASIC,"LEV1_INIT","proxy-port: %ld",config.proxy_port);
   }
   
-  config.open_func = lev1_open_func;
-  config.volsize_func = lev1_volsize_func;
-  config.read_func = lev1_read_func;
-  config.write_func = lev1_write_func;
-  config.close_func = lev1_close_func;
+  if (form_index_name(config.cache_name)) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to form lev1 index name");
+    return -1;
+  }
+  
+  /* Open index file */
+  f = fopen(spec->index_name, "r");
+  if (f == NULL) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open index file %s",spec->index_name);
+    return -1;
+  }
+  
+  /* Scan index file */
+  if (fscanf(f, "VERSION= %u\n", &spec->version) != 1) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to parse version from index file %s",spec->index_name);
+    fclose(f);
+    return -1;
+  }
+  if (spec->version != 1) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unknown lev1 version number: %s",spec->index_name);
+    fclose(f);
+    return -1;
+  }
+  
+  if (fscanf(f, "CHUNKSIZE= %u\n", &spec->chunksize_bytes) != 1)
+    parse_error = 1;
+  if (fscanf(f, "CHUNKSPERDIR= %u\n", &spec->chunksperdir) != 1)
+    parse_error = 1;
+  if (fscanf(f, "VOLSIZE= %llu\n", &volsize_bytes) != 1)
+    parse_error = 1;
+  if (fscanf(f, "NUMCHUNKS= %u\n", &spec->numchunks) != 1)
+    parse_error = 1;
+  if (fscanf(f, "NUMDIRS= %u\n", &spec->numdirs) != 1)
+    parse_error = 1;
+  
+  fclose(f);
+  if (parse_error) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","bad parse: %s",spec->index_name);
+    return -1;
+  }
+  
+  /* compute derivative values */
+  if (spec->chunksize_bytes % FAUXIDE_HARDSECT_SIZE != 0) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","bad chunksize: %u",spec->chunksize_bytes);
+    return -1;
+  }
+  spec->chunksize = spec->chunksize_bytes / FAUXIDE_HARDSECT_SIZE;
+  
+  tmp_volsize = spec->chunksize * spec->numchunks;
+  if (tmp_volsize > MAX_VOLSIZE_VALUE) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","lev1 volsize too big: %llu", tmp_volsize);
+    return -1;
+  }
+  spec->volsize = (vulpes_volsize_t) tmp_volsize;
+  
+  /* Check if the cache root directory exists */
+  if (!is_dir(config.cache_name)) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open dir: %s", config.cache_name);
+    return -1;
+  }
+  
+  /* check the subdirectories  -- create if needed */
+  for (u = 0; u < spec->numdirs; u++) {
+    form_dir_name(dirname, MAX_DIRLENGTH, config.cache_name, u);
+    if (!is_dir(dirname)) {
+      if (mkdir(dirname, 0770)) {
+	vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to mkdir: %s", dirname);
+	return -1;
+      }
+    }
+  }
+  
+  /* Allocate the chunk_data array */
+  spec->cd = malloc(spec->numchunks * sizeof(struct chunk_data));
+  if (spec->cd == NULL) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to allocate chunk_data array");
+    return -1;
+  }
+  memset(spec->cd, 0, spec->numchunks * sizeof(struct chunk_data));
+  for (u = 0; u < spec->numchunks; u++) {
+    spec->cd[u].fnp = NULL_FID_ID;
+  }
   
   if((spec->keyring = lev1_initEncryption(config.keyring_name)) == NULL) {
     vulpes_log(LOG_ERRORS,"LEV1_INIT","lev1_initEncryption() failed");
     return -1;	
   }
+  
+  config.volsize_func = lev1_volsize_func;
+  config.read_func = lev1_read_func;
+  config.write_func = lev1_write_func;
+  config.shutdown_func = lev1_shutdown_func;
   
   return 0;
 }

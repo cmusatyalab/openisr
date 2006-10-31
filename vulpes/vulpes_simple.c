@@ -92,33 +92,14 @@ vulpes_volsize_t simple_disk_volsize_func(void)
     return volsize;
 }
 
-int simple_open_func(void)
+int simple_shutdown_func(void)
 {
-    int result = 0;
-    int fid;
-
-    fid = open(config.cache_name, O_RDWR);
-    if (fid < 0) {
-	printf("ERROR: unable to open %s.\n", config.cache_name);
-	return -1;
-    }
-
-    *((int *) (config.special)) = fid;
-
-    return result;
-}
-
-int simple_close_func(void)
-{
-    int result = 0;
-
     if (config.special != NULL) {
 	close(*((int *) config.special));
 	free(config.special);
 	config.special = NULL;
     }
-
-    return result;
+    return 0;
 }
 
 int simple_read_func(vulpes_cmdblk_t * cmdblk)
@@ -186,6 +167,8 @@ int simple_write_func(const vulpes_cmdblk_t * cmdblk)
 
 int initialize_simple_mapping(void)
 {
+    int fid;
+
     if (config.mapping == SIMPLE_FILE_MAPPING) {
 	config.volsize_func = simple_file_volsize_func;
     } else if (config.mapping == SIMPLE_DISK_MAPPING) {
@@ -199,10 +182,18 @@ int initialize_simple_mapping(void)
 	return -1;
     }
 
-    config.open_func = simple_open_func;
+    fid = open(config.cache_name, O_RDWR);
+    if (fid < 0) {
+        free(config.special);
+	printf("ERROR: unable to open %s.\n", config.cache_name);
+	return -1;
+    }
+
+    *((int *) (config.special)) = fid;
+
     config.read_func = simple_read_func;
     config.write_func = simple_write_func;
-    config.close_func = simple_close_func;
+    config.shutdown_func = simple_shutdown_func;
 
     return 0;
 }

@@ -46,11 +46,10 @@ enum mapping_type {
   LEV1V_MAPPING,
 };
 
-typedef int (*vulpes_open_func_t) (void);
 typedef vulpes_volsize_t(*vulpes_volsize_func_t) (void);
 typedef int (*vulpes_read_func_t) (vulpes_cmdblk_t *);
 typedef int (*vulpes_write_func_t) (const vulpes_cmdblk_t *);
-typedef int (*vulpes_close_func_t) (void);
+typedef int (*vulpes_shutdown_func_t) (void);
 
 extern struct vulpes_config {
   enum transfer_type trxfer;	/* Set by main */
@@ -66,11 +65,10 @@ extern struct vulpes_config {
   int vulpes_device;		/* Set by device driver */
   
   vulpes_registration_t reg;	        /* Set in open_func */
-  vulpes_open_func_t open_func;	        /* Set in initialize */
   vulpes_volsize_func_t volsize_func;	/* Set in initialize */
   vulpes_read_func_t read_func;	        /* Set in initialize */
   vulpes_write_func_t write_func;	/* Set in initialize */
-  vulpes_close_func_t close_func;	/* Set in initialize */
+  vulpes_shutdown_func_t shutdown_func;	/* Set in initialize */
   
   int verbose;			/* Set by main -- currently not used */
   struct lka_svc *lka_svc;     /* Set by main */

@@ -123,11 +123,10 @@ static void initialize_config(void)
   config.reg.pid = -1;
   config.reg.volsize = 0;
   
-  config.open_func = NULL;
   config.volsize_func = NULL;
   config.read_func = NULL;
   config.write_func = NULL;
-  config.close_func = NULL;
+  config.shutdown_func = NULL;
   
   config.verbose = 0;
   
@@ -438,13 +437,6 @@ int main(int argc, char *argv[])
   
   /* XXX we don't do proper cleanup in the error paths */
   
-  /* Open the file */
-  VULPES_DEBUG("\tOpening file.\n");
-  if ((*(config.open_func))()) {
-    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open lev1 %s", config.cache_name);
-    goto vulpes_exit;
-  }
-  
   /* Set up fauxide driver */
   if (fauxide_init()) {
     /* fauxide_init() has already complained to the log */
@@ -461,8 +453,8 @@ int main(int argc, char *argv[])
 
   /* Close file */
   VULPES_DEBUG("\tClosing map.\n");
-  if ((*config.close_func)() == -1) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","close function failed");
+  if ((*config.shutdown_func)() == -1) {
+      vulpes_log(LOG_ERRORS,"VULPES_MAIN","shutdown function failed");
       exit(1);
     }
 
