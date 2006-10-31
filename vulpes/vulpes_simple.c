@@ -21,7 +21,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 
-#include <linux/hdreg.h>
+#include <linux/fs.h>
 
 #include "fauxide.h"
 #include "vulpes.h"
@@ -67,32 +67,27 @@ vulpes_volsize_t simple_file_volsize_func(void)
 
     size_bytes = filestat.st_size;
 
-    volsize = ((size_bytes / FAUXIDE_HARDSECT_SIZE)
-	       + (size_bytes % FAUXIDE_HARDSECT_SIZE ? 1 : 0));
+    volsize = size_bytes / FAUXIDE_HARDSECT_SIZE;
 
     return volsize;
 }
 
 vulpes_volsize_t simple_disk_volsize_func(void)
 {
-    struct hd_big_geometry geo;
     int result;
     int dev;
+    unsigned long long devsize;
     vulpes_volsize_t volsize;	/* sectors */
 
     dev = *((int *) config.special);
 
-    bzero(&geo, sizeof(geo));
-
-    result = ioctl(dev, HDIO_GETGEO_BIG, &geo);
+    result = ioctl(dev, BLKGETSIZE64, &devsize);
     if (result) {
-	printf("ERROR: getgeo_big returned %d.\n\n", result);
+	printf("ERROR: BLKGETSIZE64 returned %d.\n\n", result);
 	return -1;
     }
 
-    volsize =
-	(vulpes_volsize_t) geo.cylinders * (vulpes_volsize_t) geo.heads *
-	(vulpes_volsize_t) geo.sectors;
+    volsize = devsize / FAUXIDE_HARDSECT_SIZE;
 
     return volsize;
 }

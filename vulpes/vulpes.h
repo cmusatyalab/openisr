@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include "fauxide.h"
 
+#define VULPES_SIMPLE_DEFINED
+
 #undef VERBOSE_DEBUG
 #ifdef VERBOSE_DEBUG
 #define VULPES_DEBUG(fmt, args...)     {printf("[vulpes] " fmt, ## args); fflush(stdout);}

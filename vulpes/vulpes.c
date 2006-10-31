@@ -414,7 +414,7 @@ int main(int argc, char *argv[])
   case SIMPLE_FILE_MAPPING:
   case SIMPLE_DISK_MAPPING:
 #ifdef VULPES_SIMPLE_DEFINED
-    if (initialize_simple_mapping(&mapping)) {
+    if (initialize_simple_mapping()) {
       vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unable to initialize simple mapping");
       goto vulpes_exit;	
     }
