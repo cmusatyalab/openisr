@@ -31,15 +31,6 @@ struct keyring {
   int numKeys;
 };
 
-struct keyring* lev1_initEncryption(char *keyring_name);	
-int lev1_cleanupKeys(struct keyring *kr, char *keyring_name); 
-
-vulpes_err_t lev1_get_tag(struct keyring *kr, int keyNum, unsigned char **tag);
-vulpes_err_t lev1_check_tag(struct keyring *kr, int keyNum, const unsigned char *tag);
-vulpes_err_t lev1_get_key(struct keyring *kr, int keyNum, unsigned char **key);
-void lev1_updateKey(struct keyring *kr, unsigned char new_key[20], unsigned char new_tag[20],
-		    int keyNum); 
-
 unsigned char *digest(const unsigned char *mesg, unsigned mesgLen);
 int vulpes_encrypt(const unsigned char *const inString, 
 		   const int inStringLength,
