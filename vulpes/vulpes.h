@@ -16,8 +16,8 @@
 
 extern volatile int exit_pending;
 
-int set_signal_handler(int sig, void (*handler)(int sig));
-void tally_sector_accesses(unsigned write, unsigned num);
+extern const char *svn_revision;
+extern const char *svn_branch;
 
 typedef enum vulpes_err {
   VULPES_SUCCESS=0,
@@ -74,5 +74,19 @@ extern struct vulpes_config {
   struct lka_svc *lka_svc;     /* Set by main */
   void *special;		/* Set in open_func */
 } config;
+
+/* XXX miscellaneous exported functions */
+int set_signal_handler(int sig, void (*handler)(int sig));
+void tally_sector_accesses(unsigned write, unsigned num);
+int initialize_lev1_mapping(void);
+#ifdef VULPES_SIMPLE_DEFINED
+int initialize_simple_mapping(void);
+#endif
+int fauxide_init(void);
+void fauxide_run(void);
+void fauxide_shutdown(void);
+int fauxide_rescue(const char *device_name);
+vulpes_err_t local_get(char *buf, int *bufsize, const char *file);
+vulpes_err_t http_get(char *buf, int *bufsize, const char *url);
 
 #endif

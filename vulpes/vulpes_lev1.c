@@ -64,17 +64,6 @@ struct lev1_mapping {
 
 static unsigned writes_before_read = 0;
 
-static void get_dir_chunk_from_chunk_num(unsigned chunk_num, unsigned *dir,
-                                         unsigned *chunk);
-static unsigned get_chunk_number(unsigned sect_num);
-static int form_chunk_file_name(char *buffer, int bufsize,
-				const char *rootname,
-				unsigned dir, unsigned chunk);
-
-/* XXX for now */
-extern vulpes_err_t local_get(char *buf, int *bufsize, const char *file);
-extern vulpes_err_t http_get(char *buf, int *bufsize, const char *url);
-
 /* AUXILLIARY FUNCTIONS */
 static inline int cdp_is_rw(struct chunk_data * cdp)
 {

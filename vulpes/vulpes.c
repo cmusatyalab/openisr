@@ -31,18 +31,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #include "vulpes_log.h"
 #include "vulpes_lka.h"
 
-/* EXTERNS */
-extern int initialize_lev1_mapping(void);
-extern int fauxide_init(void);
-extern void fauxide_run(void);
-extern void fauxide_shutdown(void);
-extern int fauxide_rescue(const char *device_name);
-#ifdef VULPES_SIMPLE_DEFINED
-extern int initialize_simple_mapping(void);
-#endif
-extern const char *svn_revision;
-extern const char *svn_branch;
-
 /* GLOBALS */
 
 volatile int exit_pending = 0;
