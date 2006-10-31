@@ -1222,25 +1222,25 @@ int initialize_lev1_mapping(void)
   }
   
   if (form_index_name(config.cache_name)) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to form lev1 index name");
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","unable to form lev1 index name");
     return -1;
   }
   
   /* Open index file */
   f = fopen(spec->index_name, "r");
   if (f == NULL) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open index file %s",spec->index_name);
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","unable to open index file %s",spec->index_name);
     return -1;
   }
   
   /* Scan index file */
   if (fscanf(f, "VERSION= %u\n", &spec->version) != 1) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to parse version from index file %s",spec->index_name);
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","unable to parse version from index file %s",spec->index_name);
     fclose(f);
     return -1;
   }
   if (spec->version != 1) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unknown lev1 version number: %s",spec->index_name);
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","unknown lev1 version number: %s",spec->index_name);
     fclose(f);
     return -1;
   }
@@ -1258,27 +1258,27 @@ int initialize_lev1_mapping(void)
   
   fclose(f);
   if (parse_error) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","bad parse: %s",spec->index_name);
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","bad parse: %s",spec->index_name);
     return -1;
   }
   
   /* compute derivative values */
   if (spec->chunksize_bytes % FAUXIDE_HARDSECT_SIZE != 0) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","bad chunksize: %u",spec->chunksize_bytes);
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","bad chunksize: %u",spec->chunksize_bytes);
     return -1;
   }
   spec->chunksize = spec->chunksize_bytes / FAUXIDE_HARDSECT_SIZE;
   
   tmp_volsize = spec->chunksize * spec->numchunks;
   if (tmp_volsize > MAX_VOLSIZE_VALUE) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","lev1 volsize too big: %llu", tmp_volsize);
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","lev1 volsize too big: %llu", tmp_volsize);
     return -1;
   }
   spec->volsize = (vulpes_volsize_t) tmp_volsize;
   
   /* Check if the cache root directory exists */
   if (!is_dir(config.cache_name)) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open dir: %s", config.cache_name);
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","unable to open dir: %s", config.cache_name);
     return -1;
   }
   
@@ -1287,7 +1287,7 @@ int initialize_lev1_mapping(void)
     form_dir_name(dirname, MAX_DIRLENGTH, config.cache_name, u);
     if (!is_dir(dirname)) {
       if (mkdir(dirname, 0770)) {
-	vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to mkdir: %s", dirname);
+	vulpes_log(LOG_ERRORS,"LEV1_INIT","unable to mkdir: %s", dirname);
 	return -1;
       }
     }
@@ -1296,7 +1296,7 @@ int initialize_lev1_mapping(void)
   /* Allocate the chunk_data array */
   spec->cd = malloc(spec->numchunks * sizeof(struct chunk_data));
   if (spec->cd == NULL) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to allocate chunk_data array");
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","unable to allocate chunk_data array");
     return -1;
   }
   memset(spec->cd, 0, spec->numchunks * sizeof(struct chunk_data));
