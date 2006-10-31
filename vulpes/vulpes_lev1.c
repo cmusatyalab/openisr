@@ -59,7 +59,7 @@ struct lev1_mapping {
   
   struct keyring *keyring;
   
-  struct chunk_data **cd;		/* cd[][] */
+  struct chunk_data *cd;		/* cd[] */
 };
 
 static unsigned writes_before_read = 0;
@@ -152,14 +152,7 @@ static inline void get_dir_chunk_from_chunk_num(unsigned chunk_num,
 static struct chunk_data *get_cdp_from_chunk_num(unsigned chunk_num)
 {
   struct lev1_mapping *spec=config.special;
-  unsigned dir, chunk;
-  struct chunk_data *cdp;
-
-  get_dir_chunk_from_chunk_num(chunk_num, &dir, &chunk);
-  
-  cdp = &(spec->cd[dir][chunk]);
-
-  return cdp;
+  return &(spec->cd[chunk_num]);
 }
 
 
@@ -214,13 +207,14 @@ static int form_dir_name(char *buffer, int bufsize,
 }
 
 static int form_chunk_file_name(char *buffer, int bufsize,
-			 const char *rootname,
-			 unsigned dir, unsigned chunk)
+			 const char *rootname, unsigned chunk_num)
 {
   int result;
+  unsigned dir, chunk;
   
   /* Assume buffer != NULL */
   
+  get_dir_chunk_from_chunk_num(chunk_num, &dir, &chunk);
   result=snprintf(buffer, bufsize, "%s/%04u/%04u", rootname, dir, chunk);
   if (result >= bufsize || result == -1) {
     /* Older versions of libc return -1 on truncation */
@@ -414,7 +408,6 @@ out:
 
 int lev1_reclaim(fid_t fid, void *data, int chunk_num)
 {
-  unsigned dir=0, chunk=0;
   struct chunk_data *cdp;
   int err;
   struct lev1_mapping *spec;
@@ -426,9 +419,7 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
 
   spec = (struct lev1_mapping *) data;
   
-  get_dir_chunk_from_chunk_num(chunk_num, &dir, &chunk);
-  
-  cdp = &(spec->cd[dir][chunk]);
+  cdp = get_cdp_from_chunk_num(chunk_num);
   
   chunksize = spec->chunksize_bytes;
   
@@ -536,8 +527,7 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
 {
   char chunk_name[MAX_CHUNK_NAME_LENGTH];
   struct lev1_mapping *spec=config.special;
-  unsigned dir = 0, chunk = 0;
-  unsigned chunk_num=0;
+  unsigned chunk_num;
   int chunksPerDir;
   fid_t fid;
   struct chunk_data *cdp;
@@ -545,10 +535,8 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
 
   chunksPerDir = spec->chunksperdir;
 
-  /* find the dir,chunk numbers */
   chunk_num=get_chunk_number(cmdblk->head.start_sect);
-  get_dir_chunk_from_chunk_num(chunk_num, &dir, &chunk);
-  cdp = &(spec->cd[dir][chunk]);  
+  cdp = get_cdp_from_chunk_num(chunk_num);
 
   open_readwrite = open_for_writing;
   if(cdp_is_dirty(cdp) && !open_readwrite) {
@@ -581,7 +569,7 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
   
   /* otherwise(file not open), form the cache filename */
   if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
-			   config.cache_name, dir, chunk)) {
+			   config.cache_name, chunk_num)) {
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 file name: %d",chunk_num);
     return -1;
   }
@@ -600,7 +588,7 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
       /* the file has not been copied yet */
       char remote_name[MAX_CHUNK_NAME_LENGTH];
       if (form_chunk_file_name(remote_name, MAX_CHUNK_NAME_LENGTH,
-	   config.master_name, dir, chunk)) {
+	   config.master_name, chunk_num)) {
 	vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 remote name: %d",chunk_num);
 	return -1;
       }
@@ -776,7 +764,7 @@ int lev1_open_func(void)
   int parse_error = 0;
   int result = 0;
   FILE *f;
-  unsigned u, v;
+  unsigned u;
   
   /* Form index_name */
   result = form_index_name(config.cache_name);
@@ -864,29 +852,16 @@ int lev1_open_func(void)
     }
   }
   
-  /* Allocate the fid array */
-  spec->cd = malloc(spec->numdirs * sizeof(struct chunk_data *));
-  if (spec->cd == NULL)
-    {
-      vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to allocate fid array");
-      return -1;
-    }
-  for (u = 0; u < spec->numdirs; u++) {
-    spec->cd[u] = NULL;
+  /* Allocate the chunk_data array */
+  spec->cd = malloc(spec->numchunks * sizeof(struct chunk_data));
+  if (spec->cd == NULL) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to allocate chunk_data array");
+    return -1;
   }
-  for (u = 0; u < spec->numdirs; u++) {
-    spec->cd[u] = malloc(spec->chunksperdir * sizeof(struct chunk_data));
-    if (spec->cd[u] == NULL)
-      {
-	vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to allocate fid array 2");
-	return -1;
-      }
-    /* fill the file descriptors with -1 */
-    for (v = 0; v < spec->chunksperdir; v++) {
-      spec->cd[u][v].fnp = NULL_FID_ID;
-      spec->cd[u][v].status = 0;
-      spec->cd[u][v].buffer = NULL;
-    }
+  for (u = 0; u < spec->numchunks; u++) {
+    spec->cd[u].fnp = NULL_FID_ID;
+    spec->cd[u].status = 0;
+    spec->cd[u].buffer = NULL;
   }
   
   return result;
@@ -897,7 +872,7 @@ int lev1_close_func(void)
   char chunk_name[MAX_CHUNK_NAME_LENGTH];
   struct lev1_mapping *spec=config.special;
   int result = 0;
-  unsigned u, v;
+  unsigned u;
   
   unsigned dirty_chunks = 0;
   unsigned accessed_chunks = 0;
@@ -906,32 +881,26 @@ int lev1_close_func(void)
   if (spec != NULL) {
     /* deallocate the fnp array */
     if (spec->cd != NULL) {
-      for (u = 0; u < spec->numdirs; u++) {
-	if (spec->cd[u] != NULL) {
-	  for (v = 0; v < spec->chunksperdir; v++) {
-	    if (cdp_is_accessed(&(spec->cd[u][v]))) {
-	      ++accessed_chunks;
-	      if (cdp_is_dirty(&(spec->cd[u][v]))) {
-		++dirty_chunks;
-		if (spec->verbose) {
-		  if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
-		       config.cache_name, u, v)) {
-		    vulpes_log(LOG_ERRORS,"LEV1_CLOSE_FUNCTION","unable to form lev1 file name");
-		    return -1;
-		  }
-		  vulpes_log(LOG_CHUNKS,"LEV1_CLOSE_FUNCTION","MODIFIEDCLOSE %s",chunk_name);
-		}
-	      }
-	    }
-	    if (spec->cd[u][v].fnp != NULL_FID_ID) {
-	      if (fidsvc_remove(spec->cd[u][v].fnp)) {
-		vulpes_log(LOG_ERRORS,"LEV1_CLOSE","%d %d failed in fidsvc_remove",u,v);
+      for (u = 0; u < spec->numchunks; u++) {
+	if (cdp_is_accessed(&(spec->cd[u]))) {
+	  ++accessed_chunks;
+	  if (cdp_is_dirty(&(spec->cd[u]))) {
+	    ++dirty_chunks;
+	    if (spec->verbose) {
+	      if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
+		   config.cache_name, u)) {
+		vulpes_log(LOG_ERRORS,"LEV1_CLOSE_FUNCTION","unable to form lev1 file name");
 		return -1;
 	      }
+	      vulpes_log(LOG_CHUNKS,"LEV1_CLOSE_FUNCTION","MODIFIEDCLOSE %s",chunk_name);
 	    }
 	  }
-	  free(spec->cd[u]);
-	  spec->cd[u] = NULL;
+	}
+	if (spec->cd[u].fnp != NULL_FID_ID) {
+	  if (fidsvc_remove(spec->cd[u].fnp)) {
+	    vulpes_log(LOG_ERRORS,"LEV1_CLOSE","%d failed in fidsvc_remove",u);
+	    return -1;
+	  }
 	}
       }
       free(spec->cd);
@@ -962,18 +931,16 @@ int lev1_read_func(vulpes_cmdblk_t * cmdblk)
   off_t start;
   ssize_t bytes;
   struct chunk_data *cdp=NULL;
-  unsigned chunk_num = 0, dir = 0, chunk = 0;
+  unsigned chunk_num;
   
-  /* find the dir,chunk numbers */
   chunk_num=get_chunk_number(cmdblk->head.start_sect);
-  get_dir_chunk_from_chunk_num(chunk_num, &dir, &chunk);
 
   if (!one_chunk(cmdblk)) {
     vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC","request crosses chunk boundary: %d",chunk_num);
     return -1;
   }
   
-  cdp = &(spec->cd[dir][chunk]);
+  cdp = get_cdp_from_chunk_num(chunk_num);
 
   if (open_chunk_file(cmdblk, 0) != 0) {
     vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC","open_chunk_file failed: %d",chunk_num);
@@ -1014,18 +981,16 @@ int lev1_write_func(const vulpes_cmdblk_t * cmdblk)
   off_t start;
   ssize_t bytes;
   struct chunk_data *cdp=NULL;
-  unsigned chunk_num = 0, dir = 0, chunk = 0;
+  unsigned chunk_num;
   
-  /* find the dir,chunk numbers */
   chunk_num=get_chunk_number(cmdblk->head.start_sect);
-  get_dir_chunk_from_chunk_num(chunk_num, &dir, &chunk);
 
   if (!one_chunk(cmdblk)) {
     vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC","request crosses chunk boundary: %d",chunk_num);
     return -1;
   }
   
-  cdp = &(spec->cd[dir][chunk]);
+  cdp = get_cdp_from_chunk_num(chunk_num);
 
   if (open_chunk_file(cmdblk, 1) != 0) {
     vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC","open_chunk_file failed: %d",chunk_num);
