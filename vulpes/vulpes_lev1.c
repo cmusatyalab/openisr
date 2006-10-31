@@ -894,19 +894,17 @@ int lev1_shutdown_func(void)
 	  }
 	}
       }
+      if (write_hex_keyring(config.keyring_name)) {
+	vulpes_log(LOG_ERRORS,"LEV1_CLOSE","write_hex_keyring failed");
+	return -1;
+      }
       free(spec->cd);
       spec->cd = NULL;
     }
-    
     config.special = NULL;
     free(spec);
   }
   
-  if (write_hex_keyring(config.keyring_name)) {
-    vulpes_log(LOG_ERRORS,"LEV1_CLOSE","write_hex_keyring failed");
-    return -1;
-  }
-
   /* Print close stats */
   vulpes_log(LOG_STATS,"LEV1_CLOSE_FUNCTION","CHUNKS_ACCESSED:%u",accessed_chunks);
   vulpes_log(LOG_STATS,"LEV1_CLOSE_FUNCTION","CHUNKS_MODIFIED:%u",dirty_chunks);
