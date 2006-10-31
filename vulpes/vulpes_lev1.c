@@ -43,6 +43,8 @@ const char *lev1_index_name = "index.lev1";
 struct chunk_data {
   fid_id_t fnp;		/* NULL_FID_ID if not currently open */
   unsigned status;
+  unsigned char tag[20];	/* was called o2 earlier */
+  unsigned char key[20];	/* was called o1 earlier */
   unsigned char *buffer;	/* File is now always read into memory */
 };
 
@@ -56,9 +58,6 @@ struct lev1_mapping {
   vulpes_volsize_t volsize;	/* sectors */
   unsigned chunksize;		/* sectors */
   int verbose;
-  
-  struct keyring *keyring;
-  
   struct chunk_data *cd;		/* cd[] */
 };
 
@@ -244,81 +243,91 @@ printf_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, u
 }
 #endif
 
-/* reads the hex file, converts to binary and returns pointer */
+/* reads the hex keyring file into memory */
 /* hex file format: "<tag> <key>\n" (82 bytes/line including newline) */
-static unsigned char* 
-vulpes_read_hex_keyring(int fd, int *keysRead)
+vulpes_err_t read_hex_keyring(char *userPath)
 {
-	int lineNumber, charNumber, howManyKeys;
+	struct lev1_mapping *spec=config.special;
+	int lineNumber, charNumber;
 	int fLength;
-	unsigned char *hexFile, *binaryFile, *readPtr, *writePtr;
+	int fd;
+	unsigned char *hexFile, *readPtr, *writePtr;
+	struct chunk_data *cdp;
+	
+	fd = open(userPath, O_RDONLY);
+	if (fd < 0) {
+		vulpes_log(LOG_ERRORS,"READ_HEX_KEYRING","could not open keyring: %s",userPath);
+		return VULPES_IOERR;
+	}
 	
 	if ((fLength = get_filesize(fd)) <= 0 || fLength % 82)
-		return NULL;
-	if (lseek(fd, 0, SEEK_SET) == -1)
-		return NULL;
+		return VULPES_IOERR;
+	if (fLength/82 != spec->numchunks) {
+		vulpes_log(LOG_ERRORS,"READ_HEX_KEYRING","Chunk count mismatch: index specifies %d, keyring specifies %d",spec->numchunks,fLength/82);
+		return VULPES_IOERR;
+	}
+	/* XXX we can read this record-by-record */
 	hexFile = malloc(fLength);
 	if (hexFile == NULL)
-		return NULL;
+		return VULPES_NOMEM;
 	if (read_file(fd, hexFile, &fLength) != VULPES_SUCCESS) {
 		free(hexFile);
-		return NULL;
+		return VULPES_IOERR;
 	};
 
-	howManyKeys = fLength/82;
-	binaryFile = malloc(howManyKeys*40);
-	if (binaryFile == NULL) {
-		free(hexFile);
-		return NULL;
-	}
 	readPtr=hexFile;
-	writePtr=binaryFile;
-	
-	for(lineNumber=0;lineNumber<howManyKeys;lineNumber++)
+	for(lineNumber=0;lineNumber<spec->numchunks;lineNumber++)
 	{
-		for(charNumber=0;charNumber<20;charNumber++,writePtr++,readPtr+=2)
+		cdp=get_cdp_from_chunk_num(lineNumber);
+		for(charNumber=0,writePtr=cdp->tag;charNumber<20;charNumber++,writePtr++,readPtr+=2)
 		{
 			*writePtr=hexToBin(readPtr);
 		}
 		readPtr++;
-		for(charNumber=0;charNumber<20;charNumber++,writePtr++,readPtr+=2)
+		for(charNumber=0,writePtr=cdp->key;charNumber<20;charNumber++,writePtr++,readPtr+=2)
 		{
 			*writePtr=hexToBin(readPtr);
 		}
 		readPtr++;
 	}
-	vulpes_log(LOG_KEYS,"READ_HEX_KEYRING","");
 	free(hexFile);
-	*keysRead = howManyKeys;
-	return binaryFile;
+	close(fd);
+	vulpes_log(LOG_BASIC,"READ_HEX_KEYRING","read keyring %s: %d keys",userPath,spec->numchunks);
+	return VULPES_SUCCESS;
 }
 
 /* converts to hex, writes */
-/* returns 0 on error and 1 on success */
-static int 
-vulpes_write_hex_keyring(int fd, unsigned char* binaryKeyring, int howManyKeys)
+static vulpes_err_t write_hex_keyring(char *userPath)
 {
-	int lineNumber, charNumber, fLength, ret=1;
+	struct lev1_mapping *spec=config.special;
+	int lineNumber, charNumber, fLength;
+	vulpes_err_t ret=VULPES_SUCCESS;
 	unsigned char *hexFile, *readPtr, *writePtr;
-
-	if (ftruncate(fd, 0) || lseek(fd, 0, SEEK_SET))
-		return 0;
-	fLength = howManyKeys*82;
+	struct chunk_data *cdp;
+	int fd;
+	
+	fd = open(userPath, O_WRONLY|O_TRUNC, 0600);
+	if (fd < 0) {
+		vulpes_log(LOG_ERRORS,"WRITE_HEX_KEYRING","could not open keyring file for writeback: %s", userPath);
+		return VULPES_IOERR;
+	}
+	/* XXX can do this a record at a time */
+	fLength = spec->numchunks*82;
 	hexFile = malloc(fLength);
 	if (hexFile == NULL)
-		return 0;
-	readPtr=binaryKeyring;
+		return VULPES_NOMEM;
+	
 	writePtr=hexFile;
-
-	for(lineNumber=0;lineNumber<howManyKeys;lineNumber++)
+	for(lineNumber=0;lineNumber<spec->numchunks;lineNumber++)
 	{
-		for(charNumber=0;charNumber<20;charNumber++,readPtr++,writePtr+=2)
+		cdp=get_cdp_from_chunk_num(lineNumber);
+		for(charNumber=0,readPtr=cdp->tag;charNumber<20;charNumber++,readPtr++,writePtr+=2)
 		{
 			binToHex(readPtr,writePtr);
 		}
 		*writePtr = ' ';
 		writePtr++;
-		for(charNumber=0;charNumber<20;charNumber++,readPtr++,writePtr+=2)
+		for(charNumber=0,readPtr=cdp->key;charNumber<20;charNumber++,readPtr++,writePtr+=2)
 		{
 			binToHex(readPtr,writePtr);
 		}
@@ -326,27 +335,23 @@ vulpes_write_hex_keyring(int fd, unsigned char* binaryKeyring, int howManyKeys)
 		writePtr++;
 	}
 	if(write(fd,hexFile,fLength)!=fLength)
-		ret=0;
+		ret=VULPES_IOERR;
 	free(hexFile);
+	close(fd);
+	vulpes_log(LOG_BASIC,"WRITE_HEX_KEYRING","wrote keyring %s: %d keys",userPath,spec->numchunks);
 	return ret;
 }
 
-/*
- * This is called only on chunk-file close  
- */
-static void lev1_updateKey(struct keyring *kr, unsigned char new_key[20],
-		    unsigned char new_tag[20], int keyNum)
+static void lev1_updateKey(unsigned chunk_num, unsigned char new_key[20],
+                           unsigned char new_tag[20])
 {
+  struct chunk_data *cdp;
   unsigned char old_tag_log[41], tag_log[41];
   unsigned char *readPtr, *writePtr;
   int i;
 
-  if(kr == NULL) {
-    vulpes_log(LOG_ERRORS,"lev1_updateKey","cannot be here - no encryption in place");
-    return;
-  }
-
-  writePtr=old_tag_log; readPtr=kr->keyRing[keyNum].tag;
+  cdp=get_cdp_from_chunk_num(chunk_num);
+  writePtr=old_tag_log; readPtr=cdp->tag;
 
   for(i=0;i<20;i++,readPtr++,writePtr+=2)
     binToHex(readPtr,writePtr);
@@ -358,189 +363,38 @@ static void lev1_updateKey(struct keyring *kr, unsigned char new_key[20],
   *writePtr='\0';
 
   if (strcmp(old_tag_log,tag_log)!=0)
-    vulpes_log(LOG_KEYS,"LEV1_UPDATEKEY","%d %s %s",keyNum,old_tag_log,tag_log);
+    vulpes_log(LOG_KEYS,"LEV1_UPDATEKEY","%d %s %s",chunk_num,old_tag_log,tag_log);
   
-  memcpy(kr->keyRing[keyNum].tag, new_tag, 20);
-  memcpy(kr->keyRing[keyNum].key, new_key, 20);
+  memcpy(cdp->tag, new_tag, 20);
+  memcpy(cdp->key, new_key, 20);
 }
 
-static vulpes_err_t lev1_get_tag(struct keyring *kr, int keyNum, unsigned char **tag)
+static vulpes_err_t lev1_check_tag(struct chunk_data *cdp,
+                                   const unsigned char *tag)
 {
-  /* set tag to NULL in case of error */
-  *tag=NULL;
-  
-  if (kr == NULL) {
-      return VULPES_INVALID;
-  }
-
-  if (keyNum > kr->numKeys) {
-      return VULPES_NOKEY;
-  }
-
-  /* no error -- set tag */
-  *tag = kr->keyRing[keyNum].tag;
-
-  return VULPES_SUCCESS;
-}
-
-static vulpes_err_t lev1_get_key(struct keyring *kr, int keyNum, unsigned char **key)
-{
-  /* set key to NULL in case of error */
-  *key=NULL;
-  
-  if (kr == NULL) {
-      return VULPES_INVALID;
-  }
-
-  if (keyNum > kr->numKeys) {
-      return VULPES_NOKEY;
-  }
-
-  /* no error -- set key */
-  *key = kr->keyRing[keyNum].key;
-
-  return VULPES_SUCCESS;
-}
-
-static vulpes_err_t 
-lev1_check_tag(struct keyring *kr, int keyNum, const unsigned char *tag)
-{
-  if (kr == NULL) {
-      return VULPES_INVALID;
-  }
-
-  if (keyNum > kr->numKeys) {
-      return VULPES_NOKEY;
-  }
-
-  return ((memcmp(kr->keyRing[keyNum].tag, tag, 20) == 0) 
-	  ? VULPES_SUCCESS : VULPES_TAGFAIL);
-}
-
-/* Called with 
-*  userpath=path to keyring file
-*  Returns 1 on success, 0 otherwise
-*/  
-static int lev1_getKeyRingFile(struct keyring *kr, char *userPath)
-{
-  int fdes;
-  
-  if (kr == NULL) {
-    printf("Cannot use this function: no encryption in place\n");
-    return 0;
-  }
-
-  fdes = open(userPath, O_RDONLY);
-  if (fdes < 0) {
-    vulpes_log(LOG_ERRORS,"LEV1_GETKEYRING","could not open keyring: %s",userPath);
-    return 0;
-  }
-  kr->keyRing = (struct keyring_entry *)  vulpes_read_hex_keyring(fdes,&(kr->numKeys));
-  if (!kr->keyRing)
-    return 0;
-  close(fdes);
-  vulpes_log(LOG_BASIC,"LEV1_GETKEYRING","read keyring %s: %d keys",userPath,kr->numKeys);
-  
-  return 1;
-}
-
-
-/* returns -1 on error or 0 otherwise on success */
-static int writeKeyRingFile(struct keyring *kr, char *userPath)
-{
-  int fdes;
-  
-  if (kr == NULL) {
-    printf("Cannot use this function: no encryption in place\n");
-    return -1;
-  }
-  
-  fdes = open(userPath, O_WRONLY|O_TRUNC, 0600);
-  if (fdes < 0) {
-      vulpes_log(LOG_ERRORS,"WRITEKEYRINGFILE","could not open keyring file for writeback: %s", userPath);
-      return -1;
-  }
-  if (ftruncate(fdes, 0)) {
-    vulpes_log(LOG_ERRORS,"WRITEKEYRINGFILE","could not truncate keyring file for writeback: %s", userPath);
-    return -1;
-  }
-  if (!vulpes_write_hex_keyring(fdes, (void *)(kr->keyRing), kr->numKeys)) {
-    vulpes_log(LOG_ERRORS,"WRITEKEYRINGFILE","failed in vulpes_write_hex_keyring: %s", userPath);
-    return -1;
-  }
-  close(fdes);
-  vulpes_log(LOG_BASIC,"WRITEKEYRINGFILE","wrote keyring %s: %d keys",userPath,kr->numKeys);
-  return 0;
-}
-
-/* returns a new struct keyring */
-static struct keyring *lev1_initEncryption(char *keyring_name)
-{
-  struct keyring *kr = NULL;
-
-  if(keyring_name == NULL)
-    return NULL;
-
-  kr = malloc(sizeof(struct keyring));
-  if(kr == NULL) return NULL;
-
-  if(lev1_getKeyRingFile(kr, keyring_name))
-    return kr;
-  
-  /* else */
-  free(kr);
-  return NULL;
-}
-
-/* returns -1 on error or 0 on success */
-static int lev1_cleanupKeys(struct keyring *kr, char *keyring_name)
-{
-  int i;
-  
-  if (kr == NULL) return 0;
-
-  if (!keyring_name) {
-    vulpes_log(LOG_ERRORS,"LEV1_CLEANUPKEYS","keyring name is null");
-    return -1;
-  } 
-
-  i=writeKeyRingFile(kr, keyring_name);
-  free(kr->keyRing);
-  free(kr);
-  return i;
-}
-
-static void print_check_tag_error(unsigned chunk_num, const unsigned char *tag)
-{
-  struct lev1_mapping *spec=config.special;
-  unsigned char s_tag[41];
-  unsigned char s_kr_tag[41];
-  unsigned char *kr_tag;
-  int i;
-  
-  if(lev1_get_tag(spec->keyring, chunk_num, &kr_tag) == VULPES_SUCCESS) {
-    for(i=0; i<20; i++) {
-      sprintf(&(s_tag[2*i]), "%02x", tag[i]);
-      sprintf(&(s_kr_tag[2*i]), "%02x", kr_tag[i]);
-    }
-    vulpes_log(LOG_ERRORS,"CHECK_TAG_ERROR","expected %s, found %s",s_kr_tag,s_tag);
-  } else {
-    vulpes_log(LOG_ERRORS,"CHECK_TAG_ERROR","failed to get kr_tag");
-  }
+  return (memcmp(cdp->tag, tag, 20) == 0) ? VULPES_SUCCESS : VULPES_TAGFAIL;
 }
 
 static int valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize, 
 		  unsigned chunk_num)
 {
-  struct lev1_mapping *spec=config.special;
-  struct keyring *keyring=spec->keyring;
   int bufvalid = 0;
   unsigned char *dgst; /* hash of the buffer contents - malloc'ed by digest */
-
+  struct chunk_data *cdp;
+  
+  cdp=get_cdp_from_chunk_num(chunk_num);
   dgst = digest(buffer, bufsize);
-  bufvalid = (lev1_check_tag(keyring, chunk_num, dgst) == VULPES_SUCCESS);
-  if(! bufvalid) {
-    print_check_tag_error(chunk_num, dgst);
+  bufvalid = (lev1_check_tag(cdp, dgst) == VULPES_SUCCESS);
+  if (!bufvalid) {
+    unsigned char s_tag[41];
+    unsigned char s_kr_tag[41];
+    int i;
+    
+    for(i=0; i<20; i++) {
+      sprintf(&(s_tag[2*i]), "%02x", dgst[i]);
+      sprintf(&(s_kr_tag[2*i]), "%02x", cdp->tag[i]);
+    }
+    vulpes_log(LOG_ERRORS,"CHECK_TAG_ERROR","expected %s, found %s",s_kr_tag,s_tag);
   }
   
   free(dgst);
@@ -555,6 +409,7 @@ static int lev1_copy_file(const char *src, const char *dst, unsigned chunk_num)
   int buflen;
   int fd;
   vulpes_err_t err;
+  struct chunk_data *cdp;
   
   buflen=1.002*spec->chunksize_bytes+20;
   buf=malloc(buflen);
@@ -562,57 +417,51 @@ static int lev1_copy_file(const char *src, const char *dst, unsigned chunk_num)
     vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","malloc failed");
     return -1;
   }
+  cdp=get_cdp_from_chunk_num(chunk_num);
   
   /* first check the lka database(s) */
   /* XXX clean this up */
   if(config.lka_svc != NULL) {
-    unsigned char *tag;
-    
-    if(lev1_get_tag(spec->keyring, chunk_num, &tag)==VULPES_SUCCESS) {
-      char *lka_src_file;
+    char *lka_src_file;
 
 #ifdef DEBUG
-      {
-	unsigned char s_bufhash[41];
-	int i;
+    {
+      unsigned char s_bufhash[41];
+      int i;
 
-	for(i=0; i<20; i++) {
-	  sprintf(&(s_bufhash[2*i]), "%02x", tag[i]);
-	}
-	vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup tag: %s", s_bufhash);	  
+      for(i=0; i<20; i++) {
+	sprintf(&(s_bufhash[2*i]), "%02x", cdp->tag[i]);
       }
+      vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup tag: %s", s_bufhash);	  
+    }
 #endif
 
-      err = vulpes_lka_lookup(LKA_TAG_SHA1, tag, buf, &buflen, &lka_src_file);
-      if(err == VULPES_SUCCESS) {
-	if(valid_chunk_buffer(buf, buflen, chunk_num)) {
-	  /* LKA hit */
-	  struct chunk_data *cdp;
-	  
-	  vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup hit for %s",dst);	  
-	  cdp = get_cdp_from_chunk_num(chunk_num);
-	  mark_cdp_lka_copy(cdp);
-	} else {
-	  /* Tag check failure */
-	  vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
-		     "SERIOUS, NON-FATAL ERROR - lka lookup hit from %s failed tag match for %s",
-		     ((lka_src_file == NULL) ? "<src>" : lka_src_file), 
-		     dst);
-	  err = VULPES_IOERR;
-	}
-
-	/* free the source name buffer */
-	if(lka_src_file != NULL) free(lka_src_file);
-
-	if(err == VULPES_SUCCESS) goto have_data;
-	/* else, fall through */
+    err = vulpes_lka_lookup(LKA_TAG_SHA1, cdp->tag, buf, &buflen, &lka_src_file);
+    if(err == VULPES_SUCCESS) {
+      if(valid_chunk_buffer(buf, buflen, chunk_num)) {
+	/* LKA hit */
+	struct chunk_data *cdp;
+	
+	vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup hit for %s",dst);	  
+	cdp = get_cdp_from_chunk_num(chunk_num);
+	mark_cdp_lka_copy(cdp);
       } else {
-	/* LKA miss */
-	vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup miss for %s", dst);
+	/* Tag check failure */
+	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE",
+		   "SERIOUS, NON-FATAL ERROR - lka lookup hit from %s failed tag match for %s",
+		   ((lka_src_file == NULL) ? "<src>" : lka_src_file), 
+		   dst);
+	err = VULPES_IOERR;
       }
+
+      /* free the source name buffer */
+      if(lka_src_file != NULL) free(lka_src_file);
+
+      if(err == VULPES_SUCCESS) goto have_data;
+      /* else, fall through */
     } else {
-      /* Serious error?  Chunk not found in keyring */
-      vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","failure in lev1_get_tag()");
+      /* LKA miss */
+      vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup miss for %s", dst);
     }
   }
   
@@ -737,7 +586,7 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
       printf_buffer_stats("LEV1_RECLAIM encrypted", chunk_num, encrypted, encryptedSize);
 #endif
 
-      lev1_updateKey(spec->keyring, newkey, newtag, chunk_num);
+      lev1_updateKey(chunk_num, newkey, newtag);
       
       errCode = ftruncate(fid, 0);
       if (errCode != 0) {
@@ -901,7 +750,7 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
    * using the key and then decompress it; and then return an error code
    */
   unsigned char *decryptedFile=NULL, *encryptedFile=NULL, 
-    *decompressedFile=NULL, *tag=NULL, *key=NULL;
+    *decompressedFile=NULL, *tag=NULL;
   unsigned fSize;
   unsigned long decompressedSize, compressedSize;
   int size, errCode;
@@ -932,37 +781,26 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
   }
 
   tag = digest(encryptedFile, fSize);
+  /* XXX not freed? */
   
-  if (lev1_check_tag(spec->keyring, chunk_num, tag) != VULPES_SUCCESS){
+  if (lev1_check_tag(cdp, tag) != VULPES_SUCCESS){
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","lev1_check_tag() failed: %d",chunk_num);
-    /* #ifdef DEBUG */
     {
       unsigned char s_tag[41];
       unsigned char s_kr_tag[41];
-      unsigned char *kr_tag;
       int i;
       
-      if(lev1_get_tag(spec->keyring, chunk_num, &kr_tag) == VULPES_SUCCESS) {
-	for(i=0; i<20; i++) {
-	  sprintf(&(s_tag[2*i]), "%02x", tag[i]);
-	  sprintf(&(s_kr_tag[2*i]), "%02x", kr_tag[i]);
-	}
-	vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","expected %s, found %s",s_kr_tag,s_tag);
-      } else {
-	vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","failed to get kr_tag");
+      for(i=0; i<20; i++) {
+	sprintf(&(s_tag[2*i]), "%02x", tag[i]);
+	sprintf(&(s_kr_tag[2*i]), "%02x", cdp->tag[i]);
       }
+      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","expected %s, found %s",s_kr_tag,s_tag);
     }
-    /* #endif */
-    return -1;
-  }
-  
-  if (lev1_get_key(spec->keyring, chunk_num, &key) != VULPES_SUCCESS){
-    vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","lev1_get_key() failed: %d",chunk_num);
     return -1;
   }
   
   if (!vulpes_decrypt
-      (encryptedFile, fSize, &decryptedFile, &size, key, 20)) {
+      (encryptedFile, fSize, &decryptedFile, &size, cdp->key, 20)) {
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","could not decrypt file into memory: %d",chunk_num);
     return -1;
   };
@@ -1025,7 +863,6 @@ int lev1_shutdown_func(void)
 {
   char chunk_name[MAX_CHUNK_NAME_LENGTH];
   struct lev1_mapping *spec=config.special;
-  int result = 0;
   unsigned u;
   
   unsigned dirty_chunks = 0;
@@ -1065,10 +902,9 @@ int lev1_shutdown_func(void)
     free(spec);
   }
   
-  result = lev1_cleanupKeys(spec->keyring, config.keyring_name);
-  if (result == -1) {
-    vulpes_log(LOG_ERRORS,"LEV1_CLOSE","lev1_cleanupKeys failed");
-    return result;
+  if (write_hex_keyring(config.keyring_name)) {
+    vulpes_log(LOG_ERRORS,"LEV1_CLOSE","write_hex_keyring failed");
+    return -1;
   }
 
   /* Print close stats */
@@ -1076,7 +912,7 @@ int lev1_shutdown_func(void)
   vulpes_log(LOG_STATS,"LEV1_CLOSE_FUNCTION","CHUNKS_MODIFIED:%u",dirty_chunks);
   vulpes_log(LOG_STATS,"LEV1_CLOSE_FUNCTION","CHUNKS_RAW:%u",writes_before_read);
 
-  return result;
+  return 0;
 }
 
 int lev1_read_func(vulpes_cmdblk_t * cmdblk)
@@ -1304,8 +1140,8 @@ int initialize_lev1_mapping(void)
     spec->cd[u].fnp = NULL_FID_ID;
   }
   
-  if((spec->keyring = lev1_initEncryption(config.keyring_name)) == NULL) {
-    vulpes_log(LOG_ERRORS,"LEV1_INIT","lev1_initEncryption() failed");
+  if (read_hex_keyring(config.keyring_name)) {
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","read_hex_keyring() failed");
     return -1;	
   }
   

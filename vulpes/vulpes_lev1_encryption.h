@@ -16,21 +16,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #ifndef VULPES_LEV1_ENCRYPT
 #define VULPES_LEV1_ENCRYPT
 
-#include "vulpes.h"
-
-/*
- * TYPEDEFS
- */
-struct keyring_entry {
-    unsigned char tag[20];/* was called as o2 earlier */
-    unsigned char key[20];/* was called as o1 earlier */
-};
-
-struct keyring {
-  struct keyring_entry *keyRing;
-  int numKeys;
-};
-
 unsigned char *digest(const unsigned char *mesg, unsigned mesgLen);
 int vulpes_encrypt(const unsigned char *const inString, 
 		   const int inStringLength,
