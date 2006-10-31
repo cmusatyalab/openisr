@@ -32,20 +32,15 @@ enum mapping_type {
   LEV1V_MAPPING,
 };
 
-struct vulpes_mapping;
+typedef int (*vulpes_open_func_t) (void);
+typedef vulpes_volsize_t(*vulpes_volsize_func_t) (void);
+typedef int (*vulpes_read_func_t) (vulpes_cmdblk_t *);
+typedef int (*vulpes_write_func_t) (const vulpes_cmdblk_t *);
+typedef int (*vulpes_close_func_t) (void);
 
-typedef int (*vulpes_open_func_t) (struct vulpes_mapping *);
-typedef vulpes_volsize_t(*vulpes_volsize_func_t) (const struct vulpes_mapping
-						  *);
-typedef int (*vulpes_read_func_t) (const struct vulpes_mapping *,
-				   vulpes_cmdblk_t *);
-typedef int (*vulpes_write_func_t) (const struct vulpes_mapping *,
-				    const vulpes_cmdblk_t *);
-typedef int (*vulpes_close_func_t) (struct vulpes_mapping *);
-
-struct vulpes_mapping {
+struct vulpes_config {
   enum transfer_type trxfer;	/* Set by main */
-  enum mapping_type type;       /* Set by main */
+  enum mapping_type mapping;    /* Set by main */
   char* proxy_name;             /* Set by main */
   long  proxy_port;             /* set by main */
   
@@ -54,7 +49,7 @@ struct vulpes_mapping {
   char *cache_name;		/* Set by main */
   char *keyring_name;		/* Set by main */
 
-  int vulpes_device;		/* Set by main */
+  int vulpes_device;		/* Set by device driver */
   
   vulpes_registration_t reg;	        /* Set in open_func */
   vulpes_open_func_t open_func;	        /* Set in initialize */

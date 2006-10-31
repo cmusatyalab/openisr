@@ -24,6 +24,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <linux/hdreg.h>
 
 #include "fauxide.h"
+#include "vulpes.h"
 #include "vulpes_map.h"
 
 typedef int simple_mapping_special_t;
@@ -50,14 +51,14 @@ static int long_seek(int fid, unsigned long long lloffset)
     return 0;
 }
 
-vulpes_volsize_t simple_file_volsize_func(const vulpes_mapping_t * map_ptr)
+vulpes_volsize_t simple_file_volsize_func(void)
 {
     int fileno;
     struct stat filestat;
     off_t size_bytes;
     vulpes_volsize_t volsize;	/* sectors */
 
-    fileno = *((int *) map_ptr->special);
+    fileno = *((int *) config.special);
 
     /* Get file statistics */
     if (fstat(fileno, &filestat)) {
@@ -73,14 +74,14 @@ vulpes_volsize_t simple_file_volsize_func(const vulpes_mapping_t * map_ptr)
     return volsize;
 }
 
-vulpes_volsize_t simple_disk_volsize_func(const vulpes_mapping_t * map_ptr)
+vulpes_volsize_t simple_disk_volsize_func(void)
 {
     struct hd_big_geometry geo;
     int result;
     int dev;
     vulpes_volsize_t volsize;	/* sectors */
 
-    dev = *((int *) map_ptr->special);
+    dev = *((int *) config.special);
 
     bzero(&geo, sizeof(geo));
 
@@ -97,44 +98,43 @@ vulpes_volsize_t simple_disk_volsize_func(const vulpes_mapping_t * map_ptr)
     return volsize;
 }
 
-int simple_open_func(vulpes_mapping_t * map_ptr)
+int simple_open_func(void)
 {
     int result = 0;
     int fid;
 
-    fid = open(map_ptr->cache_name, O_RDWR);
+    fid = open(config.cache_name, O_RDWR);
     if (fid < 0) {
-	printf("ERROR: unable to open %s.\n", map_ptr->cache_name);
+	printf("ERROR: unable to open %s.\n", config.cache_name);
 	return -1;
     }
 
-    *((int *) (map_ptr->special)) = fid;
+    *((int *) (config.special)) = fid;
 
     return result;
 }
 
-int simple_close_func(vulpes_mapping_t * map_ptr)
+int simple_close_func(void)
 {
     int result = 0;
 
-    if (map_ptr->special != NULL) {
-	close(*((int *) map_ptr->special));
-	free(map_ptr->special);
-	map_ptr->special = NULL;
+    if (config.special != NULL) {
+	close(*((int *) config.special));
+	free(config.special);
+	config.special = NULL;
     }
 
     return result;
 }
 
-int simple_read_func(const vulpes_mapping_t * map_ptr,
-		     vulpes_cmdblk_t * cmdblk)
+int simple_read_func(vulpes_cmdblk_t * cmdblk)
 {
     unsigned long long start;
     ssize_t bytes, tmp_size;
     int result = 0;
     int fid;
 
-    fid = *((int *) map_ptr->special);
+    fid = *((int *) config.special);
 
     start =
 	(unsigned long long) cmdblk->head.start_sect *
@@ -143,14 +143,14 @@ int simple_read_func(const vulpes_mapping_t * map_ptr,
     result = long_seek(fid, start);
     if (result) {
 	printf("ERROR: seeking %s to sector %lu (byte %llu)\n",
-	       map_ptr->cache_name, (unsigned long) cmdblk->head.start_sect,
+	       config.cache_name, (unsigned long) cmdblk->head.start_sect,
 	       (unsigned long long) start);
     }
 
     bytes = cmdblk->head.num_sect * FAUXIDE_HARDSECT_SIZE;
     tmp_size = read(fid, cmdblk->buffer, bytes);
     if (tmp_size != bytes) {
-	printf("ERROR: reading %s. %llu bytes\n", map_ptr->cache_name,
+	printf("ERROR: reading %s. %llu bytes\n", config.cache_name,
 	       (unsigned long long) bytes);
 	result = -1;
     }
@@ -158,15 +158,14 @@ int simple_read_func(const vulpes_mapping_t * map_ptr,
     return result;
 }
 
-int simple_write_func(const vulpes_mapping_t * map_ptr,
-		      const vulpes_cmdblk_t * cmdblk)
+int simple_write_func(const vulpes_cmdblk_t * cmdblk)
 {
     unsigned long long start;
     ssize_t bytes, tmp_size;
     int result = 0;
     int fid;
 
-    fid = *((int *) map_ptr->special);
+    fid = *((int *) config.special);
 
     start =
 	(unsigned long long) cmdblk->head.start_sect *
@@ -175,7 +174,7 @@ int simple_write_func(const vulpes_mapping_t * map_ptr,
     result = long_seek(fid, start);
     if (result) {
 	printf("ERROR: seeking %s to sector %lu (byte %llu)\n",
-	       map_ptr->cache_name, (unsigned long) cmdblk->head.start_sect,
+	       config.cache_name, (unsigned long) cmdblk->head.start_sect,
 	       (unsigned long long) start);
     }
 
@@ -183,7 +182,7 @@ int simple_write_func(const vulpes_mapping_t * map_ptr,
     tmp_size = write(fid, cmdblk->buffer, bytes);
     if (tmp_size != bytes) {
 	printf("ERROR: writing %s. %llu bytes\n",
-	       map_ptr->cache_name, (unsigned long long) bytes);
+	       config.cache_name, (unsigned long long) bytes);
 	result = -1;
     }
 
@@ -191,25 +190,25 @@ int simple_write_func(const vulpes_mapping_t * map_ptr,
 }
 
 
-int initialize_simple_mapping(vulpes_mapping_t * map_ptr)
+int initialize_simple_mapping(void)
 {
-    if (map_ptr->type == SIMPLE_FILE_MAPPING) {
-	map_ptr->volsize_func = simple_file_volsize_func;
-    } else if (map_ptr->type == SIMPLE_DISK_MAPPING) {
-	map_ptr->volsize_func = simple_disk_volsize_func;
+    if (config.mapping == SIMPLE_FILE_MAPPING) {
+	config.volsize_func = simple_file_volsize_func;
+    } else if (config.mapping == SIMPLE_DISK_MAPPING) {
+	config.volsize_func = simple_disk_volsize_func;
     } else {
 	return -1;
     }
 
-    map_ptr->special = malloc(sizeof(simple_mapping_special_t));
-    if (map_ptr->special == NULL) {
+    config.special = malloc(sizeof(simple_mapping_special_t));
+    if (config.special == NULL) {
 	return -1;
     }
 
-    map_ptr->open_func = simple_open_func;
-    map_ptr->read_func = simple_read_func;
-    map_ptr->write_func = simple_write_func;
-    map_ptr->close_func = simple_close_func;
+    config.open_func = simple_open_func;
+    config.read_func = simple_read_func;
+    config.write_func = simple_write_func;
+    config.close_func = simple_close_func;
 
     return 0;
 }

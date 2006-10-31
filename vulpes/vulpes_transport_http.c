@@ -34,8 +34,7 @@ static size_t curl_write_callback_function(char* curlbuf, size_t size,
 }
 
 /* warning: not thread-safe(same as rest of vulpes!) */
-static void init_curl(const struct vulpes_mapping *map_ptr,
-  		char *buf, int bufsize)
+static void init_curl(char *buf, int bufsize)
 {
   /* init the curl session */
   curl_handle = curl_easy_init();
@@ -60,12 +59,11 @@ static void init_curl(const struct vulpes_mapping *map_ptr,
   curl_easy_setopt(curl_handle, CURLOPT_ERRORBUFFER, curl_error_buffer);
   
   /* set up proxies if any */
-  if ( (map_ptr->proxy_name) && (map_ptr->proxy_port))
-    {
-      curl_easy_setopt(curl_handle, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
-      curl_easy_setopt(curl_handle, CURLOPT_PROXY, (map_ptr->proxy_name));
-      curl_easy_setopt(curl_handle, CURLOPT_PROXYPORT, map_ptr->proxy_port);
-    }
+  if ((config.proxy_name) && (config.proxy_port)) {
+    curl_easy_setopt(curl_handle, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+    curl_easy_setopt(curl_handle, CURLOPT_PROXY, (config.proxy_name));
+    curl_easy_setopt(curl_handle, CURLOPT_PROXYPORT, config.proxy_port);
+  }
   
   /* disable Nagle's algorithm 
      curl_easy_setopt(curl_handle, CURLOPT_TCP_NODELAY, 1);*/
@@ -88,14 +86,13 @@ static void destroy_curl(void)
   free(curl_buffer);
 }
 
-vulpes_err_t http_get(const struct vulpes_mapping *map_ptr, char *buf,
-                      int *bufsize, const char *url)
+vulpes_err_t http_get(char *buf, int *bufsize, const char *url)
 {
   CURLcode retVal;
   vulpes_err_t retstatus=VULPES_IOERR;
 
   /* init curl session */
-  init_curl(map_ptr, buf, *bufsize);
+  init_curl(buf, *bufsize);
   
   /* specify REMOTE FILE to get */
   curl_easy_setopt(curl_handle, CURLOPT_URL, url);

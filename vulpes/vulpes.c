@@ -33,13 +33,13 @@ ACCEPTANCE OF THIS AGREEMENT
 #include "vulpes_lka.h"
 
 /* EXTERNS */
-extern int initialize_lev1_mapping(struct vulpes_mapping *map_ptr);
+extern int initialize_lev1_mapping(void);
 extern int fauxide_init(void);
 extern void fauxide_run(void);
 extern void fauxide_shutdown(void);
 extern int fauxide_rescue(const char *device_name);
 #ifdef VULPES_SIMPLE_DEFINED
-extern int initialize_simple_mapping(struct vulpes_mapping *map_ptr);
+extern int initialize_simple_mapping(void);
 #endif
 extern const char *svn_revision;
 extern const char *svn_branch;
@@ -54,7 +54,7 @@ static unsigned long long sectors_accessed = 0;
 
 const char *vulpes_version = "0.60";
 
-struct vulpes_mapping mapping;
+struct vulpes_config config;
 extern char *optarg;
 extern int optind, opterr, optopt;
 
@@ -116,36 +116,36 @@ static enum mapping_type char_to_mapping_type(const char *name)
   return result;
 }
 
-static void initialize_null_mapping(void)
+static void initialize_config(void)
 {
-  mapping.trxfer = LOCAL_TRANSPORT;
-  mapping.type = NO_MAPPING;
+  config.trxfer = LOCAL_TRANSPORT;
+  config.mapping = NO_MAPPING;
   
-  mapping.proxy_name = NULL;
-  mapping.proxy_port = 80;
+  config.proxy_name = NULL;
+  config.proxy_port = 80;
   
-  mapping.device_name = NULL;
-  mapping.master_name = NULL;
-  mapping.cache_name = NULL;
+  config.device_name = NULL;
+  config.master_name = NULL;
+  config.cache_name = NULL;
   
-  mapping.keyring_name = NULL;
+  config.keyring_name = NULL;
   
-  mapping.vulpes_device = -1;
+  config.vulpes_device = -1;
   
-  mapping.reg.vulpes_id = -1;
-  mapping.reg.pid = -1;
-  mapping.reg.volsize = 0;
+  config.reg.vulpes_id = -1;
+  config.reg.pid = -1;
+  config.reg.volsize = 0;
   
-  mapping.open_func = NULL;
-  mapping.volsize_func = NULL;
-  mapping.read_func = NULL;
-  mapping.write_func = NULL;
-  mapping.close_func = NULL;
+  config.open_func = NULL;
+  config.volsize_func = NULL;
+  config.read_func = NULL;
+  config.write_func = NULL;
+  config.close_func = NULL;
   
-  mapping.verbose = 0;
+  config.verbose = 0;
   
-  mapping.lka_svc = NULL;
-  mapping.special = NULL;
+  config.lka_svc = NULL;
+  config.special = NULL;
 }
 
 static void version(void)
@@ -200,8 +200,8 @@ int main(int argc, char *argv[])
   /* Initialize the fidsvc */
   fidsvc_init();
   
-  /* Initialize the mapping structure */
-  initialize_null_mapping();
+  /* Initialize the config structure */
+  initialize_config();
   
   /* parse command line */
   if (argc < 2) {
@@ -274,12 +274,12 @@ int main(int argc, char *argv[])
 	PARSE_ERROR("failed to parse mapping.");
       }
       
-      mapping.type = char_to_mapping_type(argv[optind++]);
-      if(mapping.type == NO_MAPPING) {
+      config.mapping = char_to_mapping_type(argv[optind++]);
+      if(config.mapping == NO_MAPPING) {
 	PARSE_ERROR("unknown mapping type (%s).", argv[optind-1]);
       }	    
-      mapping.device_name=argv[optind++];
-      mapping.cache_name=argv[optind++];
+      config.device_name=argv[optind++];
+      config.cache_name=argv[optind++];
       mapDone=1;
       break;
     case 'e':
@@ -292,14 +292,14 @@ int main(int argc, char *argv[])
 	PARSE_ERROR("failed to parse transport.");
       }
       if (strcmp("http",argv[optind])==0)
-	mapping.trxfer=HTTP_TRANSPORT;
+	config.trxfer=HTTP_TRANSPORT;
       else if (strcmp("local",argv[optind])==0)
-	mapping.trxfer=LOCAL_TRANSPORT;
+	config.trxfer=LOCAL_TRANSPORT;
       else {
 	PARSE_ERROR("unknown transport type.");
       }
       optind++;
-      mapping.master_name=argv[optind++];
+      config.master_name=argv[optind++];
       masterDone=1;
       break;
     case 'f':
@@ -311,7 +311,7 @@ int main(int argc, char *argv[])
       if (optind+0 >= argc) {
 	PARSE_ERROR("failed to parse keyring name.");
       }
-      mapping.keyring_name=argv[optind++];
+      config.keyring_name=argv[optind++];
       keyDone=1;
       break;
     case 'h':
@@ -345,12 +345,12 @@ int main(int argc, char *argv[])
 	if (optind+1 >= argc) {
 	  PARSE_ERROR("failed to parse proxy description.");
 	}
-	mapping.proxy_name=argv[optind++];
+	config.proxy_name=argv[optind++];
 	tmp_num=strtol(argv[optind++], &error_buffer,10);
 	if (strlen(error_buffer)!=0) {
 	  PARSE_ERROR("bad port");
 	}
-	mapping.proxy_port=tmp_num;
+	config.proxy_port=tmp_num;
 	free(error_buffer);
 	proxyDone=1;
       }
@@ -364,12 +364,11 @@ int main(int argc, char *argv[])
       /* XXX this is lame */
       if (strcmp("hfs-sha-1", argv[optind++]))
 	PARSE_ERROR("invalid LKA type.");
-      if(mapping.lka_svc == NULL)
-	if((mapping.lka_svc = vulpes_lka_open()) == NULL)
+      if(config.lka_svc == NULL)
+	if(vulpes_lka_open())
 	  printf("WARNING: unable to open lka service.\n");
-      if(mapping.lka_svc != NULL)
-	if(vulpes_lka_add(mapping.lka_svc, LKA_HFS, LKA_TAG_SHA1,
-	    argv[optind++]) != VULPES_SUCCESS)
+      if(config.lka_svc != NULL)
+	if(vulpes_lka_add(LKA_HFS, LKA_TAG_SHA1, argv[optind++]))
 	  printf("WARNING: unable to add lka database %s.\n", argv[optind]);
       break;
     case 'm':
@@ -424,7 +423,7 @@ int main(int argc, char *argv[])
   
   VULPES_DEBUG("Establishing mapping...\n");
   /* Initialize the mapping */
-  switch (mapping.type) {
+  switch (config.mapping) {
   case SIMPLE_FILE_MAPPING:
   case SIMPLE_DISK_MAPPING:
 #ifdef VULPES_SIMPLE_DEFINED
@@ -439,7 +438,7 @@ int main(int argc, char *argv[])
     break;
   case LEV1_MAPPING:
   case LEV1V_MAPPING:
-    if (initialize_lev1_mapping(&mapping)) {
+    if (initialize_lev1_mapping()) {
       vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to initialize lev1 mapping");
       goto vulpes_exit;
     }
@@ -454,8 +453,8 @@ int main(int argc, char *argv[])
   
   /* Open the file */
   VULPES_DEBUG("\tOpening file.\n");
-  if ((*(mapping.open_func)) (&mapping)) {
-    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open lev1 %s", mapping.cache_name);
+  if ((*(config.open_func))()) {
+    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open lev1 %s", config.cache_name);
     goto vulpes_exit;
   }
   
@@ -475,14 +474,14 @@ int main(int argc, char *argv[])
 
   /* Close file */
   VULPES_DEBUG("\tClosing map.\n");
-  if ((*mapping.close_func) (&mapping) == -1) {
+  if ((*config.close_func)() == -1) {
       vulpes_log(LOG_ERRORS,"VULPES_MAIN","close function failed");
       exit(1);
     }
 
   /* Close the LKA service */
-  if(mapping.lka_svc != NULL)
-    if(vulpes_lka_close(mapping.lka_svc) != VULPES_SUCCESS)
+  if(config.lka_svc != NULL)
+    if(vulpes_lka_close())
       vulpes_log(LOG_ERRORS,"VULPES_MAIN","failure during lka_close().");    
   
   /* Close the fidsvc */

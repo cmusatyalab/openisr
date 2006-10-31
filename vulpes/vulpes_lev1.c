@@ -65,18 +65,16 @@ struct lev1_mapping {
 
 static unsigned writes_before_read = 0;
 
-static void get_dir_chunk_from_chunk_num(const struct lev1_mapping * spec,
-					 unsigned chunk_num, unsigned *dir, unsigned *chunk);
-static unsigned get_chunk_number(const struct lev1_mapping * spec,
-				 unsigned sect_num);
+static void get_dir_chunk_from_chunk_num(unsigned chunk_num, unsigned *dir,
+                                         unsigned *chunk);
+static unsigned get_chunk_number(unsigned sect_num);
 static int form_chunk_file_name(char *buffer, int bufsize,
 				const char *rootname,
 				unsigned dir, unsigned chunk);
 
 /* XXX for now */
 extern vulpes_err_t local_get(char *buf, int *bufsize, const char *file);
-extern vulpes_err_t http_get(const struct vulpes_mapping *map_ptr, char *buf,
-                int *bufsize, const char *url);
+extern vulpes_err_t http_get(char *buf, int *bufsize, const char *url);
 
 /* AUXILLIARY FUNCTIONS */
 static inline int cdp_is_rw(struct chunk_data * cdp)
@@ -148,30 +146,28 @@ static inline void mark_cdp_not_lka_copy(struct chunk_data * cdp)
   cdp->status &= ~CHUNK_STATUS_LKA_COPY;
 }
 
-static inline
-unsigned get_chunk_number(const struct lev1_mapping * spec,
-			  unsigned sect_num)
+static inline unsigned get_chunk_number(unsigned sect_num)
 {
+  struct lev1_mapping *spec=config.special;
   return sect_num / spec->chunksize;
 }
 
-static inline
-void get_dir_chunk_from_chunk_num(const struct lev1_mapping * spec,
-				  unsigned chunk_num, unsigned *dir, unsigned *chunk)
+static inline void get_dir_chunk_from_chunk_num(unsigned chunk_num,
+                   unsigned *dir, unsigned *chunk)
 {
+  struct lev1_mapping *spec=config.special;
   *chunk = chunk_num % spec->chunksperdir;
   *dir = chunk_num / spec->chunksperdir;
 }
 
 
-static
-struct chunk_data *get_cdp_from_chunk_num(const struct lev1_mapping * spec,
-					  unsigned chunk_num)
+static struct chunk_data *get_cdp_from_chunk_num(unsigned chunk_num)
 {
+  struct lev1_mapping *spec=config.special;
   unsigned dir, chunk;
   struct chunk_data *cdp;
 
-  get_dir_chunk_from_chunk_num(spec, chunk_num, &dir, &chunk);
+  get_dir_chunk_from_chunk_num(chunk_num, &dir, &chunk);
   
   cdp = &(spec->cd[dir][chunk]);
 
@@ -184,9 +180,9 @@ static inline void mark_cdp_present(struct chunk_data * cdp)
   cdp->status |= CHUNK_STATUS_PRESENT;
 }
 
-static int form_index_name(const char *dirname,
-			   struct lev1_mapping * spec)
+static int form_index_name(const char *dirname)
 {
+  struct lev1_mapping *spec=config.special;
   int add_slash = 0;
   int result;
   
@@ -204,16 +200,12 @@ static int form_index_name(const char *dirname,
   return 0;
 }
 
-static int one_chunk(const struct lev1_mapping * spec,
-	      const vulpes_cmdblk_t * cmdblk)
+static int one_chunk(const vulpes_cmdblk_t * cmdblk)
 {
   unsigned start, end;	/* absolute chunk numbers */
   
-  start = get_chunk_number(spec, cmdblk->head.start_sect);
-  end =
-    get_chunk_number(spec,
-		     (cmdblk->head.start_sect + cmdblk->head.num_sect -
-		      1));
+  start = get_chunk_number(cmdblk->head.start_sect);
+  end = get_chunk_number((cmdblk->head.start_sect + cmdblk->head.num_sect - 1));
   
   return (start == end);
 }
@@ -270,17 +262,13 @@ printf_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, u
 }
 #endif
 
-static void
-print_check_tag_error(const struct vulpes_mapping *map_ptr, unsigned chunk_num,
-		      const unsigned char *tag)
+static void print_check_tag_error(unsigned chunk_num, const unsigned char *tag)
 {
-  struct lev1_mapping *spec;
+  struct lev1_mapping *spec=config.special;
   unsigned char s_tag[41];
   unsigned char s_kr_tag[41];
   unsigned char *kr_tag;
   int i;
-
-  spec = (struct lev1_mapping *) map_ptr->special;
   
   if(lev1_get_tag(spec->keyring, chunk_num, &kr_tag) == VULPES_SUCCESS) {
     for(i=0; i<20; i++) {
@@ -293,22 +281,18 @@ print_check_tag_error(const struct vulpes_mapping *map_ptr, unsigned chunk_num,
   }
 }
 
-static int
-valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize, 
-		  const struct vulpes_mapping *map_ptr, unsigned chunk_num)
+static int valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize, 
+		  unsigned chunk_num)
 {
+  struct lev1_mapping *spec=config.special;
+  struct keyring *keyring=spec->keyring;
   int bufvalid = 0;
-  struct keyring *keyring;
-  struct lev1_mapping *spec;
   unsigned char *dgst; /* hash of the buffer contents - malloc'ed by digest */
-
-  spec = (struct lev1_mapping *) map_ptr->special;
-  keyring = spec->keyring;
 
   dgst = digest(buffer, bufsize);
   bufvalid = (lev1_check_tag(keyring, chunk_num, dgst) == VULPES_SUCCESS);
   if(! bufvalid) {
-    print_check_tag_error(map_ptr, chunk_num, dgst);
+    print_check_tag_error(chunk_num, dgst);
   }
   
   free(dgst);
@@ -316,17 +300,13 @@ valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize,
   return bufvalid;
 }
 
-static int 
-lev1_copy_file(const char *src, const char *dst,
-               const struct vulpes_mapping *map_ptr, unsigned chunk_num)
+static int lev1_copy_file(const char *src, const char *dst, unsigned chunk_num)
 {
-  struct lev1_mapping *spec;
+  struct lev1_mapping *spec=config.special;
   char *buf;
   int buflen;
   int fd;
   vulpes_err_t err;
-  
-  spec = (struct lev1_mapping *) map_ptr->special;
   
   buflen=1.002*spec->chunksize_bytes+20;
   buf=malloc(buflen);
@@ -337,7 +317,7 @@ lev1_copy_file(const char *src, const char *dst,
   
   /* first check the lka database(s) */
   /* XXX clean this up */
-  if(map_ptr->lka_svc != NULL) {
+  if(config.lka_svc != NULL) {
     unsigned char *tag;
     
     if(lev1_get_tag(spec->keyring, chunk_num, &tag)==VULPES_SUCCESS) {
@@ -355,15 +335,14 @@ lev1_copy_file(const char *src, const char *dst,
       }
 #endif
 
-      err = vulpes_lka_lookup(map_ptr->lka_svc, LKA_TAG_SHA1, 
-				tag, buf, &buflen, &lka_src_file);
+      err = vulpes_lka_lookup(LKA_TAG_SHA1, tag, buf, &buflen, &lka_src_file);
       if(err == VULPES_SUCCESS) {
-	if(valid_chunk_buffer(buf, buflen, map_ptr, chunk_num)) {
+	if(valid_chunk_buffer(buf, buflen, chunk_num)) {
 	  /* LKA hit */
 	  struct chunk_data *cdp;
 	  
 	  vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup hit for %s",dst);	  
-	  cdp = get_cdp_from_chunk_num(spec, chunk_num);
+	  cdp = get_cdp_from_chunk_num(chunk_num);
 	  mark_cdp_lka_copy(cdp);
 	} else {
 	  /* Tag check failure */
@@ -390,12 +369,12 @@ lev1_copy_file(const char *src, const char *dst,
   }
   
   vulpes_log(LOG_TRANSPORT,"LEV1_COPY_FILE","begin_transport: %s %s",src,dst);
-  switch (map_ptr->trxfer) {
+  switch (config.trxfer) {
   case LOCAL_TRANSPORT:
     err=local_get(buf, &buflen, src);
     break;
   case HTTP_TRANSPORT:
-    err=http_get(map_ptr, buf, &buflen, src);
+    err=http_get(buf, &buflen, src);
     break;
   default:
     vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","unknown transport");
@@ -408,7 +387,7 @@ lev1_copy_file(const char *src, const char *dst,
   /* buflen has been updated with the length of the data */
   
   /* check retrieved data for validity */
-  if(!valid_chunk_buffer(buf, buflen, map_ptr, chunk_num)) {
+  if(!valid_chunk_buffer(buf, buflen, chunk_num)) {
     vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","failure: %s buffer not valid",src);
     err=VULPES_IOERR;
     goto out;
@@ -459,7 +438,7 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
 
   spec = (struct lev1_mapping *) data;
   
-  get_dir_chunk_from_chunk_num(spec, chunk_num, &dir, &chunk);
+  get_dir_chunk_from_chunk_num(chunk_num, &dir, &chunk);
   
   cdp = &(spec->cd[dir][chunk]);
   
@@ -565,11 +544,10 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
  * memory
  */
 /* returns 0 if okay else -1 on bad exit */
-static int open_chunk_file(const struct vulpes_mapping *map_ptr,
-		    const vulpes_cmdblk_t * cmdblk, int open_for_writing)
+static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
 {
   char chunk_name[MAX_CHUNK_NAME_LENGTH];
-  struct lev1_mapping *spec;
+  struct lev1_mapping *spec=config.special;
   unsigned dir = 0, chunk = 0;
   unsigned chunk_num=0;
   int chunksPerDir;
@@ -577,13 +555,11 @@ static int open_chunk_file(const struct vulpes_mapping *map_ptr,
   struct chunk_data *cdp;
   int open_readwrite;
 
-  spec = (struct lev1_mapping *) map_ptr->special;
-  
   chunksPerDir = spec->chunksperdir;
 
   /* find the dir,chunk numbers */
-  chunk_num=get_chunk_number(spec,cmdblk->head.start_sect);
-  get_dir_chunk_from_chunk_num(spec, chunk_num, &dir, &chunk);
+  chunk_num=get_chunk_number(cmdblk->head.start_sect);
+  get_dir_chunk_from_chunk_num(chunk_num, &dir, &chunk);
   cdp = &(spec->cd[dir][chunk]);  
 
   open_readwrite = open_for_writing;
@@ -617,7 +593,7 @@ static int open_chunk_file(const struct vulpes_mapping *map_ptr,
   
   /* otherwise(file not open), form the cache filename */
   if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
-			   map_ptr->cache_name, dir, chunk)) {
+			   config.cache_name, dir, chunk)) {
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 file name: %d",chunk_num);
     return -1;
   }
@@ -636,12 +612,12 @@ static int open_chunk_file(const struct vulpes_mapping *map_ptr,
       /* the file has not been copied yet */
       char remote_name[MAX_CHUNK_NAME_LENGTH];
       if (form_chunk_file_name(remote_name, MAX_CHUNK_NAME_LENGTH,
-	   map_ptr->master_name, dir, chunk)) {
+	   config.master_name, dir, chunk)) {
 	vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","unable to form lev1 remote name: %d",chunk_num);
 	return -1;
       }
       
-      if (lev1_copy_file(remote_name, chunk_name, map_ptr, chunk_num) == 0) {
+      if (lev1_copy_file(remote_name, chunk_name, chunk_num) == 0) {
 	mark_cdp_present(cdp);
       } else {
 	vulpes_log(LOG_ERRORS,"LEV1_COPY_FILE","unable to copy %s %s",remote_name,chunk_name);
@@ -797,26 +773,25 @@ static int open_chunk_file(const struct vulpes_mapping *map_ptr,
 
 /* INTERFACE FUNCTIONS */
 
-vulpes_volsize_t lev1_volsize_func(const struct vulpes_mapping *map_ptr)
+vulpes_volsize_t lev1_volsize_func(void)
 {
-  return ((const struct lev1_mapping *) map_ptr->special)->volsize;
+  struct lev1_mapping *spec=config.special;
+  return spec->volsize;
 }
 
 /* returns -1 if an error occurs
  *  returns  0 on a normal exit */
-int lev1_open_func(struct vulpes_mapping *map_ptr)
+int lev1_open_func(void)
 {
-  struct lev1_mapping *spec;
+  struct lev1_mapping *spec=config.special;
   unsigned long long volsize_bytes;
   int parse_error = 0;
   int result = 0;
   FILE *f;
   unsigned u, v;
   
-  spec = (struct lev1_mapping *) map_ptr->special;
-  
   /* Form index_name */
-  result = form_index_name(map_ptr->cache_name, spec);
+  result = form_index_name(config.cache_name);
   
   /* result =  0 means good
    *  result = -1 means error */
@@ -881,8 +856,8 @@ int lev1_open_func(struct vulpes_mapping *map_ptr)
   fclose(f);
   
   /* Check if the cache root directory exists */
-  if (!is_dir(map_ptr->cache_name)) {
-    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open dir: %s", map_ptr->cache_name);
+  if (!is_dir(config.cache_name)) {
+    vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to open dir: %s", config.cache_name);
     result = -1;
   } else {
     char dirname[MAX_DIRLENGTH];
@@ -890,7 +865,7 @@ int lev1_open_func(struct vulpes_mapping *map_ptr)
     
     /* check the subdirectories  -- create if needed */
     for (d = 0; d < spec->numdirs; d++) {
-      form_dir_name(dirname, MAX_DIRLENGTH, map_ptr->cache_name, d);
+      form_dir_name(dirname, MAX_DIRLENGTH, config.cache_name, d);
       if (!is_dir(dirname)) {
 	if (mkdir(dirname, 0770)) {
 	  vulpes_log(LOG_ERRORS,"LEV1_OPEN_FUNC","unable to mkdir: %s", dirname);
@@ -929,17 +904,15 @@ int lev1_open_func(struct vulpes_mapping *map_ptr)
   return result;
 }
 
-int lev1_close_func(struct vulpes_mapping *map_ptr)
+int lev1_close_func(void)
 {
   char chunk_name[MAX_CHUNK_NAME_LENGTH];
-  struct lev1_mapping *spec;
+  struct lev1_mapping *spec=config.special;
   int result = 0;
   unsigned u, v;
   
   unsigned dirty_chunks = 0;
   unsigned accessed_chunks = 0;
-  
-  spec = (struct lev1_mapping *) map_ptr->special;
   
   
   if (spec != NULL) {
@@ -954,7 +927,7 @@ int lev1_close_func(struct vulpes_mapping *map_ptr)
 		++dirty_chunks;
 		if (spec->verbose) {
 		  if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
-		       map_ptr->cache_name, u, v)) {
+		       config.cache_name, u, v)) {
 		    vulpes_log(LOG_ERRORS,"LEV1_CLOSE_FUNCTION","unable to form lev1 file name");
 		    return -1;
 		  }
@@ -977,11 +950,11 @@ int lev1_close_func(struct vulpes_mapping *map_ptr)
       spec->cd = NULL;
     }
     
-    map_ptr->special = NULL;
+    config.special = NULL;
     free(spec);
   }
   
-  result = lev1_cleanupKeys(spec->keyring, map_ptr->keyring_name);
+  result = lev1_cleanupKeys(spec->keyring, config.keyring_name);
   if (result == -1) {
     vulpes_log(LOG_ERRORS,"LEV1_CLOSE","lev1_cleanupKeys failed");
     return result;
@@ -995,29 +968,26 @@ int lev1_close_func(struct vulpes_mapping *map_ptr)
   return result;
 }
 
-int lev1_read_func(const struct vulpes_mapping *map_ptr,
-		   vulpes_cmdblk_t * cmdblk)
+int lev1_read_func(vulpes_cmdblk_t * cmdblk)
 {
-  struct lev1_mapping *spec;
+  struct lev1_mapping *spec=config.special;
   off_t start;
   ssize_t bytes;
   struct chunk_data *cdp=NULL;
   unsigned chunk_num = 0, dir = 0, chunk = 0;
   
-  spec = (struct lev1_mapping *) map_ptr->special;
-  
   /* find the dir,chunk numbers */
-  chunk_num=get_chunk_number(spec,cmdblk->head.start_sect);
-  get_dir_chunk_from_chunk_num(spec, chunk_num, &dir, &chunk);
+  chunk_num=get_chunk_number(cmdblk->head.start_sect);
+  get_dir_chunk_from_chunk_num(chunk_num, &dir, &chunk);
 
-  if (!one_chunk(spec, cmdblk)) {
+  if (!one_chunk(cmdblk)) {
     vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC","request crosses chunk boundary: %d",chunk_num);
     return -1;
   }
   
   cdp = &(spec->cd[dir][chunk]);
 
-  if (open_chunk_file(map_ptr, cmdblk, 0) != 0) {
+  if (open_chunk_file(cmdblk, 0) != 0) {
     vulpes_log(LOG_ERRORS,"LEV1_READ_FUNC","open_chunk_file failed: %d",chunk_num);
     /* if the open returned a failure... cleanup */
     if (cdp->fnp != NULL_FID_ID) {
@@ -1050,29 +1020,26 @@ int lev1_read_func(const struct vulpes_mapping *map_ptr,
   return 0;
 }
 
-int lev1_write_func(const struct vulpes_mapping *map_ptr,
-		    const vulpes_cmdblk_t * cmdblk)
+int lev1_write_func(const vulpes_cmdblk_t * cmdblk)
 {
-  struct lev1_mapping *spec;
+  struct lev1_mapping *spec=config.special;
   off_t start;
   ssize_t bytes;
   struct chunk_data *cdp=NULL;
   unsigned chunk_num = 0, dir = 0, chunk = 0;
   
-  spec = (struct lev1_mapping *) map_ptr->special;
-  
   /* find the dir,chunk numbers */
-  chunk_num=get_chunk_number(spec,cmdblk->head.start_sect);
-  get_dir_chunk_from_chunk_num(spec, chunk_num, &dir, &chunk);
+  chunk_num=get_chunk_number(cmdblk->head.start_sect);
+  get_dir_chunk_from_chunk_num(chunk_num, &dir, &chunk);
 
-  if (!one_chunk(spec, cmdblk)) {
+  if (!one_chunk(cmdblk)) {
     vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC","request crosses chunk boundary: %d",chunk_num);
     return -1;
   }
   
   cdp = &(spec->cd[dir][chunk]);
 
-  if (open_chunk_file(map_ptr, cmdblk, 1) != 0) {
+  if (open_chunk_file(cmdblk, 1) != 0) {
     vulpes_log(LOG_ERRORS,"LEV1_WRITE_FUNC","open_chunk_file failed: %d",chunk_num);
     /* if the open returned a failure... cleanup */
     if (cdp->fnp != NULL_FID_ID) {
@@ -1111,44 +1078,43 @@ int lev1_write_func(const struct vulpes_mapping *map_ptr,
 }
 
 
-int initialize_lev1_mapping(struct vulpes_mapping *map_ptr)
+int initialize_lev1_mapping(void)
 {
   struct lev1_mapping *spec;
   
   /* Allocate special */
-  spec = map_ptr->special = malloc(sizeof(struct lev1_mapping));
-  if (!map_ptr->special)
-    {
-      vulpes_log(LOG_ERRORS,"LEV1_INIT","malloc for map_ptr->special failed");
-      return -1;
-    }
-  bzero(map_ptr->special, sizeof(struct lev1_mapping));
+  spec = config.special = malloc(sizeof(struct lev1_mapping));
+  if (!config.special) {
+    vulpes_log(LOG_ERRORS,"LEV1_INIT","malloc for config.special failed");
+    return -1;
+  }
+  bzero(config.special, sizeof(struct lev1_mapping));
   
-  switch (map_ptr->type) {
+  switch (config.mapping) {
   case LEV1_MAPPING:
     break;
   case LEV1V_MAPPING:
     spec->verbose = 1;
     break;
   default:
-    free(map_ptr->special);
-    map_ptr->special = NULL;
+    free(config.special);
+    config.special = NULL;
     return -1;
   }
   
-  vulpes_log(LOG_BASIC,"LEV1_INIT","vulpes_cache: %s", map_ptr->cache_name);
-  if ((map_ptr->proxy_name) && (map_ptr->proxy_port)) {
-    vulpes_log(LOG_BASIC,"LEV1_INIT","proxy: %s",map_ptr->proxy_name);
-    vulpes_log(LOG_BASIC,"LEV1_INIT","proxy-port: %ld",map_ptr->proxy_port);
+  vulpes_log(LOG_BASIC,"LEV1_INIT","vulpes_cache: %s", config.cache_name);
+  if ((config.proxy_name) && (config.proxy_port)) {
+    vulpes_log(LOG_BASIC,"LEV1_INIT","proxy: %s",config.proxy_name);
+    vulpes_log(LOG_BASIC,"LEV1_INIT","proxy-port: %ld",config.proxy_port);
   }
   
-  map_ptr->open_func = lev1_open_func;
-  map_ptr->volsize_func = lev1_volsize_func;
-  map_ptr->read_func = lev1_read_func;
-  map_ptr->write_func = lev1_write_func;
-  map_ptr->close_func = lev1_close_func;
+  config.open_func = lev1_open_func;
+  config.volsize_func = lev1_volsize_func;
+  config.read_func = lev1_read_func;
+  config.write_func = lev1_write_func;
+  config.close_func = lev1_close_func;
   
-  if((spec->keyring = lev1_initEncryption(map_ptr->keyring_name)) == NULL) {
+  if((spec->keyring = lev1_initEncryption(config.keyring_name)) == NULL) {
     vulpes_log(LOG_ERRORS,"LEV1_INIT","lev1_initEncryption() failed");
     return -1;	
   }

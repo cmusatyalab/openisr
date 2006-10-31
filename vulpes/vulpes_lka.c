@@ -23,6 +23,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #include "vulpes.h"
 #include "vulpes_lka.h"
 #include "vulpes_log.h"
+#include "vulpes_map.h"
 #include "vulpes_util.h"
 
 /*
@@ -120,23 +121,23 @@ static vulpes_err_t file_lookup(struct lka_provider *prov, const void *tag,
  */
 
 /* Initialize the lka service */
-struct lka_svc *vulpes_lka_open(void)
+vulpes_err_t vulpes_lka_open(void)
 {
-  struct lka_svc *svc=malloc(sizeof(*svc));
-  if (svc == NULL)
-    return NULL;
-  memset(svc, 0, sizeof(*svc));
-  return svc;
+  config.lka_svc=malloc(sizeof(*config.lka_svc));
+  if (config.lka_svc == NULL)
+    return VULPES_NOMEM;
+  memset(config.lka_svc, 0, sizeof(*config.lka_svc));
+  return VULPES_SUCCESS;
 }
 
 /* Close the lka service */
-vulpes_err_t vulpes_lka_close(struct lka_svc *svc)
+vulpes_err_t vulpes_lka_close(void)
 {
   struct lka_provider *prov;
   struct lka_provider *tmp;
 
-  if(svc == NULL) return VULPES_INVALID;
-  prov=svc->next;
+  if(config.lka_svc == NULL) return VULPES_INVALID;
+  prov=config.lka_svc->next;
   while (prov != NULL) {
     vulpes_log(LOG_STATS,"LOOKASIDE","lookup requests: %u",prov->r_accesses);
     vulpes_log(LOG_STATS,"LOOKASIDE","lookup hits: %u",prov->r_hits);
@@ -145,19 +146,20 @@ vulpes_err_t vulpes_lka_close(struct lka_svc *svc)
     free(tmp->root);
     free(tmp);
   }
-  free(svc);
+  free(config.lka_svc);
+  config.lka_svc=NULL;
   return VULPES_SUCCESS;
 }
 
 /* Add an LKA database to the service */
-vulpes_err_t vulpes_lka_add(struct lka_svc *svc, enum lka_type type,
-                            enum lka_tag tag_type, const char *root)
+vulpes_err_t vulpes_lka_add(enum lka_type type, enum lka_tag tag_type,
+                            const char *root)
 {
   int len;
   struct lka_provider *cur;
   struct lka_provider *tmp;
 
-  if(svc == NULL) return VULPES_INVALID;
+  if(config.lka_svc == NULL) return VULPES_INVALID;
 
   /* check the length of root */
   len=strlen(root);
@@ -185,10 +187,10 @@ vulpes_err_t vulpes_lka_add(struct lka_svc *svc, enum lka_type type,
   tmp->type=type;
   tmp->tag_type=tag_type;
   
-  if (svc->next == NULL) {
-    svc->next=tmp;
+  if (config.lka_svc->next == NULL) {
+    config.lka_svc->next=tmp;
   } else {
-    cur=svc->next;
+    cur=config.lka_svc->next;
     while (cur->next != NULL)
       cur=cur->next;
     cur->next=tmp;
@@ -198,14 +200,13 @@ vulpes_err_t vulpes_lka_add(struct lka_svc *svc, enum lka_type type,
 }
 
 /* Copy a file matching the tag to the dst_filename */
-vulpes_err_t vulpes_lka_lookup(struct lka_svc *svc, enum lka_tag tag_type, 
-		const void *tag, void *buf, int *bufsize,
-		char **src_filename)
+vulpes_err_t vulpes_lka_lookup(enum lka_tag tag_type, const void *tag,
+                               void *buf, int *bufsize, char **src_filename)
 {
   struct lka_provider *prov;
 
-  if(svc == NULL) return VULPES_INVALID;
-  prov=svc->next;
+  if(config.lka_svc == NULL) return VULPES_INVALID;
+  prov=config.lka_svc->next;
   
   while (prov != NULL) {
     if (prov->tag_type == tag_type) {

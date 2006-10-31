@@ -51,22 +51,22 @@ static int fauxide_register(void)
   vulpes_regblk_t regblk;
   vulpes_cmdblk_t cmdblk;
   
-  mapping.reg.vulpes_id = 0;
-  mapping.reg.pid = getpid();
-  mapping.reg.volsize = (*mapping.volsize_func) (&mapping);
+  config.reg.vulpes_id = 0;
+  config.reg.pid = getpid();
+  config.reg.volsize = (*config.volsize_func)();
   
-  regblk.reg = mapping.reg;
+  regblk.reg = config.reg;
   
   if (VULPES_REGBLK_SECT_PER_BUF % VULPES_CMDBLK_SECT_PER_BUF == 0) {
     int num_cmds =
       VULPES_REGBLK_SECT_PER_BUF / VULPES_CMDBLK_SECT_PER_BUF;
     for (i = 0; i < num_cmds; i++) {
-      /* Create a dummy cmdblk to use the mapping.read function */
+      /* Create a dummy cmdblk to use the config.read function */
       cmdblk.head.vulpes_id = 0;
       cmdblk.head.cmd = VULPES_CMD_READ;
       cmdblk.head.start_sect = 0;
       cmdblk.head.num_sect = VULPES_CMDBLK_SECT_PER_BUF;
-      result = (*mapping.read_func) (&mapping, &cmdblk);
+      result = (*config.read_func)(&cmdblk);
       if (result == -1)
 	{
 	  vulpes_log(LOG_ERRORS,"VULPES_REGISTER","failed in vulpes register: read_func failed");
@@ -79,7 +79,7 @@ static int fauxide_register(void)
     }
     
     result =
-      ioctl(mapping.vulpes_device, FAUXIDE_IOCTL_REGBLK_REGISTER,
+      ioctl(config.vulpes_device, FAUXIDE_IOCTL_REGBLK_REGISTER,
 	    &regblk);
   } else {
     vulpes_log(LOG_ERRORS,"VULPES_REGISTER","bad buffer sizes");
@@ -95,8 +95,8 @@ static int fauxide_unregister(void)
   int result = 0;
   
   result =
-    ioctl(mapping.vulpes_device, FAUXIDE_IOCTL_REGBLK_UNREGISTER,
-	  &mapping.reg);
+    ioctl(config.vulpes_device, FAUXIDE_IOCTL_REGBLK_UNREGISTER,
+	  &config.reg);
   
   return result;
 }
@@ -111,7 +111,7 @@ static int cmdblk_ok(const vulpes_cmd_head_t * head)
   switch (head->cmd) {
   case VULPES_CMD_READ:
   case VULPES_CMD_WRITE:
-    if (head->start_sect + head->num_sect > mapping.reg.volsize)
+    if (head->start_sect + head->num_sect > config.reg.volsize)
       result = 0;
     break;
   default:
@@ -131,9 +131,9 @@ int fauxide_init(void)
   
   /* Open the device */
   VULPES_DEBUG("\tOpening device\n");
-  mapping.vulpes_device = open(mapping.device_name, O_RDWR);
-  if (mapping.vulpes_device < 0) {
-    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open device %s",mapping.device_name);
+  config.vulpes_device = open(config.device_name, O_RDWR);
+  if (config.vulpes_device < 0) {
+    vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to open device %s",config.device_name);
     return -1;
   }
   
@@ -150,17 +150,17 @@ int fauxide_init(void)
     /* Unregister process */
     VULPES_DEBUG("\tUnregistering device.\n");
     if (fauxide_unregister()) {
-      vulpes_log(LOG_ERRORS,"FAUXIDE_INIT","Failed to unregister: %s", mapping.device_name);
+      vulpes_log(LOG_ERRORS,"FAUXIDE_INIT","Failed to unregister: %s", config.device_name);
     }
     vulpes_log(LOG_BASIC,"FAUXIDE_INIT","Un-registered process with Fauxide");
     /* Close device */
     VULPES_DEBUG("\tClosing device.\n");
-    close(mapping.vulpes_device);
+    close(config.vulpes_device);
     /* Open the device */
     VULPES_DEBUG("\tOpening device.\n");
-    mapping.vulpes_device = open(mapping.device_name, O_RDWR);
-    if (mapping.vulpes_device < 0) {
-      vulpes_log(LOG_ERRORS,"FAUXIDE_INIT","Unable to open device %s",mapping.device_name);
+    config.vulpes_device = open(config.device_name, O_RDWR);
+    if (config.vulpes_device < 0) {
+      vulpes_log(LOG_ERRORS,"FAUXIDE_INIT","Unable to open device %s",config.device_name);
       return -1;
     }
     /* Register ourselves with the device */
@@ -179,13 +179,13 @@ void fauxide_shutdown(void)
   /* Unregister process */
   VULPES_DEBUG("\tUnregistering device.\n");
   if (fauxide_unregister()) {
-    vulpes_log(LOG_ERRORS,"FAUXIDE_SHUTDOWN","failed to unregister %s", mapping.device_name);
+    vulpes_log(LOG_ERRORS,"FAUXIDE_SHUTDOWN","failed to unregister %s", config.device_name);
   }
   vulpes_log(LOG_BASIC,"FAUXIDE_SHUTDOWN","un-Registered process with device");
   
   /* Close device */
   VULPES_DEBUG("\tClosing device.\n");
-  close(mapping.vulpes_device);
+  close(config.vulpes_device);
 }
 
 void fauxide_run(void)
@@ -203,14 +203,14 @@ void fauxide_run(void)
     int result = 0;
     
     /* Execute ioctl */
-    ioctl(mapping.vulpes_device, FAUXIDE_IOCTL_CMDBLK, &cmdblk);
+    ioctl(config.vulpes_device, FAUXIDE_IOCTL_CMDBLK, &cmdblk);
     
     /* Process cmd */
     switch (cmdblk.head.cmd) {
     case VULPES_CMD_READ:
       vulpes_log(LOG_FAUXIDE_REQ,"READ_IN","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (cmdblk_ok(&(cmdblk.head))) {
-	result = (*mapping.read_func) (&mapping, &cmdblk);
+	result = (*config.read_func)(&cmdblk);
       } else {
 	vulpes_log(LOG_ERRORS,"FAUXIDE_RUN","%llu:%lu:%lu: bad cmdblk",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
 	result = -1;
@@ -228,7 +228,7 @@ void fauxide_run(void)
     case VULPES_CMD_WRITE:
       vulpes_log(LOG_FAUXIDE_REQ,"WRITE_IN","%llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (cmdblk_ok(&(cmdblk.head))) {
-	result = (*mapping.write_func) (&mapping, &cmdblk);
+	result = (*config.write_func)(&cmdblk);
       } else {
 	result = -1;
       }

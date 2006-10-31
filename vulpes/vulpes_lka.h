@@ -30,21 +30,20 @@ enum lka_type {
 };
 
 /* Initialize the lka service */
-struct lka_svc *vulpes_lka_open(void);
+vulpes_err_t vulpes_lka_open(void);
 
 /* Close the lka service */
-vulpes_err_t vulpes_lka_close(struct lka_svc *svc);
+vulpes_err_t vulpes_lka_close(void);
 
 /* Add an LKA database to the service */
-vulpes_err_t vulpes_lka_add(struct lka_svc *svc, enum lka_type type,
-                            enum lka_tag tag_type, const char *root);
+vulpes_err_t vulpes_lka_add(enum lka_type type, enum lka_tag tag_type,
+                            const char *root);
 
 /* Read in a file matching the tag to the given buffer */
 /* If src_filename is not NULL, *src_filename will point to 
    a malloc'ed array which contains the name of the source file.
    NOTE: The calling function should call free() on *src_filename. */
-vulpes_err_t vulpes_lka_lookup(struct lka_svc *svc, enum lka_tag tag_type, 
-		const void *tag, void *buf, int *bufsize,
-		char **src_filename);
+vulpes_err_t vulpes_lka_lookup(enum lka_tag tag_type, const void *tag,
+                               void *buf, int *bufsize, char **src_filename);
 
 #endif /* VULPES_LKA_H_ */
