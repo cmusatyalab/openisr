@@ -23,7 +23,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #include "vulpes.h"
 #include "vulpes_lka.h"
 #include "vulpes_log.h"
-#include "vulpes_map.h"
 #include "vulpes_util.h"
 
 /*

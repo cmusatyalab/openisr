@@ -27,7 +27,6 @@ ACCEPTANCE OF THIS AGREEMENT
    rather than confining them to the fauxide driver */
 #include "fauxide.h"
 #include "vulpes.h"
-#include "vulpes_map.h"
 #include "vulpes_fids.h"
 #include "vulpes_log.h"
 #include "vulpes_lka.h"

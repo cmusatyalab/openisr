@@ -10,7 +10,6 @@
 #include <sys/utsname.h>
 #include "fauxide.h"
 #include "vulpes.h"
-#include "vulpes_map.h"
 #include "vulpes_log.h"
 
 static volatile int need_wakeup = 0;

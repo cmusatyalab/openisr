@@ -21,7 +21,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <errno.h>
 #include <zlib.h>
 #include "fauxide.h"
-#include "vulpes_map.h"
 #include "vulpes_fids.h"
 #include "vulpes_lev1_encryption.h"
 #include "vulpes_lka.h"

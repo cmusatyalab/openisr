@@ -25,7 +25,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 #include "fauxide.h"
 #include "vulpes.h"
-#include "vulpes_map.h"
 
 typedef int simple_mapping_special_t;
 

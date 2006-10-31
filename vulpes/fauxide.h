@@ -21,6 +21,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #else
 #  include <sys/ioctl.h>
 #endif
+#include <sys/types.h>
 
 #define FAUXIDE_HARDSECT_SIZE        512
 #define FAUXIDE_SECTORS_PER_KB       (1024 / FAUXIDE_HARDSECT_SIZE)

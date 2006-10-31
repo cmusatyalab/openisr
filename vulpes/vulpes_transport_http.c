@@ -5,7 +5,6 @@
 #include <string.h>
 #include "vulpes.h"
 #include "vulpes_log.h"
-#include "vulpes_map.h"
 
 struct curl_buffer {
   char *buf;

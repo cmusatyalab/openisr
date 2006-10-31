@@ -5,6 +5,7 @@
    interfaces, this should be cleaned up a bit. */
 
 #include <stdio.h>
+#include "fauxide.h"
 
 #undef VERBOSE_DEBUG
 #ifdef VERBOSE_DEBUG
@@ -14,7 +15,6 @@
 #endif
 
 extern volatile int exit_pending;
-extern struct vulpes_config config;
 
 int set_signal_handler(int sig, void (*handler)(int sig));
 void tally_sector_accesses(unsigned write, unsigned num);
@@ -29,5 +29,50 @@ typedef enum vulpes_err {
   VULPES_NOKEY,
   VULPES_TAGFAIL,
 } vulpes_err_t;
+
+enum transfer_type {
+  NO_TRANSPORT=0,
+  LOCAL_TRANSPORT,
+  HTTP_TRANSPORT,
+};
+
+enum mapping_type {
+  NO_MAPPING=0,
+  SIMPLE_FILE_MAPPING,
+  SIMPLE_DISK_MAPPING,
+  LEV1_MAPPING,
+  LEV1V_MAPPING,
+};
+
+typedef int (*vulpes_open_func_t) (void);
+typedef vulpes_volsize_t(*vulpes_volsize_func_t) (void);
+typedef int (*vulpes_read_func_t) (vulpes_cmdblk_t *);
+typedef int (*vulpes_write_func_t) (const vulpes_cmdblk_t *);
+typedef int (*vulpes_close_func_t) (void);
+
+extern struct vulpes_config {
+  enum transfer_type trxfer;	/* Set by main */
+  enum mapping_type mapping;    /* Set by main */
+  char* proxy_name;             /* Set by main */
+  long  proxy_port;             /* set by main */
+  
+  char *device_name;		/* Set by main */
+  char *master_name;		/* Set by main */
+  char *cache_name;		/* Set by main */
+  char *keyring_name;		/* Set by main */
+
+  int vulpes_device;		/* Set by device driver */
+  
+  vulpes_registration_t reg;	        /* Set in open_func */
+  vulpes_open_func_t open_func;	        /* Set in initialize */
+  vulpes_volsize_func_t volsize_func;	/* Set in initialize */
+  vulpes_read_func_t read_func;	        /* Set in initialize */
+  vulpes_write_func_t write_func;	/* Set in initialize */
+  vulpes_close_func_t close_func;	/* Set in initialize */
+  
+  int verbose;			/* Set by main -- currently not used */
+  struct lka_svc *lka_svc;     /* Set by main */
+  void *special;		/* Set in open_func */
+} config;
 
 #endif
