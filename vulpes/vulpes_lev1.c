@@ -81,12 +81,10 @@ static inline int cdp_is_dirty(struct chunk_data * cdp)
 
   result = ((cdp->status & CHUNK_STATUS_DIRTY) == CHUNK_STATUS_DIRTY);
 
-#ifdef DEBUG
   if(result && !cdp_is_rw(cdp))
-    vulpes_log(LOG_ERRORS,"cdp is dirty but not rw: %#x", cdp->status);
+    vulpes_debug(LOG_ERRORS,"cdp is dirty but not rw: %#x", cdp->status);
   if(result && !cdp_is_accessed(cdp))
-    vulpes_log(LOG_ERRORS,"cdp is dirty but not accessed: %#x", cdp->status);
-#endif
+    vulpes_debug(LOG_ERRORS,"cdp is dirty but not accessed: %#x", cdp->status);
 
   return result;
 }
@@ -224,7 +222,7 @@ static int form_chunk_file_name(char *buffer, int bufsize,
 
 #ifdef DEBUG
 static void 
-printf_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, unsigned bufsize)
+debug_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, unsigned bufsize)
 {
   unsigned char *bufhash;
   unsigned char s_bufhash[HASH_LEN_HEX];
@@ -238,6 +236,8 @@ printf_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, u
   vulpes_log(LOG_CHUNKS,"%s: buffer size: %u", msg, bufsize);
   vulpes_log(LOG_CHUNKS,"%s: buffer hash: %s", msg, s_bufhash);
 }
+#else
+#define debug_buffer_stats(msg, idx, buf, sz) do {} while (0)
 #endif
 
 /* reads the hex keyring file into memory */
@@ -483,9 +483,7 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
   struct lev1_mapping *spec;
   unsigned chunksize;
   
-#ifdef DEBUG
-  vulpes_log(LOG_CHUNKS,"received spec addr: %#08x",(unsigned)data);
-#endif
+  vulpes_debug(LOG_CHUNKS,"received spec addr: %#08x",(unsigned)data);
 
   spec = (struct lev1_mapping *) data;
   
@@ -513,7 +511,7 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
       vulpes_log(LOG_CHUNKS,"clean chunk close: %d", chunk_num);
     } else {
       unsigned long compressedSize;
-      int encryptedSize, errCode;
+      int encryptedSize;
       unsigned char *compressed, *encrypted, *newkey, *newtag;
       
       compressedSize = 1.002 * chunksize+20;
@@ -523,9 +521,8 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
 	return -1;
       }
       
-      errCode = compress2(compressed, &compressedSize, cdp->buffer,
-			  chunksize, Z_DEFAULT_COMPRESSION);
-      if (errCode != Z_OK) {
+      if (compress2(compressed, &compressedSize, cdp->buffer,
+			  chunksize, Z_DEFAULT_COMPRESSION) != Z_OK) {
 	vulpes_log(LOG_ERRORS,"error compressing chunk: %d",chunk_num);
 	return -1;
       } 
@@ -535,16 +532,13 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
 		     &encryptedSize, newkey, HASH_LEN);
       newtag = digest(encrypted, encryptedSize);
       
-#ifdef DEBUG
-      printf_buffer_stats("Reclaim plaintext", chunk_num, cdp->buffer, chunksize);
-      vulpes_log(LOG_CHUNKS,"compressed chunk size %lu for %d",compressed_size,chunk_num);
-      printf_buffer_stats("Reclaim encrypted", chunk_num, encrypted, encryptedSize);
-#endif
+      debug_buffer_stats("Reclaim plaintext", chunk_num, cdp->buffer, chunksize);
+      vulpes_debug(LOG_CHUNKS,"compressed chunk size %lu for %d",compressed_size,chunk_num);
+      debug_buffer_stats("Reclaim encrypted", chunk_num, encrypted, encryptedSize);
 
       lev1_updateKey(chunk_num, newkey, newtag);
       
-      errCode = ftruncate(fid, 0);
-      if (errCode != 0) {
+      if (ftruncate(fid, 0) != 0) {
 	vulpes_log(LOG_ERRORS,"ftruncate failed: %d",chunk_num);
 	return -1;
       }
@@ -583,12 +577,7 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
 }
 
 
-/* In earlier version we returned the FID (an int)
- * but with new versions, we are always going to
- * read from a memory buffer, which is part of the
- * chunk_data structure. so we return an error code
- * if required. in essence, the open function just
- * sets up the buffers - which essentially means that
+/* Sets up the buffers - which essentially means that
  * we decrypt the file, decompress it and read it into
  * memory
  */
@@ -602,7 +591,13 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
   fid_t fid;
   struct chunk_data *cdp;
   int open_readwrite;
-
+  unsigned char *decryptedFile=NULL, *encryptedFile=NULL, 
+    *decompressedFile=NULL, *tag=NULL;
+  unsigned fSize;
+  unsigned long decompressedSize, compressedSize;
+  int size;
+  static unsigned char tag_log[HASH_LEN_HEX];
+  
   chunksPerDir = spec->chunksperdir;
 
   chunk_num=get_chunk_number(cmdblk->head.start_sect);
@@ -611,9 +606,7 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
   open_readwrite = open_for_writing;
   if(cdp_is_dirty(cdp) && !open_readwrite) {
     open_readwrite = 1;
-#ifdef DEBUG
-    vulpes_log(LOG_ERRORS,"changing mode from ro to rw: %u",chunk_num);
-#endif
+    vulpes_debug(LOG_ERRORS,"changing mode from ro to rw: %u",chunk_num);
   }
 
   /* if the file is already open, return */
@@ -672,10 +665,6 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
     }
   }
   
-  /* REM: we still have to open the encrypted(and compressed) file
-   * and store the fid somewhere. so the next bunch of lines stay!
-   */
-  
   /* open the file */
   if (open_readwrite)
     fid = open(chunk_name,  O_RDWR);
@@ -689,9 +678,7 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
   
   /* store the fid */
   cdp->fnp = fidsvc_register(fid, lev1_reclaim, spec, chunk_num);
-#ifdef DEBUG
-  vulpes_log(LOG_CHUNKS,"register spec addr %#08x",(unsigned)spec);
-#endif
+  vulpes_debug(LOG_CHUNKS,"register spec addr %#08x",(unsigned)spec);
 
   /* Assume that the file will be read and written according to open_readwrite */
   mark_cdp_accessed(cdp);
@@ -701,25 +688,14 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
     mark_cdp_readonly(cdp);
   }
   
-  /* Now, instead of returning the fid, we need to set up the buffer, decrypt
-   * using the key and then decompress it; and then return an error code
-   */
-  unsigned char *decryptedFile=NULL, *encryptedFile=NULL, 
-    *decompressedFile=NULL, *tag=NULL;
-  unsigned fSize;
-  unsigned long decompressedSize, compressedSize;
-  int size, errCode;
-  static unsigned char tag_log[HASH_LEN_HEX];
-  
+  /* Set up the buffer, decrypt using the key and then decompress it */
   if((fSize = get_filesize(fid)) == 0) {
     vulpes_log(LOG_ERRORS,"Encrypted file size is zero: %d",chunk_num);
     return -1;
   }
   lseek(fid, 0, SEEK_SET);
 
-#ifdef DEBUG
-  vulpes_log(LOG_CHUNKS,"compressed chunk size %d %d",fSize,chunk_num);
-#endif
+  vulpes_debug(LOG_CHUNKS,"compressed chunk size %d %d",fSize,chunk_num);
 
   encryptedFile = (unsigned char *) malloc(fSize);
   if (encryptedFile == NULL) {
@@ -727,20 +703,21 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
     return -1;
   }
 
-  errCode = read(fid, encryptedFile, fSize);
-  if (errCode!=fSize) {
+  if (read_file(fid, encryptedFile, &fSize)) {
     vulpes_log(LOG_ERRORS,"Could not read the required number of bytes: %d",chunk_num);
     return -1;
   }
 
   tag = digest(encryptedFile, fSize);
-  /* XXX not freed? */
-  
   if (lev1_check_tag(cdp, tag) != VULPES_SUCCESS){
     vulpes_log(LOG_ERRORS,"lev1_check_tag() failed: %d",chunk_num);
     print_tag_check_error(cdp->tag, tag);
+    free(tag);
     return -1;
   }
+  binToHex(tag, tag_log, HASH_LEN);
+  free(tag);
+  tag=NULL;
   
   if (!vulpes_decrypt
       (encryptedFile, fSize, &decryptedFile, &size, cdp->key, HASH_LEN)) {
@@ -748,7 +725,6 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
     return -1;
   };
   
-  binToHex(tag, tag_log, HASH_LEN);
   if (open_readwrite)
     vulpes_log(LOG_KEYS,"w %d %s",chunk_num,tag_log);
   else
@@ -757,26 +733,21 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
   free(encryptedFile);
   encryptedFile = NULL;
   
-  decompressedFile = NULL;
-  decompressedFile = (unsigned char *) malloc(spec->chunksize_bytes);
+  decompressedFile = malloc(spec->chunksize_bytes);
   if (decompressedFile == NULL) {
     vulpes_log(LOG_ERRORS,"could not malloc space for decompressed file: %d",chunk_num);
     return -1;
   }
 
   compressedSize = size;
-  errCode = 0;
   decompressedSize = spec->chunksize_bytes;
-  errCode =
-    uncompress(decompressedFile, &decompressedSize, decryptedFile,
-	       compressedSize);
-  if (errCode != Z_OK) {
+  if (uncompress(decompressedFile, &decompressedSize, decryptedFile,
+	       compressedSize) != Z_OK) {
     vulpes_log(LOG_ERRORS,"could not decompress file: %d",chunk_num);
     return -1;
   };
   
   if (decompressedSize!=spec->chunksize_bytes) {
-    /* Partho: This "error condition" may not be an error in future versions */
     vulpes_log(LOG_ERRORS,"On decompressing, final size is NOT CHUNKSIZE: %d",chunk_num);
     return -1;
   }
@@ -784,9 +755,7 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
 
   cdp->buffer = decompressedFile;
 
-#ifdef DEBUG
-    printf_buffer_stats("Open", chunk_num, cdp->buffer, spec->chunksize_bytes);
-#endif
+  debug_buffer_stats("Open", chunk_num, cdp->buffer, spec->chunksize_bytes);
 
   return 0;
 }
@@ -894,10 +863,7 @@ int lev1_read_func(vulpes_cmdblk_t * cmdblk)
     return -1;
   }
 
-  if(memcpy(cmdblk->buffer, ((unsigned char *) (cdp->buffer)) + start, bytes) == NULL) {
-    vulpes_log(LOG_ERRORS,"memcpy failed: %d",chunk_num);
-    return -1;
-  }
+  memcpy(cmdblk->buffer, cdp->buffer + start, bytes);
 
   vulpes_log(LOG_FAUXIDE_REQ,"read: %d",chunk_num);
   return 0;
@@ -949,10 +915,7 @@ int lev1_write_func(const vulpes_cmdblk_t * cmdblk)
     ++writes_before_read;
   
   mark_cdp_dirty(cdp);
-  if (memcpy(((unsigned char *) (cdp->buffer)) + start, cmdblk->buffer, bytes) == 0) {
-    vulpes_log(LOG_ERRORS,"memcpy failed: %d",chunk_num);
-    return -1;
-  }
+  memcpy(cdp->buffer + start, cmdblk->buffer, bytes);
 
   vulpes_log(LOG_FAUXIDE_REQ,"write: %d",chunk_num);
   return 0;
