@@ -16,6 +16,9 @@ ACCEPTANCE OF THIS AGREEMENT
 #ifndef VULPES_LEV1_ENCRYPT
 #define VULPES_LEV1_ENCRYPT
 
+#define HASH_LEN 20
+#define HASH_LEN_HEX (2 * HASH_LEN + 1)
+
 unsigned char *digest(const unsigned char *mesg, unsigned mesgLen);
 int vulpes_encrypt(const unsigned char *const inString, 
 		   const int inStringLength,

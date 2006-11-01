@@ -43,8 +43,8 @@ const char *lev1_index_name = "index.lev1";
 struct chunk_data {
   fid_id_t fnp;		/* NULL_FID_ID if not currently open */
   unsigned status;
-  unsigned char tag[20];	/* was called o2 earlier */
-  unsigned char key[20];	/* was called o1 earlier */
+  unsigned char tag[HASH_LEN];	/* was called o2 earlier */
+  unsigned char key[HASH_LEN];	/* was called o1 earlier */
   unsigned char *buffer;	/* File is now always read into memory */
 };
 
@@ -227,13 +227,10 @@ static void
 printf_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, unsigned bufsize)
 {
   unsigned char *bufhash;
-  unsigned char s_bufhash[41];
-  int i;
+  unsigned char s_bufhash[HASH_LEN_HEX];
 
   bufhash=digest(buf, bufsize);
-  for(i=0; i<20; i++) {
-    sprintf(&(s_bufhash[2*i]), "%02x", bufhash[i]);
-  }
+  binToHex(bufhash, s_bufhash, HASH_LEN);
   free(bufhash);
 
   vulpes_log(LOG_CHUNKS,msg,"BUF_STATS: buffer indx: %u", index);
@@ -248,10 +245,10 @@ printf_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, u
 vulpes_err_t read_hex_keyring(char *userPath)
 {
 	struct lev1_mapping *spec=config.special;
-	int lineNumber, charNumber;
+	int lineNumber;
 	int fLength;
 	int fd;
-	unsigned char *hexFile, *readPtr, *writePtr;
+	unsigned char *hexFile, *readPtr;
 	struct chunk_data *cdp;
 	
 	fd = open(userPath, O_RDONLY);
@@ -260,9 +257,9 @@ vulpes_err_t read_hex_keyring(char *userPath)
 		return VULPES_IOERR;
 	}
 	
-	if ((fLength = get_filesize(fd)) <= 0 || fLength % 82)
+	if ((fLength = get_filesize(fd)) <= 0 || fLength % (2 * HASH_LEN_HEX))
 		return VULPES_IOERR;
-	if (fLength/82 != spec->numchunks) {
+	if (fLength/(2 * HASH_LEN_HEX) != spec->numchunks) {
 		vulpes_log(LOG_ERRORS,"READ_HEX_KEYRING","Chunk count mismatch: index specifies %d, keyring specifies %d",spec->numchunks,fLength/82);
 		return VULPES_IOERR;
 	}
@@ -279,16 +276,10 @@ vulpes_err_t read_hex_keyring(char *userPath)
 	for(lineNumber=0;lineNumber<spec->numchunks;lineNumber++)
 	{
 		cdp=get_cdp_from_chunk_num(lineNumber);
-		for(charNumber=0,writePtr=cdp->tag;charNumber<20;charNumber++,writePtr++,readPtr+=2)
-		{
-			*writePtr=hexToBin(readPtr);
-		}
-		readPtr++;
-		for(charNumber=0,writePtr=cdp->key;charNumber<20;charNumber++,writePtr++,readPtr+=2)
-		{
-			*writePtr=hexToBin(readPtr);
-		}
-		readPtr++;
+		hexToBin(readPtr, cdp->tag, HASH_LEN);
+		readPtr += HASH_LEN_HEX;
+		hexToBin(readPtr, cdp->key, HASH_LEN);
+		readPtr += HASH_LEN_HEX;
 	}
 	free(hexFile);
 	close(fd);
@@ -312,7 +303,7 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 		return VULPES_IOERR;
 	}
 	/* XXX can do this a record at a time */
-	fLength = spec->numchunks*82;
+	fLength = spec->numchunks * HASH_LEN_HEX * 2;
 	hexFile = malloc(fLength);
 	if (hexFile == NULL)
 		return VULPES_NOMEM;
@@ -321,15 +312,16 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 	for(lineNumber=0;lineNumber<spec->numchunks;lineNumber++)
 	{
 		cdp=get_cdp_from_chunk_num(lineNumber);
-		for(charNumber=0,readPtr=cdp->tag;charNumber<20;charNumber++,readPtr++,writePtr+=2)
+		/* XXX binToHex */
+		for(charNumber=0,readPtr=cdp->tag;charNumber<HASH_LEN;charNumber++,readPtr++,writePtr+=2)
 		{
-			binToHex(readPtr,writePtr);
+			charToHex(readPtr,writePtr);
 		}
 		*writePtr = ' ';
 		writePtr++;
-		for(charNumber=0,readPtr=cdp->key;charNumber<20;charNumber++,readPtr++,writePtr+=2)
+		for(charNumber=0,readPtr=cdp->key;charNumber<HASH_LEN;charNumber++,readPtr++,writePtr+=2)
 		{
-			binToHex(readPtr,writePtr);
+			charToHex(readPtr,writePtr);
 		}
 		*writePtr = '\n';
 		writePtr++;
@@ -342,37 +334,36 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 	return ret;
 }
 
-static void lev1_updateKey(unsigned chunk_num, unsigned char new_key[20],
-                           unsigned char new_tag[20])
+static void lev1_updateKey(unsigned chunk_num, unsigned char new_key[HASH_LEN],
+                           unsigned char new_tag[HASH_LEN])
 {
   struct chunk_data *cdp;
-  unsigned char old_tag_log[41], tag_log[41];
-  unsigned char *readPtr, *writePtr;
-  int i;
+  unsigned char old_tag_log[HASH_LEN_HEX], tag_log[HASH_LEN_HEX];
 
   cdp=get_cdp_from_chunk_num(chunk_num);
-  writePtr=old_tag_log; readPtr=cdp->tag;
-
-  for(i=0;i<20;i++,readPtr++,writePtr+=2)
-    binToHex(readPtr,writePtr);
-  *writePtr='\0';
-
-  writePtr=tag_log; readPtr=new_tag;
-  for(i=0;i<20;i++,readPtr++,writePtr+=2)
-    binToHex(readPtr,writePtr);
-  *writePtr='\0';
+  binToHex(cdp->tag, old_tag_log, HASH_LEN);
+  binToHex(new_tag, tag_log, HASH_LEN);
 
   if (strcmp(old_tag_log,tag_log)!=0)
     vulpes_log(LOG_KEYS,"LEV1_UPDATEKEY","%d %s %s",chunk_num,old_tag_log,tag_log);
   
-  memcpy(cdp->tag, new_tag, 20);
-  memcpy(cdp->key, new_key, 20);
+  memcpy(cdp->tag, new_tag, HASH_LEN);
+  memcpy(cdp->key, new_key, HASH_LEN);
 }
 
 static vulpes_err_t lev1_check_tag(struct chunk_data *cdp,
                                    const unsigned char *tag)
 {
-  return (memcmp(cdp->tag, tag, 20) == 0) ? VULPES_SUCCESS : VULPES_TAGFAIL;
+  return (memcmp(cdp->tag, tag, HASH_LEN) == 0) ? VULPES_SUCCESS : VULPES_TAGFAIL;
+}
+
+static void print_tag_check_error(unsigned char *expected, unsigned char *found)
+{
+  unsigned char s_expected[HASH_LEN_HEX];
+  unsigned char s_found[HASH_LEN_HEX];
+  binToHex(expected, s_expected, HASH_LEN);
+  binToHex(found, s_found, HASH_LEN);
+  vulpes_log(LOG_ERRORS,"CHECK_TAG_ERROR","expected %s, found %s",s_expected,s_found);
 }
 
 static int valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize, 
@@ -385,17 +376,8 @@ static int valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize,
   cdp=get_cdp_from_chunk_num(chunk_num);
   dgst = digest(buffer, bufsize);
   bufvalid = (lev1_check_tag(cdp, dgst) == VULPES_SUCCESS);
-  if (!bufvalid) {
-    unsigned char s_tag[41];
-    unsigned char s_kr_tag[41];
-    int i;
-    
-    for(i=0; i<20; i++) {
-      sprintf(&(s_tag[2*i]), "%02x", dgst[i]);
-      sprintf(&(s_kr_tag[2*i]), "%02x", cdp->tag[i]);
-    }
-    vulpes_log(LOG_ERRORS,"CHECK_TAG_ERROR","expected %s, found %s",s_kr_tag,s_tag);
-  }
+  if (!bufvalid)
+    print_tag_check_error(cdp->tag, dgst);
   
   free(dgst);
 
@@ -426,12 +408,8 @@ static int lev1_copy_file(const char *src, const char *dst, unsigned chunk_num)
 
 #ifdef DEBUG
     {
-      unsigned char s_bufhash[41];
-      int i;
-
-      for(i=0; i<20; i++) {
-	sprintf(&(s_bufhash[2*i]), "%02x", cdp->tag[i]);
-      }
+      unsigned char s_bufhash[HASH_LEN_HEX];
+      binToHex(cdp->tag, s_bufhash, HASH_LEN);
       vulpes_log(LOG_CHUNKS,"LEV1_COPY_FILE","lka lookup tag: %s", s_bufhash);	  
     }
 #endif
@@ -577,7 +555,7 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
       
       newkey = digest(compressed, compressedSize);
       vulpes_encrypt(compressed, compressedSize, &encrypted,
-		     &encryptedSize, newkey, 20);
+		     &encryptedSize, newkey, HASH_LEN);
       newtag = digest(encrypted, encryptedSize);
       
 #ifdef DEBUG
@@ -754,9 +732,7 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
   unsigned fSize;
   unsigned long decompressedSize, compressedSize;
   int size, errCode;
-  static unsigned char tag_log[41];
-  unsigned char *readPtr ,*writePtr;
-  int i;
+  static unsigned char tag_log[HASH_LEN_HEX];
   
   if((fSize = get_filesize(fid)) == 0) {
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","Encrypted file size is zero: %d",chunk_num);
@@ -785,30 +761,17 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
   
   if (lev1_check_tag(cdp, tag) != VULPES_SUCCESS){
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","lev1_check_tag() failed: %d",chunk_num);
-    {
-      unsigned char s_tag[41];
-      unsigned char s_kr_tag[41];
-      int i;
-      
-      for(i=0; i<20; i++) {
-	sprintf(&(s_tag[2*i]), "%02x", tag[i]);
-	sprintf(&(s_kr_tag[2*i]), "%02x", cdp->tag[i]);
-      }
-      vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","expected %s, found %s",s_kr_tag,s_tag);
-    }
+    print_tag_check_error(cdp->tag, tag);
     return -1;
   }
   
   if (!vulpes_decrypt
-      (encryptedFile, fSize, &decryptedFile, &size, cdp->key, 20)) {
+      (encryptedFile, fSize, &decryptedFile, &size, cdp->key, HASH_LEN)) {
     vulpes_log(LOG_ERRORS,"OPEN_CHUNK_FILE","could not decrypt file into memory: %d",chunk_num);
     return -1;
   };
-  writePtr=tag_log; readPtr=tag;
-  for(i=0;i<20;i++,readPtr++,writePtr+=2)
-    binToHex(readPtr,writePtr);
-  *writePtr='\0';
-
+  
+  binToHex(tag, tag_log, HASH_LEN);
   if (open_readwrite)
     vulpes_log(LOG_KEYS,"OPEN_CHUNK_FILE","w %d %s",chunk_num,tag_log);
   else
