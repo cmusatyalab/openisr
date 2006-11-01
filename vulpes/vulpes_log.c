@@ -21,6 +21,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <sys/timeb.h>
 #include <time.h>
 #include <stdarg.h>
+#include <ctype.h>
 #include "vulpes_log.h"
 
 #define MAX_FNAME_SIZE 128
@@ -132,15 +133,17 @@ int log_msgtype_active(enum logmsgtype msgtype)
   return (log_msgtype_active_file(msgtype) || log_msgtype_active_stdout(msgtype));
 }
 
-void vulpes_log(enum logmsgtype msgtype, const char *msghdr,
+void _vulpes_log(enum logmsgtype msgtype, const char *func,
                 const char *format, ...)
 {
   unsigned writefile, writestdout;
   char timestamp_coarse[128];
   char timestamp_fine[32];
   const char *s_msgtype;
+  char s_func[32];
   char s_buf[6];
   va_list ap;
+  int i;
 
   writefile = log_msgtype_active_file(msgtype);
   writestdout = log_msgtype_active_stdout(msgtype);
@@ -178,6 +181,18 @@ void vulpes_log(enum logmsgtype msgtype, const char *msghdr,
     s_msgtype=s_buf;
   }
   
+  if (func == NULL) {
+    sprintf(s_func, "UNKNOWN");
+  } else {
+    /* Uppercase the function name */
+    for (i=0; i<sizeof(s_func)-1; i++) {
+      s_func[i]=toupper(func[i]);
+      if (s_func[i] == 0)
+	break;
+    }
+    s_func[sizeof(s_func)-1]=0;
+  }
+  
   /* XXX log messages are no longer printed atomically, so this will give
      us problems if we switch to threads */
   if(writefile) {
@@ -187,7 +202,7 @@ void vulpes_log(enum logmsgtype msgtype, const char *msghdr,
             ((gl_log.infostr == NULL) ? " " : gl_log.infostr),
             s_msgtype,
             timestamp_fine,
-            ((msghdr == NULL) ? "UNKNOWN" : msghdr));
+            s_func);
     vfprintf(gl_log.logf, format, ap);
     fprintf(gl_log.logf, "\n");
     va_end(ap);
@@ -201,7 +216,7 @@ void vulpes_log(enum logmsgtype msgtype, const char *msghdr,
            ((gl_log.infostr == NULL) ? " " : gl_log.infostr),
            s_msgtype,
            timestamp_fine,
-           ((msghdr == NULL) ? "UNKNOWN" : msghdr));
+           s_func);
     vprintf(format, ap);
     printf("\n");
     if(vulpes_log_fflush_needed(msgtype))

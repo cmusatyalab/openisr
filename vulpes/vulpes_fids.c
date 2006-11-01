@@ -173,7 +173,7 @@ int fidsvc_remove(fid_id_t fnp)
   
   if (fnp == NULL_FID_ID)
     {
-      vulpes_log(LOG_ERRORS,"FIDSVC_REMOVE","removing a null fid");
+      vulpes_log(LOG_ERRORS,"removing a null fid");
       return -1;
     }
   
@@ -196,7 +196,7 @@ int fidsvc_remove(fid_id_t fnp)
   
   result = reclaim_fid(fnp);
   if (result) {
-      vulpes_log(LOG_ERRORS,"FIDSVC_REMOVE","reclaim_fid() returned non-zero");
+      vulpes_log(LOG_ERRORS,"reclaim_fid() returned non-zero");
   }
   
   --r_num_open_fids;

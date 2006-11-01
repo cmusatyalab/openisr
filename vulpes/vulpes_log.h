@@ -33,13 +33,14 @@ int vulpes_log_close(void);
 
 int log_msgtype_active(enum logmsgtype msgtype);
 
-void vulpes_log(enum logmsgtype msgtype, const char *msghdr,
+void _vulpes_log(enum logmsgtype msgtype, const char *func,
                 const char *format, ...);
-  
+
+#define vulpes_log(type, fmt, args...) _vulpes_log(type, __func__, fmt, ## args)
 #ifdef DEBUG
-#define vulpes_debug(type, hdr, fmt, args...) vulpes_log(type, hdr, fmt, ## args)
+#define vulpes_debug(type, fmt, args...) vulpes_log(type, fmt, ## args)
 #else
-#define vulpes_debug(type, hdr, fmt, args...) do {} while (0)
+#define vulpes_debug(type, fmt, args...) do {} while (0)
 #endif
 
 #endif

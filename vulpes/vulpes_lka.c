@@ -90,10 +90,10 @@ static vulpes_err_t file_lookup(struct lka_provider *prov, const void *tag,
   /* Read in the source file */
   fd=open(name, O_RDONLY);
   if(fd == -1) {
-    vulpes_debug(LOG_TRANSPORT,"LKA_COPY_FILE","lka file not found: %s",src);
+    vulpes_debug(LOG_TRANSPORT,"lka file not found: %s",src);
     return VULPES_NOTFOUND;
   } else {
-    vulpes_debug(LOG_TRANSPORT,"LKA_COPY_FILE","lka file found: %s",src);
+    vulpes_debug(LOG_TRANSPORT,"lka file found: %s",src);
   }
   err=read_file(fd, buf, bufsize);
   close(fd);
@@ -138,8 +138,8 @@ vulpes_err_t vulpes_lka_close(void)
   if(config.lka_svc == NULL) return VULPES_INVALID;
   prov=config.lka_svc->next;
   while (prov != NULL) {
-    vulpes_log(LOG_STATS,"LOOKASIDE","lookup requests: %u",prov->r_accesses);
-    vulpes_log(LOG_STATS,"LOOKASIDE","lookup hits: %u",prov->r_hits);
+    vulpes_log(LOG_STATS,"lookup requests: %u",prov->r_accesses);
+    vulpes_log(LOG_STATS,"lookup hits: %u",prov->r_hits);
     tmp=prov;
     prov=prov->next;
     free(tmp->root);

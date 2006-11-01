@@ -387,7 +387,7 @@ int main(int argc, char *argv[])
   }
   
   /* now that parameters are correct - start vulpes log */
-  vulpes_log(LOG_BASIC,"VULPES_START","Version: %s, revision: %s %s, PID: %u",
+  vulpes_log(LOG_BASIC,"Starting. Version: %s, revision: %s %s, PID: %u",
              vulpes_version, svn_branch, svn_revision, (unsigned)getpid());
   
   /* Register default signal handler */
@@ -399,7 +399,7 @@ int main(int argc, char *argv[])
     int s=0;
     while((sig=caught_signals[s]) != SIGKILL) {
       if (set_signal_handler(sig, vulpes_signal_handler)) {
-	vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to register default signal handler for signal %d", sig);
+	vulpes_log(LOG_ERRORS,"unable to register default signal handler for signal %d", sig);
 	goto vulpes_exit;
       }
       s++;
@@ -414,24 +414,24 @@ int main(int argc, char *argv[])
   case SIMPLE_DISK_MAPPING:
 #ifdef VULPES_SIMPLE_DEFINED
     if (initialize_simple_mapping()) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unable to initialize simple mapping");
+      vulpes_log(LOG_ERRORS,"ERROR: unable to initialize simple mapping");
       goto vulpes_exit;	
     }
 #else
-    vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: simple mapping not supported in this version.");
+    vulpes_log(LOG_ERRORS,"ERROR: simple mapping not supported in this version.");
     goto vulpes_exit;
 #endif
     break;
   case LEV1_MAPPING:
   case LEV1V_MAPPING:
     if (initialize_lev1_mapping()) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","unable to initialize lev1 mapping");
+      vulpes_log(LOG_ERRORS,"unable to initialize lev1 mapping");
       goto vulpes_exit;
     }
     break;
   case NO_MAPPING:
   default:
-    vulpes_log(LOG_ERRORS,"VULPES_MAIN","ERROR: unknown mapping type");
+    vulpes_log(LOG_ERRORS,"ERROR: unknown mapping type");
     goto vulpes_exit;
   }
   
@@ -446,7 +446,7 @@ int main(int argc, char *argv[])
   /* Enter main loop */
   fauxide_run();
   
-  vulpes_log(LOG_BASIC,"VULPES_MAIN", "Beginning vulpes shutdown sequence");
+  vulpes_log(LOG_BASIC,"Beginning vulpes shutdown sequence");
 
   /* Shut down fauxide driver */
   fauxide_shutdown();
@@ -454,26 +454,26 @@ int main(int argc, char *argv[])
   /* Close file */
   VULPES_DEBUG("\tClosing map.\n");
   if ((*config.shutdown_func)() == -1) {
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","shutdown function failed");
+      vulpes_log(LOG_ERRORS,"shutdown function failed");
       exit(1);
     }
 
   /* Close the LKA service */
   if(config.lka_svc != NULL)
     if(vulpes_lka_close())
-      vulpes_log(LOG_ERRORS,"VULPES_MAIN","failure during lka_close().");    
+      vulpes_log(LOG_ERRORS,"failure during lka_close().");    
   
   /* Close the fidsvc */
   fidsvc_close();
   
   /* Print stats */
-  vulpes_log(LOG_STATS,"VULPES","Sectors read:%llu",sectors_read);
-  vulpes_log(LOG_STATS,"VULPES","Sectors written:%llu",sectors_written);
-  vulpes_log(LOG_STATS,"VULPES","Sectors accessed:%llu",sectors_accessed);
+  vulpes_log(LOG_STATS,"Sectors read:%llu",sectors_read);
+  vulpes_log(LOG_STATS,"Sectors written:%llu",sectors_written);
+  vulpes_log(LOG_STATS,"Sectors accessed:%llu",sectors_accessed);
 
   
  vulpes_exit:
-  vulpes_log(LOG_BASIC,"VULPES_FINISH", "");
+  vulpes_log(LOG_BASIC,"Exiting");
   vulpes_log_close();
   return 0;
 }

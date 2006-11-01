@@ -102,8 +102,8 @@ vulpes_err_t http_get(char *buf, int *bufsize, const char *url)
   /* check for get errors */
   if ((strlen(curl_error_buffer)!=0) || (retVal!=0)) {
     /* problems */
-    vulpes_log(LOG_ERRORS,"HTTP_GET","curl %s: %s",
-	       curl_error_buffer, curl_easy_strerror(retVal));
+    vulpes_log(LOG_ERRORS,"curl %s: %s", curl_error_buffer,
+               curl_easy_strerror(retVal));
     goto out;
   }
   *bufsize=curl_buffer->size;
