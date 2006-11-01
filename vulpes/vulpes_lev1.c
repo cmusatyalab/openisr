@@ -245,93 +245,71 @@ printf_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, u
 vulpes_err_t read_hex_keyring(char *userPath)
 {
 	struct lev1_mapping *spec=config.special;
-	int lineNumber;
-	int fLength;
+	unsigned chunk_num;
 	int fd;
-	unsigned char *hexFile, *readPtr;
 	struct chunk_data *cdp;
+	char buf[HASH_LEN_HEX];
 	
 	fd = open(userPath, O_RDONLY);
 	if (fd < 0) {
 		vulpes_log(LOG_ERRORS,"READ_HEX_KEYRING","could not open keyring: %s",userPath);
 		return VULPES_IOERR;
 	}
-	
-	if ((fLength = get_filesize(fd)) <= 0 || fLength % (2 * HASH_LEN_HEX))
-		return VULPES_IOERR;
-	if (fLength/(2 * HASH_LEN_HEX) != spec->numchunks) {
-		vulpes_log(LOG_ERRORS,"READ_HEX_KEYRING","Chunk count mismatch: index specifies %d, keyring specifies %d",spec->numchunks,fLength/82);
+	for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
+		cdp=get_cdp_from_chunk_num(chunk_num);
+		if (read(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
+			goto short_read;
+		hexToBin(buf, cdp->tag, HASH_LEN);
+		if (read(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
+			goto short_read;
+		hexToBin(buf, cdp->key, HASH_LEN);
+	}
+	if (!at_eof(fd)) {
+		vulpes_log(LOG_ERRORS,"READ_HEX_KEYRING","too much data in keyring %s",userPath);
 		return VULPES_IOERR;
 	}
-	/* XXX we can read this record-by-record */
-	hexFile = malloc(fLength);
-	if (hexFile == NULL)
-		return VULPES_NOMEM;
-	if (read_file(fd, hexFile, &fLength) != VULPES_SUCCESS) {
-		free(hexFile);
-		return VULPES_IOERR;
-	};
-
-	readPtr=hexFile;
-	for(lineNumber=0;lineNumber<spec->numchunks;lineNumber++)
-	{
-		cdp=get_cdp_from_chunk_num(lineNumber);
-		hexToBin(readPtr, cdp->tag, HASH_LEN);
-		readPtr += HASH_LEN_HEX;
-		hexToBin(readPtr, cdp->key, HASH_LEN);
-		readPtr += HASH_LEN_HEX;
-	}
-	free(hexFile);
 	close(fd);
 	vulpes_log(LOG_BASIC,"READ_HEX_KEYRING","read keyring %s: %d keys",userPath,spec->numchunks);
 	return VULPES_SUCCESS;
+	
+short_read:
+	vulpes_log(LOG_ERRORS,"READ_HEX_KEYRING","I/O error reading key from %s for chunk %d",userPath,chunk_num);
+	return VULPES_IOERR;
 }
 
 /* converts to hex, writes */
 static vulpes_err_t write_hex_keyring(char *userPath)
 {
 	struct lev1_mapping *spec=config.special;
-	int lineNumber, charNumber, fLength;
-	vulpes_err_t ret=VULPES_SUCCESS;
-	unsigned char *hexFile, *readPtr, *writePtr;
+	unsigned chunk_num;
 	struct chunk_data *cdp;
 	int fd;
+	char buf[HASH_LEN_HEX];
 	
 	fd = open(userPath, O_WRONLY|O_TRUNC, 0600);
 	if (fd < 0) {
 		vulpes_log(LOG_ERRORS,"WRITE_HEX_KEYRING","could not open keyring file for writeback: %s", userPath);
 		return VULPES_IOERR;
 	}
-	/* XXX can do this a record at a time */
-	fLength = spec->numchunks * HASH_LEN_HEX * 2;
-	hexFile = malloc(fLength);
-	if (hexFile == NULL)
-		return VULPES_NOMEM;
-	
-	writePtr=hexFile;
-	for(lineNumber=0;lineNumber<spec->numchunks;lineNumber++)
-	{
-		cdp=get_cdp_from_chunk_num(lineNumber);
-		/* XXX binToHex */
-		for(charNumber=0,readPtr=cdp->tag;charNumber<HASH_LEN;charNumber++,readPtr++,writePtr+=2)
-		{
-			charToHex(readPtr,writePtr);
-		}
-		*writePtr = ' ';
-		writePtr++;
-		for(charNumber=0,readPtr=cdp->key;charNumber<HASH_LEN;charNumber++,readPtr++,writePtr+=2)
-		{
-			charToHex(readPtr,writePtr);
-		}
-		*writePtr = '\n';
-		writePtr++;
+	for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
+		cdp=get_cdp_from_chunk_num(chunk_num);
+		binToHex(cdp->tag, buf, HASH_LEN);
+		buf[HASH_LEN_HEX - 1]=' ';
+		if (write(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
+			goto short_write;
+		binToHex(cdp->key, buf, HASH_LEN);
+		buf[HASH_LEN_HEX - 1]='\n';
+		if (write(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
+			goto short_write;
 	}
-	if(write(fd,hexFile,fLength)!=fLength)
-		ret=VULPES_IOERR;
-	free(hexFile);
 	close(fd);
 	vulpes_log(LOG_BASIC,"WRITE_HEX_KEYRING","wrote keyring %s: %d keys",userPath,spec->numchunks);
-	return ret;
+	return VULPES_SUCCESS;
+	
+short_write:
+	vulpes_log(LOG_ERRORS,"WRITE_HEX_KEYRING","failure writing keyring file: %s",userPath);
+	close(fd);
+	return VULPES_IOERR;
 }
 
 static void lev1_updateKey(unsigned chunk_num, unsigned char new_key[HASH_LEN],

@@ -40,17 +40,24 @@ off_t get_filesize(int fd)
     return s.st_size;
 }
 
+int at_eof(int fd)
+{
+  off_t orig=lseek(fd, 0, SEEK_CUR);
+  if (lseek(fd, 0, SEEK_END) != orig) {
+    lseek(fd, orig, SEEK_SET);
+    return 0;
+  }
+  return 1;
+}
+
 /* XXX does not ensure we're at the beginning of the file */
 vulpes_err_t read_file(int fd, char *buf, int *bufsize)
 {
   int count=read(fd, buf, *bufsize);
   if (count == -1)
     return VULPES_IOERR;
-  if (count == *bufsize) {
-    /* Make sure we're at EOF */
-    if (lseek(fd, 0, SEEK_END) != count)
-      return VULPES_OVERFLOW;
-  }
+  if (count == *bufsize && !at_eof(fd))
+    return VULPES_OVERFLOW;
   *bufsize=count;
   return 0;
 }
@@ -124,7 +131,7 @@ inline unsigned char hexToChar(unsigned char* hex)
 	return ((unsigned char)(16*i + j));
 }
 
-/* @hex should be 2*binBytes+1 bytes long */
+/* @hex should be 2*binBytes+1 bytes long.  Result is null-terminated */
 void binToHex(unsigned char *bin, unsigned char *hex, int binBytes)
 {
   int i;
