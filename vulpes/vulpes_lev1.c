@@ -625,11 +625,12 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
       vulpes_log(LOG_CHUNKS,"clean chunk close: %d", chunk_num);
     } else {
       unsigned long compressedSize;
+      unsigned encryptSize;
       int encryptedSize;
-      unsigned char *compressed, *encrypted, *newkey, *newtag;
+      unsigned char *compressed, *toEncrypt, *encrypted, *newkey, *newtag;
       
       compressedSize = 1.002 * chunksize+20;
-      compressed = (unsigned char *) malloc(compressedSize);
+      compressed = malloc(compressedSize);
       if(!compressed) {
 	vulpes_log(LOG_ERRORS,"malloc() failed while trying to compress buffer: %d",chunk_num);
 	return -1;
@@ -639,11 +640,24 @@ int lev1_reclaim(fid_t fid, void *data, int chunk_num)
 			  chunksize, Z_DEFAULT_COMPRESSION) != Z_OK) {
 	vulpes_log(LOG_ERRORS,"error compressing chunk: %d",chunk_num);
 	return -1;
-      } 
+      }
       
-      newkey = digest(compressed, compressedSize);
-      vulpes_encrypt(compressed, compressedSize, &encrypted,
-		     &encryptedSize, newkey, HASH_LEN);
+      /* The fudge factor takes into account padding that might be necessary
+         during crypto, which should never reach twice the cipher blocksize */
+      if (compressedSize > chunksize - 16) {
+	mark_cdp_uncompressed(cdp);
+	toEncrypt=cdp->buffer;
+	encryptSize=chunksize;
+	vulpes_log(LOG_CHUNKS,"Storing uncompressed: %u",chunk_num);
+      } else {
+	mark_cdp_compressed(cdp);
+	toEncrypt=compressed;
+	encryptSize=compressedSize;
+      }
+      
+      newkey = digest(toEncrypt, encryptSize);
+      vulpes_encrypt(toEncrypt, encryptSize, &encrypted,
+		     &encryptedSize, newkey, HASH_LEN, cdp_is_compressed(cdp));
       newtag = digest(encrypted, encryptedSize);
       
       debug_buffer_stats("Reclaim plaintext", chunk_num, cdp->buffer, chunksize);
@@ -833,8 +847,8 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
   free(tag);
   tag=NULL;
   
-  if (!vulpes_decrypt
-      (encryptedFile, fSize, &decryptedFile, &size, cdp->key, HASH_LEN)) {
+  if (!vulpes_decrypt(encryptedFile, fSize, &decryptedFile, &size,
+                      cdp->key, HASH_LEN, cdp_is_compressed(cdp))) {
     vulpes_log(LOG_ERRORS,"could not decrypt file into memory: %d",chunk_num);
     return -1;
   };
@@ -847,27 +861,36 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk, int open_for_writing)
   free(encryptedFile);
   encryptedFile = NULL;
   
-  decompressedFile = malloc(spec->chunksize_bytes);
-  if (decompressedFile == NULL) {
-    vulpes_log(LOG_ERRORS,"could not malloc space for decompressed file: %d",chunk_num);
-    return -1;
-  }
-
-  compressedSize = size;
-  decompressedSize = spec->chunksize_bytes;
-  if (uncompress(decompressedFile, &decompressedSize, decryptedFile,
-	       compressedSize) != Z_OK) {
-    vulpes_log(LOG_ERRORS,"could not decompress file: %d",chunk_num);
-    return -1;
-  };
+  if (cdp_is_compressed(cdp)) {
+    decompressedFile = malloc(spec->chunksize_bytes);
+    if (decompressedFile == NULL) {
+      vulpes_log(LOG_ERRORS,"could not malloc space for decompressed file: %d",chunk_num);
+      return -1;
+    }
   
-  if (decompressedSize!=spec->chunksize_bytes) {
-    vulpes_log(LOG_ERRORS,"On decompressing, final size is NOT CHUNKSIZE: %d",chunk_num);
-    return -1;
+    compressedSize = size;
+    decompressedSize = spec->chunksize_bytes;
+    if (uncompress(decompressedFile, &decompressedSize, decryptedFile,
+		 compressedSize) != Z_OK) {
+      vulpes_log(LOG_ERRORS,"could not decompress file: %d",chunk_num);
+      return -1;
+    };
+    
+    if (decompressedSize!=spec->chunksize_bytes) {
+      vulpes_log(LOG_ERRORS,"On decompressing, final size is NOT CHUNKSIZE: %d",chunk_num);
+      return -1;
+    }
+    free(decryptedFile);
+  
+    cdp->buffer = decompressedFile;
+  } else {
+    vulpes_log(LOG_CHUNKS,"Reading uncompressed chunk: %u", chunk_num);
+    if (size != spec->chunksize_bytes) {
+      vulpes_log(LOG_ERRORS,"Chunk stored uncompressed is not %u bytes: %u",spec->chunksize_bytes,chunk_num);
+      return -1;
+    }
+    cdp->buffer = decryptedFile;
   }
-  free(decryptedFile);
-
-  cdp->buffer = decompressedFile;
 
   debug_buffer_stats("Open", chunk_num, cdp->buffer, spec->chunksize_bytes);
 

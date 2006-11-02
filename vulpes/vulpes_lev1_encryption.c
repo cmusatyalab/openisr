@@ -75,10 +75,9 @@ unsigned char *digest(const unsigned char *mesg, unsigned mesgLen)
 static unsigned const char iv[] = { 0, 0, 0, 0, 0, 0, 0, 0 };	/* A zero IV, same as SSH */
 
 
-int vulpes_encrypt(const unsigned char *const inString, 
-		   const int inStringLength,
+int vulpes_encrypt(const unsigned char *inString, int inStringLength,
 		   unsigned char **outString, int *outStringLength,
-		   const unsigned char *const key, const int keyLen)
+		   const unsigned char *key, int keyLen, int doPad)
 {
     int tmplen;
     unsigned char *output;
@@ -89,6 +88,7 @@ int vulpes_encrypt(const unsigned char *const inString,
     EVP_CIPHER_CTX ctx;
     EVP_CIPHER_CTX_init(&ctx);
     EVP_EncryptInit_ex(&ctx, EVP_bf_cbc(), NULL, key, iv);
+    EVP_CIPHER_CTX_set_padding(&ctx, doPad);
 
     if (!EVP_EncryptUpdate
 	(&ctx, output, outStringLength, inString, inStringLength)) {
@@ -109,10 +109,9 @@ int vulpes_encrypt(const unsigned char *const inString,
     return 1;
 }
 
-int vulpes_decrypt(const unsigned char *const inString, 
-		   const int inStringLength,
+int vulpes_decrypt(const unsigned char *inString, int inStringLength,
 		   unsigned char **outString, int *outStringLength,
-		   const unsigned char *const key, const int keyLen)
+		   const unsigned char *key, int keyLen, int doPad)
 {
     int tmplen;
     unsigned char *output;
@@ -120,6 +119,7 @@ int vulpes_decrypt(const unsigned char *const inString,
     EVP_CIPHER_CTX ctx;
     EVP_CIPHER_CTX_init(&ctx);
     EVP_DecryptInit_ex(&ctx, EVP_bf_cbc(), NULL, key, iv);
+    EVP_CIPHER_CTX_set_padding(&ctx, doPad);
 
     output =
 	(unsigned char *) malloc((int) ((float) inStringLength * 1.2));
