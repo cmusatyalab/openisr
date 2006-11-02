@@ -476,6 +476,72 @@ static int valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize,
   return bufvalid;
 }
 
+static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
+                                      unsigned buf_len)
+{
+  struct lev1_mapping *spec=config.special;
+  struct chunk_data *cdp;
+  void *decompressed, *newkey, *newtag;
+  unsigned char *decrypted, *encrypted;
+  int decryptedSize, encryptedSize;
+  unsigned long decompressedSize;
+  
+  vulpes_log(LOG_CHUNKS,"stripping compression from chunk %u", chunk_num);
+  cdp=get_cdp_from_chunk_num(chunk_num);
+  if (!cdp_is_compressed(cdp)) {
+    vulpes_log(LOG_ERRORS,"chunk is already uncompressed: %u", chunk_num);
+    return VULPES_INVALID;
+  }
+  if (buf_len < spec->chunksize_bytes) {
+    vulpes_log(LOG_ERRORS,"compressed buffer too small: %u", buf_len);
+    return VULPES_INVALID;
+  }
+  
+  if (!vulpes_decrypt(*buf, buf_len, &decrypted, &decryptedSize,
+                      cdp->key, HASH_LEN, 1)) {
+    vulpes_log(LOG_ERRORS,"could not decrypt file: %d",chunk_num);
+    return VULPES_BADFORMAT;
+  };
+  
+  decompressed = malloc(spec->chunksize_bytes);
+  if (decompressed == NULL) {
+    vulpes_log(LOG_ERRORS,"malloc failed: %d",chunk_num);
+    return VULPES_NOMEM;
+  }
+
+  decompressedSize = spec->chunksize_bytes;
+  if (uncompress(decompressed, &decompressedSize, decrypted, decryptedSize)
+                 != Z_OK) {
+    vulpes_log(LOG_ERRORS,"could not decompress file: %d",chunk_num);
+    return VULPES_BADFORMAT;
+  };
+  if (decompressedSize != spec->chunksize_bytes) {
+    vulpes_log(LOG_ERRORS,"decompressed to invalid length %d: %d",decompressedSize,chunk_num);
+    return VULPES_BADFORMAT;
+  }
+  free(decrypted);
+  
+  newkey = digest(decompressed, decompressedSize);
+  vulpes_encrypt(decompressed, decompressedSize, &encrypted, &encryptedSize,
+                 newkey, HASH_LEN, 0);
+  if (encryptedSize != spec->chunksize_bytes) {
+    vulpes_log(LOG_ERRORS,"encrypted to invalid length %d: %d",encryptedSize,chunk_num);
+    return VULPES_BADFORMAT;
+  }
+  newtag = digest(encrypted, encryptedSize);
+  free(decompressed);
+  
+  lev1_updateKey(chunk_num, newkey, newtag);
+  free(newkey);
+  free(newtag);
+  mark_cdp_uncompressed(cdp);
+  /* Right now we don't need to mark anything dirty, because the modified block
+     will be picked up during the keyring comparison.  But later we will. */
+  free(*buf);
+  *buf=encrypted;
+  return VULPES_SUCCESS;
+}
+
 static int lev1_copy_file(const char *src, const char *dst, unsigned chunk_num)
 {
   struct lev1_mapping *spec=config.special;
@@ -560,6 +626,12 @@ static int lev1_copy_file(const char *src, const char *dst, unsigned chunk_num)
   }
 
 have_data:
+  if (cdp_is_compressed(cdp) && buflen >= spec->chunksize_bytes) {
+    err=strip_compression(chunk_num, &buf, buflen);
+    if (err) goto out;
+    buflen=spec->chunksize_bytes;
+  }
+  
   /* open destination cache file */
   /* XXX O_EXCL? */
   if ((fd=open(dst, O_CREAT|O_TRUNC|O_WRONLY,0660)) == -1) {
