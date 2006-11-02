@@ -20,12 +20,14 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <fcntl.h>
 #include <errno.h>
 #include <zlib.h>
+#include <netinet/in.h>
 #include "fauxide.h"
 #include "vulpes_fids.h"
 #include "vulpes_lev1_encryption.h"
 #include "vulpes_lka.h"
 #include "vulpes_log.h"
 #include "vulpes_util.h"
+#include "vulpes_state.h"
 #include <sys/time.h>
 
 #define MAX_INDEX_NAME_LENGTH 256
@@ -35,6 +37,7 @@ ACCEPTANCE OF THIS AGREEMENT
 const unsigned CHUNK_STATUS_ACCESSED = 0x0001;	/* This chunk has been accessed this session */
 const unsigned CHUNK_STATUS_DIRTY = 0x0002;	/* This chunk has been written this session */
 const unsigned CHUNK_STATUS_RW = 0x0200;	/* This chunk was last opened read/write */
+const unsigned CHUNK_STATUS_COMPRESSED = 0x1000;/* This chunk is stored compressed */
 const unsigned CHUNK_STATUS_LKA_COPY = 0x4000;	/* This chunk data was fetched from the LKA cache */
 const unsigned CHUNK_STATUS_PRESENT = 0x8000;	/* This chunk is present in the local cache */
 const char *lev1_index_name = "index.lev1";
@@ -89,6 +92,12 @@ static inline int cdp_is_dirty(struct chunk_data * cdp)
   return result;
 }
 
+static inline int cdp_is_compressed(struct chunk_data * cdp)
+{
+  return ((cdp->status & CHUNK_STATUS_COMPRESSED) ==
+	  CHUNK_STATUS_COMPRESSED);
+}
+
 static inline void mark_cdp_accessed(struct chunk_data * cdp)
 {
   cdp->status |= CHUNK_STATUS_ACCESSED;
@@ -97,6 +106,16 @@ static inline void mark_cdp_accessed(struct chunk_data * cdp)
 static inline void mark_cdp_dirty(struct chunk_data * cdp)
 {
   cdp->status |= CHUNK_STATUS_DIRTY;
+}
+
+static inline void mark_cdp_compressed(struct chunk_data * cdp)
+{
+  cdp->status |= CHUNK_STATUS_COMPRESSED;
+}
+
+static inline void mark_cdp_uncompressed(struct chunk_data * cdp)
+{
+  cdp->status &= ~CHUNK_STATUS_COMPRESSED;
 }
 
 static inline void mark_cdp_readwrite(struct chunk_data * cdp)
@@ -263,13 +282,14 @@ vulpes_err_t read_hex_keyring(char *userPath)
 		if (read(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
 			goto short_read;
 		hexToBin(buf, cdp->key, HASH_LEN);
+		mark_cdp_compressed(cdp);
 	}
 	if (!at_eof(fd)) {
 		vulpes_log(LOG_ERRORS,"too much data in keyring %s",userPath);
 		return VULPES_IOERR;
 	}
 	close(fd);
-	vulpes_log(LOG_BASIC,"read keyring %s: %d keys",userPath,spec->numchunks);
+	vulpes_log(LOG_BASIC,"read hex keyring %s: %d keys",userPath,spec->numchunks);
 	return VULPES_SUCCESS;
 	
 short_read:
@@ -303,13 +323,107 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 			goto short_write;
 	}
 	close(fd);
-	vulpes_log(LOG_BASIC,"wrote keyring %s: %d keys",userPath,spec->numchunks);
+	vulpes_log(LOG_BASIC,"wrote hex keyring %s: %d keys",userPath,spec->numchunks);
 	return VULPES_SUCCESS;
 	
 short_write:
 	vulpes_log(LOG_ERRORS,"failure writing keyring file: %s",userPath);
 	close(fd);
 	return VULPES_IOERR;
+}
+
+static vulpes_err_t read_bin_keyring(char *path)
+{
+  struct lev1_mapping *spec=config.special;
+  struct chunk_data *cdp;
+  struct kr_header hdr;
+  struct kr_entry entry;
+  int fd;
+  unsigned chunk_num;
+  
+  fd=open(path, O_RDONLY);
+  if (fd == -1 && errno == ENOENT)
+    return VULPES_NOTFOUND;
+  else if (fd == -1)
+    return VULPES_IOERR;
+  
+  if (read(fd, &hdr, sizeof(hdr)) != sizeof(hdr))
+    goto short_read;
+  if (ntohl(hdr.magic) != KR_MAGIC) {
+    vulpes_log(LOG_ERRORS, "Invalid magic number reading %s", path);
+    return VULPES_BADFORMAT;
+  }
+  if (hdr.version != KR_VERSION) {
+    vulpes_log(LOG_ERRORS, "Invalid version reading %s: expected %d, found %d", path, KR_VERSION, hdr.version);
+    return VULPES_BADFORMAT;
+  }
+  if (ntohl(hdr.entries) != spec->numchunks) {
+    vulpes_log(LOG_ERRORS, "Invalid chunk count reading %s: expected %u, found %u", path, spec->numchunks, htonl(hdr.entries));
+    return VULPES_BADFORMAT;
+  }
+  
+  for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
+    if (read(fd, &entry, sizeof(entry)) != sizeof(entry))
+      goto short_read;
+    cdp=get_cdp_from_chunk_num(chunk_num);
+    memcpy(cdp->key, entry.key, HASH_LEN);
+    memcpy(cdp->tag, entry.tag, HASH_LEN);
+    if (entry.compress == KR_COMPRESS_NONE)
+      mark_cdp_uncompressed(cdp);
+    else
+      mark_cdp_compressed(cdp);
+  }
+  if (!at_eof(fd)) {
+    vulpes_log(LOG_ERRORS, "Extra data at end of file: %s", path);
+    return VULPES_IOERR;
+  }
+  close(fd);
+  vulpes_log(LOG_BASIC, "read bin keyring %s: %d keys", path, spec->numchunks);
+  return VULPES_SUCCESS;
+  
+short_read:
+  vulpes_log(LOG_ERRORS, "Couldn't read %s", path);
+  close(fd);
+  return VULPES_IOERR;
+}
+
+static vulpes_err_t write_bin_keyring(char *path)
+{
+  struct lev1_mapping *spec=config.special;
+  struct chunk_data *cdp;
+  struct kr_header hdr;
+  struct kr_entry entry;
+  int fd;
+  unsigned chunk_num;
+  
+  fd=open(path, O_CREAT|O_TRUNC|O_WRONLY, 0600);
+  if (fd == -1)
+    return VULPES_IOERR;
+  
+  memset(&hdr, 0, sizeof(hdr));
+  hdr.magic=htonl(KR_MAGIC);
+  hdr.entries=htonl(spec->numchunks);
+  hdr.version=KR_VERSION;
+  if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr))
+    goto short_write;
+  
+  memset(&entry, 0, sizeof(entry));
+  for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
+    cdp=get_cdp_from_chunk_num(chunk_num);
+    memcpy(entry.key, cdp->key, HASH_LEN);
+    memcpy(entry.tag, cdp->tag, HASH_LEN);
+    entry.compress=cdp_is_compressed(cdp) ? KR_COMPRESS_ZLIB : KR_COMPRESS_NONE;
+    if (write(fd, &entry, sizeof(entry)) != sizeof(entry))
+      goto short_write;
+  }
+  close(fd);
+  vulpes_log(LOG_BASIC, "wrote bin keyring %s: %d keys", path, spec->numchunks);
+  return VULPES_SUCCESS;
+  
+short_write:
+  vulpes_log(LOG_ERRORS, "Couldn't write %s", path);
+  close(fd);
+  return VULPES_IOERR;
 }
 
 static void lev1_updateKey(unsigned chunk_num, unsigned char new_key[HASH_LEN],
@@ -803,7 +917,11 @@ int lev1_shutdown_func(void)
 	  }
 	}
       }
-      if (write_hex_keyring(config.keyring_name)) {
+      if (write_bin_keyring(config.bin_keyring_name)) {
+	vulpes_log(LOG_ERRORS,"write_bin_keyring failed");
+	return -1;
+      }
+      if (write_hex_keyring(config.hex_keyring_name)) {
 	vulpes_log(LOG_ERRORS,"write_hex_keyring failed");
 	return -1;
       }
@@ -1041,8 +1159,18 @@ int initialize_lev1_mapping(void)
     spec->cd[u].fnp = NULL_FID_ID;
   }
   
-  if (read_hex_keyring(config.keyring_name)) {
-    vulpes_log(LOG_ERRORS,"read_hex_keyring() failed");
+  switch (read_bin_keyring(config.bin_keyring_name)) {
+  case VULPES_SUCCESS:
+    break;
+  case VULPES_NOTFOUND:
+    vulpes_log(LOG_BASIC, "Couldn't read binary keyring; trying hex keyring");
+    if (read_hex_keyring(config.hex_keyring_name)) {
+      vulpes_log(LOG_ERRORS,"read_hex_keyring() failed");
+      return -1;	
+    }
+    break;
+  default:
+    vulpes_log(LOG_ERRORS,"read_bin_keyring() failed");
     return -1;	
   }
   

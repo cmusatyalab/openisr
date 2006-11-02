@@ -30,6 +30,7 @@ typedef enum vulpes_err {
   VULPES_NOMEM,
   VULPES_NOKEY,
   VULPES_TAGFAIL,
+  VULPES_BADFORMAT,
 } vulpes_err_t;
 
 enum transfer_type {
@@ -60,7 +61,8 @@ extern struct vulpes_config {
   char *device_name;		/* Set by main */
   char *master_name;		/* Set by main */
   char *cache_name;		/* Set by main */
-  char *keyring_name;		/* Set by main */
+  char *hex_keyring_name;	/* Set by main */
+  char *bin_keyring_name;	/* Set by main */
 
   int vulpes_device;		/* Set by device driver */
   

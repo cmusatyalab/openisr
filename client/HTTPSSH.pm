@@ -326,7 +326,7 @@ sub isr_run_vulpes ($$$) {
     #
     # Crank up Vulpes with all the right arguments
     #
-    $retval = system("$vulpescmd --map lev1 /dev/hdk $cachedir/hdk --keyring $cachedir/keyring $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $Isr::LOGMASK 0x1  &");
+    $retval = system("$vulpescmd --map lev1 /dev/hdk $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $Isr::LOGMASK 0x1  &");
 
     #
     # Give Vulpes enough time to initialize

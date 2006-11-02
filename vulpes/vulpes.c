@@ -115,7 +115,8 @@ static void initialize_config(void)
   config.master_name = NULL;
   config.cache_name = NULL;
   
-  config.keyring_name = NULL;
+  config.bin_keyring_name = NULL;
+  config.hex_keyring_name = NULL;
   
   config.vulpes_device = -1;
   
@@ -148,7 +149,7 @@ static void usage(const char *progname)
     printf("\t\tmaptype has to be lev1\n");
   printf("\t--master <transfertype> <master_disk_location/url>\n");
     printf("\t\ttransfertype is one of: local http\n");
-  printf("\t--keyring <keyring_file>\n");
+  printf("\t--keyring <hex_keyring_file> <binary_keyring_file>\n");
   printf("\t[--log <logfile> <info_str> <filemask> <stdoutmask>]\n");
   printf("\t[--debug]\n");
     printf("\t\tIf debug is chosen, then log messages for chosen loglevel(s)\n");
@@ -293,11 +294,12 @@ int main(int argc, char *argv[])
       if (keyDone) {
 	PARSE_ERROR("--keyring may only be specified once.");
       }
-      requiredArgs+=2;
-      if (optind+0 >= argc) {
+      requiredArgs+=3;
+      if (optind+1 >= argc) {
 	PARSE_ERROR("failed to parse keyring name.");
       }
-      config.keyring_name=argv[optind++];
+      config.hex_keyring_name=argv[optind++];
+      config.bin_keyring_name=argv[optind++];
       keyDone=1;
       break;
     case 'h':

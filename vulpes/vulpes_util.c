@@ -81,6 +81,8 @@ char *vulpes_strerror(vulpes_err_t err)
     return "No such key in keyring";
   case VULPES_TAGFAIL:
     return "Tag did not match data";
+  case VULPES_BADFORMAT:
+    return "Invalid format";
   }
   return "(Unknown)";
 }
