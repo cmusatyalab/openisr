@@ -7,3 +7,4 @@ revision.c
 *.mod.c
 *.ko
 Module.symvers
+Modules.symvers
