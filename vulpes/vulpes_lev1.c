@@ -60,7 +60,6 @@ struct lev1_mapping {
   unsigned numdirs;
   vulpes_volsize_t volsize;	/* sectors */
   unsigned chunksize;		/* sectors */
-  int verbose;
   struct chunk_data *cd;		/* cd[] */
 };
 
@@ -979,7 +978,6 @@ vulpes_volsize_t lev1_volsize_func(void)
 
 int lev1_shutdown_func(void)
 {
-  char chunk_name[MAX_CHUNK_NAME_LENGTH];
   struct lev1_mapping *spec=config.special;
   unsigned u;
   
@@ -995,14 +993,6 @@ int lev1_shutdown_func(void)
 	  ++accessed_chunks;
 	  if (cdp_is_dirty(&(spec->cd[u]))) {
 	    ++dirty_chunks;
-	    if (spec->verbose) {
-	      if (form_chunk_file_name(chunk_name, MAX_CHUNK_NAME_LENGTH,
-		   config.cache_name, u)) {
-		vulpes_log(LOG_ERRORS,"unable to form lev1 file name");
-		return -1;
-	      }
-	      vulpes_log(LOG_CHUNKS,"MODIFIEDCLOSE %s",chunk_name);
-	    }
 	  }
 	}
 	if (spec->cd[u].fnp != NULL_FID_ID) {
@@ -1155,9 +1145,6 @@ int initialize_lev1_mapping(void)
   
   switch (config.mapping) {
   case LEV1_MAPPING:
-    break;
-  case LEV1V_MAPPING:
-    spec->verbose = 1;
     break;
   default:
     free(config.special);

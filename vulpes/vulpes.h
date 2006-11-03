@@ -44,7 +44,6 @@ enum mapping_type {
   SIMPLE_FILE_MAPPING,
   SIMPLE_DISK_MAPPING,
   LEV1_MAPPING,
-  LEV1V_MAPPING,
 };
 
 typedef vulpes_volsize_t(*vulpes_volsize_func_t) (void);
