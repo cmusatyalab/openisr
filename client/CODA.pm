@@ -43,7 +43,7 @@ my $PROTOCOL = "CODA";
 #
 sub isr_revision () {
     my $unused;
-    my $revision = '$Revision: 1.14 $';
+    my $revision = '$Revision$';
     ($unused, $revision) = split(" ", $revision);
     return $revision;
 }

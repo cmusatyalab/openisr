@@ -44,7 +44,7 @@ my $PROTOCOL = "HTTPSSH";
 #
 sub isr_revision () {
     my $unused;
-    my $revision = '$Revision: 1.81 $'; # CVS updates this on each commit
+    my $revision = '$Revision$'; # CVS updates this on each commit
     ($unused, $revision) = split(" ", $revision);
     return $revision;
 }

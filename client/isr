@@ -98,7 +98,7 @@ my $result;
 my $progname; 
 my $unused;
 my $prot;
-my $revision = '$Revision: 1.153 $'; # Set by CVS at commit time
+my $revision = '$Revision$'; # Set by CVS at commit time
 
 # Command line arguments that are private to this module
 my $command;        
