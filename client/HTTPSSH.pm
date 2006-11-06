@@ -87,19 +87,10 @@ sub isr_checkcfg (\%) {
 sub isr_make_hdk ($$) {
     my $cachedir = shift; # Vulpes cache
     my $lastdir = shift;  # mirrors keyring and memory image on server
-    my $numdirs = shift;  # Number of top level hdk directories
-
-    my $i;
-    my $dirname;
 
     if (!-e "$cachedir/hdk") {
 	mysystem("mkdir --parents $cachedir/hdk") == 0
 	    or system_errexit("Unable to create $cachedir/hdk");
-	for ($i = 0; $i < $numdirs; $i++) {
-	    $dirname = sprintf("%04d", $i);
-	    mysystem("mkdir $cachedir/hdk/$dirname") == 0
-		or system_errexit("Unable to create $cachedir/hdk/$dirname");
-	}
     }
     if (!-e "$cachedir/hdk/index.lev1") {
 	mysystem("cp -p $lastdir/hdk/index.lev1 $cachedir/hdk/index.lev1") == 0
@@ -309,24 +300,9 @@ sub isr_run_vulpes ($$$) {
     }
 
     #
-    # This is a little subtle. Prefetch hdk block 0000/0000 (but only
-    # if it doesn't already exist in local cache), so that Vulpes
-    # doesn't block waiting on a network access during startup.
-    #
-    system("rm -f $cachedir/tmpchunk");
-    if (!$disconnected and !-e "$cachedir/hdk/0000/0000") {
-	isr_sget($userid, 
-	     "last/hdk/0000/0000",  
-	     "$cachedir/tmpchunk", 0) == $Isr::ESUCCESS
-		 or errexit("Unable to prefetch hdk/0000/0000.");
-	system("mv $cachedir/tmpchunk $cachedir/hdk/0000/0000") == 0
-	    or errexit("Unable to commit $cachedir/hdk/0000/0000");
-    }
-
-    #
     # Crank up Vulpes with all the right arguments
     #
-    $retval = system("$vulpescmd --map lev1 /dev/hdk $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $Isr::LOGMASK 0x1  &");
+    $retval = system("$vulpescmd --map lev1 /dev/hdk $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $Isr::LOGMASK $Isr::CONSOLE_LOGMASK  &");
 
     #
     # Give Vulpes enough time to initialize

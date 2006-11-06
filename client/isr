@@ -62,7 +62,7 @@ sub parse_parcelcfg ($$$);
 sub emit_hdk_progressmeter ($$);
 sub reset_cursor ();
 sub progress ($$);
-sub build_cache ($$$);
+sub build_cache ($$);
 sub hdksize ($$$);
 sub connected ();
 sub get_dirnum ($$);
@@ -175,6 +175,13 @@ else {
     if ($hostid <= 0) {
 	errexit("The client host is misconfigured. Invalid hostid nonce ($hostid).");
     }
+}
+
+#
+# Provide defaults for $Isr:: options which might not be defined in Isr.pm
+#
+if (!$Isr::CONSOLE_LOGMASK) {
+  $Isr::CONSOLE_LOGMASK = "0x1";
 }
 
 #####
@@ -735,7 +742,6 @@ sub run ($$$$) {
     my $isrdir = shift;       # absolute path of user's local ISR home dir
     my $disconnected = shift; # true if we want to run disconnected 
 
-    my $numdirs;
     my $target;
     my @files;
     my $dirname;
@@ -814,10 +820,9 @@ sub run ($$$$) {
     # This operation must not be interrupted by the user
     print("Initializing local cache.\n")
 	if $verbose;
-    $numdirs = get_value("$lastdir/hdk/index.lev1", "NUMDIRS");
 
     $sigset = block_sigint();
-    build_cache($cachedir, $lastdir, $numdirs);
+    build_cache($cachedir, $lastdir);
     unblock_sigint($sigset);
 
     # Make sure there is exactly one VMWare config file
@@ -1750,10 +1755,9 @@ sub progress ($$) {
 #
 # build_cache - Create a local Vulpes cache if one doesn't exist already
 #
-sub build_cache ($$$) {
+sub build_cache ($$) {
     my $cachedir = shift;
     my $lastdir = shift;
-    my $numdirs = shift;
 
     my $target;
     my $i;
@@ -1776,7 +1780,7 @@ sub build_cache ($$$) {
     }
 
     # Build the local hdk directory (protocol specific)
-    isr_make_hdk($cachedir, $lastdir, $numdirs); 
+    isr_make_hdk($cachedir, $lastdir);
 
     # Copy the keyring files
     if (!-e "$cachedir/keyring") {
