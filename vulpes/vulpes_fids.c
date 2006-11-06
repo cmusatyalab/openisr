@@ -27,7 +27,6 @@ struct fid_node {
   fid_id_t parent;
   fidsvc_reclamation_func_t reclaim;
   void *reclaim_data;
-  fid_t fid;
   fid_id_t child;
   int index;
 };
@@ -43,8 +42,7 @@ static int reclaim_fid(fid_id_t ptr)
 {
   VULPES_DEBUG("fidsvc: reclaiming fnp %d.\n", (int) ptr);
   
-  return (*fid_array[ptr].reclaim) (fid_array[ptr].fid,
-				    fid_array[ptr].reclaim_data, fid_array[ptr].index);
+  return (*fid_array[ptr].reclaim) (fid_array[ptr].reclaim_data, fid_array[ptr].index);
 }
 
 static void init_fid(fid_id_t ptr)
@@ -52,7 +50,6 @@ static void init_fid(fid_id_t ptr)
   fid_array[ptr].parent = NULL_FID_ID;
   fid_array[ptr].reclaim = NULL;
   fid_array[ptr].reclaim_data = NULL;
-  fid_array[ptr].fid = NULL_FID;
   fid_array[ptr].index = -1;
   fid_array[ptr].child = NULL_FID_ID;
 }
@@ -76,7 +73,7 @@ static inline fid_id_t set_lru(fid_id_t fnp)
   return (lru = fnp);
 }
 
-fid_t fidsvc_get(fid_id_t fnp)
+void fidsvc_get(fid_id_t fnp)
 {
   fid_id_t parent, child;
   
@@ -102,11 +99,9 @@ fid_t fidsvc_get(fid_id_t fnp)
     fid_array[fnp].child = mru;
     set_mru(fnp);
   }
-  
-  return fid_array[fnp].fid;
 }
 
-fid_id_t fidsvc_register(int fid, fidsvc_reclamation_func_t reclaim,
+fid_id_t fidsvc_register(fidsvc_reclamation_func_t reclaim,
 			 void *reclaim_data, int index)
 {
   fid_id_t ptr, new_child;
@@ -157,7 +152,6 @@ fid_id_t fidsvc_register(int fid, fidsvc_reclamation_func_t reclaim,
   fid_array[ptr].parent = NULL_FID_ID;
   fid_array[ptr].reclaim = reclaim;
   fid_array[ptr].reclaim_data = reclaim_data;
-  fid_array[ptr].fid = fid;
   fid_array[ptr].child = new_child;
   fid_array[ptr].index= index;
   

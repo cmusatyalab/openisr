@@ -17,23 +17,21 @@ ACCEPTANCE OF THIS AGREEMENT
 #define VULPES_FIDS_H_
 
 
-#define NULL_FID               -1
 #define NULL_FID_ID            -1
 
 
 
-typedef int fid_t;
 typedef int fid_id_t;
 
-typedef int (*fidsvc_reclamation_func_t) (fid_t, void *, int);
+typedef int (*fidsvc_reclamation_func_t) (void *, int);
 
 void fidsvc_init(void);
 void fidsvc_close(void);
 
 int fidsvc_num_open(void);
-fid_t fidsvc_get(fid_id_t fnp);
+void fidsvc_get(fid_id_t fnp);
 int fidsvc_remove(fid_id_t fnp);
-fid_id_t fidsvc_register(int fid, fidsvc_reclamation_func_t reclaim,
+fid_id_t fidsvc_register(fidsvc_reclamation_func_t reclaim,
 			 void *reclaim_data, int index);
 
 
