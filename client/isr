@@ -64,7 +64,6 @@ sub reset_cursor ();
 sub progress ($$);
 sub build_cache ($$$);
 sub hdksize ($$$);
-sub hdkmodified ($$$);
 sub connected ();
 sub get_dirnum ($$);
 sub get_chunknum ($$);
@@ -744,6 +743,7 @@ sub run ($$$$) {
     my $numfiles;
     my $numvulpes;
     my $numchunks;
+    my $numdirty;
     my $maxchunks;
     my $chunksize;
     my $i;
@@ -796,7 +796,7 @@ sub run ($$$$) {
     # If the user wants to run disconnected, they better have all of their
     # disk blocks hoarded in the local or hoard cache
     if ($disconnected) {
-	($numchunks, $maxchunks, $chunksize) = 
+	($numchunks, $numdirty, $maxchunks, $chunksize) = 
 	    hdksize($userid, $parcel, $isrdir); 
 
 	# If the local cache is not fully populated, then make sure
@@ -1025,6 +1025,7 @@ sub disconnect ($$$$) {
     my $nocheckstate = shift; # optionally skip consistency check
 
     my $numchunks;
+    my $dirtychunks;
     my $maxchunks;
     my $chunksize;
 
@@ -1046,7 +1047,7 @@ sub disconnect ($$$$) {
 
 
     # Hoard the parcel if it's not already hoarded
-    ($numchunks, $maxchunks, $chunksize) = 
+    ($numchunks, $dirtychunks, $maxchunks, $chunksize) = 
 	hdksize($userid, $parcel, $isrdir); 
     if (isr_stathoard($userid, $parcel, $isrdir) < $maxchunks) {
 	isr_hoard($userid, $parcel, $isrdir);
@@ -1786,101 +1787,50 @@ sub build_cache ($$$) {
 
 #
 # hdksize - Computes information about the local hdk cache
-#           returns the list ($numchunks, $maxchunks, $chunksize (in bytes))
+#           returns the list ($numchunks, $dirtychunks, $maxchunks,
+#                             $chunksize (in bytes))
 #         
 sub hdksize ($$$) {
     my $userid = shift;
     my $parcel = shift;
     my $isrdir = shift;
 
+    my $header;
+    my @headervals;
     my $numchunks;
-    my $i;
-    my $dirname;
+    my $dirtychunks;
 
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
+    my $imagefile = "$cachedir/hdk/image";
 
-    my $numdirs = get_value("$lastdir/hdk/index.lev1", "NUMDIRS");
-    my $chunksperdir = get_value("$lastdir/hdk/index.lev1", "CHUNKSPERDIR");
+    my $maxchunks = get_value("$lastdir/hdk/index.lev1", "NUMCHUNKS");
     my $chunksize = get_value("$lastdir/hdk/index.lev1", "CHUNKSIZE");
-
-    my @files = ();
 
     # hdk cache is trivialy empty
     if (!-e $cachedir) {
-	return (0, $numdirs*$chunksperdir, $chunksize);
+	return (0, 0, $maxchunks, $chunksize);
     }
 
-    # Count the number of chunks in the cache
-    $numchunks = 0;
-    for ($i = 0; $i < $numdirs; $i++) {
-	$dirname = sprintf("%04d", $i);
-	if (opendir(DIR, "$cachedir/hdk/$dirname")) {
-	    @files = grep(/\d+/, readdir(DIR)); # enumerate the chunk files only
-	    closedir(DIR);
-	    $numchunks += @files;
-	}
+    # Read and unpack the cache file header
+    open(INFILE, $imagefile)
+	or unix_errexit("Unable to open $imagefile");
+    if (read(INFILE, $header, 512) != 512) {
+    	errexit("Unable to read header of $imagefile");
     }
-    return ($numchunks, $numdirs*$chunksperdir, $chunksize);
-}
-
-#
-# hdkmodified - Computes information about dirty chunks in hdk cache. Returns
-#        the list ($numdirtychunks, $numchunks, $chunksize (in bytes))
-#         
-sub hdkmodified ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-
-    my $offset;
-    my $dirtyblocks;
-    my $actualblocks;
-    my $chunkname;
-    my $dirname;
-    my $line1;
-    my $line2;
-
-    my $parceldir = "$isrdir/$parcel";
-    my $lastdir = "$parceldir/last";
-    my $cachedir = "$parceldir/cache";
-
-    my $numdirs = get_value("$lastdir/hdk/index.lev1", "NUMDIRS");
-    my $chunksize = get_value("$lastdir/hdk/index.lev1", "CHUNKSIZE");
-    my $chunksperdir = get_value("$lastdir/hdk/index.lev1", "CHUNKSPERDIR");
-
-    # hdk cache is trivially empty
-    if (!-e $cachedir) {
-	return (0, 0, $chunksize);
-    }
+    close INFILE
+	or unix_errexit("Unable to close $imagefile");
+    @headervals=unpack("N5", $header);
     
-    # Count the number of dirty files in the cache
-    open(INFILE1, "$cachedir/keyring")
-        or unix_errexit("Unable to open $cachedir/keyring");
-    open(INFILE2, "$lastdir/keyring")
-        or unix_errexit("Unable to open $lastdir/keyring");
-    $offset = 0;
-    $dirtyblocks = 0;
-    $actualblocks = 0;
-    while ($line1 = <INFILE1>) {
-        $line2 = <INFILE2>;
-	$dirname = sprintf("%04d", get_dirnum($offset, $chunksperdir));
-	$chunkname = sprintf("%04d", get_chunknum($offset, $chunksperdir));
-	if (-e "$cachedir/hdk/$dirname/$chunkname") {
-	    $actualblocks++;
-	}
-        if ($line1 ne $line2) {
-            $dirtyblocks++;
-        }
-        $offset++;
-    }
-    close INFILE1
-        or unix_errexit("Unable to close $cachedir/keyring");
-    close INFILE2
-        or unix_errexit("Unable to close $lastdir/keyring");
+    # Check for valid magic number
+    errexit("Invalid magic number for cache file")
+    	unless $headervals[0] eq 0x51528038;
     
-    return ($dirtyblocks, $actualblocks, $chunksize);
+    # Retrieve values
+    $numchunks = $headervals[3];
+    $dirtychunks = $headervals[4];
+    return ($numchunks, $dirtychunks, $maxchunks, $chunksize);
 }
 
 #

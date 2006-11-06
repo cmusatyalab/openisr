@@ -611,7 +611,6 @@ sub isr_statparcel ($$$$) {
     my $num_hoarded;
     my $size_hoarded;
     my $percent_hoarded;
-    my $actualchunks;
     my $memsize;
 
     my $numkeys;
@@ -646,10 +645,8 @@ sub isr_statparcel ($$$$) {
     #
     # Display local cache stats
     #
-    ($num_chunks, $max_chunks, $chunksize) = 
+    ($num_chunks, $num_dirtychunks, $max_chunks, $chunksize) = 
 	hdksize($userid, $parcel, $isrdir);
-    ($num_dirtychunks, $actualchunks, $chunksize) = 
-	hdkmodified($userid, $parcel, $isrdir);
 
     $num_mbytes = int(($num_chunks*$chunksize)/(1<<20));
     $num_dirtymbytes = int(($num_dirtychunks*$chunksize)/(1<<20));
@@ -710,6 +707,7 @@ sub isr_checkhoard ($$$$$) {
     my $trashcnt;
     my $numfiles;
     my $num_chunks;
+    my $num_dirtychunks;
     my $chunkcount;
     my $tag;
     my $computed_tag;
@@ -784,7 +782,7 @@ sub isr_checkhoard ($$$$$) {
     #
     # Display some statistics about the hoard cache
     #
-    ($num_chunks, $max_chunks, $chunksize) = 
+    ($num_chunks, $num_dirtychunks, $max_chunks, $chunksize) = 
 	hdksize($userid, $parcel, $isrdir);
     $max_mbytes = int(($max_chunks*$chunksize)/(1<<20));
     $num_hoarded = isr_stathoard($userid, $parcel, $isrdir);
@@ -1325,6 +1323,7 @@ sub isr_priv_checkcache ($$$) {
     my $isrdir = shift;
     
     my $numchunks;
+    my $num_dirtychunks;
     my $maxchunks;
     my $chunksperdir;
     my $numdirs;
@@ -1355,7 +1354,7 @@ sub isr_priv_checkcache ($$$) {
     #
     # Get some global cache properties
     #
-    ($numchunks, $maxchunks, $chunksize) = 
+    ($numchunks, $num_dirtychunks, $maxchunks, $chunksize) = 
 	hdksize($userid, $parcel, $isrdir); 
 
     #
