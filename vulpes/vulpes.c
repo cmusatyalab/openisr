@@ -192,10 +192,6 @@ int main(int argc, char *argv[])
     usage(argv[0]);
   }
   
-  /* Partho: command line parsing was getting way out of hand. Using 
-   *  getopt_long(). Porting to windows? :) Will need some work
-   */
-  
   while (1) {
     
     static struct option vulpes_cmdline_options[] =
@@ -207,6 +203,7 @@ int main(int argc, char *argv[])
 	{"map", no_argument, 0, 'd'},
 	{"master", no_argument, 0, 'e'},
 	{"keyring", no_argument, 0, 'f'},
+	{"upload", no_argument, 0, 'g'},
 	{"log", no_argument, 0, 'h'},
 	{"proxy", no_argument, 0, 'i'},
 	{"lka", no_argument, 0, 'l'},
@@ -299,6 +296,19 @@ int main(int argc, char *argv[])
       config.bin_keyring_name=argv[optind++];
       keyDone=1;
       break;
+    case 'g':
+      /* upload */
+      if (config.doUpload) {
+	PARSE_ERROR("--upload may only be specified once.");
+      }
+      requiredArgs+=3;
+      if (optind+1 >= argc) {
+	PARSE_ERROR("failed to parse upload options.");
+      }
+      config.doUpload=1;
+      config.old_keyring_name=argv[optind++];
+      config.dest_name=argv[optind++];
+      break;
     case 'h':
       /* log */
       if (logDone) {
@@ -371,7 +381,7 @@ int main(int argc, char *argv[])
   if (keyDone==0) {
     PARSE_ERROR("--keyring parameter missing");
   }
-  if (masterDone==0) {
+  if (masterDone==0 && !config.doUpload) {
     PARSE_ERROR("--master parameter missing");
   }
   if (mapDone==0) {
@@ -390,7 +400,7 @@ int main(int argc, char *argv[])
              vulpes_version, svn_branch, svn_revision, (unsigned)getpid());
   
   /* Register default signal handler */
-  {
+  if (!config.doUpload) {
     int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
 			  SIGABRT, SIGTERM, SIGTSTP,
 			  SIGKILL}; /* SIGKILL needed... */
@@ -434,6 +444,11 @@ int main(int argc, char *argv[])
   }
   
   /* XXX we don't do proper cleanup in the error paths */
+  
+  if (config.doUpload) {
+    copy_for_upload(config.old_keyring_name, config.dest_name);
+    /* Does not return */
+  }
   
   /* Set up fauxide driver */
   if (fauxide_init()) {

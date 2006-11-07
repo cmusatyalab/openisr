@@ -635,7 +635,7 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
   int decryptedSize, encryptedSize;
   unsigned long decompressedSize;
   
-  vulpes_log(LOG_CHUNKS,"stripping compression from chunk %u", chunk_num);
+  vulpes_log(LOG_CHUNKS,"stripping compression from chunk %u: %u bytes",chunk_num,buf_len);
   cdp=get_cdp_from_chunk_num(chunk_num);
   if (!cdp_is_compressed(cdp)) {
     vulpes_log(LOG_ERRORS,"chunk is already uncompressed: %u", chunk_num);
@@ -1312,21 +1312,93 @@ int initialize_lev1_mapping(void)
   return 0;
 }
 
-vulpes_err_t copy_for_upload(void)
+void copy_for_upload(char *oldkr, char *dest)
 {
   struct lev1_mapping *spec=config.special;
-  char dirname[MAX_DIRLENGTH];
+  char name[MAX_CHUNK_NAME_LENGTH];
+  char *buf;
   unsigned u;
+  struct chunk_data *cdp;
+  int fd;
+  int oldkrfd;
+  unsigned modified_chunks=0;
+  uint64_t modified_bytes=0;
+  FILE *fp;
+  char tag_hex[HASH_LEN_HEX];
+  char tag[HASH_LEN];
   
+  buf=malloc(spec->chunksize_bytes);
+  if (buf == NULL) {
+    vulpes_log(LOG_ERRORS,"malloc failed");
+    exit(1);
+  }
   /* check the subdirectories  -- create if needed */
   for (u = 0; u < spec->numdirs; u++) {
-    form_dir_name(dirname, MAX_DIRLENGTH, config.cache_name, u);
-    if (!is_dir(dirname)) {
-      if (mkdir(dirname, 0770)) {
-	vulpes_log(LOG_ERRORS,"unable to mkdir: %s", dirname);
-	return VULPES_IOERR;
+    form_dir_name(name, sizeof(name), dest, u);
+    if (!is_dir(name)) {
+      if (mkdir(name, 0770)) {
+	vulpes_log(LOG_ERRORS,"unable to mkdir: %s", name);
+	exit(1);
       }
     }
   }
-  return VULPES_SUCCESS;
+  oldkrfd=open(oldkr, O_RDONLY);
+  if (oldkrfd == -1) {
+    vulpes_log(LOG_ERRORS, "couldn't open %s", oldkr);
+    exit(1);
+  }
+  for (u=0; u < spec->numchunks; u++) {
+    if (read(oldkrfd, tag_hex, sizeof(tag_hex)) != sizeof(tag_hex)) {
+      vulpes_log(LOG_ERRORS,"short read on %s", oldkr);
+      exit(1);
+    }
+    if (lseek(oldkrfd, HASH_LEN_HEX, SEEK_CUR) == -1) {
+      vulpes_log(LOG_ERRORS,"couldn't seek %s", oldkr);
+      exit(1);
+    }
+    cdp=get_cdp_from_chunk_num(u);
+    if (cdp_is_modified(cdp)) {
+      if (!cdp_present(cdp)) {
+	vulpes_log(LOG_ERRORS,"Chunk modified but not present: %u",u);
+	continue;
+      }
+      hexToBin(tag_hex, tag, HASH_LEN);
+      if (!memcmp(tag, cdp->tag, HASH_LEN)) {
+	vulpes_log(LOG_CHUNKS,"Chunk modified but tag equal; skipping: %u",u);
+	continue;
+      }
+      if (form_chunk_file_name(name, sizeof(name), dest, u)) {
+	vulpes_log(LOG_ERRORS,"Couldn't form chunk filename: %u",u);
+	exit(1);
+      }
+      fd=open(name, O_WRONLY|O_CREAT|O_TRUNC, 0600);
+      if (fd == -1) {
+	vulpes_log(LOG_ERRORS,"Couldn't open chunk file: %s",name);
+	exit(1);
+      }
+      if (pread(spec->fd, buf, cdp->length, get_image_offset_from_chunk_num(u))
+	       != cdp->length) {
+        vulpes_log(LOG_ERRORS,"Couldn't read chunk from local cache: %u",u);
+	exit(1);
+      }
+      if (write(fd, buf, cdp->length) != cdp->length) {
+	vulpes_log(LOG_ERRORS,"Couldn't write chunk file: %s",name);
+	exit(1);
+      }
+      close(fd);
+      modified_chunks++;
+      modified_bytes += cdp->length;
+    }
+  }
+  close(oldkrfd);
+  snprintf(name, sizeof(name), "%s/stats", dest);
+  fp=fopen(name, "w");
+  if (fp == NULL) {
+    vulpes_log(LOG_ERRORS,"Couldn't open stats file: %s",name);
+    exit(1);
+  }
+  fprintf(fp, "%u\n%llu\n", modified_chunks, modified_bytes);
+  fclose(fp);
+  vulpes_log(LOG_STATS,"Copied %u modified chunks, %llu bytes",modified_chunks,modified_bytes);
+  exit(0);
 }
