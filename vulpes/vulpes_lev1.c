@@ -70,6 +70,7 @@ struct lev1_mapping {
 };
 
 static unsigned writes_before_read = 0;
+static unsigned chunks_stripped = 0;
 
 /* AUXILLIARY FUNCTIONS */
 static inline int cdp_is_accessed(struct chunk_data * cdp)
@@ -685,6 +686,7 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
   free(newtag);
   mark_cdp_uncompressed(cdp);
   mark_cdp_modified(cdp);
+  chunks_stripped++;
   free(*buf);
   *buf=encrypted;
   return VULPES_SUCCESS;
@@ -1074,6 +1076,7 @@ int lev1_shutdown_func(void)
   vulpes_log(LOG_STATS,"CHUNKS_ACCESSED:%u",accessed_chunks);
   vulpes_log(LOG_STATS,"CHUNKS_MODIFIED:%u",modified_chunks);
   vulpes_log(LOG_STATS,"CHUNKS_RAW:%u",writes_before_read);
+  vulpes_log(LOG_STATS,"CHUNKS_STRIPPED:%u",chunks_stripped);
 
   return 0;
 }
@@ -1327,6 +1330,7 @@ void copy_for_upload(char *oldkr, char *dest)
   char tag_hex[HASH_LEN_HEX];
   char tag[HASH_LEN];
   
+  vulpes_log(LOG_BASIC,"Copying chunks to upload directory %s",dest);
   buf=malloc(spec->chunksize_bytes);
   if (buf == NULL) {
     vulpes_log(LOG_ERRORS,"malloc failed");
@@ -1391,6 +1395,7 @@ void copy_for_upload(char *oldkr, char *dest)
     }
   }
   close(oldkrfd);
+  free(buf);
   snprintf(name, sizeof(name), "%s/stats", dest);
   fp=fopen(name, "w");
   if (fp == NULL) {
@@ -1400,5 +1405,44 @@ void copy_for_upload(char *oldkr, char *dest)
   fprintf(fp, "%u\n%llu\n", modified_chunks, modified_bytes);
   fclose(fp);
   vulpes_log(LOG_STATS,"Copied %u modified chunks, %llu bytes",modified_chunks,modified_bytes);
+  exit(0);
+}
+
+void checktags(void)
+{
+  struct lev1_mapping *spec=config.special;
+  void *buf;
+  unsigned chunk_num;
+  char *tag;
+  struct chunk_data *cdp;
+  
+  vulpes_log(LOG_BASIC,"Checking cache consistency");
+  buf=malloc(spec->chunksize_bytes);
+  if (buf == NULL) {
+    vulpes_log(LOG_ERRORS,"malloc failed");
+    exit(1);
+  }
+  for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
+    cdp=get_cdp_from_chunk_num(chunk_num);
+    if (!cdp_present(cdp)) {
+      continue;
+    }
+    if (pread(spec->fd, buf, cdp->length,
+              get_image_offset_from_chunk_num(chunk_num)) != cdp->length) {
+      vulpes_log(LOG_ERRORS,"Couldn't read chunk from local cache: %u",chunk_num);
+      exit(1);
+    }
+    tag=digest(buf, cdp->length);
+    if (tag == NULL) {
+      vulpes_log(LOG_ERRORS,"Couldn't calculate hash for chunk: %u",chunk_num);
+      exit(1);
+    }
+    if (lev1_check_tag(cdp, tag) == VULPES_TAGFAIL) {
+      vulpes_log(LOG_ERRORS,"Chunk %u: tag check failure",chunk_num);
+      print_tag_check_error(cdp->tag, tag);
+    }
+    free(tag);
+  }
+  free(buf);
   exit(0);
 }

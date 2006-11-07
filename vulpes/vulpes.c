@@ -206,6 +206,7 @@ int main(int argc, char *argv[])
 	{"upload", no_argument, 0, 'g'},
 	{"log", no_argument, 0, 'h'},
 	{"proxy", no_argument, 0, 'i'},
+	{"check", no_argument, 0, 'j'},
 	{"lka", no_argument, 0, 'l'},
 	{"help", no_argument, 0, 'm'},
 	{0,0,0,0}
@@ -350,6 +351,14 @@ int main(int argc, char *argv[])
 	proxyDone=1;
       }
       break;
+    case 'j':
+      /* check */
+      if (config.doCheck) {
+	PARSE_ERROR("--check may only be specified once.");
+      }
+      requiredArgs+=1;
+      config.doCheck=1;
+      break;
     case 'l':
       /* lka */
       requiredArgs+=3;
@@ -381,7 +390,7 @@ int main(int argc, char *argv[])
   if (keyDone==0) {
     PARSE_ERROR("--keyring parameter missing");
   }
-  if (masterDone==0 && !config.doUpload) {
+  if (masterDone==0 && !config.doUpload && !config.doCheck) {
     PARSE_ERROR("--master parameter missing");
   }
   if (mapDone==0) {
@@ -400,7 +409,7 @@ int main(int argc, char *argv[])
              vulpes_version, svn_branch, svn_revision, (unsigned)getpid());
   
   /* Register default signal handler */
-  if (!config.doUpload) {
+  if (!config.doUpload && !config.doCheck) {
     int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
 			  SIGABRT, SIGTERM, SIGTSTP,
 			  SIGKILL}; /* SIGKILL needed... */
@@ -447,6 +456,10 @@ int main(int argc, char *argv[])
   
   if (config.doUpload) {
     copy_for_upload(config.old_keyring_name, config.dest_name);
+    /* Does not return */
+  }
+  if (config.doCheck) {
+    checktags();
     /* Does not return */
   }
   

@@ -75,7 +75,8 @@ extern struct vulpes_config {
   
   int verbose;			/* Set by main -- currently not used */
   int doUpload;                 /* Set by main */
-  struct lka_svc *lka_svc;     /* Set by main */
+  int doCheck;                  /* Set by main */
+  struct lka_svc *lka_svc;      /* Set by main */
   void *special;		/* Set in open_func */
 } config;
 
@@ -93,5 +94,6 @@ int fauxide_rescue(const char *device_name);
 vulpes_err_t local_get(char *buf, int *bufsize, const char *file);
 vulpes_err_t http_get(char *buf, int *bufsize, const char *url);
 void copy_for_upload(char *oldkr, char *dest);
+void checktags(void);
 
 #endif

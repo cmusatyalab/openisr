@@ -1011,7 +1011,7 @@ sub copy_dirtychunks ($$$) {
     #
     print("Collecting modified disk state...\n")
 	if $main::verbose;
-    mysystem("$Isr::ISRCLIENTBIN/vulpes --map lev1 /dev/hdk $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --upload $lastdir/keyring $tmpdir/cache/hdk --log /dev/null '' 0x0 $Isr::CONSOLE_LOGMASK") == 0
+    mysystem("$Isr::ISRCLIENTBIN/vulpes --map lev1 /dev/hdk $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --upload $lastdir/keyring $tmpdir/cache/hdk --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
     # Hack to get stats from vulpes
     open(STATFILE, "$tmpdir/cache/hdk/stats");
@@ -1231,82 +1231,18 @@ sub isr_priv_checkcache ($$$) {
     my $parcel = shift;
     my $isrdir = shift;
     
-    my $numchunks;
-    my $num_dirtychunks;
-    my $maxchunks;
-    my $chunksperdir;
-    my $numdirs;
-    my $chunksize;
-
-    my $pair;
-    my $numtags;
-    my $i;
-    my $dirname;
-    my $dirpath;
-    my $chunkcnt;
-    my $index;
-    my $tag;
-    my $chunk;
-    my $progress_str;
-
-    my @keyring;    # List of (tag, key) lists
-    my @files = ();
-
     my $parceldir = "$isrdir/$parcel";
     my $cachedir = "$parceldir/cache";
-    my $keyring = "$cachedir/keyring";
 
     if (!-e $cachedir) {
 	return 0;
     }
-    
-    #
-    # Get some global cache properties
-    #
-    ($numchunks, $num_dirtychunks, $maxchunks, $chunksize) = 
-	hdksize($userid, $parcel, $isrdir); 
-
-    #
-    # Load the keyring
-    #
-    @keyring = load_keyring("$cachedir/keyring");
-    $numtags = scalar(@keyring);
 
     #
     # Verify that each block in cache has a valid keyring tag
     # 
-    $chunkcnt = 0;
-    $numdirs = get_value("$cachedir/hdk/index.lev1", "NUMDIRS");
-    $chunksperdir = get_value("$cachedir/hdk/index.lev1", "CHUNKSPERDIR");
-    for ($i = 0; $i < $numdirs; $i++) {
-	$dirname = sprintf("%04d", $i);
-	$dirpath = "$cachedir/hdk/$dirname"; 
-
-	# If the directory exists, then check its chunks for correct tags
-	if (opendir(DIR, $dirpath)) {
-
-	    # Check each chunk in the directory
-	    @files = grep(!/^[\._]/, readdir(DIR)); # filter out "." and ".."
-	    closedir(DIR);
-	    foreach $chunk (@files) {
-		$chunkcnt++;
-		$index = $i*$chunksperdir + $chunk;
-
-		# Check that the keyring entry tag is correct
-		$tag = `openssl sha1 < $dirpath/$chunk`;
-		chomp($tag);
-		if (lc($tag) ne lc($keyring[$index][0])) {
-		    err("$dirpath/$chunk: Expected tag ($tag) != actual tag ($keyring[$index][0]).");
-
-		}
-
-		# Display our progress
-		emit_hdk_progressmeter($chunkcnt*$chunksize,
-				       $numchunks*$chunksize);
-	    }
-	}
-    }
-    reset_cursor();
+    mysystem("$Isr::ISRCLIENTBIN/vulpes --map lev1 /dev/hdk $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --check --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
+    	or errexit("Could not validate cache");
 }
 
 #
