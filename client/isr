@@ -1807,7 +1807,7 @@ sub hdksize ($$$) {
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
-    my $imagefile = "$cachedir/hdk/image";
+    my $imagefile = "$cachedir/hdk/image.lev1";
 
     my $maxchunks = get_value("$lastdir/hdk/index.lev1", "NUMCHUNKS");
     my $chunksize = get_value("$lastdir/hdk/index.lev1", "CHUNKSIZE");

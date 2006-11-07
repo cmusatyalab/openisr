@@ -832,12 +832,6 @@ sub isr_priv_upload ($$$) {
     my $virtualbytes;
     my $chunksize;
     my $sha1value;
-    my $i;
-    my $dirname;
-    my $numdirs;
-
-    my @chunkdiffs;
-    my @files;
 
     my $parceldir = "$isrdir/$parcel";
     my $hoarddir = "$isrdir/$parcel-hoard";
@@ -939,31 +933,14 @@ sub isr_priv_upload ($$$) {
 	mysystem("cp -f $tmpdir/cache/keyring.enc $hoarddir/$sha1value");
     }
 
-    #
-    # Clean up the dirty cache hdk entries (but leave the keyring, 
-    # memory image, index.lev1).  This allows us to handle successive 
-    # syncs (sync and ci) efficiently, by eliminating the need to re-tar the
-    # memory image.  
-    #
-
-    # we need to do this, so that if this doesn't finish
+    # We need to do this, so that if the commit doesn't finish
     # rsync doesn't blow everything away
     system("rm -f $cdcache_file");
-
-    $numdirs = get_value("$cachedir/hdk/index.lev1", "NUMDIRS");
-    for ($i = 0; $i < $numdirs; $i++) {
-	$dirname = sprintf("%04d", $i);
-	mysystem("rm -rf $tmpdir/cache/hdk/$dirname/*") == 0
-	    or system_errexit("Unable to clean dirty cache entries from $dirname.\n");
-    }
-
 
     #
     # Clean up the local cache directory 
     #
     mysystem("rm -f $cachedir/cfg.tgz"); 
-    mysystem("rm -f $cachedir/keyring.chunkdiffs");
-
 
     # Return successful status
     print("Upload completed, all updates have been sent to the server.\n")
@@ -980,24 +957,9 @@ sub copy_dirtychunks ($$$) {
     my $lastdir = shift;
     my $tmpdir = shift;
 
-    my $i;
-    my $numdirs;
-    my $chunksperdir;
     my $dirtyblocks;
-    my $line1;
-    my $line2;
     my $dirtybytes;
-    my $dirname;
     my $target;
-    my $chunkdir;
-    my $chunkfile;
-    my $chunksize;
-
-    my @chunkdiffs = ();
-
-    $numdirs = get_value("$cachedir/hdk/index.lev1", "NUMDIRS");
-    $chunksperdir = get_value("$cachedir/hdk/index.lev1", "CHUNKSPERDIR");
-    $chunksize = get_value("$cachedir/hdk/index.lev1", "CHUNKSIZE");
 
     #
     # Build an empty temporary cache directory structure on the client
@@ -1005,11 +967,6 @@ sub copy_dirtychunks ($$$) {
     mysystem("rm -rf $tmpdir");
     mysystem("mkdir --parents $tmpdir/cache/hdk") == 0
 	or errexit("Unable to make temporary directory $tmpdir/cache/hdk");
-    for ($i = 0; $i < $numdirs; $i++) {
-	$dirname = sprintf("%04d", $i);
-	mysystem("mkdir $tmpdir/cache/hdk/$dirname") == 0
-	    or errexit("Unable to make hdk subdirectory $tmpdir/cache/hdk/$dirname");
-    }
 
     #
     # Save a copy of the keyroot in the cache (otherwise we would
@@ -1049,44 +1006,19 @@ sub copy_dirtychunks ($$$) {
     mysystem("cp $cachedir/hdk/index.lev1 $tmpdir/cache/hdk/index.lev1") == 0
 	or errexit("Unable to copy index.lev1.");
 
-    #
-    # Identify the dirty hdk files in the Vulpes cache
-    #
-    open(INFILE1, "$cachedir/keyring")
-        or unix_errexit("Unable to open $cachedir/keyring");
-    open(INFILE2, "$lastdir/keyring")
-        or unix_errexit("Unable to open $lastdir/keyring");
-    $i = 0;
-    $dirtyblocks = 0;
-    while ($line1 = <INFILE1>) {
-        $line2 = <INFILE2>;
-        if ($line1 ne $line2) {
-            $chunkdiffs[$dirtyblocks++] = $i;
-        }
-        $i++;
-    }
-    close INFILE1
-        or unix_errexit("Unable to close $cachedir/keyring");
-    close INFILE2
-        or unix_errexit("Unable to close $lastdir/keyring");
-
     # 
     # Copy any dirty hdk chunks to the temporary cache directory
     #
     print("Collecting modified disk state...\n")
 	if $main::verbose;
-    $dirtybytes  = 0;
-    for ($i = 0; $i < $dirtyblocks; $i++) {
-	$chunkdir = sprintf("%04d", get_dirnum($chunkdiffs[$i], $chunksperdir));
-	$chunkfile = sprintf("%04d", get_chunknum($chunkdiffs[$i], $chunksperdir));
-	printf("$i: Copying $chunkdir/$chunkfile to temporary cache dir\n") 
-	    if $main::verbose > 1;
-	mysystem("ln -f $cachedir/hdk/$chunkdir/$chunkfile $tmpdir/cache/hdk/$chunkdir/$chunkfile") == 0
-	    or errexit("Unable to copy $cachedir/hdk/$chunkdir/$chunkfile.");
-	$dirtybytes += stat("$cachedir/hdk/$chunkdir/$chunkfile")->size;
-	emit_hdk_progressmeter(($i+1)*$chunksize, $dirtyblocks*$chunksize);
-    }
-    reset_cursor();
+    mysystem("$Isr::ISRCLIENTBIN/vulpes --map lev1 /dev/hdk $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --upload $lastdir/keyring $tmpdir/cache/hdk --log /dev/null '' 0x0 $Isr::CONSOLE_LOGMASK") == 0
+    	or errexit("Unable to copy chunks to temporary cache dir");
+    # Hack to get stats from vulpes
+    open(STATFILE, "$tmpdir/cache/hdk/stats");
+    chomp($dirtyblocks = <STATFILE>);
+    chomp($dirtybytes = <STATFILE>);
+    close STATFILE;
+    mysystem("rm -f $tmpdir/cache/hdk/stats");
 
     #
     # For record keeping, the caller needs to know how many total hdk bytes
@@ -1202,6 +1134,7 @@ sub isr_priv_clientcommit($$$) {
     my $hoarddir = "$isrdir/$parcel-hoard";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
+    my $tmpdir = "$parceldir/tmp";
 
     my @chunkdiffs = ();
 
@@ -1259,7 +1192,7 @@ sub isr_priv_clientcommit($$$) {
 	$chunkindex = $chunkdiffs[$i];
 	$chunkdir = sprintf("%04d", get_dirnum($chunkindex, $chunksperdir));
 	$chunkfile = sprintf("%04d", get_chunknum($chunkindex, $chunksperdir));
-	$cachefile = "$cachedir/hdk/$chunkdir/$chunkfile";
+	$cachefile = "$tmpdir/cache/hdk/$chunkdir/$chunkfile";
 
 	# Determine the location of the hoard file
 	$computed_tag = `openssl sha1 < $cachefile`;
