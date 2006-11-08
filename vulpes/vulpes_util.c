@@ -87,7 +87,7 @@ char *vulpes_strerror(vulpes_err_t err)
   return "(Unknown)";
 }
 
-inline void charToHex(unsigned char* bin, unsigned char hex[2])
+inline void charToHex(const unsigned char* bin, unsigned char hex[2])
 {
 	int i;
 	unsigned char tmp;
@@ -106,7 +106,7 @@ inline void charToHex(unsigned char* bin, unsigned char hex[2])
 }
 
 /* This function has to be really fast! */
-inline unsigned char hexToChar(unsigned char* hex)
+inline unsigned char hexToChar(const unsigned char* hex)
 {
 	int i,j;
 
@@ -134,7 +134,7 @@ inline unsigned char hexToChar(unsigned char* hex)
 }
 
 /* @hex should be 2*binBytes+1 bytes long.  Result is null-terminated */
-void binToHex(unsigned char *bin, unsigned char *hex, int binBytes)
+void binToHex(const unsigned char *bin, unsigned char *hex, int binBytes)
 {
   int i;
   
@@ -143,7 +143,7 @@ void binToHex(unsigned char *bin, unsigned char *hex, int binBytes)
   *hex=0;
 }
 
-void hexToBin(unsigned char *hex, unsigned char *bin, int binBytes)
+void hexToBin(const unsigned char *hex, unsigned char *bin, int binBytes)
 {
   int i;
   

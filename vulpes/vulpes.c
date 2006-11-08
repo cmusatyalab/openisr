@@ -23,21 +23,13 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <errno.h>
 #include <signal.h>
 #include <getopt.h>
-/* XXX right now fauxide's data structures are accessed throughout the codebase
-   rather than confining them to the fauxide driver */
-#include "fauxide.h"
 #include "vulpes.h"
-#include "vulpes_fids.h"
 #include "vulpes_log.h"
 #include "vulpes_lka.h"
 
 /* GLOBALS */
 
 volatile int exit_pending = 0;
-
-static unsigned long long sectors_read = 0;
-static unsigned long long sectors_written = 0;
-static unsigned long long sectors_accessed = 0;
 
 const char *vulpes_version = "0.60";
 
@@ -61,42 +53,6 @@ int set_signal_handler(int sig, void (*handler)(int sig))
   return sigaction(sig, &sa, NULL);
 }
 
-void tally_sector_accesses(unsigned write, unsigned num)
-{
-  sectors_accessed += num;
-  
-  if (write) {
-    sectors_written += num;
-  } else {
-    sectors_read += num;
-  }
-  
-#ifdef VERBOSE_DEBUG
-  if (sectors_accessed % 1024 == 0) {
-    printf(".");
-    if (sectors_accessed % (20 * 1024) == 0) {
-      printf(" %llu + %llu = %llu\n", sectors_read, sectors_written,
-	     sectors_accessed);
-    }
-    fflush(stdout);
-  }
-#endif
-}
-
-static void initialize_config(void)
-{
-  /* config is allocated in bss, so we only need to initialize the non-zero
-     elements */
-  config.trxfer = LOCAL_TRANSPORT;
-  
-  config.proxy_port = 80;
-  
-  config.vulpes_device = -1;
-  
-  config.reg.vulpes_id = -1;
-  config.reg.pid = -1;
-}
-
 static void version(void)
 {
   printf("Version: %s (%s, rev %s)\n", vulpes_version, svn_branch, svn_revision);
@@ -107,7 +63,7 @@ static void usage(const char *progname)
   version();
   printf("Usage: %s <options>\n", progname);
   printf("Options:\n");
-  printf("\t--map <device_name> <local_cache_name>\n");
+  printf("\t--map <local_cache_name>\n");
   printf("\t--master <transfertype> <master_disk_location/url>\n");
     printf("\t\ttransfertype is one of: local http\n");
   printf("\t--keyring <hex_keyring_file> <binary_keyring_file>\n");
@@ -122,7 +78,6 @@ static void usage(const char *progname)
     printf("\t\tproxy_server is the ip address or the hostname of the proxy\n");
   printf("Usage: %s --help                  Print usage summary and exit.\n", progname);
   printf("Usage: %s --version               Print version information and exit.\n", progname);
-  printf("Usage: %s --rescue <device_name>  Rescue a hung Fauxide driver and exit.\n", progname);
   exit(0);
 }
 
@@ -145,12 +100,6 @@ int main(int argc, char *argv[])
   int mapDone=0;
   int proxyDone=0;
   
-  /* Initialize the fidsvc */
-  fidsvc_init();
-  
-  /* Initialize the config structure */
-  initialize_config();
-  
   /* parse command line */
   if (argc < 2) {
     usage(argv[0]);
@@ -162,7 +111,6 @@ int main(int argc, char *argv[])
       {
 	{"version", no_argument, 0, 'a'},
 	{"allversions", no_argument, 0, 'a'},  /* XXX compatibility with old revs */
-	{"rescue", no_argument, 0, 'b'},
 	{"pid", no_argument, 0, 'c'},
 	{"map", no_argument, 0, 'd'},
 	{"master", no_argument, 0, 'e'},
@@ -191,20 +139,6 @@ int main(int argc, char *argv[])
       version();
       exit(0);
       break;
-    case 'b':
-      /* rescue */
-      requiredArgs+=2;
-      if (optind+0 >= argc) {
-	PARSE_ERROR("device_name required for RESCUE.");
-      } else {
-	const char *device_name = argv[optind++];
-	int result;
-	printf("START: fauxide_rescue().\n");
-	result = fauxide_rescue(device_name);
-	printf("END: fauxide_rescue() returned %d.\n", result);
-      }
-      exit(0);
-      break;
     case 'c':
       /* pid */
       requiredArgs+=1;
@@ -215,12 +149,10 @@ int main(int argc, char *argv[])
       if (mapDone) {
 	PARSE_ERROR("--map may only be specified once.");
       }
-      requiredArgs+=3;
-      if (optind+1 >= argc) {
+      requiredArgs+=2;
+      if (optind >= argc) {
 	PARSE_ERROR("failed to parse mapping.");
       }
-      
-      config.device_name=argv[optind++];
       config.cache_name=argv[optind++];
       mapDone=1;
       break;
@@ -385,7 +317,7 @@ int main(int argc, char *argv[])
   }
   
   
-  VULPES_DEBUG("Establishing mapping...\n");
+  VULPES_DEBUG("Initializing mapping...\n");
   /* Initialize the mapping */
   if (initialize_lev1_mapping()) {
     vulpes_log(LOG_ERRORS,"unable to initialize lev1 mapping");
@@ -404,18 +336,18 @@ int main(int argc, char *argv[])
   }
   
   /* Set up fauxide driver */
-  if (fauxide_init()) {
-    /* fauxide_init() has already complained to the log */
+  if (driver_init()) {
+    /* driver_init() has already complained to the log */
     goto vulpes_exit;
   }
 
   /* Enter main loop */
-  fauxide_run();
+  driver_run();
   
   vulpes_log(LOG_BASIC,"Beginning vulpes shutdown sequence");
 
   /* Shut down fauxide driver */
-  fauxide_shutdown();
+  driver_shutdown();
 
   /* Close file */
   VULPES_DEBUG("\tClosing map.\n");
@@ -428,15 +360,6 @@ int main(int argc, char *argv[])
   if(config.lka_svc != NULL)
     if(vulpes_lka_close())
       vulpes_log(LOG_ERRORS,"failure during lka_close().");    
-  
-  /* Close the fidsvc */
-  fidsvc_close();
-  
-  /* Print stats */
-  vulpes_log(LOG_STATS,"Sectors read:%llu",sectors_read);
-  vulpes_log(LOG_STATS,"Sectors written:%llu",sectors_written);
-  vulpes_log(LOG_STATS,"Sectors accessed:%llu",sectors_accessed);
-
   
  vulpes_exit:
   vulpes_log(LOG_BASIC,"Exiting");

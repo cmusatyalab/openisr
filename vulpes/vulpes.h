@@ -5,7 +5,6 @@
    interfaces, this should be cleaned up a bit. */
 
 #include <stdio.h>
-#include "fauxide.h"
 
 #undef VERBOSE_DEBUG
 #ifdef VERBOSE_DEBUG
@@ -42,7 +41,6 @@ extern struct vulpes_config {
   char* proxy_name;             /* Set by main */
   long  proxy_port;             /* set by main */
   
-  char *device_name;		/* Set by main */
   char *master_name;		/* Set by main */
   char *cache_name;		/* Set by main */
   char *dest_name;              /* Set by main */
@@ -50,10 +48,6 @@ extern struct vulpes_config {
   char *hex_keyring_name;	/* Set by main */
   char *bin_keyring_name;	/* Set by main */
 
-  int vulpes_device;		/* Set by device driver */
-  
-  vulpes_registration_t reg;	        /* Set in open_func */
-  
   int verbose;			/* Set by main -- currently not used */
   int doUpload;                 /* Set by main */
   int doCheck;                  /* Set by main */
@@ -64,36 +58,40 @@ extern struct vulpes_config {
 #define MAX_INDEX_NAME_LENGTH 256
 #define MAX_CHUNK_NAME_LENGTH 512
 #define MAX_DIRLENGTH 256
+#define SECTOR_SIZE 512
 
 extern struct vulpes_state {
   char index_name[MAX_INDEX_NAME_LENGTH];
   char image_name[MAX_INDEX_NAME_LENGTH];
+  char loopdev_name[MAX_INDEX_NAME_LENGTH];
   unsigned version;
   unsigned chunksize_bytes;
   unsigned chunksperdir;
   unsigned numchunks;
   unsigned numdirs;
-  vulpes_volsize_t volsize;	/* sectors */
+  unsigned long long volsize;	/* sectors */
   unsigned chunksize;		/* sectors */
-  int fd;
+  int cachefile_fd;
+  int chardev_fd;
+  int loopdev_fd;
   unsigned offset_bytes;
   struct chunk_data *cd;		/* cd[] */
 } state;
 
+struct isr_message;
+
 /* XXX miscellaneous exported functions */
 int set_signal_handler(int sig, void (*handler)(int sig));
-void tally_sector_accesses(unsigned write, unsigned num);
-int initialize_lev1_mapping(void);
-int fauxide_init(void);
-void fauxide_run(void);
-void fauxide_shutdown(void);
-int fauxide_rescue(const char *device_name);
+vulpes_err_t driver_init(void);
+void driver_run(void);
+void driver_shutdown(void);
 vulpes_err_t local_get(char *buf, int *bufsize, const char *file);
 vulpes_err_t http_get(char *buf, int *bufsize, const char *url);
 void copy_for_upload(char *oldkr, char *dest);
 void checktags(void);
+int initialize_lev1_mapping(void);
+int lev1_get(struct isr_message *msg);
+int lev1_update(const struct isr_message *msg);
 int lev1_shutdown(void);
-int lev1_read(vulpes_cmdblk_t * cmdblk);
-int lev1_write(const vulpes_cmdblk_t * cmdblk);
 
 #endif
