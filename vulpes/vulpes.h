@@ -58,8 +58,27 @@ extern struct vulpes_config {
   int doUpload;                 /* Set by main */
   int doCheck;                  /* Set by main */
   struct lka_svc *lka_svc;      /* Set by main */
-  void *special;		/* Set in open_func */
 } config;
+
+/* XXX */
+#define MAX_INDEX_NAME_LENGTH 256
+#define MAX_CHUNK_NAME_LENGTH 512
+#define MAX_DIRLENGTH 256
+
+extern struct vulpes_state {
+  char index_name[MAX_INDEX_NAME_LENGTH];
+  char image_name[MAX_INDEX_NAME_LENGTH];
+  unsigned version;
+  unsigned chunksize_bytes;
+  unsigned chunksperdir;
+  unsigned numchunks;
+  unsigned numdirs;
+  vulpes_volsize_t volsize;	/* sectors */
+  unsigned chunksize;		/* sectors */
+  int fd;
+  unsigned offset_bytes;
+  struct chunk_data *cd;		/* cd[] */
+} state;
 
 /* XXX miscellaneous exported functions */
 int set_signal_handler(int sig, void (*handler)(int sig));
@@ -73,7 +92,6 @@ vulpes_err_t local_get(char *buf, int *bufsize, const char *file);
 vulpes_err_t http_get(char *buf, int *bufsize, const char *url);
 void copy_for_upload(char *oldkr, char *dest);
 void checktags(void);
-vulpes_volsize_t lev1_volsize(void);
 int lev1_shutdown(void);
 int lev1_read(vulpes_cmdblk_t * cmdblk);
 int lev1_write(const vulpes_cmdblk_t * cmdblk);

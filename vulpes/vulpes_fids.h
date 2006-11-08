@@ -23,7 +23,7 @@ ACCEPTANCE OF THIS AGREEMENT
 
 typedef int fid_id_t;
 
-typedef int (*fidsvc_reclamation_func_t) (void *, int);
+typedef int (*fidsvc_reclamation_func_t) (int);
 
 void fidsvc_init(void);
 void fidsvc_close(void);
@@ -31,8 +31,7 @@ void fidsvc_close(void);
 int fidsvc_num_open(void);
 void fidsvc_get(fid_id_t fnp);
 int fidsvc_remove(fid_id_t fnp);
-fid_id_t fidsvc_register(fidsvc_reclamation_func_t reclaim,
-			 void *reclaim_data, int index);
+fid_id_t fidsvc_register(fidsvc_reclamation_func_t reclaim, int index);
 
 
 

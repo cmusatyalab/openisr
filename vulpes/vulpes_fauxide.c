@@ -52,7 +52,7 @@ static int fauxide_register(void)
   
   config.reg.vulpes_id = 0;
   config.reg.pid = getpid();
-  config.reg.volsize = lev1_volsize();
+  config.reg.volsize = state.volsize;
   
   regblk.reg = config.reg;
   

@@ -30,10 +30,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #include "vulpes_state.h"
 #include <sys/time.h>
 
-#define MAX_INDEX_NAME_LENGTH 256
-#define MAX_CHUNK_NAME_LENGTH 512
-#define MAX_DIRLENGTH 256
-
 const unsigned CHUNK_STATUS_ACCESSED = 0x0001;	/* This chunk has been accessed this session */
 const unsigned CHUNK_STATUS_DIRTY = 0x0002;	/* This chunk needs to be written to disk */
 const unsigned CHUNK_STATUS_MODIFIED_SESSION = 0x0004; /* This chunk has been modified this session */
@@ -54,20 +50,7 @@ struct chunk_data {
   unsigned char *buffer;	/* File is now always read into memory */
 };
 
-struct lev1_mapping {
-  char index_name[MAX_INDEX_NAME_LENGTH];
-  char image_name[MAX_INDEX_NAME_LENGTH];
-  unsigned version;
-  unsigned chunksize_bytes;
-  unsigned chunksperdir;
-  unsigned numchunks;
-  unsigned numdirs;
-  vulpes_volsize_t volsize;	/* sectors */
-  unsigned chunksize;		/* sectors */
-  int fd;
-  unsigned offset_bytes;
-  struct chunk_data *cd;		/* cd[] */
-};
+struct vulpes_state state;
 
 static unsigned writes_before_read = 0;
 static unsigned chunks_stripped = 0;
@@ -164,29 +147,25 @@ static inline void mark_cdp_not_lka_copy(struct chunk_data * cdp)
 
 static inline unsigned get_chunk_number(unsigned sect_num)
 {
-  struct lev1_mapping *spec=config.special;
-  return sect_num / spec->chunksize;
+  return sect_num / state.chunksize;
 }
 
 static inline void get_dir_chunk_from_chunk_num(unsigned chunk_num,
                    unsigned *dir, unsigned *chunk)
 {
-  struct lev1_mapping *spec=config.special;
-  *chunk = chunk_num % spec->chunksperdir;
-  *dir = chunk_num / spec->chunksperdir;
+  *chunk = chunk_num % state.chunksperdir;
+  *dir = chunk_num / state.chunksperdir;
 }
 
 
 static struct chunk_data *get_cdp_from_chunk_num(unsigned chunk_num)
 {
-  struct lev1_mapping *spec=config.special;
-  return &(spec->cd[chunk_num]);
+  return &(state.cd[chunk_num]);
 }
 
 static uint64_t get_image_offset_from_chunk_num(unsigned chunk_num)
 {
-  struct lev1_mapping *spec=config.special;
-  return ((uint64_t)chunk_num) * spec->chunksize_bytes + spec->offset_bytes;
+  return ((uint64_t)chunk_num) * state.chunksize_bytes + state.offset_bytes;
 }
 
 static inline void mark_cdp_present(struct chunk_data * cdp)
@@ -196,7 +175,6 @@ static inline void mark_cdp_present(struct chunk_data * cdp)
 
 static int form_index_name(const char *dirname)
 {
-  struct lev1_mapping *spec=config.special;
   int add_slash = 0;
   int result;
   
@@ -204,7 +182,7 @@ static int form_index_name(const char *dirname)
     add_slash = 1;
   }
   
-  result=snprintf(spec->index_name, MAX_INDEX_NAME_LENGTH, "%s%s%s",
+  result=snprintf(state.index_name, MAX_INDEX_NAME_LENGTH, "%s%s%s",
                         dirname, (add_slash ? "/" : ""), lev1_index_name);
 
   if (result >= MAX_INDEX_NAME_LENGTH || result == -1) {
@@ -216,7 +194,6 @@ static int form_index_name(const char *dirname)
 
 static int form_image_name(const char *dirname)
 {
-  struct lev1_mapping *spec=config.special;
   int add_slash = 0;
   int result;
   
@@ -224,7 +201,7 @@ static int form_image_name(const char *dirname)
     add_slash = 1;
   }
   
-  result=snprintf(spec->image_name, MAX_INDEX_NAME_LENGTH, "%s%s%s",
+  result=snprintf(state.image_name, MAX_INDEX_NAME_LENGTH, "%s%s%s",
                         dirname, (add_slash ? "/" : ""), lev1_image_name);
 
   if (result >= MAX_INDEX_NAME_LENGTH || result == -1) {
@@ -300,7 +277,6 @@ debug_buffer_stats(const char *msg, unsigned index, const unsigned char *buf, un
 /* hex file format: "<tag> <key>\n" (82 bytes/line including newline) */
 vulpes_err_t read_hex_keyring(char *userPath)
 {
-	struct lev1_mapping *spec=config.special;
 	unsigned chunk_num;
 	int fd;
 	struct chunk_data *cdp;
@@ -311,7 +287,7 @@ vulpes_err_t read_hex_keyring(char *userPath)
 		vulpes_log(LOG_ERRORS,"could not open keyring: %s",userPath);
 		return VULPES_IOERR;
 	}
-	for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
+	for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
 		cdp=get_cdp_from_chunk_num(chunk_num);
 		if (read(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
 			goto short_read;
@@ -326,7 +302,7 @@ vulpes_err_t read_hex_keyring(char *userPath)
 		return VULPES_IOERR;
 	}
 	close(fd);
-	vulpes_log(LOG_BASIC,"read hex keyring %s: %d keys",userPath,spec->numchunks);
+	vulpes_log(LOG_BASIC,"read hex keyring %s: %d keys",userPath,state.numchunks);
 	return VULPES_SUCCESS;
 	
 short_read:
@@ -337,7 +313,6 @@ short_read:
 /* converts to hex, writes */
 static vulpes_err_t write_hex_keyring(char *userPath)
 {
-	struct lev1_mapping *spec=config.special;
 	unsigned chunk_num;
 	struct chunk_data *cdp;
 	int fd;
@@ -348,7 +323,7 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 		vulpes_log(LOG_ERRORS,"could not open keyring file for writeback: %s", userPath);
 		return VULPES_IOERR;
 	}
-	for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
+	for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
 		cdp=get_cdp_from_chunk_num(chunk_num);
 		binToHex(cdp->tag, buf, HASH_LEN);
 		buf[HASH_LEN_HEX - 1]=' ';
@@ -360,7 +335,7 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 			goto short_write;
 	}
 	close(fd);
-	vulpes_log(LOG_BASIC,"wrote hex keyring %s: %d keys",userPath,spec->numchunks);
+	vulpes_log(LOG_BASIC,"wrote hex keyring %s: %d keys",userPath,state.numchunks);
 	return VULPES_SUCCESS;
 	
 short_write:
@@ -371,7 +346,6 @@ short_write:
 
 static vulpes_err_t read_bin_keyring(char *path)
 {
-  struct lev1_mapping *spec=config.special;
   struct chunk_data *cdp;
   struct kr_header hdr;
   struct kr_entry entry;
@@ -394,12 +368,12 @@ static vulpes_err_t read_bin_keyring(char *path)
     vulpes_log(LOG_ERRORS, "Invalid version reading %s: expected %d, found %d", path, KR_VERSION, hdr.version);
     return VULPES_BADFORMAT;
   }
-  if (ntohl(hdr.entries) != spec->numchunks) {
-    vulpes_log(LOG_ERRORS, "Invalid chunk count reading %s: expected %u, found %u", path, spec->numchunks, htonl(hdr.entries));
+  if (ntohl(hdr.entries) != state.numchunks) {
+    vulpes_log(LOG_ERRORS, "Invalid chunk count reading %s: expected %u, found %u", path, state.numchunks, htonl(hdr.entries));
     return VULPES_BADFORMAT;
   }
   
-  for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
+  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
     if (read(fd, &entry, sizeof(entry)) != sizeof(entry))
       goto short_read;
     cdp=get_cdp_from_chunk_num(chunk_num);
@@ -415,7 +389,7 @@ static vulpes_err_t read_bin_keyring(char *path)
     return VULPES_IOERR;
   }
   close(fd);
-  vulpes_log(LOG_BASIC, "read bin keyring %s: %d keys", path, spec->numchunks);
+  vulpes_log(LOG_BASIC, "read bin keyring %s: %d keys", path, state.numchunks);
   return VULPES_SUCCESS;
   
 short_read:
@@ -426,7 +400,6 @@ short_read:
 
 static vulpes_err_t write_bin_keyring(char *path)
 {
-  struct lev1_mapping *spec=config.special;
   struct chunk_data *cdp;
   struct kr_header hdr;
   struct kr_entry entry;
@@ -439,13 +412,13 @@ static vulpes_err_t write_bin_keyring(char *path)
   
   memset(&hdr, 0, sizeof(hdr));
   hdr.magic=htonl(KR_MAGIC);
-  hdr.entries=htonl(spec->numchunks);
+  hdr.entries=htonl(state.numchunks);
   hdr.version=KR_VERSION;
   if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr))
     goto short_write;
   
   memset(&entry, 0, sizeof(entry));
-  for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
+  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
     cdp=get_cdp_from_chunk_num(chunk_num);
     memcpy(entry.key, cdp->key, HASH_LEN);
     memcpy(entry.tag, cdp->tag, HASH_LEN);
@@ -454,7 +427,7 @@ static vulpes_err_t write_bin_keyring(char *path)
       goto short_write;
   }
   close(fd);
-  vulpes_log(LOG_BASIC, "wrote bin keyring %s: %d keys", path, spec->numchunks);
+  vulpes_log(LOG_BASIC, "wrote bin keyring %s: %d keys", path, state.numchunks);
   return VULPES_SUCCESS;
   
 short_write:
@@ -465,7 +438,6 @@ short_write:
 
 static vulpes_err_t write_cache_header(int fd)
 {
-  struct lev1_mapping *spec=config.special;
   struct chunk_data *cdp;
   struct ca_header hdr;
   struct ca_entry entry;
@@ -478,7 +450,7 @@ static vulpes_err_t write_cache_header(int fd)
     return VULPES_IOERR;
   }
   
-  for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
+  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
     memset(&entry, 0, sizeof(entry));
     cdp=get_cdp_from_chunk_num(chunk_num);
     if (cdp_present(cdp)) {
@@ -502,9 +474,9 @@ static vulpes_err_t write_cache_header(int fd)
   }
   memset(&hdr, 0, sizeof(hdr));
   hdr.magic=htonl(CA_MAGIC);
-  hdr.entries=htonl(spec->numchunks);
+  hdr.entries=htonl(state.numchunks);
   hdr.version=CA_VERSION;
-  hdr.offset=htonl(spec->offset_bytes / 512);
+  hdr.offset=htonl(state.offset_bytes / 512);
   hdr.valid_chunks=htonl(valid_count);
   hdr.dirty_chunks=htonl(dirty_count);
   if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
@@ -518,30 +490,29 @@ static vulpes_err_t write_cache_header(int fd)
 
 static vulpes_err_t open_cache_file(const char *path)
 {
-  struct lev1_mapping *spec=config.special;
   struct chunk_data *cdp;
   struct ca_header hdr;
   struct ca_entry entry;
   unsigned chunk_num;
   
-  spec->fd=open(path, O_RDWR);
-  if (spec->fd == -1 && errno == ENOENT) {
+  state.fd=open(path, O_RDWR);
+  if (state.fd == -1 && errno == ENOENT) {
     vulpes_log(LOG_BASIC,"No existing local cache; creating");
-    spec->fd=open(path, O_CREAT|O_RDWR, 0600);
-    if (spec->fd == -1) {
+    state.fd=open(path, O_CREAT|O_RDWR, 0600);
+    if (state.fd == -1) {
       vulpes_log(LOG_ERRORS,"couldn't create cache file");
       return VULPES_IOERR;
     }
-    spec->offset_bytes=((sizeof(hdr) + spec->numchunks * sizeof(entry))
+    state.offset_bytes=((sizeof(hdr) + state.numchunks * sizeof(entry))
                        + FAUXIDE_HARDSECT_SIZE - 1) & ~(FAUXIDE_HARDSECT_SIZE - 1);
-    write_cache_header(spec->fd);
+    write_cache_header(state.fd);
     return VULPES_SUCCESS;
-  } else if (spec->fd == -1) {
+  } else if (state.fd == -1) {
     vulpes_log(LOG_ERRORS,"couldn't open cache file");
     return VULPES_IOERR;
   }
   
-  if (read(spec->fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
+  if (read(state.fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
     vulpes_log(LOG_ERRORS, "Couldn't read cache file header");
     return VULPES_IOERR;
   }
@@ -553,14 +524,14 @@ static vulpes_err_t open_cache_file(const char *path)
     vulpes_log(LOG_ERRORS, "Invalid version reading cache file: expected %d, found %d", CA_VERSION, hdr.version);
     return VULPES_BADFORMAT;
   }
-  if (ntohl(hdr.entries) != spec->numchunks) {
-    vulpes_log(LOG_ERRORS, "Invalid chunk count reading cache file: expected %u, found %u", spec->numchunks, htonl(hdr.entries));
+  if (ntohl(hdr.entries) != state.numchunks) {
+    vulpes_log(LOG_ERRORS, "Invalid chunk count reading cache file: expected %u, found %u", state.numchunks, htonl(hdr.entries));
     return VULPES_BADFORMAT;
   }
-  spec->offset_bytes=ntohl(hdr.offset) * FAUXIDE_HARDSECT_SIZE;
+  state.offset_bytes=ntohl(hdr.offset) * FAUXIDE_HARDSECT_SIZE;
   
-  for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
-    if (read(spec->fd, &entry, sizeof(entry)) != sizeof(entry)) {
+  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
+    if (read(state.fd, &entry, sizeof(entry)) != sizeof(entry)) {
       vulpes_log(LOG_ERRORS, "Couldn't read cache file header");
       return VULPES_IOERR;
     }
@@ -629,7 +600,6 @@ static int valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize,
 static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
                                       unsigned buf_len)
 {
-  struct lev1_mapping *spec=config.special;
   struct chunk_data *cdp;
   void *decompressed, *newkey, *newtag;
   unsigned char *decrypted, *encrypted;
@@ -642,7 +612,7 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
     vulpes_log(LOG_ERRORS,"chunk is already uncompressed: %u", chunk_num);
     return VULPES_INVALID;
   }
-  if (buf_len < spec->chunksize_bytes) {
+  if (buf_len < state.chunksize_bytes) {
     vulpes_log(LOG_ERRORS,"compressed buffer too small: %u", buf_len);
     return VULPES_INVALID;
   }
@@ -653,19 +623,19 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
     return VULPES_BADFORMAT;
   };
   
-  decompressed = malloc(spec->chunksize_bytes);
+  decompressed = malloc(state.chunksize_bytes);
   if (decompressed == NULL) {
     vulpes_log(LOG_ERRORS,"malloc failed: %d",chunk_num);
     return VULPES_NOMEM;
   }
 
-  decompressedSize = spec->chunksize_bytes;
+  decompressedSize = state.chunksize_bytes;
   if (uncompress(decompressed, &decompressedSize, decrypted, decryptedSize)
                  != Z_OK) {
     vulpes_log(LOG_ERRORS,"could not decompress file: %d",chunk_num);
     return VULPES_BADFORMAT;
   };
-  if (decompressedSize != spec->chunksize_bytes) {
+  if (decompressedSize != state.chunksize_bytes) {
     vulpes_log(LOG_ERRORS,"decompressed to invalid length %d: %d",decompressedSize,chunk_num);
     return VULPES_BADFORMAT;
   }
@@ -674,7 +644,7 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
   newkey = digest(decompressed, decompressedSize);
   vulpes_encrypt(decompressed, decompressedSize, &encrypted, &encryptedSize,
                  newkey, HASH_LEN, 0);
-  if (encryptedSize != spec->chunksize_bytes) {
+  if (encryptedSize != state.chunksize_bytes) {
     vulpes_log(LOG_ERRORS,"encrypted to invalid length %d: %d",encryptedSize,chunk_num);
     return VULPES_BADFORMAT;
   }
@@ -694,13 +664,12 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
 
 static int lev1_copy_file(const char *src, unsigned chunk_num)
 {
-  struct lev1_mapping *spec=config.special;
   char *buf;
   int buflen;
   vulpes_err_t err;
   struct chunk_data *cdp;
   
-  buflen=1.002*spec->chunksize_bytes+20;
+  buflen=1.002*state.chunksize_bytes+20;
   buf=malloc(buflen);
   if (buf == NULL) {
     vulpes_log(LOG_TRANSPORT,"malloc failed");
@@ -774,14 +743,14 @@ static int lev1_copy_file(const char *src, unsigned chunk_num)
   }
 
 have_data:
-  if (cdp_is_compressed(cdp) && buflen >= spec->chunksize_bytes) {
+  if (cdp_is_compressed(cdp) && buflen >= state.chunksize_bytes) {
     err=strip_compression(chunk_num, &buf, buflen);
     if (err) goto out;
-    buflen=spec->chunksize_bytes;
+    buflen=state.chunksize_bytes;
   }
     
   /* write to cache */
-  if(pwrite(spec->fd, buf, buflen, get_image_offset_from_chunk_num(chunk_num))
+  if(pwrite(state.fd, buf, buflen, get_image_offset_from_chunk_num(chunk_num))
            != buflen) {
       vulpes_log(LOG_ERRORS,"unable to write cache for %u: %s",chunk_num,strerror(errno));
       err=VULPES_IOERR;
@@ -794,15 +763,14 @@ out:
   return err ? -1 : 0;
 }
 
-int lev1_reclaim(void *data, int chunk_num)
+int lev1_reclaim(int chunk_num)
 {
   struct chunk_data *cdp;
-  struct lev1_mapping *spec=data;
   unsigned chunksize;
   
   cdp = get_cdp_from_chunk_num(chunk_num);
   
-  chunksize = spec->chunksize_bytes;
+  chunksize = state.chunksize_bytes;
   
   /* We have some work to do: compress the memory buffer,
    * encrypt it, then write to file. use the
@@ -864,7 +832,7 @@ int lev1_reclaim(void *data, int chunk_num)
 
       lev1_updateKey(chunk_num, newkey, newtag);
       
-      if(pwrite(spec->fd, encrypted, encryptedSize,
+      if(pwrite(state.fd, encrypted, encryptedSize,
 	        get_image_offset_from_chunk_num(chunk_num)) != encryptedSize) {
 	vulpes_log(LOG_ERRORS,"chunk write failed: %d",chunk_num);
 	return -1;
@@ -899,7 +867,6 @@ int lev1_reclaim(void *data, int chunk_num)
 /* returns 0 if okay else -1 on bad exit */
 static int open_chunk_file(const vulpes_cmdblk_t * cmdblk)
 {
-  struct lev1_mapping *spec=config.special;
   unsigned chunk_num;
   int chunksPerDir;
   struct chunk_data *cdp;
@@ -909,7 +876,7 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk)
   int size;
   static unsigned char tag_log[HASH_LEN_HEX];
   
-  chunksPerDir = spec->chunksperdir;
+  chunksPerDir = state.chunksperdir;
 
   chunk_num=get_chunk_number(cmdblk->head.start_sect);
   cdp = get_cdp_from_chunk_num(chunk_num);
@@ -945,7 +912,7 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk)
   /* open the file */
   vulpes_log(LOG_CHUNKS,"open %d",chunk_num);
   /* chunk lru */
-  cdp->fnp = fidsvc_register(lev1_reclaim, spec, chunk_num);
+  cdp->fnp = fidsvc_register(lev1_reclaim, chunk_num);
   mark_cdp_accessed(cdp);
   
   /* Set up the buffer, decrypt using the key and then decompress it */
@@ -957,7 +924,7 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk)
     return -1;
   }
 
-  if (pread(spec->fd, encryptedFile, cdp->length,
+  if (pread(state.fd, encryptedFile, cdp->length,
             get_image_offset_from_chunk_num(chunk_num)) != cdp->length) {
     vulpes_log(LOG_ERRORS,"Could not read the required number of bytes: %d",chunk_num);
     return -1;
@@ -986,21 +953,21 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk)
   encryptedFile = NULL;
   
   if (cdp_is_compressed(cdp)) {
-    decompressedFile = malloc(spec->chunksize_bytes);
+    decompressedFile = malloc(state.chunksize_bytes);
     if (decompressedFile == NULL) {
       vulpes_log(LOG_ERRORS,"could not malloc space for decompressed file: %d",chunk_num);
       return -1;
     }
   
     compressedSize = size;
-    decompressedSize = spec->chunksize_bytes;
+    decompressedSize = state.chunksize_bytes;
     if (uncompress(decompressedFile, &decompressedSize, decryptedFile,
 		 compressedSize) != Z_OK) {
       vulpes_log(LOG_ERRORS,"could not decompress file: %d",chunk_num);
       return -1;
     };
     
-    if (decompressedSize!=spec->chunksize_bytes) {
+    if (decompressedSize!=state.chunksize_bytes) {
       vulpes_log(LOG_ERRORS,"On decompressing, final size is NOT CHUNKSIZE: %d",chunk_num);
       return -1;
     }
@@ -1009,67 +976,56 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk)
     cdp->buffer = decompressedFile;
   } else {
     vulpes_log(LOG_CHUNKS,"Reading uncompressed chunk: %u", chunk_num);
-    if (size != spec->chunksize_bytes) {
-      vulpes_log(LOG_ERRORS,"Chunk stored uncompressed is not %u bytes: %u",spec->chunksize_bytes,chunk_num);
+    if (size != state.chunksize_bytes) {
+      vulpes_log(LOG_ERRORS,"Chunk stored uncompressed is not %u bytes: %u",state.chunksize_bytes,chunk_num);
       return -1;
     }
     cdp->buffer = decryptedFile;
   }
 
-  debug_buffer_stats("Open", chunk_num, cdp->buffer, spec->chunksize_bytes);
+  debug_buffer_stats("Open", chunk_num, cdp->buffer, state.chunksize_bytes);
 
   return 0;
 }
 
 /* INTERFACE FUNCTIONS */
 
-vulpes_volsize_t lev1_volsize(void)
-{
-  struct lev1_mapping *spec=config.special;
-  return spec->volsize;
-}
-
 int lev1_shutdown(void)
 {
-  struct lev1_mapping *spec=config.special;
   unsigned u;
   
   unsigned modified_chunks = 0;
   unsigned accessed_chunks = 0;
   
   
-  if (spec != NULL) {
-    /* deallocate the fnp array */
-    if (spec->cd != NULL) {
-      for (u = 0; u < spec->numchunks; u++) {
-	if (cdp_is_accessed(&(spec->cd[u]))) {
-	  ++accessed_chunks;
-	  if (cdp_is_modified_session(&(spec->cd[u]))) {
-	    ++modified_chunks;
-	  }
-	}
-	if (spec->cd[u].fnp != NULL_FID_ID) {
-	  if (fidsvc_remove(spec->cd[u].fnp)) {
-	    vulpes_log(LOG_ERRORS,"%d failed in fidsvc_remove",u);
-	    return -1;
-	  }
+  /* deallocate the fnp array */
+  if (state.cd != NULL) {
+    for (u = 0; u < state.numchunks; u++) {
+      if (cdp_is_accessed(&(state.cd[u]))) {
+	++accessed_chunks;
+	if (cdp_is_modified_session(&(state.cd[u]))) {
+	  ++modified_chunks;
 	}
       }
-      write_cache_header(spec->fd);
-      close(spec->fd);
-      if (write_bin_keyring(config.bin_keyring_name)) {
-	vulpes_log(LOG_ERRORS,"write_bin_keyring failed");
-	return -1;
+      if (state.cd[u].fnp != NULL_FID_ID) {
+	if (fidsvc_remove(state.cd[u].fnp)) {
+	  vulpes_log(LOG_ERRORS,"%d failed in fidsvc_remove",u);
+	  return -1;
+	}
       }
-      if (write_hex_keyring(config.hex_keyring_name)) {
-	vulpes_log(LOG_ERRORS,"write_hex_keyring failed");
-	return -1;
-      }
-      free(spec->cd);
-      spec->cd = NULL;
     }
-    config.special = NULL;
-    free(spec);
+    write_cache_header(state.fd);
+    close(state.fd);
+    if (write_bin_keyring(config.bin_keyring_name)) {
+      vulpes_log(LOG_ERRORS,"write_bin_keyring failed");
+      return -1;
+    }
+    if (write_hex_keyring(config.hex_keyring_name)) {
+      vulpes_log(LOG_ERRORS,"write_hex_keyring failed");
+      return -1;
+    }
+    free(state.cd);
+    state.cd = NULL;
   }
   
   /* Print close stats */
@@ -1083,7 +1039,6 @@ int lev1_shutdown(void)
 
 int lev1_read(vulpes_cmdblk_t * cmdblk)
 {
-  struct lev1_mapping *spec=config.special;
   off_t start;
   ssize_t bytes;
   struct chunk_data *cdp=NULL;
@@ -1109,10 +1064,10 @@ int lev1_read(vulpes_cmdblk_t * cmdblk)
     return -1;
   };
   
-  start = (cmdblk->head.start_sect % spec->chunksize) * FAUXIDE_HARDSECT_SIZE;
+  start = (cmdblk->head.start_sect % state.chunksize) * FAUXIDE_HARDSECT_SIZE;
   bytes = cmdblk->head.num_sect * FAUXIDE_HARDSECT_SIZE;
   
-  if (start+bytes>spec->chunksize_bytes) {
+  if (start+bytes>state.chunksize_bytes) {
     vulpes_log(LOG_ERRORS,"trying to read beyond end of chunk %d",chunk_num);
     return -1;
   }
@@ -1130,7 +1085,6 @@ int lev1_read(vulpes_cmdblk_t * cmdblk)
 
 int lev1_write(const vulpes_cmdblk_t * cmdblk)
 {
-  struct lev1_mapping *spec=config.special;
   off_t start;
   ssize_t bytes;
   struct chunk_data *cdp=NULL;
@@ -1156,10 +1110,10 @@ int lev1_write(const vulpes_cmdblk_t * cmdblk)
     return -1;
   };
   
-  start = (cmdblk->head.start_sect % spec->chunksize) * FAUXIDE_HARDSECT_SIZE;
+  start = (cmdblk->head.start_sect % state.chunksize) * FAUXIDE_HARDSECT_SIZE;
   bytes = cmdblk->head.num_sect * FAUXIDE_HARDSECT_SIZE;
   
-  if (start+bytes>spec->chunksize_bytes) {
+  if (start+bytes>state.chunksize_bytes) {
     vulpes_log(LOG_ERRORS,"trying to write beyond end of chunk: %d",chunk_num);
     return -1;
   }
@@ -1183,20 +1137,11 @@ int lev1_write(const vulpes_cmdblk_t * cmdblk)
 
 int initialize_lev1_mapping(void)
 {
-  struct lev1_mapping *spec;
   unsigned long long volsize_bytes;
   unsigned long long tmp_volsize;
   int parse_error = 0;
   FILE *f;
   unsigned u;
-  
-  /* Allocate special */
-  spec = config.special = malloc(sizeof(struct lev1_mapping));
-  if (!config.special) {
-    vulpes_log(LOG_ERRORS,"malloc for config.special failed");
-    return -1;
-  }
-  bzero(config.special, sizeof(struct lev1_mapping));
   
   vulpes_log(LOG_BASIC,"vulpes_cache: %s", config.cache_name);
   if ((config.proxy_name) && (config.proxy_port)) {
@@ -1210,54 +1155,54 @@ int initialize_lev1_mapping(void)
   }
   
   /* Open index file */
-  f = fopen(spec->index_name, "r");
+  f = fopen(state.index_name, "r");
   if (f == NULL) {
-    vulpes_log(LOG_ERRORS,"unable to open index file %s",spec->index_name);
+    vulpes_log(LOG_ERRORS,"unable to open index file %s",state.index_name);
     return -1;
   }
   
   /* Scan index file */
-  if (fscanf(f, "VERSION= %u\n", &spec->version) != 1) {
-    vulpes_log(LOG_ERRORS,"unable to parse version from index file %s",spec->index_name);
+  if (fscanf(f, "VERSION= %u\n", &state.version) != 1) {
+    vulpes_log(LOG_ERRORS,"unable to parse version from index file %s",state.index_name);
     fclose(f);
     return -1;
   }
-  if (spec->version != 1) {
-    vulpes_log(LOG_ERRORS,"unknown lev1 version number: %s",spec->index_name);
+  if (state.version != 1) {
+    vulpes_log(LOG_ERRORS,"unknown lev1 version number: %s",state.index_name);
     fclose(f);
     return -1;
   }
   
-  if (fscanf(f, "CHUNKSIZE= %u\n", &spec->chunksize_bytes) != 1)
+  if (fscanf(f, "CHUNKSIZE= %u\n", &state.chunksize_bytes) != 1)
     parse_error = 1;
-  if (fscanf(f, "CHUNKSPERDIR= %u\n", &spec->chunksperdir) != 1)
+  if (fscanf(f, "CHUNKSPERDIR= %u\n", &state.chunksperdir) != 1)
     parse_error = 1;
   if (fscanf(f, "VOLSIZE= %llu\n", &volsize_bytes) != 1)
     parse_error = 1;
-  if (fscanf(f, "NUMCHUNKS= %u\n", &spec->numchunks) != 1)
+  if (fscanf(f, "NUMCHUNKS= %u\n", &state.numchunks) != 1)
     parse_error = 1;
-  if (fscanf(f, "NUMDIRS= %u\n", &spec->numdirs) != 1)
+  if (fscanf(f, "NUMDIRS= %u\n", &state.numdirs) != 1)
     parse_error = 1;
   
   fclose(f);
   if (parse_error) {
-    vulpes_log(LOG_ERRORS,"bad parse: %s",spec->index_name);
+    vulpes_log(LOG_ERRORS,"bad parse: %s",state.index_name);
     return -1;
   }
   
   /* compute derivative values */
-  if (spec->chunksize_bytes % FAUXIDE_HARDSECT_SIZE != 0) {
-    vulpes_log(LOG_ERRORS,"bad chunksize: %u",spec->chunksize_bytes);
+  if (state.chunksize_bytes % FAUXIDE_HARDSECT_SIZE != 0) {
+    vulpes_log(LOG_ERRORS,"bad chunksize: %u",state.chunksize_bytes);
     return -1;
   }
-  spec->chunksize = spec->chunksize_bytes / FAUXIDE_HARDSECT_SIZE;
+  state.chunksize = state.chunksize_bytes / FAUXIDE_HARDSECT_SIZE;
   
-  tmp_volsize = spec->chunksize * spec->numchunks;
+  tmp_volsize = state.chunksize * state.numchunks;
   if (tmp_volsize > MAX_VOLSIZE_VALUE) {
     vulpes_log(LOG_ERRORS,"lev1 volsize too big: %llu", tmp_volsize);
     return -1;
   }
-  spec->volsize = (vulpes_volsize_t) tmp_volsize;
+  state.volsize = (vulpes_volsize_t) tmp_volsize;
   
   /* Check if the cache root directory exists */
   if (!is_dir(config.cache_name)) {
@@ -1266,14 +1211,14 @@ int initialize_lev1_mapping(void)
   }
   
   /* Allocate the chunk_data array */
-  spec->cd = malloc(spec->numchunks * sizeof(struct chunk_data));
-  if (spec->cd == NULL) {
+  state.cd = malloc(state.numchunks * sizeof(struct chunk_data));
+  if (state.cd == NULL) {
     vulpes_log(LOG_ERRORS,"unable to allocate chunk_data array");
     return -1;
   }
-  memset(spec->cd, 0, spec->numchunks * sizeof(struct chunk_data));
-  for (u = 0; u < spec->numchunks; u++) {
-    spec->cd[u].fnp = NULL_FID_ID;
+  memset(state.cd, 0, state.numchunks * sizeof(struct chunk_data));
+  for (u = 0; u < state.numchunks; u++) {
+    state.cd[u].fnp = NULL_FID_ID;
   }
   
   switch (read_bin_keyring(config.bin_keyring_name)) {
@@ -1295,7 +1240,7 @@ int initialize_lev1_mapping(void)
     vulpes_log(LOG_ERRORS,"unable to form image name");
     return -1;
   }
-  if (open_cache_file(spec->image_name))
+  if (open_cache_file(state.image_name))
     return -1;
   
   return 0;
@@ -1303,7 +1248,6 @@ int initialize_lev1_mapping(void)
 
 void copy_for_upload(char *oldkr, char *dest)
 {
-  struct lev1_mapping *spec=config.special;
   char name[MAX_CHUNK_NAME_LENGTH];
   char *buf;
   unsigned u;
@@ -1317,13 +1261,13 @@ void copy_for_upload(char *oldkr, char *dest)
   char tag[HASH_LEN];
   
   vulpes_log(LOG_BASIC,"Copying chunks to upload directory %s",dest);
-  buf=malloc(spec->chunksize_bytes);
+  buf=malloc(state.chunksize_bytes);
   if (buf == NULL) {
     vulpes_log(LOG_ERRORS,"malloc failed");
     exit(1);
   }
   /* check the subdirectories  -- create if needed */
-  for (u = 0; u < spec->numdirs; u++) {
+  for (u = 0; u < state.numdirs; u++) {
     form_dir_name(name, sizeof(name), dest, u);
     if (!is_dir(name)) {
       if (mkdir(name, 0770)) {
@@ -1337,7 +1281,7 @@ void copy_for_upload(char *oldkr, char *dest)
     vulpes_log(LOG_ERRORS, "couldn't open %s", oldkr);
     exit(1);
   }
-  for (u=0; u < spec->numchunks; u++) {
+  for (u=0; u < state.numchunks; u++) {
     if (read(oldkrfd, tag_hex, sizeof(tag_hex)) != sizeof(tag_hex)) {
       vulpes_log(LOG_ERRORS,"short read on %s", oldkr);
       exit(1);
@@ -1366,7 +1310,7 @@ void copy_for_upload(char *oldkr, char *dest)
 	vulpes_log(LOG_ERRORS,"Couldn't open chunk file: %s",name);
 	exit(1);
       }
-      if (pread(spec->fd, buf, cdp->length, get_image_offset_from_chunk_num(u))
+      if (pread(state.fd, buf, cdp->length, get_image_offset_from_chunk_num(u))
 	       != cdp->length) {
         vulpes_log(LOG_ERRORS,"Couldn't read chunk from local cache: %u",u);
 	exit(1);
@@ -1396,24 +1340,23 @@ void copy_for_upload(char *oldkr, char *dest)
 
 void checktags(void)
 {
-  struct lev1_mapping *spec=config.special;
   void *buf;
   unsigned chunk_num;
   char *tag;
   struct chunk_data *cdp;
   
   vulpes_log(LOG_BASIC,"Checking cache consistency");
-  buf=malloc(spec->chunksize_bytes);
+  buf=malloc(state.chunksize_bytes);
   if (buf == NULL) {
     vulpes_log(LOG_ERRORS,"malloc failed");
     exit(1);
   }
-  for (chunk_num=0; chunk_num < spec->numchunks; chunk_num++) {
+  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
     cdp=get_cdp_from_chunk_num(chunk_num);
     if (!cdp_present(cdp)) {
       continue;
     }
-    if (pread(spec->fd, buf, cdp->length,
+    if (pread(state.fd, buf, cdp->length,
               get_image_offset_from_chunk_num(chunk_num)) != cdp->length) {
       vulpes_log(LOG_ERRORS,"Couldn't read chunk from local cache: %u",chunk_num);
       exit(1);
