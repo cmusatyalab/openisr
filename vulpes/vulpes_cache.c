@@ -21,7 +21,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <errno.h>
 #include <zlib.h>
 #include <netinet/in.h>
-#include "vulpes_lev1_encryption.h"
+#include "vulpes_crypto.h"
 #include "vulpes_lka.h"
 #include "vulpes_log.h"
 #include "vulpes_util.h"

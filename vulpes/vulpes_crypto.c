@@ -13,7 +13,7 @@ ACCEPTANCE OF THIS AGREEMENT
 
 */
 
-#include "vulpes_lev1_encryption.h"
+#include "vulpes_crypto.h"
 #include <string.h>
 #include <openssl/evp.h>
 #include <unistd.h>
