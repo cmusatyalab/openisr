@@ -36,7 +36,7 @@ static unsigned received_size;
 static unsigned received;
 static int dirty;
 static int pipefds[2];
-static int verbose;
+static int verbose=1;
 
 void printkey(char *key, int len)
 {
@@ -152,6 +152,8 @@ int handle_message(struct chunk *chunk, struct isr_message *message,
 		if (verbose) {
 			printf("Sending   chunk %8llu key ", message->chunk);
 			printkey(chunk->key, hash_len);
+			printf(" tag ");
+			printkey(chunk->tag, hash_len);
 			printf(" size %6u comp %u\n", chunk->length,
 						chunk->compression);
 		}
@@ -166,6 +168,8 @@ int handle_message(struct chunk *chunk, struct isr_message *message,
 		if (verbose) {
 			printf("Receiving chunk %8llu key ", message->chunk);
 			printkey(message->key, hash_len);
+			printf(" tag ");
+			printkey(message->tag, hash_len);
 			printf(" size %6u comp %u\n", message->length,
 						message->compression);
 		}
