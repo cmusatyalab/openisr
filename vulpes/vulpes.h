@@ -89,9 +89,9 @@ vulpes_err_t local_get(char *buf, int *bufsize, const char *file);
 vulpes_err_t http_get(char *buf, int *bufsize, const char *url);
 void copy_for_upload(char *oldkr, char *dest);
 void checktags(void);
-int initialize_lev1_mapping(void);
-int lev1_get(struct isr_message *msg);
-int lev1_update(const struct isr_message *msg);
-int lev1_shutdown(void);
+int initialize_cache(void);
+int cache_get(struct isr_message *msg);
+int cache_update(const struct isr_message *msg);
+int cache_shutdown(void);
 
 #endif

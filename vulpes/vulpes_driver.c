@@ -141,7 +141,7 @@ void driver_run(void)
     /* Process cmd */
     switch (msg.type) {
     case ISR_MSGTYPE_GET_META:
-      if (lev1_get(&msg)) {
+      if (cache_get(&msg)) {
 	vulpes_log(LOG_ERRORS,"%llu:%llu: get failed",request_counter,msg.chunk);
 	continue;
       }
@@ -151,7 +151,7 @@ void driver_run(void)
       }
       break;
     case ISR_MSGTYPE_UPDATE_META:
-      if (lev1_update(&msg)) {
+      if (cache_update(&msg)) {
 	vulpes_log(LOG_ERRORS,"%llu:%llu: update failed",request_counter,msg.chunk);
       }
       break;

@@ -35,8 +35,8 @@ const unsigned CHUNK_STATUS_MODIFIED = 0x0008;  /* This chunk has been modified 
 const unsigned CHUNK_STATUS_COMPRESSED = 0x1000;/* This chunk is stored compressed */
 const unsigned CHUNK_STATUS_LKA_COPY = 0x4000;	/* This chunk data was fetched from the LKA cache */
 const unsigned CHUNK_STATUS_PRESENT = 0x8000;	/* This chunk is present in the local cache */
-const char *lev1_index_name = "index.lev1";
-const char *lev1_image_name = "image.lev1";
+const char *index_name = "index.lev1";
+const char *image_name = "image.lev1";
 
 /* LOCALS */
 struct chunk_data {
@@ -151,7 +151,7 @@ static int form_index_name(const char *dirname)
   }
   
   result=snprintf(state.index_name, MAX_INDEX_NAME_LENGTH, "%s%s%s",
-                        dirname, (add_slash ? "/" : ""), lev1_index_name);
+                        dirname, (add_slash ? "/" : ""), index_name);
 
   if (result >= MAX_INDEX_NAME_LENGTH || result == -1) {
     /* Older versions of libc return -1 on truncation */
@@ -170,7 +170,7 @@ static int form_image_name(const char *dirname)
   }
   
   result=snprintf(state.image_name, MAX_INDEX_NAME_LENGTH, "%s%s%s",
-                        dirname, (add_slash ? "/" : ""), lev1_image_name);
+                        dirname, (add_slash ? "/" : ""), image_name);
 
   if (result >= MAX_INDEX_NAME_LENGTH || result == -1) {
     /* Older versions of libc return -1 on truncation */
@@ -485,8 +485,8 @@ static vulpes_err_t open_cache_file(const char *path)
   return VULPES_SUCCESS;
 }
 
-static void lev1_updateKey(unsigned chunk_num, const unsigned char *new_key,
-                           const unsigned char *new_tag)
+static void updateKey(unsigned chunk_num, const unsigned char *new_key,
+                      const unsigned char *new_tag)
 {
   struct chunk_data *cdp;
   unsigned char old_tag_log[HASH_LEN_HEX], tag_log[HASH_LEN_HEX];
@@ -502,8 +502,7 @@ static void lev1_updateKey(unsigned chunk_num, const unsigned char *new_key,
   memcpy(cdp->key, new_key, HASH_LEN);
 }
 
-static vulpes_err_t lev1_check_tag(struct chunk_data *cdp,
-                                   const unsigned char *tag)
+static vulpes_err_t check_tag(struct chunk_data *cdp, const unsigned char *tag)
 {
   return (memcmp(cdp->tag, tag, HASH_LEN) == 0) ? VULPES_SUCCESS : VULPES_TAGFAIL;
 }
@@ -526,7 +525,7 @@ static int valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize,
   
   cdp=get_cdp_from_chunk_num(chunk_num);
   dgst = digest(buffer, bufsize);
-  bufvalid = (lev1_check_tag(cdp, dgst) == VULPES_SUCCESS);
+  bufvalid = (check_tag(cdp, dgst) == VULPES_SUCCESS);
   if (!bufvalid)
     print_tag_check_error(cdp->tag, dgst);
   
@@ -589,7 +588,7 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
   newtag = digest(encrypted, encryptedSize);
   free(decompressed);
   
-  lev1_updateKey(chunk_num, newkey, newtag);
+  updateKey(chunk_num, newkey, newtag);
   free(newkey);
   free(newtag);
   mark_cdp_uncompressed(cdp);
@@ -600,7 +599,7 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
   return VULPES_SUCCESS;
 }
 
-static int lev1_copy_file(const char *src, unsigned chunk_num)
+static int retrieve_chunk(const char *src, unsigned chunk_num)
 {
   char *buf;
   int buflen;
@@ -703,7 +702,7 @@ out:
 
 /* INTERFACE FUNCTIONS */
 
-int lev1_shutdown(void)
+int cache_shutdown(void)
 {
   unsigned u;
   
@@ -742,7 +741,7 @@ int lev1_shutdown(void)
   return 0;
 }
 
-int lev1_get(struct isr_message *msg)
+int cache_get(struct isr_message *msg)
 {
   struct chunk_data *cdp;
   
@@ -754,11 +753,11 @@ int lev1_get(struct isr_message *msg)
     char remote_name[MAX_CHUNK_NAME_LENGTH];
     if (form_chunk_file_name(remote_name, MAX_CHUNK_NAME_LENGTH,
 	 config.master_name, msg->chunk)) {
-      vulpes_log(LOG_ERRORS,"unable to form lev1 remote name: %llu",msg->chunk);
+      vulpes_log(LOG_ERRORS,"unable to form cache remote name: %llu",msg->chunk);
       return -1;
     }
     
-    if (lev1_copy_file(remote_name, msg->chunk) == 0) {
+    if (retrieve_chunk(remote_name, msg->chunk) == 0) {
       mark_cdp_present(cdp);
     } else {
       vulpes_log(LOG_ERRORS,"unable to copy %s %llu",remote_name,msg->chunk);
@@ -779,7 +778,7 @@ int lev1_get(struct isr_message *msg)
   return 0;
 }
 
-int lev1_update(const struct isr_message *msg)
+int cache_update(const struct isr_message *msg)
 {
   struct chunk_data *cdp=NULL;
   
@@ -794,14 +793,14 @@ int lev1_update(const struct isr_message *msg)
     mark_cdp_uncompressed(cdp);
   else
     mark_cdp_compressed(cdp);
-  lev1_updateKey(msg->chunk, msg->key, msg->tag);
+  updateKey(msg->chunk, msg->key, msg->tag);
   cdp->length=msg->length;
 
   vulpes_log(LOG_CHUNKS,"update: %llu",msg->chunk);
   return 0;
 }
 
-int initialize_lev1_mapping(void)
+int initialize_cache(void)
 {
   unsigned long long volsize_bytes;
   int parse_error = 0;
@@ -814,7 +813,7 @@ int initialize_lev1_mapping(void)
   }
   
   if (form_index_name(config.cache_name)) {
-    vulpes_log(LOG_ERRORS,"unable to form lev1 index name");
+    vulpes_log(LOG_ERRORS,"unable to form cache index name");
     return -1;
   }
   
@@ -832,7 +831,7 @@ int initialize_lev1_mapping(void)
     return -1;
   }
   if (state.version != 1) {
-    vulpes_log(LOG_ERRORS,"unknown lev1 version number: %s",state.index_name);
+    vulpes_log(LOG_ERRORS,"unknown cache version number: %s",state.index_name);
     fclose(f);
     return -1;
   }
@@ -1021,7 +1020,7 @@ void checktags(void)
       vulpes_log(LOG_ERRORS,"Couldn't calculate hash for chunk: %u",chunk_num);
       exit(1);
     }
-    if (lev1_check_tag(cdp, tag) == VULPES_TAGFAIL) {
+    if (check_tag(cdp, tag) == VULPES_TAGFAIL) {
       vulpes_log(LOG_ERRORS,"Chunk %u: tag check failure",chunk_num);
       print_tag_check_error(cdp->tag, tag);
     }

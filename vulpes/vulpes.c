@@ -63,7 +63,7 @@ static void usage(const char *progname)
   version();
   printf("Usage: %s <options>\n", progname);
   printf("Options:\n");
-  printf("\t--map <local_cache_name>\n");
+  printf("\t--cache <local_cache_dir>\n");
   printf("\t--master <transfertype> <master_disk_location/url>\n");
     printf("\t\ttransfertype is one of: local http\n");
   printf("\t--keyring <hex_keyring_file> <binary_keyring_file>\n");
@@ -97,7 +97,7 @@ int main(int argc, char *argv[])
   int masterDone=0;
   int keyDone=0;
   int logDone=0;
-  int mapDone=0;
+  int cacheDone=0;
   int proxyDone=0;
   
   /* parse command line */
@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
 	{"version", no_argument, 0, 'a'},
 	{"allversions", no_argument, 0, 'a'},  /* XXX compatibility with old revs */
 	{"pid", no_argument, 0, 'c'},
-	{"map", no_argument, 0, 'd'},
+	{"cache", no_argument, 0, 'd'},
 	{"master", no_argument, 0, 'e'},
 	{"keyring", no_argument, 0, 'f'},
 	{"upload", no_argument, 0, 'g'},
@@ -145,16 +145,16 @@ int main(int argc, char *argv[])
       printf("VULPES: pid = %u\n", (unsigned) getpid());
       break;
     case 'd':
-      /* map */
-      if (mapDone) {
-	PARSE_ERROR("--map may only be specified once.");
+      /* cache */
+      if (cacheDone) {
+	PARSE_ERROR("--cache may only be specified once.");
       }
       requiredArgs+=2;
       if (optind >= argc) {
-	PARSE_ERROR("failed to parse mapping.");
+	PARSE_ERROR("failed to parse cache.");
       }
       config.cache_name=argv[optind++];
-      mapDone=1;
+      cacheDone=1;
       break;
     case 'e':
       /* master */
@@ -285,8 +285,8 @@ int main(int argc, char *argv[])
   if (masterDone==0 && !config.doUpload && !config.doCheck) {
     PARSE_ERROR("--master parameter missing");
   }
-  if (mapDone==0) {
-    PARSE_ERROR("--map parameter missing");
+  if (cacheDone==0) {
+    PARSE_ERROR("--cache parameter missing");
   }
   
   if (logDone==0) {
@@ -317,10 +317,10 @@ int main(int argc, char *argv[])
   }
   
   
-  VULPES_DEBUG("Initializing mapping...\n");
-  /* Initialize the mapping */
-  if (initialize_lev1_mapping()) {
-    vulpes_log(LOG_ERRORS,"unable to initialize lev1 mapping");
+  VULPES_DEBUG("Initializing cache...\n");
+  /* Initialize the cache */
+  if (initialize_cache()) {
+    vulpes_log(LOG_ERRORS,"unable to initialize cache");
     goto vulpes_exit;
   }
   
@@ -350,8 +350,8 @@ int main(int argc, char *argv[])
   driver_shutdown();
 
   /* Close file */
-  VULPES_DEBUG("\tClosing map.\n");
-  if (lev1_shutdown() == -1) {
+  VULPES_DEBUG("\tClosing cache.\n");
+  if (cache_shutdown() == -1) {
       vulpes_log(LOG_ERRORS,"shutdown function failed");
       exit(1);
     }
