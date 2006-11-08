@@ -7,8 +7,6 @@
 #include <stdio.h>
 #include "fauxide.h"
 
-#define VULPES_SIMPLE_DEFINED
-
 #undef VERBOSE_DEBUG
 #ifdef VERBOSE_DEBUG
 #define VULPES_DEBUG(fmt, args...)     {printf("[vulpes] " fmt, ## args); fflush(stdout);}
@@ -41,8 +39,6 @@ enum transfer_type {
 
 enum mapping_type {
   NO_MAPPING=0,
-  SIMPLE_FILE_MAPPING,
-  SIMPLE_DISK_MAPPING,
   LEV1_MAPPING,
 };
 
@@ -84,9 +80,6 @@ extern struct vulpes_config {
 int set_signal_handler(int sig, void (*handler)(int sig));
 void tally_sector_accesses(unsigned write, unsigned num);
 int initialize_lev1_mapping(void);
-#ifdef VULPES_SIMPLE_DEFINED
-int initialize_simple_mapping(void);
-#endif
 int fauxide_init(void);
 void fauxide_run(void);
 void fauxide_shutdown(void);

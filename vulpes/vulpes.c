@@ -89,10 +89,6 @@ static enum mapping_type char_to_mapping_type(const char *name)
   
   if (strcmp("lev1", name) == 0) {
     result = LEV1_MAPPING;
-  } else if (strcmp("file", name) == 0) {
-    result = SIMPLE_FILE_MAPPING;
-  } else if (strcmp("disk", name) == 0) {
-    result = SIMPLE_DISK_MAPPING;
   } else {
     result = NO_MAPPING;
   }
@@ -428,18 +424,6 @@ int main(int argc, char *argv[])
   VULPES_DEBUG("Establishing mapping...\n");
   /* Initialize the mapping */
   switch (config.mapping) {
-  case SIMPLE_FILE_MAPPING:
-  case SIMPLE_DISK_MAPPING:
-#ifdef VULPES_SIMPLE_DEFINED
-    if (initialize_simple_mapping()) {
-      vulpes_log(LOG_ERRORS,"ERROR: unable to initialize simple mapping");
-      goto vulpes_exit;	
-    }
-#else
-    vulpes_log(LOG_ERRORS,"ERROR: simple mapping not supported in this version.");
-    goto vulpes_exit;
-#endif
-    break;
   case LEV1_MAPPING:
     if (initialize_lev1_mapping()) {
       vulpes_log(LOG_ERRORS,"unable to initialize lev1 mapping");
