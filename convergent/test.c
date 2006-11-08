@@ -27,6 +27,7 @@ struct params {
 
 struct chunk {
 	char key[ISR_MAX_HASH_LEN];
+	char tag[ISR_MAX_HASH_LEN];
 	unsigned length;
 	unsigned compression;
 };
@@ -116,6 +117,9 @@ int setup(struct params *params, char *storefile)
 				data, params->chunksize);
 	/* second and third arguments are irrelevant but must exist */
 	EVP_EncryptFinal(&cipher, data, (int*)data);
+	EVP_DigestInit(&hash, EVP_sha1());
+	EVP_DigestUpdate(&hash, crypted, params->chunksize);
+	EVP_DigestFinal(&hash, chunk.tag, &keylen);
 	
 	chunk.compression=ISR_COMPRESS_NONE;
 	fprintf(stderr, "Initializing %llu chunks", params->chunks);
@@ -152,6 +156,7 @@ int handle_message(struct chunk *chunk, struct isr_message *message,
 						chunk->compression);
 		}
 		memcpy(message_out->key, chunk->key, hash_len);
+		memcpy(message_out->tag, chunk->tag, hash_len);
 		message_out->chunk=message->chunk;
 		message_out->length=chunk->length;
 		message_out->compression=chunk->compression;
@@ -165,6 +170,7 @@ int handle_message(struct chunk *chunk, struct isr_message *message,
 						message->compression);
 		}
 		memcpy(chunk->key, message->key, hash_len);
+		memcpy(chunk->tag, message->tag, hash_len);
 		chunk->length=message->length;
 		chunk->compression=message->compression;
 		received++;

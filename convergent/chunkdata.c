@@ -48,6 +48,7 @@ struct chunkdata {
 	enum cd_state state;
 	u64 state_begin;       /* usec since epoch */
 	char key[ISR_MAX_HASH_LEN];
+	char tag[ISR_MAX_HASH_LEN];
 	struct scatterlist *sg;
 };
 
@@ -351,6 +352,13 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 	if (type == READ) {
 		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->cid);
+		/* Make sure encrypted data matches tag */
+		crypto_hash(dev, cd->sg, cd->size, hash);
+		if (memcmp(cd->tag, hash, dev->hash_len)) {
+			debug("Chunk " SECTOR_FORMAT ": Tag doesn't match "
+						"data", cd->cid);
+			return -EIO;
+		}
 		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, READ);
 		if (ret)
 			return ret;
@@ -384,6 +392,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, WRITE);
 		if (ret)
 			return ret;
+		crypto_hash(dev, cd->sg, cd->size, cd->tag);
 	}
 	return 0;
 }
@@ -643,7 +652,8 @@ void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid)
 }
 
 void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
-			unsigned *length, compress_t *compression, char key[])
+			unsigned *length, compress_t *compression, char key[],
+			char tag[])
 {
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	BUG_ON(cd->state != ST_STORE_META);
@@ -651,10 +661,12 @@ void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 	*length=cd->size;
 	*compression=cd->compression;
 	memcpy(key, cd->key, cd->table->dev->hash_len);
+	memcpy(tag, cd->tag, cd->table->dev->hash_len);
 }
 
 void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
-			unsigned length, compress_t compression, char key[])
+			unsigned length, compress_t compression, char key[],
+			char tag[])
 {
 	struct chunkdata *cd;
 	
@@ -669,6 +681,7 @@ void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 	cd->size=length;
 	cd->compression=compression;
 	memcpy(cd->key, key, dev->hash_len);
+	memcpy(cd->tag, tag, dev->hash_len);
 	transition(cd, ST_META);
 	__end_usermsg(cd);
 }

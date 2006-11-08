@@ -86,7 +86,8 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 			break;
 		case ISR_MSGTYPE_UPDATE_META:
 			get_usermsg_update_meta(cd, &msg.chunk, &msg.length,
-						&msg.compression, msg.key);
+						&msg.compression, msg.key,
+						msg.tag);
 			do_end=1;
 			break;
 		default:
@@ -145,7 +146,8 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 				goto out;
 			}
 			set_usermsg_set_meta(dev, msg.chunk, msg.length,
-						msg.compression, msg.key);
+						msg.compression, msg.key,
+						msg.tag);
 			break;
 		default:
 			err=-EINVAL;

@@ -229,9 +229,11 @@ void end_usermsg(struct chunkdata *cd);
 void shutdown_usermsg(struct convergent_dev *dev);
 void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid);
 void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
-			unsigned *length, compress_t *compression, char key[]);
+			unsigned *length, compress_t *compression, char key[],
+			char tag[]);
 void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
-			unsigned length, compress_t compression, char key[]);
+			unsigned length, compress_t compression, char key[],
+			char tag[]);
 int reserve_chunks(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);

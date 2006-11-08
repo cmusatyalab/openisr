@@ -47,6 +47,7 @@ struct isr_message {
 	msgtype_t type;
 	compress_t compression;
 	__u8 key[ISR_MAX_HASH_LEN];
+	__u8 tag[ISR_MAX_HASH_LEN];
 };
 
 /* Kernel to user */
