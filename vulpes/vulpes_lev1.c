@@ -1023,13 +1023,13 @@ static int open_chunk_file(const vulpes_cmdblk_t * cmdblk)
 
 /* INTERFACE FUNCTIONS */
 
-vulpes_volsize_t lev1_volsize_func(void)
+vulpes_volsize_t lev1_volsize(void)
 {
   struct lev1_mapping *spec=config.special;
   return spec->volsize;
 }
 
-int lev1_shutdown_func(void)
+int lev1_shutdown(void)
 {
   struct lev1_mapping *spec=config.special;
   unsigned u;
@@ -1081,7 +1081,7 @@ int lev1_shutdown_func(void)
   return 0;
 }
 
-int lev1_read_func(vulpes_cmdblk_t * cmdblk)
+int lev1_read(vulpes_cmdblk_t * cmdblk)
 {
   struct lev1_mapping *spec=config.special;
   off_t start;
@@ -1128,7 +1128,7 @@ int lev1_read_func(vulpes_cmdblk_t * cmdblk)
   return 0;
 }
 
-int lev1_write_func(const vulpes_cmdblk_t * cmdblk)
+int lev1_write(const vulpes_cmdblk_t * cmdblk)
 {
   struct lev1_mapping *spec=config.special;
   off_t start;
@@ -1197,15 +1197,6 @@ int initialize_lev1_mapping(void)
     return -1;
   }
   bzero(config.special, sizeof(struct lev1_mapping));
-  
-  switch (config.mapping) {
-  case LEV1_MAPPING:
-    break;
-  default:
-    free(config.special);
-    config.special = NULL;
-    return -1;
-  }
   
   vulpes_log(LOG_BASIC,"vulpes_cache: %s", config.cache_name);
   if ((config.proxy_name) && (config.proxy_port)) {
@@ -1306,11 +1297,6 @@ int initialize_lev1_mapping(void)
   }
   if (open_cache_file(spec->image_name))
     return -1;
-  
-  config.volsize_func = lev1_volsize_func;
-  config.read_func = lev1_read_func;
-  config.write_func = lev1_write_func;
-  config.shutdown_func = lev1_shutdown_func;
   
   return 0;
 }

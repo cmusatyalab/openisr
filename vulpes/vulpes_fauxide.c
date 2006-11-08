@@ -52,7 +52,7 @@ static int fauxide_register(void)
   
   config.reg.vulpes_id = 0;
   config.reg.pid = getpid();
-  config.reg.volsize = (*config.volsize_func)();
+  config.reg.volsize = lev1_volsize();
   
   regblk.reg = config.reg;
   
@@ -65,7 +65,7 @@ static int fauxide_register(void)
       cmdblk.head.cmd = VULPES_CMD_READ;
       cmdblk.head.start_sect = 0;
       cmdblk.head.num_sect = VULPES_CMDBLK_SECT_PER_BUF;
-      result = (*config.read_func)(&cmdblk);
+      result = lev1_read(&cmdblk);
       if (result == -1) {
 	vulpes_log(LOG_ERRORS,"read_func failed");
 	return -1;
@@ -208,7 +208,7 @@ void fauxide_run(void)
     case VULPES_CMD_READ:
       vulpes_log(LOG_FAUXIDE_REQ,"READ_IN: %llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (cmdblk_ok(&(cmdblk.head))) {
-	result = (*config.read_func)(&cmdblk);
+	result = lev1_read(&cmdblk);
       } else {
 	vulpes_log(LOG_ERRORS,"%llu:%lu:%lu: bad cmdblk",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
 	result = -1;
@@ -226,7 +226,7 @@ void fauxide_run(void)
     case VULPES_CMD_WRITE:
       vulpes_log(LOG_FAUXIDE_REQ,"WRITE_IN: %llu:%lu:%lu",request_counter,cmdblk.head.start_sect,cmdblk.head.num_sect);
       if (cmdblk_ok(&(cmdblk.head))) {
-	result = (*config.write_func)(&cmdblk);
+	result = lev1_write(&cmdblk);
       } else {
 	result = -1;
       }

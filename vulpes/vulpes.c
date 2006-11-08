@@ -83,49 +83,18 @@ void tally_sector_accesses(unsigned write, unsigned num)
 #endif
 }
 
-static enum mapping_type char_to_mapping_type(const char *name)
-{
-  enum mapping_type result = NO_MAPPING;
-  
-  if (strcmp("lev1", name) == 0) {
-    result = LEV1_MAPPING;
-  } else {
-    result = NO_MAPPING;
-  }
-  
-  return result;
-}
-
 static void initialize_config(void)
 {
+  /* config is allocated in bss, so we only need to initialize the non-zero
+     elements */
   config.trxfer = LOCAL_TRANSPORT;
-  config.mapping = NO_MAPPING;
   
-  config.proxy_name = NULL;
   config.proxy_port = 80;
-  
-  config.device_name = NULL;
-  config.master_name = NULL;
-  config.cache_name = NULL;
-  
-  config.bin_keyring_name = NULL;
-  config.hex_keyring_name = NULL;
   
   config.vulpes_device = -1;
   
   config.reg.vulpes_id = -1;
   config.reg.pid = -1;
-  config.reg.volsize = 0;
-  
-  config.volsize_func = NULL;
-  config.read_func = NULL;
-  config.write_func = NULL;
-  config.shutdown_func = NULL;
-  
-  config.verbose = 0;
-  
-  config.lka_svc = NULL;
-  config.special = NULL;
 }
 
 static void version(void)
@@ -138,8 +107,7 @@ static void usage(const char *progname)
   version();
   printf("Usage: %s <options>\n", progname);
   printf("Options:\n");
-  printf("\t--map <maptype> <device_name> <local_cache_name>\n");
-    printf("\t\tmaptype has to be lev1\n");
+  printf("\t--map <device_name> <local_cache_name>\n");
   printf("\t--master <transfertype> <master_disk_location/url>\n");
     printf("\t\ttransfertype is one of: local http\n");
   printf("\t--keyring <hex_keyring_file> <binary_keyring_file>\n");
@@ -247,15 +215,11 @@ int main(int argc, char *argv[])
       if (mapDone) {
 	PARSE_ERROR("--map may only be specified once.");
       }
-      requiredArgs+=4;
-      if (optind+2 >= argc) {
+      requiredArgs+=3;
+      if (optind+1 >= argc) {
 	PARSE_ERROR("failed to parse mapping.");
       }
       
-      config.mapping = char_to_mapping_type(argv[optind++]);
-      if(config.mapping == NO_MAPPING) {
-	PARSE_ERROR("unknown mapping type (%s).", argv[optind-1]);
-      }	    
       config.device_name=argv[optind++];
       config.cache_name=argv[optind++];
       mapDone=1;
@@ -423,16 +387,8 @@ int main(int argc, char *argv[])
   
   VULPES_DEBUG("Establishing mapping...\n");
   /* Initialize the mapping */
-  switch (config.mapping) {
-  case LEV1_MAPPING:
-    if (initialize_lev1_mapping()) {
-      vulpes_log(LOG_ERRORS,"unable to initialize lev1 mapping");
-      goto vulpes_exit;
-    }
-    break;
-  case NO_MAPPING:
-  default:
-    vulpes_log(LOG_ERRORS,"ERROR: unknown mapping type");
+  if (initialize_lev1_mapping()) {
+    vulpes_log(LOG_ERRORS,"unable to initialize lev1 mapping");
     goto vulpes_exit;
   }
   
@@ -463,7 +419,7 @@ int main(int argc, char *argv[])
 
   /* Close file */
   VULPES_DEBUG("\tClosing map.\n");
-  if ((*config.shutdown_func)() == -1) {
+  if (lev1_shutdown() == -1) {
       vulpes_log(LOG_ERRORS,"shutdown function failed");
       exit(1);
     }

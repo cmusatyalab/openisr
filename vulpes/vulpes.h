@@ -37,19 +37,8 @@ enum transfer_type {
   HTTP_TRANSPORT,
 };
 
-enum mapping_type {
-  NO_MAPPING=0,
-  LEV1_MAPPING,
-};
-
-typedef vulpes_volsize_t(*vulpes_volsize_func_t) (void);
-typedef int (*vulpes_read_func_t) (vulpes_cmdblk_t *);
-typedef int (*vulpes_write_func_t) (const vulpes_cmdblk_t *);
-typedef int (*vulpes_shutdown_func_t) (void);
-
 extern struct vulpes_config {
   enum transfer_type trxfer;	/* Set by main */
-  enum mapping_type mapping;    /* Set by main */
   char* proxy_name;             /* Set by main */
   long  proxy_port;             /* set by main */
   
@@ -64,10 +53,6 @@ extern struct vulpes_config {
   int vulpes_device;		/* Set by device driver */
   
   vulpes_registration_t reg;	        /* Set in open_func */
-  vulpes_volsize_func_t volsize_func;	/* Set in initialize */
-  vulpes_read_func_t read_func;	        /* Set in initialize */
-  vulpes_write_func_t write_func;	/* Set in initialize */
-  vulpes_shutdown_func_t shutdown_func;	/* Set in initialize */
   
   int verbose;			/* Set by main -- currently not used */
   int doUpload;                 /* Set by main */
@@ -88,5 +73,9 @@ vulpes_err_t local_get(char *buf, int *bufsize, const char *file);
 vulpes_err_t http_get(char *buf, int *bufsize, const char *url);
 void copy_for_upload(char *oldkr, char *dest);
 void checktags(void);
+vulpes_volsize_t lev1_volsize(void);
+int lev1_shutdown(void);
+int lev1_read(vulpes_cmdblk_t * cmdblk);
+int lev1_write(const vulpes_cmdblk_t * cmdblk);
 
 #endif
