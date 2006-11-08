@@ -24,7 +24,7 @@ struct ca_header {
 
 struct ca_entry {
   uint32_t length;
-  uint8_t flags;
+  uint8_t flags;  /* XXX not packed */
 };
 
 /*** Keyring ***/

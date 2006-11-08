@@ -37,7 +37,7 @@ static vulpes_err_t loop_bind(void) {
   
   for (i=0 ;; i++) {
     snprintf(state.loopdev_name, sizeof(state.loopdev_name), "/dev/loop%d", i);
-    fd=open(state.loopdev_name, O_RDWR|O_NONBLOCK);
+    fd=open(state.loopdev_name, O_RDWR|O_SYNC);
     if (fd == -1) {
       vulpes_log(LOG_ERRORS,"Couldn't open loop device");
       return VULPES_IOERR;

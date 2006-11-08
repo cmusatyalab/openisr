@@ -401,8 +401,8 @@ static vulpes_err_t write_cache_header(int fd)
       dirty_count++;
     }
     if (write(fd, &entry, sizeof(entry)) != sizeof(entry)) {
-	vulpes_log(LOG_ERRORS, "Couldn't write cache file header");
-	return VULPES_IOERR;
+      vulpes_log(LOG_ERRORS, "Couldn't write cache file record: %u", chunk_num);
+      return VULPES_IOERR;
     }
   }
   
@@ -432,25 +432,31 @@ static vulpes_err_t open_cache_file(const char *path)
   struct ca_header hdr;
   struct ca_entry entry;
   unsigned chunk_num;
+  int fd;
   
-  state.cachefile_fd=open(path, O_RDWR);
-  if (state.cachefile_fd == -1 && errno == ENOENT) {
+  fd=open(path, O_RDWR);
+  if (fd == -1 && errno == ENOENT) {
     vulpes_log(LOG_BASIC,"No existing local cache; creating");
-    state.cachefile_fd=open(path, O_CREAT|O_RDWR, 0600);
-    if (state.cachefile_fd == -1) {
+    fd=open(path, O_CREAT|O_RDWR, 0600);
+    if (fd == -1) {
       vulpes_log(LOG_ERRORS,"couldn't create cache file");
       return VULPES_IOERR;
     }
     state.offset_bytes=((sizeof(hdr) + state.numchunks * sizeof(entry))
                        + SECTOR_SIZE - 1) & ~(SECTOR_SIZE - 1);
-    write_cache_header(state.cachefile_fd);
+    write_cache_header(fd);
+    if (ftruncate(fd, state.volsize * SECTOR_SIZE + state.offset_bytes)) {
+      vulpes_log(LOG_ERRORS,"couldn't extend cache file");
+      return VULPES_IOERR;
+    }
+    state.cachefile_fd=fd;
     return VULPES_SUCCESS;
-  } else if (state.cachefile_fd == -1) {
+  } else if (fd == -1) {
     vulpes_log(LOG_ERRORS,"couldn't open cache file");
     return VULPES_IOERR;
   }
   
-  if (read(state.cachefile_fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
+  if (read(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
     vulpes_log(LOG_ERRORS, "Couldn't read cache file header");
     return VULPES_IOERR;
   }
@@ -469,8 +475,8 @@ static vulpes_err_t open_cache_file(const char *path)
   state.offset_bytes=ntohl(hdr.offset) * SECTOR_SIZE;
   
   for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
-    if (read(state.cachefile_fd, &entry, sizeof(entry)) != sizeof(entry)) {
-      vulpes_log(LOG_ERRORS, "Couldn't read cache file header");
+    if (read(fd, &entry, sizeof(entry)) != sizeof(entry)) {
+      vulpes_log(LOG_ERRORS, "Couldn't read cache file record: %u", chunk_num);
       return VULPES_IOERR;
     }
     cdp=get_cdp_from_chunk_num(chunk_num);
@@ -482,6 +488,7 @@ static vulpes_err_t open_cache_file(const char *path)
       mark_cdp_modified(cdp);
   }
   vulpes_log(LOG_BASIC, "Read cache header");
+  state.cachefile_fd=fd;
   return VULPES_SUCCESS;
 }
 
@@ -633,7 +640,7 @@ static int retrieve_chunk(const char *src, unsigned chunk_num)
 	/* LKA hit */
 	struct chunk_data *cdp;
 	
-	vulpes_log(LOG_CHUNKS,"lka lookup hit for %u",chunk_num);	  
+	vulpes_log(LOG_CHUNKS,"lka lookup hit for %u",chunk_num);
 	cdp = get_cdp_from_chunk_num(chunk_num);
 	mark_cdp_lka_copy(cdp);
       } else {
@@ -685,7 +692,7 @@ have_data:
     if (err) goto out;
     buflen=state.chunksize_bytes;
   }
-    
+  
   /* write to cache */
   if(pwrite(state.loopdev_fd, buf, buflen, get_image_offset_from_chunk_num(chunk_num))
            != buflen) {
@@ -774,7 +781,7 @@ int cache_get(struct isr_message *msg)
   memcpy(msg->tag, cdp->tag, HASH_LEN);
   msg->length=cdp->length;
   
-  vulpes_log(LOG_CHUNKS,"get: %llu",msg->chunk);
+  vulpes_log(LOG_CHUNKS,"get: %llu (size %u)",msg->chunk,msg->length);
   return 0;
 }
 
@@ -796,7 +803,7 @@ int cache_update(const struct isr_message *msg)
   updateKey(msg->chunk, msg->key, msg->tag);
   cdp->length=msg->length;
 
-  vulpes_log(LOG_CHUNKS,"update: %llu",msg->chunk);
+  vulpes_log(LOG_CHUNKS,"update: %llu (size %u)",msg->chunk,msg->length);
   return 0;
 }
 
