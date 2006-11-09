@@ -33,7 +33,6 @@ const unsigned CHUNK_STATUS_ACCESSED = 0x0001;	/* This chunk has been accessed t
 const unsigned CHUNK_STATUS_MODIFIED_SESSION = 0x0004; /* This chunk has been modified this session */
 const unsigned CHUNK_STATUS_MODIFIED = 0x0008;  /* This chunk has been modified since cache creation */
 const unsigned CHUNK_STATUS_COMPRESSED = 0x1000;/* This chunk is stored compressed */
-const unsigned CHUNK_STATUS_LKA_COPY = 0x4000;	/* This chunk data was fetched from the LKA cache */
 const unsigned CHUNK_STATUS_PRESENT = 0x8000;	/* This chunk is present in the local cache */
 const char *index_name = "index.lev1";
 const char *image_name = "image.lev1";
@@ -100,22 +99,6 @@ static inline int cdp_present(struct chunk_data * cdp)
 {
   return ((cdp->status & CHUNK_STATUS_PRESENT) ==
 	  CHUNK_STATUS_PRESENT);
-}
-
-static inline int cdp_lka_copy(struct chunk_data * cdp)
-{
-  return ((cdp->status & CHUNK_STATUS_LKA_COPY) ==
-	  CHUNK_STATUS_LKA_COPY);
-}
-
-static inline void mark_cdp_lka_copy(struct chunk_data * cdp)
-{
-  cdp->status |= CHUNK_STATUS_LKA_COPY;
-}
-
-static inline void mark_cdp_not_lka_copy(struct chunk_data * cdp)
-{
-  cdp->status &= ~CHUNK_STATUS_LKA_COPY;
 }
 
 static inline void get_dir_chunk_from_chunk_num(unsigned chunk_num,
@@ -642,7 +625,6 @@ static int retrieve_chunk(const char *src, unsigned chunk_num)
 	
 	vulpes_log(LOG_CHUNKS,"lka lookup hit for %u",chunk_num);
 	cdp = get_cdp_from_chunk_num(chunk_num);
-	mark_cdp_lka_copy(cdp);
       } else {
 	/* Tag check failure */
 	vulpes_log(LOG_ERRORS, "SERIOUS, NON-FATAL ERROR - lka lookup hit from %s failed tag match for %u",

@@ -1,6 +1,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdlib.h>
+#include <string.h>
+#include <signal.h>
 #include <unistd.h>
 #include "vulpes.h"
 
@@ -83,6 +85,8 @@ char *vulpes_strerror(vulpes_err_t err)
     return "Tag did not match data";
   case VULPES_BADFORMAT:
     return "Invalid format";
+  case VULPES_CALLFAIL:
+    return "Call failed";
   }
   return "(Unknown)";
 }
@@ -149,4 +153,12 @@ void hexToBin(const unsigned char *hex, unsigned char *bin, int binBytes)
   
   for (i=0; i<binBytes; i++, bin++, hex += 2)
     *bin=hexToChar(hex);
+}
+
+int set_signal_handler(int sig, void (*handler)(int sig))
+{
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler=handler;
+  return sigaction(sig, &sa, NULL);
 }

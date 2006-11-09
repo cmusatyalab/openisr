@@ -13,8 +13,6 @@
 #define VULPES_DEBUG(fmt, args...)     ;
 #endif
 
-extern volatile int exit_pending;
-
 extern const char *svn_revision;
 extern const char *svn_branch;
 
@@ -28,6 +26,7 @@ typedef enum vulpes_err {
   VULPES_NOKEY,
   VULPES_TAGFAIL,
   VULPES_BADFORMAT,
+  VULPES_CALLFAIL,
 } vulpes_err_t;
 
 enum transfer_type {
@@ -81,7 +80,6 @@ extern struct vulpes_state {
 struct isr_message;
 
 /* XXX miscellaneous exported functions */
-int set_signal_handler(int sig, void (*handler)(int sig));
 vulpes_err_t driver_init(void);
 void driver_run(void);
 void driver_shutdown(void);

@@ -14,22 +14,19 @@ ACCEPTANCE OF THIS AGREEMENT
 */
 
 /* INCLUDES */
-//#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <signal.h>
 #include <getopt.h>
 #include "vulpes.h"
 #include "vulpes_log.h"
 #include "vulpes_lka.h"
+#include "vulpes_util.h"
 
 /* GLOBALS */
-
-volatile int exit_pending = 0;
 
 const char *vulpes_version = "0.60";
 
@@ -39,20 +36,6 @@ extern int optind, opterr, optopt;
 
 
 /* FUNCTIONS */
-static void vulpes_signal_handler(int sig)
-{
-  VULPES_DEBUG("Caught signal %d\n", sig);
-  exit_pending = 1;
-}
-
-int set_signal_handler(int sig, void (*handler)(int sig))
-{
-  struct sigaction sa;
-  memset(&sa, 0, sizeof(sa));
-  sa.sa_handler=handler;
-  return sigaction(sig, &sa, NULL);
-}
-
 static void version(void)
 {
   printf("Version: %s (%s, rev %s)\n", vulpes_version, svn_branch, svn_revision);
@@ -299,23 +282,6 @@ int main(int argc, char *argv[])
   /* now that parameters are correct - start vulpes log */
   vulpes_log(LOG_BASIC,"Starting. Version: %s, revision: %s %s, PID: %u",
              vulpes_version, svn_branch, svn_revision, (unsigned)getpid());
-  
-  /* Register default signal handler */
-  if (!config.doUpload && !config.doCheck) {
-    int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
-			  SIGABRT, SIGTERM, SIGTSTP,
-			  SIGKILL}; /* SIGKILL needed... */
-    int sig;
-    int s=0;
-    while((sig=caught_signals[s]) != SIGKILL) {
-      if (set_signal_handler(sig, vulpes_signal_handler)) {
-	vulpes_log(LOG_ERRORS,"unable to register default signal handler for signal %d", sig);
-	goto vulpes_exit;
-      }
-      s++;
-    }
-  }
-  
   
   VULPES_DEBUG("Initializing cache...\n");
   /* Initialize the cache */

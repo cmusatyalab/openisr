@@ -2,13 +2,25 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <linux/loop.h>
 #include "vulpes.h"
 #include "vulpes_log.h"
+#include "vulpes_util.h"
 #include "convergent-user.h"
+
+static const int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
+			SIGABRT, SIGTERM, SIGTSTP, 0};
+static volatile int exit_pending = 0;
+
+static void signal_handler(int sig)
+{
+  VULPES_DEBUG("Caught signal %d\n", sig);
+  exit_pending = 1;
+}
 
 static vulpes_err_t message_ok(const struct isr_message *msg)
 {
@@ -71,6 +83,15 @@ vulpes_err_t driver_init(void)
 {
   struct isr_setup setup;
   vulpes_err_t ret;
+  int i;
+  
+  /* Register signal handler */
+  for (i=0; caught_signals[i] != 0; i++) {
+    if (set_signal_handler(caught_signals[i], signal_handler)) {
+      vulpes_log(LOG_ERRORS,"unable to register default signal handler for signal %d",caught_signals[i]);
+      return VULPES_CALLFAIL;
+    }
+  }
   
   ret=loop_bind();
   if (ret)
