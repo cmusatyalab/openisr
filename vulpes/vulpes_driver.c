@@ -89,8 +89,7 @@ vulpes_err_t driver_init(void)
   setup.offset=state.offset_bytes / SECTOR_SIZE;
   setup.chunksize=state.chunksize_bytes;
   setup.cachesize=128;
-  setup.cipher=ISR_CIPHER_BLOWFISH;
-  setup.hash=ISR_HASH_SHA1;
+  setup.crypto=ISR_CRYPTO_BLOWFISH_SHA1_COMPAT;
   setup.compress_default=ISR_COMPRESS_ZLIB;
   setup.compress_required=ISR_COMPRESS_NONE|ISR_COMPRESS_ZLIB;
   

@@ -87,8 +87,11 @@ int vulpes_encrypt(const unsigned char *inString, int inStringLength,
 
     EVP_CIPHER_CTX ctx;
     EVP_CIPHER_CTX_init(&ctx);
-    EVP_EncryptInit_ex(&ctx, EVP_bf_cbc(), NULL, key, iv);
+    EVP_EncryptInit_ex(&ctx, EVP_bf_cbc(), NULL, NULL, iv);
+    if (!EVP_CIPHER_CTX_set_key_length(&ctx, keyLen))
+        return 0;
     EVP_CIPHER_CTX_set_padding(&ctx, doPad);
+    EVP_EncryptInit_ex(&ctx, NULL, NULL, key, NULL);
 
     if (!EVP_EncryptUpdate
 	(&ctx, output, outStringLength, inString, inStringLength)) {
@@ -118,8 +121,11 @@ int vulpes_decrypt(const unsigned char *inString, int inStringLength,
 
     EVP_CIPHER_CTX ctx;
     EVP_CIPHER_CTX_init(&ctx);
-    EVP_DecryptInit_ex(&ctx, EVP_bf_cbc(), NULL, key, iv);
+    EVP_DecryptInit_ex(&ctx, EVP_bf_cbc(), NULL, NULL, iv);
+    if (!EVP_CIPHER_CTX_set_key_length(&ctx, keyLen))
+        return 0;
     EVP_CIPHER_CTX_set_padding(&ctx, doPad);
+    EVP_DecryptInit_ex(&ctx, NULL, NULL, key, NULL);
 
     output =
 	(unsigned char *) malloc((int) ((float) inStringLength * 1.2));
