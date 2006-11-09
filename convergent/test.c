@@ -217,8 +217,7 @@ int run(char *storefile, compress_t compress)
 	setup.chunksize=params.chunksize;
 	setup.cachesize=params.cachesize;
 	setup.offset=params.offset;
-	setup.cipher=ISR_CIPHER_BLOWFISH;
-	setup.hash=ISR_HASH_SHA1;
+	setup.crypto=ISR_CRYPTO_BLOWFISH_SHA1;
 	setup.compress_default=compress;
 	setup.compress_required=ISR_COMPRESS_NONE | ISR_COMPRESS_ZLIB |
 				ISR_COMPRESS_LZF;

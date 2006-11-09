@@ -40,7 +40,7 @@ static unsigned crypto_pad(struct convergent_dev *dev, struct scatterlist *sg,
 {
 	unsigned padlen=crypto_pad_len(dev, datalen);
 	unsigned offset=datalen;
-	char *page;
+	unsigned char *page;
 	unsigned i;
 	
 	BUG_ON(datalen + padlen > dev->chunksize);
@@ -61,7 +61,7 @@ static unsigned crypto_pad(struct convergent_dev *dev, struct scatterlist *sg,
 			page=kmap_atomic(sg->page, KM_USER0);
 			offset=sg->offset;
 		}
-		page[offset++]=(char)padlen;
+		page[offset++]=padlen;
 	}
 	kunmap_atomic(page, KM_USER0);
 	return datalen + padlen;
@@ -71,7 +71,7 @@ static unsigned crypto_pad(struct convergent_dev *dev, struct scatterlist *sg,
 static int crypto_unpad(struct convergent_dev *dev, struct scatterlist *sg,
 			int len)
 {
-	char *page;
+	unsigned char *page;
 	unsigned padlen;
 	unsigned offset=len - 1;
 	unsigned i;
@@ -80,7 +80,6 @@ static int crypto_unpad(struct convergent_dev *dev, struct scatterlist *sg,
 	BUG_ON(len == 0);
 	/* We use KM_USER0 */
 	BUG_ON(in_interrupt());
-	ndebug("Unpad %u", padlen);
 	
 	while (offset >= sg->length) {
 		offset -= sg->length;
@@ -91,6 +90,7 @@ static int crypto_unpad(struct convergent_dev *dev, struct scatterlist *sg,
 	padlen=page[offset--];
 	if (padlen == 0 || padlen > dev->cipher_block || padlen > len)
 		goto out;
+	ndebug("Unpad %u", padlen);
 	for (i=1; i<padlen; i++) {
 		if (offset < sg->offset) {
 			kunmap_atomic(page, KM_USER0);
@@ -294,7 +294,8 @@ int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
-	ret=crypto_cipher_setkey(dev->cipher, key, dev->hash_len);
+	BUG_ON(dev->key_len > dev->hash_len);  /* XXX */
+	ret=crypto_cipher_setkey(dev->cipher, key, dev->key_len);
 	if (ret)
 		return ret;
 	
@@ -317,14 +318,24 @@ int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
 }
 
 #define set_if_requested(lhs, rhs) do {if (lhs != NULL) *lhs=rhs;} while (0)
-static int cipher_lookup(cipher_t type, char **user_name, char **api_name,
-			unsigned *mode)
+static int suite_lookup(crypto_t suite, char **user_name, char **cipher_name,
+			unsigned *cipher_mode, unsigned *key_len,
+			char **hash_name)
 {
-	switch (type) {
-	case ISR_CIPHER_BLOWFISH:
-		set_if_requested(user_name, "blowfish");
-		set_if_requested(api_name, "blowfish");
-		set_if_requested(mode, CRYPTO_TFM_MODE_CBC);
+	switch (suite) {
+	case ISR_CRYPTO_BLOWFISH_SHA1:
+		set_if_requested(user_name, "blowfish-sha1");
+		set_if_requested(cipher_name, "blowfish");
+		set_if_requested(cipher_mode, CRYPTO_TFM_MODE_CBC);
+		set_if_requested(key_len, 20);
+		set_if_requested(hash_name, "sha1");
+		break;
+	case ISR_CRYPTO_BLOWFISH_SHA1_COMPAT:
+		set_if_requested(user_name, "blowfish-sha1-compat");
+		set_if_requested(cipher_name, "blowfish");
+		set_if_requested(cipher_mode, CRYPTO_TFM_MODE_CBC);
+		set_if_requested(key_len, 16);
+		set_if_requested(hash_name, "sha1");
 		break;
 	default:
 		return -EINVAL;
@@ -332,31 +343,10 @@ static int cipher_lookup(cipher_t type, char **user_name, char **api_name,
 	return 0;
 }
 
-char *get_cipher_name(struct convergent_dev *dev)
+char *get_suite_name(struct convergent_dev *dev)
 {
 	char *ret;
-	if (!cipher_lookup(dev->cipher_type, &ret, NULL, NULL))
-		return ret;
-	return "unknown";
-}
-
-static int hash_lookup(hash_t type, char **user_name, char **api_name)
-{
-	switch (type) {
-	case ISR_HASH_SHA1:
-		set_if_requested(user_name, "sha1");
-		set_if_requested(api_name, "sha1");
-		break;
-	default:
-		return -EINVAL;
-	}
-	return 0;
-}
-
-char *get_hash_name(struct convergent_dev *dev)
-{
-	char *ret;
-	if (!hash_lookup(dev->hash_type, &ret, NULL))
+	if (!suite_lookup(dev->suite, &ret, NULL, NULL, NULL, NULL))
 		return ret;
 	return "unknown";
 }
@@ -405,19 +395,15 @@ int transform_alloc(struct convergent_dev *dev)
 {
 	char *cipher_name;
 	unsigned cipher_mode;
+	unsigned keylen;
 	char *hash_name;
 	int ret;
 	
-	ret=cipher_lookup(dev->cipher_type, NULL, &cipher_name, &cipher_mode);
+	ret=suite_lookup(dev->suite, NULL, &cipher_name, &cipher_mode,
+				&keylen, &hash_name);
 	if (ret) {
-		log(KERN_ERR, "Unsupported cipher requested");
+		log(KERN_ERR, "Unsupported crypto suite requested");
 		return ret;
-	}
-	
-	ret=hash_lookup(dev->hash_type, NULL, &hash_name);
-	if (ret) {
-		log(KERN_ERR, "Unsupported hash requested");
-		return -EINVAL;
 	}
 	
 	if ((dev->supported_compression & SUPPORTED_COMPRESSION)
@@ -436,9 +422,9 @@ int transform_alloc(struct convergent_dev *dev)
 	if (dev->cipher == NULL || dev->hash == NULL)
 		return -EINVAL;
 	dev->cipher_block=crypto_tfm_alg_blocksize(dev->cipher);
+	dev->key_len=keylen;
 	dev->hash_len=crypto_tfm_alg_digestsize(dev->hash);
-	if (dev->hash_type == ISR_HASH_SHA1 &&
-				sha1_impl_is_suboptimal(dev->hash)) {
+	if (!strcmp("sha1", hash_name) && sha1_impl_is_suboptimal(dev->hash)) {
 		/* Actually, the presence of sha1-i586.ko only matters
 		   when the device is created, since that's when the tfm
 		   is allocated.  Does anyone have better wording for this? */

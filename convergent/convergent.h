@@ -43,10 +43,10 @@ struct convergent_dev {
 	int devnum;
 	unsigned flags;	/* XXX racy */
 	
-	cipher_t cipher_type;
-	hash_t hash_type;
+	crypto_t suite;
 	struct crypto_tfm *cipher;
 	unsigned cipher_block;
+	unsigned key_len;
 	struct crypto_tfm *hash;
 	unsigned hash_len;
 	
@@ -197,8 +197,7 @@ static inline unsigned io_chunks(struct convergent_io *io)
 extern struct workqueue_struct *wkqueue;
 extern int blk_major;
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
-			unsigned cachesize, sector_t offset,
-			cipher_t cipher, hash_t hash,
+			unsigned cachesize, sector_t offset, crypto_t crypto,
 			compress_t default_compress,
 			compress_t supported_compress);
 struct convergent_dev *convergent_dev_get(struct convergent_dev *dev);
@@ -251,8 +250,7 @@ int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type);
 int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type, unsigned len);
-char *get_cipher_name(struct convergent_dev *dev);
-char *get_hash_name(struct convergent_dev *dev);
+char *get_suite_name(struct convergent_dev *dev);
 char *get_default_compression_name(struct convergent_dev *dev);
 int compression_type_ok(struct convergent_dev *dev, compress_t compress);
 

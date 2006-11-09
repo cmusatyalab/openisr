@@ -342,6 +342,7 @@ bad:
 	chunk_io_make_progress(cd, dev->chunksize - offset);
 }
 
+/* XXX convert debug calls to log()? */
 static int chunk_tfm(struct chunkdata *cd, int type)
 {
 	struct convergent_dev *dev=cd->table->dev;
@@ -362,8 +363,11 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 		}
 		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, READ,
 					cd->compression != ISR_COMPRESS_NONE);
-		if (ret < 0)
+		if (ret < 0) {
+			debug("Chunk " SECTOR_FORMAT ": Decryption failed",
+						cd->cid);
 			return ret;
+		}
 		compressed_size=ret;
 		/* Make sure decrypted data matches key */
 		crypto_hash(dev, cd->sg, compressed_size, hash);
@@ -374,8 +378,11 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 		}
 		ret=decompress_chunk(dev, cd->sg, cd->compression,
 					compressed_size);
-		if (ret)
+		if (ret) {
+			debug("Chunk " SECTOR_FORMAT ": Decompression failed",
+						cd->cid);
 			return ret;
+		}
 	} else {
 		/* If compression or encryption errors out, we don't try to
 		   recover the data because the cd will go into ST_ERROR state
@@ -385,6 +392,8 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 			compressed_size=dev->chunksize;
 			cd->compression=ISR_COMPRESS_NONE;
 		} else if (ret < 0) {
+			debug("Chunk " SECTOR_FORMAT ": Compression failed",
+						cd->cid);
 			return ret;
 		} else {
 			compressed_size=ret;
@@ -395,8 +404,11 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 		crypto_hash(dev, cd->sg, compressed_size, cd->key);
 		ret=crypto_cipher(dev, cd->sg, cd->key, compressed_size, WRITE,
 					cd->compression != ISR_COMPRESS_NONE);
-		if (ret < 0)
+		if (ret < 0) {
+			debug("Chunk " SECTOR_FORMAT ": Encryption failed",
+						cd->cid);
 			return ret;
+		}
 		cd->size=ret;
 		crypto_hash(dev, cd->sg, cd->size, cd->tag);
 	}

@@ -104,6 +104,12 @@ static ssize_t attr_show_cachesize(struct class_device *class_dev, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->cachesize);
 }
 
+static ssize_t attr_show_offset(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%llu\n", (u64)dev->offset << 9);
+}
+
 static ssize_t attr_show_states(struct class_device *class_dev, char *buf)
 {
 	struct convergent_dev *dev=class_get_devdata(class_dev);
@@ -116,16 +122,10 @@ static ssize_t attr_show_state_times(struct class_device *class_dev, char *buf)
 	return print_state_times(dev, buf, PAGE_SIZE);
 }
 
-static ssize_t attr_show_cipher(struct class_device *class_dev, char *buf)
+static ssize_t attr_show_suite(struct class_device *class_dev, char *buf)
 {
 	struct convergent_dev *dev=class_get_devdata(class_dev);
-	return snprintf(buf, PAGE_SIZE, "%s\n", get_cipher_name(dev));
-}
-
-static ssize_t attr_show_hash(struct class_device *class_dev, char *buf)
-{
-	struct convergent_dev *dev=class_get_devdata(class_dev);
-	return snprintf(buf, PAGE_SIZE, "%s\n", get_hash_name(dev));
+	return snprintf(buf, PAGE_SIZE, "%s\n", get_suite_name(dev));
 }
 
 static ssize_t attr_show_compression(struct class_device *class_dev, char *buf)
@@ -139,10 +139,10 @@ static ssize_t attr_show_compression(struct class_device *class_dev, char *buf)
 static struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(chunk_size, S_IRUGO, attr_show_chunksize, NULL),
 	__ATTR(cache_entries, S_IRUGO, attr_show_cachesize, NULL),
+	__ATTR(header_length, S_IRUGO, attr_show_offset, NULL),
 	__ATTR(states, S_IRUGO, attr_show_states, NULL),
 	__ATTR(state_times, S_IRUGO, attr_show_state_times, NULL),
-	__ATTR(cipher, S_IRUGO, attr_show_cipher, NULL),
-	__ATTR(hash, S_IRUGO, attr_show_hash, NULL),
+	__ATTR(encryption, S_IRUGO, attr_show_suite, NULL),
 	__ATTR(compression, S_IRUGO, attr_show_compression, NULL),
 	__ATTR_NULL
 };
@@ -258,8 +258,7 @@ static struct block_device_operations convergent_ops = {
 };
 
 struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
-			unsigned cachesize, sector_t offset,
-			cipher_t cipher, hash_t hash,
+			unsigned cachesize, sector_t offset, crypto_t suite,
 			compress_t default_compress,
 			compress_t supported_compress)
 {
@@ -403,8 +402,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 				chunk_sectors(dev) * (MAX_CHUNKS_PER_IO - 1));
 	
 	ndebug("Allocating transforms");
-	dev->cipher_type=cipher;
-	dev->hash_type=hash;
+	dev->suite=suite;
 	dev->default_compression=default_compress;
 	dev->supported_compression=supported_compress;
 	ret=transform_alloc(dev);

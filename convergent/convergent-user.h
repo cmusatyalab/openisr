@@ -10,10 +10,9 @@
 #define ISR_IOC_REGISTER      _IOWR(0x1a, 0, struct isr_setup)
 #define ISR_IOC_UNREGISTER      _IO(0x1a, 1)
 
-#define ISR_INTERFACE_VERSION 1
+#define ISR_INTERFACE_VERSION 2
 
-typedef __u16 cipher_t;
-typedef __u16 hash_t;
+typedef __u16 crypto_t;
 typedef __u16 compress_t;
 typedef __u16 msgtype_t;
 
@@ -23,10 +22,10 @@ struct isr_setup {
 	__u64 offset;                         /* to kernel */
 	__u32 chunksize;                      /* to kernel */
 	__u32 cachesize;                      /* to kernel */
-	cipher_t cipher;                      /* to kernel */
-	hash_t hash;                          /* to kernel */
+	crypto_t crypto;                      /* to kernel */
 	compress_t compress_default;          /* to kernel */
 	compress_t compress_required;         /* to kernel */
+	__u16 pad;
 	__u64 chunks;                         /* to user */
 	__u32 major;                          /* to user */
 	__u32 first_minor;                    /* to user */
@@ -34,11 +33,11 @@ struct isr_setup {
 	__u8 hash_len;                        /* to user */
 };
 
-#define ISR_CIPHER_BLOWFISH      ((cipher_t)  0x0001)
-#define ISR_HASH_SHA1            ((hash_t)    0x0001)
-#define ISR_COMPRESS_NONE        ((compress_t)0x0001)
-#define ISR_COMPRESS_ZLIB        ((compress_t)0x0002)
-#define ISR_COMPRESS_LZF         ((compress_t)0x0004)
+#define ISR_CRYPTO_BLOWFISH_SHA1        ((crypto_t)  0x0001)
+#define ISR_CRYPTO_BLOWFISH_SHA1_COMPAT ((crypto_t)  0x0002)
+#define ISR_COMPRESS_NONE               ((compress_t)0x0001)
+#define ISR_COMPRESS_ZLIB               ((compress_t)0x0002)
+#define ISR_COMPRESS_LZF                ((compress_t)0x0004)
 
 /* This structure must have an identical layout on 32-bit and 64-bit systems */
 struct isr_message {

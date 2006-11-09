@@ -181,8 +181,8 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 			return -EINVAL;
 		dev=convergent_dev_ctr(setup.chunk_device, setup.chunksize,
 					setup.cachesize,
-					(sector_t)setup.offset, setup.cipher,
-					setup.hash, setup.compress_default,
+					(sector_t)setup.offset, setup.crypto,
+					setup.compress_default,
 					setup.compress_required);
 		if (IS_ERR(dev))
 			return PTR_ERR(dev);
