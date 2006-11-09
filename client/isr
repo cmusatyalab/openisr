@@ -755,6 +755,7 @@ sub run ($$$$) {
     my $i;
     my $iters;
     my $sigset;
+    my $vmware_opts;
     
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
@@ -793,10 +794,11 @@ sub run ($$$$) {
     if (!-e $vulpescmd or !-x $vulpescmd ) {
 	errexit("Could not find an executable Vulpes binary.");
     }
-    mysystem("touch /dev/hdk");
-    if (mysystem("/sbin/lsmod | grep -q '^fauxide'") == 0 and
-        mysystem("/sbin/lsmod | grep -q '^isr'") == 0) {
-            system_errexit("The Fauxide kernel module does not appear to be loaded.");
+    if (mysystem("/sbin/lsmod | grep -q '^openisr'") != 0) {
+        system_errexit("The OpenISR kernel module does not appear to be loaded.");
+    }
+    if (!-e "/dev/openisrctl") {
+        errexit("Driver control device node does not exist");
     }
 
     # If the user wants to run disconnected, they better have all of their
@@ -856,14 +858,11 @@ sub run ($$$$) {
     # Launch VMWare
     print "Launching VMWare...\n"
 	if $verbose;
-    if ($noautoflag) {
-	mysystem("$Isr::VMCOMMAND $cachedir/cfg/$cfgfile") == 0
-	    or system_errexit("VMWare terminated abnormally.");
+    if (!$noautoflag) {
+        $vmware_opts = "-X";
     }
-    else {
-	mysystem("$Isr::VMCOMMAND -X $cachedir/cfg/$cfgfile") == 0
-	    or system_errexit("VMWare terminated abnormally.");
-    }
+    mysystem("LD_PRELOAD=libvdisk.so.0 VDISK_DEVICE=/dev/openisra $Isr::VMCOMMAND $vmware_opts $cachedir/cfg/$cfgfile") == 0
+	or system_errexit("VMWare terminated abnormally.");
 
     # Wait here until the user suspends VMWare
     print "Shutting down VMware.\n"
