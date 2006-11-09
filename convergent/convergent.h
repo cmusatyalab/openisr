@@ -244,7 +244,7 @@ ssize_t print_state_times(struct convergent_dev *dev, char *buf, int len);
 int transform_alloc(struct convergent_dev *dev);
 void transform_free(struct convergent_dev *dev);
 int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
-			char key[], unsigned len, int dir);
+			char key[], unsigned len, int dir, int doPad);
 void crypto_hash(struct convergent_dev *dev, struct scatterlist *sg,
 			unsigned nbytes, u8 *out);
 int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,

@@ -137,6 +137,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 		switch (msg.type) {
 		case ISR_MSGTYPE_SET_META:
 			if (msg.chunk >= dev->chunks ||
+						msg.length == 0 ||
 						msg.length > dev->chunksize) {
 				err=-EINVAL;
 				goto out;

@@ -39,7 +39,7 @@ struct chunkdata {
 	struct list_head lh_pending_completion;
 	struct chunkdata_table *table;
 	chunk_t cid;
-	unsigned size;         /* compressed size before padding */
+	unsigned size;         /* encrypted size including padding */
 	compress_t compression;/* compression type */
 	struct list_head pending;
 	atomic_t remaining;    /* bytes, for I/O */
@@ -80,7 +80,7 @@ static u64 current_time_usec(void)
 	return curtime.tv_sec * USEC_PER_SEC + curtime.tv_usec;
 }
 
-static unsigned hash(struct chunkdata_table *table, chunk_t cid)
+static inline unsigned hash(struct chunkdata_table *table, chunk_t cid)
 {
 	return (unsigned)cid % table->buckets;
 }
@@ -345,6 +345,7 @@ bad:
 static int chunk_tfm(struct chunkdata *cd, int type)
 {
 	struct convergent_dev *dev=cd->table->dev;
+	unsigned compressed_size;
 	int ret;
 	char hash[ISR_MAX_HASH_LEN];
 	
@@ -359,17 +360,20 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 						"data", cd->cid);
 			return -EIO;
 		}
-		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, READ);
-		if (ret)
+		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, READ,
+					cd->compression != ISR_COMPRESS_NONE);
+		if (ret < 0)
 			return ret;
+		compressed_size=ret;
 		/* Make sure decrypted data matches key */
-		crypto_hash(dev, cd->sg, cd->size, hash);
+		crypto_hash(dev, cd->sg, compressed_size, hash);
 		if (memcmp(cd->key, hash, dev->hash_len)) {
 			debug("Chunk " SECTOR_FORMAT ": Key doesn't match "
 						"decrypted data", cd->cid);
 			return -EIO;
 		}
-		ret=decompress_chunk(dev, cd->sg, cd->compression, cd->size);
+		ret=decompress_chunk(dev, cd->sg, cd->compression,
+					compressed_size);
 		if (ret)
 			return ret;
 	} else {
@@ -378,20 +382,22 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 		   anyway and no one will be allowed to read it. */
 		ret=compress_chunk(dev, cd->sg, dev->default_compression);
 		if (ret == -EFBIG) {
-			cd->size=dev->chunksize;
+			compressed_size=dev->chunksize;
 			cd->compression=ISR_COMPRESS_NONE;
 		} else if (ret < 0) {
 			return ret;
 		} else {
-			cd->size=ret;
+			compressed_size=ret;
 			cd->compression=dev->default_compression;
 		}
 		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
-					cd->size, cd->cid);
-		crypto_hash(dev, cd->sg, cd->size, cd->key);
-		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, WRITE);
-		if (ret)
+					compressed_size, cd->cid);
+		crypto_hash(dev, cd->sg, compressed_size, cd->key);
+		ret=crypto_cipher(dev, cd->sg, cd->key, compressed_size, WRITE,
+					cd->compression != ISR_COMPRESS_NONE);
+		if (ret < 0)
 			return ret;
+		cd->size=ret;
 		crypto_hash(dev, cd->sg, cd->size, cd->tag);
 	}
 	return 0;

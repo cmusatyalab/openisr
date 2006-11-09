@@ -26,40 +26,85 @@ static void scatterlist_transfer(struct convergent_dev *dev,
 	}
 }
 
-/* Perform PKCS padding on a buffer.  Return the new buffer length. */
-static int crypto_pad(struct convergent_dev *dev, void *buf,
-			unsigned datalen, unsigned buflen)
+/* Return the number of bytes of padding which need to be added to
+   data of length @datalen if padding is used */
+static inline unsigned crypto_pad_len(struct convergent_dev *dev,
+			unsigned datalen)
 {
-	unsigned padlen=dev->cipher_block - (datalen % dev->cipher_block);
-	char *cbuf=buf;
+	return dev->cipher_block - (datalen % dev->cipher_block);
+}
+
+/* Perform PKCS padding on a scatterlist.  Return the new length. */
+static unsigned crypto_pad(struct convergent_dev *dev, struct scatterlist *sg,
+			unsigned datalen)
+{
+	unsigned padlen=crypto_pad_len(dev, datalen);
+	unsigned offset=datalen;
+	char *page;
 	unsigned i;
+	
+	BUG_ON(datalen + padlen > dev->chunksize);
+	/* We use KM_USER0 */
+	BUG_ON(in_interrupt());
 	ndebug("Pad %u", padlen);
-	if (datalen + padlen >= buflen) {
-		/* If padding would bring us exactly to the length of
-		   the buffer, we refuse to do it.  Rationale: we're only
-		   doing padding if we're doing compression, and compression
-		   failed to reduce the size of the chunk after padding,
-		   so we're better off just not compressing. */
-		return -EFBIG;
+	
+	while (offset >= sg->length) {
+		offset -= sg->length;
+		sg++;
 	}
-	for (i=0; i<padlen; i++)
-		cbuf[datalen + i]=(char)padlen;
+	offset += sg->offset;
+	page=kmap_atomic(sg->page, KM_USER0);
+	for (i=0; i<padlen; i++) {
+		if (offset >= sg->offset + sg->length) {
+			kunmap_atomic(page, KM_USER0);
+			sg++;
+			page=kmap_atomic(sg->page, KM_USER0);
+			offset=sg->offset;
+		}
+		page[offset++]=(char)padlen;
+	}
+	kunmap_atomic(page, KM_USER0);
 	return datalen + padlen;
 }
 
-/* Perform PKCS unpadding on a buffer.  Return the new buffer length. */
-static int crypto_unpad(struct convergent_dev *dev, void *buf, int len)
+/* Perform PKCS unpadding on a scatterlist.  Return the new length. */
+static int crypto_unpad(struct convergent_dev *dev, struct scatterlist *sg,
+			int len)
 {
-	char *cbuf=buf;
-	unsigned padlen=(unsigned)cbuf[len - 1];
+	char *page;
+	unsigned padlen;
+	unsigned offset=len - 1;
 	unsigned i;
+	int ret=-EINVAL;
+	
+	BUG_ON(len == 0);
+	/* We use KM_USER0 */
+	BUG_ON(in_interrupt());
 	ndebug("Unpad %u", padlen);
-	if (padlen == 0 || padlen > dev->cipher_block)
-		return -EINVAL;
-	for (i=2; i <= padlen; i++)
-		if (cbuf[len - i] != padlen)
-			return -EINVAL;
-	return len - padlen;
+	
+	while (offset >= sg->length) {
+		offset -= sg->length;
+		sg++;
+	}
+	offset += sg->offset;
+	page=kmap_atomic(sg->page, KM_USER0);
+	padlen=page[offset--];
+	if (padlen == 0 || padlen > dev->cipher_block || padlen > len)
+		goto out;
+	for (i=1; i<padlen; i++) {
+		if (offset < sg->offset) {
+			kunmap_atomic(page, KM_USER0);
+			sg--;
+			page=kmap_atomic(sg->page, KM_USER0);
+			offset=sg->offset + sg->length - 1;
+		}
+		if (page[offset--] != padlen)
+			goto out;
+	}
+	ret=len - padlen;
+out:
+	kunmap_atomic(page, KM_USER0);
+	return ret;
 }
 
 /* XXX consolidate duplicate code between this and lzf? */
@@ -95,14 +140,14 @@ static int compress_chunk_zlib(struct convergent_dev *dev,
 	} else if (ret != Z_STREAM_END || ret2 != Z_OK) {
 		debug("zlib compression failed");
 		return -EIO;
+	} else if (size + crypto_pad_len(dev, size) >= dev->chunksize) {
+		/* If padding would bring us exactly to the length of
+		   the buffer, we refuse to do it.  Rationale: we're only
+		   doing padding if we're doing compression, and compression
+		   failed to reduce the size of the chunk after padding,
+		   so we're better off just not compressing. */
+		return -EFBIG;
 	}
-	ret=crypto_pad(dev, dev->buf_compressed, size, dev->chunksize);
-	if (ret < 0) {
-		/* We tried padding the compresstext, but that made it
-		   at least as large as chunksize */
-		return ret;
-	}
-	size=ret;
 	/* We write the whole chunk out to disk, so make sure we're not
 	   leaking data. */
 	memset(dev->buf_compressed + size, 0, dev->chunksize - size);
@@ -118,14 +163,10 @@ static int decompress_chunk_zlib(struct convergent_dev *dev,
 	z_stream strm;
 	int ret;
 	int ret2;
-	int size;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	/* XXX don't need to transfer whole scatterlist */
 	scatterlist_transfer(dev, sg, dev->buf_compressed, READ);
-	size=crypto_unpad(dev, dev->buf_compressed, len);
-	if (size < 0)
-		return -EIO;
 	strm.workspace=dev->zlib_inflate;
 	/* XXX keep persistent stream structures? */
 	ret=zlib_inflateInit(&strm);
@@ -134,15 +175,15 @@ static int decompress_chunk_zlib(struct convergent_dev *dev,
 		return -EIO;
 	}
 	strm.next_in=dev->buf_compressed;
-	strm.avail_in=size;
+	strm.avail_in=len;
 	strm.next_out=dev->buf_uncompressed;
 	strm.avail_out=dev->chunksize;
 	ret=zlib_inflate(&strm, Z_FINISH);
-	size=strm.total_out;
+	len=strm.total_out;
 	ret2=zlib_inflateEnd(&strm);
 	if (ret != Z_STREAM_END || ret2 != Z_OK)
 		return -EIO;
-	if (size != dev->chunksize)
+	if (len != dev->chunksize)
 		return -EIO;
 	scatterlist_transfer(dev, sg, dev->buf_uncompressed, WRITE);
 	return 0;
@@ -161,12 +202,10 @@ static int compress_chunk_lzf(struct convergent_dev *dev,
 	if (size == 0) {
 		/* Compressed data larger than uncompressed data */
 		return -EFBIG;
-	}
-	size=crypto_pad(dev, dev->buf_compressed, size, dev->chunksize);
-	if (size < 0) {
-		/* We tried padding the compresstext, but that made it
-		   at least as large as chunksize */
-		return size;
+	} else if (size + crypto_pad_len(dev, size) >= dev->chunksize) {
+		/* Padding would make the compressed data at least as large
+		   as the uncompressed data */
+		return -EFBIG;
 	}
 	/* We write the whole chunk out to disk, so make sure we're not
 	   leaking data. */
@@ -178,17 +217,12 @@ static int compress_chunk_lzf(struct convergent_dev *dev,
 static int decompress_chunk_lzf(struct convergent_dev *dev,
 			struct scatterlist *sg, unsigned len)
 {
-	int size;
-	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	/* XXX don't need to transfer whole scatterlist */
 	scatterlist_transfer(dev, sg, dev->buf_compressed, READ);
-	size=crypto_unpad(dev, dev->buf_compressed, len);
-	if (size < 0)
-		return -EIO;
-	size=lzf_decompress(dev->buf_compressed, size,
+	len=lzf_decompress(dev->buf_compressed, len,
 				dev->buf_uncompressed, dev->chunksize);
-	if (size != dev->chunksize)
+	if (len != dev->chunksize)
 		return -EIO;
 	scatterlist_transfer(dev, sg, dev->buf_uncompressed, WRITE);
 	return 0;
@@ -251,8 +285,9 @@ void crypto_hash(struct convergent_dev *dev, struct scatterlist *sg,
 	sg[i].length=saved;
 }
 
+/* Returns the new data size, or error */
 int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
-			char key[], unsigned len, int dir)
+			char key[], unsigned len, int dir, int doPad)
 {
 	char iv[8]={0}; /* XXX */
 	int ret;
@@ -262,13 +297,23 @@ int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
 	ret=crypto_cipher_setkey(dev->cipher, key, dev->hash_len);
 	if (ret)
 		return ret;
-	if (dir == READ)
+	
+	if (dir == READ) {
 		ret=crypto_cipher_decrypt(dev->cipher, sg, sg, len);
-	else
+		if (ret)
+			return ret;
+		if (doPad)
+			return crypto_unpad(dev, sg, len);
+		else
+			return len;
+	} else {
+		if (doPad)
+			len=crypto_pad(dev, sg, len);
 		ret=crypto_cipher_encrypt(dev->cipher, sg, sg, len);
-	if (ret)
-		return ret;
-	return 0;
+		if (ret)
+			return ret;
+		return len;
+	}
 }
 
 #define set_if_requested(lhs, rhs) do {if (lhs != NULL) *lhs=rhs;} while (0)
