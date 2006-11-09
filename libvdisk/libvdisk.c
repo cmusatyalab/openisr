@@ -174,7 +174,7 @@ static int remap(const char **pathname)
 {
 	if (realdev == NULL)
 		return 0;
-	if (*pathname == NULL || strcmp(*pathname, "/dev/hdv") != 0)
+	if (*pathname == NULL || strcmp(*pathname, "/dev/hdk") != 0)
 		return 0;
 	*pathname=realdev;
 	return 1;
