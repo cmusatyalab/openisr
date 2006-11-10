@@ -10,7 +10,7 @@ BINDIR=$(ISR_HOME)/local/bin
 APP=vulpes
 UTILS=keyring-utils
 
-SRCS=revision.c vulpes.c vulpes_driver.c vulpes_transport_http.c vulpes_transport_local.c vulpes_cache.c vulpes_crypto.c vulpes_log.c vulpes_util.c vulpes_lka.c
+SRCS=revision.c vulpes.c vulpes_driver.c vulpes_transport_http.c vulpes_cache.c vulpes_crypto.c vulpes_log.c vulpes_util.c vulpes_lka.c
 
 OBJS=$(SRCS:.c=.o)
 ASS=$(SRCS:.c=.s)

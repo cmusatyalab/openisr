@@ -647,7 +647,9 @@ static int retrieve_chunk(const char *src, unsigned chunk_num)
   vulpes_log(LOG_TRANSPORT,"begin_transport: %s %u",src,chunk_num);
   switch (config.trxfer) {
   case LOCAL_TRANSPORT:
-    err=local_get(buf, &buflen, src);
+    err=read_file(src, buf, &buflen);
+    if (err)
+      vulpes_log(LOG_ERRORS,"unable to read input %s: %s",src,vulpes_strerror(err));
     break;
   case HTTP_TRANSPORT:
     err=http_get(buf, &buflen, src);
