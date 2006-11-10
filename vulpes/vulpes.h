@@ -73,8 +73,10 @@ extern struct vulpes_state {
   int cachefile_fd;
   int chardev_fd;
   int loopdev_fd;
+  int signal_fds[2];
   unsigned offset_bytes;
   struct chunk_data *cd;		/* cd[] */
+  unsigned long long request_count;
 } state;
 
 struct isr_message;

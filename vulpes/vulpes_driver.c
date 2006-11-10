@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/ioctl.h>
+#include <sys/select.h>
 #include <linux/loop.h>
 #include "vulpes.h"
 #include "vulpes_log.h"
@@ -14,12 +15,13 @@
 
 static const int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
 			SIGABRT, SIGTERM, SIGTSTP, 0};
-static volatile int exit_pending = 0;
 
 static void signal_handler(int sig)
 {
+  char c=sig;
   VULPES_DEBUG("Caught signal %d\n", sig);
-  exit_pending = 1;
+  /* Race-free method of catching signals */
+  write(state.signal_fds[1], &c, 1);
 }
 
 static vulpes_err_t message_ok(const struct isr_message *msg)
@@ -85,6 +87,16 @@ vulpes_err_t driver_init(void)
   vulpes_err_t ret;
   int i;
   
+  /* Create signal-passing pipe */
+  if (pipe(state.signal_fds)) {
+    vulpes_log(LOG_ERRORS,"couldn't create pipe");
+    return VULPES_CALLFAIL;
+  }
+  /* Set read-side nonblocking */
+  if (fcntl(state.signal_fds[0], F_SETFL, O_NONBLOCK)) {
+    vulpes_log(LOG_ERRORS,"couldn't set pipe nonblocking");
+    return VULPES_CALLFAIL;
+  }
   /* Register signal handler */
   for (i=0; caught_signals[i] != 0; i++) {
     if (set_signal_handler(caught_signals[i], signal_handler)) {
@@ -129,52 +141,103 @@ void driver_shutdown(void)
   close(state.loopdev_fd);
 }
 
+static void process_message(struct isr_message *msg)
+{
+  switch (msg->type) {
+  case ISR_MSGTYPE_GET_META:
+    vulpes_log(LOG_FAUXIDE_REQ,"GET: %llu:%llu",state.request_count,msg->chunk);
+    break;
+  case ISR_MSGTYPE_UPDATE_META:
+    vulpes_log(LOG_FAUXIDE_REQ,"UPDATE: %llu:%llu",state.request_count,msg->chunk);
+    break;
+  default:
+    vulpes_log(LOG_FAUXIDE_REQ,"UNKNOWN: %llu:%llu",state.request_count,msg->chunk);
+    return;
+  }
+  
+  if (!message_ok(msg)) {
+    vulpes_log(LOG_ERRORS,"%llu:%llu: bad message",state.request_count,msg->chunk);
+    return;
+  }
+  
+  /* Process cmd */
+  switch (msg->type) {
+  case ISR_MSGTYPE_GET_META:
+    if (cache_get(msg)) {
+      vulpes_log(LOG_ERRORS,"%llu:%llu: get failed",state.request_count,msg->chunk);
+      return;
+    }
+    msg->type=ISR_MSGTYPE_SET_META;
+    if (write(state.chardev_fd, msg, sizeof(*msg)) != sizeof(*msg)) {
+      vulpes_log(LOG_ERRORS,"Short write to device driver");
+    }
+    break;
+  case ISR_MSGTYPE_UPDATE_META:
+    if (cache_update(msg)) {
+      vulpes_log(LOG_ERRORS,"%llu:%llu: update failed",state.request_count,msg->chunk);
+    }
+    break;
+  }
+}
+
 void driver_run(void)
 {
   struct isr_message msg;
-  unsigned long long request_counter;
+  fd_set readfds;
+  fd_set exceptfds;
+  int fdcount=max(state.signal_fds[0], state.chardev_fd) + 1;
+  int shutdown_pending=0;
+  char signal;
   
   /* Enter processing loop */
-  for (request_counter=0; !exit_pending; request_counter++) {
-    if (read(state.chardev_fd, &msg, sizeof(msg)) != sizeof(msg)) {
-      vulpes_log(LOG_ERRORS,"Short read from device driver");
-      break;
-    }
-    
-    switch (msg.type) {
-    case ISR_MSGTYPE_GET_META:
-      vulpes_log(LOG_FAUXIDE_REQ,"GET: %llu:%llu",request_counter,msg.chunk);
-      break;
-    case ISR_MSGTYPE_UPDATE_META:
-      vulpes_log(LOG_FAUXIDE_REQ,"UPDATE: %llu:%llu",request_counter,msg.chunk);
-      break;
-    default:
-      vulpes_log(LOG_FAUXIDE_REQ,"UNKNOWN: %llu:%llu",request_counter,msg.chunk);
-      continue;
-    }
-    
-    if (!message_ok(&msg)) {
-      vulpes_log(LOG_ERRORS,"%llu:%llu: bad message",request_counter,msg.chunk);
-      continue;
-    }
-    
-    /* Process cmd */
-    switch (msg.type) {
-    case ISR_MSGTYPE_GET_META:
-      if (cache_get(&msg)) {
-	vulpes_log(LOG_ERRORS,"%llu:%llu: get failed",request_counter,msg.chunk);
+  FD_ZERO(&readfds);
+  FD_ZERO(&exceptfds);
+  for (;;) {
+    FD_SET(state.chardev_fd, &readfds);
+    FD_SET(state.signal_fds[0], &readfds);
+    if (shutdown_pending)
+      FD_SET(state.chardev_fd, &exceptfds);
+    if (select(fdcount, &readfds, NULL, &exceptfds, NULL) == -1) {
+      /* select(2) reports that the fdsets are now undefined, so we start
+         over */
+      FD_ZERO(&readfds);
+      FD_ZERO(&exceptfds);
+      if (errno == EINTR) {
+	/* Got a signal.  The next time through the loop the pipe will be
+	   readable and we can find out what signal it was */
 	continue;
+      } else {
+	vulpes_log(LOG_ERRORS,"select() failed: %s",strerror(errno));
+	/* XXX now what? */
       }
-      msg.type=ISR_MSGTYPE_SET_META;
-      if (write(state.chardev_fd, &msg, sizeof(msg)) != sizeof(msg)) {
-	vulpes_log(LOG_ERRORS,"Short write to device driver");
+    }
+    
+    /* Process pending signals */
+    if (FD_ISSET(state.signal_fds[0], &readfds)) {
+      while (read(state.signal_fds[0], &signal, sizeof(signal)) > 0) {
+	switch (signal) {
+	default:
+	  vulpes_log(LOG_BASIC,"Caught signal; shutdown pending");
+	  shutdown_pending=1;
+	}
       }
-      break;
-    case ISR_MSGTYPE_UPDATE_META:
-      if (cache_update(&msg)) {
-	vulpes_log(LOG_ERRORS,"%llu:%llu: update failed",request_counter,msg.chunk);
+    }
+    
+    /* If we need to shut down and we think the block device has no users,
+       try to unregister */
+    if (shutdown_pending && FD_ISSET(state.chardev_fd, &exceptfds)) {
+      if (!ioctl(state.chardev_fd, ISR_IOC_UNREGISTER))
+	return;
+    }
+    
+    /* Process pending requests */
+    if (FD_ISSET(state.chardev_fd, &readfds)) {
+      if (read(state.chardev_fd, &msg, sizeof(msg)) != sizeof(msg)) {
+	vulpes_log(LOG_ERRORS,"Short read from device driver");
+	break; /* XXX */
       }
-      break;
+      process_message(&msg);
+      state.request_count++;
     }
   }
 }
