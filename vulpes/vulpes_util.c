@@ -1,10 +1,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <errno.h>
 #include "vulpes.h"
+#include "vulpes_util.h"
 
 int is_dir(const char *name)
 {
@@ -52,16 +55,47 @@ int at_eof(int fd)
   return 1;
 }
 
-/* XXX does not ensure we're at the beginning of the file */
-vulpes_err_t read_file(int fd, char *buf, int *bufsize)
+vulpes_err_t read_file(const char *path, char *buf, int *bufsize)
 {
-  int count=read(fd, buf, *bufsize);
+  int fd;
+  int count;
+  vulpes_err_t ret=VULPES_SUCCESS;
+  
+  fd=open(path, O_RDONLY);
+  if (fd == -1) {
+    switch (errno) {
+    case ENOTDIR:
+    case ENOENT:
+      return VULPES_NOTFOUND;
+    case ENOMEM:
+      return VULPES_NOMEM;
+    default:
+      return VULPES_IOERR;
+    }
+  }
+  count=read(fd, buf, *bufsize);
   if (count == -1)
-    return VULPES_IOERR;
-  if (count == *bufsize && !at_eof(fd))
-    return VULPES_OVERFLOW;
-  *bufsize=count;
-  return 0;
+    ret=VULPES_IOERR;
+  else if (count == *bufsize && !at_eof(fd))
+    ret=VULPES_OVERFLOW;
+  else
+    *bufsize=count;
+  close(fd);
+  return ret;
+}
+
+/* Read a file consisting of a newline-terminated string, and return the string
+   without the newline */
+vulpes_err_t read_sysfs_file(const char *path, char *buf, int bufsize)
+{
+  vulpes_err_t ret=read_file(path, buf, &bufsize);
+  if (ret)
+    return ret;
+  while (--bufsize >= 0 && buf[bufsize] != '\n');
+  if (bufsize < 0)
+    return VULPES_BADFORMAT;
+  buf[bufsize]=0;
+  return VULPES_SUCCESS;
 }
 
 char *vulpes_strerror(vulpes_err_t err)
@@ -87,6 +121,8 @@ char *vulpes_strerror(vulpes_err_t err)
     return "Invalid format";
   case VULPES_CALLFAIL:
     return "Call failed";
+  case VULPES_PROTOFAIL:
+    return "Driver protocol error";
   }
   return "(Unknown)";
 }

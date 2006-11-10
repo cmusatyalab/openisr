@@ -16,6 +16,11 @@
 static const int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
 			SIGABRT, SIGTERM, SIGTSTP, 0};
 
+#define MY_INTERFACE_VERSION 2
+#if MY_INTERFACE_VERSION != ISR_INTERFACE_VERSION
+#error This code uses a different interface version than the one defined in convergent-user.h
+#endif
+
 static void signal_handler(int sig)
 {
   char c=sig;
@@ -86,6 +91,33 @@ vulpes_err_t driver_init(void)
   struct isr_setup setup;
   vulpes_err_t ret;
   int i;
+  char revision[32];
+  char branch[64];
+  char protocol[8];
+  unsigned protocol_i;
+  
+  if (!is_dir("/sys/class/openisr")) {
+    vulpes_log(LOG_ERRORS,"kernel module not loaded");
+    return VULPES_NOTFOUND;
+  }
+  if (read_sysfs_file("/sys/class/openisr/version", protocol, sizeof(protocol))) {
+    vulpes_log(LOG_ERRORS,"can't get driver protocol version");
+    return VULPES_PROTOFAIL;
+  }
+  if (sscanf(protocol, "%u", &protocol_i) != 1) {
+    vulpes_log(LOG_ERRORS,"can't parse protocol version");
+    return VULPES_PROTOFAIL;
+  }
+  if (protocol_i != MY_INTERFACE_VERSION) {
+    vulpes_log(LOG_ERRORS,"protocol mismatch: expected version %u, got version %u",MY_INTERFACE_VERSION,protocol_i);
+    return VULPES_PROTOFAIL;
+  }
+  if (read_sysfs_file("/sys/class/openisr/branch", branch, sizeof(branch)) ||
+      read_sysfs_file("/sys/class/openisr/revision", revision, sizeof(revision))) {
+    vulpes_log(LOG_ERRORS,"can't get driver revision");
+    return VULPES_PROTOFAIL;
+  }
+  vulpes_log(LOG_BASIC,"Driver protocol %u, revision %s (%s)",protocol_i,revision,branch);
   
   /* Create signal-passing pipe */
   if (pipe(state.signal_fds)) {
@@ -112,8 +144,13 @@ vulpes_err_t driver_init(void)
   /* Open the device */
   state.chardev_fd = open("/dev/openisrctl", O_RDWR);
   if (state.chardev_fd < 0) {
-    vulpes_log(LOG_ERRORS,"unable to open character device");
-    return VULPES_IOERR;
+    if (errno == ENOENT) {
+      vulpes_log(LOG_ERRORS,"/dev/openisrctl does not exist");
+      return VULPES_NOTFOUND;
+    } else {
+      vulpes_log(LOG_ERRORS,"unable to open /dev/openisrctl");
+      return VULPES_IOERR;
+    }
   }
   
   /* Register ourselves with the device */

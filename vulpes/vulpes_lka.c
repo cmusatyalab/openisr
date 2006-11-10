@@ -59,7 +59,6 @@ static vulpes_err_t file_lookup(struct lka_provider *prov, const void *tag,
   char name[2*MAX_LKA_STRING_LEN+1];
   char *cptr;
   int i;
-  int fd;
 
   /* Form the source file name.  Check the source file name bound. */
   switch(prov->tag_type) {
@@ -87,15 +86,9 @@ static vulpes_err_t file_lookup(struct lka_provider *prov, const void *tag,
   }
 
   /* Read in the source file */
-  fd=open(name, O_RDONLY);
-  if(fd == -1) {
-    vulpes_debug(LOG_TRANSPORT,"lka file not found: %s",src);
-    return VULPES_NOTFOUND;
-  } else {
-    vulpes_debug(LOG_TRANSPORT,"lka file found: %s",src);
-  }
-  err=read_file(fd, buf, bufsize);
-  close(fd);
+  err=read_file(name, buf, bufsize);
+  if (err && err != VULPES_NOTFOUND)
+    vulpes_log(LOG_ERRORS,"I/O error reading %s: %s",name,vulpes_strerror(err));
   if (err) return err;
   
   /* Copy the source file name */
