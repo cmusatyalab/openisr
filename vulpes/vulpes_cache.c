@@ -822,7 +822,7 @@ int initialize_cache(void)
     fclose(f);
     return -1;
   }
-  if (state.version != 1) {
+  if (state.version != 2) {
     vulpes_log(LOG_ERRORS,"unknown cache version number: %s",state.index_name);
     fclose(f);
     return -1;

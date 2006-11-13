@@ -56,6 +56,7 @@ sub update ();
 sub killvulpes ();
 sub hoard ($$$);
 sub statparcel ($$$);
+sub upgrade_lev1 ($);
 sub get_parcelnames ($$);
 sub get_parcelcfg ($$$);
 sub parse_parcelcfg ($$$);
@@ -837,6 +838,9 @@ sub run ($$$$) {
 	errexit("Found $numfiles virtual machine config files, but expected exactly one.");
     }
     $cfgfile = $files[0];
+    
+    # Check index.lev1 version number and update if need be
+    upgrade_lev1("$cachedir/hdk");
 
     # Launch Vulpes. 
     print("Launching Vulpes...\n")
@@ -1583,6 +1587,64 @@ sub clean ($$$$) {
     }
 
     return $errors;
+}
+
+#
+# upgrade_lev1 - Make sure the index.lev1 version number is current.  If it's
+#                too new, refuse to run, and if it's too old, offer to upgrade.
+#
+
+sub upgrade_lev1 ($) {
+    my $hdkdir = shift;
+    
+    my $indexfile = "$hdkdir/index.lev1";
+    
+    my $cur;
+    my $supported = 2;
+    my $line;
+    my $key;
+    my $value;
+    
+    $cur = get_value($indexfile, "VERSION");
+    $cur =~ s/^ *//;
+    errexit("Parcel too new: expected version $supported, found version $cur")
+	if ($cur > $supported);
+    
+    if ($cur < $supported) {
+	message("INFO", "Parcel upgrade needed: expected version $supported, found $cur");
+	
+	print RED, "This parcel must be upgraded before it can be used with this version of ISR.\n";
+	print "Once upgraded, it will not be usable with older versions.\n", RESET;
+	if (-e "$hdkdir/0000") {
+	    errexit("This parcel has dirty state; run \"isr clean\" and try again");
+	}
+	query("Upgrade parcel?") eq "y"
+	    or errexit("User declined parcel upgrade");
+	
+	open(INFILE, $indexfile)
+	    or unix_errexit("Couldn't open $indexfile for reading");
+	open(OUTFILE, ">$indexfile.new")
+	    or unix_errexit("Couldn't open $indexfile.new for writing");
+	
+	while ($line = <INFILE>) {
+	    ($key, $value) = split("=", $line);
+	    if ($key eq "VERSION") {
+		print OUTFILE "VERSION= $supported\n";
+	    } else {
+		print OUTFILE $line;
+	    }
+	}
+	
+	close(INFILE)
+	    or unix_errexit("Unable to close $indexfile");
+	close(OUTFILE)
+	    or unix_errexit("Unable to close $indexfile.new");
+	
+	mysystem("mv $indexfile.new $indexfile") == 0
+	    or errexit("Couldn't replace $indexfile with new version");
+	
+	message("INFO", "Upgraded parcel to version $supported");
+    }
 }
 
 #

@@ -1106,7 +1106,7 @@ sub isr_priv_commit ($$$) {
 
 #
 # isr_priv_clientcommit - Commit state on the client.  First, copy the
-#     memory image and keyring from cache/ to last/, so that the
+#     memory image, keyring, and index.lev1 from cache/ to last/, so that the
 #     client-side last remains consistent with the server-side last/.
 #     Second, move any dirty hdk chunks from the local cache to the hoard
 #     cache so that the hoard cache stays fully populated.
@@ -1169,13 +1169,15 @@ sub isr_priv_clientcommit($$$) {
 
     #
     # Now that we have determined the dirty disk state, we can copy
-    # the memory image and keyring from cache to last
+    # the memory image, keyring, and index.lev1 from cache to last
     #
     message("INFO", "Client side commit - start copying memory image");
     mysystem("cp -f $cachedir/cfg/* $lastdir/cfg") == 0
 	or system_errexit("Unable to copy memory image from $cachedir to $lastdir/cfg.");
     mysystem("cp -f $cachedir/keyring $lastdir") == 0
 	or system_errexit("Unable to copy keyring from $cachedir to $lastdir.");
+    mysystem("cp -f $cachedir/hdk/index.lev1 $lastdir/hdk") == 0
+        or system_errexit("Unable to copy index.lev1 from $cachedir to $lastdir.");
     message("INFO", "Client side commit - finish copying memory image");
 
     #
