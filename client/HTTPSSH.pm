@@ -21,6 +21,7 @@
 #####################
 # Section 0: Prologue
 #####################
+use File::Path;
 use IO::Socket;
 use lib "/usr/local/isr/bin";
 use Isr;
@@ -89,8 +90,9 @@ sub isr_make_hdk ($$) {
     my $lastdir = shift;  # mirrors keyring and memory image on server
 
     if (!-e "$cachedir/hdk") {
-	mysystem("mkdir --parents $cachedir/hdk") == 0
-	    or system_errexit("Unable to create $cachedir/hdk");
+	eval {mkpath("$cachedir/hdk")};
+	errexit("Unable to create $cachedir/hdk")
+	    if $@;
     }
     if (!-e "$cachedir/hdk/index.lev1") {
 	mysystem("cp -p $lastdir/hdk/index.lev1 $cachedir/hdk/index.lev1") == 0
@@ -374,9 +376,9 @@ sub isr_hoard ($$$) {
 		mysystem("rm -rf $lastdir");
 		errexit("Unable to fetch $target file");
 	    }
-	    if (system("mv $lastdir/tmpfile $lastdir/$target") != 0) {
+	    if (!rename("$lastdir/tmpfile", "$lastdir/$target")) {
 		mysystem("rm -rf $lastdir");
-		errexit("Unable to commit $lastdir/$target");
+		unix_errexit("Unable to commit $lastdir/$target");
 	    }
 	}
 
@@ -455,14 +457,11 @@ sub isr_hoard ($$$) {
 	    $computed_tag = `openssl sha1 < $tmpfile`;
 	    chomp($computed_tag);
 	    if (uc($computed_tag) eq uc($tag)) {
-
-		# Commit temp file. Note that using system instead of
-		# mysystem is important here, since system ignores
-		# SIGINT, while mysystem doesn't. If anything goes
-		# wrong, return error to caller and let it decide
-		# whether to restart the hoard operation.
-		if (system("mv $tmpfile $hoarddir/$tag") != 0) {
-		    err("[isr] Unable to move $tmpfile to $tag");
+		# Commit temp file. If anything goes wrong, return error to
+		# caller and let it decide whether to restart the hoard
+		# operation.
+		if (!rename($tmpfile, "$hoarddir/$tag")) {
+		    unix_err("[isr] Unable to move $tmpfile to $tag");
 		    return $Isr::EINVAL;
 		}
 		sys_sync();
@@ -472,8 +471,9 @@ sub isr_hoard ($$$) {
 	    # later diagnostics and return error to the caller.
 	    else {
 		$corruptfile = "$hoarddir/corrupt-hoard-$computed_tag-$tag-$chunk";
-		system("mv $tmpfile $corruptfile");
 		err("Downloaded temp file $tmpfile is corrupted. Computed tag=$computed_tag Filename=$corruptfile.");
+		rename($tmpfile, $corruptfile)
+		    or unix_err("Couldn't rename $tmpfile to $corruptfile");
 		return $Isr::EINVAL;
 	    }
 	}
@@ -794,7 +794,8 @@ sub isr_checkhoard ($$$$$) {
 		    else {
 			if (uc($computed_tag) ne $tag) {
 			    system_err("Encountered a corrupt hoarded file, which we have removed. Try rerunning \"isr disconnect\" or \"isr hoard\". [Computed tag=$computed_tag hoard filename=$tag]");
-			    mysystem("mv -f $hoarddir/$tag $hoarddir/corrupt-stat-$computed_tag-$tag-$chunkcount");
+			    rename("$hoarddir/$tag", "$hoarddir/corrupt-stat-$computed_tag-$tag-$chunkcount")
+				or unix_err("Couldn't rename corrupt hoarded file $tag");
 			}
 		    }
 		}
@@ -1204,8 +1205,8 @@ sub isr_priv_clientcommit($$$) {
 	$hoardfile = "$hoarddir/$computed_tag";
 
 	# Now move the dirty chunk to the hoard cache
-	mysystem("mv $cachefile $hoardfile") == 0
-	    or errexit("Unable to move $cachefile to $hoardfile.");
+	rename($cachefile, $hoardfile)
+	    or unix_errexit("Unable to move $cachefile to $hoardfile.");
 	print "$i: Moved $chunkdir/$chunkfile to $computed_tag.\n"
 	    if $main::verbose > 1;
 	emit_hdk_progressmeter(($i+1)*$chunksize, $numdirtybytes);
