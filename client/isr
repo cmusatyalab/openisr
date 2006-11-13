@@ -30,6 +30,7 @@ use File::stat;
 use Term::ANSIColor qw(:constants);
 use POSIX ":sys_wait_h";
 use POSIX ":signal_h";
+require "syscall.ph";
 use lib "/usr/local/isr/bin";
 use Isr;
 use Isruser;
@@ -85,6 +86,7 @@ sub system_err ($);
 sub message ($$);
 sub usage ($);
 sub mysystem ($);
+sub sys_sync ();
 
 #########################
 # Section 1. Main routine
@@ -153,8 +155,8 @@ $SIG{"INT"} = sub {
 	print("Cleanly shutdown Vulpes.\n")
 	    if $verbose;
     }
-    system("sync");
-    system("sync");
+    sys_sync();
+    sys_sync();
     message("EXIT", "SIGINT"); 
     exit 1; 
 };
@@ -313,12 +315,12 @@ $isrhome = "$ENV{HOME}/.isr";
 $isrdir = "$isrhome/$userid";
 
 if (!-e $isrhome) {
-    mysystem("mkdir $isrhome") == 0
-	or errexit("Unable to make $isrhome");
+    mkdir($isrhome)
+	or unix_errexit("Unable to make $isrhome");
 }
 if (!-e $isrdir) {
-    mysystem("mkdir $isrdir") == 0
-	or errexit("Unable to make $isrdir");
+    mkdir($isrdir)
+	or unix_errexit("Unable to make $isrdir");
 }
 if (!-d $isrdir) {
     errexit("$isrdir is not a directory");
@@ -570,7 +572,7 @@ sub checkout ($$$$) {
     if (isr_srun($userid, "lock", 
 		 "-p $userid/$parcel -n $clientname -a", 
 		 "$isrdir/nonce", 0) != 0) {
-	mysystem("rm -f $isrdir/nonce");
+	unlink("$isrdir/nonce");
 	errexit("Unable to acquire lock for $parcel.");
     }
 
@@ -676,7 +678,7 @@ sub checkout ($$$$) {
     #
     # Fetch the memory and meta files to a temp file and then commit
     #
-    system("rm -f $lastdir/tmpfile");
+    unlink("$lastdir/tmpfile");
     foreach $target ("keyring.enc", "hdk/index.lev1", "cfg.tgz.enc") {
 	if (!-e "$lastdir/$target") {
 	    print "Fetching $target...\n"
@@ -704,17 +706,17 @@ sub checkout ($$$$) {
 	if (mysystem("openssl enc -d -bf -in $lastdir/${target}.enc -out $lastdir/$target -pass file:$lastdir/keyroot -nosalt") != 0) {
 	    errexit("Did not find a $target.enc file to decrypt");
 	}
-	if (mysystem("rm $lastdir/$target.enc") != 0) {
+	if (!unlink("$lastdir/$target.enc")) {
 	    clean($userid, $parcel, $isrdir, 0);
-	    system_errexit("Unable to remove $target.enc.");
+	    errexit("Unable to remove $target.enc.");
 	}
     }
 
     #
     # Keyroot no longer needed, get rid of it
     #
-    mysystem("rm -f $lastdir/keyroot") == 0
-	or system_errexit("Unable to delete $lastdir/keyroot.");
+    unlink("$lastdir/keyroot")
+	or unix_errexit("Unable to delete $lastdir/keyroot.");
 
     #
     # Unpack the memory image and other virtual machine files
@@ -724,11 +726,11 @@ sub checkout ($$$$) {
 
     mysystem("tar -xzf $lastdir/cfg.tgz --directory $lastdir") == 0
 	or system_errexit("Unable to unpack $lastdir/$target.");
-    mysystem("rm -f $lastdir/cfg.tgz") == 0
-	or errexit("Unable to delete compressed files from $lastdir");
+    unlink("$lastdir/cfg.tgz")
+	or unix_errexit("Unable to delete compressed files from $lastdir");
 
     # Clean up and return
-    mysystem("sync");
+    sys_sync();
     print(GREEN, "Success: Parcel $userid/$parcel now checked out (and lock acquired).\n", RESET)
 	if $verbose;
     return;
@@ -769,7 +771,7 @@ sub run ($$$$) {
 
     # Reset the consistent dirty cache flag, since any temporary dirty
     # cache directory is about to become inconsistent with the local cache.
-    system("rm -f $cdcache_file");
+    unlink($cdcache_file);
 
     # Make sure there are no other Vulpes processes running
     if (get_vulpespid() != 0) {
@@ -872,15 +874,11 @@ sub run ($$$$) {
     print "Shutting down VMware.\n"
 	if $verbose;
     
-    # Shut down Vulpes after syncing to flush out Fauxide buffers
-    print "Syncing file system...\n"
+    # Signal Vulpes to shut down and wait until it is gone
+    print "Shutting down Vulpes (pid=$vulpespid)"
 	if $verbose;
     killvulpes();
     message("INFO", "Sent SIGUSR2 signal to Vulpes (pid=$vulpespid)");
-
-    # Wait until the Vulpes process is gone
-    print "Shutting down Vulpes (pid=$vulpespid)"
-	if $verbose;
     $iters = 0;
     while (1) {
 	$iters++;
@@ -1016,7 +1014,7 @@ sub discard ($$$) {
     # Reset the consistent dirty cache flag, since any temporary dirty
     # cache directory can no longer be consistent with an empty local cache.
     #
-    mysystem("rm -f $cdcache_file");
+    unlink($cdcache_file);
 
     print(GREEN, "Success: Local changes to parcel $userid/$parcel discarded.\n", RESET)
 	if $verbose;
@@ -1220,10 +1218,7 @@ sub release ($$$) {
 # killvulpes - Cleanly kill all Vulpes processes
 #
 sub killvulpes () {
-    system("sync");
-    system("sync");
     system("killall -s USR2 vulpes > /dev/null 2>&1");
-    system("sync");
 }
 
 #
@@ -1272,7 +1267,7 @@ sub hoard ($$$) {
 	}
 	print "Sleeping $Isr::HOARD_SLEEP secs before restarting hoard...\n"
 	    if $verbose;
-	mysystem("sleep $Isr::HOARD_SLEEP");
+	sleep($Isr::HOARD_SLEEP);
     }
 
     # The hoard finished without any errors. Declare success
@@ -1434,7 +1429,7 @@ sub update () {
 	$performupdate = query("Do you wish to proceed with the update?");
     }
     
-    mysystem("rm -f $versionsrv");
+    unlink($versionsrv);
 
     if($needsupdate and $performupdate eq "y") {
 	message("INFO", "Version skew detected, updating client software...");
@@ -1834,8 +1829,8 @@ sub build_cache ($$) {
 	print("Copying virtual machine memory image...\n")
 	    if $verbose;
 	
-	mysystem("mkdir $cachedir/cfg") == 0
-	    or system_errexit("Unable to make $cachedir/cfg");
+	mkdir("$cachedir/cfg")
+	    or unix_errexit("Unable to make $cachedir/cfg");
 	mysystem("cp $lastdir/cfg/* $cachedir/cfg") == 0
 	    or system_errexit("Unable to copy virtualization config files.");
     }
@@ -2370,6 +2365,13 @@ sub mysystem ($) {
     # Parent
     waitpid($pid, 0);
     return $?; # Return exit status of the child
+}
+
+#
+# sys_sync - Call sync(2)
+#
+sub sys_sync () {
+    syscall(&SYS_sync);
 }
 
 #

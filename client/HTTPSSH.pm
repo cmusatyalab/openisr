@@ -125,7 +125,7 @@ sub isr_sget ($$$$) {
 	}
 	print "[isr] get operation failed. Retrying...\n"
 	    if $main::verbose;
-	mysystem("sleep 1");
+	sleep(1);
     }
     return ($retval);
 }
@@ -307,9 +307,7 @@ sub isr_run_vulpes ($$$) {
     #
     # Give Vulpes enough time to initialize
     #
-    mysystem("sync");
-    mysystem("sleep 1");
-    mysystem("sync");
+    sleep(1);
 
     return $retval;
 }
@@ -369,7 +367,7 @@ sub isr_hoard ($$$) {
 	mysystem("mkdir -p $lastdir/hdk") == 0
 	    or errexit("Unable to make $lastdir and $lastdir/hdk");
 	foreach $target ("keyring.enc", "hdk/index.lev1") {
-	    mysystem("rm -f $lastdir/tmpfile");
+	    unlink("$lastdir/tmpfile");
 	    print "Fetching $target...\n"
 		if ($main::verbose > 1);
 	    if (isr_sget($userid, "last/$target", "$lastdir/tmpfile", 0) != $Isr::ESUCCESS) {
@@ -397,10 +395,10 @@ sub isr_hoard ($$$) {
 	    mysystem("rm -rf $lastdir");
 	    errexit("Unable to decrypt $target.enc");
 	}
-	mysystem("rm -f $lastdir/$target.enc");
+	unlink("$lastdir/$target.enc");
 
 	# Keyroot no longer needed, get rid of it
-	mysystem("rm -f $lastdir/keyroot");
+	unlink("$lastdir/keyroot");
     }
 
     #
@@ -467,7 +465,7 @@ sub isr_hoard ($$$) {
 		    err("[isr] Unable to move $tmpfile to $tag");
 		    return $Isr::EINVAL;
 		}
-		system("sync");
+		sys_sync();
 	    }
 
 	    # Actual tag doesn't match expected tag. Save corrupted file 
@@ -483,8 +481,8 @@ sub isr_hoard ($$$) {
 	emit_hdk_progressmeter(($chunk+1)*$chunksize, $maxbytes);
     }
     reset_cursor();
-    system("sync");
-    system("sync");
+    sys_sync();
+    sys_sync();
     return $Isr::ESUCCESS;
 }
 
@@ -935,12 +933,12 @@ sub isr_priv_upload ($$$) {
 
     # We need to do this, so that if the commit doesn't finish
     # rsync doesn't blow everything away
-    system("rm -f $cdcache_file");
+    unlink($cdcache_file);
 
     #
     # Clean up the local cache directory 
     #
-    mysystem("rm -f $cachedir/cfg.tgz"); 
+    unlink("$cachedir/cfg.tgz"); 
 
     # Return successful status
     print("Upload completed, all updates have been sent to the server.\n")
@@ -1018,7 +1016,7 @@ sub copy_dirtychunks ($$$) {
     chomp($dirtyblocks = <STATFILE>);
     chomp($dirtybytes = <STATFILE>);
     close STATFILE;
-    mysystem("rm -f $tmpdir/cache/hdk/stats");
+    unlink("$tmpdir/cache/hdk/stats");
 
     #
     # For record keeping, the caller needs to know how many total hdk bytes
@@ -1220,8 +1218,8 @@ sub isr_priv_clientcommit($$$) {
     # 
     # Sync because we're paranoid
     #
-    system("sync");
-    system("sync");
+    sys_sync();
+    sys_sync();
     return $Isr::ESUCCESS;
 }
 
@@ -1316,7 +1314,7 @@ sub isr_priv_cleanhoard ($$$) {
     # Remove any files that are not exempted from removal
     foreach $tag (keys %filehash) {
 	if ($filehash{$tag} == 1) {
-	    mysystem("rm -f $hoarddir/$tag");
+	    unlink("$hoarddir/$tag");
 	    $deletecnt++;
 	}
     }
