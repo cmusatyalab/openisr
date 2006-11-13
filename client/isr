@@ -78,6 +78,9 @@ sub block_sigint ();
 sub unblock_sigint ($);
 sub block_sigtstp ();
 sub cleantmp ();
+sub mysystem ($);
+sub sys_sync ();
+sub mktree ($);
 sub err ($);
 sub unix_err ($);
 sub errexit ($);
@@ -86,8 +89,6 @@ sub system_errexit ($);
 sub system_err ($);
 sub message ($$);
 sub usage ($);
-sub mysystem ($);
-sub sys_sync ();
 
 #########################
 # Section 1. Main routine
@@ -601,19 +602,15 @@ sub checkout ($$$$) {
 
     # Set up the client's parcel directory. If anything goes wrong erase 
     # all traces of the parcel on the client and release its lock.
-    # mkpath() throws a fatal error on failure, so we have to trap it
-    eval {mkpath($parceldir)};
-    if ($@) {
+    if (!mktree($parceldir)) {
 	clean($userid, $parcel, $isrdir, 0);
 	errexit("Unable to create parcel dir $parceldir.");
     }
-    eval {mkpath($lastdir)};
-    if ($@) {
+    if (!mktree($lastdir)) {
 	clean($userid, $parcel, $isrdir, 0);
 	errexit("Unable to create last dir $lastdir.");
     }
-    eval {mkpath("$lastdir/hdk")};
-    if ($@) {
+    if (!mktree("$lastdir/hdk")) {
 	clean($userid, $parcel, $isrdir, 0);
 	errexit("Unable to create last dir $lastdir/hdk.");
     }
@@ -1825,9 +1822,8 @@ sub build_cache ($$) {
     my $dirname;
 
     if (!-e $cachedir) {
-	eval {mkpath($cachedir)};
-	errexit("Unable to make $cachedir")
-	    if $@;
+	mktree($cachedir)
+    	    or errexit("Unable to make $cachedir");
     }
 
     # Copy the virtualization files from lastdir to cachedir
@@ -2210,6 +2206,49 @@ sub cleantmp () {
     system("rm -rf $isrdir/tmplast*");
 }
 
+#
+# mysystem - Version of Unix 'system' function that can be 
+#            interrupted with ctrl-c
+#
+sub mysystem ($) {
+    my $cmd = shift;
+
+    if (!defined($pid = fork())) {
+	unix_errexit("Unable to fork in mysystem");
+    } 
+
+    # Child
+    elsif ($pid == 0) {
+	exec($cmd);
+	unix_errexit("Unable to exec $cmd in mysystem");
+    } 
+
+    # Parent
+    waitpid($pid, 0);
+    return $?; # Return exit status of the child
+}
+
+#
+# sys_sync - Call sync(2)
+#
+sub sys_sync () {
+    syscall(&SYS_sync);
+}
+
+#
+# mktree - Make the directory named by the argument, and all of its parents.
+#          Returns true if successful or the directory already exists, false
+#          on error.
+#
+sub mktree ($) {
+    my $tree = shift;
+    
+    # mkpath() throws a fatal error on failure, so we have to trap it
+    eval {mkpath($tree)};
+    return 0 if $@;
+    return 1;
+}
+
 ######
 # Error reporting routines
 #
@@ -2349,35 +2388,6 @@ sub message_string {
     my $hostname = hostname();
 
     return "$userid|$$|$hostid:$sessionid|$hostname|$cfg{PROTOCOL}|$Isr::NAMESRV|$parcel";
-}
-
-#
-# mysystem - Version of Unix 'system' function that can be 
-#            interrupted with ctrl-c
-#
-sub mysystem ($) {
-    my $cmd = shift;
-
-    if (!defined($pid = fork())) {
-	unix_errexit("Unable to fork in mysystem");
-    } 
-
-    # Child
-    elsif ($pid == 0) {
-	exec($cmd);
-	unix_errexit("Unable to exec $cmd in mysystem");
-    } 
-
-    # Parent
-    waitpid($pid, 0);
-    return $?; # Return exit status of the child
-}
-
-#
-# sys_sync - Call sync(2)
-#
-sub sys_sync () {
-    syscall(&SYS_sync);
 }
 
 #

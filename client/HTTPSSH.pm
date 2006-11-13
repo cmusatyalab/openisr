@@ -90,9 +90,8 @@ sub isr_make_hdk ($$) {
     my $lastdir = shift;  # mirrors keyring and memory image on server
 
     if (!-e "$cachedir/hdk") {
-	eval {mkpath("$cachedir/hdk")};
-	errexit("Unable to create $cachedir/hdk")
-	    if $@;
+	mktree("$cachedir/hdk")
+	    or errexit("Unable to create $cachedir/hdk");
     }
     if (!-e "$cachedir/hdk/index.lev1") {
 	mysystem("cp -p $lastdir/hdk/index.lev1 $cachedir/hdk/index.lev1") == 0
@@ -366,9 +365,8 @@ sub isr_hoard ($$$) {
 	# Fetch the encrypted keyring into hdk index files into the last dir
 	print("Fetching keyring from the content server.\n")
 	    if $main::verbose;
-	eval {mkpath("$lastdir/hdk")};
-	errexit("Unable to make $lastdir and $lastdir/hdk")
-	    if $@;
+	mktree("$lastdir/hdk")
+	    or errexit("Unable to make $lastdir and $lastdir/hdk");
 	foreach $target ("keyring.enc", "hdk/index.lev1") {
 	    unlink("$lastdir/tmpfile");
 	    print "Fetching $target...\n"
@@ -418,9 +416,8 @@ sub isr_hoard ($$$) {
     # Confirm that hoarddir exists
     #
     if(!-d "$hoarddir") {
-	eval {mkpath($hoarddir)};
-	errexit("Unable to create $hoarddir.")
-	    if $@;
+	mktree($hoarddir)
+	    or errexit("Unable to create $hoarddir.");
     }
     
     # 
@@ -966,9 +963,8 @@ sub copy_dirtychunks ($$$) {
     # Build an empty temporary cache directory structure on the client
     #
     mysystem("rm -rf $tmpdir");
-    eval {mkpath("$tmpdir/cache/hdk")};
-    errexit("Unable to make temporary directory $tmpdir/cache/hdk")
-        if $@;
+    mktree("$tmpdir/cache/hdk")
+	or errexit("Unable to make temporary directory $tmpdir/cache/hdk");
 
     #
     # Save a copy of the keyroot in the cache (otherwise we would
@@ -1144,9 +1140,8 @@ sub isr_priv_clientcommit($$$) {
     # Create a hoard cache if necessary
     #
     if (!-e $hoarddir) {
-	eval {mkpath($hoarddir)};
-	errexit("Unable to create $hoarddir")
-	    if $@;
+	mktree($hoarddir)
+	    or errexit("Unable to create $hoarddir");
     }
     
     #
