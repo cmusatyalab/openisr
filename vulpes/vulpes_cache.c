@@ -256,6 +256,8 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 		if (write(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
 			goto short_write;
 	}
+	if (fsync(fd))
+		goto short_write;
 	close(fd);
 	vulpes_log(LOG_BASIC,"wrote hex keyring %s: %d keys",userPath,state.numchunks);
 	return VULPES_SUCCESS;
@@ -348,6 +350,8 @@ static vulpes_err_t write_bin_keyring(char *path)
     if (write(fd, &entry, sizeof(entry)) != sizeof(entry))
       goto short_write;
   }
+  if (fsync(fd))
+    goto short_write;
   close(fd);
   vulpes_log(LOG_BASIC, "wrote bin keyring %s: %d keys", path, state.numchunks);
   return VULPES_SUCCESS;
@@ -401,7 +405,7 @@ static vulpes_err_t write_cache_header(int fd)
   hdr.offset=htonl(state.offset_bytes / 512);
   hdr.valid_chunks=htonl(valid_count);
   hdr.dirty_chunks=htonl(dirty_count);
-  if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
+  if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr) || fsync(fd)) {
     vulpes_log(LOG_ERRORS, "Couldn't write cache file header");
     return VULPES_IOERR;
   }

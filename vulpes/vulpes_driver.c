@@ -27,6 +27,8 @@ static void signal_handler(int sig)
   VULPES_DEBUG("Caught signal %d\n", sig);
   /* Race-free method of catching signals */
   write(state.signal_fds[1], &c, 1);
+  /* The fd is set nonblocking, so if the pipe is full, the signal will be
+     lost */
 }
 
 static vulpes_err_t message_ok(const struct isr_message *msg)
@@ -124,8 +126,9 @@ vulpes_err_t driver_init(void)
     vulpes_log(LOG_ERRORS,"couldn't create pipe");
     return VULPES_CALLFAIL;
   }
-  /* Set read-side nonblocking */
-  if (fcntl(state.signal_fds[0], F_SETFL, O_NONBLOCK)) {
+  /* Set it nonblocking */
+  if (fcntl(state.signal_fds[0], F_SETFL, O_NONBLOCK) ||
+      fcntl(state.signal_fds[1], F_SETFL, O_NONBLOCK)) {
     vulpes_log(LOG_ERRORS,"couldn't set pipe nonblocking");
     return VULPES_CALLFAIL;
   }
@@ -141,8 +144,9 @@ vulpes_err_t driver_init(void)
   if (ret)
     return ret;
   
-  /* Open the device */
-  state.chardev_fd = open("/dev/openisrctl", O_RDWR);
+  /* Open the device.  O_NONBLOCK ensures we never block on a read(), but
+     write() may still block */
+  state.chardev_fd = open("/dev/openisrctl", O_RDWR|O_NONBLOCK);
   if (state.chardev_fd < 0) {
     if (errno == ENOENT) {
       vulpes_log(LOG_ERRORS,"/dev/openisrctl does not exist");
@@ -176,6 +180,10 @@ void driver_shutdown(void)
   close(state.chardev_fd);
   ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
   close(state.loopdev_fd);
+  /* We don't trust the loop driver */
+  sync();
+  sync();
+  sync();
 }
 
 static void process_message(struct isr_message *msg)
