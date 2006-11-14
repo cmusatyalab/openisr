@@ -199,3 +199,19 @@ int set_signal_handler(int sig, void (*handler)(int sig))
   sa.sa_flags=SA_RESTART;
   return sigaction(sig, &sa, NULL);
 }
+
+void print_progress(unsigned chunks, unsigned maxchunks)
+{
+  unsigned percent;
+  unsigned chunks_per_mb=(1 << 20)/state.chunksize_bytes;
+  
+  if (maxchunks)
+    percent=chunks*100/maxchunks;
+  else
+    percent=0;
+  printf("  %u%% (%u/%u MB)\n", percent, chunks/chunks_per_mb,
+	 maxchunks/chunks_per_mb);
+  /* Move cursor to previous line */
+  printf("\x1b[A");
+}
+

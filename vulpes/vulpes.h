@@ -71,6 +71,8 @@ extern struct vulpes_state {
   unsigned numdirs;
   unsigned long long volsize;	/* sectors */
   unsigned chunksize;		/* sectors */
+  unsigned valid_chunks_on_open;
+  unsigned dirty_chunks_on_open;
   int cachefile_fd;
   int chardev_fd;
   int loopdev_fd;

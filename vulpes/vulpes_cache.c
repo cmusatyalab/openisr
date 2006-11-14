@@ -461,6 +461,8 @@ static vulpes_err_t open_cache_file(const char *path)
     return VULPES_BADFORMAT;
   }
   state.offset_bytes=ntohl(hdr.offset) * SECTOR_SIZE;
+  state.valid_chunks_on_open=ntohl(hdr.valid_chunks);
+  state.dirty_chunks_on_open=ntohl(hdr.dirty_chunks);
   
   for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
     if (read(fd, &entry, sizeof(entry)) != sizeof(entry)) {
@@ -904,6 +906,7 @@ void copy_for_upload(char *oldkr, char *dest)
   struct chunk_data *cdp;
   int fd;
   int oldkrfd;
+  unsigned examined_chunks=0;
   unsigned modified_chunks=0;
   uint64_t modified_bytes=0;
   FILE *fp;
@@ -943,6 +946,7 @@ void copy_for_upload(char *oldkr, char *dest)
     }
     cdp=get_cdp_from_chunk_num(u);
     if (cdp_is_modified(cdp)) {
+      print_progress(++examined_chunks, state.dirty_chunks_on_open);
       if (!cdp_present(cdp)) {
 	vulpes_log(LOG_ERRORS,"Chunk modified but not present: %u",u);
 	continue;
@@ -989,6 +993,7 @@ void copy_for_upload(char *oldkr, char *dest)
       modified_bytes += cdp->length;
     }
   }
+  printf("\n");
   close(oldkrfd);
   free(buf);
   /* Make sure hex keyring is in sync with the bin keyring we've just checked */
@@ -1013,6 +1018,7 @@ void checktags(void)
   unsigned chunk_num;
   char *tag;
   struct chunk_data *cdp;
+  unsigned processed=0;
   
   vulpes_log(LOG_BASIC,"Checking cache consistency");
   buf=malloc(state.chunksize_bytes);
@@ -1040,7 +1046,9 @@ void checktags(void)
       print_tag_check_error(cdp->tag, tag);
     }
     free(tag);
+    print_progress(++processed, state.valid_chunks_on_open);
   }
   free(buf);
+  printf("\n");
   exit(0);
 }
