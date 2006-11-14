@@ -73,12 +73,14 @@ static vulpes_err_t loop_bind(void) {
 	 transfer function, even though it shouldn't be */
       if (ioctl(fd, LOOP_GET_STATUS64, &info)) {
 	vulpes_log(LOG_ERRORS,"Couldn't get status of loop device");
+	ioctl(fd, LOOP_CLR_FD, 0);
 	return VULPES_IOERR;
       }
-      /* XXX we don't set the filename */
+      snprintf(info.lo_file_name, LO_NAME_SIZE, "%s", state.image_name);
       if (ioctl(fd, LOOP_SET_STATUS64, &info)) {
 	vulpes_log(LOG_ERRORS,"Couldn't configure loop device");
-        return VULPES_IOERR;
+	ioctl(fd, LOOP_CLR_FD, 0);
+	return VULPES_IOERR;
       }
       break;
     }
@@ -140,10 +142,6 @@ vulpes_err_t driver_init(void)
     }
   }
   
-  ret=loop_bind();
-  if (ret)
-    return ret;
-  
   /* Open the device.  O_NONBLOCK ensures we never block on a read(), but
      write() may still block */
   state.chardev_fd = open("/dev/openisrctl", O_RDWR|O_NONBLOCK);
@@ -157,6 +155,11 @@ vulpes_err_t driver_init(void)
     }
   }
   
+  /* Bind the image file to a loop device */
+  ret=loop_bind();
+  if (ret)
+    return ret;
+  
   /* Register ourselves with the device */
   memset(&setup, 0, sizeof(setup));
   snprintf(setup.chunk_device, ISR_MAX_DEVICE_LEN, "%s", state.loopdev_name);
@@ -169,6 +172,7 @@ vulpes_err_t driver_init(void)
   
   if (ioctl(state.chardev_fd, ISR_IOC_REGISTER, &setup)) {
     vulpes_log(LOG_ERRORS,"unable to register with device driver: %s",strerror(errno));
+    ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
     return VULPES_IOERR;
   }
   vulpes_log(LOG_BASIC,"Registered with driver");
