@@ -28,6 +28,7 @@ use lib "/usr/local/isr/bin";
 use Isr;
 use Isruser;
 use strict;
+use warnings;
 use Term::ANSIColor qw(:constants);
 
 ##############################

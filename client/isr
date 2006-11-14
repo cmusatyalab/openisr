@@ -37,12 +37,14 @@ use lib "/usr/local/isr/bin";
 use Isr;
 use Isruser;
 use strict;
+use warnings;
 
 $| = 1; # Autoflush output on every print statement
 
 
 # Function prototypes
 sub checkout ($$$$);
+sub run ($$$$);
 sub checkin ($$$);
 sub sync ($$$);
 sub discard ($$$);
@@ -58,6 +60,7 @@ sub cleanclient ($$$$);
 sub update ();
 sub killvulpes ();
 sub hoard ($$$);
+sub checkparcel ($$$$$);
 sub statparcel ($$$);
 sub upgrade_lev1 ($);
 sub get_parcelnames ($$);
@@ -692,6 +695,7 @@ sub checkout ($$$$) {
 	    # Show a progress meter only for the big cfg file
 	    if ($target eq "cfg.tgz.enc") {
 		isr_sget($userid, "last/$target", "$lastdir/tmpfile", 1) == $Isr::ESUCCESS
+		or errexit("Unable to fetch $target file");
 	    }
 	    else {
 		isr_sget($userid, "last/$target", "$lastdir/tmpfile", 0) == $Isr::ESUCCESS
@@ -1054,8 +1058,6 @@ sub disconnect ($$$$) {
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
     
-    my $parceldir = "$isrdir/$parcel";
-
     # Parse config file that was retrieved during checkout and load
     # protocol specific storage module
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
@@ -1291,14 +1293,14 @@ sub hoard ($$$) {
     }
 
     # The hoard finished without any errors. Declare success
-    print (GREEN, "Success: The parcel $userid/$parcel is now fully hoarded on this host.\n", RESET)
+    print GREEN, "Success: The parcel $userid/$parcel is now fully hoarded on this host.\n", RESET
 	if $verbose;
 }
 
 #
 # checkparcel - Check a remote parcel for consistency
 #
-sub checkparcel ($$$) {
+sub checkparcel ($$$$$) {
     my $userid = shift;
     my $parcel = shift;
     my $isrdir = shift;
@@ -2241,8 +2243,8 @@ sub mysystem ($) {
 
     # Child
     elsif ($pid == 0) {
-	exec($cmd);
-	unix_errexit("Unable to exec $cmd in mysystem");
+	exec($cmd)
+	    or unix_errexit("Unable to exec $cmd in mysystem");
     } 
 
     # Parent
@@ -2407,6 +2409,7 @@ sub message($$) {
 # message_string - returns the inner fields of a log message string
 #
 sub message_string {
+    no warnings 'uninitialized';
     my $hostname = hostname();
 
     return "$userid|$$|$hostid:$sessionid|$hostname|$cfg{PROTOCOL}|$Isr::NAMESRV|$parcel";
