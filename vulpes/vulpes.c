@@ -59,9 +59,11 @@ static void usage(const char *progname)
     printf("\t\tlkatype must be hfs-sha-1\n");
   printf("\t[--proxy proxy_server port-number]\n");
     printf("\t\tproxy_server is the ip address or the hostname of the proxy\n");
+  printf("\t[--foreground]\n");
+    printf("\t\tDon't run in the background\n");
   printf("Usage: %s --help                  Print usage summary and exit.\n", progname);
   printf("Usage: %s --version               Print version information and exit.\n", progname);
-  exit(0);
+  exit(1);
 }
 
 #define PARSE_ERROR(str, args...) do { \
@@ -75,6 +77,9 @@ int main(int argc, char *argv[])
   const char* log_infostr;  
   unsigned logfilemask=0, logstdoutmask=0x1;
   int requiredArgs=1;/* reqd arg count; at least give me a program name! */
+  int foreground=0;
+  pid_t pid;
+  int ret=1;
   
   /* required parameters */
   int masterDone=0;
@@ -94,6 +99,7 @@ int main(int argc, char *argv[])
       {
 	{"version", no_argument, 0, 'a'},
 	{"allversions", no_argument, 0, 'a'},  /* XXX compatibility with old revs */
+	{"foreground", no_argument, 0, 'b'},
 	{"pid", no_argument, 0, 'c'},
 	{"cache", no_argument, 0, 'd'},
 	{"master", no_argument, 0, 'e'},
@@ -120,7 +126,15 @@ int main(int argc, char *argv[])
       /* version */
       requiredArgs+=1;
       version();
-      exit(0);
+      exit(1);
+      break;
+    case 'b':
+      /* foreground */
+      if (foreground) {
+	PARSE_ERROR("--foreground may only be specified once.");
+      }
+      requiredArgs+=1;
+      foreground=1;
       break;
     case 'c':
       /* pid */
@@ -306,7 +320,18 @@ int main(int argc, char *argv[])
     /* driver_init() has already complained to the log */
     goto vulpes_exit;
   }
-
+  
+  if (!foreground) {
+    pid=fork();
+    if (pid == -1) {
+      vulpes_log(LOG_ERRORS,"fork() failed");
+      goto vulpes_exit;
+    } else if (pid) {
+      exit(0);
+    }
+  }
+  ret=0;
+  
   /* Enter main loop */
   driver_run();
   
@@ -330,5 +355,5 @@ int main(int argc, char *argv[])
  vulpes_exit:
   vulpes_log(LOG_BASIC,"Exiting");
   vulpes_log_close();
-  return 0;
+  return ret;
 }
