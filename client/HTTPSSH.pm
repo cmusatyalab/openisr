@@ -22,6 +22,7 @@
 # Section 0: Prologue
 #####################
 use File::Path;
+use File::Copy;
 use IO::Socket;
 use lib "/usr/local/isr/bin";
 use Isr;
@@ -94,8 +95,8 @@ sub isr_make_hdk ($$) {
 	    or errexit("Unable to create $cachedir/hdk");
     }
     if (!-e "$cachedir/hdk/index.lev1") {
-	mysystem("cp -p $lastdir/hdk/index.lev1 $cachedir/hdk/index.lev1") == 0
-	    or system_errexit("Unable to copy $lastdir/hdk/index.lev1");
+	copy("$lastdir/hdk/index.lev1", "$cachedir/hdk/index.lev1")
+	    or unix_errexit("Unable to copy $lastdir/hdk/index.lev1");
     }
     return $Isr::ESUCCESS;
 }
@@ -882,9 +883,10 @@ sub isr_priv_upload ($$$) {
     #
     if (!-e $cdcache_file) {
 	($dirtybytes, $dirtyblocks) = 
-	    copy_dirtychunks($cachedir, $lastdir, $tmpdir); 
-	system("touch $cdcache_file") == 0
-	    or system_errexit("Unable to create dirty cache flag ($cdcache_file)");
+	    copy_dirtychunks($cachedir, $lastdir, $tmpdir);
+	open(FLAG, ">$cdcache_file")
+	    or unix_errexit("Unable to create dirty cache flag ($cdcache_file)");
+	close FLAG;
     }
     else {
 	print("Skipping local copy operation.\n")
@@ -921,9 +923,9 @@ sub isr_priv_upload ($$$) {
     #
     if (-e $hoarddir) {
 	$sha1value = `openssl sha1 < $tmpdir/cache/cfg.tgz.enc`;
-	mysystem("cp -f $tmpdir/cache/cfg.tgz.enc $hoarddir/$sha1value");
+	copy("$tmpdir/cache/cfg.tgz.enc", "$hoarddir/$sha1value");
 	$sha1value = `openssl sha1 < $tmpdir/cache/keyring.enc`;
-	mysystem("cp -f $tmpdir/cache/keyring.enc $hoarddir/$sha1value");
+	copy("$tmpdir/cache/keyring.enc", "$hoarddir/$sha1value");
     }
 
     # We need to do this, so that if the commit doesn't finish
@@ -996,8 +998,8 @@ sub copy_dirtychunks ($$$) {
     unlink("$cachedir/keyroot"); 
 
     # Copy the index.lev1 file to the temporary cache directory
-    mysystem("cp $cachedir/hdk/index.lev1 $tmpdir/cache/hdk/index.lev1") == 0
-	or errexit("Unable to copy index.lev1.");
+    copy("$cachedir/hdk/index.lev1", "$tmpdir/cache/hdk/index.lev1")
+	or unix_errexit("Unable to copy index.lev1.");
 
     # 
     # Copy any dirty hdk chunks to the temporary cache directory
@@ -1123,6 +1125,7 @@ sub isr_priv_clientcommit($$$) {
     my $i;
     my $tag;
     my $key;
+    my $name;
 
     my $parceldir = "$isrdir/$parcel";
     my $hoarddir = "$isrdir/$parcel-hoard";
@@ -1170,12 +1173,18 @@ sub isr_priv_clientcommit($$$) {
     # the memory image, keyring, and index.lev1 from cache to last
     #
     message("INFO", "Client side commit - start copying memory image");
-    mysystem("cp -f $cachedir/cfg/* $lastdir/cfg") == 0
-	or system_errexit("Unable to copy memory image from $cachedir to $lastdir/cfg.");
-    mysystem("cp -f $cachedir/keyring $lastdir") == 0
-	or system_errexit("Unable to copy keyring from $cachedir to $lastdir.");
-    mysystem("cp -f $cachedir/hdk/index.lev1 $lastdir/hdk") == 0
-        or system_errexit("Unable to copy index.lev1 from $cachedir to $lastdir.");
+    opendir(DIR, "$cachedir/cfg")
+        or unix_errexit("Unable to read memory image directory $cachedir");
+    foreach $name (readdir(DIR)) {
+	next if ($name eq "." || $name eq "..");
+	copy("$cachedir/cfg/$name", "$lastdir/cfg/$name")
+	    or unix_errexit("Unable to copy memory image from $cachedir to $lastdir/cfg.");
+    }
+    closedir(DIR);
+    copy("$cachedir/keyring", "$lastdir/keyring")
+	or unix_errexit("Unable to copy keyring from $cachedir to $lastdir.");
+    copy("$cachedir/hdk/index.lev1", "$lastdir/hdk/index.lev1")
+        or unix_errexit("Unable to copy index.lev1 from $cachedir to $lastdir.");
     message("INFO", "Client side commit - finish copying memory image");
 
     #
