@@ -1123,10 +1123,11 @@ sub isr_priv_clientcommit($$$) {
     my $chunkindex;
     my $chunkdir;
     my $chunkfile;
-    my $computed_tag;
     my $cachefile;
     my $hoardfile;
     my $i;
+    my $tag;
+    my $key;
 
     my $parceldir = "$isrdir/$parcel";
     my $hoarddir = "$isrdir/$parcel-hoard";
@@ -1135,6 +1136,7 @@ sub isr_priv_clientcommit($$$) {
     my $tmpdir = "$parceldir/tmp";
 
     my @chunkdiffs = ();
+    my @tags = ();
 
     #
     # Create a hoard cache if necessary
@@ -1156,7 +1158,10 @@ sub isr_priv_clientcommit($$$) {
     while ($line1 = <INFILE1>) {
         $line2 = <INFILE2>;
         if ($line1 ne $line2) {
-            $chunkdiffs[$dirtyblocks++] = $i;
+	    chomp $line1;
+	    ($tag, $key) = split(" ", $line1);
+	    $chunkdiffs[$dirtyblocks] = $i;
+	    $tags[$dirtyblocks++] = $tag;
         }
         $i++;
     }
@@ -1195,18 +1200,13 @@ sub isr_priv_clientcommit($$$) {
 	$cachefile = "$tmpdir/cache/hdk/$chunkdir/$chunkfile";
 
 	# Determine the location of the hoard file
-	$computed_tag = `openssl sha1 < $cachefile`;
-	if ($? != 0) {
-	    system_errexit("Failed computing tag for $cachefile");
-	}
-	chomp($computed_tag);
-	$computed_tag = uc($computed_tag);
-	$hoardfile = "$hoarddir/$computed_tag";
+	$tag = $tags[$i];
+	$hoardfile = "$hoarddir/$tag";
 
 	# Now move the dirty chunk to the hoard cache
 	rename($cachefile, $hoardfile)
 	    or unix_errexit("Unable to move $cachefile to $hoardfile.");
-	print "$i: Moved $chunkdir/$chunkfile to $computed_tag.\n"
+	print "$i: Moved $chunkdir/$chunkfile to $tag.\n"
 	    if $main::verbose > 1;
 	emit_hdk_progressmeter(($i+1)*$chunksize, $numdirtybytes);
     }
