@@ -37,6 +37,7 @@ static struct {
 	pthread_mutex_t lock;
 } fdmap={NULL, 0, PTHREAD_MUTEX_INITIALIZER};
 static char *realdev=NULL;
+static int verbose=0;
 
 /**** Debug and message stuff ****/
 
@@ -66,9 +67,14 @@ static void _get_symbol(void **dest, char *name)
 
 static void __attribute__((constructor)) libvdisk_init(void)
 {
-	char *path;
+	char *tmp;
 	
-	warn("Initializing (" SVN_BRANCH ", rev " SVN_REVISION ")");
+	tmp=getenv("VDISK_VERBOSE");
+	if (tmp != NULL)
+		verbose=1;
+	
+	if (verbose)
+		warn("Initializing (" SVN_BRANCH ", rev " SVN_REVISION ")");
 	GET_SYMBOL(open);
 	GET_SYMBOL(ioctl);
 	GET_SYMBOL(close);
@@ -80,9 +86,9 @@ static void __attribute__((constructor)) libvdisk_init(void)
 	GET_SYMBOL(__lxstat);
 	GET_SYMBOL(__lxstat64);
 	
-	path=getenv("VDISK_DEVICE");
-	if (path != NULL) {
-		realdev=strndup(path, MAXPATHLEN);
+	tmp=getenv("VDISK_DEVICE");
+	if (tmp != NULL) {
+		realdev=strndup(tmp, MAXPATHLEN);
 		if (realdev == NULL) {
 			warn("Failed to read VDISK_DEVICE; no remapping "
 						"will be done");
