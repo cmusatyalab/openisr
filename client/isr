@@ -106,6 +106,7 @@ my $result;
 my $progname; 
 my $unused;
 my $prot;
+my $prot_loaded=0;
 my $revision = '$Revision$'; # Set by CVS at commit time
 
 # Command line arguments that are private to this module
@@ -1769,8 +1770,11 @@ sub parse_parcelcfg ($$$) {
     }
 
     # Load the protocol-specific module
-    do "$Isr::ISRCLIENTBIN/$cfg{PROTOCOL}.pm"
-	or errexit("Unable to load module $cfg{PROTOCOL}.pm in parse_parcelcfg for parcel $userid/$parcel");
+    unless ($prot_loaded) {
+	do "$Isr::ISRCLIENTBIN/$cfg{PROTOCOL}.pm"
+	    or errexit("Unable to load module $cfg{PROTOCOL}.pm in parse_parcelcfg for parcel $userid/$parcel");
+	$prot_loaded = 1;
+    }
 
     # Do a protocol-specific check of the remaining values
     if (isr_checkcfg(\%cfg) != $Isr::ESUCCESS) {
@@ -1990,7 +1994,7 @@ sub get_value ($$) {
     my $line;
     my $line_key;
     my $line_value;
-    my $return_value = -1;
+    my $return_value;
 
     open(INFILE, $indexfile)
         or unix_errexit("Unable to open $indexfile in get_value");
@@ -2007,7 +2011,7 @@ sub get_value ($$) {
     close(INFILE)
         or unix_errexit("Unable to close $indexfile");
 
-    if ($return_value == -1) {
+    if (!$return_value) {
         errexit("get_value unable to find key=$search_key in $indexfile.");
     }
 
