@@ -2,7 +2,7 @@ ifneq ($(KERNELRELEASE),)
 
 obj-m := openisr.o
 openisr-objs := init.o request.o chunkdata.o chardev.o transform.o lzf.o
-openisr-objs += revision.o 
+openisr-objs += sysfs.o revision.o 
 
 else
 

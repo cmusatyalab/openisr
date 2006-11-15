@@ -254,6 +254,10 @@ char *get_suite_name(struct convergent_dev *dev);
 char *get_default_compression_name(struct convergent_dev *dev);
 int compression_type_ok(struct convergent_dev *dev, compress_t compress);
 
+/* sysfs.c */
+extern struct class_attribute class_attrs[];
+extern struct class_device_attribute class_dev_attrs[];
+
 /* revision.c */
 extern char *svn_branch;
 extern char *svn_revision;
