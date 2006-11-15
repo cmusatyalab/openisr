@@ -35,6 +35,8 @@ struct convergent_stats {
 	unsigned whole_chunk_updates;
 	unsigned encrypted_discards;
 	unsigned chunk_errors;
+	unsigned sectors_read;
+	unsigned sectors_written;
 };
 
 struct convergent_dev {

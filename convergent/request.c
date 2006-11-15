@@ -145,9 +145,11 @@ void convergent_process_chunk(struct convergent_io_chunk *chunk)
 	
 	chunk_sg=get_scatterlist(chunk);
 	if (io->flags & IO_WRITE) {
+		dev->stats.sectors_written += chunk->len / 512;
 		scatterlist_copy(io->orig_sg, chunk_sg, chunk->orig_offset,
 					chunk->offset, chunk->len);
 	} else {
+		dev->stats.sectors_read += chunk->len / 512;
 		scatterlist_copy(chunk_sg, io->orig_sg, chunk->offset,
 					chunk->orig_offset, chunk->len);
 	}

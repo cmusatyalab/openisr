@@ -149,6 +149,18 @@ static ssize_t dev_show_discards(struct class_device *class_dev, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.encrypted_discards);
 }
 
+static ssize_t dev_show_sect_read(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.sectors_read);
+}
+
+static ssize_t dev_show_sect_written(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.sectors_written);
+}
+
 struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(chunk_size, S_IRUGO, dev_show_chunksize, NULL),
 	__ATTR(cache_entries, S_IRUGO, dev_show_cachesize, NULL),
@@ -164,5 +176,7 @@ struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(chunk_writes, S_IRUGO, dev_show_chunk_writes, NULL),
 	__ATTR(whole_chunk_updates, S_IRUGO, dev_show_whole_writes, NULL),
 	__ATTR(chunk_encrypted_discards, S_IRUGO, dev_show_discards, NULL),
+	__ATTR(sectors_read, S_IRUGO, dev_show_sect_read, NULL),
+	__ATTR(sectors_written, S_IRUGO, dev_show_sect_written, NULL),
 	__ATTR_NULL
 };
