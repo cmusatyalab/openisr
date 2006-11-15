@@ -315,7 +315,7 @@ int main(int argc, char *argv[])
     /* Does not return */
   }
   
-  /* Set up fauxide driver */
+  /* Set up kernel driver */
   if (driver_init()) {
     /* driver_init() has already complained to the log */
     goto vulpes_exit;
@@ -337,7 +337,7 @@ int main(int argc, char *argv[])
   
   vulpes_log(LOG_BASIC,"Beginning vulpes shutdown sequence");
 
-  /* Shut down fauxide driver */
+  /* Shut down kernel driver */
   driver_shutdown();
 
   /* Close file */

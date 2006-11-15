@@ -179,8 +179,38 @@ vulpes_err_t driver_init(void)
   return VULPES_SUCCESS;
 }
 
+static void log_counter_value(char *attr)
+{
+  char fname[MAX_INDEX_NAME_LENGTH];
+  char buf[32];
+  unsigned value;
+  char *endptr;
+  
+  snprintf(fname, sizeof(fname), "/sys/class/openisr/openisra/%s", attr);
+  if (read_sysfs_file(fname, buf, sizeof(buf))) {
+    vulpes_log(LOG_STATS,"%s:unknown",attr);
+  } else {
+    value=strtoul(buf, &endptr, 10);
+    if (*buf == 0 || *endptr != 0) {
+      vulpes_log(LOG_STATS,"%s:unknown",attr);
+    } else {
+      vulpes_log(LOG_STATS,"%s:%u",attr,value);
+    }
+  }
+}
+
 void driver_shutdown(void)
 {
+  log_counter_value("cache_hits");
+  log_counter_value("cache_misses");
+  log_counter_value("chunk_reads");
+  log_counter_value("chunk_writes");
+  log_counter_value("chunk_errors");
+  log_counter_value("chunk_encrypted_discards");
+  log_counter_value("whole_chunk_updates");
+  log_counter_value("sectors_read");
+  log_counter_value("sectors_written");
+  
   close(state.chardev_fd);
   ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
   close(state.loopdev_fd);
