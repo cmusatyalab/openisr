@@ -674,7 +674,7 @@ sub isr_checkhoard ($$$$$) {
 
     my $numkeys;
     my $chunksize;
-    my $trashcnt;
+    my $trashcnt = 0;
     my $numfiles;
     my $num_chunks;
     my $num_dirtychunks;

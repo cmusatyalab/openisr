@@ -106,7 +106,7 @@ my $result;
 my $progname; 
 my $unused;
 my $prot;
-my $prot_loaded=0;
+my $prot_loaded = 0;
 my $revision = '$Revision$'; # Set by CVS at commit time
 
 # Command line arguments that are private to this module
@@ -119,7 +119,7 @@ my $nameserver;      # Name server domain name
 my $revisionflag;    # Print revision number?
 my $guiflag;         # Hidden flag to help track gui use
 my $version;         # Rollback version
-my $checkstate;      # Optionally check content consistency in some cmds
+my $checkstate = 0;  # Optionally check content consistency in some cmds
 my $quiet;           # No output except for errors
 my $noautoflag;      # Don't automatically start/stop VMWare at launch time
 my $allflag;         # Reset() should delete all state, including hoard cache
@@ -129,13 +129,13 @@ my $allflag;         # Reset() should delete all state, including hoard cache
 my $pid;            # Pid of child created in mysystem
 my $vulpespid;      # Pid of Vulpes process
 my $hostid;         # Unique hostid from $Isr::HOSTID file
-my $sessionid=0;    # Unique session id (nonce from lock operation)
+my $sessionid = 0;  # Unique session id (nonce from lock operation)
 my $userid;         # ISR userid
 my $parcel;         # parcel name
-my $killvulpes=0;   # Set by run command, tells SIGINT handler to kill Vulpes
+my $killvulpes = 0; # Set by run command, tells SIGINT handler to kill Vulpes
 
 # Read-only command line arguments that are visible to other modules.
-our $verbose;       # Verbosity level
+our $verbose = 1;   # Verbosity level; by default, we print a few messages
 our $nocheckstate;  # Skip state  consistency check in ci, sync, disconnect
 our $bwlimit;       # Bandwidth limit (KBytes/sec) in ci and sync
 
@@ -216,9 +216,6 @@ if (!$userid) {
 
 # Strip off pathname from the program name
 ($progname = $0) =~ s#.*/##s; # Strip off path from program name
-$verbose = 1;               # By default, we print a few messages
-$help = 0;                  # By default, no help
-$nocheckstate = 0;          # By default, check state on ci, sync, disconnect
 
 # 
 # Log the fact that we are starting the client program
@@ -433,7 +430,7 @@ check_conflicts($command, $parcel);
 # checked out, zero otherwise.
 #
 $sessionid = 0;
-if (-e "$isrdir/$parcel/nonce" && open(NONCE, "$isrdir/$parcel/nonce")) {
+if ($parcel && -e "$isrdir/$parcel/nonce" && open(NONCE, "$isrdir/$parcel/nonce")) {
     $sessionid = <NONCE>;
     close(NONCE);
     chomp($sessionid);
@@ -2475,7 +2472,7 @@ sub usage ($) {
     print RED, "Usage: $progname command [options...]\n", RESET;
     print BLUE, "Commands: auth, checkin (ci), checkout (co), checkp, clean, deauth, discard,\n", RESET;
     print BLUE, "          disconnect, hoard, ls, passwd, reset, resume, stat, sync, update\n", RESET;
-    if ($help > 0) {
+    if ($help) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR servers (once per X session only).\n";
 	print "  checkin    Sync parcel to server and release lock (-b optional).\n";
