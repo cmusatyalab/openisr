@@ -299,6 +299,9 @@ int run(char *storefile, compress_t compress)
 				printf("Error on write\n");
 		}
 	}
+	printf("Shutdown complete; Ctrl-C again to exit\n");
+	/* Statistics still available from sysfs */
+	pause();
 	printf("Exiting\n");
 	return 0;
 }

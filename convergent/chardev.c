@@ -8,23 +8,14 @@
 
 static int shutdown_dev(struct convergent_dev *dev, int force)
 {
-	if (force) {
-		/* We're being called by a release() method, so we must
-		   succeed. */
-		mutex_lock(&dev->lock);
-	} else {
-		if (mutex_lock_interruptible(&dev->lock))
-			return -ERESTARTSYS;
-		if (dev->need_user != 0) {
-			mutex_unlock(&dev->lock);
-			return -EBUSY;
-		}
-	}
+	BUG_ON(!mutex_is_locked(&dev->lock));
+	if (dev->flags & DEV_SHUTDOWN)
+		return -ENXIO;
+	if (!force && dev->need_user != 0)
+		return -EBUSY;
 	debug("Shutting down chardev");
 	dev->flags |= DEV_SHUTDOWN;
 	shutdown_usermsg(dev);
-	mutex_unlock(&dev->lock);
-	convergent_dev_put(dev, 1);
 	return 0;
 }
 
@@ -32,8 +23,14 @@ static int chr_release(struct inode *ino, struct file *filp)
 {
 	struct convergent_dev *dev=filp->private_data;
 	
-	if (dev != NULL)
-		shutdown_dev(dev, 1);
+	if (dev == NULL)
+		return 0;
+	/* We have no way to fail, so we can't lock interruptibly */
+	mutex_lock(&dev->lock);
+	/* Redundant if unregister ioctl has already been called */
+	shutdown_dev(dev, 1);
+	mutex_unlock(&dev->lock);
+	convergent_dev_put(dev, 1);
 	return 0;
 }
 
@@ -58,6 +55,10 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	
 	if (mutex_lock_interruptible(&dev->lock))
 		return -ERESTARTSYS;
+	if (dev->flags & DEV_SHUTDOWN) {
+		mutex_unlock(&dev->lock);
+		return -ENXIO;
+	}
 	for (i=0; i<count; i++) {
 		memset(&msg, 0, sizeof(msg));
 		
@@ -128,6 +129,10 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 	
 	if (mutex_lock_interruptible(&dev->lock))
 		return -ERESTARTSYS;
+	if (dev->flags & DEV_SHUTDOWN) {
+		mutex_unlock(&dev->lock);
+		return -ENXIO;
+	}
 	for (i=0; i<count; i++) {
 		if (copy_from_user(&msg, buf + i * sizeof(msg), sizeof(msg))) {
 			err=-EFAULT;
@@ -192,22 +197,20 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		setup.chunks=dev->chunks;
 		setup.hash_len=dev->hash_len;
 		if (copy_to_user((void __user *)arg, &setup, sizeof(setup)))
-			BUG();
+			BUG(); /* XXX */
 		filp->private_data=dev;
-		break;
+		return 0;
 	case ISR_IOC_UNREGISTER:
 		if (dev == NULL)
 			return -ENXIO;
-		
+		if (mutex_lock_interruptible(&dev->lock))
+			return -ERESTARTSYS;
 		ret=shutdown_dev(dev, 0);
-		if (ret)
-			return ret;
-		filp->private_data=NULL;
-		break;
+		mutex_unlock(&dev->lock);
+		return ret;
 	default:
 		return -ENOTTY;
 	}
-	return 0;
 }
 
 static int chr_old_ioctl(struct inode *ino, struct file *filp, unsigned cmd,
@@ -226,10 +229,14 @@ static unsigned chr_poll(struct file *filp, poll_table *wait)
 	poll_wait(filp, &dev->waiting_users, wait);
 	/* There doesn't seem to be a good way to make this interruptible */
 	mutex_lock(&dev->lock);
-	if (have_usermsg(dev))
-		mask |= POLLIN | POLLRDNORM;
-	if (dev->need_user == 0)
-		mask |= POLLPRI;
+	if (!(dev->flags & DEV_SHUTDOWN)) {
+		if (have_usermsg(dev))
+			mask |= POLLIN | POLLRDNORM;
+		if (dev->need_user == 0)
+			mask |= POLLPRI;
+	} else {
+		mask=POLLERR;
+	}
 	mutex_unlock(&dev->lock);
 	return mask;
 }
