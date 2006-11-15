@@ -55,9 +55,6 @@ struct chunkdata {
 struct chunkdata_table {
 	struct convergent_dev *dev;
 	unsigned buckets;
-	unsigned state_count[NR_STATES];
-	unsigned state_time_us[NR_STATES];
-	unsigned state_time_samples[NR_STATES];
 	unsigned busy_count;
 	struct list_head lru;
 	struct list_head user;
@@ -122,26 +119,28 @@ static void chunkdata_hit(struct chunkdata *cd)
 
 static void __transition(struct chunkdata *cd, enum cd_state new_state)
 {
+	struct convergent_dev *dev=cd->table->dev;
 	enum cd_state states[2]={cd->state, new_state};
 	u64 curtime=current_time_usec();
 	int idle[2];
 	int i;
 	
-	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
-	cd->table->state_time_us[cd->state] += curtime - cd->state_begin;
-	cd->table->state_time_samples[cd->state]++;
+	BUILD_BUG_ON(NR_STATES != CD_NR_STATES);
+	BUG_ON(!mutex_is_locked(&dev->lock));
+	dev->stats.state_time_us[cd->state] += curtime - cd->state_begin;
+	dev->stats.state_time_samples[cd->state]++;
 	for (i=0; i<2; i++)
 		idle[i]=is_idle_state(states[i]);
 	if (!idle[0] && idle[1]) {
-		user_put(cd->table->dev);
+		user_put(dev);
 		cd->table->busy_count--;
 	}
 	if (idle[0] && !idle[1]) {
-		user_get(cd->table->dev);
+		user_get(dev);
 		cd->table->busy_count++;
 	}
-	cd->table->state_count[cd->state]--;
-	cd->table->state_count[new_state]++;
+	dev->stats.state_count[cd->state]--;
+	dev->stats.state_count[new_state]++;
 	cd->state=new_state;
 	cd->state_begin=curtime;
 }
@@ -155,6 +154,7 @@ static void transition(struct chunkdata *cd, enum cd_state new_state)
 static void transition_error(struct chunkdata *cd, int error)
 {
 	cd->error=error;
+	cd->table->dev->stats.chunk_errors++;
 	__transition(cd, ST_ERROR);
 }
 
@@ -191,6 +191,8 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 		if (!list_empty(&cd->pending) || !is_idle_state(cd->state))
 			continue;
 		
+		if (cd->state == ST_ENCRYPTED)
+			table->dev->stats.encrypted_discards++;
 		list_del_init(&cd->lh_bucket);
 		list_add(&cd->lh_bucket, &table->hash[hash(table, cid)]);
 		chunkdata_hit(cd);
@@ -299,8 +301,10 @@ static void issue_chunk_io(struct chunkdata *cd)
 	
 	if (cd->state == ST_LOAD_DATA) {
 		dir=READ;
+		dev->stats.chunk_reads++;
 	} else if (cd->state == ST_STORE_DATA) {
 		dir=WRITE;
+		dev->stats.chunk_writes++;
 	} else {
 		BUG();
 		return;
@@ -512,11 +516,12 @@ static int io_has_reservation(struct convergent_io *io)
 
 static void try_start_io(struct convergent_io *io)
 {
+	struct convergent_dev *dev=io->dev;
 	struct convergent_io_chunk *chunk;
 	struct chunkdata *cd;
 	int i;
 	
-	BUG_ON(!mutex_is_locked(&io->dev->lock));
+	BUG_ON(!mutex_is_locked(&dev->lock));
 	
 	/* See if this io can run yet at all. */
 	if (!io_has_reservation(io))
@@ -528,7 +533,7 @@ static void try_start_io(struct convergent_io *io)
 		if ((chunk->flags & CHUNK_DEAD) ||
 					(chunk->flags & CHUNK_STARTED))
 			continue;
-		cd=chunkdata_get(io->dev->chunkdata, chunk->cid);
+		cd=chunkdata_get(dev->chunkdata, chunk->cid);
 		
 		switch (cd->state) {
 		case ST_META:
@@ -554,7 +559,7 @@ static void try_start_io(struct convergent_io *io)
 			continue;
 		}
 		if ((io->flags & IO_WRITE) &&
-					(io->dev->flags & DEV_SHUTDOWN)) {
+					(dev->flags & DEV_SHUTDOWN)) {
 			/* Won't be able to do writeback. */
 			chunk->error=-EIO;
 			/* Subsequent reads to this chunk must not be allowed
@@ -562,6 +567,8 @@ static void try_start_io(struct convergent_io *io)
 			transition_error(cd, -EIO);
 		}
 		
+		if (!(chunk->flags & CHUNK_READ))
+			dev->stats.whole_chunk_updates++;
 		chunk->flags |= CHUNK_STARTED;
 		convergent_process_chunk(&io->chunks[i]);
 	}
@@ -855,6 +862,11 @@ int reserve_chunks(struct convergent_io *io)
 	for (i=0; i<io_chunks(io); i++) {
 		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
 		BUG_ON(cd == NULL);
+		if (cd->state == ST_INVALID &&
+					pending_head(cd) == &io->chunks[i])
+			dev->stats.cache_misses++;
+		else
+			dev->stats.cache_hits++;
 		update_chunk(cd);
 	}
 	return 0;
@@ -890,52 +902,6 @@ struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
 	cd=chunkdata_get(dev->chunkdata, chunk->cid);
 	BUG_ON(cd == NULL || !pending_head_is(cd, chunk));
 	return cd->sg;
-}
-
-ssize_t print_states(struct convergent_dev *dev, char *buf, int len)
-{
-	int i;
-	int count=0;
-	
-	/* XXX if we wanted to be precise about this, we should have the ctr
-	   take the dev lock and then have this function lock it before
-	   running */
-	if (dev->chunkdata == NULL) {
-		/* ctr is still running */
-		return 0;
-	}
-	for (i=0; i<NR_STATES; i++) {
-		count += snprintf(buf+count, len-count, "%s%u", i ? " " : "",
-					dev->chunkdata->state_count[i]);
-	}
-	count += snprintf(buf+count, PAGE_SIZE, "\n");
-	return count;
-}
-
-ssize_t print_state_times(struct convergent_dev *dev, char *buf, int len)
-{
-	int i;
-	int count=0;
-	unsigned time;
-	unsigned samples;
-	
-	/* XXX poor locking discipline during setup */
-	if (dev->chunkdata == NULL) {
-		/* ctr is still running */
-		return 0;
-	}
-	mutex_lock(&dev->lock);
-	for (i=0; i<NR_STATES; i++) {
-		time=dev->chunkdata->state_time_us[i];
-		samples=dev->chunkdata->state_time_samples[i];
-		dev->chunkdata->state_time_us[i]=0;
-		dev->chunkdata->state_time_samples[i]=0;
-		count += snprintf(buf+count, len-count, "%s%u", i ? " " : "",
-					samples ? time / samples : 0);
-	}
-	count += snprintf(buf+count, PAGE_SIZE, "\n");
-	mutex_unlock(&dev->lock);
-	return count;
 }
 
 void chunkdata_free_table(struct convergent_dev *dev)
@@ -1011,7 +977,7 @@ int chunkdata_alloc_table(struct convergent_dev *dev)
 		if (alloc_chunk_buffer(cd))
 			return -ENOMEM;
 	}
-	table->state_count[ST_INVALID]=dev->cachesize;
+	dev->stats.state_count[ST_INVALID]=dev->cachesize;
 	return 0;
 }
 

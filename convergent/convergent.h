@@ -15,6 +15,7 @@
 #define MODULE_NAME "openisr"
 #define DEVICE_NAME "openisr"
 #define SUBMIT_QUEUE "openisr-io"
+#define CD_NR_STATES 11  /* must shadow NR_STATES in chunkdata.c */
 
 #include <linux/blkdev.h>
 #include <linux/workqueue.h>
@@ -22,6 +23,19 @@
 #include "kcompat.h"
 
 typedef sector_t chunk_t;
+
+struct convergent_stats {
+	unsigned state_count[CD_NR_STATES];
+	unsigned state_time_us[CD_NR_STATES];
+	unsigned state_time_samples[CD_NR_STATES];
+	unsigned cache_hits;
+	unsigned cache_misses;
+	unsigned chunk_reads;
+	unsigned chunk_writes;
+	unsigned whole_chunk_updates;
+	unsigned encrypted_discards;
+	unsigned chunk_errors;
+};
 
 struct convergent_dev {
 	struct class_device *class_dev;
@@ -42,8 +56,10 @@ struct convergent_dev {
 	chunk_t chunks;
 	int devnum;
 	unsigned flags;	/* XXX racy */
+	struct convergent_stats stats;
 	
 	crypto_t suite;
+	char *suite_name;
 	struct crypto_tfm *cipher;
 	unsigned cipher_block;
 	unsigned key_len;
@@ -52,6 +68,7 @@ struct convergent_dev {
 	
 	compress_t default_compression;
 	compress_t supported_compression;
+	char *default_compression_name;
 	void *buf_compressed;
 	void *buf_uncompressed;
 	void *zlib_deflate;
@@ -236,8 +253,6 @@ void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 int reserve_chunks(struct convergent_io *io);
 void unreserve_chunk(struct convergent_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);
-ssize_t print_states(struct convergent_dev *dev, char *buf, int len);
-ssize_t print_state_times(struct convergent_dev *dev, char *buf, int len);
 
 /* transform.c */
 int transform_alloc(struct convergent_dev *dev);
@@ -250,8 +265,6 @@ int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type);
 int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 			compress_t type, unsigned len);
-char *get_suite_name(struct convergent_dev *dev);
-char *get_default_compression_name(struct convergent_dev *dev);
 int compression_type_ok(struct convergent_dev *dev, compress_t compress);
 
 /* sysfs.c */

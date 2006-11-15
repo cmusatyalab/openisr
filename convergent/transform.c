@@ -343,14 +343,6 @@ static int suite_lookup(crypto_t suite, char **user_name, char **cipher_name,
 	return 0;
 }
 
-char *get_suite_name(struct convergent_dev *dev)
-{
-	char *ret;
-	if (!suite_lookup(dev->suite, &ret, NULL, NULL, NULL, NULL))
-		return ret;
-	return "unknown";
-}
-
 static int compression_lookup(compress_t type, char **user_name)
 {
 	switch (type) {
@@ -367,14 +359,6 @@ static int compression_lookup(compress_t type, char **user_name)
 		return -EINVAL;
 	}
 	return 0;
-}
-
-char *get_default_compression_name(struct convergent_dev *dev)
-{
-	char *ret;
-	if (!compression_lookup(dev->default_compression, &ret))
-		return ret;
-	return "unknown";
 }
 
 int compression_type_ok(struct convergent_dev *dev, compress_t compress)
@@ -399,8 +383,8 @@ int transform_alloc(struct convergent_dev *dev)
 	char *hash_name;
 	int ret;
 	
-	ret=suite_lookup(dev->suite, NULL, &cipher_name, &cipher_mode,
-				&keylen, &hash_name);
+	ret=suite_lookup(dev->suite, &dev->suite_name, &cipher_name,
+				&cipher_mode, &keylen, &hash_name);
 	if (ret) {
 		log(KERN_ERR, "Unsupported crypto suite requested");
 		return ret;
@@ -416,6 +400,8 @@ int transform_alloc(struct convergent_dev *dev)
 					"algorithm");
 		return -EINVAL;
 	}
+	compression_lookup(dev->default_compression,
+				&dev->default_compression_name);
 	
 	dev->cipher=crypto_alloc_tfm(cipher_name, cipher_mode);
 	dev->hash=crypto_alloc_tfm(hash_name, 0);

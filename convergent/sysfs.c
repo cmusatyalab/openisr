@@ -50,26 +50,103 @@ static ssize_t dev_show_offset(struct class_device *class_dev, char *buf)
 static ssize_t dev_show_states(struct class_device *class_dev, char *buf)
 {
 	struct convergent_dev *dev=class_get_devdata(class_dev);
-	return print_states(dev, buf, PAGE_SIZE);
+	int i;
+	int count=0;
+	
+	/* XXX if we wanted to be precise about this, we should have the ctr
+	   take the dev lock and then have this function lock it before
+	   running */
+	for (i=0; i<CD_NR_STATES; i++) {
+		count += snprintf(buf+count, PAGE_SIZE-count, "%s%u",
+					i ? " " : "",
+					dev->stats.state_count[i]);
+	}
+	count += snprintf(buf+count, PAGE_SIZE-count, "\n");
+	return count;
 }
 
 static ssize_t dev_show_state_times(struct class_device *class_dev, char *buf)
 {
 	struct convergent_dev *dev=class_get_devdata(class_dev);
-	return print_state_times(dev, buf, PAGE_SIZE);
+	int i;
+	int count=0;
+	unsigned time;
+	unsigned samples;
+	
+	/* XXX poor locking discipline during setup */
+	mutex_lock(&dev->lock);
+	for (i=0; i<CD_NR_STATES; i++) {
+		time=dev->stats.state_time_us[i];
+		samples=dev->stats.state_time_samples[i];
+		dev->stats.state_time_us[i]=0;
+		dev->stats.state_time_samples[i]=0;
+		count += snprintf(buf+count, PAGE_SIZE-count, "%s%u",
+					i ? " " : "",
+					samples ? time / samples : 0);
+	}
+	count += snprintf(buf+count, PAGE_SIZE-count, "\n");
+	mutex_unlock(&dev->lock);
+	return count;
 }
 
 static ssize_t dev_show_suite(struct class_device *class_dev, char *buf)
 {
 	struct convergent_dev *dev=class_get_devdata(class_dev);
-	return snprintf(buf, PAGE_SIZE, "%s\n", get_suite_name(dev));
+	char *str=dev->suite_name;
+	if (str == NULL)
+		str="unknown";
+	return snprintf(buf, PAGE_SIZE, "%s\n", str);
 }
 
 static ssize_t dev_show_compression(struct class_device *class_dev, char *buf)
 {
 	struct convergent_dev *dev=class_get_devdata(class_dev);
-	return snprintf(buf, PAGE_SIZE, "%s\n",
-				get_default_compression_name(dev));
+	char *str=dev->default_compression_name;
+	if (str == NULL)
+		str="unknown";
+	return snprintf(buf, PAGE_SIZE, "%s\n", str);
+}
+
+static ssize_t dev_show_cache_hits(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.cache_hits);
+}
+
+static ssize_t dev_show_cache_misses(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.cache_misses);
+}
+
+static ssize_t dev_show_chunk_errors(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.chunk_errors);
+}
+
+static ssize_t dev_show_chunk_reads(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.chunk_reads);
+}
+
+static ssize_t dev_show_chunk_writes(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.chunk_writes);
+}
+
+static ssize_t dev_show_whole_writes(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.whole_chunk_updates);
+}
+
+static ssize_t dev_show_discards(struct class_device *class_dev, char *buf)
+{
+	struct convergent_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.encrypted_discards);
 }
 
 struct class_device_attribute class_dev_attrs[] = {
@@ -80,5 +157,12 @@ struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(state_times, S_IRUGO, dev_show_state_times, NULL),
 	__ATTR(encryption, S_IRUGO, dev_show_suite, NULL),
 	__ATTR(compression, S_IRUGO, dev_show_compression, NULL),
+	__ATTR(cache_hits, S_IRUGO, dev_show_cache_hits, NULL),
+	__ATTR(cache_misses, S_IRUGO, dev_show_cache_misses, NULL),
+	__ATTR(chunk_errors, S_IRUGO, dev_show_chunk_errors, NULL),
+	__ATTR(chunk_reads, S_IRUGO, dev_show_chunk_reads, NULL),
+	__ATTR(chunk_writes, S_IRUGO, dev_show_chunk_writes, NULL),
+	__ATTR(whole_chunk_updates, S_IRUGO, dev_show_whole_writes, NULL),
+	__ATTR(chunk_encrypted_discards, S_IRUGO, dev_show_discards, NULL),
 	__ATTR_NULL
 };
