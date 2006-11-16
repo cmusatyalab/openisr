@@ -6,110 +6,119 @@
 #include "vulpes.h"
 #include "vulpes_log.h"
 
-struct curl_buffer {
+struct curl_connection {
+  CURL *handle;
   char *buf;
   size_t size;
   size_t maxsize;
+  char error_buf[CURL_ERROR_SIZE];
 };
-static CURL *curl_handle;
-static struct curl_buffer *curl_buffer;
-static char curl_error_buffer[CURL_ERROR_SIZE];
 
 /* the curl writeback function */
-/* XXX: should check for buffer overflows and report it back somehow */
 static size_t curl_write_callback_function(char* curlbuf, size_t size,
-			size_t nitems, void *myPtr)
+			size_t nitems, void *data)
 {
   size_t totSize = size*nitems;
-  struct curl_buffer *ptr = (struct curl_buffer *)myPtr;
+  struct curl_connection *conn = data;
   
-  char* nxtWrite= &(ptr->buf[ptr->size]);
-  if (totSize > ptr->maxsize - ptr->size)
-      totSize = ptr->maxsize - ptr->size;
+  char* nxtWrite= &(conn->buf[conn->size]);
+  if (totSize > conn->maxsize - conn->size)
+      totSize = conn->maxsize - conn->size;
   memcpy(nxtWrite,curlbuf,totSize);
-  ptr->size += totSize;
+  conn->size += totSize;
   
   return totSize;
 }
 
 /* warning: not thread-safe(same as rest of vulpes!) */
-static void init_curl(char *buf, int bufsize)
+static struct curl_connection *init_curl(char *buf, int bufsize)
 {
+  struct curl_connection *conn;
+  
+  /* allocate the connection object */
+  conn=malloc(sizeof(*conn));
+  if (conn == NULL)
+    return NULL;
+  memset(conn, 0, sizeof(*conn));
+  
   /* init the curl session */
-  curl_handle = curl_easy_init();
+  conn->handle = curl_easy_init();
+  if (conn->handle == NULL) {
+    free(conn);
+    return NULL;
+  }
   
   /* announce vulpes as "the agent"*/
-  curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "vulpes-agent/1.0");
+  curl_easy_setopt(conn->handle, CURLOPT_USERAGENT, "vulpes-agent/1.0");
   
   /* disable use of signals - dont want bad interactions with vulpes */
-  curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1);
+  curl_easy_setopt(conn->handle, CURLOPT_NOSIGNAL, 1);
   
   /* disable internal progress meter if any */
-  curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1);
+  curl_easy_setopt(conn->handle, CURLOPT_NOPROGRESS, 1);
   
-  /* curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1);*/
+  /* curl_easy_setopt(conn->handle, CURLOPT_VERBOSE, 1);*/
   
   /* dont die when you have low speed networks */
-  curl_easy_setopt(curl_handle,CURLOPT_CONNECTTIMEOUT, 60);
-  curl_easy_setopt(curl_handle,CURLOPT_TIMEOUT, 60);
+  curl_easy_setopt(conn->handle,CURLOPT_CONNECTTIMEOUT, 60);
+  curl_easy_setopt(conn->handle,CURLOPT_TIMEOUT, 60);
   
   /* set up the error buffer to trap errors */
-  memset(curl_error_buffer, 0, CURL_ERROR_SIZE);
-  curl_easy_setopt(curl_handle, CURLOPT_ERRORBUFFER, curl_error_buffer);
+  curl_easy_setopt(conn->handle, CURLOPT_ERRORBUFFER, conn->error_buf);
   
   /* set up proxies if any */
   if ((config.proxy_name) && (config.proxy_port)) {
-    curl_easy_setopt(curl_handle, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
-    curl_easy_setopt(curl_handle, CURLOPT_PROXY, (config.proxy_name));
-    curl_easy_setopt(curl_handle, CURLOPT_PROXYPORT, config.proxy_port);
+    curl_easy_setopt(conn->handle, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+    curl_easy_setopt(conn->handle, CURLOPT_PROXY, (config.proxy_name));
+    curl_easy_setopt(conn->handle, CURLOPT_PROXYPORT, config.proxy_port);
   }
   
-  /* disable Nagle's algorithm 
-     curl_easy_setopt(curl_handle, CURLOPT_TCP_NODELAY, 1);*/
-  
-  curl_buffer = (struct curl_buffer*) malloc(sizeof(struct curl_buffer));
-  curl_buffer->size=0;
-  curl_buffer->maxsize=bufsize;
-  curl_buffer->buf=buf;
+  conn->buf=buf;
+  conn->maxsize=bufsize;
   
   /* register my write function */
-  curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_write_callback_function);
+  curl_easy_setopt(conn->handle, CURLOPT_WRITEFUNCTION, curl_write_callback_function);
   
-  /* pass the curl_buffer as the place to write to in callback function */
-  curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)curl_buffer);
+  /* pass the curl_connection pointer to the callback function */
+  curl_easy_setopt(conn->handle, CURLOPT_WRITEDATA, (void *)conn);
+  
+  return conn;
 }
 
-static void destroy_curl(void)
+static void destroy_curl(struct curl_connection *conn)
 {
-  curl_easy_cleanup(curl_handle);
-  free(curl_buffer);
+  curl_easy_cleanup(conn->handle);
+  free(conn);
 }
 
 vulpes_err_t http_get(char *buf, int *bufsize, const char *url)
 {
+  struct curl_connection *conn;
   CURLcode retVal;
   vulpes_err_t retstatus=VULPES_IOERR;
 
   /* init curl session */
-  init_curl(buf, *bufsize);
+  conn=init_curl(buf, *bufsize);
+  if (conn == NULL)
+    return VULPES_NOMEM;
   
   /* specify REMOTE FILE to get */
-  curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+  curl_easy_setopt(conn->handle, CURLOPT_URL, url);
   
   /* perform the get */
-  retVal=curl_easy_perform(curl_handle);
+  retVal=curl_easy_perform(conn->handle);
   
   /* check for get errors */
-  if ((strlen(curl_error_buffer)!=0) || (retVal!=0)) {
+  if ((strlen(conn->error_buf)!=0) || (retVal!=0)) {
     /* problems */
-    vulpes_log(LOG_ERRORS,"curl %s: %s", curl_error_buffer,
+    vulpes_log(LOG_ERRORS,"curl %s: %s", conn->error_buf,
                curl_easy_strerror(retVal));
     goto out;
   }
-  *bufsize=curl_buffer->size;
+  *bufsize=conn->size;
   retstatus=VULPES_SUCCESS;
 
 out:
-  destroy_curl();
+  destroy_curl(conn);
   return retstatus;
 }
