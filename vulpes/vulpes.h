@@ -97,8 +97,8 @@ void transport_shutdown(void);
 void copy_for_upload(char *oldkr, char *dest);
 void checktags(void);
 int cache_init(void);
-int cache_get(struct isr_message *msg);
-int cache_update(const struct isr_message *msg);
+int cache_get(const struct isr_message *req, struct isr_message *reply);
+int cache_update(const struct isr_message *req);
 int cache_shutdown(void);
 
 #endif

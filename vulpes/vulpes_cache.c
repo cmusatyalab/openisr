@@ -722,48 +722,48 @@ int cache_shutdown(void)
   return 0;
 }
 
-int cache_get(struct isr_message *msg)
+int cache_get(const struct isr_message *req, struct isr_message *reply)
 {
   struct chunk_data *cdp;
   
-  cdp = get_cdp_from_chunk_num(msg->chunk);
+  cdp = get_cdp_from_chunk_num(req->chunk);
 
   /* check if the file is present in the cache */
   if (!cdp_present(cdp)) {
     /* the file has not been copied yet */
     char remote_name[MAX_CHUNK_NAME_LENGTH];
     if (form_chunk_file_name(remote_name, MAX_CHUNK_NAME_LENGTH,
-	 config.master_name, msg->chunk)) {
-      vulpes_log(LOG_ERRORS,"unable to form cache remote name: %llu",msg->chunk);
+	 config.master_name, req->chunk)) {
+      vulpes_log(LOG_ERRORS,"unable to form cache remote name: %llu",req->chunk);
       return -1;
     }
     
-    if (retrieve_chunk(remote_name, msg->chunk) == 0) {
+    if (retrieve_chunk(remote_name, req->chunk) == 0) {
       mark_cdp_present(cdp);
     } else {
-      vulpes_log(LOG_ERRORS,"unable to copy %s %llu",remote_name,msg->chunk);
+      vulpes_log(LOG_ERRORS,"unable to copy %s %llu",remote_name,req->chunk);
       return -1;
     }
   }
   
   mark_cdp_accessed(cdp);
   if (cdp_is_compressed(cdp))
-    msg->compression=ISR_COMPRESS_ZLIB;
+    reply->compression=ISR_COMPRESS_ZLIB;
   else
-    msg->compression=ISR_COMPRESS_NONE;
-  memcpy(msg->key, cdp->key, HASH_LEN);
-  memcpy(msg->tag, cdp->tag, HASH_LEN);
-  msg->length=cdp->length;
+    reply->compression=ISR_COMPRESS_NONE;
+  memcpy(reply->key, cdp->key, HASH_LEN);
+  memcpy(reply->tag, cdp->tag, HASH_LEN);
+  reply->length=cdp->length;
   
-  vulpes_log(LOG_CHUNKS,"get: %llu (size %u)",msg->chunk,msg->length);
+  vulpes_log(LOG_CHUNKS,"get: %llu (size %u)",req->chunk,cdp->length);
   return 0;
 }
 
-int cache_update(const struct isr_message *msg)
+int cache_update(const struct isr_message *req)
 {
   struct chunk_data *cdp=NULL;
   
-  cdp = get_cdp_from_chunk_num(msg->chunk);
+  cdp = get_cdp_from_chunk_num(req->chunk);
 
   mark_cdp_present(cdp);
   if (!cdp_is_accessed(cdp)) {
@@ -771,14 +771,14 @@ int cache_update(const struct isr_message *msg)
     writes_before_read++;
   }
   mark_cdp_modified(cdp);
-  if (msg->compression == ISR_COMPRESS_NONE)
+  if (req->compression == ISR_COMPRESS_NONE)
     mark_cdp_uncompressed(cdp);
   else
     mark_cdp_compressed(cdp);
-  updateKey(msg->chunk, msg->key, msg->tag);
-  cdp->length=msg->length;
+  updateKey(req->chunk, req->key, req->tag);
+  cdp->length=req->length;
 
-  vulpes_log(LOG_CHUNKS,"update: %llu (size %u)",msg->chunk,msg->length);
+  vulpes_log(LOG_CHUNKS,"update: %llu (size %u)",req->chunk,cdp->length);
   return 0;
 }
 

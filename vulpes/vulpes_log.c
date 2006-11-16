@@ -173,8 +173,8 @@ void _vulpes_log(enum logmsgtype msgtype, const char *func,
   case LOG_TRANSPORT:
     s_msgtype="TRANS";
     break;
-  case LOG_FAUXIDE_REQ:
-    s_msgtype="F_REQ";
+  case LOG_DRIVER_REQ:
+    s_msgtype="REQ";
     break;
   default:
     sprintf(s_buf,"MSG%02u", (unsigned)msgtype);

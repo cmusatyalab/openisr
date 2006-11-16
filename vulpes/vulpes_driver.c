@@ -16,6 +16,7 @@
 static const int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
 			SIGABRT, SIGTERM, SIGTSTP, 0};
 
+#define REQUESTS_PER_SYSCALL 64
 #define MY_INTERFACE_VERSION 3
 #if MY_INTERFACE_VERSION != ISR_INTERFACE_VERSION
 #error This code uses a different interface version than the one defined in convergent-user.h
@@ -220,49 +221,84 @@ void driver_shutdown(void)
   sync();
 }
 
-static void process_message(struct isr_message *msg)
+/* Returns true if there's an outgoing message to send */
+static int process_message(struct isr_message *request, struct isr_message *reply)
 {
-  switch (msg->type) {
+  /* Log and verify command */
+  switch (request->type) {
   case ISR_MSGTYPE_GET_META:
-    vulpes_log(LOG_FAUXIDE_REQ,"GET: %llu:%llu",state.request_count,msg->chunk);
+    reply->chunk=request->chunk;
+    if (message_ok(request)) {
+      vulpes_log(LOG_DRIVER_REQ,"GET: %llu:%llu",state.request_count,request->chunk);
+    } else {
+      vulpes_log(LOG_ERRORS,"GET: %llu:%llu: bad message",state.request_count,request->chunk);
+      reply->type=ISR_MSGTYPE_META_HARDERR;
+      return 1;
+    }
     break;
   case ISR_MSGTYPE_UPDATE_META:
-    vulpes_log(LOG_FAUXIDE_REQ,"UPDATE: %llu:%llu",state.request_count,msg->chunk);
+    if (message_ok(request)) {
+      vulpes_log(LOG_DRIVER_REQ,"UPDATE: %llu:%llu",state.request_count,request->chunk);
+    } else {
+      vulpes_log(LOG_ERRORS,"UPDATE: %llu:%llu: bad message",state.request_count,request->chunk);
+      return 0;
+    }
     break;
   default:
-    vulpes_log(LOG_FAUXIDE_REQ,"UNKNOWN: %llu:%llu",state.request_count,msg->chunk);
-    return;
+    vulpes_log(LOG_ERRORS,"UNKNOWN: %llu:%llu",state.request_count,request->chunk);
+    return 0;
   }
   
-  if (!message_ok(msg)) {
-    vulpes_log(LOG_ERRORS,"%llu:%llu: bad message",state.request_count,msg->chunk);
-    return;
-  }
-  
-  /* Process cmd */
-  switch (msg->type) {
+  /* Process command */
+  switch (request->type) {
   case ISR_MSGTYPE_GET_META:
-    if (cache_get(msg)) {
-      vulpes_log(LOG_ERRORS,"%llu:%llu: get failed",state.request_count,msg->chunk);
-      msg->type=ISR_MSGTYPE_META_HARDERR;
+    if (cache_get(request, reply)) {
+      vulpes_log(LOG_ERRORS,"GET: %llu:%llu: failed",state.request_count,request->chunk);
+      reply->type=ISR_MSGTYPE_META_HARDERR;
     } else {
-      msg->type=ISR_MSGTYPE_SET_META;
+      reply->type=ISR_MSGTYPE_SET_META;
     }
-    if (write(state.chardev_fd, msg, sizeof(*msg)) != sizeof(*msg)) {
-      vulpes_log(LOG_ERRORS,"Short write to device driver");
-    }
-    break;
+    return 1;
   case ISR_MSGTYPE_UPDATE_META:
-    if (cache_update(msg)) {
-      vulpes_log(LOG_ERRORS,"%llu:%llu: update failed",state.request_count,msg->chunk);
+    if (cache_update(request)) {
+      vulpes_log(LOG_ERRORS,"UPDATE: %llu:%llu: failed",state.request_count,request->chunk);
     }
-    break;
+    return 0;
+  }
+  /* Make compiler happy */
+  return 0;
+}
+
+static void process_batch(void)
+{
+  struct isr_message requests[REQUESTS_PER_SYSCALL];
+  struct isr_message replies[REQUESTS_PER_SYSCALL];
+  int i;
+  int in_count;
+  int out_count=0;
+
+  in_count=read(state.chardev_fd, &requests, sizeof(requests));
+  if (in_count % sizeof(requests[0]))
+    vulpes_log(LOG_ERRORS,"Short read from device driver: %d",in_count);
+  in_count /= sizeof(requests[0]);
+  
+  for (i=0; i<in_count; i++) {
+    if (process_message(&requests[i], &replies[out_count]))
+      out_count++;
+    state.request_count++;
+  }
+  
+  if (out_count == 0)
+    return;
+  out_count *= sizeof(replies[0]);
+  if (write(state.chardev_fd, replies, out_count) != out_count) {
+    /* XXX */
+    vulpes_log(LOG_ERRORS,"Short write to device driver");
   }
 }
 
 void driver_run(void)
 {
-  struct isr_message msg;
   fd_set readfds;
   fd_set exceptfds;
   int fdcount=max(state.signal_fds[0], state.chardev_fd) + 1;
@@ -311,13 +347,7 @@ void driver_run(void)
     }
     
     /* Process pending requests */
-    if (FD_ISSET(state.chardev_fd, &readfds)) {
-      if (read(state.chardev_fd, &msg, sizeof(msg)) != sizeof(msg)) {
-	vulpes_log(LOG_ERRORS,"Short read from device driver");
-	break; /* XXX */
-      }
-      process_message(&msg);
-      state.request_count++;
-    }
+    if (FD_ISSET(state.chardev_fd, &readfds))
+      process_batch();
   }
 }

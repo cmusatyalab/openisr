@@ -23,7 +23,7 @@ enum logmsgtype {
   LOG_CHUNKS=3,
   LOG_KEYS=4,
   LOG_TRANSPORT=5,
-  LOG_FAUXIDE_REQ=7
+  LOG_DRIVER_REQ=7
 };
   
 int vulpes_log_init(const char *fname, const char *info_str, 
