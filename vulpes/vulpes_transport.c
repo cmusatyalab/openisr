@@ -17,6 +17,11 @@ struct curl_connection {
   size_t maxsize;
 };
 
+static unsigned chunks_requested;
+static unsigned retrieval_errors;
+static unsigned connection_reuses;
+
+
 /* the curl writeback function */
 static size_t curl_write_callback_function(char* curlbuf, size_t size,
 			size_t nitems, void *data)
@@ -94,6 +99,8 @@ static vulpes_err_t http_get(char *buf, int *bufsize, const char *url)
 {
   struct curl_connection *conn=state.curl_conn;
   CURLcode retVal;
+  long redirects;
+  long connects;
 
   /* init curl session */
   conn->buf=buf;
@@ -106,12 +113,20 @@ static vulpes_err_t http_get(char *buf, int *bufsize, const char *url)
   /* perform the get */
   retVal=curl_easy_perform(conn->handle);
   
+  /* Collect connection-reuse statistics */
+  if (!curl_easy_getinfo(conn->handle, CURLINFO_REDIRECT_COUNT, &redirects) &&
+      !curl_easy_getinfo(conn->handle, CURLINFO_NUM_CONNECTS, &connects)) {
+    /* XXX CURLINFO_NUM_CONNECTS doesn't exist before 7.12.3 */
+    connection_reuses += (redirects + 1) - connects;
+  }
+  
   /* check for get errors */
   if (retVal) {
     vulpes_log(LOG_ERRORS,"curl %s: %s", conn->error_buf,
                curl_easy_strerror(retVal));
     return VULPES_IOERR;
   }
+  
   *bufsize=conn->size;
   return VULPES_SUCCESS;
 }
@@ -136,8 +151,11 @@ vulpes_err_t transport_init(void)
 
 void transport_shutdown(void)
 {
+  vulpes_log(LOG_STATS,"TRANSPORT_REQUESTS:%u",chunks_requested);
+  vulpes_log(LOG_STATS,"TRANSPORT_ERRORS:%u",retrieval_errors);
   switch (config.trxfer) {
   case HTTP_TRANSPORT:
+    vulpes_log(LOG_STATS,"CONNECTION_REUSES:%u",connection_reuses);
     destroy_curl(state.curl_conn);
     state.curl_conn=NULL;
     break;
@@ -153,6 +171,7 @@ vulpes_err_t transport_get(char *buf, int *bufsize, const char *src,
   vulpes_err_t err;
   
   vulpes_log(LOG_TRANSPORT,"begin_transport: %s %u",src,chunk_num);
+  chunks_requested++;
   switch (config.trxfer) {
   case LOCAL_TRANSPORT:
     err=read_file(src, buf, bufsize);
@@ -168,5 +187,7 @@ vulpes_err_t transport_get(char *buf, int *bufsize, const char *src,
     break;
   }
   vulpes_log(LOG_TRANSPORT,"end_transport: %s %u",src,chunk_num);
+  if (err)
+    retrieval_errors++;
   return err;
 }

@@ -46,8 +46,6 @@ struct chunk_data {
   unsigned char key[HASH_LEN];	/* was called o1 earlier */
 };
 
-struct vulpes_state state;
-
 static unsigned writes_before_read = 0;
 static unsigned chunks_stripped = 0;
 

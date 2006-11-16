@@ -31,6 +31,7 @@ ACCEPTANCE OF THIS AGREEMENT
 const char *vulpes_version = "0.60";
 
 struct vulpes_config config;
+struct vulpes_state state;
 extern char *optarg;
 extern int optind, opterr, optopt;
 
