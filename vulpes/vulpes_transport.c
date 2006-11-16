@@ -5,13 +5,16 @@
 #include <string.h>
 #include "vulpes.h"
 #include "vulpes_log.h"
+#include "vulpes_util.h"
+
+/***** HTTP transport *****/
 
 struct curl_connection {
   CURL *handle;
+  char error_buf[CURL_ERROR_SIZE];
   char *buf;
   size_t size;
   size_t maxsize;
-  char error_buf[CURL_ERROR_SIZE];
 };
 
 /* the curl writeback function */
@@ -31,7 +34,7 @@ static size_t curl_write_callback_function(char* curlbuf, size_t size,
 }
 
 /* warning: not thread-safe(same as rest of vulpes!) */
-static struct curl_connection *init_curl(char *buf, int bufsize)
+static struct curl_connection *init_curl(void)
 {
   struct curl_connection *conn;
   
@@ -39,7 +42,6 @@ static struct curl_connection *init_curl(char *buf, int bufsize)
   conn=malloc(sizeof(*conn));
   if (conn == NULL)
     return NULL;
-  memset(conn, 0, sizeof(*conn));
   
   /* init the curl session */
   conn->handle = curl_easy_init();
@@ -73,9 +75,6 @@ static struct curl_connection *init_curl(char *buf, int bufsize)
     curl_easy_setopt(conn->handle, CURLOPT_PROXYPORT, config.proxy_port);
   }
   
-  conn->buf=buf;
-  conn->maxsize=bufsize;
-  
   /* register my write function */
   curl_easy_setopt(conn->handle, CURLOPT_WRITEFUNCTION, curl_write_callback_function);
   
@@ -91,16 +90,15 @@ static void destroy_curl(struct curl_connection *conn)
   free(conn);
 }
 
-vulpes_err_t http_get(char *buf, int *bufsize, const char *url)
+static vulpes_err_t http_get(char *buf, int *bufsize, const char *url)
 {
-  struct curl_connection *conn;
+  struct curl_connection *conn=state.curl_conn;
   CURLcode retVal;
-  vulpes_err_t retstatus=VULPES_IOERR;
 
   /* init curl session */
-  conn=init_curl(buf, *bufsize);
-  if (conn == NULL)
-    return VULPES_NOMEM;
+  conn->buf=buf;
+  conn->size=0;
+  conn->maxsize=*bufsize;
   
   /* specify REMOTE FILE to get */
   curl_easy_setopt(conn->handle, CURLOPT_URL, url);
@@ -109,16 +107,66 @@ vulpes_err_t http_get(char *buf, int *bufsize, const char *url)
   retVal=curl_easy_perform(conn->handle);
   
   /* check for get errors */
-  if ((strlen(conn->error_buf)!=0) || (retVal!=0)) {
-    /* problems */
+  if (retVal) {
     vulpes_log(LOG_ERRORS,"curl %s: %s", conn->error_buf,
                curl_easy_strerror(retVal));
-    goto out;
+    return VULPES_IOERR;
   }
   *bufsize=conn->size;
-  retstatus=VULPES_SUCCESS;
+  return VULPES_SUCCESS;
+}
 
-out:
-  destroy_curl(conn);
-  return retstatus;
+
+/***** Exported functions *****/
+
+vulpes_err_t transport_init(void)
+{
+  switch (config.trxfer) {
+  case LOCAL_TRANSPORT:
+    return VULPES_SUCCESS;
+  case HTTP_TRANSPORT:
+    state.curl_conn=init_curl();
+    if (state.curl_conn == NULL)
+      return VULPES_NOMEM;
+    return VULPES_SUCCESS;
+  default:
+    return VULPES_INVALID;
+  }
+}
+
+void transport_shutdown(void)
+{
+  switch (config.trxfer) {
+  case HTTP_TRANSPORT:
+    destroy_curl(state.curl_conn);
+    state.curl_conn=NULL;
+    break;
+  case LOCAL_TRANSPORT:
+  default:
+    break;
+  }
+}
+
+vulpes_err_t transport_get(char *buf, int *bufsize, const char *src,
+			unsigned chunk_num)
+{
+  vulpes_err_t err;
+  
+  vulpes_log(LOG_TRANSPORT,"begin_transport: %s %u",src,chunk_num);
+  switch (config.trxfer) {
+  case LOCAL_TRANSPORT:
+    err=read_file(src, buf, bufsize);
+    if (err)
+      vulpes_log(LOG_ERRORS,"unable to read input %s: %s",src,vulpes_strerror(err));
+    break;
+  case HTTP_TRANSPORT:
+    err=http_get(buf, bufsize, src);
+    break;
+  default:
+    vulpes_log(LOG_ERRORS,"unknown transport");
+    err=VULPES_INVALID;
+    break;
+  }
+  vulpes_log(LOG_TRANSPORT,"end_transport: %s %u",src,chunk_num);
+  return err;
 }

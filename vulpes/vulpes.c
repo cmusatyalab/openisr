@@ -299,7 +299,7 @@ int main(int argc, char *argv[])
   
   VULPES_DEBUG("Initializing cache...\n");
   /* Initialize the cache */
-  if (initialize_cache()) {
+  if (cache_init()) {
     vulpes_log(LOG_ERRORS,"unable to initialize cache");
     goto vulpes_exit;
   }
@@ -313,6 +313,12 @@ int main(int argc, char *argv[])
   if (config.doCheck) {
     checktags();
     /* Does not return */
+  }
+  
+  /* Initialize transport */
+  if (transport_init()) {
+    vulpes_log(LOG_ERRORS,"unable to initialize transport");
+    goto vulpes_exit;
   }
   
   /* Set up kernel driver */
@@ -339,6 +345,9 @@ int main(int argc, char *argv[])
 
   /* Shut down kernel driver */
   driver_shutdown();
+  
+  /* Shut down transport */
+  transport_shutdown();
 
   /* Close file */
   VULPES_DEBUG("\tClosing cache.\n");

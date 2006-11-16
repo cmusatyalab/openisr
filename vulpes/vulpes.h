@@ -80,6 +80,7 @@ extern struct vulpes_state {
   unsigned offset_bytes;
   struct chunk_data *cd;		/* cd[] */
   unsigned long long request_count;
+  struct curl_connection *curl_conn;
 } state;
 
 struct isr_message;
@@ -88,11 +89,13 @@ struct isr_message;
 vulpes_err_t driver_init(void);
 void driver_run(void);
 void driver_shutdown(void);
-vulpes_err_t local_get(char *buf, int *bufsize, const char *file);
-vulpes_err_t http_get(char *buf, int *bufsize, const char *url);
+vulpes_err_t transport_init(void);
+vulpes_err_t transport_get(char *buf, int *bufsize, const char *src,
+			unsigned chunk_num);
+void transport_shutdown(void);
 void copy_for_upload(char *oldkr, char *dest);
 void checktags(void);
-int initialize_cache(void);
+int cache_init(void);
 int cache_get(struct isr_message *msg);
 int cache_update(const struct isr_message *msg);
 int cache_shutdown(void);

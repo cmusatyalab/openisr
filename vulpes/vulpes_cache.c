@@ -650,24 +650,9 @@ static int retrieve_chunk(const char *src, unsigned chunk_num)
     }
   }
   
-  vulpes_log(LOG_TRANSPORT,"begin_transport: %s %u",src,chunk_num);
-  switch (config.trxfer) {
-  case LOCAL_TRANSPORT:
-    err=read_file(src, buf, &buflen);
-    if (err)
-      vulpes_log(LOG_ERRORS,"unable to read input %s: %s",src,vulpes_strerror(err));
-    break;
-  case HTTP_TRANSPORT:
-    err=http_get(buf, &buflen, src);
-    break;
-  default:
-    vulpes_log(LOG_ERRORS,"unknown transport");
-    err=VULPES_INVALID;
-  }
-  vulpes_log(LOG_TRANSPORT,"end_transport: %s %u",src,chunk_num);
-  if (err) {
+  err=transport_get(buf, &buflen, src, chunk_num);
+  if (err)
     goto out;
-  }
   /* buflen has been updated with the length of the data */
   
   /* check retrieved data for validity */
@@ -798,7 +783,7 @@ int cache_update(const struct isr_message *msg)
   return 0;
 }
 
-int initialize_cache(void)
+int cache_init(void)
 {
   unsigned long long volsize_bytes;
   int parse_error = 0;
