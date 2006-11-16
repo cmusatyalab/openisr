@@ -10,7 +10,7 @@
 #define ISR_IOC_REGISTER      _IOWR(0x1a, 0, struct isr_setup)
 #define ISR_IOC_UNREGISTER      _IO(0x1a, 1)
 
-#define ISR_INTERFACE_VERSION 2
+#define ISR_INTERFACE_VERSION 3
 
 typedef __u16 crypto_t;
 typedef __u16 compress_t;
@@ -54,5 +54,6 @@ struct isr_message {
 #define ISR_MSGTYPE_UPDATE_META  ((msgtype_t) 0x0001)
 /* User to kernel */
 #define ISR_MSGTYPE_SET_META     ((msgtype_t) 0x1000)
+#define ISR_MSGTYPE_META_HARDERR ((msgtype_t) 0x1001)
 
 #endif

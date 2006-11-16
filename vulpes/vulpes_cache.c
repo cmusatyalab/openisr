@@ -765,6 +765,7 @@ int cache_update(const struct isr_message *msg)
   
   cdp = get_cdp_from_chunk_num(msg->chunk);
 
+  mark_cdp_present(cdp);
   if (!cdp_is_accessed(cdp)) {
     mark_cdp_accessed(cdp);
     writes_before_read++;

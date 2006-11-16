@@ -536,7 +536,7 @@ static void try_start_io(struct convergent_io *io)
 		cd=chunkdata_get(dev->chunkdata, chunk->cid);
 		
 		switch (cd->state) {
-		case ST_META:
+		case ST_INVALID:
 		case ST_ENCRYPTED:
 			if (chunk->flags & CHUNK_READ)
 				continue;
@@ -711,6 +711,23 @@ void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 	__end_usermsg(cd);
 }
 
+/* Called instead of SET_META when userspace can't produce the chunk */
+void set_usermsg_meta_err(struct convergent_dev *dev, chunk_t cid)
+{
+	struct chunkdata *cd;
+	
+	BUG_ON(!mutex_is_locked(&dev->lock));
+	cd=chunkdata_get(dev->chunkdata, cid);
+	if (cd == NULL || !(cd->flags & CD_USER) ||
+				cd->state != ST_LOAD_META) {
+		/* Userspace is messing with us. */
+		debug("Irrelevant chunk ID passed to usermsg_meta_err()");
+		return;
+	}
+	transition_error(cd, -EIO);
+	__end_usermsg(cd);
+}
+
 static void run_chunk(struct chunkdata *cd)
 {
 	struct convergent_io_chunk *chunk;
@@ -723,12 +740,16 @@ again:
 	case ST_INVALID:
 		if (chunk != NULL) {
 			/* No key or data */
-			ndebug("Requesting key for chunk " SECTOR_FORMAT,
-						cd->cid);
-			transition(cd, ST_LOAD_META);
-			if (queue_for_user(cd)) {
-				transition_error(cd, -EIO);
-				goto again;
+			if (chunk->flags & CHUNK_READ) {
+				ndebug("Requesting key for chunk "
+							SECTOR_FORMAT, cd->cid);
+				transition(cd, ST_LOAD_META);
+				if (queue_for_user(cd)) {
+					transition_error(cd, -EIO);
+					goto again;
+				}
+			} else {
+				try_start_io(chunk->parent);
 			}
 		}
 		break;
@@ -736,18 +757,17 @@ again:
 		break;
 	case ST_META:
 		/* Have metadata but not data */
-		if (chunk != NULL) {
-			if (chunk->flags & CHUNK_READ) {
-				/* The first-in-queue needs the chunk read
-				   in. */
-				ndebug("Reading in chunk " SECTOR_FORMAT,
-							cd->cid);
-				transition(cd, ST_LOAD_DATA);
-				issue_chunk_io(cd);
-			} else {
-				try_start_io(chunk->parent);
-			}
-		}
+		
+		/* Right now, this is not a stable state; we should only get
+		   here if we're going right to LOAD_DATA.  If this changes,
+		   is_idle_state() and refcounting will need to be revisited. */
+		BUG_ON(chunk == NULL);
+		BUG_ON(!(chunk->flags & CHUNK_READ));
+		
+		/* The first-in-queue needs the chunk read in. */
+		ndebug("Reading in chunk " SECTOR_FORMAT, cd->cid);
+		transition(cd, ST_LOAD_DATA);
+		issue_chunk_io(cd);
 		break;
 	case ST_LOAD_DATA:
 		break;

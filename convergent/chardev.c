@@ -155,6 +155,13 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 						msg.compression, msg.key,
 						msg.tag);
 			break;
+		case ISR_MSGTYPE_META_HARDERR:
+			if (msg.chunk >= dev->chunks) {
+				err=-EINVAL;
+				goto out;
+			}
+			set_usermsg_meta_err(dev, msg.chunk);
+			break;
 		default:
 			err=-EINVAL;
 			goto out;

@@ -16,7 +16,7 @@
 static const int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
 			SIGABRT, SIGTERM, SIGTSTP, 0};
 
-#define MY_INTERFACE_VERSION 2
+#define MY_INTERFACE_VERSION 3
 #if MY_INTERFACE_VERSION != ISR_INTERFACE_VERSION
 #error This code uses a different interface version than the one defined in convergent-user.h
 #endif
@@ -244,9 +244,10 @@ static void process_message(struct isr_message *msg)
   case ISR_MSGTYPE_GET_META:
     if (cache_get(msg)) {
       vulpes_log(LOG_ERRORS,"%llu:%llu: get failed",state.request_count,msg->chunk);
-      return;
+      msg->type=ISR_MSGTYPE_META_HARDERR;
+    } else {
+      msg->type=ISR_MSGTYPE_SET_META;
     }
-    msg->type=ISR_MSGTYPE_SET_META;
     if (write(state.chardev_fd, msg, sizeof(*msg)) != sizeof(*msg)) {
       vulpes_log(LOG_ERRORS,"Short write to device driver");
     }
