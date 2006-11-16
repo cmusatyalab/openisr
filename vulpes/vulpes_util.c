@@ -123,6 +123,8 @@ char *vulpes_strerror(vulpes_err_t err)
     return "Call failed";
   case VULPES_PROTOFAIL:
     return "Driver protocol error";
+  case VULPES_NETFAIL:
+    return "Network failure";
   }
   return "(Unknown)";
 }

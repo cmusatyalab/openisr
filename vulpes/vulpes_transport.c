@@ -3,6 +3,7 @@
 #include <curl/easy.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "vulpes.h"
 #include "vulpes_log.h"
 #include "vulpes_util.h"
@@ -21,6 +22,8 @@ static unsigned chunks_requested;
 static unsigned retrieval_errors;
 static unsigned connection_reuses;
 
+#define HTTP_RETRIES 2
+#define TIME_BETWEEN_RETRIES 5
 
 /* the curl writeback function */
 static size_t curl_write_callback_function(char* curlbuf, size_t size,
@@ -124,7 +127,25 @@ static vulpes_err_t http_get(char *buf, int *bufsize, const char *url)
   if (retVal) {
     vulpes_log(LOG_ERRORS,"curl %s: %s", conn->error_buf,
                curl_easy_strerror(retVal));
-    return VULPES_IOERR;
+    switch (retVal) {
+    case CURLE_COULDNT_RESOLVE_PROXY:
+    case CURLE_COULDNT_RESOLVE_HOST:
+    case CURLE_COULDNT_CONNECT:
+    case CURLE_OPERATION_TIMEOUTED:
+    case CURLE_GOT_NOTHING:
+    case CURLE_SEND_ERROR:
+    case CURLE_RECV_ERROR:
+    case CURLE_PARTIAL_FILE:
+      return VULPES_NETFAIL;
+    case CURLE_WRITE_ERROR:
+      return VULPES_OVERFLOW;
+    case CURLE_OUT_OF_MEMORY:
+      return VULPES_NOMEM;
+    case CURLE_TOO_MANY_REDIRECTS:
+    case CURLE_BAD_CONTENT_ENCODING:
+    default:
+      return VULPES_IOERR;
+    }
   }
   
   *bufsize=conn->size;
@@ -169,6 +190,7 @@ vulpes_err_t transport_get(char *buf, int *bufsize, const char *src,
 			unsigned chunk_num)
 {
   vulpes_err_t err;
+  int i;
   
   vulpes_log(LOG_TRANSPORT,"begin_transport: %s %u",src,chunk_num);
   chunks_requested++;
@@ -179,7 +201,15 @@ vulpes_err_t transport_get(char *buf, int *bufsize, const char *src,
       vulpes_log(LOG_ERRORS,"unable to read input %s: %s",src,vulpes_strerror(err));
     break;
   case HTTP_TRANSPORT:
-    err=http_get(buf, bufsize, src);
+    for (i=0; i <= HTTP_RETRIES; i++) {
+      if (i) {
+	sleep(TIME_BETWEEN_RETRIES);
+	vulpes_log(LOG_ERRORS,"transport_retry: %u",chunk_num);
+      }
+      err=http_get(buf, bufsize, src);
+      if (err != VULPES_NETFAIL)
+	break;
+    }
     break;
   default:
     vulpes_log(LOG_ERRORS,"unknown transport");

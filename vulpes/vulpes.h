@@ -28,6 +28,7 @@ typedef enum vulpes_err {
   VULPES_BADFORMAT,
   VULPES_CALLFAIL,
   VULPES_PROTOFAIL,
+  VULPES_NETFAIL,  /* Used instead of IOERR if a retry might fix it */
 } vulpes_err_t;
 
 enum transfer_type {
