@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
+#include <sys/utsname.h>
 #include <linux/loop.h>
 #include "vulpes.h"
 #include "vulpes_log.h"
@@ -100,7 +101,9 @@ vulpes_err_t driver_init(void)
   char branch[64];
   char protocol[8];
   unsigned protocol_i;
+  struct utsname utsname;
   
+  /* Check driver version */
   if (!is_dir("/sys/class/openisr")) {
     vulpes_log(LOG_ERRORS,"kernel module not loaded");
     return VULPES_NOTFOUND;
@@ -123,6 +126,12 @@ vulpes_err_t driver_init(void)
     return VULPES_PROTOFAIL;
   }
   vulpes_log(LOG_BASIC,"Driver protocol %u, revision %s (%s)",protocol_i,revision,branch);
+  
+  /* Log kernel version */
+  if (uname(&utsname))
+    vulpes_log(LOG_ERRORS,"Can't get kernel version");
+  else
+    vulpes_log(LOG_BASIC,"%s %s (%s) on %s",utsname.sysname,utsname.release,utsname.version,utsname.machine);
   
   /* Create signal-passing pipe */
   if (pipe(state.signal_fds)) {
