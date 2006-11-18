@@ -50,7 +50,6 @@ extern struct vulpes_config {
   char *bin_keyring_name;	/* Set by main */
 
   int verbose;			/* Set by main -- currently not used */
-  int doUpload;                 /* Set by main */
   struct lka_svc *lka_svc;      /* Set by main */
 } config;
 

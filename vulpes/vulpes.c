@@ -20,7 +20,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <getopt.h>
 #include "vulpes.h"
 #include "vulpes_log.h"
 #include "vulpes_lka.h"
@@ -32,8 +31,6 @@ const char *vulpes_version = "0.60";
 
 struct vulpes_config config;
 struct vulpes_state state;
-extern char *optarg;
-extern int optind, opterr, optopt;
 
 
 /* FUNCTIONS */
@@ -73,17 +70,87 @@ static void usage(const char *progname)
     usage(argv[0]); \
   } while (0)
 
-enum mode {
-  MODE_RUN,
-  MODE_UPLOAD,
-  MODE_CHECK,
-  MODE_HELP,
-  MODE_VERSION,
-  NR_MODES
+enum arg_type {
+  REQUIRED,
+  OPTIONAL,
+  ANY,  /* any number permitted, including zero */
 };
 
-/* XXX */
-enum options {
+struct vulpes_option {
+  char *name;
+  unsigned retval;
+  enum arg_type type;
+  unsigned params;
+  unsigned mask;
+};
+
+#define MAXPARAMS 8
+#define MAXOPTS 256
+static char *optparams[MAXPARAMS];
+
+/* Instead of using getopt_long() we roll our own.  getopt_long doesn't support
+   several things we need:
+   - More than one parameter per option
+   - Checking for required or once-only options
+   - Different permissible parameters depending on circumstances (mode)
+ */
+static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts, unsigned mask)
+{
+  static int optind=2;  /* ignore argv[0] and argv[1] */
+  static int optseen[MAXOPTS];
+  char *arg;
+  int i;
+  
+  if (optind == argc) {
+    /* We've read the entire command line; make sure all required argument have
+       been handled */
+    for (; opts->name != NULL; opts++) {
+      if ((opts->mask & mask) != mask)
+	continue;
+      if (opts->type == REQUIRED && optseen[MAXOPTS] == 0)
+	PARSE_ERROR("missing required option --%s", opts->name);
+    }
+    return -1;
+  }
+  
+  arg=argv[optind++];
+  if (arg[0] != '-' || arg[1] != '-')
+    PARSE_ERROR("\"%s\" is not an option element", arg);
+  arg += 2;
+  
+  for (; opts->name != NULL; opts++) {
+    if (!strcmp(opts->name, arg)) {
+      if ((opts->mask & mask) != mask)
+	PARSE_ERROR("--%s not valid in this mode", arg);
+      if (opts->retval > MAXOPTS)
+	PARSE_ERROR("BUG: option %s has a retval larger than %d", arg, MAXOPTS);
+      if (opts->type != ANY && optseen[opts->retval])
+	PARSE_ERROR("--%s may only be specified once", arg);
+      optseen[opts->retval]++;
+      if (opts->params > MAXPARAMS)
+	PARSE_ERROR("BUG: option %s expects more than %d parameters", arg, MAXPARAMS);
+      for (i=0; i<opts->params; i++) {
+	if (optind == argc)
+	  PARSE_ERROR("wrong number of arguments to --%s: should be %d", arg, opts->params);
+	optparams[i]=argv[optind++];
+	if (optparams[i][0] == '-' && optparams[i][1] == '-')
+	  PARSE_ERROR("wrong number of arguments to --%s: should be %d", arg, opts->params);
+      }
+      return opts->retval;
+    }
+  }
+  PARSE_ERROR("unknown option --%s", arg);
+}
+
+enum mode {
+  MODE_RUN      = 0x01,
+  MODE_UPLOAD   = 0x02,
+  MODE_CHECK    = 0x04,
+  MODE_HELP     = 0x08,
+  MODE_VERSION  = 0x10,
+};
+
+enum option {
   OPT_CACHE,
   OPT_MASTER,
   OPT_KEYRING,
@@ -91,30 +158,33 @@ enum options {
   OPT_LOG,
   OPT_PROXY,
   OPT_UPLOAD,
-  OPT_CHECK,
   OPT_FOREGROUND,
   OPT_PID,
-  OPT_HELP,
-  OPT_VERSION,
+};
+
+static struct vulpes_option cmdline_options[] = {
+  {"foreground", OPT_FOREGROUND, OPTIONAL,  0, MODE_RUN},
+  {"pid",        OPT_PID,        OPTIONAL,  0, MODE_RUN},
+  {"cache",      OPT_CACHE,      REQUIRED,  1, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
+  {"master",     OPT_MASTER,     REQUIRED,  2, MODE_RUN},
+  {"keyring",    OPT_KEYRING,    REQUIRED,  2, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
+  {"upload",     OPT_UPLOAD,     REQUIRED,  2, MODE_UPLOAD},
+  {"log",        OPT_LOG,        OPTIONAL,  4, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
+  {"proxy",      OPT_PROXY,      OPTIONAL,  2, MODE_RUN},
+  {"lka",        OPT_LKA,        ANY,       2, MODE_RUN},
+  {0,0,0,0}
 };
 
 int main(int argc, char *argv[])
 {
-  const char* logName;
-  const char* log_infostr;
+  const char* logName=NULL;
+  const char* log_infostr=NULL;
   enum mode mode;
+  int opt;
   unsigned logfilemask=0, logstdoutmask=0x1;
-  int requiredArgs=1;/* reqd arg count; at least give me a program name! */
   int foreground=0;
   pid_t pid;
   int ret=1;
-  
-  /* required parameters */
-  int masterDone=0;
-  int keyDone=0;
-  int logDone=0;
-  int cacheDone=0;
-  int proxyDone=0;
   
   /* parse command line */
   if (argc < 2) {
@@ -134,209 +204,83 @@ int main(int argc, char *argv[])
   else
     PARSE_ERROR("Unknown command %s", argv[1]);
   
-  optind++;
-  while (1) {
-    
-    static struct option vulpes_cmdline_options[] =
-      {
-	{"foreground", no_argument, 0, OPT_FOREGROUND},
-	{"pid", no_argument, 0, OPT_PID},
-	{"cache", no_argument, 0, OPT_CACHE},
-	{"master", no_argument, 0, OPT_MASTER},
-	{"keyring", no_argument, 0, OPT_KEYRING},
-	{"upload", no_argument, 0, OPT_UPLOAD},
-	{"log", no_argument, 0, OPT_LOG},
-	{"proxy", no_argument, 0, OPT_PROXY},
-	{"lka", no_argument, 0, OPT_LKA},
-	{0,0,0,0}
-      };
-    
-    int option_index=0;
-    int opt_retVal;
-    
-    opt_retVal=getopt_long(argc,argv, "", vulpes_cmdline_options,
-			   &option_index);
-    
-    if (opt_retVal == -1)
-      break;    
-    switch(opt_retVal) {
+  while ((opt=vulpes_getopt(argc, argv, cmdline_options, mode)) != -1) {
+    switch (opt) {
     case OPT_FOREGROUND:
-      if (foreground) {
-	PARSE_ERROR("--foreground may only be specified once.");
-      }
-      requiredArgs+=1;
       foreground=1;
       break;
     case OPT_PID:
-      requiredArgs+=1;
       printf("VULPES: pid = %u\n", (unsigned) getpid());
       break;
     case OPT_CACHE:
-      if (cacheDone) {
-	PARSE_ERROR("--cache may only be specified once.");
-      }
-      requiredArgs+=2;
-      if (optind >= argc) {
-	PARSE_ERROR("failed to parse cache.");
-      }
-      config.cache_name=argv[optind++];
-      cacheDone=1;
+      config.cache_name=optparams[0];
       break;
     case OPT_MASTER:
-      if (masterDone) {
-	PARSE_ERROR("--master may only be specified once.");
-      }
-      requiredArgs+=3;
-      if (optind+1 >= argc) {
-	PARSE_ERROR("failed to parse transport.");
-      }
-      if (strcmp("http",argv[optind])==0)
+      if (strcmp("http", optparams[0])==0)
 	config.trxfer=HTTP_TRANSPORT;
-      else if (strcmp("local",argv[optind])==0)
+      else if (strcmp("local", optparams[0])==0)
 	config.trxfer=LOCAL_TRANSPORT;
-      else {
+      else
 	PARSE_ERROR("unknown transport type.");
-      }
-      optind++;
-      config.master_name=argv[optind++];
-      masterDone=1;
+      config.master_name=optparams[1];
       break;
     case OPT_KEYRING:
-      if (keyDone) {
-	PARSE_ERROR("--keyring may only be specified once.");
-      }
-      requiredArgs+=3;
-      if (optind+1 >= argc) {
-	PARSE_ERROR("failed to parse keyring name.");
-      }
-      config.hex_keyring_name=argv[optind++];
-      config.bin_keyring_name=argv[optind++];
-      keyDone=1;
+      config.hex_keyring_name=optparams[0];
+      config.bin_keyring_name=optparams[1];
       break;
     case OPT_UPLOAD:
-      if (config.doUpload) {
-	PARSE_ERROR("--upload may only be specified once.");
-      }
-      requiredArgs+=3;
-      if (optind+1 >= argc) {
-	PARSE_ERROR("failed to parse upload options.");
-      }
-      config.doUpload=1;
-      config.old_keyring_name=argv[optind++];
-      config.dest_name=argv[optind++];
+      config.old_keyring_name=optparams[0];
+      config.dest_name=optparams[1];
       break;
     case OPT_LOG:
-      if (logDone) {
-	PARSE_ERROR("--log may only be specified once.");
-      }
-      requiredArgs+=5;
-      if (optind+2 >= argc) {
-	PARSE_ERROR("failed to parse logging.");
-      }
-      logName=argv[optind++];
-      log_infostr=argv[optind++];
-      logfilemask=strtoul(argv[optind++], NULL, 0);
-      logstdoutmask=strtoul(argv[optind++], NULL, 0);
-      vulpes_log_init(logName,log_infostr,logfilemask,logstdoutmask);
-      logDone=1;
+      logName=optparams[0];
+      log_infostr=optparams[1];
+      logfilemask=strtoul(optparams[2], NULL, 0);
+      logstdoutmask=strtoul(optparams[3], NULL, 0);
       break;
     case OPT_PROXY:
       {
 	char *error_buffer;
 	long tmp_num;
 
-	if (proxyDone) {
-	  PARSE_ERROR("--proxy may only be specified once.");
-	}
-	requiredArgs+=3;
 	error_buffer=(char*)malloc(64);
 	error_buffer[0]=0;
-	if (optind+1 >= argc) {
-	  PARSE_ERROR("failed to parse proxy description.");
-	}
-	config.proxy_name=argv[optind++];
-	tmp_num=strtol(argv[optind++], &error_buffer,10);
-	if (strlen(error_buffer)!=0) {
+	config.proxy_name=optparams[0];
+	tmp_num=strtol(optparams[1], &error_buffer, 10);
+	if (strlen(error_buffer)!=0)
 	  PARSE_ERROR("bad port");
-	}
 	config.proxy_port=tmp_num;
 	free(error_buffer);
-	proxyDone=1;
       }
       break;
     case OPT_LKA:
-      requiredArgs+=3;
-      if (optind+1 >= argc) {
-	PARSE_ERROR("failed to parse lka option.");
-      }
       /* XXX this is lame */
-      if (strcmp("hfs-sha-1", argv[optind++]))
+      if (strcmp("hfs-sha-1", optparams[0]))
 	PARSE_ERROR("invalid LKA type.");
       if(config.lka_svc == NULL)
 	if(vulpes_lka_open())
 	  printf("WARNING: unable to open lka service.\n");
       if(config.lka_svc != NULL)
-	if(vulpes_lka_add(LKA_HFS, LKA_TAG_SHA1, argv[optind++]))
-	  printf("WARNING: unable to add lka database %s.\n", argv[optind]);
+	if(vulpes_lka_add(LKA_HFS, LKA_TAG_SHA1, optparams[1]))
+	  printf("WARNING: unable to add lka database %s.\n", optparams[1]);
       break;
-    default:
-      PARSE_ERROR("unknown command line option.");
     }
   }
   
   /* Check arguments */
   switch (mode) {
-  case MODE_RUN:
-    if (keyDone==0) {
-      PARSE_ERROR("--keyring parameter missing");
-    }
-    if (masterDone==0) {
-      PARSE_ERROR("--master parameter missing");
-    }
-    if (cacheDone==0) {
-      PARSE_ERROR("--cache parameter missing");
-    }
-    break;
-  case MODE_UPLOAD:
-    if (keyDone==0) {
-      PARSE_ERROR("--keyring parameter missing");
-    }
-    if (cacheDone==0) {
-      PARSE_ERROR("--cache parameter missing");
-    }
-    if (config.doUpload==0) {
-      PARSE_ERROR("--upload parameter missing");
-    }
-    break;
-  case MODE_CHECK:
-    if (keyDone==0) {
-      PARSE_ERROR("--keyring parameter missing");
-    }
-    if (cacheDone==0) {
-      PARSE_ERROR("--cache parameter missing");
-    }
-    break;
   case MODE_HELP:
     usage(argv[0]);
   case MODE_VERSION:
     version();
     return 1;
-  case NR_MODES:
-    /* XXX */
-    printf("BUG\n");
-    return 1;
+  default:
+    break;
   }
   
-  if (argc!=requiredArgs) {
-    PARSE_ERROR("failed to parse cmd line (%d of %d).", requiredArgs, argc);
-  }
-  
-  if (logDone==0) {
+  if (logName == NULL)
     logName="/dev/null";
-    log_infostr=" ";
-    vulpes_log_init(logName,log_infostr,logfilemask,logstdoutmask);
-    logDone=1;
-  }
+  vulpes_log_init(logName,log_infostr,logfilemask,logstdoutmask);
   
   /* now that parameters are correct - start vulpes log */
   vulpes_log(LOG_BASIC,"Starting. Version: %s, revision: %s %s, PID: %u",
@@ -351,13 +295,15 @@ int main(int argc, char *argv[])
   
   /* XXX we don't do proper cleanup in the error paths */
   
-  if (mode == MODE_UPLOAD) {
+  switch (mode) {
+  case MODE_UPLOAD:
     copy_for_upload(config.old_keyring_name, config.dest_name);
     /* Does not return */
-  }
-  if (mode == MODE_CHECK) {
+  case MODE_CHECK:
     checktags();
     /* Does not return */
+  default:
+    break;
   }
   
   /* Initialize transport */
