@@ -51,7 +51,6 @@ extern struct vulpes_config {
 
   int verbose;			/* Set by main -- currently not used */
   int doUpload;                 /* Set by main */
-  int doCheck;                  /* Set by main */
   struct lka_svc *lka_svc;      /* Set by main */
 } config;
 

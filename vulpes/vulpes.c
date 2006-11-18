@@ -42,6 +42,7 @@ static void version(void)
   printf("Version: %s (%s, rev %s)\n", vulpes_version, svn_branch, svn_revision);
 }
 
+static void usage(const char *progname) __attribute__ ((noreturn));
 static void usage(const char *progname)
 {
   version();
@@ -72,6 +73,16 @@ static void usage(const char *progname)
     usage(argv[0]); \
   } while (0)
 
+enum mode {
+  MODE_RUN,
+  MODE_UPLOAD,
+  MODE_CHECK,
+  MODE_HELP,
+  MODE_VERSION,
+  NR_MODES
+};
+
+/* XXX */
 enum options {
   OPT_CACHE,
   OPT_MASTER,
@@ -90,7 +101,8 @@ enum options {
 int main(int argc, char *argv[])
 {
   const char* logName;
-  const char* log_infostr;  
+  const char* log_infostr;
+  enum mode mode;
   unsigned logfilemask=0, logstdoutmask=0x1;
   int requiredArgs=1;/* reqd arg count; at least give me a program name! */
   int foreground=0;
@@ -109,11 +121,24 @@ int main(int argc, char *argv[])
     usage(argv[0]);
   }
   
+  if (!strcmp(argv[1], "run"))
+    mode=MODE_RUN;
+  else if (!strcmp(argv[1], "upload"))
+    mode=MODE_UPLOAD;
+  else if (!strcmp(argv[1], "check"))
+    mode=MODE_CHECK;
+  else if (!strcmp(argv[1], "help"))
+    mode=MODE_HELP;
+  else if (!strcmp(argv[1], "version"))
+    mode=MODE_VERSION;
+  else
+    PARSE_ERROR("Unknown command %s", argv[1]);
+  
+  optind++;
   while (1) {
     
     static struct option vulpes_cmdline_options[] =
       {
-	{"version", no_argument, 0, OPT_VERSION},
 	{"foreground", no_argument, 0, OPT_FOREGROUND},
 	{"pid", no_argument, 0, OPT_PID},
 	{"cache", no_argument, 0, OPT_CACHE},
@@ -122,9 +147,7 @@ int main(int argc, char *argv[])
 	{"upload", no_argument, 0, OPT_UPLOAD},
 	{"log", no_argument, 0, OPT_LOG},
 	{"proxy", no_argument, 0, OPT_PROXY},
-	{"check", no_argument, 0, OPT_CHECK},
 	{"lka", no_argument, 0, OPT_LKA},
-	{"help", no_argument, 0, OPT_HELP},
 	{0,0,0,0}
       };
     
@@ -137,11 +160,6 @@ int main(int argc, char *argv[])
     if (opt_retVal == -1)
       break;    
     switch(opt_retVal) {
-    case OPT_VERSION:
-      requiredArgs+=1;
-      version();
-      exit(1);
-      break;
     case OPT_FOREGROUND:
       if (foreground) {
 	PARSE_ERROR("--foreground may only be specified once.");
@@ -246,13 +264,6 @@ int main(int argc, char *argv[])
 	proxyDone=1;
       }
       break;
-    case OPT_CHECK:
-      if (config.doCheck) {
-	PARSE_ERROR("--check may only be specified once.");
-      }
-      requiredArgs+=1;
-      config.doCheck=1;
-      break;
     case OPT_LKA:
       requiredArgs+=3;
       if (optind+1 >= argc) {
@@ -268,25 +279,56 @@ int main(int argc, char *argv[])
 	if(vulpes_lka_add(LKA_HFS, LKA_TAG_SHA1, argv[optind++]))
 	  printf("WARNING: unable to add lka database %s.\n", argv[optind]);
       break;
-    case OPT_HELP:
-      usage(argv[0]);
     default:
       PARSE_ERROR("unknown command line option.");
     }
   }
-
+  
   /* Check arguments */
+  switch (mode) {
+  case MODE_RUN:
+    if (keyDone==0) {
+      PARSE_ERROR("--keyring parameter missing");
+    }
+    if (masterDone==0) {
+      PARSE_ERROR("--master parameter missing");
+    }
+    if (cacheDone==0) {
+      PARSE_ERROR("--cache parameter missing");
+    }
+    break;
+  case MODE_UPLOAD:
+    if (keyDone==0) {
+      PARSE_ERROR("--keyring parameter missing");
+    }
+    if (cacheDone==0) {
+      PARSE_ERROR("--cache parameter missing");
+    }
+    if (config.doUpload==0) {
+      PARSE_ERROR("--upload parameter missing");
+    }
+    break;
+  case MODE_CHECK:
+    if (keyDone==0) {
+      PARSE_ERROR("--keyring parameter missing");
+    }
+    if (cacheDone==0) {
+      PARSE_ERROR("--cache parameter missing");
+    }
+    break;
+  case MODE_HELP:
+    usage(argv[0]);
+  case MODE_VERSION:
+    version();
+    return 1;
+  case NR_MODES:
+    /* XXX */
+    printf("BUG\n");
+    return 1;
+  }
+  
   if (argc!=requiredArgs) {
     PARSE_ERROR("failed to parse cmd line (%d of %d).", requiredArgs, argc);
-  }
-  if (keyDone==0) {
-    PARSE_ERROR("--keyring parameter missing");
-  }
-  if (masterDone==0 && !config.doUpload && !config.doCheck) {
-    PARSE_ERROR("--master parameter missing");
-  }
-  if (cacheDone==0) {
-    PARSE_ERROR("--cache parameter missing");
   }
   
   if (logDone==0) {
@@ -309,11 +351,11 @@ int main(int argc, char *argv[])
   
   /* XXX we don't do proper cleanup in the error paths */
   
-  if (config.doUpload) {
+  if (mode == MODE_UPLOAD) {
     copy_for_upload(config.old_keyring_name, config.dest_name);
     /* Does not return */
   }
-  if (config.doCheck) {
+  if (mode == MODE_CHECK) {
     checktags();
     /* Does not return */
   }
