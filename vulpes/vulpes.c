@@ -72,6 +72,21 @@ static void usage(const char *progname)
     usage(argv[0]); \
   } while (0)
 
+enum options {
+  OPT_CACHE,
+  OPT_MASTER,
+  OPT_KEYRING,
+  OPT_LKA,
+  OPT_LOG,
+  OPT_PROXY,
+  OPT_UPLOAD,
+  OPT_CHECK,
+  OPT_FOREGROUND,
+  OPT_PID,
+  OPT_HELP,
+  OPT_VERSION,
+};
+
 int main(int argc, char *argv[])
 {
   const char* logName;
@@ -98,19 +113,18 @@ int main(int argc, char *argv[])
     
     static struct option vulpes_cmdline_options[] =
       {
-	{"version", no_argument, 0, 'a'},
-	{"allversions", no_argument, 0, 'a'},  /* XXX compatibility with old revs */
-	{"foreground", no_argument, 0, 'b'},
-	{"pid", no_argument, 0, 'c'},
-	{"cache", no_argument, 0, 'd'},
-	{"master", no_argument, 0, 'e'},
-	{"keyring", no_argument, 0, 'f'},
-	{"upload", no_argument, 0, 'g'},
-	{"log", no_argument, 0, 'h'},
-	{"proxy", no_argument, 0, 'i'},
-	{"check", no_argument, 0, 'j'},
-	{"lka", no_argument, 0, 'l'},
-	{"help", no_argument, 0, 'm'},
+	{"version", no_argument, 0, OPT_VERSION},
+	{"foreground", no_argument, 0, OPT_FOREGROUND},
+	{"pid", no_argument, 0, OPT_PID},
+	{"cache", no_argument, 0, OPT_CACHE},
+	{"master", no_argument, 0, OPT_MASTER},
+	{"keyring", no_argument, 0, OPT_KEYRING},
+	{"upload", no_argument, 0, OPT_UPLOAD},
+	{"log", no_argument, 0, OPT_LOG},
+	{"proxy", no_argument, 0, OPT_PROXY},
+	{"check", no_argument, 0, OPT_CHECK},
+	{"lka", no_argument, 0, OPT_LKA},
+	{"help", no_argument, 0, OPT_HELP},
 	{0,0,0,0}
       };
     
@@ -123,27 +137,23 @@ int main(int argc, char *argv[])
     if (opt_retVal == -1)
       break;    
     switch(opt_retVal) {
-    case 'a':
-      /* version */
+    case OPT_VERSION:
       requiredArgs+=1;
       version();
       exit(1);
       break;
-    case 'b':
-      /* foreground */
+    case OPT_FOREGROUND:
       if (foreground) {
 	PARSE_ERROR("--foreground may only be specified once.");
       }
       requiredArgs+=1;
       foreground=1;
       break;
-    case 'c':
-      /* pid */
+    case OPT_PID:
       requiredArgs+=1;
       printf("VULPES: pid = %u\n", (unsigned) getpid());
       break;
-    case 'd':
-      /* cache */
+    case OPT_CACHE:
       if (cacheDone) {
 	PARSE_ERROR("--cache may only be specified once.");
       }
@@ -154,8 +164,7 @@ int main(int argc, char *argv[])
       config.cache_name=argv[optind++];
       cacheDone=1;
       break;
-    case 'e':
-      /* master */
+    case OPT_MASTER:
       if (masterDone) {
 	PARSE_ERROR("--master may only be specified once.");
       }
@@ -174,8 +183,7 @@ int main(int argc, char *argv[])
       config.master_name=argv[optind++];
       masterDone=1;
       break;
-    case 'f':
-      /* keyring */
+    case OPT_KEYRING:
       if (keyDone) {
 	PARSE_ERROR("--keyring may only be specified once.");
       }
@@ -187,8 +195,7 @@ int main(int argc, char *argv[])
       config.bin_keyring_name=argv[optind++];
       keyDone=1;
       break;
-    case 'g':
-      /* upload */
+    case OPT_UPLOAD:
       if (config.doUpload) {
 	PARSE_ERROR("--upload may only be specified once.");
       }
@@ -200,8 +207,7 @@ int main(int argc, char *argv[])
       config.old_keyring_name=argv[optind++];
       config.dest_name=argv[optind++];
       break;
-    case 'h':
-      /* log */
+    case OPT_LOG:
       if (logDone) {
 	PARSE_ERROR("--log may only be specified once.");
       }
@@ -216,8 +222,7 @@ int main(int argc, char *argv[])
       vulpes_log_init(logName,log_infostr,logfilemask,logstdoutmask);
       logDone=1;
       break;
-    case 'i':
-      /* proxy */
+    case OPT_PROXY:
       {
 	char *error_buffer;
 	long tmp_num;
@@ -241,16 +246,14 @@ int main(int argc, char *argv[])
 	proxyDone=1;
       }
       break;
-    case 'j':
-      /* check */
+    case OPT_CHECK:
       if (config.doCheck) {
 	PARSE_ERROR("--check may only be specified once.");
       }
       requiredArgs+=1;
       config.doCheck=1;
       break;
-    case 'l':
-      /* lka */
+    case OPT_LKA:
       requiredArgs+=3;
       if (optind+1 >= argc) {
 	PARSE_ERROR("failed to parse lka option.");
@@ -265,8 +268,7 @@ int main(int argc, char *argv[])
 	if(vulpes_lka_add(LKA_HFS, LKA_TAG_SHA1, argv[optind++]))
 	  printf("WARNING: unable to add lka database %s.\n", argv[optind]);
       break;
-    case 'm':
-      /* help */
+    case OPT_HELP:
       usage(argv[0]);
     default:
       PARSE_ERROR("unknown command line option.");
