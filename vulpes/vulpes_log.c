@@ -24,22 +24,6 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <ctype.h>
 #include "vulpes_log.h"
 
-#define MAX_FNAME_SIZE 128
-
-struct log {
-  char fname[MAX_FNAME_SIZE+1];
-  char *infostr;
-  FILE *logf;
-  unsigned logf_mask;
-  unsigned stdout_mask;
-};
-
-static struct log gl_log = {"/dev/null", NULL, NULL, 0, 1};
-
-/*
- * LOCAL FUNCTIONS
- */
-
 static void vulpes_timestamp(char timestamp_coarse[128], char timestamp_fine[32])
 {
   struct timeb tp;
@@ -58,79 +42,36 @@ static inline int vulpes_log_fflush_needed(enum logmsgtype msgtype)
   return (int)((msgtype==LOG_BASIC) || (msgtype==LOG_ERRORS));
 }
 
-/*
- * INTERFACE FUNCTIONS
- */
-
-int vulpes_log_init(const char* fname, const char *info_str, unsigned logfile_mask, unsigned  stdout_mask)
+vulpes_err_t vulpes_log_init(void)
 {
-  size_t len;
-
-  /* copy the info string */
-  if(info_str!=NULL) {
-    len = strlen(info_str);
-    if((gl_log.infostr = malloc(len+1)) == NULL) {
-      printf("[vulpes_log] ERROR: malloc() failure\n");
-      return 1;
-    }
-    strcpy(gl_log.infostr, info_str);
-  } else {
-    gl_log.infostr = NULL;
-  }
-
-  /* check to ensure that the filename will fit */
-  if((len=strlen(fname)) > MAX_FNAME_SIZE) {
-    printf("[vulpes_log] ERROR: log filename too long\n");
-    return 2;
-  }
-
-  /* save the filename */
-  strncpy(gl_log.fname, fname, MAX_FNAME_SIZE);
-  gl_log.fname[MAX_FNAME_SIZE]='\0';
-
-  /* open the file */
-  if((gl_log.logf = fopen(gl_log.fname, "a")) == NULL) {
-    printf("[vulpes_log] Could not create or open %s in write mode\n",gl_log.fname);
-    return 3;
-  }
+  if (config.log_file_name == NULL)
+    return VULPES_SUCCESS;
   
-  /* save the mask values */
-  gl_log.logf_mask = logfile_mask;
-  gl_log.stdout_mask = stdout_mask;
- 
-  return 0;
+  if ((state.log_fp = fopen(config.log_file_name, "a")) == NULL) {
+    printf("[vulpes_log] Could not create or open %s in write mode\n",config.log_file_name);
+    return VULPES_IOERR;
+  }
+  return VULPES_SUCCESS;
 }
 
-int vulpes_log_close(void)
+void vulpes_log_close(void)
 {
-  if(gl_log.infostr != NULL) {
-    free(gl_log.infostr);
-    gl_log.infostr = NULL;
-  }
-
-  if(fclose(gl_log.logf)) {
-    printf("[vulpes_log] ERROR: close of logging file failed.\n");
-    return 1;
-  }
-
-  gl_log.logf_mask = 0;
-
-  return 0;
+  if (state.log_fp == NULL)
+    return;
+  
+  if (fclose(state.log_fp))
+    printf("[vulpes_log] Close of logging file failed.\n");
+  state.log_fp=NULL;
 }
 
 static inline int log_msgtype_active_file(enum logmsgtype msgtype)
 {
-  return (((1<<msgtype) & gl_log.logf_mask) ? 1 : 0);
+  return (state.log_fp != NULL && ((1<<msgtype) & config.log_file_mask)) ? 1 : 0;
 }
 
 static inline int log_msgtype_active_stdout(enum logmsgtype msgtype)
 {
-  return (((1<<msgtype) & gl_log.stdout_mask) ? 1 : 0);
-}
-
-int log_msgtype_active(enum logmsgtype msgtype)
-{
-  return (log_msgtype_active_file(msgtype) || log_msgtype_active_stdout(msgtype));
+  return ((1<<msgtype) & config.log_stdout_mask) ? 1 : 0;
 }
 
 void _vulpes_log(enum logmsgtype msgtype, const char *func,
@@ -197,28 +138,30 @@ void _vulpes_log(enum logmsgtype msgtype, const char *func,
      us problems if we switch to threads */
   if(writefile) {
     va_start(ap, format);
-    fprintf(gl_log.logf, "%s%s%s:%s:%s:",
+    fprintf(state.log_fp, "%s%s%s:%s:%s:",
             timestamp_coarse,
-            ((gl_log.infostr == NULL) ? " " : gl_log.infostr),
+            config.log_infostr,
             s_msgtype,
             timestamp_fine,
             s_func);
-    vfprintf(gl_log.logf, format, ap);
-    fprintf(gl_log.logf, "\n");
+    vfprintf(state.log_fp, format, ap);
+    fprintf(state.log_fp, "\n");
     va_end(ap);
     if(vulpes_log_fflush_needed(msgtype))
-      fflush(gl_log.logf);
+      fflush(state.log_fp);
   }
 
   if(writestdout) {
+    va_start(ap, format);
     printf("%s%s%s:%s:%s:",
            timestamp_coarse,
-           ((gl_log.infostr == NULL) ? " " : gl_log.infostr),
+           config.log_infostr,
            s_msgtype,
            timestamp_fine,
            s_func);
     vprintf(format, ap);
     printf("\n");
+    va_end(ap);
     if(vulpes_log_fflush_needed(msgtype))
       fflush(stdout);
   }

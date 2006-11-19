@@ -37,20 +37,26 @@ enum transfer_type {
   HTTP_TRANSPORT,
 };
 
+/* Set by command line parser in main() */
 extern struct vulpes_config {
-  enum transfer_type trxfer;	/* Set by main */
-  char* proxy_name;             /* Set by main */
-  long  proxy_port;             /* set by main */
+  enum transfer_type trxfer;
+  char* proxy_name;
+  long  proxy_port;
   
-  char *master_name;		/* Set by main */
-  char *cache_name;		/* Set by main */
-  char *dest_name;              /* Set by main */
-  char *old_keyring_name;	/* Set by main */
-  char *hex_keyring_name;	/* Set by main */
-  char *bin_keyring_name;	/* Set by main */
+  char *master_name;
+  char *cache_name;
+  char *dest_name;
+  char *old_keyring_name;
+  char *hex_keyring_name;
+  char *bin_keyring_name;
 
-  int verbose;			/* Set by main -- currently not used */
-  struct lka_svc *lka_svc;      /* Set by main */
+  int verbose;			/* currently not used */
+  struct lka_svc *lka_svc;
+  
+  char *log_file_name;
+  char *log_infostr;
+  unsigned log_file_mask;
+  unsigned log_stdout_mask;
 } config;
 
 /* XXX */
@@ -76,6 +82,7 @@ extern struct vulpes_state {
   int chardev_fd;
   int loopdev_fd;
   int signal_fds[2];
+  FILE *log_fp;
   unsigned offset_bytes;
   struct chunk_data *cd;		/* cd[] */
   unsigned long long request_count;

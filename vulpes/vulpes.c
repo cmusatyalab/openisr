@@ -83,10 +83,10 @@ struct vulpes_option {
   enum arg_type type;
   unsigned params;
   unsigned mask;
+  unsigned _seen;  /* internal use by vulpes_getopt() */
 };
 
 #define MAXPARAMS 8
-#define MAXOPTS 256
 static char *optparams[MAXPARAMS];
 
 /* Instead of using getopt_long() we roll our own.  getopt_long doesn't support
@@ -98,7 +98,6 @@ static char *optparams[MAXPARAMS];
 static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts, unsigned mask)
 {
   static int optind=2;  /* ignore argv[0] and argv[1] */
-  static int optseen[MAXOPTS];
   char *arg;
   int i;
   
@@ -108,7 +107,7 @@ static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts, uns
     for (; opts->name != NULL; opts++) {
       if ((opts->mask & mask) != mask)
 	continue;
-      if (opts->type == REQUIRED && optseen[MAXOPTS] == 0)
+      if (opts->type == REQUIRED && !opts->_seen)
 	PARSE_ERROR("missing required option --%s", opts->name);
     }
     return -1;
@@ -123,11 +122,9 @@ static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts, uns
     if (!strcmp(opts->name, arg)) {
       if ((opts->mask & mask) != mask)
 	PARSE_ERROR("--%s not valid in this mode", arg);
-      if (opts->retval > MAXOPTS)
-	PARSE_ERROR("BUG: option %s has a retval larger than %d", arg, MAXOPTS);
-      if (opts->type != ANY && optseen[opts->retval])
+      if (opts->type != ANY && opts->_seen)
 	PARSE_ERROR("--%s may only be specified once", arg);
-      optseen[opts->retval]++;
+      opts->_seen++;
       if (opts->params > MAXPARAMS)
 	PARSE_ERROR("BUG: option %s expects more than %d parameters", arg, MAXPARAMS);
       for (i=0; i<opts->params; i++) {
@@ -173,14 +170,14 @@ static struct vulpes_option cmdline_options[] = {
   {"log",        OPT_LOG,        OPTIONAL,  4, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
   {"proxy",      OPT_PROXY,      OPTIONAL,  2, MODE_RUN},
   {"lka",        OPT_LKA,        ANY,       2, MODE_RUN},
-  {0,0,0,0}
+  {0}
 };
 
-static unsigned long parseul(char *arg)
+static unsigned long parseul(char *arg, int base)
 {
   unsigned long val;
   char *endptr;
-  val=strtoul(arg, &endptr, 10);
+  val=strtoul(arg, &endptr, base);
   if (*arg == 0 || *endptr != 0)
     PARSE_ERROR("invalid integer value: %s", arg);
   return val;
@@ -188,11 +185,8 @@ static unsigned long parseul(char *arg)
 
 int main(int argc, char *argv[])
 {
-  const char* logName=NULL;
-  const char* log_infostr=NULL;
   enum mode mode;
   int opt;
-  unsigned logfilemask=0, logstdoutmask=0x1;
   int foreground=0;
   pid_t pid;
   int ret=1;
@@ -245,14 +239,14 @@ int main(int argc, char *argv[])
       config.dest_name=optparams[1];
       break;
     case OPT_LOG:
-      logName=optparams[0];
-      log_infostr=optparams[1];
-      logfilemask=parseul(optparams[2]);
-      logstdoutmask=parseul(optparams[3]);
+      config.log_file_name=optparams[0];
+      config.log_infostr=optparams[1];
+      config.log_file_mask=parseul(optparams[2], 0);
+      config.log_stdout_mask=parseul(optparams[3], 0);
       break;
     case OPT_PROXY:
       config.proxy_name=optparams[0];
-      config.proxy_port=parseul(optparams[1]);
+      config.proxy_port=parseul(optparams[1], 10);
       break;
     case OPT_LKA:
       /* XXX this is lame */
@@ -279,9 +273,13 @@ int main(int argc, char *argv[])
     break;
   }
   
-  if (logName == NULL)
-    logName="/dev/null";
-  vulpes_log_init(logName,log_infostr,logfilemask,logstdoutmask);
+  if (config.log_file_name == NULL) {
+    /* If --log is not specified, log errors to stdout with an empty infostr */
+    config.log_infostr="";
+    config.log_stdout_mask=0x1;
+  }
+  if (vulpes_log_init())
+    goto vulpes_exit;
   
   /* now that parameters are correct - start vulpes log */
   vulpes_log(LOG_BASIC,"Starting. Version: %s, revision: %s %s, PID: %u",

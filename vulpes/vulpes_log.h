@@ -16,6 +16,8 @@ ACCEPTANCE OF THIS AGREEMENT
 #ifndef VULPES_LOG_H
 #define VULPES_LOG_H
 
+#include "vulpes.h"
+
 enum logmsgtype {
   LOG_ERRORS=0,
   LOG_STATS=1,
@@ -25,13 +27,10 @@ enum logmsgtype {
   LOG_TRANSPORT=5,
   LOG_DRIVER_REQ=7
 };
-  
-int vulpes_log_init(const char *fname, const char *info_str, 
-		    unsigned logfile_mask, unsigned stdout_mask);
 
-int vulpes_log_close(void);
+vulpes_err_t vulpes_log_init(void);
 
-int log_msgtype_active(enum logmsgtype msgtype);
+void vulpes_log_close(void);
 
 void _vulpes_log(enum logmsgtype msgtype, const char *func,
                 const char *format, ...);
