@@ -31,6 +31,7 @@ const char *vulpes_version = "0.60";
 
 struct vulpes_config config;
 struct vulpes_state state;
+static char *progname;
 
 
 /* FUNCTIONS */
@@ -39,8 +40,8 @@ static void version(void)
   printf("Version: %s (%s, rev %s)\n", vulpes_version, svn_branch, svn_revision);
 }
 
-static void usage(const char *progname) __attribute__ ((noreturn));
-static void usage(const char *progname)
+static void usage(void) __attribute__ ((noreturn));
+static void usage(void)
 {
   version();
   printf("Usage: %s <options>\n", progname);
@@ -67,7 +68,7 @@ static void usage(const char *progname)
 
 #define PARSE_ERROR(str, args...) do { \
     printf("ERROR: " str "\n\n" , ## args); \
-    usage(argv[0]); \
+    usage(); \
   } while (0)
 
 enum arg_type {
@@ -175,6 +176,16 @@ static struct vulpes_option cmdline_options[] = {
   {0,0,0,0}
 };
 
+static unsigned long parseul(char *arg)
+{
+  unsigned long val;
+  char *endptr;
+  val=strtoul(arg, &endptr, 10);
+  if (*arg == 0 || *endptr != 0)
+    PARSE_ERROR("invalid integer value: %s", arg);
+  return val;
+}
+
 int main(int argc, char *argv[])
 {
   const char* logName=NULL;
@@ -186,9 +197,10 @@ int main(int argc, char *argv[])
   pid_t pid;
   int ret=1;
   
+  progname=argv[0];
   /* parse command line */
   if (argc < 2) {
-    usage(argv[0]);
+    usage();
   }
   
   if (!strcmp(argv[1], "run"))
@@ -235,23 +247,12 @@ int main(int argc, char *argv[])
     case OPT_LOG:
       logName=optparams[0];
       log_infostr=optparams[1];
-      logfilemask=strtoul(optparams[2], NULL, 0);
-      logstdoutmask=strtoul(optparams[3], NULL, 0);
+      logfilemask=parseul(optparams[2]);
+      logstdoutmask=parseul(optparams[3]);
       break;
     case OPT_PROXY:
-      {
-	char *error_buffer;
-	long tmp_num;
-
-	error_buffer=(char*)malloc(64);
-	error_buffer[0]=0;
-	config.proxy_name=optparams[0];
-	tmp_num=strtol(optparams[1], &error_buffer, 10);
-	if (strlen(error_buffer)!=0)
-	  PARSE_ERROR("bad port");
-	config.proxy_port=tmp_num;
-	free(error_buffer);
-      }
+      config.proxy_name=optparams[0];
+      config.proxy_port=parseul(optparams[1]);
       break;
     case OPT_LKA:
       /* XXX this is lame */
@@ -270,7 +271,7 @@ int main(int argc, char *argv[])
   /* Check arguments */
   switch (mode) {
   case MODE_HELP:
-    usage(argv[0]);
+    usage();
   case MODE_VERSION:
     version();
     return 1;
