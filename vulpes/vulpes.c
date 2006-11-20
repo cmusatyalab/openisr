@@ -117,21 +117,24 @@ static void usage(struct vulpes_mode *mode)
   char *str_start=NULL;
   char *str_end=NULL;
   int i;
-  
-  version();
-  printf("Usage: %s <mode> <options>\n", progname);
+  int have_options=0;
   
   if (mode == NULL) {
+    printf("Usage: %s <mode> <options>\n", progname);
     printf("Available modes:\n");
     for (mtmp=vulpes_modes; mtmp->name != NULL; mtmp++) {
       printf("\t%s\t%s\n", mtmp->name, mtmp->comment);
     }
     printf("Run %s help <modename> for more information.\n", progname);
   } else {
-    printf("Options for mode <%s>:\n", mode->name);
     for (otmp=vulpes_options; otmp->name != NULL; otmp++) {
       if ((otmp->mask & mode->type) != mode->type)
 	continue;
+      if (!have_options) {
+	have_options=1;
+	printf("Usage: %s %s <options>\n", progname, mode->name);
+	printf("Available options:\n");
+      }
       switch (otmp->type) {
       case REQUIRED:
 	str_start="";
@@ -156,6 +159,8 @@ static void usage(struct vulpes_mode *mode)
       if (otmp->comment != NULL)
 	printf("\t\t%s\n", otmp->comment);
     }
+    if (!have_options)
+      printf("Usage: %s %s\n", progname, mode->name);
   }
   exit(1);
 }
@@ -171,19 +176,17 @@ static void usage(struct vulpes_mode *mode)
    - Checking for required or once-only options
    - Different permissible parameters depending on circumstances (mode)
  */
-static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts, unsigned mask)
+static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts)
 {
   static int optind=2;  /* ignore argv[0] and argv[1] */
   char *arg;
-  char **param_name;
-  int param_count=0;
   int i;
   
   if (optind == argc) {
-    /* We've read the entire command line; make sure all required argument have
-       been handled */
+    /* We've read the entire command line; make sure all required arguments
+       have been handled */
     for (; opts->name != NULL; opts++) {
-      if ((opts->mask & mask) != mask)
+      if ((opts->mask & curmode->type) != curmode->type)
 	continue;
       if (opts->type == REQUIRED && !opts->_seen)
 	PARSE_ERROR("missing required option --%s", opts->name);
@@ -198,19 +201,17 @@ static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts, uns
   
   for (; opts->name != NULL; opts++) {
     if (!strcmp(opts->name, arg)) {
-      if ((opts->mask & mask) != mask)
+      if ((opts->mask & curmode->type) != curmode->type)
 	PARSE_ERROR("--%s not valid in this mode", arg);
       if (opts->type != ANY && opts->_seen)
 	PARSE_ERROR("--%s may only be specified once", arg);
       opts->_seen++;
-      param_name=opts->args;
-      while (*param_name++ != NULL && ++param_count < MAXPARAMS);
-      for (i=0; i<param_count; i++) {
+      for (i=0; i < MAXPARAMS && opts->args[i] != NULL; i++) {
 	if (optind == argc)
-	  PARSE_ERROR("wrong number of arguments to --%s: should be %d", arg, param_count);
+	  PARSE_ERROR("wrong number of arguments to --%s", arg);
 	optparams[i]=argv[optind++];
 	if (optparams[i][0] == '-' && optparams[i][1] == '-')
-	  PARSE_ERROR("wrong number of arguments to --%s: should be %d", arg, param_count);
+	  PARSE_ERROR("wrong number of arguments to --%s", arg);
       }
       return opts->retval;
     }
@@ -257,6 +258,8 @@ int main(int argc, char *argv[])
   if (curmode == NULL)
     PARSE_ERROR("Unknown subcommand %s", argv[1]);
   if (curmode->type == MODE_HELP) {
+    if (argc < 3)
+      usage(NULL);
     curmode=NULL;
     mtmp=parse_mode(argv[2]);
     if (mtmp == NULL)
@@ -265,7 +268,7 @@ int main(int argc, char *argv[])
       usage(mtmp);
   }
   
-  while ((opt=vulpes_getopt(argc, argv, vulpes_options, curmode->type)) != -1) {
+  while ((opt=vulpes_getopt(argc, argv, vulpes_options)) != -1) {
     switch (opt) {
     case OPT_FOREGROUND:
       foreground=1;
