@@ -1311,14 +1311,12 @@ sub isr_priv_cleanhoard ($$$) {
 
     # Exempt each file whose tag is in the keyring from removal
     for ($i = 0; $i < $numkeys; $i++) {
-	if ($filehash{$keyring[$i][0]} == 1) { 
-	    $filehash{$keyring[$i][0]} = 0;
-	}
+	$filehash{$keyring[$i][0]} = 0;
     }
 
     # Remove any files that are not exempted from removal
     foreach $tag (keys %filehash) {
-	if ($filehash{$tag} == 1) {
+	if ($filehash{$tag}) {
 	    unlink("$hoarddir/$tag");
 	    $deletecnt++;
 	}
