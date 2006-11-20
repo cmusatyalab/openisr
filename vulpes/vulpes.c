@@ -34,6 +34,7 @@ struct vulpes_state state;
 
 /* LOCALS */
 
+/* vulpes_getopt() requires this to be a bitmask */
 enum mode_type {
   MODE_RUN      = 0x01,
   MODE_UPLOAD   = 0x02,
@@ -45,7 +46,7 @@ enum mode_type {
 struct vulpes_mode {
   char *name;
   enum mode_type type;
-  char *comment;
+  char *desc;
 };
 
 static struct vulpes_mode vulpes_modes[] = {
@@ -82,26 +83,28 @@ enum option {
   OPT_CACHE,
   OPT_MASTER,
   OPT_KEYRING,
+  OPT_PREV_KEYRING,
   OPT_LKA,
   OPT_LOG,
   OPT_PROXY,
-  OPT_UPLOAD,
+  OPT_DESTDIR,
   OPT_FOREGROUND,
   OPT_PID,
   OPT_MODE,
 };
 
 static struct vulpes_option vulpes_options[] = {
-  {"cache",      OPT_CACHE,      REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"local_cache_dir"}},
-  {"master",     OPT_MASTER,     REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
-  {"keyring",    OPT_KEYRING,    REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"hex_keyring_file", "binary_keyring_file"}},
-  {"lka",        OPT_LKA,        ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
-  {"upload",     OPT_UPLOAD,     REQUIRED, MODE_UPLOAD                    , {"old_hex_keyring_file", "upload_dir"}},
-  {"log",        OPT_LOG,        OPTIONAL, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"logfile", "info_str", "filemask", "stdoutmask"}},
-  {"proxy",      OPT_PROXY,      OPTIONAL, MODE_RUN                       , {"proxy_server", "port_number"},                         "proxy_server is the ip address or the hostname of the proxy"},
-  {"foreground", OPT_FOREGROUND, OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
-  {"pid",        OPT_PID,        OPTIONAL, MODE_RUN                       , {},                                                      "Print process ID at startup"},
-  {"mode",       OPT_MODE,       OPTIONAL, MODE_HELP                      , {"mode"},                                                "Print detailed usage message about the given mode"},
+  {"cache",          OPT_CACHE,          REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"local_cache_dir"}},
+  {"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
+  {"keyring",        OPT_KEYRING,        REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"hex_keyring_file", "binary_keyring_file"}},
+  {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, MODE_UPLOAD                    , {"old_hex_keyring_file"}},
+  {"lka",            OPT_LKA,            ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
+  {"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
+  {"log",            OPT_LOG,            OPTIONAL, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"logfile", "info_str", "filemask", "stdoutmask"}},
+  {"proxy",          OPT_PROXY,          OPTIONAL, MODE_RUN                       , {"proxy_server", "port_number"},                         "proxy_server is the ip address or the hostname of the proxy"},
+  {"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
+  {"pid",            OPT_PID,            OPTIONAL, MODE_RUN                       , {},                                                      "Print process ID at startup"},
+  {"mode",           OPT_MODE,           OPTIONAL, MODE_HELP                      , {"mode"},                                                "Print detailed usage message about the given mode"},
   {0}
 };
 
@@ -120,7 +123,7 @@ static void usage(struct vulpes_mode *mode)
     printf("Usage: %s <mode> <options>\n", progname);
     printf("Available modes:\n");
     for (mtmp=vulpes_modes; mtmp->name != NULL; mtmp++) {
-      printf("     %-11s %s\n", mtmp->name, mtmp->comment);
+      printf("     %-11s %s\n", mtmp->name, mtmp->desc);
     }
     printf("Run \"%s help --mode <mode>\" for more information.\n", progname);
   } else {
@@ -135,7 +138,7 @@ static void usage(struct vulpes_mode *mode)
       switch (otmp->type) {
       case REQUIRED:
 	str_start=" ";
-	str_end=" ";
+	str_end="";
 	break;
       case OPTIONAL:
 	str_start="[";
@@ -245,8 +248,8 @@ int main(int argc, char *argv[])
   pid_t pid;
   int ret=1;
   
-  progname=argv[0];
   /* parse command line */
+  progname=argv[0];
   if (argc < 2) {
     usage(NULL);
   }
@@ -278,9 +281,11 @@ int main(int argc, char *argv[])
       config.hex_keyring_name=optparams[0];
       config.bin_keyring_name=optparams[1];
       break;
-    case OPT_UPLOAD:
+    case OPT_PREV_KEYRING:
       config.old_hex_keyring_name=optparams[0];
-      config.dest_dir_name=optparams[1];
+      break;
+    case OPT_DESTDIR:
+      config.dest_dir_name=optparams[0];
       break;
     case OPT_LOG:
       config.log_file_name=optparams[0];
