@@ -823,8 +823,8 @@ sub isr_priv_upload ($$$) {
     my $parcel = shift;     # parcel name
     my $isrdir = shift;     # absolute path of local ISR home dir
 
-    my $dirtybytes;
-    my $dirtyblocks;
+    my $dirtybytes = 0;
+    my $dirtyblocks = 0;
     my $virtualbytes;
     my $chunksize;
     my $sha1value;
@@ -925,8 +925,10 @@ sub isr_priv_upload ($$$) {
     #
     if (-e $hoarddir) {
 	$sha1value = `openssl sha1 < $tmpdir/cache/cfg.tgz.enc`;
+	chomp($sha1value);
 	copy("$tmpdir/cache/cfg.tgz.enc", "$hoarddir/$sha1value");
 	$sha1value = `openssl sha1 < $tmpdir/cache/keyring.enc`;
+	chomp($sha1value);
 	copy("$tmpdir/cache/keyring.enc", "$hoarddir/$sha1value");
     }
 
@@ -1221,6 +1223,13 @@ sub isr_priv_clientcommit($$$) {
     print "Moved $dirtyblocks dirty blocks to the hoard cache.\n"
 	if $main::verbose > 1;
 
+    #
+    # Update the cache file's metadata (modified flags)
+    #
+    message("INFO", "Client side commit - updating cache metadata");
+    mysystem("$Isr::ISRCLIENTBIN/vulpes sync --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
+    	or errexit("Couldn't update cache metadata");
+    
     # 
     # Sync because we're paranoid
     #

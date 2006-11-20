@@ -41,6 +41,7 @@ enum mode_type {
   MODE_CHECK    = 0x04,
   MODE_HELP     = 0x08,
   MODE_VERSION  = 0x10,
+  MODE_SYNC     = 0x20,
 };
 
 struct vulpes_mode {
@@ -52,6 +53,7 @@ struct vulpes_mode {
 static struct vulpes_mode vulpes_modes[] = {
   {"run",       MODE_RUN,     "Bind and service a virtual disk"},
   {"upload",    MODE_UPLOAD,  "Split a cache file into individual chunks for upload"},
+  {"sync",      MODE_SYNC,    "Update cache file metadata after an upload"},
   {"check",     MODE_CHECK,   "Validate cache file against keyring"},
   {"help",      MODE_HELP,    "Show usage summary"},
   {"version",   MODE_VERSION, "Show version information"},
@@ -93,14 +95,15 @@ enum option {
   OPT_MODE,
 };
 
+#define NONTRIVIAL_MODES (MODE_RUN|MODE_UPLOAD|MODE_SYNC|MODE_CHECK)
 static struct vulpes_option vulpes_options[] = {
-  {"cache",          OPT_CACHE,          REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"local_cache_dir"}},
+  {"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
   {"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
-  {"keyring",        OPT_KEYRING,        REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"hex_keyring_file", "binary_keyring_file"}},
-  {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"old_hex_keyring_file", "old_bin_keyring_file"}},
+  {"keyring",        OPT_KEYRING,        REQUIRED, NONTRIVIAL_MODES               , {"hex_keyring_file", "binary_keyring_file"}},
+  {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, NONTRIVIAL_MODES               , {"old_hex_keyring_file", "old_bin_keyring_file"}},
   {"lka",            OPT_LKA,            ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
   {"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
-  {"log",            OPT_LOG,            OPTIONAL, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"logfile", "info_str", "filemask", "stdoutmask"}},
+  {"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES               , {"logfile", "info_str", "filemask", "stdoutmask"}},
   {"proxy",          OPT_PROXY,          OPTIONAL, MODE_RUN                       , {"proxy_server", "port_number"},                         "proxy_server is the ip address or the hostname of the proxy"},
   {"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
   {"pid",            OPT_PID,            OPTIONAL, MODE_RUN                       , {},                                                      "Print process ID at startup"},
@@ -352,6 +355,10 @@ int main(int argc, char *argv[])
   switch (curmode->type) {
   case MODE_UPLOAD:
     ret=copy_for_upload();
+    break;
+  case MODE_SYNC:
+    /* Do nothing; we just want the side-effects of cache_shutdown() */
+    ret=0;
     break;
   case MODE_CHECK:
     ret=checktags();
