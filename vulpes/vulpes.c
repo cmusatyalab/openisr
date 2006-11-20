@@ -31,8 +31,60 @@ const char *vulpes_version = "0.60";
 
 struct vulpes_config config;
 struct vulpes_state state;
+
+/* LOCALS */
+
+enum mode {
+  MODE_RUN      = 0x01,
+  MODE_UPLOAD   = 0x02,
+  MODE_CHECK    = 0x04,
+  MODE_HELP     = 0x08,
+  MODE_VERSION  = 0x10,
+};
+
+enum arg_type {
+  REQUIRED,
+  OPTIONAL,
+  ANY,  /* any number permitted, including zero */
+};
+
+#define MAXPARAMS 8
+static char *optparams[MAXPARAMS];
 static char *progname;
 
+struct vulpes_option {
+  char *name;
+  unsigned retval;
+  enum arg_type type;
+  unsigned params;
+  unsigned mask;
+  unsigned _seen;  /* internal use by vulpes_getopt() */
+};
+
+enum option {
+  OPT_CACHE,
+  OPT_MASTER,
+  OPT_KEYRING,
+  OPT_LKA,
+  OPT_LOG,
+  OPT_PROXY,
+  OPT_UPLOAD,
+  OPT_FOREGROUND,
+  OPT_PID,
+};
+
+static struct vulpes_option cmdline_options[] = {
+  {"foreground", OPT_FOREGROUND, OPTIONAL,  0, MODE_RUN},
+  {"pid",        OPT_PID,        OPTIONAL,  0, MODE_RUN},
+  {"cache",      OPT_CACHE,      REQUIRED,  1, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
+  {"master",     OPT_MASTER,     REQUIRED,  2, MODE_RUN},
+  {"keyring",    OPT_KEYRING,    REQUIRED,  2, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
+  {"upload",     OPT_UPLOAD,     REQUIRED,  2, MODE_UPLOAD},
+  {"log",        OPT_LOG,        OPTIONAL,  4, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
+  {"proxy",      OPT_PROXY,      OPTIONAL,  2, MODE_RUN},
+  {"lka",        OPT_LKA,        ANY,       2, MODE_RUN},
+  {0}
+};
 
 /* FUNCTIONS */
 static void version(void)
@@ -70,24 +122,6 @@ static void usage(void)
     printf("ERROR: " str "\n\n" , ## args); \
     usage(); \
   } while (0)
-
-enum arg_type {
-  REQUIRED,
-  OPTIONAL,
-  ANY,  /* any number permitted, including zero */
-};
-
-struct vulpes_option {
-  char *name;
-  unsigned retval;
-  enum arg_type type;
-  unsigned params;
-  unsigned mask;
-  unsigned _seen;  /* internal use by vulpes_getopt() */
-};
-
-#define MAXPARAMS 8
-static char *optparams[MAXPARAMS];
 
 /* Instead of using getopt_long() we roll our own.  getopt_long doesn't support
    several things we need:
@@ -139,39 +173,6 @@ static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts, uns
   }
   PARSE_ERROR("unknown option --%s", arg);
 }
-
-enum mode {
-  MODE_RUN      = 0x01,
-  MODE_UPLOAD   = 0x02,
-  MODE_CHECK    = 0x04,
-  MODE_HELP     = 0x08,
-  MODE_VERSION  = 0x10,
-};
-
-enum option {
-  OPT_CACHE,
-  OPT_MASTER,
-  OPT_KEYRING,
-  OPT_LKA,
-  OPT_LOG,
-  OPT_PROXY,
-  OPT_UPLOAD,
-  OPT_FOREGROUND,
-  OPT_PID,
-};
-
-static struct vulpes_option cmdline_options[] = {
-  {"foreground", OPT_FOREGROUND, OPTIONAL,  0, MODE_RUN},
-  {"pid",        OPT_PID,        OPTIONAL,  0, MODE_RUN},
-  {"cache",      OPT_CACHE,      REQUIRED,  1, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
-  {"master",     OPT_MASTER,     REQUIRED,  2, MODE_RUN},
-  {"keyring",    OPT_KEYRING,    REQUIRED,  2, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
-  {"upload",     OPT_UPLOAD,     REQUIRED,  2, MODE_UPLOAD},
-  {"log",        OPT_LOG,        OPTIONAL,  4, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
-  {"proxy",      OPT_PROXY,      OPTIONAL,  2, MODE_RUN},
-  {"lka",        OPT_LKA,        ANY,       2, MODE_RUN},
-  {0}
-};
 
 static unsigned long parseul(char *arg, int base)
 {
