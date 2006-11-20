@@ -34,12 +34,27 @@ struct vulpes_state state;
 
 /* LOCALS */
 
-enum mode {
+enum mode_type {
   MODE_RUN      = 0x01,
   MODE_UPLOAD   = 0x02,
   MODE_CHECK    = 0x04,
   MODE_HELP     = 0x08,
   MODE_VERSION  = 0x10,
+};
+
+struct vulpes_mode {
+  char *name;
+  enum mode_type type;
+  char *comment;
+};
+
+static struct vulpes_mode vulpes_modes[] = {
+  {"run",       MODE_RUN,     "Bind and service a virtual disk"},
+  {"upload",    MODE_UPLOAD,  "Split a cache file into individual chunks for upload"},
+  {"check",     MODE_CHECK,   "Validate cache file against keyring"},
+  {"help",      MODE_HELP,    "Show usage summary"},
+  {"version",   MODE_VERSION, "Show version information"},
+  {0}
 };
 
 enum arg_type {
@@ -48,16 +63,18 @@ enum arg_type {
   ANY,  /* any number permitted, including zero */
 };
 
-#define MAXPARAMS 8
+#define MAXPARAMS 4
 static char *optparams[MAXPARAMS];
 static char *progname;
+static struct vulpes_mode *curmode;
 
 struct vulpes_option {
   char *name;
   unsigned retval;
   enum arg_type type;
-  unsigned params;
   unsigned mask;
+  char *args[MAXPARAMS];
+  char *comment;
   unsigned _seen;  /* internal use by vulpes_getopt() */
 };
 
@@ -73,16 +90,16 @@ enum option {
   OPT_PID,
 };
 
-static struct vulpes_option cmdline_options[] = {
-  {"foreground", OPT_FOREGROUND, OPTIONAL,  0, MODE_RUN},
-  {"pid",        OPT_PID,        OPTIONAL,  0, MODE_RUN},
-  {"cache",      OPT_CACHE,      REQUIRED,  1, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
-  {"master",     OPT_MASTER,     REQUIRED,  2, MODE_RUN},
-  {"keyring",    OPT_KEYRING,    REQUIRED,  2, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
-  {"upload",     OPT_UPLOAD,     REQUIRED,  2, MODE_UPLOAD},
-  {"log",        OPT_LOG,        OPTIONAL,  4, MODE_RUN|MODE_UPLOAD|MODE_CHECK},
-  {"proxy",      OPT_PROXY,      OPTIONAL,  2, MODE_RUN},
-  {"lka",        OPT_LKA,        ANY,       2, MODE_RUN},
+static struct vulpes_option vulpes_options[] = {
+  {"foreground", OPT_FOREGROUND, OPTIONAL, MODE_RUN                       , {}, "Don't run in the background"},
+  {"pid",        OPT_PID,        OPTIONAL, MODE_RUN                       , {}},
+  {"cache",      OPT_CACHE,      REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"local_cache_dir"}},
+  {"master",     OPT_MASTER,     REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
+  {"keyring",    OPT_KEYRING,    REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"hex_keyring_file", "binary_keyring_file"}},
+  {"upload",     OPT_UPLOAD,     REQUIRED, MODE_UPLOAD                    , {"old_hex_keyring_file", "upload_dir"}},
+  {"log",        OPT_LOG,        OPTIONAL, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"logfile", "info_str", "filemask", "stdoutmask"}},
+  {"proxy",      OPT_PROXY,      OPTIONAL, MODE_RUN                       , {"proxy_server", "port_number"},                         "proxy_server is the ip address or the hostname of the proxy"},
+  {"lka",        OPT_LKA,        ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
   {0}
 };
 
@@ -92,35 +109,60 @@ static void version(void)
   printf("Version: %s (%s, rev %s)\n", vulpes_version, svn_branch, svn_revision);
 }
 
-static void usage(void) __attribute__ ((noreturn));
-static void usage(void)
+static void usage(struct vulpes_mode *mode) __attribute__ ((noreturn));
+static void usage(struct vulpes_mode *mode)
 {
+  struct vulpes_mode *mtmp;
+  struct vulpes_option *otmp;
+  char *str_start=NULL;
+  char *str_end=NULL;
+  int i;
+  
   version();
-  printf("Usage: %s <options>\n", progname);
-  printf("Options:\n");
-  printf("\t--cache <local_cache_dir>\n");
-  printf("\t--master <transfertype> <master_disk_location/url>\n");
-    printf("\t\ttransfertype is one of: local http\n");
-  printf("\t--keyring <hex_keyring_file> <binary_keyring_file>\n");
-  printf("\t[--log <logfile> <info_str> <filemask> <stdoutmask>]\n");
-  printf("\t[--debug]\n");
-    printf("\t\tIf debug is chosen, then log messages for chosen loglevel(s)\n");
-    printf("\t\twill be written out to the logfile without any buffering\n");
-  printf("\t[--pid]\n");
-  printf("\t[--lka <lkatype> <lkadir>]\n");
-    printf("\t\tlkatype must be hfs-sha-1\n");
-  printf("\t[--proxy proxy_server port-number]\n");
-    printf("\t\tproxy_server is the ip address or the hostname of the proxy\n");
-  printf("\t[--foreground]\n");
-    printf("\t\tDon't run in the background\n");
-  printf("Usage: %s --help                  Print usage summary and exit.\n", progname);
-  printf("Usage: %s --version               Print version information and exit.\n", progname);
+  printf("Usage: %s <mode> <options>\n", progname);
+  
+  if (mode == NULL) {
+    printf("Available modes:\n");
+    for (mtmp=vulpes_modes; mtmp->name != NULL; mtmp++) {
+      printf("\t%s\t%s\n", mtmp->name, mtmp->comment);
+    }
+    printf("Run %s help <modename> for more information.\n", progname);
+  } else {
+    printf("Options for mode <%s>:\n", mode->name);
+    for (otmp=vulpes_options; otmp->name != NULL; otmp++) {
+      if ((otmp->mask & mode->type) != mode->type)
+	continue;
+      switch (otmp->type) {
+      case REQUIRED:
+	str_start="";
+	str_end="";
+	break;
+      case OPTIONAL:
+	str_start="[";
+	str_end="]";
+	break;
+      case ANY:
+	str_start="[";
+	str_end="]+";
+	break;
+      }
+      printf("\t%s--%s", str_start, otmp->name);
+      for (i=0; i<MAXPARAMS; i++) {
+	if (otmp->args[i] == NULL)
+	  break;
+	printf(" <%s>", otmp->args[i]);
+      }
+      printf("%s\n", str_end);
+      if (otmp->comment != NULL)
+	printf("\t\t%s\n", otmp->comment);
+    }
+  }
   exit(1);
 }
 
 #define PARSE_ERROR(str, args...) do { \
     printf("ERROR: " str "\n\n" , ## args); \
-    usage(); \
+    usage(curmode); \
   } while (0)
 
 /* Instead of using getopt_long() we roll our own.  getopt_long doesn't support
@@ -133,6 +175,8 @@ static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts, uns
 {
   static int optind=2;  /* ignore argv[0] and argv[1] */
   char *arg;
+  char **param_name;
+  int param_count=0;
   int i;
   
   if (optind == argc) {
@@ -159,19 +203,30 @@ static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts, uns
       if (opts->type != ANY && opts->_seen)
 	PARSE_ERROR("--%s may only be specified once", arg);
       opts->_seen++;
-      if (opts->params > MAXPARAMS)
-	PARSE_ERROR("BUG: option %s expects more than %d parameters", arg, MAXPARAMS);
-      for (i=0; i<opts->params; i++) {
+      param_name=opts->args;
+      while (*param_name++ != NULL && ++param_count < MAXPARAMS);
+      for (i=0; i<param_count; i++) {
 	if (optind == argc)
-	  PARSE_ERROR("wrong number of arguments to --%s: should be %d", arg, opts->params);
+	  PARSE_ERROR("wrong number of arguments to --%s: should be %d", arg, param_count);
 	optparams[i]=argv[optind++];
 	if (optparams[i][0] == '-' && optparams[i][1] == '-')
-	  PARSE_ERROR("wrong number of arguments to --%s: should be %d", arg, opts->params);
+	  PARSE_ERROR("wrong number of arguments to --%s: should be %d", arg, param_count);
       }
       return opts->retval;
     }
   }
   PARSE_ERROR("unknown option --%s", arg);
+}
+
+static struct vulpes_mode *parse_mode(char *name)
+{
+  struct vulpes_mode *cur;
+  
+  for (cur=vulpes_modes; cur->name != NULL; cur++) {
+    if (!strcmp(name, cur->name))
+      return cur;
+  }
+  return NULL;
 }
 
 static unsigned long parseul(char *arg, int base)
@@ -186,7 +241,7 @@ static unsigned long parseul(char *arg, int base)
 
 int main(int argc, char *argv[])
 {
-  enum mode mode;
+  struct vulpes_mode *mtmp;
   int opt;
   int foreground=0;
   pid_t pid;
@@ -195,23 +250,22 @@ int main(int argc, char *argv[])
   progname=argv[0];
   /* parse command line */
   if (argc < 2) {
-    usage();
+    usage(NULL);
   }
   
-  if (!strcmp(argv[1], "run"))
-    mode=MODE_RUN;
-  else if (!strcmp(argv[1], "upload"))
-    mode=MODE_UPLOAD;
-  else if (!strcmp(argv[1], "check"))
-    mode=MODE_CHECK;
-  else if (!strcmp(argv[1], "help"))
-    mode=MODE_HELP;
-  else if (!strcmp(argv[1], "version"))
-    mode=MODE_VERSION;
-  else
-    PARSE_ERROR("Unknown command %s", argv[1]);
+  curmode=parse_mode(argv[1]);
+  if (curmode == NULL)
+    PARSE_ERROR("Unknown subcommand %s", argv[1]);
+  if (curmode->type == MODE_HELP) {
+    curmode=NULL;
+    mtmp=parse_mode(argv[2]);
+    if (mtmp == NULL)
+      PARSE_ERROR("Unknown subcommand %s", argv[2]);
+    else
+      usage(mtmp);
+  }
   
-  while ((opt=vulpes_getopt(argc, argv, cmdline_options, mode)) != -1) {
+  while ((opt=vulpes_getopt(argc, argv, vulpes_options, curmode->type)) != -1) {
     switch (opt) {
     case OPT_FOREGROUND:
       foreground=1;
@@ -264,9 +318,9 @@ int main(int argc, char *argv[])
   }
   
   /* Check arguments */
-  switch (mode) {
+  switch (curmode->type) {
   case MODE_HELP:
-    usage();
+    usage(NULL);
   case MODE_VERSION:
     version();
     return 1;
@@ -295,7 +349,7 @@ int main(int argc, char *argv[])
   
   /* XXX we don't do proper cleanup in the error paths */
   
-  switch (mode) {
+  switch (curmode->type) {
   case MODE_UPLOAD:
     copy_for_upload(config.old_keyring_name, config.dest_name);
     /* Does not return */
