@@ -88,18 +88,20 @@ enum option {
   OPT_UPLOAD,
   OPT_FOREGROUND,
   OPT_PID,
+  OPT_MODE,
 };
 
 static struct vulpes_option vulpes_options[] = {
-  {"foreground", OPT_FOREGROUND, OPTIONAL, MODE_RUN                       , {}, "Don't run in the background"},
-  {"pid",        OPT_PID,        OPTIONAL, MODE_RUN                       , {}},
   {"cache",      OPT_CACHE,      REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"local_cache_dir"}},
   {"master",     OPT_MASTER,     REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
   {"keyring",    OPT_KEYRING,    REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"hex_keyring_file", "binary_keyring_file"}},
+  {"lka",        OPT_LKA,        ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
   {"upload",     OPT_UPLOAD,     REQUIRED, MODE_UPLOAD                    , {"old_hex_keyring_file", "upload_dir"}},
   {"log",        OPT_LOG,        OPTIONAL, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"logfile", "info_str", "filemask", "stdoutmask"}},
   {"proxy",      OPT_PROXY,      OPTIONAL, MODE_RUN                       , {"proxy_server", "port_number"},                         "proxy_server is the ip address or the hostname of the proxy"},
-  {"lka",        OPT_LKA,        ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
+  {"foreground", OPT_FOREGROUND, OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
+  {"pid",        OPT_PID,        OPTIONAL, MODE_RUN                       , {},                                                      "Print process ID at startup"},
+  {"mode",       OPT_MODE,       OPTIONAL, MODE_HELP                      , {"mode"},                                           "Print detailed usage message about the given mode"},
   {0}
 };
 
@@ -123,9 +125,9 @@ static void usage(struct vulpes_mode *mode)
     printf("Usage: %s <mode> <options>\n", progname);
     printf("Available modes:\n");
     for (mtmp=vulpes_modes; mtmp->name != NULL; mtmp++) {
-      printf("\t%s\t%s\n", mtmp->name, mtmp->comment);
+      printf("     %-11s %s\n", mtmp->name, mtmp->comment);
     }
-    printf("Run %s help <modename> for more information.\n", progname);
+    printf("Run \"%s help --mode <mode>\" for more information.\n", progname);
   } else {
     for (otmp=vulpes_options; otmp->name != NULL; otmp++) {
       if ((otmp->mask & mode->type) != mode->type)
@@ -137,8 +139,8 @@ static void usage(struct vulpes_mode *mode)
       }
       switch (otmp->type) {
       case REQUIRED:
-	str_start="";
-	str_end="";
+	str_start=" ";
+	str_end=" ";
 	break;
       case OPTIONAL:
 	str_start="[";
@@ -149,7 +151,7 @@ static void usage(struct vulpes_mode *mode)
 	str_end="]+";
 	break;
       }
-      printf("\t%s--%s", str_start, otmp->name);
+      printf("    %s--%s", str_start, otmp->name);
       for (i=0; i<MAXPARAMS; i++) {
 	if (otmp->args[i] == NULL)
 	  break;
@@ -157,7 +159,7 @@ static void usage(struct vulpes_mode *mode)
       }
       printf("%s\n", str_end);
       if (otmp->comment != NULL)
-	printf("\t\t%s\n", otmp->comment);
+	printf("          %s\n", otmp->comment);
     }
     if (!have_options)
       printf("Usage: %s %s\n", progname, mode->name);
@@ -242,7 +244,7 @@ static unsigned long parseul(char *arg, int base)
 
 int main(int argc, char *argv[])
 {
-  struct vulpes_mode *mtmp;
+  struct vulpes_mode *help_mode=NULL;
   int opt;
   int foreground=0;
   pid_t pid;
@@ -253,20 +255,9 @@ int main(int argc, char *argv[])
   if (argc < 2) {
     usage(NULL);
   }
-  
   curmode=parse_mode(argv[1]);
   if (curmode == NULL)
     PARSE_ERROR("Unknown subcommand %s", argv[1]);
-  if (curmode->type == MODE_HELP) {
-    if (argc < 3)
-      usage(NULL);
-    curmode=NULL;
-    mtmp=parse_mode(argv[2]);
-    if (mtmp == NULL)
-      PARSE_ERROR("Unknown subcommand %s", argv[2]);
-    else
-      usage(mtmp);
-  }
   
   while ((opt=vulpes_getopt(argc, argv, vulpes_options)) != -1) {
     switch (opt) {
@@ -317,13 +308,18 @@ int main(int argc, char *argv[])
 	if(vulpes_lka_add(LKA_HFS, LKA_TAG_SHA1, optparams[1]))
 	  printf("WARNING: unable to add lka database %s.\n", optparams[1]);
       break;
+    case OPT_MODE:
+      help_mode=parse_mode(optparams[0]);
+      if (help_mode == NULL)
+	PARSE_ERROR("Unknown subcommand %s; try \"%s help\"", optparams[0], progname);
+      break;
     }
   }
   
   /* Check arguments */
   switch (curmode->type) {
   case MODE_HELP:
-    usage(NULL);
+    usage(help_mode);
   case MODE_VERSION:
     version();
     return 1;
