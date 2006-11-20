@@ -986,23 +986,12 @@ int copy_for_upload(void)
   char *buf;
   unsigned u;
   struct chunk_data *cdp;
-  struct prev_chunk_data *pcdp;
   int fd;
   unsigned examined_chunks=0;
   unsigned modified_chunks=0;
   uint64_t modified_bytes=0;
   FILE *fp;
   char *calc_tag;
-  
-  vulpes_log(LOG_BASIC,"Reading old keyring");
-  state.pcd=malloc(state.numchunks * sizeof(struct prev_chunk_data));
-  if (state.pcd == NULL) {
-    vulpes_log(LOG_ERRORS,"malloc failed");
-    return 1;
-  }
-  memset(state.pcd, 0, state.numchunks * sizeof(struct prev_chunk_data));
-  if (load_keyring(1))
-    return 1;
   
   vulpes_log(LOG_BASIC,"Copying chunks to upload directory %s",config.dest_dir_name);
   buf=malloc(state.chunksize_bytes);
@@ -1026,11 +1015,6 @@ int copy_for_upload(void)
       print_progress(++examined_chunks, state.dirty_chunks_on_open);
       if (!cdp_present(cdp)) {
 	vulpes_log(LOG_ERRORS,"Chunk modified but not present: %u",u);
-	continue;
-      }
-      pcdp=get_pcdp_from_chunk_num(u);
-      if (!memcmp(cdp->tag, pcdp->tag, HASH_LEN)) {
-	vulpes_log(LOG_CHUNKS,"Chunk modified but tag equal; skipping: %u",u);
 	continue;
       }
       if (form_chunk_file_name(name, sizeof(name), config.dest_dir_name, u)) {
