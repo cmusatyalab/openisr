@@ -1007,7 +1007,7 @@ sub copy_dirtychunks ($$$) {
     #
     print("Collecting modified disk state...\n")
 	if $main::verbose;
-    mysystem("$Isr::ISRCLIENTBIN/vulpes upload --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --upload $lastdir/keyring $tmpdir/cache/hdk --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
+    mysystem("$Isr::ISRCLIENTBIN/vulpes upload --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --destdir $tmpdir/cache/hdk --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
     # Hack to get stats from vulpes
     open(STATFILE, "$tmpdir/cache/hdk/stats");

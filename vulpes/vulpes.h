@@ -48,6 +48,7 @@ extern struct vulpes_config {
   char *hex_keyring_name;
   char *bin_keyring_name;
   char *old_hex_keyring_name;
+  char *old_bin_keyring_name;
   char *dest_dir_name;
 
   int verbose;			/* currently not used */
@@ -85,6 +86,7 @@ extern struct vulpes_state {
   FILE *log_fp;
   unsigned offset_bytes;
   struct chunk_data *cd;		/* cd[] */
+  struct prev_chunk_data *pcd;		/* pcd[] */
   unsigned long long request_count;
   struct curl_connection *curl_conn;
 } state;

@@ -46,6 +46,12 @@ struct chunk_data {
   unsigned char key[HASH_LEN];	/* was called o1 earlier */
 };
 
+/* We keep this in a separate array because we don't want it in memory
+   at runtime. */
+struct prev_chunk_data {
+  unsigned char tag[HASH_LEN];
+};
+
 static unsigned writes_before_read = 0;
 static unsigned chunks_stripped = 0;
 
@@ -111,6 +117,11 @@ static inline void get_dir_chunk_from_chunk_num(unsigned chunk_num,
 static struct chunk_data *get_cdp_from_chunk_num(unsigned chunk_num)
 {
   return &(state.cd[chunk_num]);
+}
+
+static struct prev_chunk_data *get_pcdp_from_chunk_num(unsigned chunk_num)
+{
+  return &(state.pcd[chunk_num]);
 }
 
 static uint64_t get_image_offset_from_chunk_num(unsigned chunk_num)
@@ -195,11 +206,12 @@ static int form_chunk_file_name(char *buffer, int bufsize,
 
 /* reads the hex keyring file into memory */
 /* hex file format: "<tag> <key>\n" (82 bytes/line including newline) */
-vulpes_err_t read_hex_keyring(char *userPath)
+vulpes_err_t read_hex_keyring(char *userPath, int prev)
 {
 	unsigned chunk_num;
 	int fd;
-	struct chunk_data *cdp;
+	struct chunk_data *cdp=NULL;
+	struct prev_chunk_data *pcdp=NULL;
 	char buf[HASH_LEN_HEX];
 	
 	fd = open(userPath, O_RDONLY);
@@ -208,14 +220,22 @@ vulpes_err_t read_hex_keyring(char *userPath)
 		return VULPES_IOERR;
 	}
 	for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
-		cdp=get_cdp_from_chunk_num(chunk_num);
+		if (prev)
+			pcdp=get_pcdp_from_chunk_num(chunk_num);
+		else
+			cdp=get_cdp_from_chunk_num(chunk_num);
 		if (read(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
 			goto short_read;
-		hexToBin(buf, cdp->tag, HASH_LEN);
+		if (prev)
+			hexToBin(buf, pcdp->tag, HASH_LEN);
+		else
+			hexToBin(buf, cdp->tag, HASH_LEN);
 		if (read(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
 			goto short_read;
-		hexToBin(buf, cdp->key, HASH_LEN);
-		mark_cdp_compressed(cdp);
+		if (!prev) {
+			hexToBin(buf, cdp->key, HASH_LEN);
+			mark_cdp_compressed(cdp);
+		}
 	}
 	if (!at_eof(fd)) {
 		vulpes_log(LOG_ERRORS,"too much data in keyring %s",userPath);
@@ -266,9 +286,10 @@ short_write:
 	return VULPES_IOERR;
 }
 
-static vulpes_err_t read_bin_keyring(char *path)
+static vulpes_err_t read_bin_keyring(char *path, int prev)
 {
   struct chunk_data *cdp;
+  struct prev_chunk_data *pcdp;
   struct kr_header hdr;
   struct kr_entry entry;
   int fd;
@@ -298,13 +319,18 @@ static vulpes_err_t read_bin_keyring(char *path)
   for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
     if (read(fd, &entry, sizeof(entry)) != sizeof(entry))
       goto short_read;
-    cdp=get_cdp_from_chunk_num(chunk_num);
-    memcpy(cdp->key, entry.key, HASH_LEN);
-    memcpy(cdp->tag, entry.tag, HASH_LEN);
-    if (entry.compress == KR_COMPRESS_NONE)
-      mark_cdp_uncompressed(cdp);
-    else
-      mark_cdp_compressed(cdp);
+    if (prev) {
+      pcdp=get_pcdp_from_chunk_num(chunk_num);
+      memcpy(pcdp->tag, entry.tag, HASH_LEN);
+    } else {
+      cdp=get_cdp_from_chunk_num(chunk_num);
+      memcpy(cdp->key, entry.key, HASH_LEN);
+      memcpy(cdp->tag, entry.tag, HASH_LEN);
+      if (entry.compress == KR_COMPRESS_NONE)
+	mark_cdp_uncompressed(cdp);
+      else
+	mark_cdp_compressed(cdp);
+    }
   }
   if (!at_eof(fd)) {
     vulpes_log(LOG_ERRORS, "Extra data at end of file: %s", path);
@@ -782,6 +808,29 @@ int cache_update(const struct isr_message *req)
   return 0;
 }
 
+static vulpes_err_t load_keyring(int prev)
+{
+  char *hex=prev ? config.old_hex_keyring_name : config.hex_keyring_name;
+  char *bin=prev ? config.old_bin_keyring_name : config.bin_keyring_name;
+  vulpes_err_t ret;
+  
+  ret=read_bin_keyring(bin, prev);
+  switch (ret) {
+  case VULPES_SUCCESS:
+    break;
+  case VULPES_NOTFOUND:
+    vulpes_log(LOG_BASIC, "Couldn't read binary keyring; trying hex keyring");
+    ret=read_hex_keyring(hex, prev);
+    if (ret)
+      vulpes_log(LOG_ERRORS,"read_hex_keyring() failed");
+    break;
+  default:
+    vulpes_log(LOG_ERRORS,"read_bin_keyring() failed");
+    break;
+  }
+  return ret;
+}
+
 int cache_init(void)
 {
   unsigned long long volsize_bytes;
@@ -857,20 +906,8 @@ int cache_init(void)
   }
   memset(state.cd, 0, state.numchunks * sizeof(struct chunk_data));
   
-  switch (read_bin_keyring(config.bin_keyring_name)) {
-  case VULPES_SUCCESS:
-    break;
-  case VULPES_NOTFOUND:
-    vulpes_log(LOG_BASIC, "Couldn't read binary keyring; trying hex keyring");
-    if (read_hex_keyring(config.hex_keyring_name)) {
-      vulpes_log(LOG_ERRORS,"read_hex_keyring() failed");
-      return -1;	
-    }
-    break;
-  default:
-    vulpes_log(LOG_ERRORS,"read_bin_keyring() failed");
-    return -1;	
-  }
+  if (load_keyring(0))
+    return -1;
   
   if (form_image_name(config.cache_name)) {
     vulpes_log(LOG_ERRORS,"unable to form image name");
@@ -888,15 +925,23 @@ int copy_for_upload(void)
   char *buf;
   unsigned u;
   struct chunk_data *cdp;
+  struct prev_chunk_data *pcdp;
   int fd;
-  int oldkrfd;
   unsigned examined_chunks=0;
   unsigned modified_chunks=0;
   uint64_t modified_bytes=0;
   FILE *fp;
-  char tag_hex[HASH_LEN_HEX];
-  char tag[HASH_LEN];
   char *calc_tag;
+  
+  vulpes_log(LOG_BASIC,"Reading old keyring");
+  state.pcd=malloc(state.numchunks * sizeof(struct prev_chunk_data));
+  if (state.pcd == NULL) {
+    vulpes_log(LOG_ERRORS,"malloc failed");
+    return 1;
+  }
+  memset(state.pcd, 0, state.numchunks * sizeof(struct prev_chunk_data));
+  if (load_keyring(1))
+    return 1;
   
   vulpes_log(LOG_BASIC,"Copying chunks to upload directory %s",config.dest_dir_name);
   buf=malloc(state.chunksize_bytes);
@@ -914,20 +959,7 @@ int copy_for_upload(void)
       }
     }
   }
-  oldkrfd=open(config.old_hex_keyring_name, O_RDONLY);
-  if (oldkrfd == -1) {
-    vulpes_log(LOG_ERRORS,"couldn't open %s",config.old_hex_keyring_name);
-    return 1;
-  }
   for (u=0; u < state.numchunks; u++) {
-    if (read(oldkrfd, tag_hex, sizeof(tag_hex)) != sizeof(tag_hex)) {
-      vulpes_log(LOG_ERRORS,"short read on %s",config.old_hex_keyring_name);
-      return 1;
-    }
-    if (lseek(oldkrfd, HASH_LEN_HEX, SEEK_CUR) == -1) {
-      vulpes_log(LOG_ERRORS,"couldn't seek %s",config.old_hex_keyring_name);
-      return 1;
-    }
     cdp=get_cdp_from_chunk_num(u);
     if (cdp_is_modified(cdp)) {
       print_progress(++examined_chunks, state.dirty_chunks_on_open);
@@ -935,8 +967,8 @@ int copy_for_upload(void)
 	vulpes_log(LOG_ERRORS,"Chunk modified but not present: %u",u);
 	continue;
       }
-      hexToBin(tag_hex, tag, HASH_LEN);
-      if (!memcmp(tag, cdp->tag, HASH_LEN)) {
+      pcdp=get_pcdp_from_chunk_num(u);
+      if (!memcmp(cdp->tag, pcdp->tag, HASH_LEN)) {
 	vulpes_log(LOG_CHUNKS,"Chunk modified but tag equal; skipping: %u",u);
 	continue;
       }
@@ -978,7 +1010,6 @@ int copy_for_upload(void)
     }
   }
   printf("\n");
-  close(oldkrfd);
   free(buf);
   /* Write statistics */
   snprintf(name, sizeof(name), "%s/stats", config.dest_dir_name);

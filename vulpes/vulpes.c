@@ -97,7 +97,7 @@ static struct vulpes_option vulpes_options[] = {
   {"cache",          OPT_CACHE,          REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"local_cache_dir"}},
   {"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
   {"keyring",        OPT_KEYRING,        REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"hex_keyring_file", "binary_keyring_file"}},
-  {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, MODE_UPLOAD                    , {"old_hex_keyring_file"}},
+  {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, MODE_UPLOAD                    , {"old_hex_keyring_file", "old_bin_keyring_file"}},
   {"lka",            OPT_LKA,            ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
   {"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
   {"log",            OPT_LOG,            OPTIONAL, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"logfile", "info_str", "filemask", "stdoutmask"}},
@@ -283,6 +283,7 @@ int main(int argc, char *argv[])
       break;
     case OPT_PREV_KEYRING:
       config.old_hex_keyring_name=optparams[0];
+      config.old_bin_keyring_name=optparams[1];
       break;
     case OPT_DESTDIR:
       config.dest_dir_name=optparams[0];
