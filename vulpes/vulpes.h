@@ -106,6 +106,6 @@ int checktags(void);
 int cache_init(void);
 int cache_get(const struct isr_message *req, struct isr_message *reply);
 int cache_update(const struct isr_message *req);
-int cache_shutdown(void);
+vulpes_err_t cache_shutdown(void);
 
 #endif

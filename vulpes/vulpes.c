@@ -97,7 +97,7 @@ static struct vulpes_option vulpes_options[] = {
   {"cache",          OPT_CACHE,          REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"local_cache_dir"}},
   {"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
   {"keyring",        OPT_KEYRING,        REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"hex_keyring_file", "binary_keyring_file"}},
-  {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, MODE_UPLOAD                    , {"old_hex_keyring_file", "old_bin_keyring_file"}},
+  {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"old_hex_keyring_file", "old_bin_keyring_file"}},
   {"lka",            OPT_LKA,            ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
   {"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
   {"log",            OPT_LOG,            OPTIONAL, MODE_RUN|MODE_UPLOAD|MODE_CHECK, {"logfile", "info_str", "filemask", "stdoutmask"}},
@@ -247,6 +247,7 @@ int main(int argc, char *argv[])
   int foreground=0;
   pid_t pid;
   int ret=1;
+  vulpes_err_t err;
   
   /* parse command line */
   progname=argv[0];
@@ -395,8 +396,9 @@ int main(int argc, char *argv[])
   }
   
   /* Shut down cache */
-  if (cache_shutdown() == -1) {
-    vulpes_log(LOG_ERRORS,"cache shutdown failed");
+  err=cache_shutdown();
+  if (err) {
+    vulpes_log(LOG_ERRORS,"cache shutdown failed: %s",vulpes_strerror(err));
     ret=1;
   }
 

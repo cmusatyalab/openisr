@@ -90,6 +90,13 @@ static inline void mark_cdp_modified(struct chunk_data * cdp)
   cdp->status |= CHUNK_STATUS_MODIFIED | CHUNK_STATUS_MODIFIED_SESSION;
 }
 
+/* For use when the chunk tag is found to be equal to the tag on the previous
+   keyring.  Does not change session statistics. */
+static inline void mark_cdp_not_modified(struct chunk_data * cdp)
+{
+  cdp->status &= ~CHUNK_STATUS_MODIFIED;
+}
+
 static inline void mark_cdp_compressed(struct chunk_data * cdp)
 {
   cdp->status |= CHUNK_STATUS_COMPRESSED;
@@ -707,37 +714,114 @@ out:
   return err ? -1 : 0;
 }
 
+static vulpes_err_t load_keyring(int prev)
+{
+  char *hex=prev ? config.old_hex_keyring_name : config.hex_keyring_name;
+  char *bin=prev ? config.old_bin_keyring_name : config.bin_keyring_name;
+  vulpes_err_t ret;
+  
+  ret=read_bin_keyring(bin, prev);
+  switch (ret) {
+  case VULPES_SUCCESS:
+    break;
+  case VULPES_NOTFOUND:
+    vulpes_log(LOG_BASIC, "Couldn't read binary keyring; trying hex keyring");
+    ret=read_hex_keyring(hex, prev);
+    if (ret)
+      vulpes_log(LOG_ERRORS,"read_hex_keyring() failed");
+    break;
+  default:
+    vulpes_log(LOG_ERRORS,"read_bin_keyring() failed");
+    break;
+  }
+  return ret;
+}
+
+/* If the new tag for a chunk is identical to the old one, remove the modified
+   bit since we don't need to re-upload.  This might happen if the
+   guest writes out data identical to the data already in the chunk. */
+static vulpes_err_t scrub_modified_flag(void)
+{
+  struct chunk_data *cdp;
+  struct prev_chunk_data *pcdp;
+  unsigned chunk_num;
+  vulpes_err_t ret;
+  
+  if (state.pcd == NULL) {
+    state.pcd=malloc(state.numchunks * sizeof(struct prev_chunk_data));
+    if (state.pcd == NULL) {
+      vulpes_log(LOG_ERRORS,"malloc failed");
+      return VULPES_NOMEM;
+    }
+    memset(state.pcd, 0, state.numchunks * sizeof(struct prev_chunk_data));
+    ret=load_keyring(1);
+    if (ret)
+      return ret;
+  }
+  
+  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
+    cdp=get_cdp_from_chunk_num(chunk_num);
+    if (cdp_is_modified(cdp)) {
+      pcdp=get_pcdp_from_chunk_num(chunk_num);
+      if (check_tag(cdp, pcdp->tag) == VULPES_SUCCESS) {
+	vulpes_log(LOG_CHUNKS,"Chunk modified but tag equal; marking unmodified: %u",chunk_num);
+	mark_cdp_not_modified(cdp);
+      }
+    }
+  }
+  return VULPES_SUCCESS;
+}
+
 /* INTERFACE FUNCTIONS */
 
-int cache_shutdown(void)
+/* XXX we need better error handling here */
+vulpes_err_t cache_shutdown(void)
 {
-  unsigned u;
+  struct chunk_data *cdp;
+  vulpes_err_t ret;
+  unsigned chunk_num;
   
   unsigned modified_chunks = 0;
   unsigned accessed_chunks = 0;
   
-  if (state.cd != NULL) {
-    for (u = 0; u < state.numchunks; u++) {
-      if (cdp_is_accessed(&(state.cd[u]))) {
-	++accessed_chunks;
-	if (cdp_is_modified_session(&(state.cd[u]))) {
-	  ++modified_chunks;
-	}
-      }
-    }
-    write_cache_header(state.cachefile_fd);
-    close(state.cachefile_fd);
-    if (write_bin_keyring(config.bin_keyring_name)) {
-      vulpes_log(LOG_ERRORS,"write_bin_keyring failed");
-      return -1;
-    }
-    if (write_hex_keyring(config.hex_keyring_name)) {
-      vulpes_log(LOG_ERRORS,"write_hex_keyring failed");
-      return -1;
-    }
-    free(state.cd);
-    state.cd = NULL;
+  if (state.cd == NULL) {
+    vulpes_log(LOG_ERRORS,"cache_shutdown() called with no chunk_data array");
+    return 0;
   }
+  
+  /* Write the new keyrings */
+  ret=write_bin_keyring(config.bin_keyring_name);
+  if (ret) {
+    vulpes_log(LOG_ERRORS,"write_bin_keyring failed");
+    return ret;
+  }
+  ret=write_hex_keyring(config.hex_keyring_name);
+  if (ret) {
+    vulpes_log(LOG_ERRORS,"write_hex_keyring failed");
+    return ret;
+  }
+  
+  /* Update modified flag based on the old keyring */
+  if (scrub_modified_flag()) {
+    vulpes_log(LOG_ERRORS,"couldn't update modified flags");
+    /* Non-fatal.  Upload will fail its consistency check later, but an
+       intervening resume will fix it. */
+  }
+  
+  /* Gather statistics */
+  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
+    cdp=get_cdp_from_chunk_num(chunk_num);
+    if (cdp_is_accessed(cdp))
+      ++accessed_chunks;
+    if (cdp_is_modified_session(cdp))
+      ++modified_chunks;
+  }
+  
+  /* Update and close cache file */
+  write_cache_header(state.cachefile_fd);
+  close(state.cachefile_fd);
+  free(state.cd);
+  state.cd = NULL;
   
   /* Print close stats */
   vulpes_log(LOG_STATS,"CHUNKS_ACCESSED:%u",accessed_chunks);
@@ -745,7 +829,7 @@ int cache_shutdown(void)
   vulpes_log(LOG_STATS,"CHUNKS_RAW:%u",writes_before_read);
   vulpes_log(LOG_STATS,"CHUNKS_STRIPPED:%u",chunks_stripped);
 
-  return 0;
+  return VULPES_SUCCESS;
 }
 
 int cache_get(const struct isr_message *req, struct isr_message *reply)
@@ -806,29 +890,6 @@ int cache_update(const struct isr_message *req)
 
   vulpes_log(LOG_CHUNKS,"update: %llu (size %u)",req->chunk,cdp->length);
   return 0;
-}
-
-static vulpes_err_t load_keyring(int prev)
-{
-  char *hex=prev ? config.old_hex_keyring_name : config.hex_keyring_name;
-  char *bin=prev ? config.old_bin_keyring_name : config.bin_keyring_name;
-  vulpes_err_t ret;
-  
-  ret=read_bin_keyring(bin, prev);
-  switch (ret) {
-  case VULPES_SUCCESS:
-    break;
-  case VULPES_NOTFOUND:
-    vulpes_log(LOG_BASIC, "Couldn't read binary keyring; trying hex keyring");
-    ret=read_hex_keyring(hex, prev);
-    if (ret)
-      vulpes_log(LOG_ERRORS,"read_hex_keyring() failed");
-    break;
-  default:
-    vulpes_log(LOG_ERRORS,"read_bin_keyring() failed");
-    break;
-  }
-  return ret;
 }
 
 int cache_init(void)

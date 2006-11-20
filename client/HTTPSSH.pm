@@ -288,6 +288,7 @@ sub isr_run_vulpes ($$$) {
 
     my $logstring = "|VULPES|" . message_string() ."|";
     my $cachedir = "$parceldir/cache";
+    my $lastdir = "$parceldir/last";
     my $vulpescmd = "$Isr::ISRCLIENTBIN/vulpes";
 
     my $lkadir = "$parceldir-hoard";
@@ -305,7 +306,7 @@ sub isr_run_vulpes ($$$) {
     #
     # Crank up Vulpes with all the right arguments
     #
-    $retval = system("$vulpescmd run --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $Isr::LOGMASK $Isr::CONSOLE_LOGMASK");
+    $retval = system("$vulpescmd run --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $Isr::LOGMASK $Isr::CONSOLE_LOGMASK");
 
     return $retval;
 }
@@ -1238,6 +1239,7 @@ sub isr_priv_checkcache ($$$) {
     
     my $parceldir = "$isrdir/$parcel";
     my $cachedir = "$parceldir/cache";
+    my $lastdir = "$parceldir/last";
 
     if (!-e $cachedir) {
 	return 0;
@@ -1246,7 +1248,7 @@ sub isr_priv_checkcache ($$$) {
     #
     # Verify that each block in cache has a valid keyring tag
     # 
-    mysystem("$Isr::ISRCLIENTBIN/vulpes check --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
+    mysystem("$Isr::ISRCLIENTBIN/vulpes check --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
     	or errexit("Could not validate cache");
 }
 
