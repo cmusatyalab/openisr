@@ -305,7 +305,7 @@ sub isr_run_vulpes ($$$) {
     #
     # Crank up Vulpes with all the right arguments
     #
-    $retval = system("$vulpescmd --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $Isr::LOGMASK $Isr::CONSOLE_LOGMASK");
+    $retval = system("$vulpescmd run --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $Isr::LOGMASK $Isr::CONSOLE_LOGMASK");
 
     return $retval;
 }
@@ -1007,7 +1007,7 @@ sub copy_dirtychunks ($$$) {
     #
     print("Collecting modified disk state...\n")
 	if $main::verbose;
-    mysystem("$Isr::ISRCLIENTBIN/vulpes --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --upload $lastdir/keyring $tmpdir/cache/hdk --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
+    mysystem("$Isr::ISRCLIENTBIN/vulpes upload --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --upload $lastdir/keyring $tmpdir/cache/hdk --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
     # Hack to get stats from vulpes
     open(STATFILE, "$tmpdir/cache/hdk/stats");
@@ -1246,7 +1246,7 @@ sub isr_priv_checkcache ($$$) {
     #
     # Verify that each block in cache has a valid keyring tag
     # 
-    mysystem("$Isr::ISRCLIENTBIN/vulpes --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --check --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
+    mysystem("$Isr::ISRCLIENTBIN/vulpes check --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
     	or errexit("Could not validate cache");
 }
 

@@ -275,7 +275,7 @@ int main(int argc, char *argv[])
   
   if (config.log_file_name == NULL) {
     /* If --log is not specified, log errors to stdout with an empty infostr */
-    config.log_infostr="";
+    config.log_infostr=":";
     config.log_stdout_mask=0x1;
   }
   if (vulpes_log_init())
