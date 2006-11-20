@@ -101,16 +101,11 @@ static struct vulpes_option vulpes_options[] = {
   {"proxy",      OPT_PROXY,      OPTIONAL, MODE_RUN                       , {"proxy_server", "port_number"},                         "proxy_server is the ip address or the hostname of the proxy"},
   {"foreground", OPT_FOREGROUND, OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
   {"pid",        OPT_PID,        OPTIONAL, MODE_RUN                       , {},                                                      "Print process ID at startup"},
-  {"mode",       OPT_MODE,       OPTIONAL, MODE_HELP                      , {"mode"},                                           "Print detailed usage message about the given mode"},
+  {"mode",       OPT_MODE,       OPTIONAL, MODE_HELP                      , {"mode"},                                                "Print detailed usage message about the given mode"},
   {0}
 };
 
 /* FUNCTIONS */
-static void version(void)
-{
-  printf("Version: %s (%s, rev %s)\n", vulpes_version, svn_branch, svn_revision);
-}
-
 static void usage(struct vulpes_mode *mode) __attribute__ ((noreturn));
 static void usage(struct vulpes_mode *mode)
 {
@@ -284,8 +279,8 @@ int main(int argc, char *argv[])
       config.bin_keyring_name=optparams[1];
       break;
     case OPT_UPLOAD:
-      config.old_keyring_name=optparams[0];
-      config.dest_name=optparams[1];
+      config.old_hex_keyring_name=optparams[0];
+      config.dest_dir_name=optparams[1];
       break;
     case OPT_LOG:
       config.log_file_name=optparams[0];
@@ -316,17 +311,19 @@ int main(int argc, char *argv[])
     }
   }
   
-  /* Check arguments */
+  /* Handle trivial modes before we start the log */
   switch (curmode->type) {
   case MODE_HELP:
     usage(help_mode);
+    /* Does not return */
   case MODE_VERSION:
-    version();
+    printf("Version: %s (%s, rev %s)\n", vulpes_version, svn_branch, svn_revision);
     return 1;
   default:
     break;
   }
   
+  /* Start vulpes log */
   if (config.log_file_name == NULL) {
     /* If --log is not specified, log errors to stdout with an empty infostr */
     config.log_infostr=":";
@@ -334,12 +331,9 @@ int main(int argc, char *argv[])
   }
   if (vulpes_log_init())
     goto vulpes_exit;
-  
-  /* now that parameters are correct - start vulpes log */
   vulpes_log(LOG_BASIC,"Starting. Version: %s, revision: %s %s, PID: %u",
              vulpes_version, svn_branch, svn_revision, (unsigned)getpid());
   
-  VULPES_DEBUG("Initializing cache...\n");
   /* Initialize the cache */
   if (cache_init()) {
     vulpes_log(LOG_ERRORS,"unable to initialize cache");
@@ -350,55 +344,55 @@ int main(int argc, char *argv[])
   
   switch (curmode->type) {
   case MODE_UPLOAD:
-    copy_for_upload(config.old_keyring_name, config.dest_name);
-    /* Does not return */
+    ret=copy_for_upload();
+    break;
   case MODE_CHECK:
-    checktags();
-    /* Does not return */
+    ret=checktags();
+    break;
+  case MODE_RUN:
+    /* Initialize transport */
+    if (transport_init()) {
+      vulpes_log(LOG_ERRORS,"unable to initialize transport");
+      goto vulpes_exit;
+    }
+    
+    /* Set up kernel driver */
+    if (driver_init()) {
+      /* driver_init() has already complained to the log */
+      goto vulpes_exit;
+    }
+    
+    if (!foreground) {
+      pid=fork();
+      if (pid == -1) {
+	vulpes_log(LOG_ERRORS,"fork() failed");
+	goto vulpes_exit;
+      } else if (pid) {
+	exit(0);
+      }
+    }
+    ret=0;
+    
+    /* Enter main loop */
+    driver_run();
+    
+    vulpes_log(LOG_BASIC,"Beginning vulpes shutdown sequence");
+  
+    /* Shut down kernel driver */
+    driver_shutdown();
+    
+    /* Shut down transport */
+    transport_shutdown();
+    break;
   default:
     break;
   }
   
-  /* Initialize transport */
-  if (transport_init()) {
-    vulpes_log(LOG_ERRORS,"unable to initialize transport");
-    goto vulpes_exit;
-  }
-  
-  /* Set up kernel driver */
-  if (driver_init()) {
-    /* driver_init() has already complained to the log */
-    goto vulpes_exit;
-  }
-  
-  if (!foreground) {
-    pid=fork();
-    if (pid == -1) {
-      vulpes_log(LOG_ERRORS,"fork() failed");
-      goto vulpes_exit;
-    } else if (pid) {
-      exit(0);
-    }
-  }
-  ret=0;
-  
-  /* Enter main loop */
-  driver_run();
-  
-  vulpes_log(LOG_BASIC,"Beginning vulpes shutdown sequence");
-
-  /* Shut down kernel driver */
-  driver_shutdown();
-  
-  /* Shut down transport */
-  transport_shutdown();
-
-  /* Close file */
-  VULPES_DEBUG("\tClosing cache.\n");
+  /* Shut down cache */
   if (cache_shutdown() == -1) {
-      vulpes_log(LOG_ERRORS,"shutdown function failed");
-      exit(1);
-    }
+    vulpes_log(LOG_ERRORS,"cache shutdown failed");
+    ret=1;
+  }
 
   /* Close the LKA service */
   if(config.lka_svc != NULL)
@@ -406,7 +400,7 @@ int main(int argc, char *argv[])
       vulpes_log(LOG_ERRORS,"failure during lka_close().");    
   
  vulpes_exit:
-  vulpes_log(LOG_BASIC,"Exiting");
+  vulpes_log(LOG_BASIC,"Exiting: status %d",ret);
   vulpes_log_close();
   return ret;
 }

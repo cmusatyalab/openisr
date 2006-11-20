@@ -45,10 +45,10 @@ extern struct vulpes_config {
   
   char *master_name;
   char *cache_name;
-  char *dest_name;
-  char *old_keyring_name;
   char *hex_keyring_name;
   char *bin_keyring_name;
+  char *old_hex_keyring_name;
+  char *dest_dir_name;
 
   int verbose;			/* currently not used */
   struct lka_svc *lka_svc;
@@ -99,8 +99,8 @@ vulpes_err_t transport_init(void);
 vulpes_err_t transport_get(char *buf, int *bufsize, const char *src,
 			unsigned chunk_num);
 void transport_shutdown(void);
-void copy_for_upload(char *oldkr, char *dest);
-void checktags(void);
+int copy_for_upload(void);
+int checktags(void);
 int cache_init(void);
 int cache_get(const struct isr_message *req, struct isr_message *reply);
 int cache_update(const struct isr_message *req);

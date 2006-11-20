@@ -882,7 +882,7 @@ int cache_init(void)
   return 0;
 }
 
-void copy_for_upload(char *oldkr, char *dest)
+int copy_for_upload(void)
 {
   char name[MAX_CHUNK_NAME_LENGTH];
   char *buf;
@@ -898,35 +898,35 @@ void copy_for_upload(char *oldkr, char *dest)
   char tag[HASH_LEN];
   char *calc_tag;
   
-  vulpes_log(LOG_BASIC,"Copying chunks to upload directory %s",dest);
+  vulpes_log(LOG_BASIC,"Copying chunks to upload directory %s",config.dest_dir_name);
   buf=malloc(state.chunksize_bytes);
   if (buf == NULL) {
     vulpes_log(LOG_ERRORS,"malloc failed");
-    exit(1);
+    return 1;
   }
   /* check the subdirectories  -- create if needed */
   for (u = 0; u < state.numdirs; u++) {
-    form_dir_name(name, sizeof(name), dest, u);
+    form_dir_name(name, sizeof(name), config.dest_dir_name, u);
     if (!is_dir(name)) {
       if (mkdir(name, 0770)) {
 	vulpes_log(LOG_ERRORS,"unable to mkdir: %s", name);
-	exit(1);
+	return 1;
       }
     }
   }
-  oldkrfd=open(oldkr, O_RDONLY);
+  oldkrfd=open(config.old_hex_keyring_name, O_RDONLY);
   if (oldkrfd == -1) {
-    vulpes_log(LOG_ERRORS, "couldn't open %s", oldkr);
-    exit(1);
+    vulpes_log(LOG_ERRORS,"couldn't open %s",config.old_hex_keyring_name);
+    return 1;
   }
   for (u=0; u < state.numchunks; u++) {
     if (read(oldkrfd, tag_hex, sizeof(tag_hex)) != sizeof(tag_hex)) {
-      vulpes_log(LOG_ERRORS,"short read on %s", oldkr);
-      exit(1);
+      vulpes_log(LOG_ERRORS,"short read on %s",config.old_hex_keyring_name);
+      return 1;
     }
     if (lseek(oldkrfd, HASH_LEN_HEX, SEEK_CUR) == -1) {
-      vulpes_log(LOG_ERRORS,"couldn't seek %s", oldkr);
-      exit(1);
+      vulpes_log(LOG_ERRORS,"couldn't seek %s",config.old_hex_keyring_name);
+      return 1;
     }
     cdp=get_cdp_from_chunk_num(u);
     if (cdp_is_modified(cdp)) {
@@ -940,38 +940,38 @@ void copy_for_upload(char *oldkr, char *dest)
 	vulpes_log(LOG_CHUNKS,"Chunk modified but tag equal; skipping: %u",u);
 	continue;
       }
-      if (form_chunk_file_name(name, sizeof(name), dest, u)) {
+      if (form_chunk_file_name(name, sizeof(name), config.dest_dir_name, u)) {
 	vulpes_log(LOG_ERRORS,"Couldn't form chunk filename: %u",u);
-	exit(1);
+	return 1;
       }
       if (pread(state.cachefile_fd, buf, cdp->length, get_image_offset_from_chunk_num(u))
 	       != cdp->length) {
         vulpes_log(LOG_ERRORS,"Couldn't read chunk from local cache: %u",u);
-	exit(1);
+	return 1;
       }
       calc_tag=digest(buf, cdp->length);
       if (calc_tag == NULL) {
 	vulpes_log(LOG_ERRORS,"Couldn't calculate hash for chunk: %u",u);
-	exit(1);
+	return 1;
       }
       if (check_tag(cdp, calc_tag) == VULPES_TAGFAIL) {
 	vulpes_log(LOG_ERRORS,"Chunk %u: tag mismatch.  Data corruption has occurred; skipping chunk",u);
 	print_tag_check_error(cdp->tag, calc_tag);
-	exit(1);
+	return 1;
       }
       free(calc_tag);
       fd=open(name, O_WRONLY|O_CREAT|O_TRUNC, 0600);
       if (fd == -1) {
 	vulpes_log(LOG_ERRORS,"Couldn't open chunk file: %s",name);
-	exit(1);
+	return 1;
       }
       if (write(fd, buf, cdp->length) != cdp->length) {
 	vulpes_log(LOG_ERRORS,"Couldn't write chunk file: %s",name);
-	exit(1);
+	return 1;
       }
       if (close(fd) && errno != EINTR) {
 	vulpes_log(LOG_ERRORS,"Couldn't write chunk file: %s",name);
-	exit(1);
+	return 1;
       }
       modified_chunks++;
       modified_bytes += cdp->length;
@@ -980,23 +980,20 @@ void copy_for_upload(char *oldkr, char *dest)
   printf("\n");
   close(oldkrfd);
   free(buf);
-  /* Make sure hex keyring is in sync with the bin keyring we've just checked */
-  if (write_hex_keyring(config.hex_keyring_name))
-    exit(1);
   /* Write statistics */
-  snprintf(name, sizeof(name), "%s/stats", dest);
+  snprintf(name, sizeof(name), "%s/stats", config.dest_dir_name);
   fp=fopen(name, "w");
   if (fp == NULL) {
     vulpes_log(LOG_ERRORS,"Couldn't open stats file: %s",name);
-    exit(1);
+    return 1;
   }
   fprintf(fp, "%u\n%llu\n", modified_chunks, modified_bytes);
   fclose(fp);
   vulpes_log(LOG_STATS,"Copied %u modified chunks, %llu bytes",modified_chunks,modified_bytes);
-  exit(0);
+  return 0;
 }
 
-void checktags(void)
+int checktags(void)
 {
   void *buf;
   unsigned chunk_num;
@@ -1008,7 +1005,7 @@ void checktags(void)
   buf=malloc(state.chunksize_bytes);
   if (buf == NULL) {
     vulpes_log(LOG_ERRORS,"malloc failed");
-    exit(1);
+    return 1;
   }
   for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
     cdp=get_cdp_from_chunk_num(chunk_num);
@@ -1018,12 +1015,12 @@ void checktags(void)
     if (pread(state.cachefile_fd, buf, cdp->length,
               get_image_offset_from_chunk_num(chunk_num)) != cdp->length) {
       vulpes_log(LOG_ERRORS,"Couldn't read chunk from local cache: %u",chunk_num);
-      exit(1);
+      return 1;
     }
     tag=digest(buf, cdp->length);
     if (tag == NULL) {
       vulpes_log(LOG_ERRORS,"Couldn't calculate hash for chunk: %u",chunk_num);
-      exit(1);
+      return 1;
     }
     if (check_tag(cdp, tag) == VULPES_TAGFAIL) {
       vulpes_log(LOG_ERRORS,"Chunk %u: tag check failure",chunk_num);
@@ -1034,5 +1031,5 @@ void checktags(void)
   }
   free(buf);
   printf("\n");
-  exit(0);
+  return 0;
 }
