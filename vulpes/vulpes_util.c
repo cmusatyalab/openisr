@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include "vulpes.h"
+#include "vulpes_log.h"
 #include "vulpes_util.h"
 
 int is_dir(const char *name)
@@ -147,31 +148,32 @@ inline void charToHex(const unsigned char* bin, unsigned char hex[2])
 		hex[1] = 'A' + (i-10);
 }
 
-/* This function has to be really fast! */
 inline unsigned char hexToChar(const unsigned char* hex)
 {
 	int i,j;
 
 	if ((hex[0]>='0')&&(hex[0]<='9'))
 		i = hex[0]-'0';
-	else
-		if ((hex[0]>='A')&&(hex[0]<='F'))
-			i = 10 + hex[0]-'A';
-		else
-		{
-			printf("Keyring invalid: %c \n",hex[0]);
-			exit(1);
-		};
+	else if ((hex[0]>='A')&&(hex[0]<='F'))
+		i = 10 + hex[0]-'A';
+	else if ((hex[0]>='a')&&(hex[0]<='f'))
+		i = 10 + hex[0]-'a';
+	else {
+		i = 0;
+		vulpes_log(LOG_ERRORS,"Invalid hex character: %c",hex[0]);
+	}
+	
 	if ((hex[1]>='0')&&(hex[1]<='9'))
 		j = hex[1]-'0';
-	else
-		if ((hex[1]>='A')&&(hex[1]<='F'))
-			j = 10 + hex[1]-'A';
-		else
-		{
-			printf("Keyring invalid: %c \n",hex[1]);
-			exit(1);
-		};
+	else if ((hex[1]>='A')&&(hex[1]<='F'))
+		j = 10 + hex[1]-'A';
+	else if ((hex[1]>='a')&&(hex[1]<='f'))
+		j = 10 + hex[1]-'a';
+	else {
+		j = 0;
+		vulpes_log(LOG_ERRORS,"Invalid hex character: %c",hex[1]);
+	}
+	
 	return ((unsigned char)(16*i + j));
 }
 
