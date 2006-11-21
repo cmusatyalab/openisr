@@ -191,7 +191,7 @@ vulpes_err_t driver_init(void)
 
 static void log_counter_value(char *attr)
 {
-  char fname[MAX_INDEX_NAME_LENGTH];
+  char fname[MAX_PATH_LENGTH];
   char buf[32];
   unsigned value;
   char *endptr;

@@ -150,10 +150,10 @@ static int form_index_name(const char *dirname)
     add_slash = 1;
   }
   
-  result=snprintf(state.index_name, MAX_INDEX_NAME_LENGTH, "%s%s%s",
+  result=snprintf(state.index_name, MAX_PATH_LENGTH, "%s%s%s",
                         dirname, (add_slash ? "/" : ""), index_name);
 
-  if (result >= MAX_INDEX_NAME_LENGTH || result == -1) {
+  if (result >= MAX_PATH_LENGTH || result == -1) {
     /* Older versions of libc return -1 on truncation */
     return -1;
   }
@@ -169,10 +169,10 @@ static int form_image_name(const char *dirname)
     add_slash = 1;
   }
   
-  result=snprintf(state.image_name, MAX_INDEX_NAME_LENGTH, "%s%s%s",
+  result=snprintf(state.image_name, MAX_PATH_LENGTH, "%s%s%s",
                         dirname, (add_slash ? "/" : ""), image_name);
 
-  if (result >= MAX_INDEX_NAME_LENGTH || result == -1) {
+  if (result >= MAX_PATH_LENGTH || result == -1) {
     /* Older versions of libc return -1 on truncation */
     return -1;
   }
@@ -844,8 +844,8 @@ int cache_get(const struct isr_message *req, struct isr_message *reply)
   /* check if the file is present in the cache */
   if (!cdp_present(cdp)) {
     /* the file has not been copied yet */
-    char remote_name[MAX_CHUNK_NAME_LENGTH];
-    if (form_chunk_file_name(remote_name, MAX_CHUNK_NAME_LENGTH,
+    char remote_name[MAX_PATH_LENGTH];
+    if (form_chunk_file_name(remote_name, MAX_PATH_LENGTH,
 	 config.master_name, req->chunk)) {
       vulpes_log(LOG_ERRORS,"unable to form cache remote name: %llu",req->chunk);
       return -1;
@@ -985,7 +985,7 @@ int cache_init(void)
 
 int copy_for_upload(void)
 {
-  char name[MAX_CHUNK_NAME_LENGTH];
+  char name[MAX_PATH_LENGTH];
   char *buf;
   unsigned u;
   struct chunk_data *cdp;

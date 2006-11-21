@@ -60,16 +60,13 @@ extern struct vulpes_config {
   unsigned log_stdout_mask;
 } config;
 
-/* XXX */
-#define MAX_INDEX_NAME_LENGTH 256
-#define MAX_CHUNK_NAME_LENGTH 512
-#define MAX_DIRLENGTH 256
+#define MAX_PATH_LENGTH 512
 #define SECTOR_SIZE 512
 
 extern struct vulpes_state {
-  char index_name[MAX_INDEX_NAME_LENGTH];
-  char image_name[MAX_INDEX_NAME_LENGTH];
-  char loopdev_name[MAX_INDEX_NAME_LENGTH];
+  char index_name[MAX_PATH_LENGTH];
+  char image_name[MAX_PATH_LENGTH];
+  char loopdev_name[MAX_PATH_LENGTH];
   unsigned version;
   unsigned chunksize_bytes;
   unsigned chunksperdir;
