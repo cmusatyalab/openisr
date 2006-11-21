@@ -548,17 +548,15 @@ static int valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize,
 		  unsigned chunk_num)
 {
   int bufvalid = 0;
-  unsigned char *dgst; /* hash of the buffer contents - malloc'ed by digest */
+  char dgst[HASH_LEN]; /* hash of the buffer contents */
   struct chunk_data *cdp;
   
   cdp=get_cdp_from_chunk_num(chunk_num);
-  dgst = digest(buffer, bufsize);
+  digest(buffer, bufsize, dgst);
   bufvalid = (check_tag(cdp, dgst) == VULPES_SUCCESS);
   if (!bufvalid)
     print_tag_check_error(cdp->tag, dgst);
   
-  free(dgst);
-
   return bufvalid;
 }
 
@@ -566,7 +564,9 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
                                       unsigned buf_len)
 {
   struct chunk_data *cdp;
-  void *decompressed, *newkey, *newtag;
+  void *decompressed;
+  char newkey[HASH_LEN];
+  char newtag[HASH_LEN];
   unsigned char *decrypted, *encrypted;
   int decryptedSize, encryptedSize;
   unsigned long decompressedSize;
@@ -606,19 +606,17 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
   }
   free(decrypted);
   
-  newkey = digest(decompressed, decompressedSize);
+  digest(decompressed, decompressedSize, newkey);
   vulpes_encrypt(decompressed, decompressedSize, &encrypted, &encryptedSize,
                  newkey, 16, 0);
   if (encryptedSize != state.chunksize_bytes) {
     vulpes_log(LOG_ERRORS,"encrypted to invalid length %d: %d",encryptedSize,chunk_num);
     return VULPES_BADFORMAT;
   }
-  newtag = digest(encrypted, encryptedSize);
+  digest(encrypted, encryptedSize, newtag);
   free(decompressed);
   
   updateKey(chunk_num, newkey, newtag);
-  free(newkey);
-  free(newtag);
   mark_cdp_uncompressed(cdp);
   mark_cdp_modified(cdp);
   chunks_stripped++;
@@ -991,7 +989,7 @@ int copy_for_upload(void)
   unsigned modified_chunks=0;
   uint64_t modified_bytes=0;
   FILE *fp;
-  char *calc_tag;
+  char calc_tag[HASH_LEN];
   
   vulpes_log(LOG_BASIC,"Copying chunks to upload directory %s",config.dest_dir_name);
   buf=malloc(state.chunksize_bytes);
@@ -1026,17 +1024,12 @@ int copy_for_upload(void)
         vulpes_log(LOG_ERRORS,"Couldn't read chunk from local cache: %u",u);
 	return 1;
       }
-      calc_tag=digest(buf, cdp->length);
-      if (calc_tag == NULL) {
-	vulpes_log(LOG_ERRORS,"Couldn't calculate hash for chunk: %u",u);
-	return 1;
-      }
+      digest(buf, cdp->length, calc_tag);
       if (check_tag(cdp, calc_tag) == VULPES_TAGFAIL) {
 	vulpes_log(LOG_ERRORS,"Chunk %u: tag mismatch.  Data corruption has occurred; skipping chunk",u);
 	print_tag_check_error(cdp->tag, calc_tag);
 	return 1;
       }
-      free(calc_tag);
       fd=open(name, O_WRONLY|O_CREAT|O_TRUNC, 0600);
       if (fd == -1) {
 	vulpes_log(LOG_ERRORS,"Couldn't open chunk file: %s",name);
@@ -1073,7 +1066,7 @@ int checktags(void)
 {
   void *buf;
   unsigned chunk_num;
-  char *tag;
+  char tag[HASH_LEN];
   struct chunk_data *cdp;
   unsigned processed=0;
   
@@ -1093,16 +1086,11 @@ int checktags(void)
       vulpes_log(LOG_ERRORS,"Couldn't read chunk from local cache: %u",chunk_num);
       return 1;
     }
-    tag=digest(buf, cdp->length);
-    if (tag == NULL) {
-      vulpes_log(LOG_ERRORS,"Couldn't calculate hash for chunk: %u",chunk_num);
-      return 1;
-    }
+    digest(buf, cdp->length, tag);
     if (check_tag(cdp, tag) == VULPES_TAGFAIL) {
       vulpes_log(LOG_ERRORS,"Chunk %u: tag check failure",chunk_num);
       print_tag_check_error(cdp->tag, tag);
     }
-    free(tag);
     print_progress(++processed, state.valid_chunks_on_open);
   }
   free(buf);

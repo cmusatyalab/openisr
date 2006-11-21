@@ -19,7 +19,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #define HASH_LEN 20
 #define HASH_LEN_HEX (2 * HASH_LEN + 1)
 
-unsigned char *digest(const unsigned char *mesg, unsigned mesgLen);
+void digest(const char *mesg, unsigned mesgLen, char *result);
 int vulpes_encrypt(const unsigned char *inString, int inStringLength,
 		   unsigned char **outString, int *outStringLength,
 		   const unsigned char *key, int keyLen, int doPad);

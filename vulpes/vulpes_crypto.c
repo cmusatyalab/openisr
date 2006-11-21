@@ -13,7 +13,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 */
 
-#include "vulpes_crypto.h"
 #include <string.h>
 #include <openssl/evp.h>
 #include <unistd.h>
@@ -36,36 +35,20 @@ ACCEPTANCE OF THIS AGREEMENT
 #include "vulpes_util.h"
 
 
-/* LOCAL VARIABLES */
-static const char digestName[] = "sha1";
-
 /* CORE ENCRYPTION/DECRYPTION Routines used by Vulpes */
 
-/* REM : For a SHA1 digest, the digest is 20 bytes long
- */
-unsigned char *digest(const unsigned char *mesg, unsigned mesgLen)
+/* Places 20 (HASH_LEN) bytes in @result */
+void digest(const char *mesg, unsigned mesgLen, char *result)
 {
     EVP_MD_CTX mdctx;
-    const EVP_MD *md;
-    unsigned char *md_value;
 
-    int md_len;
-
-    md_value = (unsigned char *) malloc(EVP_MAX_MD_SIZE);
-    if (md_value == NULL) return NULL;
-
-    OpenSSL_add_all_digests();
-
-
-    md = EVP_get_digestbyname(digestName);
-
+    /* In my copy of OpenSSL (0.9.8d), at least, none of these calls can
+       actually fail */
     EVP_MD_CTX_init(&mdctx);
-    EVP_DigestInit_ex(&mdctx, md, NULL);
+    EVP_DigestInit_ex(&mdctx, EVP_sha1(), NULL);
     EVP_DigestUpdate(&mdctx, mesg, mesgLen);
-    EVP_DigestFinal_ex(&mdctx, md_value, &md_len);
+    EVP_DigestFinal_ex(&mdctx, result, NULL);
     EVP_MD_CTX_cleanup(&mdctx);
-
-    return md_value;
 }
 
 /* Nice things to remember about the BlowFish Cipher:
