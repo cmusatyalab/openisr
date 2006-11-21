@@ -98,8 +98,8 @@ vulpes_err_t driver_init(void);
 void driver_run(void);
 void driver_shutdown(void);
 vulpes_err_t transport_init(void);
-vulpes_err_t transport_get(char *buf, int *bufsize, const char *src,
-			unsigned chunk_num);
+vulpes_err_t transport_get(void *buf, int *bufsize, const char *src,
+			   unsigned chunk_num);
 void transport_shutdown(void);
 int copy_for_upload(void);
 int checktags(void);

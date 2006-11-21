@@ -18,13 +18,15 @@ ACCEPTANCE OF THIS AGREEMENT
 
 #define HASH_LEN 20
 #define HASH_LEN_HEX (2 * HASH_LEN + 1)
+#define CIPHER_BLOCK_SIZE 8
+#define CIPHER_IV_SIZE 8
 
-void digest(const char *mesg, unsigned mesgLen, char *result);
-int vulpes_encrypt(const unsigned char *inString, int inStringLength,
-		   unsigned char **outString, int *outStringLength,
-		   const unsigned char *key, int keyLen, int doPad);
-int vulpes_decrypt(const unsigned char *inString, int inStringLength,
-		   unsigned char **outString, int *outStringLength,
-		   const unsigned char *key, int keyLen, int doPad);
+void digest(const void *mesg, unsigned mesgLen, void *result);
+vulpes_err_t vulpes_encrypt(const void *inString, int inStringLength,
+			    void **outString, int *outStringLength,
+			    const void *key, int keyLen, int doPad);
+vulpes_err_t vulpes_decrypt(const void *inString, int inStringLength,
+			    void **outString, int *outStringLength,
+			    const void *key, int keyLen, int doPad);
 
 #endif

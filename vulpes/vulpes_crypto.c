@@ -38,7 +38,7 @@ ACCEPTANCE OF THIS AGREEMENT
 /* CORE ENCRYPTION/DECRYPTION Routines used by Vulpes */
 
 /* Places 20 (HASH_LEN) bytes in @result */
-void digest(const char *mesg, unsigned mesgLen, char *result)
+void digest(const void *mesg, unsigned mesgLen, void *result)
 {
     EVP_MD_CTX mdctx;
 
@@ -56,83 +56,80 @@ void digest(const char *mesg, unsigned mesgLen, char *result)
  * ivec must point at an 8 byte long initialization vector
  */
 
-static unsigned const char iv[] = { 0, 0, 0, 0, 0, 0, 0, 0 };	/* A zero IV, same as SSH */
+static const char iv[CIPHER_IV_SIZE] = {0};  /* A zero IV, same as SSH */
 
-
-int vulpes_encrypt(const unsigned char *inString, int inStringLength,
-		   unsigned char **outString, int *outStringLength,
-		   const unsigned char *key, int keyLen, int doPad)
+vulpes_err_t vulpes_encrypt(const void *inString, int inStringLength,
+			    void **outString, int *outStringLength,
+			    const void *key, int keyLen, int doPad)
 {
     int tmplen;
-    unsigned char *output;
-
-    output = (unsigned char *) malloc(inStringLength * 2);
-    if (output == NULL) return 0;
-
+    char *output;
     EVP_CIPHER_CTX ctx;
+
+    output = malloc(inStringLength + CIPHER_BLOCK_SIZE);
+    if (output == NULL) return VULPES_NOMEM;
+
     EVP_CIPHER_CTX_init(&ctx);
     EVP_EncryptInit_ex(&ctx, EVP_bf_cbc(), NULL, NULL, iv);
     if (!EVP_CIPHER_CTX_set_key_length(&ctx, keyLen))
-        return 0;
+        goto bad;
     EVP_CIPHER_CTX_set_padding(&ctx, doPad);
     EVP_EncryptInit_ex(&ctx, NULL, NULL, key, NULL);
 
-    if (!EVP_EncryptUpdate
-	(&ctx, output, outStringLength, inString, inStringLength)) {
-	/* Error */
-	return 0;
-    }
+    if (!EVP_EncryptUpdate(&ctx, output, outStringLength, inString,
+      	    inStringLength))
+        goto bad;
     /* Buffer passed to EVP_EncryptFinal() must be after data just
      * encrypted to avoid overwriting it.
      */
-    if (!EVP_EncryptFinal_ex(&ctx, output + *outStringLength, &tmplen)) {
-	/* Error */
-	return 0;
-    }
+    if (!EVP_EncryptFinal_ex(&ctx, output + *outStringLength, &tmplen))
+        goto bad;
     *outStringLength += tmplen;
     EVP_CIPHER_CTX_cleanup(&ctx);
     *outString = output;
-    output = NULL;
-    return 1;
+    return VULPES_SUCCESS;
+    
+bad:
+    EVP_CIPHER_CTX_cleanup(&ctx);
+    return VULPES_INVALID;
 }
 
-int vulpes_decrypt(const unsigned char *inString, int inStringLength,
-		   unsigned char **outString, int *outStringLength,
-		   const unsigned char *key, int keyLen, int doPad)
+vulpes_err_t vulpes_decrypt(const void *inString, int inStringLength,
+			    void **outString, int *outStringLength,
+			    const void *key, int keyLen, int doPad)
 {
     int tmplen;
-    unsigned char *output;
-
+    char *output;
     EVP_CIPHER_CTX ctx;
+
+    output = malloc(inStringLength + CIPHER_BLOCK_SIZE);
+    if (output == NULL) return VULPES_NOMEM;
+
     EVP_CIPHER_CTX_init(&ctx);
     EVP_DecryptInit_ex(&ctx, EVP_bf_cbc(), NULL, NULL, iv);
-    if (!EVP_CIPHER_CTX_set_key_length(&ctx, keyLen))
-        return 0;
+    if (!EVP_CIPHER_CTX_set_key_length(&ctx, keyLen)) {
+        EVP_CIPHER_CTX_cleanup(&ctx);
+        return VULPES_INVALID;
+    }
     EVP_CIPHER_CTX_set_padding(&ctx, doPad);
     EVP_DecryptInit_ex(&ctx, NULL, NULL, key, NULL);
 
-    output =
-	(unsigned char *) malloc((int) ((float) inStringLength * 1.2));
-	 /* 1.2 is a random size - wnted it to be big enough to avoid overflow */
-    if (output == NULL) return 0;
-
-    if (!EVP_DecryptUpdate
-	(&ctx, output, outStringLength, inString, inStringLength)) {
-	printf("vulpes_decrypt failed at EVP_DecryptUpdate\n");
-	/* Error */
-	return 0;
+    if (!EVP_DecryptUpdate(&ctx, output, outStringLength, inString,
+      	    inStringLength)) {
+    	vulpes_log(LOG_ERRORS,"DecryptUpdate failed");
+    	EVP_CIPHER_CTX_cleanup(&ctx);
+	return VULPES_BADFORMAT;
     }
     /* Buffer passed to EVP_EncryptFinal() must be after data just
      * encrypted to avoid overwriting it.
      */
     if (!EVP_DecryptFinal_ex(&ctx, output + *outStringLength, &tmplen)) {
-	/* Error */
-	printf("vulpes_decrypt failed at EVP_DecryptFinal_ex\n");
-	return 0;
+	vulpes_log(LOG_ERRORS,"DecryptFinal failed");
+	EVP_CIPHER_CTX_cleanup(&ctx);
+	return VULPES_BADFORMAT;
     }
     *outStringLength += tmplen;
     EVP_CIPHER_CTX_cleanup(&ctx);
     *outString = output;
-    output = NULL;
-    return 1;
+    return VULPES_SUCCESS;
 }

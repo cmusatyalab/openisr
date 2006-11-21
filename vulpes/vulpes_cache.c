@@ -544,8 +544,8 @@ static void print_tag_check_error(unsigned char *expected, unsigned char *found)
   vulpes_log(LOG_ERRORS,"expected %s, found %s",s_expected,s_found);
 }
 
-static int valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize, 
-		  unsigned chunk_num)
+static int valid_chunk_buffer(const void *buffer, unsigned bufsize, 
+		              unsigned chunk_num)
 {
   int bufvalid = 0;
   char dgst[HASH_LEN]; /* hash of the buffer contents */
@@ -560,16 +560,16 @@ static int valid_chunk_buffer(const unsigned char *buffer, unsigned bufsize,
   return bufvalid;
 }
 
-static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
+static vulpes_err_t strip_compression(unsigned chunk_num, void **buf,
                                       unsigned buf_len)
 {
   struct chunk_data *cdp;
-  void *decompressed;
   char newkey[HASH_LEN];
   char newtag[HASH_LEN];
-  unsigned char *decrypted, *encrypted;
+  void *decompressed, *decrypted, *encrypted;
   int decryptedSize, encryptedSize;
   unsigned long decompressedSize;
+  vulpes_err_t err;
   
   vulpes_log(LOG_CHUNKS,"stripping compression from chunk %u: %u bytes",chunk_num,buf_len);
   cdp=get_cdp_from_chunk_num(chunk_num);
@@ -582,11 +582,12 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
     return VULPES_INVALID;
   }
   
-  if (!vulpes_decrypt(*buf, buf_len, &decrypted, &decryptedSize,
-                      cdp->key, 16, 1)) {
+  err=vulpes_decrypt(*buf, buf_len, &decrypted, &decryptedSize,
+                      cdp->key, 16, 1);
+  if (err) {
     vulpes_log(LOG_ERRORS,"could not decrypt file: %d",chunk_num);
-    return VULPES_BADFORMAT;
-  };
+    return err;
+  }
   
   decompressed = malloc(state.chunksize_bytes);
   if (decompressed == NULL) {
@@ -599,7 +600,7 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
                  != Z_OK) {
     vulpes_log(LOG_ERRORS,"could not decompress file: %d",chunk_num);
     return VULPES_BADFORMAT;
-  };
+  }
   if (decompressedSize != state.chunksize_bytes) {
     vulpes_log(LOG_ERRORS,"decompressed to invalid length %d: %d",decompressedSize,chunk_num);
     return VULPES_BADFORMAT;
@@ -607,8 +608,12 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
   free(decrypted);
   
   digest(decompressed, decompressedSize, newkey);
-  vulpes_encrypt(decompressed, decompressedSize, &encrypted, &encryptedSize,
-                 newkey, 16, 0);
+  err=vulpes_encrypt(decompressed, decompressedSize, &encrypted,
+                     &encryptedSize, newkey, 16, 0);
+  if (err) {
+    vulpes_log(LOG_ERRORS,"could not encrypt file: %d",chunk_num);
+    return err;
+  }
   if (encryptedSize != state.chunksize_bytes) {
     vulpes_log(LOG_ERRORS,"encrypted to invalid length %d: %d",encryptedSize,chunk_num);
     return VULPES_BADFORMAT;
@@ -627,7 +632,7 @@ static vulpes_err_t strip_compression(unsigned chunk_num, char **buf,
 
 static int retrieve_chunk(const char *src, unsigned chunk_num)
 {
-  char *buf;
+  void *buf;
   int buflen;
   vulpes_err_t err;
   struct chunk_data *cdp;

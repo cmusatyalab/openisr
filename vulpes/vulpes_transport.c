@@ -98,7 +98,7 @@ static void destroy_curl(struct curl_connection *conn)
   free(conn);
 }
 
-static vulpes_err_t http_get(char *buf, int *bufsize, const char *url)
+static vulpes_err_t http_get(void *buf, int *bufsize, const char *url)
 {
   struct curl_connection *conn=state.curl_conn;
   CURLcode retVal;
@@ -186,8 +186,8 @@ void transport_shutdown(void)
   }
 }
 
-vulpes_err_t transport_get(char *buf, int *bufsize, const char *src,
-			unsigned chunk_num)
+vulpes_err_t transport_get(void *buf, int *bufsize, const char *src,
+			   unsigned chunk_num)
 {
   vulpes_err_t err;
   int i;
