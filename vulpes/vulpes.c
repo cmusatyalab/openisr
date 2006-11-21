@@ -345,8 +345,9 @@ int main(int argc, char *argv[])
              vulpes_version, svn_branch, svn_revision, (unsigned)getpid());
   
   /* Initialize the cache */
-  if (cache_init()) {
-    vulpes_log(LOG_ERRORS,"unable to initialize cache");
+  err=cache_init();
+  if (err) {
+    vulpes_log(LOG_ERRORS,"unable to initialize cache: %s",vulpes_strerror(err));
     goto vulpes_exit;
   }
   

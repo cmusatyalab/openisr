@@ -100,9 +100,9 @@ vulpes_err_t transport_get(void *buf, int *bufsize, const char *src,
 void transport_shutdown(void);
 int copy_for_upload(void);
 int checktags(void);
-int cache_init(void);
-int cache_get(const struct isr_message *req, struct isr_message *reply);
-int cache_update(const struct isr_message *req);
+vulpes_err_t cache_init(void);
+vulpes_err_t cache_get(const struct isr_message *req, struct isr_message *reply);
+void cache_update(const struct isr_message *req);
 vulpes_err_t cache_shutdown(void);
 
 #endif

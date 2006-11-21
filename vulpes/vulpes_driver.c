@@ -269,9 +269,7 @@ static int process_message(struct isr_message *request, struct isr_message *repl
     }
     return 1;
   case ISR_MSGTYPE_UPDATE_META:
-    if (cache_update(request)) {
-      vulpes_log(LOG_ERRORS,"UPDATE: %llu:%llu: failed",state.request_count,request->chunk);
-    }
+    cache_update(request);
     return 0;
   }
   /* Make compiler happy */

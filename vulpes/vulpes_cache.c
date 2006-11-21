@@ -141,7 +141,7 @@ static inline void mark_cdp_present(struct chunk_data * cdp)
   cdp->status |= CHUNK_STATUS_PRESENT;
 }
 
-static int form_index_name(const char *dirname)
+static vulpes_err_t form_index_name(const char *dirname)
 {
   int add_slash = 0;
   int result;
@@ -155,12 +155,12 @@ static int form_index_name(const char *dirname)
 
   if (result >= MAX_PATH_LENGTH || result == -1) {
     /* Older versions of libc return -1 on truncation */
-    return -1;
+    return VULPES_OVERFLOW;
   }
-  return 0;
+  return VULPES_SUCCESS;
 }
 
-static int form_image_name(const char *dirname)
+static vulpes_err_t form_image_name(const char *dirname)
 {
   int add_slash = 0;
   int result;
@@ -174,13 +174,13 @@ static int form_image_name(const char *dirname)
 
   if (result >= MAX_PATH_LENGTH || result == -1) {
     /* Older versions of libc return -1 on truncation */
-    return -1;
+    return VULPES_OVERFLOW;
   }
-  return 0;
+  return VULPES_SUCCESS;
 }
 
-static int form_dir_name(char *buffer, int bufsize,
-		  const char *rootname, unsigned dir)
+static vulpes_err_t form_dir_name(char *buffer, int bufsize,
+				  const char *rootname, unsigned dir)
 {
   int result;
   
@@ -189,13 +189,14 @@ static int form_dir_name(char *buffer, int bufsize,
   result=snprintf(buffer, bufsize, "%s/%04u/", rootname, dir);
   if (result >= bufsize || result == -1) {
     /* Older versions of libc return -1 on truncation */
-    return -1;
+    return VULPES_OVERFLOW;
   }
-  return 0;
+  return VULPES_SUCCESS;
 }
 
-static int form_chunk_file_name(char *buffer, int bufsize,
-			 const char *rootname, unsigned chunk_num)
+static vulpes_err_t form_chunk_file_name(char *buffer, int bufsize,
+					 const char *rootname,
+					 unsigned chunk_num)
 {
   int result;
   unsigned dir, chunk;
@@ -206,9 +207,9 @@ static int form_chunk_file_name(char *buffer, int bufsize,
   result=snprintf(buffer, bufsize, "%s/%04u/%04u", rootname, dir, chunk);
   if (result >= bufsize || result == -1) {
     /* Older versions of libc return -1 on truncation */
-    return -1;
+    return VULPES_OVERFLOW;
   }
-  return 0;
+  return VULPES_SUCCESS;
 }
 
 /* reads the hex keyring file into memory */
@@ -630,7 +631,7 @@ static vulpes_err_t strip_compression(unsigned chunk_num, void **buf,
   return VULPES_SUCCESS;
 }
 
-static int retrieve_chunk(const char *src, unsigned chunk_num)
+static vulpes_err_t retrieve_chunk(const char *src, unsigned chunk_num)
 {
   void *buf;
   int buflen;
@@ -641,7 +642,7 @@ static int retrieve_chunk(const char *src, unsigned chunk_num)
   buf=malloc(buflen);
   if (buf == NULL) {
     vulpes_log(LOG_TRANSPORT,"malloc failed");
-    return -1;
+    return VULPES_NOMEM;
   }
   cdp=get_cdp_from_chunk_num(chunk_num);
   
@@ -714,7 +715,7 @@ have_data:
   
 out:
   free(buf);
-  return err ? -1 : 0;
+  return err;
 }
 
 static vulpes_err_t load_keyring(int prev)
@@ -835,9 +836,10 @@ vulpes_err_t cache_shutdown(void)
   return VULPES_SUCCESS;
 }
 
-int cache_get(const struct isr_message *req, struct isr_message *reply)
+vulpes_err_t cache_get(const struct isr_message *req, struct isr_message *reply)
 {
   struct chunk_data *cdp;
+  vulpes_err_t ret;
   
   cdp = get_cdp_from_chunk_num(req->chunk);
 
@@ -845,17 +847,19 @@ int cache_get(const struct isr_message *req, struct isr_message *reply)
   if (!cdp_present(cdp)) {
     /* the file has not been copied yet */
     char remote_name[MAX_PATH_LENGTH];
-    if (form_chunk_file_name(remote_name, MAX_PATH_LENGTH,
-	 config.master_name, req->chunk)) {
+    ret=form_chunk_file_name(remote_name, MAX_PATH_LENGTH,
+                             config.master_name, req->chunk);
+    if (ret) {
       vulpes_log(LOG_ERRORS,"unable to form cache remote name: %llu",req->chunk);
-      return -1;
+      return ret;
     }
     
-    if (retrieve_chunk(remote_name, req->chunk) == 0) {
+    ret=retrieve_chunk(remote_name, req->chunk);
+    if (ret == VULPES_SUCCESS) {
       mark_cdp_present(cdp);
     } else {
       vulpes_log(LOG_ERRORS,"unable to copy %s %llu",remote_name,req->chunk);
-      return -1;
+      return ret;
     }
   }
   
@@ -869,10 +873,10 @@ int cache_get(const struct isr_message *req, struct isr_message *reply)
   reply->length=cdp->length;
   
   vulpes_log(LOG_CHUNKS,"get: %llu (size %u)",req->chunk,cdp->length);
-  return 0;
+  return VULPES_SUCCESS;
 }
 
-int cache_update(const struct isr_message *req)
+void cache_update(const struct isr_message *req)
 {
   struct chunk_data *cdp=NULL;
   
@@ -892,14 +896,14 @@ int cache_update(const struct isr_message *req)
   cdp->length=req->length;
 
   vulpes_log(LOG_CHUNKS,"update: %llu (size %u)",req->chunk,cdp->length);
-  return 0;
 }
 
-int cache_init(void)
+vulpes_err_t cache_init(void)
 {
   unsigned long long volsize_bytes;
   int parse_error = 0;
   FILE *f;
+  vulpes_err_t ret;
   
   vulpes_log(LOG_BASIC,"vulpes_cache: %s", config.cache_name);
   if ((config.proxy_name) && (config.proxy_port)) {
@@ -907,28 +911,29 @@ int cache_init(void)
     vulpes_log(LOG_BASIC,"proxy-port: %ld",config.proxy_port);
   }
   
-  if (form_index_name(config.cache_name)) {
+  ret=form_index_name(config.cache_name);
+  if (ret) {
     vulpes_log(LOG_ERRORS,"unable to form cache index name");
-    return -1;
+    return ret;
   }
   
   /* Open index file */
   f = fopen(state.index_name, "r");
   if (f == NULL) {
     vulpes_log(LOG_ERRORS,"unable to open index file %s",state.index_name);
-    return -1;
+    return VULPES_IOERR;
   }
   
   /* Scan index file */
   if (fscanf(f, "VERSION= %u\n", &state.version) != 1) {
     vulpes_log(LOG_ERRORS,"unable to parse version from index file %s",state.index_name);
     fclose(f);
-    return -1;
+    return VULPES_BADFORMAT;
   }
   if (state.version != 2) {
     vulpes_log(LOG_ERRORS,"unknown cache version number: %s",state.index_name);
     fclose(f);
-    return -1;
+    return VULPES_BADFORMAT;
   }
   
   if (fscanf(f, "CHUNKSIZE= %u\n", &state.chunksize_bytes) != 1)
@@ -945,13 +950,13 @@ int cache_init(void)
   fclose(f);
   if (parse_error) {
     vulpes_log(LOG_ERRORS,"bad parse: %s",state.index_name);
-    return -1;
+    return VULPES_BADFORMAT;
   }
   
   /* compute derivative values */
   if (state.chunksize_bytes % SECTOR_SIZE != 0) {
     vulpes_log(LOG_ERRORS,"bad chunksize: %u",state.chunksize_bytes);
-    return -1;
+    return VULPES_INVALID;
   }
   state.chunksize = state.chunksize_bytes / SECTOR_SIZE;
   state.volsize = state.chunksize * state.numchunks;
@@ -959,28 +964,31 @@ int cache_init(void)
   /* Check if the cache root directory exists */
   if (!is_dir(config.cache_name)) {
     vulpes_log(LOG_ERRORS,"unable to open dir: %s", config.cache_name);
-    return -1;
+    return VULPES_NOTFOUND;
   }
   
   /* Allocate the chunk_data array */
   state.cd = malloc(state.numchunks * sizeof(struct chunk_data));
   if (state.cd == NULL) {
     vulpes_log(LOG_ERRORS,"unable to allocate chunk_data array");
-    return -1;
+    return VULPES_NOMEM;
   }
   memset(state.cd, 0, state.numchunks * sizeof(struct chunk_data));
   
-  if (load_keyring(0))
-    return -1;
+  ret=load_keyring(0);
+  if (ret)
+    return ret;
   
-  if (form_image_name(config.cache_name)) {
+  ret=form_image_name(config.cache_name);
+  if (ret) {
     vulpes_log(LOG_ERRORS,"unable to form image name");
-    return -1;
+    return ret;
   }
-  if (open_cache_file(state.image_name))
-    return -1;
+  ret=open_cache_file(state.image_name);
+  if (ret)
+    return ret;
   
-  return 0;
+  return VULPES_SUCCESS;
 }
 
 int copy_for_upload(void)
@@ -1004,7 +1012,10 @@ int copy_for_upload(void)
   }
   /* check the subdirectories  -- create if needed */
   for (u = 0; u < state.numdirs; u++) {
-    form_dir_name(name, sizeof(name), config.dest_dir_name, u);
+    if (form_dir_name(name, sizeof(name), config.dest_dir_name, u)) {
+      vulpes_log(LOG_ERRORS,"Couldn't form directory name: %u",u);
+      return 1;
+    }
     if (!is_dir(name)) {
       if (mkdir(name, 0770)) {
 	vulpes_log(LOG_ERRORS,"unable to mkdir: %s", name);
