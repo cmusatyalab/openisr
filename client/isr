@@ -93,6 +93,9 @@ sub system_errexit ($);
 sub system_err ($);
 sub message ($$);
 sub usage ($);
+sub need_parcel ();
+sub need_checked_out ();
+sub need_network ();
 
 #########################
 # Section 1. Main routine
@@ -356,65 +359,6 @@ if ($command eq "checkp") {
 # Some basic correctness checking
 #
 
-
-#
-# Most commands require a parcel on the command line. Exclude
-# the set of command that DON'T.
-#
-if ($command ne "ls" and
-    $command ne "auth" and
-    $command ne "deauth" and
-    $command ne "passwd" and
-    $command ne "reset" and 
-    $command ne "update" and
-    !$parcel) {
-    usage("Missing parcel name (-p)");
-}
-
-#
-# Some commands expect the parcel to already be checked out
-#
-if ($command eq "checkin" or
-    $command eq "sync" or
-    $command eq "disconnect" or
-    $command eq "run" or
-    $command eq "commit" or
-    $command eq "stat" or
-    $command eq "discard") {
-    if (!-e "$isrdir/$parcel") {
-	errexit("Parcel $userid/$parcel not checked out. Checkout or resume first.");
-    }
-}
-
-#
-# Most commands require a network connection
-#
-if (($command eq "checkout") or
-    ($command eq "checkin") or 
-    ($command eq "sync") or
-    ($command eq "disconnect") or
-    ($command eq "checkparcel") or
-    ($command eq "commit") or
-    ($command eq "reset") or
-    ($command eq "ls") or
-    ($command eq "auth") or
-    ($command eq "passwd") or
-    ($command eq "update") or
-    ($command eq "run" and !$disconnected) or
-
-    # This one is a little tricky. Resume will need a network connection
-    # if the requested parcel is not currently checked out, or if the
-    # parcel is checked out and we're not planning on running disconnected.
-    ($command eq "resume" and 
-     ((!-e "$isrdir/$parcel") or 
-      (-e "$isrdir/$parcel" and !$disconnected))) ) {
-	 print "Checking network connection...\n"
-	     if $verbose > 1;
-	 connected() 
-	     or errexit("You do not appear to have a network connection.");
-     }
-
-
 #
 # Some ISR commands can safely run concurrently, and others cannot. 
 # Check the concurrency constraints here before executing the command.
@@ -444,57 +388,92 @@ message("BEGIN", $command);
 
 # Basic commands
 if ($command eq "checkout") {
+    need_parcel();
+    need_network();
     update();
     checkout($userid, $parcel, $isrdir, $version);
 } 
 elsif ($command eq "resume") {
+    need_parcel();
+    # Resume will need a network connection if the requested parcel is not
+    # currently checked out, or if the parcel is checked out and we're not
+    # planning on running disconnected.
+    need_network()
+	if ((!-e "$isrdir/$parcel") or
+	    (-e "$isrdir/$parcel" and !$disconnected));
     update();
     checkout($userid, $parcel, $isrdir, $version);
     run($userid, $parcel, $isrdir, $disconnected);
 } 
 elsif ($command eq "run") { # Deprecated, use resume instead
+    need_parcel();
+    need_checked_out();
+    need_network()
+	if !$disconnected;
     run($userid, $parcel, $isrdir, $disconnected);
 } 
 elsif ($command eq "checkin") {
+    need_parcel();
+    need_checked_out();
+    need_network();
     checkin($userid, $parcel, $isrdir);
 } 
 elsif ($command eq "sync") {
+    need_parcel();
+    need_checked_out();
+    need_network();
     sync($userid, $parcel, $isrdir);
 } 
 elsif ($command eq "discard") {
+    need_parcel();
+    need_checked_out();
     discard($userid, $parcel, $isrdir);
 }
 elsif ($command eq "hoard") {
+    need_parcel();
     hoard($userid, $parcel, $isrdir);
 }
 elsif ($command eq "stat") {
+    need_parcel();
+    need_checked_out();
     statparcel($userid, $parcel, $isrdir);
 }
 elsif ($command eq "disconnect") {
+    need_parcel();
+    need_checked_out();
+    need_network();
     disconnect($userid, $parcel, $isrdir, $nocheckstate);
 }
 elsif ($command eq "checkparcel") {
+    need_parcel();
+    need_network();
     checkparcel($userid, $parcel, $isrdir, $version, $checkstate);
 }
 elsif ($command eq "ls") {
+    need_network();
     listparcels($userid, $parcel, $isrdir, $longflag, $longvers);
 }
 elsif ($command eq "auth") {
+    need_network();
     authenticate($userid);
 }
 elsif ($command eq "deauth") {
     deauthenticate();
 }
 elsif ($command eq "update") {
+    need_network();
     update();
 }
 elsif ($command eq "passwd") {
+    need_network();
     passwd($userid);
 }
 elsif ($command eq "reset") {
+    need_network();
     resetclient($userid, $parcel, $isrdir);
 }
 elsif ($command eq "clean") {
+    need_parcel();
     cleanclient($userid, $parcel, $isrdir, $allflag);
 }
 
@@ -1542,6 +1521,36 @@ sub cleanclient($$$$) {
 #############################
 # Section 3. Helper functions
 #############################
+
+#####
+# Subcommand sanity checks
+#
+
+#
+# Most commands require a parcel on the command line
+#
+sub need_parcel () {
+    usage("Missing parcel name (-p)")
+	if !$parcel;
+}
+
+#
+# Some commands expect the parcel to already be checked out
+#
+sub need_checked_out () {
+    errexit("Parcel $userid/$parcel not checked out. Checkout or resume first.")
+	if (!-e "$isrdir/$parcel");
+}
+
+#
+# Most commands require a network connection
+#
+sub need_network () {
+     print "Checking network connection...\n"
+	 if $verbose > 1;
+     connected() 
+	 or errexit("You do not appear to have a network connection.");
+}
 
 #####
 # Misc helper functions
