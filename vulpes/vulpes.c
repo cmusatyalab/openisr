@@ -27,8 +27,6 @@ ACCEPTANCE OF THIS AGREEMENT
 
 /* GLOBALS */
 
-const char *vulpes_version = "0.60";
-
 struct vulpes_config config;
 struct vulpes_state state;
 
@@ -327,7 +325,7 @@ int main(int argc, char *argv[])
     usage(help_mode);
     /* Does not return */
   case MODE_VERSION:
-    printf("Version: %s (%s, rev %s)\n", vulpes_version, svn_branch, svn_revision);
+    printf("OpenISR Vulpes revision %s (%s)\n", svn_revision, svn_branch);
     return 1;
   default:
     break;
@@ -341,8 +339,8 @@ int main(int argc, char *argv[])
   }
   if (vulpes_log_init())
     goto vulpes_exit;
-  vulpes_log(LOG_BASIC,"Starting. Version: %s, revision: %s %s, PID: %u",
-             vulpes_version, svn_branch, svn_revision, (unsigned)getpid());
+  vulpes_log(LOG_BASIC,"Starting. Revision: %s (%s), PID: %u",
+             svn_revision, svn_branch, (unsigned)getpid());
   
   /* Initialize the cache */
   err=cache_init();
