@@ -1175,13 +1175,6 @@ sub isr_priv_clientcommit($$$) {
     print "Moved $dirtyblocks dirty blocks to the hoard cache.\n"
 	if $main::verbose > 1;
 
-    #
-    # Update the cache file's metadata (modified flags)
-    #
-    message("INFO", "Client side commit - updating cache metadata");
-    mysystem("$Isr::ISRCLIENTBIN/vulpes sync --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
-    	or errexit("Couldn't update cache metadata");
-    
     # 
     # Sync because we're paranoid
     #

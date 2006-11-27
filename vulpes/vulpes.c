@@ -39,7 +39,6 @@ enum mode_type {
   MODE_EXAMINE  = 0x04,
   MODE_HELP     = 0x08,
   MODE_VERSION  = 0x10,
-  MODE_SYNC     = 0x20,
 };
 
 struct vulpes_mode {
@@ -51,7 +50,6 @@ struct vulpes_mode {
 static struct vulpes_mode vulpes_modes[] = {
   {"run",       MODE_RUN,     "Bind and service a virtual disk"},
   {"upload",    MODE_UPLOAD,  "Split a cache file into individual chunks for upload"},
-  {"sync",      MODE_SYNC,    "Update cache file metadata after an upload"},
   {"examine",   MODE_EXAMINE, "Print cache statistics and optionally validate vs. keyring"},
   {"help",      MODE_HELP,    "Show usage summary"},
   {"version",   MODE_VERSION, "Show version information"},
@@ -94,7 +92,7 @@ enum option {
   OPT_VALIDATE,
 };
 
-#define NONTRIVIAL_MODES (MODE_RUN|MODE_UPLOAD|MODE_SYNC|MODE_EXAMINE)
+#define NONTRIVIAL_MODES (MODE_RUN|MODE_UPLOAD|MODE_EXAMINE)
 static struct vulpes_option vulpes_options[] = {
   {"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
   {"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
@@ -359,10 +357,6 @@ int main(int argc, char *argv[])
   switch (curmode->type) {
   case MODE_UPLOAD:
     ret=copy_for_upload();
-    break;
-  case MODE_SYNC:
-    /* Do nothing; we just want the side-effects of cache_shutdown() */
-    ret=0;
     break;
   case MODE_EXAMINE:
     ret=examine_cache();
