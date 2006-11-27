@@ -296,18 +296,6 @@ if (@ARGV > 1) {
 $command = $ARGV[0];
 
 #
-# The resume command should catch and ignore ctrl-z, which will crash
-# VMWare if typed in the window where it was started
-#
-if ($command eq "resume" or $command eq "run") {
-    $SIG{"TSTP"} = sub {
-	print "Ignoring ctrl-z\n"
-	    if $verbose;
-    };
-
-}
-
-#
 # Handle the special case where someone types "isr help"
 #
 if ($command eq "help") {
@@ -346,13 +334,13 @@ if ($nameserver) {
 #
 if ($command eq "ci") {
     $command = "checkin"
-}    
+}
 if ($command eq "co") {
     $command = "checkout"
-}    
+}
 if ($command eq "checkp") {
     $command = "checkparcel"
-}    
+}
 
 
 #####
@@ -403,13 +391,6 @@ elsif ($command eq "resume") {
 	    (-e "$isrdir/$parcel" and !$disconnected));
     update();
     checkout($userid, $parcel, $isrdir, $version);
-    run($userid, $parcel, $isrdir, $disconnected);
-} 
-elsif ($command eq "run") { # Deprecated, use resume instead
-    need_parcel();
-    need_checked_out();
-    need_network()
-	if !$disconnected;
     run($userid, $parcel, $isrdir, $disconnected);
 } 
 elsif ($command eq "checkin") {
@@ -476,7 +457,9 @@ elsif ($command eq "clean") {
     need_parcel();
     cleanclient($userid, $parcel, $isrdir, $allflag);
 }
-
+elsif ($command eq "run") {
+    usage("\"run\" is no longer supported; use \"resume\" instead");
+}
 # Everything else
 else {
     usage("$command is an invalid command.");
