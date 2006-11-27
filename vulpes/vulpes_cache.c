@@ -128,11 +128,15 @@ static inline void get_dir_chunk_from_chunk_num(unsigned chunk_num,
 
 static struct chunk_data *get_cdp_from_chunk_num(unsigned chunk_num)
 {
+  if (state.cd == NULL)
+    return NULL;
   return &(state.cd[chunk_num]);
 }
 
 static struct prev_chunk_data *get_pcdp_from_chunk_num(unsigned chunk_num)
 {
+  if (state.pcd == NULL)
+    return NULL;
   return &(state.pcd[chunk_num]);
 }
 
@@ -140,6 +144,18 @@ static uint64_t get_image_offset_from_chunk_num(unsigned chunk_num)
 {
   return ((uint64_t)chunk_num) * state.chunksize_bytes + state.offset_bytes;
 }
+
+#define foreach_chunk(cnum_var, cdp_var) \
+            for (cnum_var=0, cdp_var=get_cdp_from_chunk_num(cnum_var); \
+	         cnum_var < state.numchunks; \
+		 cdp_var=get_cdp_from_chunk_num(++cnum_var))
+
+#define foreach_chunk_prev(cnum_var, cdp_var, pcdp_var) \
+            for (cnum_var=0, cdp_var=get_cdp_from_chunk_num(cnum_var), \
+	               pcdp_var=get_pcdp_from_chunk_num(cnum_var); \
+	         cnum_var < state.numchunks; \
+		 cdp_var=get_cdp_from_chunk_num(++cnum_var), \
+		       pcdp_var=get_pcdp_from_chunk_num(cnum_var))
 
 static inline void mark_cdp_present(struct chunk_data * cdp)
 {
@@ -225,8 +241,8 @@ vulpes_err_t read_hex_keyring(char *userPath, int prev)
 {
 	unsigned chunk_num;
 	int fd;
-	struct chunk_data *cdp=NULL;
-	struct prev_chunk_data *pcdp=NULL;
+	struct chunk_data *cdp;
+	struct prev_chunk_data *pcdp;
 	char buf[HASH_LEN_HEX];
 	
 	fd = open(userPath, O_RDONLY);
@@ -234,11 +250,7 @@ vulpes_err_t read_hex_keyring(char *userPath, int prev)
 		vulpes_log(LOG_ERRORS,"could not open keyring: %s",userPath);
 		return VULPES_IOERR;
 	}
-	for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
-		if (prev)
-			pcdp=get_pcdp_from_chunk_num(chunk_num);
-		else
-			cdp=get_cdp_from_chunk_num(chunk_num);
+	foreach_chunk_prev(chunk_num, cdp, pcdp) {
 		if (read(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
 			goto short_read;
 		if (prev)
@@ -278,8 +290,7 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 		vulpes_log(LOG_ERRORS,"could not open keyring file for writeback: %s", userPath);
 		return VULPES_IOERR;
 	}
-	for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
-		cdp=get_cdp_from_chunk_num(chunk_num);
+	foreach_chunk(chunk_num, cdp) {
 		binToHex(cdp->tag, buf, HASH_LEN);
 		buf[HASH_LEN_HEX - 1]=' ';
 		if (write(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
@@ -331,14 +342,12 @@ static vulpes_err_t read_bin_keyring(char *path, int prev)
     return VULPES_BADFORMAT;
   }
   
-  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
+  foreach_chunk_prev(chunk_num, cdp, pcdp) {
     if (read(fd, &entry, sizeof(entry)) != sizeof(entry))
       goto short_read;
     if (prev) {
-      pcdp=get_pcdp_from_chunk_num(chunk_num);
       memcpy(pcdp->tag, entry.tag, HASH_LEN);
     } else {
-      cdp=get_cdp_from_chunk_num(chunk_num);
       memcpy(cdp->key, entry.key, HASH_LEN);
       memcpy(cdp->tag, entry.tag, HASH_LEN);
       if (entry.compress == KR_COMPRESS_NONE)
@@ -381,8 +390,7 @@ static vulpes_err_t write_bin_keyring(char *path)
     goto short_write;
   
   memset(&entry, 0, sizeof(entry));
-  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
-    cdp=get_cdp_from_chunk_num(chunk_num);
+  foreach_chunk(chunk_num, cdp) {
     memcpy(entry.key, cdp->key, HASH_LEN);
     memcpy(entry.tag, cdp->tag, HASH_LEN);
     entry.compress=cdp_is_compressed(cdp) ? KR_COMPRESS_ZLIB : KR_COMPRESS_NONE;
@@ -413,9 +421,8 @@ static vulpes_err_t write_cache_header(int fd)
     return VULPES_IOERR;
   }
   
-  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
+  foreach_chunk(chunk_num, cdp) {
     memset(&entry, 0, sizeof(entry));
-    cdp=get_cdp_from_chunk_num(chunk_num);
     if (cdp_present(cdp)) {
       entry.flags |= CA_VALID;
       entry.length=htonl(cdp->length);
@@ -494,12 +501,11 @@ static vulpes_err_t open_cache_file(const char *path)
   state.offset_bytes=ntohl(hdr.offset) * SECTOR_SIZE;
   /* Don't trust valid_chunks field; it's informational only */
   
-  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
+  foreach_chunk(chunk_num, cdp) {
     if (read(fd, &entry, sizeof(entry)) != sizeof(entry)) {
       vulpes_log(LOG_ERRORS, "Couldn't read cache file record: %u", chunk_num);
       return VULPES_IOERR;
     }
-    cdp=get_cdp_from_chunk_num(chunk_num);
     if (entry.flags & CA_VALID) {
       mark_cdp_present(cdp);
       cdp->length=ntohl(entry.length);
@@ -764,9 +770,7 @@ static vulpes_err_t update_modified_flags(unsigned *dirty_count)
   if (ret)
     return ret;
   
-  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
-    cdp=get_cdp_from_chunk_num(chunk_num);
-    pcdp=get_pcdp_from_chunk_num(chunk_num);
+  foreach_chunk_prev(chunk_num, cdp, pcdp) {
     if (check_tag(cdp, pcdp->tag) == VULPES_SUCCESS) {
       mark_cdp_not_modified(cdp);
     } else {
@@ -809,8 +813,7 @@ vulpes_err_t cache_shutdown(void)
   }
   
   /* Gather statistics */
-  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
-    cdp=get_cdp_from_chunk_num(chunk_num);
+  foreach_chunk(chunk_num, cdp) {
     if (cdp_is_accessed(cdp))
       ++accessed_chunks;
     if (cdp_is_modified_session(cdp))
@@ -1028,8 +1031,7 @@ int copy_for_upload(void)
       }
     }
   }
-  for (u=0; u < state.numchunks; u++) {
-    cdp=get_cdp_from_chunk_num(u);
+  foreach_chunk(u, cdp) {
     if (cdp_is_modified(cdp)) {
       print_progress(++examined_chunks, dirty_count);
       if (!cdp_present(cdp)) {
@@ -1099,8 +1101,7 @@ static int validate_cache(void)
     vulpes_log(LOG_ERRORS,"malloc failed");
     return 1;
   }
-  for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
-    cdp=get_cdp_from_chunk_num(chunk_num);
+  foreach_chunk(chunk_num, cdp) {
     if (!cdp_present(cdp)) {
       continue;
     }
