@@ -759,7 +759,6 @@ sub run ($$$$) {
     my $numfiles;
     my $numvulpes;
     my $numchunks;
-    my $numdirty;
     my $maxchunks;
     my $chunksize;
     my $i;
@@ -814,7 +813,7 @@ sub run ($$$$) {
     # If the user wants to run disconnected, they better have all of their
     # disk blocks hoarded in the local or hoard cache
     if ($disconnected) {
-	($numchunks, $numdirty, $maxchunks, $chunksize) = 
+	($numchunks, $maxchunks, $chunksize) = 
 	    hdksize($userid, $parcel, $isrdir); 
 
 	# If the local cache is not fully populated, then make sure
@@ -1048,7 +1047,6 @@ sub disconnect ($$$$) {
     my $nocheckstate = shift; # optionally skip consistency check
 
     my $numchunks;
-    my $dirtychunks;
     my $maxchunks;
     my $chunksize;
 
@@ -1068,7 +1066,7 @@ sub disconnect ($$$$) {
 
 
     # Hoard the parcel if it's not already hoarded
-    ($numchunks, $dirtychunks, $maxchunks, $chunksize) = 
+    ($numchunks, $maxchunks, $chunksize) = 
 	hdksize($userid, $parcel, $isrdir); 
     if (isr_stathoard($userid, $parcel, $isrdir) < $maxchunks) {
 	isr_hoard($userid, $parcel, $isrdir);
@@ -1874,8 +1872,7 @@ sub build_cache ($$) {
 
 #
 # hdksize - Computes information about the local hdk cache
-#           returns the list ($numchunks, $dirtychunks, $maxchunks,
-#                             $chunksize (in bytes))
+#           returns the list ($numchunks, $maxchunks, $chunksize (in bytes))
 #         
 sub hdksize ($$$) {
     my $userid = shift;
@@ -1908,7 +1905,7 @@ sub hdksize ($$$) {
     }
     close INFILE
 	or unix_errexit("Unable to close $imagefile");
-    @headervals=unpack("N5", $header);
+    @headervals=unpack("N4", $header);
     
     # Check for valid magic number
     errexit("Invalid magic number for cache file")
@@ -1916,8 +1913,7 @@ sub hdksize ($$$) {
     
     # Retrieve values
     $numchunks = $headervals[3];
-    $dirtychunks = $headervals[4];
-    return ($numchunks, $dirtychunks, $maxchunks, $chunksize);
+    return ($numchunks, $maxchunks, $chunksize);
 }
 
 #
@@ -2228,7 +2224,8 @@ sub conflicting($$$$$$) {
 sub cleantmp () {
     system("rm -f /tmp/*.$$");
     system("rm -rf /tmp/parcel* /tmp/VERSION.srv /tmp/ls.* > /dev/null 2>&1");
-    system("rm -rf $isrdir/tmplast*");
+    system("rm -rf $isrdir/tmplast*")
+	if $isrdir;
 }
 
 #

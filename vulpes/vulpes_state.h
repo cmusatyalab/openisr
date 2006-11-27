@@ -14,13 +14,12 @@ struct ca_header {
   uint32_t entries;
   uint32_t offset;  /* beginning of data, in 512-byte blocks */
   uint32_t valid_chunks;
-  uint32_t dirty_chunks;
+  uint32_t flags;
   uint8_t version;
   uint8_t reserved[491];
 };
 
 #define CA_VALID 0x01
-#define CA_DIRTY 0x02
 
 struct ca_entry {
   uint32_t length;

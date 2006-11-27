@@ -569,37 +569,14 @@ sub isr_statparcel ($$$$) {
     my $isrdir = shift;
     my $checkcache = shift;  # 1->check all 2->local cache 3->hoard cache
 
-    my $num_chunks;
-    my $max_chunks;
-    my $chunksize;
-    my $num_mbytes;
-    my $max_mbytes;
-    my $actual_percent;
-    my $dirty_percent;
-
-    my $num_dirtychunks;
-    my $num_dirtymbytes;
-    my $num_hoarded;
-    my $size_hoarded;
-    my $percent_hoarded;
     my $memsize;
-
-    my $numkeys;
-    my $tag;
-    my $computed_tag;
-    my $i;
-    my $chunkcount;
-    my $numfiles;
-    my $trashcnt = 0;
+    my $checkflag;
 
     my @files = ();
-    my @keyring = ();
-    my %filehash = ();
 
     my $parceldir = "$isrdir/$parcel";
     my $cachedir = "$parceldir/cache";
     my $lastdir = "$parceldir/last";
-    my $hoarddir = "$isrdir/$parcel-hoard";
     
     #
     # Display the size of the memory image (if it exists)
@@ -616,39 +593,15 @@ sub isr_statparcel ($$$$) {
     #
     # Display local cache stats
     #
-    ($num_chunks, $num_dirtychunks, $max_chunks, $chunksize) = 
-	hdksize($userid, $parcel, $isrdir);
-
-    $num_mbytes = int(($num_chunks*$chunksize)/(1<<20));
-    $num_dirtymbytes = int(($num_dirtychunks*$chunksize)/(1<<20));
-    $max_mbytes = int(($max_chunks*$chunksize)/(1<<20));
- 
-    if ($max_mbytes) {
-	$actual_percent = ($num_mbytes/$max_mbytes)*100;
-    } 
-    else {
-	$actual_percent = 0;
-    }
-    if ($num_mbytes) {
-	$dirty_percent = ($num_dirtymbytes/$num_mbytes)*100;
-    }
-    else {
-	$dirty_percent = 0;
-    }
-    printf("Local cache : %d%% populated (%d/%d MB), %d%% modified (%d/%d MB)\n", 
-	    $actual_percent, $num_mbytes, $max_mbytes,
-	    $dirty_percent, $num_dirtymbytes, $num_mbytes);
-
-    printf("num_chunks=$num_chunks, num_dirtychunks=$num_dirtychunks\n")
-	if $main::verbose > 1;
-    
-    #
-    # Check the local cache for consistency (if asked)
-    #
     if ($checkcache == 1 or $checkcache == 2) {
-	print "Checking local cache for internal consistency...\n"
-	    if $main::verbose;
-	isr_priv_checkcache($userid, $parcel, $isrdir);
+	# Verify that each block in cache has a valid keyring tag
+	$checkflag = "--validate";
+    } else {
+	$checkflag = "";
+    }
+    if (-e "$cachedir") {
+	mysystem("$Isr::ISRCLIENTBIN/vulpes examine --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK $checkflag") == 0
+	    or errexit("Could not examine cache");
     }
 
     #
@@ -678,7 +631,6 @@ sub isr_checkhoard ($$$$$) {
     my $trashcnt = 0;
     my $numfiles;
     my $num_chunks;
-    my $num_dirtychunks;
     my $chunkcount;
     my $tag;
     my $computed_tag;
@@ -753,7 +705,7 @@ sub isr_checkhoard ($$$$$) {
     #
     # Display some statistics about the hoard cache
     #
-    ($num_chunks, $num_dirtychunks, $max_chunks, $chunksize) = 
+    ($num_chunks, $max_chunks, $chunksize) = 
 	hdksize($userid, $parcel, $isrdir);
     $max_mbytes = int(($max_chunks*$chunksize)/(1<<20));
     $num_hoarded = isr_stathoard($userid, $parcel, $isrdir);
@@ -1236,29 +1188,6 @@ sub isr_priv_clientcommit($$$) {
     sys_sync();
     sys_sync();
     return $Isr::ESUCCESS;
-}
-
-#
-# isr_priv_checkcache - Checks a cache hdk for self-consistency
-#
-sub isr_priv_checkcache ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-    
-    my $parceldir = "$isrdir/$parcel";
-    my $cachedir = "$parceldir/cache";
-    my $lastdir = "$parceldir/last";
-
-    if (!-e $cachedir) {
-	return 0;
-    }
-
-    #
-    # Verify that each block in cache has a valid keyring tag
-    # 
-    mysystem("$Isr::ISRCLIENTBIN/vulpes check --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
-    	or errexit("Could not validate cache");
 }
 
 #

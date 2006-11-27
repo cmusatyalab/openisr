@@ -87,6 +87,11 @@ static inline void mark_cdp_accessed(struct chunk_data * cdp)
 
 static inline void mark_cdp_modified(struct chunk_data * cdp)
 {
+  cdp->status |= CHUNK_STATUS_MODIFIED;
+}
+
+static inline void mark_cdp_modified_session(struct chunk_data * cdp)
+{
   cdp->status |= CHUNK_STATUS_MODIFIED | CHUNK_STATUS_MODIFIED_SESSION;
 }
 
@@ -138,6 +143,8 @@ static uint64_t get_image_offset_from_chunk_num(unsigned chunk_num)
 
 static inline void mark_cdp_present(struct chunk_data * cdp)
 {
+  if (!cdp_present(cdp))
+    state.valid_chunks++;
   cdp->status |= CHUNK_STATUS_PRESENT;
 }
 
@@ -400,8 +407,6 @@ static vulpes_err_t write_cache_header(int fd)
   struct ca_header hdr;
   struct ca_entry entry;
   unsigned chunk_num;
-  unsigned valid_count=0;
-  unsigned dirty_count=0;
   
   if (lseek(fd, sizeof(hdr), SEEK_SET) != sizeof(hdr)) {
     vulpes_log(LOG_ERRORS, "Couldn't seek cache file");
@@ -414,11 +419,6 @@ static vulpes_err_t write_cache_header(int fd)
     if (cdp_present(cdp)) {
       entry.flags |= CA_VALID;
       entry.length=htonl(cdp->length);
-      valid_count++;
-    }
-    if (cdp_is_modified(cdp)) {
-      entry.flags |= CA_DIRTY;
-      dirty_count++;
     }
     if (write(fd, &entry, sizeof(entry)) != sizeof(entry)) {
       vulpes_log(LOG_ERRORS, "Couldn't write cache file record: %u", chunk_num);
@@ -435,8 +435,7 @@ static vulpes_err_t write_cache_header(int fd)
   hdr.entries=htonl(state.numchunks);
   hdr.version=CA_VERSION;
   hdr.offset=htonl(state.offset_bytes / 512);
-  hdr.valid_chunks=htonl(valid_count);
-  hdr.dirty_chunks=htonl(dirty_count);
+  hdr.valid_chunks=htonl(state.valid_chunks);
   if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr) || fsync(fd)) {
     vulpes_log(LOG_ERRORS, "Couldn't write cache file header");
     return VULPES_IOERR;
@@ -493,8 +492,7 @@ static vulpes_err_t open_cache_file(const char *path)
     return VULPES_BADFORMAT;
   }
   state.offset_bytes=ntohl(hdr.offset) * SECTOR_SIZE;
-  state.valid_chunks_on_open=ntohl(hdr.valid_chunks);
-  state.dirty_chunks_on_open=ntohl(hdr.dirty_chunks);
+  /* Don't trust valid_chunks field; it's informational only */
   
   for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
     if (read(fd, &entry, sizeof(entry)) != sizeof(entry)) {
@@ -506,8 +504,6 @@ static vulpes_err_t open_cache_file(const char *path)
       mark_cdp_present(cdp);
       cdp->length=ntohl(entry.length);
     }
-    if (entry.flags & CA_DIRTY)
-      mark_cdp_modified(cdp);
   }
   vulpes_log(LOG_BASIC, "Read cache header");
   state.cachefile_fd=fd;
@@ -624,7 +620,7 @@ static vulpes_err_t strip_compression(unsigned chunk_num, void **buf,
   
   updateKey(chunk_num, newkey, newtag);
   mark_cdp_uncompressed(cdp);
-  mark_cdp_modified(cdp);
+  mark_cdp_modified_session(cdp);
   chunks_stripped++;
   free(*buf);
   *buf=encrypted;
@@ -741,38 +737,45 @@ static vulpes_err_t load_keyring(int prev)
   return ret;
 }
 
-/* If the new tag for a chunk is identical to the old one, remove the modified
-   bit since we don't need to re-upload.  This might happen if the
-   guest writes out data identical to the data already in the chunk. */
-static vulpes_err_t scrub_modified_flag(void)
+/* Wrapper for load_keyring which allocates the prev_chunk_data array and
+   loads the prev keyring *if* it hasn't already been done. */
+static vulpes_err_t get_prev_keyring(void)
+{
+  if (state.pcd != NULL)
+    return VULPES_SUCCESS;
+  state.pcd=malloc(state.numchunks * sizeof(struct prev_chunk_data));
+  if (state.pcd == NULL) {
+    vulpes_log(LOG_ERRORS,"malloc failed");
+    return VULPES_NOMEM;
+  }
+  memset(state.pcd, 0, state.numchunks * sizeof(struct prev_chunk_data));
+  return load_keyring(1);
+}
+
+static vulpes_err_t update_modified_flags(unsigned *dirty_count)
 {
   struct chunk_data *cdp;
   struct prev_chunk_data *pcdp;
   unsigned chunk_num;
   vulpes_err_t ret;
+  unsigned dirty=0;
   
-  if (state.pcd == NULL) {
-    state.pcd=malloc(state.numchunks * sizeof(struct prev_chunk_data));
-    if (state.pcd == NULL) {
-      vulpes_log(LOG_ERRORS,"malloc failed");
-      return VULPES_NOMEM;
-    }
-    memset(state.pcd, 0, state.numchunks * sizeof(struct prev_chunk_data));
-    ret=load_keyring(1);
-    if (ret)
-      return ret;
-  }
+  ret=get_prev_keyring();
+  if (ret)
+    return ret;
   
   for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
     cdp=get_cdp_from_chunk_num(chunk_num);
-    if (cdp_is_modified(cdp)) {
-      pcdp=get_pcdp_from_chunk_num(chunk_num);
-      if (check_tag(cdp, pcdp->tag) == VULPES_SUCCESS) {
-	vulpes_log(LOG_CHUNKS,"Chunk modified but tag equal; marking unmodified: %u",chunk_num);
-	mark_cdp_not_modified(cdp);
-      }
+    pcdp=get_pcdp_from_chunk_num(chunk_num);
+    if (check_tag(cdp, pcdp->tag) == VULPES_SUCCESS) {
+      mark_cdp_not_modified(cdp);
+    } else {
+      mark_cdp_modified(cdp);
+      dirty++;
     }
   }
+  if (dirty_count != NULL)
+    *dirty_count=dirty;
   return VULPES_SUCCESS;
 }
 
@@ -805,13 +808,6 @@ vulpes_err_t cache_shutdown(void)
     return ret;
   }
   
-  /* Update modified flag based on the old keyring */
-  if (scrub_modified_flag()) {
-    vulpes_log(LOG_ERRORS,"couldn't update modified flags");
-    /* Non-fatal.  Upload will fail its consistency check later, but an
-       intervening resume will fix it. */
-  }
-  
   /* Gather statistics */
   for (chunk_num=0; chunk_num < state.numchunks; chunk_num++) {
     cdp=get_cdp_from_chunk_num(chunk_num);
@@ -826,6 +822,10 @@ vulpes_err_t cache_shutdown(void)
   close(state.cachefile_fd);
   free(state.cd);
   state.cd = NULL;
+  if (state.pcd != NULL) {
+    free(state.pcd);
+    state.pcd = NULL;
+  }
   
   /* Print close stats */
   vulpes_log(LOG_STATS,"CHUNKS_ACCESSED:%u",accessed_chunks);
@@ -887,7 +887,7 @@ void cache_update(const struct isr_message *req)
     mark_cdp_accessed(cdp);
     writes_before_read++;
   }
-  mark_cdp_modified(cdp);
+  mark_cdp_modified_session(cdp);
   if (req->compression == ISR_COMPRESS_NONE)
     mark_cdp_uncompressed(cdp);
   else
@@ -1003,8 +1003,13 @@ int copy_for_upload(void)
   uint64_t modified_bytes=0;
   FILE *fp;
   char calc_tag[HASH_LEN];
+  unsigned dirty_count;
   
   vulpes_log(LOG_BASIC,"Copying chunks to upload directory %s",config.dest_dir_name);
+  if (update_modified_flags(&dirty_count)) {
+    vulpes_log(LOG_ERRORS,"Couldn't compare keyrings");
+    return 1;
+  }
   buf=malloc(state.chunksize_bytes);
   if (buf == NULL) {
     vulpes_log(LOG_ERRORS,"malloc failed");
@@ -1026,10 +1031,11 @@ int copy_for_upload(void)
   for (u=0; u < state.numchunks; u++) {
     cdp=get_cdp_from_chunk_num(u);
     if (cdp_is_modified(cdp)) {
-      print_progress(++examined_chunks, state.dirty_chunks_on_open);
+      print_progress(++examined_chunks, dirty_count);
       if (!cdp_present(cdp)) {
+	/* XXX damaged cache file; we need to be able to recover */
 	vulpes_log(LOG_ERRORS,"Chunk modified but not present: %u",u);
-	continue;
+	return 1;
       }
       if (form_chunk_file_name(name, sizeof(name), config.dest_dir_name, u)) {
 	vulpes_log(LOG_ERRORS,"Couldn't form chunk filename: %u",u);
@@ -1078,7 +1084,7 @@ int copy_for_upload(void)
   return 0;
 }
 
-int checktags(void)
+static int validate_cache(void)
 {
   void *buf;
   unsigned chunk_num;
@@ -1087,6 +1093,7 @@ int checktags(void)
   unsigned processed=0;
   
   vulpes_log(LOG_BASIC,"Checking cache consistency");
+  printf("Checking local cache for internal consistency...\n");
   buf=malloc(state.chunksize_bytes);
   if (buf == NULL) {
     vulpes_log(LOG_ERRORS,"malloc failed");
@@ -1107,9 +1114,38 @@ int checktags(void)
       vulpes_log(LOG_ERRORS,"Chunk %u: tag check failure",chunk_num);
       print_tag_check_error(cdp->tag, tag);
     }
-    print_progress(++processed, state.valid_chunks_on_open);
+    print_progress(++processed, state.valid_chunks);
   }
   free(buf);
   printf("\n");
   return 0;
+}
+
+int examine_cache(void)
+{
+  unsigned dirtychunks;
+  unsigned max_mb;
+  unsigned valid_mb;
+  unsigned dirty_mb;
+  unsigned valid_pct=0;
+  unsigned dirty_pct=0;
+  
+  if (update_modified_flags(&dirtychunks)) {
+    vulpes_log(LOG_ERRORS,"Couldn't compare keyrings");
+    return 1;
+  }
+  max_mb=(((unsigned long long)state.numchunks) * state.chunksize_bytes) >> 20;
+  valid_mb=(((unsigned long long)state.valid_chunks) * state.chunksize_bytes) >> 20;
+  dirty_mb=(((unsigned long long)dirtychunks) * state.chunksize_bytes) >> 20;
+  if (state.numchunks)
+    valid_pct=(100 * state.valid_chunks) / state.numchunks;
+  if (state.valid_chunks)
+    dirty_pct=(100 * dirtychunks) / state.valid_chunks;
+  printf("Local cache : %u%% populated (%u/%u MB), %u%% modified (%u/%u MB)\n",
+    valid_pct, valid_mb, max_mb, dirty_pct, dirty_mb, valid_mb);
+  
+  if (config.check_consistency)
+    return validate_cache();
+  else
+    return 0;
 }

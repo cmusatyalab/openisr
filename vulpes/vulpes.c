@@ -36,7 +36,7 @@ struct vulpes_state state;
 enum mode_type {
   MODE_RUN      = 0x01,
   MODE_UPLOAD   = 0x02,
-  MODE_CHECK    = 0x04,
+  MODE_EXAMINE  = 0x04,
   MODE_HELP     = 0x08,
   MODE_VERSION  = 0x10,
   MODE_SYNC     = 0x20,
@@ -52,7 +52,7 @@ static struct vulpes_mode vulpes_modes[] = {
   {"run",       MODE_RUN,     "Bind and service a virtual disk"},
   {"upload",    MODE_UPLOAD,  "Split a cache file into individual chunks for upload"},
   {"sync",      MODE_SYNC,    "Update cache file metadata after an upload"},
-  {"check",     MODE_CHECK,   "Validate cache file against keyring"},
+  {"examine",   MODE_EXAMINE, "Print cache statistics and optionally validate vs. keyring"},
   {"help",      MODE_HELP,    "Show usage summary"},
   {"version",   MODE_VERSION, "Show version information"},
   {0}
@@ -91,9 +91,10 @@ enum option {
   OPT_FOREGROUND,
   OPT_PID,
   OPT_MODE,
+  OPT_VALIDATE,
 };
 
-#define NONTRIVIAL_MODES (MODE_RUN|MODE_UPLOAD|MODE_SYNC|MODE_CHECK)
+#define NONTRIVIAL_MODES (MODE_RUN|MODE_UPLOAD|MODE_SYNC|MODE_EXAMINE)
 static struct vulpes_option vulpes_options[] = {
   {"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
   {"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
@@ -101,6 +102,7 @@ static struct vulpes_option vulpes_options[] = {
   {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, NONTRIVIAL_MODES               , {"old_hex_keyring_file", "old_bin_keyring_file"}},
   {"lka",            OPT_LKA,            ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
   {"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
+  {"validate",       OPT_VALIDATE,       OPTIONAL, MODE_EXAMINE                   , {}},
   {"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES               , {"logfile", "info_str", "filemask", "stdoutmask"}},
   {"proxy",          OPT_PROXY,          OPTIONAL, MODE_RUN                       , {"proxy_server", "port_number"},                         "proxy_server is the ip address or the hostname of the proxy"},
   {"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
@@ -290,6 +292,9 @@ int main(int argc, char *argv[])
     case OPT_DESTDIR:
       config.dest_dir_name=optparams[0];
       break;
+    case OPT_VALIDATE:
+      config.check_consistency=1;
+      break;
     case OPT_LOG:
       config.log_file_name=optparams[0];
       config.log_infostr=optparams[1];
@@ -359,8 +364,8 @@ int main(int argc, char *argv[])
     /* Do nothing; we just want the side-effects of cache_shutdown() */
     ret=0;
     break;
-  case MODE_CHECK:
-    ret=checktags();
+  case MODE_EXAMINE:
+    ret=examine_cache();
     break;
   case MODE_RUN:
     /* Initialize transport */
