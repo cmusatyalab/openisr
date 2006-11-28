@@ -87,7 +87,7 @@ enum option {
   OPT_PROXY,
   OPT_DESTDIR,
   OPT_FOREGROUND,
-  OPT_PID,
+  OPT_LOCKDIR,
   OPT_MODE,
   OPT_VALIDATE,
 };
@@ -98,13 +98,13 @@ static struct vulpes_option vulpes_options[] = {
   {"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
   {"keyring",        OPT_KEYRING,        REQUIRED, NONTRIVIAL_MODES               , {"hex_keyring_file", "binary_keyring_file"}},
   {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, NONTRIVIAL_MODES               , {"old_hex_keyring_file", "old_bin_keyring_file"}},
-  {"lka",            OPT_LKA,            ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
   {"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
+  {"lockdir",        OPT_LOCKDIR,        REQUIRED, NONTRIVIAL_MODES               , {"lock_dir"},                                            "Directory for lock and pid files"},
+  {"lka",            OPT_LKA,            ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
   {"validate",       OPT_VALIDATE,       OPTIONAL, MODE_EXAMINE                   , {}},
   {"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES               , {"logfile", "info_str", "filemask", "stdoutmask"}},
   {"proxy",          OPT_PROXY,          OPTIONAL, MODE_RUN                       , {"proxy_server", "port_number"},                         "proxy_server is the ip address or the hostname of the proxy"},
   {"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
-  {"pid",            OPT_PID,            OPTIONAL, MODE_RUN                       , {},                                                      "Print process ID at startup"},
   {"mode",           OPT_MODE,           OPTIONAL, MODE_HELP                      , {"mode"},                                                "Print detailed usage message about the given mode"},
   {0}
 };
@@ -248,6 +248,7 @@ int main(int argc, char *argv[])
   int foreground;
   char ret=1;
   int ret_fd=-1;
+  int have_lock=0;
   vulpes_err_t err;
   
   /* Parse mode */
@@ -272,8 +273,8 @@ int main(int argc, char *argv[])
     case OPT_FOREGROUND:
       foreground=1;
       break;
-    case OPT_PID:
-      printf("VULPES: pid = %u\n", (unsigned) getpid());
+    case OPT_LOCKDIR:
+      config.lockdir_name=optparams[0];
       break;
     case OPT_CACHE:
       config.cache_name=optparams[0];
@@ -347,11 +348,30 @@ int main(int argc, char *argv[])
   if (!foreground && fork_and_wait(&ret_fd))
     goto vulpes_exit;
   
+  /* Get lock */
+  err=acquire_lock();
+  if (err) {
+    vulpes_log(LOG_ERRORS,"Couldn't lock parcel: %s",vulpes_strerror(err));
+    goto vulpes_exit;
+  }
+  have_lock=1;
+  
   /* Start vulpes log */
   if (vulpes_log_init())
     goto vulpes_exit;
   vulpes_log(LOG_BASIC,"Starting. Revision: %s (%s), PID: %u",
              svn_revision, svn_branch, (unsigned)getpid());
+  
+  /* Remove stale pidfile, if any */
+  remove_pidfile();
+  if (!foreground) {
+    /* and create a new one */
+    err=create_pidfile();
+    if (err) {
+      vulpes_log(LOG_ERRORS,"Couldn't create pidfile: %s",vulpes_strerror(err));
+      goto vulpes_exit;
+    }
+  }
   
   /* Initialize the cache */
   err=cache_init();
@@ -420,6 +440,10 @@ int main(int argc, char *argv[])
  vulpes_exit:
   vulpes_log(LOG_BASIC,"Exiting: status %d",ret);
   vulpes_log_close();
+  if (have_lock) {
+    remove_pidfile();  /* If none exists, no harm done */
+    release_lock();
+  }
   if (ret_fd != -1)
     write(ret_fd, &ret, sizeof(ret));
   return ret;

@@ -126,6 +126,8 @@ char *vulpes_strerror(vulpes_err_t err)
     return "Driver protocol error";
   case VULPES_NETFAIL:
     return "Network failure";
+  case VULPES_BUSY:
+    return "Object busy";
   }
   return "(Unknown)";
 }
@@ -219,6 +221,92 @@ void print_progress(unsigned chunks, unsigned maxchunks)
   printf("\x1b[A");
 }
 
+static vulpes_err_t form_lockfile_name(char *buf, int len)
+{
+  int ret=snprintf(buf, len, "%s/vulpes.lock", config.lockdir_name);
+  if (ret == -1 || ret >= len)
+    return VULPES_OVERFLOW;
+  return VULPES_SUCCESS;
+}
+
+static vulpes_err_t form_pidfile_name(char *buf, int len)
+{
+  int ret=snprintf(buf, len, "%s/vulpes.pid", config.lockdir_name);
+  if (ret == -1 || ret >= len)
+    return VULPES_OVERFLOW;
+  return VULPES_SUCCESS;
+}
+
+/* Create lock file.  flock locks don't work over NFS; byterange locks don't
+   work over AFS; and dotlocks are difficult to check for freshness.  So
+   we use a whole-file fcntl lock.  The lock shouldn't become stale because the
+   kernel checks that for us; however, over NFS file systems without a lock
+   manager, locking will fail.  For safety, we treat that as an error. */
+vulpes_err_t acquire_lock(void)
+{
+  char name[MAX_PATH_LENGTH];
+  int fd;
+  struct flock lock = {
+    .l_type   = F_WRLCK,
+    .l_whence = SEEK_SET,
+    .l_start  = 0,
+    .l_len    = 0
+  };
+  
+  if (form_lockfile_name(name, sizeof(name)))
+    return VULPES_OVERFLOW;
+  fd=open(name, O_CREAT|O_WRONLY, 0666);
+  if (fd == -1) {
+    vulpes_log(LOG_ERRORS,"Couldn't open lock file %s",name);
+    return VULPES_IOERR;
+  }
+  if (fcntl(fd, F_SETLK, &lock)) {
+    close(fd);
+    if (errno == EACCES || errno == EAGAIN)
+      return VULPES_BUSY;
+    else
+      return VULPES_CALLFAIL;
+  }
+  state.lock_fd=fd;
+  return VULPES_SUCCESS;
+}
+
+void release_lock(void)
+{
+  char name[MAX_PATH_LENGTH];
+  
+  if (form_lockfile_name(name, sizeof(name)))
+    return;
+  unlink(name);
+  close(state.lock_fd);
+}
+
+vulpes_err_t create_pidfile(void)
+{
+  char name[MAX_PATH_LENGTH];
+  FILE *fp;
+  
+  if (form_pidfile_name(name, sizeof(name)))
+    return VULPES_OVERFLOW;
+  fp=fopen(name, "w");
+  if (fp == NULL) {
+    vulpes_log(LOG_ERRORS,"Couldn't open pid file %s",name);
+    return VULPES_IOERR;
+  }
+  fprintf(fp, "%d\n", getpid());
+  fclose(fp);
+  return VULPES_SUCCESS;
+}
+
+void remove_pidfile(void)
+{
+  char name[MAX_PATH_LENGTH];
+  
+  if (form_pidfile_name(name, sizeof(name)))
+    return;
+  unlink(name);
+}
+
 /* Fork, and have the parent wait for the child to indicate that the parent
    should exit.  In the parent, this returns only on error.  In the child, it
    returns success and sets *status_fd.  If the child writes a byte to the fd,
@@ -258,4 +346,3 @@ vulpes_err_t fork_and_wait(int *status_fd)
   }
   return VULPES_SUCCESS;
 }
-

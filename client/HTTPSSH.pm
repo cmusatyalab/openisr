@@ -306,7 +306,7 @@ sub isr_run_vulpes ($$$) {
     #
     # Crank up Vulpes with all the right arguments
     #
-    $retval = system("$vulpescmd run --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $Isr::LOGMASK $Isr::CONSOLE_LOGMASK");
+    $retval = system("$vulpescmd run --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $Isr::LOGMASK $Isr::CONSOLE_LOGMASK");
 
     return $retval;
 }
@@ -600,7 +600,7 @@ sub isr_statparcel ($$$$) {
 	$checkflag = "";
     }
     if (-e "$cachedir") {
-	mysystem("$Isr::ISRCLIENTBIN/vulpes examine --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK $checkflag") == 0
+	mysystem("$Isr::ISRCLIENTBIN/vulpes examine --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK $checkflag") == 0
 	    or errexit("Could not examine cache");
     }
 
@@ -837,7 +837,7 @@ sub isr_priv_upload ($$$) {
     #
     if (!-e $cdcache_file) {
 	($dirtybytes, $dirtyblocks) = 
-	    copy_dirtychunks($cachedir, $lastdir, $tmpdir);
+	    copy_dirtychunks($parceldir);
 	open(FLAG, ">$cdcache_file")
 	    or unix_errexit("Unable to create dirty cache flag ($cdcache_file)");
 	close FLAG;
@@ -903,11 +903,13 @@ sub isr_priv_upload ($$$) {
 #
 # copy_dirtychunks - Build temp cache tree and populate it with dirty state
 #
-sub copy_dirtychunks ($$$) {
-    my $cachedir = shift;
-    my $lastdir = shift;
-    my $tmpdir = shift;
+sub copy_dirtychunks ($) {
+    my $parceldir = shift;
 
+    my $lastdir = "$parceldir/last";
+    my $cachedir = "$parceldir/cache";
+    my $tmpdir = "$parceldir/tmp";
+    
     my $dirtyblocks;
     my $dirtybytes;
     my $target;
@@ -962,7 +964,7 @@ sub copy_dirtychunks ($$$) {
     #
     print("Collecting modified disk state...\n")
 	if $main::verbose;
-    mysystem("$Isr::ISRCLIENTBIN/vulpes upload --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --destdir $tmpdir/cache/hdk --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
+    mysystem("$Isr::ISRCLIENTBIN/vulpes upload --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --destdir $tmpdir/cache/hdk --lockdir $parceldir --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
     # Hack to get stats from vulpes
     open(STATFILE, "$tmpdir/cache/hdk/stats");

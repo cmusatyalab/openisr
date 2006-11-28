@@ -29,6 +29,7 @@ typedef enum vulpes_err {
   VULPES_CALLFAIL,
   VULPES_PROTOFAIL,
   VULPES_NETFAIL,  /* Used instead of IOERR if a retry might fix it */
+  VULPES_BUSY,
 } vulpes_err_t;
 
 enum transfer_type {
@@ -43,6 +44,7 @@ extern struct vulpes_config {
   char* proxy_name;
   long  proxy_port;
   
+  char *lockdir_name;
   char *master_name;
   char *cache_name;
   char *hex_keyring_name;
@@ -80,6 +82,7 @@ extern struct vulpes_state {
   int chardev_fd;
   int loopdev_fd;
   int signal_fds[2];
+  int lock_fd;
   FILE *log_fp;
   unsigned offset_bytes;
   struct chunk_data *cd;		/* cd[] */
