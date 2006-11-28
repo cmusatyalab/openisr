@@ -55,7 +55,7 @@ sub deauthenticate ();
 sub passwd ($);
 sub release ($$$);
 sub clean ($$$$);
-sub resetclient ($$$);
+sub resetclient ();
 sub cleanclient ($$$$);
 sub update ();
 sub killvulpes ();
@@ -450,8 +450,7 @@ elsif ($command eq "passwd") {
     passwd($userid);
 }
 elsif ($command eq "reset") {
-    need_network();
-    resetclient($userid, $parcel, $isrdir);
+    resetclient();
 }
 elsif ($command eq "clean") {
     need_parcel();
@@ -1442,14 +1441,13 @@ sub update () {
 #
 # resetclient - Resets the ISR runtime
 #
-sub resetclient ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
+sub resetclient () {
+    query("Really terminate all running ISR processes?") eq "y"
+	or return;
 
     print("Terminating any Vulpes processes.\n")
 	if $verbose;
-    killvulpes();
+    system("killall vulpes > /dev/null 2>&1");
 
     print("Terminating any VMWare processes.\n")
 	if $verbose;
