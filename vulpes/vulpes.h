@@ -90,6 +90,7 @@ extern struct vulpes_state {
   struct prev_chunk_data *pcd;		/* pcd[] */
   unsigned long long request_count;
   struct curl_connection *curl_conn;
+  int bdev_index;
 } state;
 
 struct isr_message;

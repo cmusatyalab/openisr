@@ -204,6 +204,7 @@ vulpes_err_t driver_init(void)
   }
   fprintf(fp, "/dev/openisr%c\n", 'a' + setup.index);
   fclose(fp);
+  state.bdev_index=setup.index;
   vulpes_log(LOG_BASIC,"Registered with driver");
   return VULPES_SUCCESS;
 }
@@ -215,7 +216,8 @@ static void log_counter_value(char *attr)
   unsigned value;
   char *endptr;
   
-  snprintf(fname, sizeof(fname), "/sys/class/openisr/openisra/%s", attr);
+  snprintf(fname, sizeof(fname), "/sys/class/openisr/openisr%c/%s",
+				 'a' + state.bdev_index, attr);
   if (read_sysfs_file(fname, buf, sizeof(buf))) {
     vulpes_log(LOG_STATS,"%s:unknown",attr);
   } else {
