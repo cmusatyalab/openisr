@@ -219,3 +219,43 @@ void print_progress(unsigned chunks, unsigned maxchunks)
   printf("\x1b[A");
 }
 
+/* Fork, and have the parent wait for the child to indicate that the parent
+   should exit.  In the parent, this returns only on error.  In the child, it
+   returns success and sets *status_fd.  If the child writes a byte to the fd,
+   the parent will exit with that byte as its exit status.  If the child closes
+   the fd without writing anything, the parent will exit(0). */
+vulpes_err_t fork_and_wait(int *status_fd)
+{
+  int fds[2];
+  pid_t pid;
+  char ret=1;
+  
+  /* Make sure the child isn't killed if the parent dies */
+  if (set_signal_handler(SIGPIPE, SIG_IGN)) {
+    vulpes_log(LOG_ERRORS,"Couldn't block SIGPIPE");
+    return VULPES_CALLFAIL;
+  }
+  if (pipe(fds)) {
+    vulpes_log(LOG_ERRORS,"Can't create pipe");
+    return VULPES_CALLFAIL;
+  }
+  
+  pid=fork();
+  if (pid == -1) {
+    vulpes_log(LOG_ERRORS,"fork() failed");
+    return VULPES_CALLFAIL;
+  } else if (pid) {
+    /* Parent */
+    close(fds[1]);
+    if (read(fds[0], &ret, sizeof(ret)) == 0)
+      exit(0);
+    else
+      exit(ret);
+  } else {
+    /* Child */
+    close(fds[0]);
+    *status_fd=fds[1];
+  }
+  return VULPES_SUCCESS;
+}
+

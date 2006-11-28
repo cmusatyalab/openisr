@@ -245,12 +245,12 @@ int main(int argc, char *argv[])
 {
   struct vulpes_mode *help_mode=NULL;
   int opt;
-  int foreground=0;
-  pid_t pid;
-  int ret=1;
+  int foreground;
+  char ret=1;
+  int ret_fd=-1;
   vulpes_err_t err;
   
-  /* parse command line */
+  /* Parse mode */
   progname=argv[0];
   if (argc < 2) {
     usage(NULL);
@@ -259,6 +259,14 @@ int main(int argc, char *argv[])
   if (curmode == NULL)
     PARSE_ERROR("Unknown subcommand %s", argv[1]);
   
+  /* Set defaults */
+  /* If --log is not specified, log errors to stdout */
+  config.log_infostr=":";
+  config.log_stdout_mask=0x1;
+  /* Run in foreground except in run mode */
+  foreground=(curmode->type != MODE_RUN);
+  
+  /* Parse command line */
   while ((opt=vulpes_getopt(argc, argv, vulpes_options)) != -1) {
     switch (opt) {
     case OPT_FOREGROUND:
@@ -309,10 +317,10 @@ int main(int argc, char *argv[])
 	PARSE_ERROR("invalid LKA type.");
       if(config.lka_svc == NULL)
 	if(vulpes_lka_open())
-	  printf("WARNING: unable to open lka service.\n");
+	  vulpes_log(LOG_ERRORS,"unable to open lka service");
       if(config.lka_svc != NULL)
 	if(vulpes_lka_add(LKA_HFS, LKA_TAG_SHA1, optparams[1]))
-	  printf("WARNING: unable to add lka database %s.\n", optparams[1]);
+	  vulpes_log(LOG_ERRORS,"unable to add lka database %s",optparams[1]);
       break;
     case OPT_MODE:
       help_mode=parse_mode(optparams[0]);
@@ -322,7 +330,8 @@ int main(int argc, char *argv[])
     }
   }
   
-  /* Handle trivial modes before we start the log */
+  /* Handle trivial modes here so we don't have to go through the
+     startup sequence. */
   switch (curmode->type) {
   case MODE_HELP:
     usage(help_mode);
@@ -334,12 +343,11 @@ int main(int argc, char *argv[])
     break;
   }
   
+  /* If we're going to run in the background, fork. */
+  if (!foreground && fork_and_wait(&ret_fd))
+    goto vulpes_exit;
+  
   /* Start vulpes log */
-  if (config.log_file_name == NULL) {
-    /* If --log is not specified, log errors to stdout with an empty infostr */
-    config.log_infostr=":";
-    config.log_stdout_mask=0x1;
-  }
   if (vulpes_log_init())
     goto vulpes_exit;
   vulpes_log(LOG_BASIC,"Starting. Revision: %s (%s), PID: %u",
@@ -374,14 +382,11 @@ int main(int argc, char *argv[])
       goto vulpes_exit;
     }
     
-    if (!foreground) {
-      pid=fork();
-      if (pid == -1) {
-	vulpes_log(LOG_ERRORS,"fork() failed");
-	goto vulpes_exit;
-      } else if (pid) {
-	exit(0);
-      }
+    /* Okay, now we're running.  Notify the parent, if any. */
+    vulpes_log(LOG_BASIC,"Initialization complete");
+    if (ret_fd != -1) {
+      close(ret_fd);
+      ret_fd=-1;
     }
     ret=0;
     
@@ -415,5 +420,7 @@ int main(int argc, char *argv[])
  vulpes_exit:
   vulpes_log(LOG_BASIC,"Exiting: status %d",ret);
   vulpes_log_close();
+  if (ret_fd != -1)
+    write(ret_fd, &ret, sizeof(ret));
   return ret;
 }

@@ -48,7 +48,7 @@ vulpes_err_t vulpes_log_init(void)
     return VULPES_SUCCESS;
   
   if ((state.log_fp = fopen(config.log_file_name, "a")) == NULL) {
-    printf("[vulpes_log] Could not create or open %s in write mode\n",config.log_file_name);
+    vulpes_log(LOG_ERRORS,"Could not create or open %s in write mode",config.log_file_name);
     return VULPES_IOERR;
   }
   return VULPES_SUCCESS;
@@ -56,12 +56,15 @@ vulpes_err_t vulpes_log_init(void)
 
 void vulpes_log_close(void)
 {
+  int ret;
+  
   if (state.log_fp == NULL)
     return;
   
-  if (fclose(state.log_fp))
-    printf("[vulpes_log] Close of logging file failed.\n");
+  ret=fclose(state.log_fp);
   state.log_fp=NULL;
+  if (ret)
+    vulpes_log(LOG_ERRORS,"Close of logging file failed");
 }
 
 static inline int log_msgtype_active_file(enum logmsgtype msgtype)
@@ -74,6 +77,8 @@ static inline int log_msgtype_active_stdout(enum logmsgtype msgtype)
   return ((1<<msgtype) & config.log_stdout_mask) ? 1 : 0;
 }
 
+/* This may be called at any time, whether vulpes_log_init() has been called
+   or not */
 void _vulpes_log(enum logmsgtype msgtype, const char *func,
                 const char *format, ...)
 {

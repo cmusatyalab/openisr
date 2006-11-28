@@ -16,6 +16,7 @@ void binToHex(const unsigned char *bin, unsigned char *hex, int binBytes);
 void hexToBin(const unsigned char *hex, unsigned char *bin, int binBytes);
 int set_signal_handler(int sig, void (*handler)(int sig));
 void print_progress(unsigned chunks, unsigned maxchunks);
+vulpes_err_t fork_and_wait(int *status_fd);
 
 #define min(a,b) ((a) < (b) ? (a) : (b))
 #define max(a,b) ((a) > (b) ? (a) : (b))
