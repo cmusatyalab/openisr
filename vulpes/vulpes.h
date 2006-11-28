@@ -70,6 +70,7 @@ extern struct vulpes_state {
   char index_name[MAX_PATH_LENGTH];
   char image_name[MAX_PATH_LENGTH];
   char loopdev_name[MAX_PATH_LENGTH];
+  char devfile_name[MAX_PATH_LENGTH];
   unsigned version;
   unsigned chunksize_bytes;
   unsigned chunksperdir;

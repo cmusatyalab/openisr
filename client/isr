@@ -728,6 +728,7 @@ sub run ($$$$) {
     my $sigset;
     my $vmware_opts;
     my $vulpespid;
+    my $devnode;
     
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
@@ -814,7 +815,14 @@ sub run ($$$$) {
     $killvulpes = 1;  # Tells the SIGINT handler to cleanly terminate Vulpes
     isr_run_vulpes($userid, $parceldir, $disconnected) == 0
 	or errexit("Unable to launch Vulpes.");	
-	
+    
+    # Find out what device node we'll be using
+    open(DEVFILE, "$parceldir/vulpes.dev")
+    	or unix_errexit("Can't open $parceldir/vulpes.dev");
+    chomp($devnode = <DEVFILE>);
+    close(DEVFILE);
+    message("INFO", "Using device node $devnode");
+    
     # Wait for udev to catch up
     $iters = 0;
     while (1) {
@@ -823,11 +831,11 @@ sub run ($$$$) {
 	if ($vulpespid == 0) {
 	    errexit("Vulpes died unexpectedly");
 	}
-	last if -e "/dev/openisra";
+	last if -e $devnode;
 	# Sleep 100 ms
 	select(undef, undef, undef, 0.1);
 	# Give up after 15 s
-	errexit("Timed out waiting for device node creation")
+	errexit("Timed out waiting for creation of device node $devnode")
 	    if (++$iters == 150);
     };
 
@@ -837,7 +845,7 @@ sub run ($$$$) {
     if (!$noautoflag) {
         $vmware_opts = "-X";
     }
-    mysystem("LD_PRELOAD=libvdisk.so.0 VDISK_DEVICE=/dev/openisra $Isr::VMCOMMAND $vmware_opts $cachedir/cfg/$cfgfile") == 0
+    mysystem("LD_PRELOAD=libvdisk.so.0 VDISK_DEVICE=$devnode $Isr::VMCOMMAND $vmware_opts $cachedir/cfg/$cfgfile") == 0
 	or system_errexit("VMWare terminated abnormally.");
 
     # Wait here until the user suspends VMWare

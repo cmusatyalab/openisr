@@ -10,6 +10,9 @@
 #include "vulpes_log.h"
 #include "vulpes_util.h"
 
+#define LOCKFILE_NAME "vulpes.lock"
+#define PIDFILE_NAME "vulpes.pid"
+
 int is_dir(const char *name)
 {
   struct stat s;
@@ -221,17 +224,10 @@ void print_progress(unsigned chunks, unsigned maxchunks)
   printf("\x1b[A");
 }
 
-static vulpes_err_t form_lockfile_name(char *buf, int len)
+vulpes_err_t form_lockdir_file_name(char *buf, int len,
+			const char *suffix)
 {
-  int ret=snprintf(buf, len, "%s/vulpes.lock", config.lockdir_name);
-  if (ret == -1 || ret >= len)
-    return VULPES_OVERFLOW;
-  return VULPES_SUCCESS;
-}
-
-static vulpes_err_t form_pidfile_name(char *buf, int len)
-{
-  int ret=snprintf(buf, len, "%s/vulpes.pid", config.lockdir_name);
+  int ret=snprintf(buf, len, "%s/%s", config.lockdir_name, suffix);
   if (ret == -1 || ret >= len)
     return VULPES_OVERFLOW;
   return VULPES_SUCCESS;
@@ -253,7 +249,7 @@ vulpes_err_t acquire_lock(void)
     .l_len    = 0
   };
   
-  if (form_lockfile_name(name, sizeof(name)))
+  if (form_lockdir_file_name(name, sizeof(name), LOCKFILE_NAME))
     return VULPES_OVERFLOW;
   fd=open(name, O_CREAT|O_WRONLY, 0666);
   if (fd == -1) {
@@ -275,7 +271,7 @@ void release_lock(void)
 {
   char name[MAX_PATH_LENGTH];
   
-  if (form_lockfile_name(name, sizeof(name)))
+  if (form_lockdir_file_name(name, sizeof(name), LOCKFILE_NAME))
     return;
   unlink(name);
   close(state.lock_fd);
@@ -286,7 +282,7 @@ vulpes_err_t create_pidfile(void)
   char name[MAX_PATH_LENGTH];
   FILE *fp;
   
-  if (form_pidfile_name(name, sizeof(name)))
+  if (form_lockdir_file_name(name, sizeof(name), PIDFILE_NAME))
     return VULPES_OVERFLOW;
   fp=fopen(name, "w");
   if (fp == NULL) {
@@ -302,7 +298,7 @@ void remove_pidfile(void)
 {
   char name[MAX_PATH_LENGTH];
   
-  if (form_pidfile_name(name, sizeof(name)))
+  if (form_lockdir_file_name(name, sizeof(name), PIDFILE_NAME))
     return;
   unlink(name);
 }

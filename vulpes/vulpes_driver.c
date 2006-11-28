@@ -17,8 +17,9 @@
 static const int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
 			SIGABRT, SIGTERM, SIGTSTP, 0};
 
+#define DEVFILE_NAME "vulpes.dev"
 #define REQUESTS_PER_SYSCALL 64
-#define MY_INTERFACE_VERSION 3
+#define MY_INTERFACE_VERSION 4
 #if MY_INTERFACE_VERSION != ISR_INTERFACE_VERSION
 #error This code uses a different interface version than the one defined in convergent-user.h
 #endif
@@ -102,6 +103,7 @@ vulpes_err_t driver_init(void)
   char protocol[8];
   unsigned protocol_i;
   struct utsname utsname;
+  FILE *fp;
   
   /* Check driver version */
   if (!is_dir("/sys/class/openisr")) {
@@ -165,10 +167,23 @@ vulpes_err_t driver_init(void)
     }
   }
   
+  /* Open the regular file that will contain the name of the device node
+     we receive */
+  if (form_lockdir_file_name(state.devfile_name, sizeof(state.devfile_name), DEVFILE_NAME))
+    return VULPES_OVERFLOW;
+  fp=fopen(state.devfile_name, "w");
+  if (fp == NULL) {
+    vulpes_log(LOG_ERRORS,"couldn't open %s for writing",state.devfile_name);
+    return VULPES_IOERR;
+  }
+  
   /* Bind the image file to a loop device */
   ret=loop_bind();
-  if (ret)
+  if (ret) {
+    fclose(fp);
+    unlink(state.devfile_name);
     return ret;
+  }
   
   /* Register ourselves with the device */
   memset(&setup, 0, sizeof(setup));
@@ -183,8 +198,12 @@ vulpes_err_t driver_init(void)
   if (ioctl(state.chardev_fd, ISR_IOC_REGISTER, &setup)) {
     vulpes_log(LOG_ERRORS,"unable to register with device driver: %s",strerror(errno));
     ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
+    fclose(fp);
+    unlink(state.devfile_name);
     return VULPES_IOERR;
   }
+  fprintf(fp, "/dev/openisr%c\n", 'a' + setup.index);
+  fclose(fp);
   vulpes_log(LOG_BASIC,"Registered with driver");
   return VULPES_SUCCESS;
 }
@@ -222,6 +241,7 @@ void driver_shutdown(void)
   log_counter_value("sectors_written");
   
   close(state.chardev_fd);
+  unlink(state.devfile_name);
   ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
   close(state.loopdev_fd);
   /* We don't trust the loop driver */

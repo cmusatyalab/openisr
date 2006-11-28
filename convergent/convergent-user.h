@@ -10,7 +10,7 @@
 #define ISR_IOC_REGISTER      _IOWR(0x1a, 0, struct isr_setup)
 #define ISR_IOC_UNREGISTER      _IO(0x1a, 1)
 
-#define ISR_INTERFACE_VERSION 3
+#define ISR_INTERFACE_VERSION 4
 
 typedef __u16 crypto_t;
 typedef __u16 compress_t;
@@ -28,8 +28,8 @@ struct isr_setup {
 	__u16 pad;
 	__u64 chunks;                         /* to user */
 	__u32 major;                          /* to user */
-	__u32 first_minor;                    /* to user */
-	__u32 minors;                         /* to user */
+	__u32 num_minors;                     /* to user */
+	__u32 index;                          /* to user */
 	__u8 hash_len;                        /* to user */
 };
 

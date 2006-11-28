@@ -231,6 +231,7 @@ int run(char *storefile, compress_t compress)
 					params.chunks, setup.chunks);
 		return 1;
 	}
+	printf("Bound to /dev/openisr%c\n", 'a' + setup.index);
 	storefilelen=sizeof(struct params) +
 				setup.chunks * sizeof(struct chunk);
 	printf("Mapping %u KB\n", storefilelen >> 10);

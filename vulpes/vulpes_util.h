@@ -17,6 +17,8 @@ void hexToBin(const unsigned char *hex, unsigned char *bin, int binBytes);
 int set_signal_handler(int sig, void (*handler)(int sig));
 void print_progress(unsigned chunks, unsigned maxchunks);
 vulpes_err_t fork_and_wait(int *status_fd);
+vulpes_err_t form_lockdir_file_name(char *buf, int len,
+			const char *suffix);
 vulpes_err_t acquire_lock(void);
 void release_lock(void);
 vulpes_err_t create_pidfile(void);
