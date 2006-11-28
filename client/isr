@@ -58,7 +58,6 @@ sub clean ($$$$);
 sub resetclient ();
 sub cleanclient ($$$$);
 sub update ();
-sub killvulpes ();
 sub hoard ($$$);
 sub checkparcel ($$$$$);
 sub statparcel ($$$);
@@ -104,7 +103,6 @@ sub need_network ();
 # Local variables
 my $isrdir;
 my $isrhome;
-my $parceldir;
 my $result;
 my $progname; 
 my $unused;
@@ -130,7 +128,6 @@ my $allflag;         # Reset() should delete all state, including hoard cache
 # Write once globals that are visible in this module only. These globals are
 # needed to cleanly handle logging and exceptional termination.
 my $pid;            # Pid of child created in mysystem
-my $vulpespid;      # Pid of Vulpes process
 my $hostid;         # Unique hostid from $Isr::HOSTID file
 my $sessionid = 0;  # Unique session id (nonce from lock operation)
 my $userid;         # ISR userid
@@ -158,12 +155,17 @@ our %cfg = ();
 # Install a signal handler that catches ctrl-c
 #
 $SIG{"INT"} = sub {
+    my $pid;
+    
     print "\n";
     cleantmp();
     if ($killvulpes) {
-	killvulpes();
-	print("Cleanly shutdown Vulpes.\n")
-	    if $verbose;
+	$pid = get_vulpespid();
+	if ($pid != 0) {
+	    kill("TERM", $pid);
+	    print("Sent shutdown signal to Vulpes.\n")
+		if $verbose;
+	}
     }
     sys_sync();
     sys_sync();
@@ -718,7 +720,6 @@ sub run ($$$$) {
     my $dirname;
     my $cfgfile;  # VMWare configuration file
     my $numfiles;
-    my $numvulpes;
     my $numchunks;
     my $maxchunks;
     my $chunksize;
@@ -726,6 +727,7 @@ sub run ($$$$) {
     my $iters;
     my $sigset;
     my $vmware_opts;
+    my $vulpespid;
     
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
@@ -739,11 +741,6 @@ sub run ($$$$) {
     # Reset the consistent dirty cache flag, since any temporary dirty
     # cache directory is about to become inconsistent with the local cache.
     unlink($cdcache_file);
-
-    # Make sure there are no other Vulpes processes running
-    if (get_vulpespid() != 0) {
-	errexit("Vulpes is already running on this machine.");
-    }
 
     # Parse the parcel config file that we got from the name server during
     # checkout and load the protocol-specific module
@@ -821,14 +818,10 @@ sub run ($$$$) {
     # Wait for udev to catch up
     $iters = 0;
     while (1) {
-	# Determine Vulpes PID and make sure there is exactly 1 Vulpes process
+	# Get Vulpes pid and make sure it's still alive
 	$vulpespid = get_vulpespid();
 	if ($vulpespid == 0) {
 	    errexit("Vulpes died unexpectedly");
-	}
-	if ($vulpespid < 0) {
-	    $numvulpes = -$vulpespid;
-	    errexit("Found $numvulpes Vulpes processes, but expected exactly one.")
 	}
 	last if -e "/dev/openisra";
 	# Sleep 100 ms
@@ -854,28 +847,23 @@ sub run ($$$$) {
     # Signal Vulpes to shut down and wait until it is gone
     print "Shutting down Vulpes (pid=$vulpespid)"
 	if $verbose;
-    killvulpes();
-    message("INFO", "Sent SIGUSR2 signal to Vulpes (pid=$vulpespid)");
+    kill("TERM", $vulpespid);
+    $killvulpes = 0;
+    message("INFO", "Sent SIGTERM signal to Vulpes (pid=$vulpespid)");
     $iters = 0;
     while (1) {
-	$iters++;
-	if ($iters > 60) {
+	if (++$iters > 60) {
 	    print "\n";
 	    errexit("Unable to shutdown Vulpes");
 	}
 	print "."
 	    if $verbose;
-	$vulpespid = get_vulpespid();
-	if ($vulpespid == 0) {
-	    last;
-	}
+	last
+	    if get_vulpespid() == 0;
 	sleep(1);
     }
     print "\n"
 	if $verbose;
-
-    # Clean up and return
-    return;
 }
 
 #
@@ -1191,13 +1179,6 @@ sub release ($$$) {
     }
 
     return 0;
-}
-
-#
-# killvulpes - Cleanly kill all Vulpes processes
-#
-sub killvulpes () {
-    system("killall -s USR2 vulpes > /dev/null 2>&1");
 }
 
 #
@@ -2003,28 +1984,21 @@ sub get_value ($$) {
 
 
 #
-# get_vulpespid - Returns the PID of the current Vulpes process, zero
-#                 if there are no Vulpes processes, and -x if there are 
-#                 x > 1 running Vulpes processes. Thus, it returns !0 iff
-#                 there is a least one running Vulpes process.
+# get_vulpespid - Returns the PID of the Vulpes background process associated
+#                 with this parcel, or zero if none are running.
 #
 sub get_vulpespid () {
-    my $psout;
-    my $numvulpes;
-
-    $psout = `ps -C vulpes -o pid=`; 
-    chomp($psout);
-    $numvulpes = `echo "$psout" | wc -w`;
-    chomp($numvulpes);
-    if ($numvulpes == 1) {
-	return $psout;
-    }
-    elsif ($numvulpes == 0) { 
-	return 0;
-    }
-    else {
-	return -$numvulpes;
-    }
+    my $pidfile = "$isrdir/$parcel/vulpes.pid";
+    my $pid;
+    
+    -e $pidfile or return 0;
+    open(PIDFILE, $pidfile) or return 0;
+    defined($pid = <PIDFILE>) or return 0;
+    close(PIDFILE);
+    chomp($pid);
+    # Make sure the process is still alive
+    kill(0, $pid) or return 0;
+    return $pid;
 }
 
 
