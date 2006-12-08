@@ -8,7 +8,6 @@ ISR_HOME=$(PWD)
 BINDIR=$(ISR_HOME)/local/bin
 
 APP=vulpes
-UTILS=keyring-utils
 
 SRCS=revision.c vulpes.c vulpes_driver.c vulpes_transport.c vulpes_cache.c vulpes_crypto.c vulpes_log.c vulpes_util.c vulpes_lka.c
 
@@ -50,7 +49,7 @@ $(DEP): %.d : %.c
 
 .PHONY: clean
 clean:
-	rm -f $(DEP) $(ASS) $(PRE) $(OBJS) *~ $(APP) processchunk vulpes_lka.d vulpes_lka.o vulpes-*.tgz
+	rm -f $(DEP) $(ASS) $(PRE) $(OBJS) *~ $(APP) vulpes-*.tgz
 
 # This is a hack.  The include directive forces make to always execute
 # the rule, and to recalculate its target selection afterward.  Note
@@ -67,11 +66,6 @@ install:
 
 vulpes: $(OBJS)
 	$(CC) -o $@ $(LFLAGS) $^
-
-keyring-utils: processchunk
-
-processchunk: processchunk.c vulpes_lev1_encryption.o vulpes_log.o
-	$(CC) -o processchunk $^ -lz -lssl
 
 .PHONY: dist
 dist: REV=$(shell svnversion .)
