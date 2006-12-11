@@ -20,7 +20,7 @@ static const int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT,
 #define DEVFILE_NAME "vulpes.dev"
 #define REQUESTS_PER_SYSCALL 64
 #define MY_INTERFACE_VERSION 4
-#if MY_INTERFACE_VERSION != ISR_INTERFACE_VERSION
+#if MY_INTERFACE_VERSION != NEXUS_INTERFACE_VERSION
 #error This code uses a different interface version than the one defined in convergent-user.h
 #endif
 
@@ -34,14 +34,14 @@ static void signal_handler(int sig)
      lost */
 }
 
-static vulpes_err_t message_ok(const struct isr_message *msg)
+static vulpes_err_t message_ok(const struct nexus_message *msg)
 {
   int result = 1;
   
   /* Check command parameters */
   switch (msg->type) {
-  case ISR_MSGTYPE_GET_META:
-  case ISR_MSGTYPE_UPDATE_META:
+  case NEXUS_MSGTYPE_GET_META:
+  case NEXUS_MSGTYPE_UPDATE_META:
     if (msg->chunk > state.numchunks)
       result = 0;
     if (msg->length > state.chunksize_bytes)
@@ -95,7 +95,7 @@ static vulpes_err_t loop_bind(void) {
 
 vulpes_err_t driver_init(void)
 {
-  struct isr_setup setup;
+  struct nexus_setup setup;
   vulpes_err_t ret;
   int i;
   char revision[32];
@@ -187,15 +187,15 @@ vulpes_err_t driver_init(void)
   
   /* Register ourselves with the device */
   memset(&setup, 0, sizeof(setup));
-  snprintf(setup.chunk_device, ISR_MAX_DEVICE_LEN, "%s", state.loopdev_name);
+  snprintf(setup.chunk_device, NEXUS_MAX_DEVICE_LEN, "%s", state.loopdev_name);
   setup.offset=state.offset_bytes / SECTOR_SIZE;
   setup.chunksize=state.chunksize_bytes;
   setup.cachesize=128;
-  setup.crypto=ISR_CRYPTO_BLOWFISH_SHA1_COMPAT;
-  setup.compress_default=ISR_COMPRESS_ZLIB;
-  setup.compress_required=ISR_COMPRESS_NONE|ISR_COMPRESS_ZLIB;
+  setup.crypto=NEXUS_CRYPTO_BLOWFISH_SHA1_COMPAT;
+  setup.compress_default=NEXUS_COMPRESS_ZLIB;
+  setup.compress_required=NEXUS_COMPRESS_NONE|NEXUS_COMPRESS_ZLIB;
   
-  if (ioctl(state.chardev_fd, ISR_IOC_REGISTER, &setup)) {
+  if (ioctl(state.chardev_fd, NEXUS_IOC_REGISTER, &setup)) {
     vulpes_log(LOG_ERRORS,"unable to register with device driver: %s",strerror(errno));
     ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
     fclose(fp);
@@ -253,21 +253,22 @@ void driver_shutdown(void)
 }
 
 /* Returns true if there's an outgoing message to send */
-static int process_message(struct isr_message *request, struct isr_message *reply)
+static int process_message(struct nexus_message *request,
+			   struct nexus_message *reply)
 {
   /* Log and verify command */
   switch (request->type) {
-  case ISR_MSGTYPE_GET_META:
+  case NEXUS_MSGTYPE_GET_META:
     reply->chunk=request->chunk;
     if (message_ok(request)) {
       vulpes_log(LOG_DRIVER_REQ,"GET: %llu:%llu",state.request_count,request->chunk);
     } else {
       vulpes_log(LOG_ERRORS,"GET: %llu:%llu: bad message",state.request_count,request->chunk);
-      reply->type=ISR_MSGTYPE_META_HARDERR;
+      reply->type=NEXUS_MSGTYPE_META_HARDERR;
       return 1;
     }
     break;
-  case ISR_MSGTYPE_UPDATE_META:
+  case NEXUS_MSGTYPE_UPDATE_META:
     if (message_ok(request)) {
       vulpes_log(LOG_DRIVER_REQ,"UPDATE: %llu:%llu",state.request_count,request->chunk);
     } else {
@@ -282,15 +283,15 @@ static int process_message(struct isr_message *request, struct isr_message *repl
   
   /* Process command */
   switch (request->type) {
-  case ISR_MSGTYPE_GET_META:
+  case NEXUS_MSGTYPE_GET_META:
     if (cache_get(request, reply)) {
       vulpes_log(LOG_ERRORS,"GET: %llu:%llu: failed",state.request_count,request->chunk);
-      reply->type=ISR_MSGTYPE_META_HARDERR;
+      reply->type=NEXUS_MSGTYPE_META_HARDERR;
     } else {
-      reply->type=ISR_MSGTYPE_SET_META;
+      reply->type=NEXUS_MSGTYPE_SET_META;
     }
     return 1;
-  case ISR_MSGTYPE_UPDATE_META:
+  case NEXUS_MSGTYPE_UPDATE_META:
     cache_update(request);
     return 0;
   }
@@ -300,8 +301,8 @@ static int process_message(struct isr_message *request, struct isr_message *repl
 
 static void process_batch(void)
 {
-  struct isr_message requests[REQUESTS_PER_SYSCALL];
-  struct isr_message replies[REQUESTS_PER_SYSCALL];
+  struct nexus_message requests[REQUESTS_PER_SYSCALL];
+  struct nexus_message replies[REQUESTS_PER_SYSCALL];
   int i;
   int in_count;
   int out_count=0;
@@ -371,7 +372,7 @@ void driver_run(void)
     /* If we need to shut down and we think the block device has no users,
        try to unregister */
     if (shutdown_pending && FD_ISSET(state.chardev_fd, &exceptfds)) {
-      if (!ioctl(state.chardev_fd, ISR_IOC_UNREGISTER))
+      if (!ioctl(state.chardev_fd, NEXUS_IOC_UNREGISTER))
 	return;
     }
     

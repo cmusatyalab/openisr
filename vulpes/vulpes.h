@@ -93,7 +93,7 @@ extern struct vulpes_state {
   int bdev_index;
 } state;
 
-struct isr_message;
+struct nexus_message;
 
 /* XXX miscellaneous exported functions */
 vulpes_err_t driver_init(void);
@@ -106,8 +106,9 @@ void transport_shutdown(void);
 int copy_for_upload(void);
 int examine_cache(void);
 vulpes_err_t cache_init(void);
-vulpes_err_t cache_get(const struct isr_message *req, struct isr_message *reply);
-void cache_update(const struct isr_message *req);
+vulpes_err_t cache_get(const struct nexus_message *req,
+		       struct nexus_message *reply);
+void cache_update(const struct nexus_message *req);
 vulpes_err_t cache_shutdown(void);
 
 #endif

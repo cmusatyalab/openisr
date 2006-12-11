@@ -17,8 +17,8 @@
 #define MESSAGE_BATCH 64
 
 struct params {
-	char control_device[ISR_MAX_DEVICE_LEN];
-	char chunk_device[ISR_MAX_DEVICE_LEN];
+	char control_device[NEXUS_MAX_DEVICE_LEN];
+	char chunk_device[NEXUS_MAX_DEVICE_LEN];
 	unsigned chunksize;
 	unsigned cachesize;
 	unsigned long long offset;
@@ -26,8 +26,8 @@ struct params {
 };
 
 struct chunk {
-	char key[ISR_MAX_HASH_LEN];
-	char tag[ISR_MAX_HASH_LEN];
+	char key[NEXUS_MAX_HASH_LEN];
+	char tag[NEXUS_MAX_HASH_LEN];
 	unsigned length;
 	unsigned compression;
 };
@@ -121,7 +121,7 @@ int setup(struct params *params, char *storefile)
 	EVP_DigestUpdate(&hash, crypted, params->chunksize);
 	EVP_DigestFinal(&hash, chunk.tag, &keylen);
 	
-	chunk.compression=ISR_COMPRESS_NONE;
+	chunk.compression=NEXUS_COMPRESS_NONE;
 	fprintf(stderr, "Initializing %llu chunks", params->chunks);
 	for (tmp=0; tmp<params->chunks; tmp++) {
 		if (!(tmp % (params->chunks / 20)))
@@ -143,12 +143,12 @@ int setup(struct params *params, char *storefile)
 }
 
 /* Returns true if a reply needs to be sent */
-int handle_message(struct chunk *chunk, struct isr_message *message,
-				struct isr_message *message_out,
+int handle_message(struct chunk *chunk, struct nexus_message *message,
+				struct nexus_message *message_out,
 				unsigned hash_len)
 {
 	switch (message->type) {
-	case ISR_MSGTYPE_GET_META:
+	case NEXUS_MSGTYPE_GET_META:
 		if (verbose) {
 			printf("Sending   chunk %8llu key ", message->chunk);
 			printkey(chunk->key, hash_len);
@@ -162,9 +162,9 @@ int handle_message(struct chunk *chunk, struct isr_message *message,
 		message_out->chunk=message->chunk;
 		message_out->length=chunk->length;
 		message_out->compression=chunk->compression;
-		message_out->type=ISR_MSGTYPE_SET_META;
+		message_out->type=NEXUS_MSGTYPE_SET_META;
 		return 1;
-	case ISR_MSGTYPE_UPDATE_META:
+	case NEXUS_MSGTYPE_UPDATE_META:
 		if (verbose) {
 			printf("Receiving chunk %8llu key ", message->chunk);
 			printkey(message->key, hash_len);
@@ -190,9 +190,9 @@ int handle_message(struct chunk *chunk, struct isr_message *message,
 int run(char *storefile, compress_t compress)
 {
 	int storefd, ctlfd, ret, count, in, out;
-	struct isr_setup setup;
-	struct isr_message message_in[MESSAGE_BATCH];
-	struct isr_message message_out[MESSAGE_BATCH];
+	struct nexus_setup setup;
+	struct nexus_message message_in[MESSAGE_BATCH];
+	struct nexus_message message_out[MESSAGE_BATCH];
 	struct params params;
 	struct chunk *chunks;
 	struct pollfd pollfds[2];
@@ -213,15 +213,15 @@ int run(char *storefile, compress_t compress)
 		perror("Opening device");
 		return 1;
 	}
-	memcpy(setup.chunk_device, params.chunk_device, ISR_MAX_DEVICE_LEN);
+	memcpy(setup.chunk_device, params.chunk_device, NEXUS_MAX_DEVICE_LEN);
 	setup.chunksize=params.chunksize;
 	setup.cachesize=params.cachesize;
 	setup.offset=params.offset;
-	setup.crypto=ISR_CRYPTO_BLOWFISH_SHA1;
+	setup.crypto=NEXUS_CRYPTO_BLOWFISH_SHA1;
 	setup.compress_default=compress;
-	setup.compress_required=ISR_COMPRESS_NONE | ISR_COMPRESS_ZLIB |
-				ISR_COMPRESS_LZF;
-	ret=ioctl(ctlfd, ISR_IOC_REGISTER, &setup);
+	setup.compress_required=NEXUS_COMPRESS_NONE | NEXUS_COMPRESS_ZLIB |
+				NEXUS_COMPRESS_LZF;
+	ret=ioctl(ctlfd, NEXUS_IOC_REGISTER, &setup);
 	if (ret) {
 		perror("Registering device");
 		return 1;
@@ -273,7 +273,7 @@ int run(char *storefile, compress_t compress)
 			printf("Shutdown requested\n");
 		}
 		if (pollfds[0].revents & POLLPRI)
-			if (!ioctl(ctlfd, ISR_IOC_UNREGISTER))
+			if (!ioctl(ctlfd, NEXUS_IOC_UNREGISTER))
 				break;
 		if (!(pollfds[0].revents & POLLIN))
 			continue;
@@ -321,11 +321,11 @@ int main(int argc, char **argv)
 	compress_t compress;
 	
 	if (argc == 7) {
-		memset(params.control_device, 0, ISR_MAX_DEVICE_LEN);
-		memset(params.chunk_device, 0, ISR_MAX_DEVICE_LEN);
-		snprintf(params.control_device, ISR_MAX_DEVICE_LEN, "%s",
+		memset(params.control_device, 0, NEXUS_MAX_DEVICE_LEN);
+		memset(params.chunk_device, 0, NEXUS_MAX_DEVICE_LEN);
+		snprintf(params.control_device, NEXUS_MAX_DEVICE_LEN, "%s",
 					argv[2]);
-		snprintf(params.chunk_device, ISR_MAX_DEVICE_LEN, "%s",
+		snprintf(params.chunk_device, NEXUS_MAX_DEVICE_LEN, "%s",
 					argv[3]);
 		params.chunksize=atoi(argv[4]);
 		params.cachesize=atoi(argv[5]);
@@ -333,11 +333,11 @@ int main(int argc, char **argv)
 		return setup(&params, argv[1]);
 	} else if (argc == 3) {
 		if (!strcmp(argv[2], "none"))
-			compress=ISR_COMPRESS_NONE;
+			compress=NEXUS_COMPRESS_NONE;
 		else if (!strcmp(argv[2], "zlib"))
-			compress=ISR_COMPRESS_ZLIB;
+			compress=NEXUS_COMPRESS_ZLIB;
 		else if (!strcmp(argv[2], "lzf"))
-			compress=ISR_COMPRESS_LZF;
+			compress=NEXUS_COMPRESS_LZF;
 		else
 			return usage(argv[0]);
 		return run(argv[1], compress);

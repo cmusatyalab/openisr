@@ -839,7 +839,8 @@ vulpes_err_t cache_shutdown(void)
   return VULPES_SUCCESS;
 }
 
-vulpes_err_t cache_get(const struct isr_message *req, struct isr_message *reply)
+vulpes_err_t cache_get(const struct nexus_message *req,
+		       struct nexus_message *reply)
 {
   struct chunk_data *cdp;
   vulpes_err_t ret;
@@ -868,9 +869,9 @@ vulpes_err_t cache_get(const struct isr_message *req, struct isr_message *reply)
   
   mark_cdp_accessed(cdp);
   if (cdp_is_compressed(cdp))
-    reply->compression=ISR_COMPRESS_ZLIB;
+    reply->compression=NEXUS_COMPRESS_ZLIB;
   else
-    reply->compression=ISR_COMPRESS_NONE;
+    reply->compression=NEXUS_COMPRESS_NONE;
   memcpy(reply->key, cdp->key, HASH_LEN);
   memcpy(reply->tag, cdp->tag, HASH_LEN);
   reply->length=cdp->length;
@@ -879,7 +880,7 @@ vulpes_err_t cache_get(const struct isr_message *req, struct isr_message *reply)
   return VULPES_SUCCESS;
 }
 
-void cache_update(const struct isr_message *req)
+void cache_update(const struct nexus_message *req)
 {
   struct chunk_data *cdp=NULL;
   
@@ -891,7 +892,7 @@ void cache_update(const struct isr_message *req)
     writes_before_read++;
   }
   mark_cdp_modified_session(cdp);
-  if (req->compression == ISR_COMPRESS_NONE)
+  if (req->compression == NEXUS_COMPRESS_NONE)
     mark_cdp_uncompressed(cdp);
   else
     mark_cdp_compressed(cdp);

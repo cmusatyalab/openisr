@@ -47,8 +47,8 @@ struct chunkdata {
 	unsigned flags;
 	enum cd_state state;
 	u64 state_begin;       /* usec since epoch */
-	char key[ISR_MAX_HASH_LEN];
-	char tag[ISR_MAX_HASH_LEN];
+	char key[NEXUS_MAX_HASH_LEN];
+	char tag[NEXUS_MAX_HASH_LEN];
 	struct scatterlist *sg;
 };
 
@@ -351,7 +351,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 	struct nexus_dev *dev=cd->table->dev;
 	unsigned compressed_size;
 	int ret;
-	char hash[ISR_MAX_HASH_LEN];
+	char hash[NEXUS_MAX_HASH_LEN];
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	if (type == READ) {
@@ -365,7 +365,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 			return -EIO;
 		}
 		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, READ,
-					cd->compression != ISR_COMPRESS_NONE);
+					cd->compression != NEXUS_COMPRESS_NONE);
 		if (ret < 0) {
 			debug("Chunk " SECTOR_FORMAT ": Decryption failed",
 						cd->cid);
@@ -393,7 +393,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 		ret=compress_chunk(dev, cd->sg, dev->default_compression);
 		if (ret == -EFBIG) {
 			compressed_size=dev->chunksize;
-			cd->compression=ISR_COMPRESS_NONE;
+			cd->compression=NEXUS_COMPRESS_NONE;
 		} else if (ret < 0) {
 			debug("Chunk " SECTOR_FORMAT ": Compression failed",
 						cd->cid);
@@ -406,7 +406,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 					compressed_size, cd->cid);
 		crypto_hash(dev, cd->sg, compressed_size, cd->key);
 		ret=crypto_cipher(dev, cd->sg, cd->key, compressed_size, WRITE,
-					cd->compression != ISR_COMPRESS_NONE);
+					cd->compression != NEXUS_COMPRESS_NONE);
 		if (ret < 0) {
 			debug("Chunk " SECTOR_FORMAT ": Encryption failed",
 						cd->cid);
@@ -609,9 +609,9 @@ struct chunkdata *next_usermsg(struct nexus_dev *dev, msgtype_t *type)
 			continue;
 		cd->flags |= CD_USER;
 		if (cd->state == ST_LOAD_META)
-			*type=ISR_MSGTYPE_GET_META;
+			*type=NEXUS_MSGTYPE_GET_META;
 		else if (cd->state == ST_STORE_META)
-			*type=ISR_MSGTYPE_UPDATE_META;
+			*type=NEXUS_MSGTYPE_UPDATE_META;
 		else
 			BUG();
 		return cd;

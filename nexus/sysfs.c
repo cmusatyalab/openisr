@@ -5,7 +5,7 @@
 
 static ssize_t drv_show_version(struct class *c, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%u\n", ISR_INTERFACE_VERSION);
+	return snprintf(buf, PAGE_SIZE, "%u\n", NEXUS_INTERFACE_VERSION);
 }
 
 static ssize_t drv_show_branch(struct class *c, char *buf)

@@ -38,7 +38,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 			size_t count, loff_t *offp)
 {
 	struct nexus_dev *dev=filp->private_data;
-	struct isr_message msg;
+	struct nexus_message msg;
 	DEFINE_WAIT(wait);
 	int i;
 	int ret;
@@ -81,11 +81,11 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 				return -ERESTARTSYS;
 		}
 		switch (msg.type) {
-		case ISR_MSGTYPE_GET_META:
+		case NEXUS_MSGTYPE_GET_META:
 			get_usermsg_get_meta(cd, &msg.chunk);
 			do_end=0;
 			break;
-		case ISR_MSGTYPE_UPDATE_META:
+		case NEXUS_MSGTYPE_UPDATE_META:
 			get_usermsg_update_meta(cd, &msg.chunk, &msg.length,
 						&msg.compression, msg.key,
 						msg.tag);
@@ -116,7 +116,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 			size_t count, loff_t *offp)
 {
 	struct nexus_dev *dev=filp->private_data;
-	struct isr_message msg;
+	struct nexus_message msg;
 	int i;
 	int err=0;
 	
@@ -140,7 +140,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 		}
 		
 		switch (msg.type) {
-		case ISR_MSGTYPE_SET_META:
+		case NEXUS_MSGTYPE_SET_META:
 			if (msg.chunk >= dev->chunks ||
 						msg.length == 0 ||
 						msg.length > dev->chunksize) {
@@ -155,7 +155,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 						msg.compression, msg.key,
 						msg.tag);
 			break;
-		case ISR_MSGTYPE_META_HARDERR:
+		case NEXUS_MSGTYPE_META_HARDERR:
 			if (msg.chunk >= dev->chunks) {
 				err=-EINVAL;
 				goto out;
@@ -179,17 +179,17 @@ out:
 static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 {
 	struct nexus_dev *dev=filp->private_data;
-	struct isr_setup setup;
+	struct nexus_setup setup;
 	int ret;
 	
 	switch (cmd) {
-	case ISR_IOC_REGISTER:
+	case NEXUS_IOC_REGISTER:
 		if (dev != NULL)
 			return -EBUSY;
 		if (copy_from_user(&setup, (void __user *)arg, sizeof(setup)))
 			return -EFAULT;
-		if (strnlen(setup.chunk_device, ISR_MAX_DEVICE_LEN)
-					== ISR_MAX_DEVICE_LEN)
+		if (strnlen(setup.chunk_device, NEXUS_MAX_DEVICE_LEN)
+					== NEXUS_MAX_DEVICE_LEN)
 			return -EINVAL;
 		dev=nexus_dev_ctr(setup.chunk_device, setup.chunksize,
 					setup.cachesize,
@@ -207,7 +207,7 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 			BUG(); /* XXX */
 		filp->private_data=dev;
 		return 0;
-	case ISR_IOC_UNREGISTER:
+	case NEXUS_IOC_UNREGISTER:
 		if (dev == NULL)
 			return -ENXIO;
 		if (mutex_lock_interruptible(&dev->lock))

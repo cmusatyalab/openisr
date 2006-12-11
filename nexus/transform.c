@@ -231,11 +231,11 @@ int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	switch (type) {
-	case ISR_COMPRESS_NONE:
+	case NEXUS_COMPRESS_NONE:
 		return dev->chunksize;
-	case ISR_COMPRESS_ZLIB:
+	case NEXUS_COMPRESS_ZLIB:
 		return compress_chunk_zlib(dev, sg);
-	case ISR_COMPRESS_LZF:
+	case NEXUS_COMPRESS_LZF:
 		return compress_chunk_lzf(dev, sg);
 	default:
 		BUG();
@@ -248,13 +248,13 @@ int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	switch (type) {
-	case ISR_COMPRESS_NONE:
+	case NEXUS_COMPRESS_NONE:
 		if (len != dev->chunksize)
 			return -EIO;
 		return 0;
-	case ISR_COMPRESS_ZLIB:
+	case NEXUS_COMPRESS_ZLIB:
 		return decompress_chunk_zlib(dev, sg, len);
-	case ISR_COMPRESS_LZF:
+	case NEXUS_COMPRESS_LZF:
 		return decompress_chunk_lzf(dev, sg, len);
 	default:
 		BUG();
@@ -319,14 +319,14 @@ static int suite_lookup(crypto_t suite, char **user_name, char **cipher_name,
 			char **hash_name)
 {
 	switch (suite) {
-	case ISR_CRYPTO_BLOWFISH_SHA1:
+	case NEXUS_CRYPTO_BLOWFISH_SHA1:
 		set_if_requested(user_name, "blowfish-sha1");
 		set_if_requested(cipher_name, "blowfish");
 		set_if_requested(cipher_mode, CRYPTO_TFM_MODE_CBC);
 		set_if_requested(key_len, 20);
 		set_if_requested(hash_name, "sha1");
 		break;
-	case ISR_CRYPTO_BLOWFISH_SHA1_COMPAT:
+	case NEXUS_CRYPTO_BLOWFISH_SHA1_COMPAT:
 		set_if_requested(user_name, "blowfish-sha1-compat");
 		set_if_requested(cipher_name, "blowfish");
 		set_if_requested(cipher_mode, CRYPTO_TFM_MODE_CBC);
@@ -342,13 +342,13 @@ static int suite_lookup(crypto_t suite, char **user_name, char **cipher_name,
 static int compression_lookup(compress_t type, char **user_name)
 {
 	switch (type) {
-	case ISR_COMPRESS_NONE:
+	case NEXUS_COMPRESS_NONE:
 		set_if_requested(user_name, "none");
 		break;
-	case ISR_COMPRESS_ZLIB:
+	case NEXUS_COMPRESS_ZLIB:
 		set_if_requested(user_name, "zlib");
 		break;
-	case ISR_COMPRESS_LZF:
+	case NEXUS_COMPRESS_LZF:
 		set_if_requested(user_name, "lzf");
 		break;
 	default:
@@ -368,9 +368,9 @@ int compression_type_ok(struct nexus_dev *dev, compress_t compress)
 	return 1;
 }
 
-#define SUPPORTED_COMPRESSION  (ISR_COMPRESS_NONE | \
-				ISR_COMPRESS_ZLIB | \
-				ISR_COMPRESS_LZF)
+#define SUPPORTED_COMPRESSION  (NEXUS_COMPRESS_NONE | \
+				NEXUS_COMPRESS_ZLIB | \
+				NEXUS_COMPRESS_LZF)
 int transform_alloc(struct nexus_dev *dev)
 {
 	char *cipher_name;
@@ -415,7 +415,7 @@ int transform_alloc(struct nexus_dev *dev)
 					dev->class_dev->class_id);
 	}
 	
-	if (dev->supported_compression != ISR_COMPRESS_NONE) {
+	if (dev->supported_compression != NEXUS_COMPRESS_NONE) {
 		/* XXX this is not ideal, but there's no good way to support
 		   scatterlists in LZF without hacking the code. */
 		dev->buf_compressed=vmalloc(dev->chunksize);
@@ -425,7 +425,7 @@ int transform_alloc(struct nexus_dev *dev)
 			return -ENOMEM;
 	}
 	
-	if (dev->supported_compression & ISR_COMPRESS_ZLIB) {
+	if (dev->supported_compression & NEXUS_COMPRESS_ZLIB) {
 		/* The deflate workspace size is too large for kmalloc */
 		dev->zlib_deflate=vmalloc(zlib_deflate_workspacesize());
 		dev->zlib_inflate=kmalloc(zlib_inflate_workspacesize(),
@@ -434,7 +434,7 @@ int transform_alloc(struct nexus_dev *dev)
 			return -ENOMEM;
 	}
 	
-	if (dev->supported_compression & ISR_COMPRESS_LZF) {
+	if (dev->supported_compression & NEXUS_COMPRESS_LZF) {
 		dev->lzf_compress=kmalloc(sizeof(LZF_STATE), GFP_KERNEL);
 		if (dev->lzf_compress == NULL)
 			return -ENOMEM;
