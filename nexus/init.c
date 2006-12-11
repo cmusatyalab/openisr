@@ -8,7 +8,7 @@
 #include <linux/device.h>
 #include <linux/wait.h>
 #include <linux/interrupt.h>
-#include "convergent.h"
+#include "defs.h"
 
 static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
 static struct class class;

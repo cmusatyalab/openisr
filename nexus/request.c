@@ -6,7 +6,7 @@
 #include <linux/interrupt.h>
 #include <linux/fs.h>
 #include <linux/mempool.h>
-#include "convergent.h"
+#include "defs.h"
 
 static kmem_cache_t *io_cache;
 static mempool_t *io_pool;

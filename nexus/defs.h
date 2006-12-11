@@ -1,5 +1,5 @@
-#ifndef LINUX_CONVERGENT_H
-#define LINUX_CONVERGENT_H
+#ifndef NEXUS_DEFS_H
+#define NEXUS_DEFS_H
 
 #define DEBUG
 #define MAX_SEGS_PER_IO 32
@@ -19,7 +19,7 @@
 
 #include <linux/blkdev.h>
 #include <linux/workqueue.h>
-#include "convergent-user.h"
+#include "nexus.h"
 #include "kcompat.h"
 
 typedef sector_t chunk_t;

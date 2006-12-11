@@ -1,5 +1,5 @@
-#ifndef LINUX_CONVERGENT_USER_H
-#define LINUX_CONVERGENT_USER_H
+#ifndef ISR_NEXUS_H
+#define ISR_NEXUS_H
 
 #include <linux/types.h>
 #include <linux/ioctl.h>

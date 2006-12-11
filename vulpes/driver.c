@@ -12,7 +12,7 @@
 #include "vulpes.h"
 #include "log.h"
 #include "util.h"
-#include "convergent-user.h"
+#include "nexus.h"
 
 static const int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
 			SIGABRT, SIGTERM, SIGTSTP, 0};

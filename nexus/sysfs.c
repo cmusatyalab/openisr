@@ -1,7 +1,7 @@
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/device.h>
-#include "convergent.h"
+#include "defs.h"
 
 static ssize_t drv_show_version(struct class *c, char *buf)
 {

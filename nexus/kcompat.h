@@ -1,5 +1,5 @@
-#ifndef ISR_KCOMPAT_H
-#define ISR_KCOMPAT_H
+#ifndef NEXUS_KCOMPAT_H
+#define NEXUS_KCOMPAT_H
 
 #include <linux/version.h>
 

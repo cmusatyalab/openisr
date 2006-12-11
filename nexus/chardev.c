@@ -4,7 +4,7 @@
 #include <linux/cdev.h>
 #include <linux/poll.h>
 #include <linux/miscdevice.h>
-#include "convergent.h"
+#include "defs.h"
 
 static int shutdown_dev(struct convergent_dev *dev, int force)
 {

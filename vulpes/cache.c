@@ -27,7 +27,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #include "log.h"
 #include "util.h"
 #include "state.h"
-#include "convergent-user.h"
+#include "nexus.h"
 #include <sys/time.h>
 
 const unsigned CHUNK_STATUS_ACCESSED = 0x0001;	/* This chunk has been accessed this session */

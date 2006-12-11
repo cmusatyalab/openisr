@@ -5,7 +5,7 @@
 #include <linux/timer.h>
 #include <linux/time.h>
 #include <linux/wait.h>
-#include "convergent.h"
+#include "defs.h"
 
 /* XXX rename all this */
 

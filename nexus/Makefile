@@ -17,7 +17,7 @@ all: module test readstats
 module:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
-test: test.c convergent-user.h
+test: test.c nexus.h
 	$(CC) $(CFLAGS) -lssl -o $@ test.c
 
 readstats: readstats.c

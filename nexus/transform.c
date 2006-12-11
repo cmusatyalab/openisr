@@ -3,7 +3,7 @@
 #include <linux/interrupt.h>
 #include <linux/crypto.h>
 #include <linux/zlib.h>
-#include "convergent.h"
+#include "defs.h"
 #include "lzf.h"
 
 /* XXX this needs to go away. */

@@ -12,7 +12,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <openssl/evp.h>
-#include "convergent-user.h"
+#include "nexus.h"
 
 #define MESSAGE_BATCH 64
 
