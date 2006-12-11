@@ -1,6 +1,6 @@
 CC=gcc
 
-CFLAGS= -MMD -g -O2 -Wall -Wstrict-prototypes -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -I../convergent
+CFLAGS= -MMD -g -O2 -Wall -Wstrict-prototypes -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -I../nexus
 
 LFLAGS= -lz -lssl -lcurl
 

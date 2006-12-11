@@ -25,7 +25,7 @@ readstats: readstats.c
 
 .PHONY: clean
 clean:
-	rm -f test
+	rm -f test readstats
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
 
 # This is a hack.  The include directive forces make to always execute
