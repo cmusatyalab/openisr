@@ -34,7 +34,7 @@ clean:
 # twice due to %.d updates.
 .PHONY: revision.dummy
 revision.dummy:
-	@../mkrevision.sh object convergent
+	@../mkrevision.sh object nexus
 -include revision.dummy
 
 endif

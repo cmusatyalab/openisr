@@ -31,25 +31,25 @@ struct class_attribute class_attrs[] = {
 
 static ssize_t dev_show_chunksize(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->chunksize);
 }
 
 static ssize_t dev_show_cachesize(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->cachesize);
 }
 
 static ssize_t dev_show_offset(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%llu\n", (u64)dev->offset << 9);
 }
 
 static ssize_t dev_show_states(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	int i;
 	int count=0;
 	
@@ -67,7 +67,7 @@ static ssize_t dev_show_states(struct class_device *class_dev, char *buf)
 
 static ssize_t dev_show_state_times(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	int i;
 	int count=0;
 	unsigned time;
@@ -91,7 +91,7 @@ static ssize_t dev_show_state_times(struct class_device *class_dev, char *buf)
 
 static ssize_t dev_show_suite(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	char *str=dev->suite_name;
 	if (str == NULL)
 		str="unknown";
@@ -100,7 +100,7 @@ static ssize_t dev_show_suite(struct class_device *class_dev, char *buf)
 
 static ssize_t dev_show_compression(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	char *str=dev->default_compression_name;
 	if (str == NULL)
 		str="unknown";
@@ -109,55 +109,55 @@ static ssize_t dev_show_compression(struct class_device *class_dev, char *buf)
 
 static ssize_t dev_show_cache_hits(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.cache_hits);
 }
 
 static ssize_t dev_show_cache_misses(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.cache_misses);
 }
 
 static ssize_t dev_show_chunk_errors(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.chunk_errors);
 }
 
 static ssize_t dev_show_chunk_reads(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.chunk_reads);
 }
 
 static ssize_t dev_show_chunk_writes(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.chunk_writes);
 }
 
 static ssize_t dev_show_whole_writes(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.whole_chunk_updates);
 }
 
 static ssize_t dev_show_discards(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.encrypted_discards);
 }
 
 static ssize_t dev_show_sect_read(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.sectors_read);
 }
 
 static ssize_t dev_show_sect_written(struct class_device *class_dev, char *buf)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.sectors_written);
 }
 

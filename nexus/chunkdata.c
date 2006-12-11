@@ -53,7 +53,7 @@ struct chunkdata {
 };
 
 struct chunkdata_table {
-	struct convergent_dev *dev;
+	struct nexus_dev *dev;
 	unsigned buckets;
 	unsigned busy_count;
 	struct list_head lru;
@@ -82,16 +82,15 @@ static inline unsigned hash(struct chunkdata_table *table, chunk_t cid)
 	return (unsigned)cid % table->buckets;
 }
 
-static inline struct convergent_io_chunk *pending_head(struct chunkdata *cd)
+static inline struct nexus_io_chunk *pending_head(struct chunkdata *cd)
 {
 	if (list_empty(&cd->pending))
 		return NULL;
-	return list_entry(cd->pending.next, struct convergent_io_chunk,
-					lh_pending);
+	return list_entry(cd->pending.next, struct nexus_io_chunk, lh_pending);
 }
 
 static inline int pending_head_is(struct chunkdata *cd,
-			struct convergent_io_chunk *chunk)
+			struct nexus_io_chunk *chunk)
 {
 	if (list_empty(&cd->pending))
 		return 0;
@@ -119,7 +118,7 @@ static void chunkdata_hit(struct chunkdata *cd)
 
 static void __transition(struct chunkdata *cd, enum cd_state new_state)
 {
-	struct convergent_dev *dev=cd->table->dev;
+	struct nexus_dev *dev=cd->table->dev;
 	enum cd_state states[2]={cd->state, new_state};
 	u64 curtime=current_time_usec();
 	int idle[2];
@@ -210,7 +209,7 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
    kernel mapping */
 static int alloc_chunk_buffer(struct chunkdata *cd)
 {
-	struct convergent_dev *dev=cd->table->dev;
+	struct nexus_dev *dev=cd->table->dev;
 	int i;
 	unsigned npages=chunk_pages(dev);
 	unsigned residual;
@@ -243,7 +242,7 @@ bad:
 
 static void free_chunk_buffer(struct chunkdata *cd)
 {
-	struct convergent_dev *dev=cd->table->dev;
+	struct nexus_dev *dev=cd->table->dev;
 	int i;
 	
 	if (cd->sg == NULL)
@@ -255,12 +254,12 @@ static void free_chunk_buffer(struct chunkdata *cd)
 
 BIO_DESTRUCTOR(bio_destructor, bio_pool)
 
-static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error);
+static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error);
 static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 {
-	struct convergent_dev *dev=cd->table->dev;
+	struct nexus_dev *dev=cd->table->dev;
 	struct bio *bio;
-	struct convergent_io_chunk *chunk;
+	struct nexus_io_chunk *chunk;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	/* XXX could alloc smaller bios if we're looping */
@@ -277,7 +276,7 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 		if (chunk != NULL)
 			bio_set_prio(bio, chunk->parent->prio);
 	}
-	bio->bi_end_io=convergent_endio_func;
+	bio->bi_end_io=nexus_endio_func;
 	bio->bi_private=cd;
 	bio_set_destructor(bio, bio_destructor);
 	return bio;
@@ -291,7 +290,7 @@ static void chunk_io_make_progress(struct chunkdata *cd, unsigned nbytes);
    anyway. */
 static void issue_chunk_io(struct chunkdata *cd)
 {
-	struct convergent_dev *dev=cd->table->dev;
+	struct nexus_dev *dev=cd->table->dev;
 	struct bio *bio=NULL;
 	unsigned offset=0;
 	int i=0;
@@ -349,7 +348,7 @@ bad:
 /* XXX convert debug calls to log()? */
 static int chunk_tfm(struct chunkdata *cd, int type)
 {
-	struct convergent_dev *dev=cd->table->dev;
+	struct nexus_dev *dev=cd->table->dev;
 	unsigned compressed_size;
 	int ret;
 	char hash[ISR_MAX_HASH_LEN];
@@ -422,7 +421,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 /* Runs in workqueue (user) context */
 static void chunkdata_complete_io(void *data)
 {
-	struct convergent_dev *dev=data;
+	struct nexus_dev *dev=data;
 	struct chunkdata_table *table=dev->chunkdata;
 	struct chunkdata *cd;
 	unsigned long flags;
@@ -459,8 +458,7 @@ static void chunkdata_complete_io(void *data)
 	mutex_unlock(&dev->lock);
 }
 
-/* May be called from hardirq context or user context for the same
-   convergent_dev */
+/* May be called from hardirq context or user context for the same nexus_dev */
 static void chunk_io_make_progress(struct chunkdata *cd, unsigned nbytes)
 {
 	unsigned long flags;
@@ -480,7 +478,7 @@ static void chunk_io_make_progress(struct chunkdata *cd, unsigned nbytes)
 }
 
 /* May be called from hardirq context */
-static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error)
+static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error)
 {
 	struct chunkdata *cd=bio->bi_private;
 	if (error && !cd->error) {
@@ -493,9 +491,9 @@ static int convergent_endio_func(struct bio *bio, unsigned nbytes, int error)
 
 /* Returns 1 if all chunks in the io are either at the front of their
    pending queues or have already been unreserved */
-static int io_has_reservation(struct convergent_io *io)
+static int io_has_reservation(struct nexus_io *io)
 {
-	struct convergent_io_chunk *chunk;
+	struct nexus_io_chunk *chunk;
 	struct chunkdata *cd;
 	int i;
 	
@@ -514,10 +512,10 @@ static int io_has_reservation(struct convergent_io *io)
 	return 1;
 }
 
-static void try_start_io(struct convergent_io *io)
+static void try_start_io(struct nexus_io *io)
 {
-	struct convergent_dev *dev=io->dev;
-	struct convergent_io_chunk *chunk;
+	struct nexus_dev *dev=io->dev;
+	struct nexus_io_chunk *chunk;
 	struct chunkdata *cd;
 	int i;
 	
@@ -570,7 +568,7 @@ static void try_start_io(struct convergent_io *io)
 		if (!(chunk->flags & CHUNK_READ))
 			dev->stats.whole_chunk_updates++;
 		chunk->flags |= CHUNK_STARTED;
-		convergent_process_chunk(&io->chunks[i]);
+		nexus_process_chunk(&io->chunks[i]);
 	}
 }
 
@@ -587,7 +585,7 @@ static int queue_for_user(struct chunkdata *cd)
 	return 0;
 }
 
-int have_usermsg(struct convergent_dev *dev)
+int have_usermsg(struct nexus_dev *dev)
 {
 	struct chunkdata *cd;
 	
@@ -601,7 +599,7 @@ int have_usermsg(struct convergent_dev *dev)
 	return 0;
 }
 
-struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type)
+struct chunkdata *next_usermsg(struct nexus_dev *dev, msgtype_t *type)
 {
 	struct chunkdata *cd;
 	
@@ -656,7 +654,7 @@ void end_usermsg(struct chunkdata *cd)
 	}
 }
 
-void shutdown_usermsg(struct convergent_dev *dev)
+void shutdown_usermsg(struct nexus_dev *dev)
 {
 	struct chunkdata *cd;
 	struct chunkdata *next;
@@ -689,9 +687,8 @@ void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 	memcpy(tag, cd->tag, cd->table->dev->hash_len);
 }
 
-void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
-			unsigned length, compress_t compression, char key[],
-			char tag[])
+void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
+			compress_t compression, char key[], char tag[])
 {
 	struct chunkdata *cd;
 	
@@ -712,7 +709,7 @@ void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
 }
 
 /* Called instead of SET_META when userspace can't produce the chunk */
-void set_usermsg_meta_err(struct convergent_dev *dev, chunk_t cid)
+void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid)
 {
 	struct chunkdata *cd;
 	
@@ -730,7 +727,7 @@ void set_usermsg_meta_err(struct convergent_dev *dev, chunk_t cid)
 
 static void run_chunk(struct chunkdata *cd)
 {
-	struct convergent_io_chunk *chunk;
+	struct nexus_io_chunk *chunk;
 	
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	chunk=pending_head(cd);
@@ -833,7 +830,7 @@ again:
 /* Workqueue callback */
 static void run_chunks(void *data)
 {
-	struct convergent_dev *dev=data;
+	struct nexus_dev *dev=data;
 	struct chunkdata *cd;
 	struct chunkdata *next;
 	int need_release=0;
@@ -857,12 +854,12 @@ static void run_chunks(void *data)
 	}
 	mutex_unlock(&dev->lock);
 	if (need_release)
-		convergent_dev_put(dev, 0);
+		nexus_dev_put(dev, 0);
 }
 
-int reserve_chunks(struct convergent_io *io)
+int reserve_chunks(struct nexus_io *io)
 {
-	struct convergent_dev *dev=io->dev;
+	struct nexus_dev *dev=io->dev;
 	struct chunkdata *cd;
 	int i;
 	
@@ -876,7 +873,7 @@ int reserve_chunks(struct convergent_io *io)
 	}
 	if (!(dev->flags & DEV_HAVE_CD_REF)) {
 		dev->flags |= DEV_HAVE_CD_REF;
-		if (convergent_dev_get(dev) == NULL)
+		if (nexus_dev_get(dev) == NULL)
 			BUG();
 	}
 	for (i=0; i<io_chunks(io); i++) {
@@ -900,9 +897,9 @@ bad:
 	return -ENOMEM;
 }
 
-void unreserve_chunk(struct convergent_io_chunk *chunk)
+void unreserve_chunk(struct nexus_io_chunk *chunk)
 {
-	struct convergent_dev *dev=chunk->parent->dev;
+	struct nexus_dev *dev=chunk->parent->dev;
 	struct chunkdata *cd;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
@@ -913,9 +910,9 @@ void unreserve_chunk(struct convergent_io_chunk *chunk)
 	update_chunk(cd);
 }
 
-struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
+struct scatterlist *get_scatterlist(struct nexus_io_chunk *chunk)
 {
-	struct convergent_dev *dev=chunk->parent->dev;
+	struct nexus_dev *dev=chunk->parent->dev;
 	struct chunkdata *cd;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
@@ -924,7 +921,7 @@ struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk)
 	return cd->sg;
 }
 
-void chunkdata_free_table(struct convergent_dev *dev)
+void chunkdata_free_table(struct nexus_dev *dev)
 {
 	struct chunkdata_table *table=dev->chunkdata;
 	struct chunkdata *cd;
@@ -945,7 +942,7 @@ void chunkdata_free_table(struct convergent_dev *dev)
 	kfree(table);
 }
 
-int chunkdata_alloc_table(struct convergent_dev *dev)
+int chunkdata_alloc_table(struct nexus_dev *dev)
 {
 	struct chunkdata_table *table;
 	struct chunkdata *cd;
@@ -1007,9 +1004,9 @@ int __init chunkdata_start(void)
 	   of bvec_slabs[] in fs/bio.c, and on the chunk size.  Better too
 	   high than too low. */
 	/* XXX reduce a bit? */
-	/* XXX a global pool means that layering convergent on top of
-	   convergent could result in deadlocks.  we may want to prevent
-	   this in the registration interface. */
+	/* XXX a global pool means that layering nexus on top of nexus could
+	   result in deadlocks.  we may want to prevent this in the
+	   registration interface. */
 	bio_pool=bioset_create_wrapper(4 * MIN_CONCURRENT_REQS,
 				4 * MIN_CONCURRENT_REQS, 4);
 	if (IS_ERR(bio_pool))

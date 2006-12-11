@@ -25,7 +25,7 @@
 
 typedef sector_t chunk_t;
 
-struct convergent_stats {
+struct nexus_stats {
 	unsigned state_count[CD_NR_STATES];
 	unsigned state_time_us[CD_NR_STATES];
 	unsigned state_time_samples[CD_NR_STATES];
@@ -40,7 +40,7 @@ struct convergent_stats {
 	unsigned sectors_written;
 };
 
-struct convergent_dev {
+struct nexus_dev {
 	struct class_device *class_dev;
 	struct gendisk *gendisk;
 	request_queue_t *queue;
@@ -59,7 +59,7 @@ struct convergent_dev {
 	chunk_t chunks;
 	int devnum;
 	unsigned flags;	/* XXX racy */
-	struct convergent_stats stats;
+	struct nexus_stats stats;
 	
 	crypto_t suite;
 	char *suite_name;
@@ -89,13 +89,13 @@ enum dev_bits {
 	__DEV_HAVE_CD_REF,  /* chunkdata holds a dev reference */
 };
 
-/* convergent_dev flags */
+/* nexus_dev flags */
 #define DEV_SHUTDOWN        (1 << __DEV_SHUTDOWN)
 #define DEV_HAVE_CD_REF     (1 << __DEV_HAVE_CD_REF)
 
-struct convergent_io_chunk {
+struct nexus_io_chunk {
 	struct list_head lh_pending;
-	struct convergent_io *parent;
+	struct nexus_io *parent;
 	chunk_t cid;
 	unsigned orig_offset;  /* byte offset into orig_sg */
 	unsigned offset;       /* byte offset into chunk */
@@ -111,28 +111,28 @@ enum chunk_bits {
 	__CHUNK_DEAD,         /* endio called */
 };
 
-/* convergent_io_chunk flags */
+/* nexus_io_chunk flags */
 #define CHUNK_READ            (1 << __CHUNK_READ)
 #define CHUNK_STARTED         (1 << __CHUNK_STARTED)
 #define CHUNK_COMPLETED       (1 << __CHUNK_COMPLETED)
 #define CHUNK_DEAD            (1 << __CHUNK_DEAD)
 
-struct convergent_io {
-	struct convergent_dev *dev;
+struct nexus_io {
+	struct nexus_dev *dev;
 	unsigned flags;
 	chunk_t first_cid;
 	chunk_t last_cid;
 	unsigned prio;
 	struct request *orig_req;
 	struct scatterlist orig_sg[MAX_SEGS_PER_IO];
-	struct convergent_io_chunk chunks[MAX_CHUNKS_PER_IO];
+	struct nexus_io_chunk chunks[MAX_CHUNKS_PER_IO];
 };
 
 enum io_bits {
 	__IO_WRITE,        /* Is a write request */
 };
 
-/* convergent_io flags */
+/* nexus_io flags */
 #define IO_WRITE           (1 << __IO_WRITE)
 
 static inline void mutex_lock_workqueue(MUTEX *lock)
@@ -159,19 +159,19 @@ static inline void mutex_lock_workqueue(MUTEX *lock)
 #define ndebug(args...) do {} while (0)
 
 /* 512-byte sectors per chunk */
-static inline sector_t chunk_sectors(struct convergent_dev *dev)
+static inline sector_t chunk_sectors(struct nexus_dev *dev)
 {
 	return dev->chunksize/512;
 }
 
 /* PAGE_SIZE-sized pages per chunk, rounding up in case of a partial page */
-static inline unsigned chunk_pages(struct convergent_dev *dev)
+static inline unsigned chunk_pages(struct nexus_dev *dev)
 {
 	return (dev->chunksize + PAGE_SIZE - 1) / PAGE_SIZE;
 }
 
 /* The sector number of the beginning of the chunk containing @sect */
-static inline sector_t chunk_start(struct convergent_dev *dev, sector_t sect)
+static inline sector_t chunk_start(struct nexus_dev *dev, sector_t sect)
 {
 	/* We can't use the divide operator on a sector_t, because sector_t
 	   might be 64 bits and 32-bit kernels need do_div() for 64-bit
@@ -180,20 +180,19 @@ static inline sector_t chunk_start(struct convergent_dev *dev, sector_t sect)
 }
 
 /* The byte offset of sector @sect within its chunk */
-static inline unsigned chunk_offset(struct convergent_dev *dev, sector_t sect)
+static inline unsigned chunk_offset(struct nexus_dev *dev, sector_t sect)
 {
 	return 512 * (sect - chunk_start(dev, sect));
 }
 
 /* The number of bytes between @offset and the end of the chunk */
-static inline unsigned chunk_remaining(struct convergent_dev *dev,
-			unsigned offset)
+static inline unsigned chunk_remaining(struct nexus_dev *dev, unsigned offset)
 {
 	return dev->chunksize - offset;
 }
 
 /* The chunk number of @sect */
-static inline chunk_t chunk_of(struct convergent_dev *dev, sector_t sect)
+static inline chunk_t chunk_of(struct nexus_dev *dev, sector_t sect)
 {
 	/* Again, no division allowed */
 	unsigned shift=fls(chunk_sectors(dev)) - 1;
@@ -201,14 +200,14 @@ static inline chunk_t chunk_of(struct convergent_dev *dev, sector_t sect)
 }
 
 /* The sector number corresponding to the first sector of @chunk */
-static inline sector_t chunk_to_sector(struct convergent_dev *dev, chunk_t cid)
+static inline sector_t chunk_to_sector(struct nexus_dev *dev, chunk_t cid)
 {
 	unsigned shift=fls(chunk_sectors(dev)) - 1;
 	return cid << shift;
 }
 
 /* The number of chunks in this io */
-static inline unsigned io_chunks(struct convergent_io *io)
+static inline unsigned io_chunks(struct nexus_io *io)
 {
 	return io->last_cid - io->first_cid + 1;
 }
@@ -216,21 +215,21 @@ static inline unsigned io_chunks(struct convergent_io *io)
 /* init.c */
 extern struct workqueue_struct *wkqueue;
 extern int blk_major;
-struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
+struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset, crypto_t crypto,
 			compress_t default_compress,
 			compress_t supported_compress);
-struct convergent_dev *convergent_dev_get(struct convergent_dev *dev);
-void convergent_dev_put(struct convergent_dev *dev, int unlink);
-void user_get(struct convergent_dev *dev);
-void user_put(struct convergent_dev *dev);
+struct nexus_dev *nexus_dev_get(struct nexus_dev *dev);
+void nexus_dev_put(struct nexus_dev *dev, int unlink);
+void user_get(struct nexus_dev *dev);
+void user_put(struct nexus_dev *dev);
 
 /* request.c */
 int request_start(void);
 void request_shutdown(void);
-void convergent_request(request_queue_t *q);
-void convergent_run_requests(void *data);
-void convergent_process_chunk(struct convergent_io_chunk *chunk);
+void nexus_request(request_queue_t *q);
+void nexus_run_requests(void *data);
+void nexus_process_chunk(struct nexus_io_chunk *chunk);
 
 /* chardev.c */
 int chardev_start(void);
@@ -239,37 +238,36 @@ void chardev_shutdown(void);
 /* chunkdata.c */
 int chunkdata_start(void);
 void chunkdata_shutdown(void);
-int chunkdata_alloc_table(struct convergent_dev *dev);
-void chunkdata_free_table(struct convergent_dev *dev);
-int have_usermsg(struct convergent_dev *dev);
-struct chunkdata *next_usermsg(struct convergent_dev *dev, msgtype_t *type);
+int chunkdata_alloc_table(struct nexus_dev *dev);
+void chunkdata_free_table(struct nexus_dev *dev);
+int have_usermsg(struct nexus_dev *dev);
+struct chunkdata *next_usermsg(struct nexus_dev *dev, msgtype_t *type);
 void fail_usermsg(struct chunkdata *cd);
 void end_usermsg(struct chunkdata *cd);
-void shutdown_usermsg(struct convergent_dev *dev);
+void shutdown_usermsg(struct nexus_dev *dev);
 void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid);
 void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 			unsigned *length, compress_t *compression, char key[],
 			char tag[]);
-void set_usermsg_set_meta(struct convergent_dev *dev, chunk_t cid,
-			unsigned length, compress_t compression, char key[],
-			char tag[]);
-void set_usermsg_meta_err(struct convergent_dev *dev, chunk_t cid);
-int reserve_chunks(struct convergent_io *io);
-void unreserve_chunk(struct convergent_io_chunk *chunk);
-struct scatterlist *get_scatterlist(struct convergent_io_chunk *chunk);
+void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
+			compress_t compression, char key[], char tag[]);
+void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid);
+int reserve_chunks(struct nexus_io *io);
+void unreserve_chunk(struct nexus_io_chunk *chunk);
+struct scatterlist *get_scatterlist(struct nexus_io_chunk *chunk);
 
 /* transform.c */
-int transform_alloc(struct convergent_dev *dev);
-void transform_free(struct convergent_dev *dev);
-int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
+int transform_alloc(struct nexus_dev *dev);
+void transform_free(struct nexus_dev *dev);
+int crypto_cipher(struct nexus_dev *dev, struct scatterlist *sg,
 			char key[], unsigned len, int dir, int doPad);
-void crypto_hash(struct convergent_dev *dev, struct scatterlist *sg,
+void crypto_hash(struct nexus_dev *dev, struct scatterlist *sg,
 			unsigned nbytes, u8 *out);
-int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
+int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 			compress_t type);
-int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
+int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 			compress_t type, unsigned len);
-int compression_type_ok(struct convergent_dev *dev, compress_t compress);
+int compression_type_ok(struct nexus_dev *dev, compress_t compress);
 
 /* sysfs.c */
 extern struct class_attribute class_attrs[];

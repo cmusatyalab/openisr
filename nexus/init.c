@@ -16,7 +16,7 @@ static atomic_t cache_pages;
 struct workqueue_struct *wkqueue;
 int blk_major;
 
-struct convergent_dev *convergent_dev_get(struct convergent_dev *dev)
+struct nexus_dev *nexus_dev_get(struct nexus_dev *dev)
 {
 	if (dev == NULL)
 		return NULL;
@@ -29,7 +29,7 @@ struct convergent_dev *convergent_dev_get(struct convergent_dev *dev)
    the character device is going away or the ctr has errored out.  This
    must be called with @unlink true exactly once per device.  The dev lock
    MUST NOT be held. */
-void convergent_dev_put(struct convergent_dev *dev, int unlink)
+void nexus_dev_put(struct nexus_dev *dev, int unlink)
 {
 	ndebug("dev_put, refs %d, unlink %d",
 			atomic_read(&dev->class_dev->kobj.kref.refcount),
@@ -41,14 +41,14 @@ void convergent_dev_put(struct convergent_dev *dev, int unlink)
 		class_device_put(dev->class_dev);
 }
 
-void user_get(struct convergent_dev *dev)
+void user_get(struct nexus_dev *dev)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	dev->need_user++;
 	ndebug("need_user now %u", dev->need_user);
 }
 
-void user_put(struct convergent_dev *dev)
+void user_put(struct nexus_dev *dev)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	if (!--dev->need_user)
@@ -76,20 +76,20 @@ static int get_system_page_count(void)
 	return (int)s.totalram;
 }
 
-static int convergent_open(struct inode *ino, struct file *filp)
+static int nexus_open(struct inode *ino, struct file *filp)
 {
-	struct convergent_dev *dev;
+	struct nexus_dev *dev;
 	
-	dev=convergent_dev_get(ino->i_bdev->bd_disk->private_data);
+	dev=nexus_dev_get(ino->i_bdev->bd_disk->private_data);
 	if (dev == NULL)
 		return -ENODEV;
 	if (mutex_lock_interruptible(&dev->lock)) {
-		convergent_dev_put(dev, 0);
+		nexus_dev_put(dev, 0);
 		return -ERESTARTSYS;
 	}
 	if (dev->flags & DEV_SHUTDOWN) {
 		mutex_unlock(&dev->lock);
-		convergent_dev_put(dev, 0);
+		nexus_dev_put(dev, 0);
 		return -ENODEV;
 	} else {
 		user_get(dev);
@@ -98,16 +98,16 @@ static int convergent_open(struct inode *ino, struct file *filp)
 	}
 }
 
-static int convergent_release(struct inode *ino, struct file *filp)
+static int nexus_release(struct inode *ino, struct file *filp)
 {
-	struct convergent_dev *dev=ino->i_bdev->bd_disk->private_data;
+	struct nexus_dev *dev=ino->i_bdev->bd_disk->private_data;
 	
 	/* Our return value is ignored, so we must use the uninterruptible
 	   variant */
 	mutex_lock(&dev->lock);
 	user_put(dev);
 	mutex_unlock(&dev->lock);
-	convergent_dev_put(dev, 0);
+	nexus_dev_put(dev, 0);
 	return 0;
 }
 
@@ -131,18 +131,18 @@ static void free_devnum(int devnum)
 }
 
 /* Workqueue callback */
-static void convergent_add_disk(void *data)
+static void nexus_add_disk(void *data)
 {
-	struct convergent_dev *dev=data;
+	struct nexus_dev *dev=data;
 	
 	add_disk(dev->gendisk);
-	convergent_dev_put(dev, 0);
+	nexus_dev_put(dev, 0);
 }
 
 /* Called by dev->class_dev's release callback */
-static void convergent_dev_dtr(struct class_device *class_dev)
+static void nexus_dev_dtr(struct class_device *class_dev)
 {
-	struct convergent_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=class_get_devdata(class_dev);
 	
 	debug("Dtr called");
 	BUG_ON(!list_empty(&dev->requests));
@@ -168,18 +168,18 @@ static void convergent_dev_dtr(struct class_device *class_dev)
 	module_put(THIS_MODULE);
 }
 
-static struct block_device_operations convergent_ops = {
+static struct block_device_operations nexus_ops = {
 	.owner =	THIS_MODULE,
-	.open =		convergent_open,
-	.release =	convergent_release,
+	.open =		nexus_open,
+	.release =	nexus_release,
 };
 
-struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
+struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset, crypto_t suite,
 			compress_t default_compress,
 			compress_t supported_compress)
 {
-	struct convergent_dev *dev;
+	struct nexus_dev *dev;
 	sector_t capacity;
 	int pages=get_system_page_count();
 	int devnum;
@@ -223,7 +223,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	spin_lock_init(&dev->queue_lock);
 	INIT_LIST_HEAD(&dev->requests);
 	spin_lock_init(&dev->requests_lock);
-	INIT_WORK(&dev->cb_run_requests, convergent_run_requests, dev);
+	INIT_WORK(&dev->cb_run_requests, nexus_run_requests, dev);
 	init_waitqueue_head(&dev->waiting_users);
 	dev->devnum=devnum;
 	
@@ -293,7 +293,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	dev->chunks=chunk_of(dev, capacity);
 	
 	ndebug("Allocating queue");
-	dev->queue=blk_init_queue(convergent_request, &dev->queue_lock);
+	dev->queue=blk_init_queue(nexus_request, &dev->queue_lock);
 	if (dev->queue == NULL) {
 		log(KERN_ERR, "couldn't allocate request queue");
 		ret=-ENOMEM;
@@ -344,7 +344,7 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	dev->gendisk->first_minor=devnum*MINORS_PER_DEVICE;
 	dev->gendisk->minors=MINORS_PER_DEVICE;
 	sprintf(dev->gendisk->disk_name, "%s", dev->class_dev->class_id);
-	dev->gendisk->fops=&convergent_ops;
+	dev->gendisk->fops=&nexus_ops;
 	dev->gendisk->queue=dev->queue;
 	dev->gendisk->private_data=dev;
 	set_capacity(dev->gendisk, capacity);
@@ -353,9 +353,9 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 	/* add_disk() initiates I/O to read the partition tables, so userspace
 	   needs to be able to process key requests while it is running.
 	   If we called add_disk() directly here, we would deadlock. */
-	INIT_WORK(&dev->cb_add_disk, convergent_add_disk, dev);
+	INIT_WORK(&dev->cb_add_disk, nexus_add_disk, dev);
 	/* Make sure the dev isn't freed until add_disk() completes */
-	if (convergent_dev_get(dev) == NULL)
+	if (nexus_dev_get(dev) == NULL)
 		BUG();
 	/* We use the shared queue in order to prevent deadlock: if we
 	   used our own queue, add_disk() would block its own I/O to the
@@ -368,9 +368,9 @@ struct convergent_dev *convergent_dev_ctr(char *devnode, unsigned chunksize,
 bad_put_chunkdata:
 	/* Once chunkdata has been started, there's an extra reference to
 	   the dev that needs to be released or it won't be freed. */
-	convergent_dev_put(dev, 0);
+	nexus_dev_put(dev, 0);
 bad:
-	convergent_dev_put(dev, 1);
+	nexus_dev_put(dev, 1);
 	return ERR_PTR(ret);
 	/* Until we have a refcount, we can't fail through the destructor */
 early_fail_classdev:
@@ -383,7 +383,7 @@ early_fail_module:
 	return ERR_PTR(ret);
 }
 
-static int __init convergent_init(void)
+static int __init nexus_init(void)
 {
 	int ret;
 	
@@ -401,7 +401,7 @@ static int __init convergent_init(void)
 	class.name=DEVICE_NAME;
 	class_set_owner(&class);
 	class.class_release=class_release_dummy;
-	class.release=convergent_dev_dtr;
+	class.release=nexus_dev_dtr;
 	class.class_attrs=class_attrs;
 	class.class_dev_attrs=class_dev_attrs;
 	ret=class_register(&class);
@@ -451,7 +451,7 @@ bad_request:
 	return ret;
 }
 
-static void __exit convergent_shutdown(void)
+static void __exit nexus_shutdown(void)
 {
 	log(KERN_INFO, "unloading");
 	
@@ -469,8 +469,8 @@ static void __exit convergent_shutdown(void)
 	request_shutdown();
 }
 
-module_init(convergent_init);
-module_exit(convergent_shutdown);
+module_init(nexus_init);
+module_exit(nexus_shutdown);
 
 MODULE_AUTHOR("Benjamin Gilbert <bgilbert@cs.cmu.edu>");
 MODULE_DESCRIPTION("OpenISR virtual block device");

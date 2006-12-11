@@ -7,8 +7,8 @@
 #include "lzf.h"
 
 /* XXX this needs to go away. */
-static void scatterlist_transfer(struct convergent_dev *dev,
-			struct scatterlist *sg, void *buf, int dir)
+static void scatterlist_transfer(struct nexus_dev *dev, struct scatterlist *sg,
+			void *buf, int dir)
 {
 	void *page;
 	int i;
@@ -28,14 +28,13 @@ static void scatterlist_transfer(struct convergent_dev *dev,
 
 /* Return the number of bytes of padding which need to be added to
    data of length @datalen if padding is used */
-static inline unsigned crypto_pad_len(struct convergent_dev *dev,
-			unsigned datalen)
+static inline unsigned crypto_pad_len(struct nexus_dev *dev, unsigned datalen)
 {
 	return dev->cipher_block - (datalen % dev->cipher_block);
 }
 
 /* Perform PKCS padding on a scatterlist.  Return the new length. */
-static unsigned crypto_pad(struct convergent_dev *dev, struct scatterlist *sg,
+static unsigned crypto_pad(struct nexus_dev *dev, struct scatterlist *sg,
 			unsigned datalen)
 {
 	unsigned padlen=crypto_pad_len(dev, datalen);
@@ -68,8 +67,7 @@ static unsigned crypto_pad(struct convergent_dev *dev, struct scatterlist *sg,
 }
 
 /* Perform PKCS unpadding on a scatterlist.  Return the new length. */
-static int crypto_unpad(struct convergent_dev *dev, struct scatterlist *sg,
-			int len)
+static int crypto_unpad(struct nexus_dev *dev, struct scatterlist *sg, int len)
 {
 	unsigned char *page;
 	unsigned padlen;
@@ -110,8 +108,7 @@ out:
 /* XXX consolidate duplicate code between this and lzf? */
 /* XXX this should be converted to use scatterlists rather than a vmalloc
    buffer */
-static int compress_chunk_zlib(struct convergent_dev *dev,
-			struct scatterlist *sg)
+static int compress_chunk_zlib(struct nexus_dev *dev, struct scatterlist *sg)
 {
 	z_stream strm;
 	int ret;
@@ -157,8 +154,8 @@ static int compress_chunk_zlib(struct convergent_dev *dev,
 
 /* XXX this should be converted to use scatterlists rather than a vmalloc
    buffer */
-static int decompress_chunk_zlib(struct convergent_dev *dev,
-			struct scatterlist *sg, unsigned len)
+static int decompress_chunk_zlib(struct nexus_dev *dev, struct scatterlist *sg,
+			unsigned len)
 {
 	z_stream strm;
 	int ret;
@@ -189,8 +186,7 @@ static int decompress_chunk_zlib(struct convergent_dev *dev,
 	return 0;
 }
 
-static int compress_chunk_lzf(struct convergent_dev *dev,
-			struct scatterlist *sg)
+static int compress_chunk_lzf(struct nexus_dev *dev, struct scatterlist *sg)
 {
 	int size;
 	
@@ -214,8 +210,8 @@ static int compress_chunk_lzf(struct convergent_dev *dev,
 	return size;
 }
 
-static int decompress_chunk_lzf(struct convergent_dev *dev,
-			struct scatterlist *sg, unsigned len)
+static int decompress_chunk_lzf(struct nexus_dev *dev, struct scatterlist *sg,
+			unsigned len)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	/* XXX don't need to transfer whole scatterlist */
@@ -230,7 +226,7 @@ static int decompress_chunk_lzf(struct convergent_dev *dev,
 
 /* Guaranteed to return data which is an even multiple of the crypto
    block size. */
-int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
+int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 			compress_t type)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
@@ -247,7 +243,7 @@ int compress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
 	}
 }
 
-int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
+int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 			compress_t type, unsigned len)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
@@ -270,7 +266,7 @@ int decompress_chunk(struct convergent_dev *dev, struct scatterlist *sg,
    nbytes.  However, when we're hashing compressed data, we may want the
    hash to include only part of a page.  Thus this nonsense. */
 /* XXX verify this against test vectors */
-void crypto_hash(struct convergent_dev *dev, struct scatterlist *sg,
+void crypto_hash(struct nexus_dev *dev, struct scatterlist *sg,
 			unsigned nbytes, u8 *out)
 {
 	int i;
@@ -286,7 +282,7 @@ void crypto_hash(struct convergent_dev *dev, struct scatterlist *sg,
 }
 
 /* Returns the new data size, or error */
-int crypto_cipher(struct convergent_dev *dev, struct scatterlist *sg,
+int crypto_cipher(struct nexus_dev *dev, struct scatterlist *sg,
 			char key[], unsigned len, int dir, int doPad)
 {
 	char iv[8]={0}; /* XXX */
@@ -361,7 +357,7 @@ static int compression_lookup(compress_t type, char **user_name)
 	return 0;
 }
 
-int compression_type_ok(struct convergent_dev *dev, compress_t compress)
+int compression_type_ok(struct nexus_dev *dev, compress_t compress)
 {
 	/* Make sure only one bit is set */
 	if (compress & (compress - 1))
@@ -375,7 +371,7 @@ int compression_type_ok(struct convergent_dev *dev, compress_t compress)
 #define SUPPORTED_COMPRESSION  (ISR_COMPRESS_NONE | \
 				ISR_COMPRESS_ZLIB | \
 				ISR_COMPRESS_LZF)
-int transform_alloc(struct convergent_dev *dev)
+int transform_alloc(struct nexus_dev *dev)
 {
 	char *cipher_name;
 	unsigned cipher_mode;
@@ -446,7 +442,7 @@ int transform_alloc(struct convergent_dev *dev)
 	return 0;
 }
 
-void transform_free(struct convergent_dev *dev)
+void transform_free(struct nexus_dev *dev)
 {
 	if (dev->lzf_compress)
 		kfree(dev->lzf_compress);

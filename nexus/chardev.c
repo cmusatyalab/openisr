@@ -6,7 +6,7 @@
 #include <linux/miscdevice.h>
 #include "defs.h"
 
-static int shutdown_dev(struct convergent_dev *dev, int force)
+static int shutdown_dev(struct nexus_dev *dev, int force)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	if (dev->flags & DEV_SHUTDOWN)
@@ -21,7 +21,7 @@ static int shutdown_dev(struct convergent_dev *dev, int force)
 
 static int chr_release(struct inode *ino, struct file *filp)
 {
-	struct convergent_dev *dev=filp->private_data;
+	struct nexus_dev *dev=filp->private_data;
 	
 	if (dev == NULL)
 		return 0;
@@ -30,14 +30,14 @@ static int chr_release(struct inode *ino, struct file *filp)
 	/* Redundant if unregister ioctl has already been called */
 	shutdown_dev(dev, 1);
 	mutex_unlock(&dev->lock);
-	convergent_dev_put(dev, 1);
+	nexus_dev_put(dev, 1);
 	return 0;
 }
 
 static ssize_t chr_read(struct file *filp, char __user *buf,
 			size_t count, loff_t *offp)
 {
-	struct convergent_dev *dev=filp->private_data;
+	struct nexus_dev *dev=filp->private_data;
 	struct isr_message msg;
 	DEFINE_WAIT(wait);
 	int i;
@@ -115,7 +115,7 @@ out:
 static ssize_t chr_write(struct file *filp, const char __user *buf,
 			size_t count, loff_t *offp)
 {
-	struct convergent_dev *dev=filp->private_data;
+	struct nexus_dev *dev=filp->private_data;
 	struct isr_message msg;
 	int i;
 	int err=0;
@@ -178,7 +178,7 @@ out:
 /* XXX we may want to eliminate this later */
 static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 {
-	struct convergent_dev *dev=filp->private_data;
+	struct nexus_dev *dev=filp->private_data;
 	struct isr_setup setup;
 	int ret;
 	
@@ -191,7 +191,7 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		if (strnlen(setup.chunk_device, ISR_MAX_DEVICE_LEN)
 					== ISR_MAX_DEVICE_LEN)
 			return -EINVAL;
-		dev=convergent_dev_ctr(setup.chunk_device, setup.chunksize,
+		dev=nexus_dev_ctr(setup.chunk_device, setup.chunksize,
 					setup.cachesize,
 					(sector_t)setup.offset, setup.crypto,
 					setup.compress_default,
@@ -228,7 +228,7 @@ static int chr_old_ioctl(struct inode *ino, struct file *filp, unsigned cmd,
 
 static unsigned chr_poll(struct file *filp, poll_table *wait)
 {
-	struct convergent_dev *dev=filp->private_data;
+	struct nexus_dev *dev=filp->private_data;
 	int mask=POLLOUT | POLLWRNORM;
 	
 	if (dev == NULL)
@@ -248,7 +248,7 @@ static unsigned chr_poll(struct file *filp, poll_table *wait)
 	return mask;
 }
 
-static struct file_operations convergent_char_ops = {
+static struct file_operations nexus_char_ops = {
 	.owner =		THIS_MODULE,
 	.open =			nonseekable_open,
 	.read =			chr_read,
@@ -266,19 +266,19 @@ static struct file_operations convergent_char_ops = {
 	/* XXX AIO? */
 };
 
-static struct miscdevice convergent_miscdev = {
+static struct miscdevice nexus_miscdev = {
 	.minor =		MISC_DYNAMIC_MINOR,
 	.name =			DEVICE_NAME "ctl",
-	.fops =			&convergent_char_ops,
-	.list =			LIST_HEAD_INIT(convergent_miscdev.list),
+	.fops =			&nexus_char_ops,
+	.list =			LIST_HEAD_INIT(nexus_miscdev.list),
 };
 
 int __init chardev_start(void)
 {
-	return misc_register(&convergent_miscdev);
+	return misc_register(&nexus_miscdev);
 }
 
 void __exit chardev_shutdown(void)
 {
-	misc_deregister(&convergent_miscdev);
+	misc_deregister(&nexus_miscdev);
 }

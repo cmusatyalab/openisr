@@ -92,10 +92,10 @@ static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 	return ret;
 }
 
-static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
+static void nexus_complete_chunk(struct nexus_io_chunk *chunk)
 {
 	int i;
-	struct convergent_io *io=chunk->parent;
+	struct nexus_io *io=chunk->parent;
 	
 	BUG_ON(!mutex_is_locked(&io->dev->lock));
 	
@@ -123,10 +123,10 @@ static void convergent_complete_chunk(struct convergent_io_chunk *chunk)
 }
 
 /* Process one chunk from an io. */
-void convergent_process_chunk(struct convergent_io_chunk *chunk)
+void nexus_process_chunk(struct nexus_io_chunk *chunk)
 {
-	struct convergent_io *io=chunk->parent;
-	struct convergent_dev *dev=io->dev;
+	struct nexus_io *io=chunk->parent;
+	struct nexus_dev *dev=io->dev;
 	struct scatterlist *chunk_sg;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
@@ -135,7 +135,7 @@ void convergent_process_chunk(struct convergent_io_chunk *chunk)
 	if (chunk->error) {
 		ndebug("process_chunk I/O error: chunk " SECTOR_FORMAT,
 					chunk->cid);
-		convergent_complete_chunk(chunk);
+		nexus_complete_chunk(chunk);
 		return;
 	}
 	
@@ -153,14 +153,14 @@ void convergent_process_chunk(struct convergent_io_chunk *chunk)
 		scatterlist_copy(chunk_sg, io->orig_sg, chunk->offset,
 					chunk->orig_offset, chunk->len);
 	}
-	convergent_complete_chunk(chunk);
+	nexus_complete_chunk(chunk);
 }
 
 /* Do initial setup, memory allocations, anything that can fail. */
-static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
+static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 {
-	struct convergent_io *io;
-	struct convergent_io_chunk *chunk;
+	struct nexus_io *io;
+	struct nexus_io_chunk *chunk;
 	unsigned remaining;
 	unsigned bytes;
 	unsigned nsegs;
@@ -228,13 +228,13 @@ static int convergent_setup_io(struct convergent_dev *dev, struct request *req)
 }
 
 /* Workqueue callback */
-void convergent_run_requests(void *data)
+void nexus_run_requests(void *data)
 {
-	struct convergent_dev *dev=data;
+	struct nexus_dev *dev=data;
 	struct request *req;
 	int need_put;
 	
-	if (convergent_dev_get(dev) == NULL)
+	if (nexus_dev_get(dev) == NULL)
 		return;
 	spin_lock(&dev->requests_lock);
 	/* We don't use the "safe" iterator because the next pointer might
@@ -245,21 +245,21 @@ void convergent_run_requests(void *data)
 		need_put=list_empty(&dev->requests);
 		spin_unlock(&dev->requests_lock);
 		if (need_put)
-			convergent_dev_put(dev, 0);
+			nexus_dev_put(dev, 0);
 		if (!blk_fs_request(req)) {
 			/* XXX */
 			debug("Skipping non-fs request");
 			end_that_request(req, 0, req->nr_sectors);
 			continue;
 		}
-		switch (convergent_setup_io(dev, req)) {
+		switch (nexus_setup_io(dev, req)) {
 		case 0:
 		case -ENXIO:
 			break;
 		case -ENOMEM:
 			spin_lock(&dev->requests_lock);
 			if (list_empty(&dev->requests))
-				convergent_dev_get(dev);
+				nexus_dev_get(dev);
 			list_add(&req->queuelist, &dev->requests);
 			/* Come back later when we're happier */
 			queue_delayed_work(wkqueue, &dev->cb_run_requests,
@@ -272,13 +272,13 @@ void convergent_run_requests(void *data)
 	}
 out:
 	spin_unlock(&dev->requests_lock);
-	convergent_dev_put(dev, 0);
+	nexus_dev_put(dev, 0);
 }
 
 /* Called with queue lock held */
-void convergent_request(request_queue_t *q)
+void nexus_request(request_queue_t *q)
 {
-	struct convergent_dev *dev=q->queuedata;
+	struct nexus_dev *dev=q->queuedata;
 	struct request *req;
 	int need_queue=0;
 	
@@ -291,7 +291,7 @@ void convergent_request(request_queue_t *q)
 		} else {
 			spin_lock(&dev->requests_lock);
 			if (list_empty(&dev->requests))
-				convergent_dev_get(dev);
+				nexus_dev_get(dev);
 			list_add_tail(&req->queuelist, &dev->requests);
 			spin_unlock(&dev->requests_lock);
 			need_queue=1;
@@ -308,7 +308,7 @@ int __init request_start(void)
 	int ret;
 	
 	io_cache=kmem_cache_create(MODULE_NAME "-io",
-				sizeof(struct convergent_io), 0, 0, NULL, NULL);
+				sizeof(struct nexus_io), 0, 0, NULL, NULL);
 	if (io_cache == NULL) {
 		ret=-ENOMEM;
 		goto bad_cache;
