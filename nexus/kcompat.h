@@ -1,5 +1,6 @@
 #ifndef NEXUS_KCOMPAT_H
 #define NEXUS_KCOMPAT_H
+#ifdef __KERNEL__
 
 #include <linux/version.h>
 
@@ -217,4 +218,7 @@ static inline int sha1_impl_is_suboptimal(struct crypto_tfm *tfm)
 
 /*****************************************************************************/
 
-#endif
+#else  /* __KERNEL__ */
+#error This header is not exported outside the Nexus implementation
+#endif /* __KERNEL__ */
+#endif /* NEXUS_KCOMPAT_H */

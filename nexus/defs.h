@@ -1,5 +1,6 @@
 #ifndef NEXUS_DEFS_H
 #define NEXUS_DEFS_H
+#ifdef __KERNEL__
 
 #define DEBUG
 #define MAX_SEGS_PER_IO 32
@@ -278,4 +279,7 @@ extern struct class_device_attribute class_dev_attrs[];
 extern char *svn_branch;
 extern char *svn_revision;
 
-#endif
+#else  /* __KERNEL__ */
+#error This header is not exported outside the Nexus implementation
+#endif /* __KERNEL__ */
+#endif /* NEXUS_DEFS_H */
