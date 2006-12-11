@@ -22,7 +22,7 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <time.h>
 #include <stdarg.h>
 #include <ctype.h>
-#include "vulpes_log.h"
+#include "log.h"
 
 static void vulpes_timestamp(char timestamp_coarse[128], char timestamp_fine[32])
 {

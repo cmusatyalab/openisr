@@ -7,8 +7,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include "vulpes.h"
-#include "vulpes_log.h"
-#include "vulpes_util.h"
+#include "log.h"
+#include "util.h"
 
 #define LOCKFILE_NAME "vulpes.lock"
 #define PIDFILE_NAME "vulpes.pid"

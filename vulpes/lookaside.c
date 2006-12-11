@@ -21,9 +21,9 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <unistd.h>
 #include <errno.h>
 #include "vulpes.h"
-#include "vulpes_lka.h"
-#include "vulpes_log.h"
-#include "vulpes_util.h"
+#include "lookaside.h"
+#include "log.h"
+#include "util.h"
 
 /*
  * DEFINES

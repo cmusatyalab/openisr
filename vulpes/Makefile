@@ -9,7 +9,7 @@ BINDIR=$(ISR_HOME)/local/bin
 
 APP=vulpes
 
-SRCS=revision.c vulpes.c vulpes_driver.c vulpes_transport.c vulpes_cache.c vulpes_crypto.c vulpes_log.c vulpes_util.c vulpes_lka.c
+SRCS=revision.c main.c driver.c transport.c cache.c crypto.c log.c util.c lookaside.c
 
 OBJS=$(SRCS:.c=.o)
 ASS=$(SRCS:.c=.s)

@@ -21,9 +21,9 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <fcntl.h>
 #include <errno.h>
 #include "vulpes.h"
-#include "vulpes_log.h"
-#include "vulpes_lka.h"
-#include "vulpes_util.h"
+#include "log.h"
+#include "lookaside.h"
+#include "util.h"
 
 /* GLOBALS */
 

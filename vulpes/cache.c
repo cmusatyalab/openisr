@@ -22,11 +22,11 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <zlib.h>
 #include <netinet/in.h>
 #include "vulpes.h"
-#include "vulpes_crypto.h"
-#include "vulpes_lka.h"
-#include "vulpes_log.h"
-#include "vulpes_util.h"
-#include "vulpes_state.h"
+#include "crypto.h"
+#include "lookaside.h"
+#include "log.h"
+#include "util.h"
+#include "state.h"
 #include "convergent-user.h"
 #include <sys/time.h>
 

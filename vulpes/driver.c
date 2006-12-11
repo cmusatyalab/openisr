@@ -10,8 +10,8 @@
 #include <sys/utsname.h>
 #include <linux/loop.h>
 #include "vulpes.h"
-#include "vulpes_log.h"
-#include "vulpes_util.h"
+#include "log.h"
+#include "util.h"
 #include "convergent-user.h"
 
 static const int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 

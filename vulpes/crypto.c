@@ -30,9 +30,9 @@ ACCEPTANCE OF THIS AGREEMENT
 #include <stdlib.h>
 #include <openssl/blowfish.h>
 #include "vulpes.h"
-#include "vulpes_crypto.h"
-#include "vulpes_log.h"
-#include "vulpes_util.h"
+#include "crypto.h"
+#include "log.h"
+#include "util.h"
 
 
 /* CORE ENCRYPTION/DECRYPTION Routines used by Vulpes */

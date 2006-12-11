@@ -5,8 +5,8 @@
 #include <string.h>
 #include <unistd.h>
 #include "vulpes.h"
-#include "vulpes_log.h"
-#include "vulpes_util.h"
+#include "log.h"
+#include "util.h"
 
 /***** HTTP transport *****/
 
