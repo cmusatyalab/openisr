@@ -458,7 +458,7 @@ sub isr_hoard ($$$) {
 		# caller and let it decide whether to restart the hoard
 		# operation.
 		if (!rename($tmpfile, "$hoarddir/$tag")) {
-		    unix_err("[isr] Unable to move $tmpfile to $tag");
+		    unix_err("Unable to move $tmpfile to $tag");
 		    return $Isr::EINVAL;
 		}
 		sys_sync();
@@ -1232,7 +1232,7 @@ sub isr_priv_cleanhoard ($$$) {
 
     # Get a list of file in the hoard cache
     if (!opendir(DIR, "$hoarddir")) {
-	err("Unable to open hoard cache ($hoarddir) for garbage collection\n");
+	err("Unable to open hoard cache ($hoarddir) for garbage collection");
 	return;
     }
     @files = grep(!/^[\._]/, readdir(DIR)); # elide . and ..

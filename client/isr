@@ -2311,29 +2311,6 @@ sub unix_errexit ($) {
 }
 
 #
-# system_errexit - Print an error and exit after the system() function fails
-#
-sub system_errexit ($) {
-    my $msg = shift;
-
-    my $exit_value = $? >> 8;
-    my $progname;
-
-    # Strip any path information from the program name
-    ($progname = $0) =~ s#.*/##s; 
-
-    # $? is the wait() style return value. $! is strerr[errno]
-    # $exit_value  = $? >> 8;
-    # $signal_num  = $? & 127;
-    # $dumped_core = $? & 128;
-    print RED, "[$progname] Error: $msg\n", RESET;
-    message("ERROR", "[$progname] Error: $msg");
-
-    # Pass the callee's exit value back to the caller
-    exit $exit_value; 
-}
-
-#
 # system_err - Print an error after the system() function fails
 #
 sub system_err ($) {
@@ -2351,6 +2328,18 @@ sub system_err ($) {
     # $dumped_core = $? & 128;
     print RED, "[$progname] Error: $msg\n", RESET;
     message("ERROR", "[$progname] Error: $msg");
+    
+    # Pass the exit value back to the caller
+    return $exit_value; 
+}
+
+#
+# system_errexit - Print an error and exit after the system() function fails
+#
+sub system_errexit ($) {
+    my $msg = shift;
+    
+    exit system_err($msg);
 }
 
 #
