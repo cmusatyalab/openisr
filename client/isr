@@ -32,6 +32,8 @@ use File::stat;
 use Term::ANSIColor qw(:constants);
 use POSIX ":sys_wait_h";
 use POSIX ":signal_h";
+use Fcntl qw(:DEFAULT :seek);
+use Errno qw(:POSIX);
 require "syscall.ph";
 use lib "/usr/local/isr/bin";
 use Isr;
@@ -75,8 +77,6 @@ sub get_dirnum ($$);
 sub get_chunknum ($$);
 sub get_value ($$);
 sub get_vulpespid ();
-sub check_conflicts ($$);
-sub conflicting ($$$$$$);
 sub block_sigint ();
 sub unblock_sigint ($);
 sub block_sigtstp ();
@@ -94,6 +94,8 @@ sub usage ($);
 sub need_parcel ();
 sub need_checked_out ();
 sub need_network ();
+sub acquire_lock ($);
+sub release_lock ();
 
 #########################
 # Section 1. Main routine
@@ -136,6 +138,7 @@ my $parcel;         # parcel name
 # will be necessary when we exit.
 my $no_shutdown = 0;# Set by forked children so the child won't run END
 my $killvulpes = 0; # Set by run command, tells END handler to kill Vulpes
+my $lockfile;       # Path to lock file
 
 # Read-only command line arguments that are visible to other modules.
 our $verbose = 1;   # Verbosity level; by default, we print a few messages
@@ -181,6 +184,7 @@ END {
 	if $isrdir;
     
     message("EXIT", $saved_status);
+    release_lock() if $lockfile;
     $? = $saved_status;
 }
 
@@ -362,16 +366,6 @@ if ($command eq "checkp") {
 
 
 #####
-# Some basic correctness checking
-#
-
-#
-# Some ISR commands can safely run concurrently, and others cannot. 
-# Check the concurrency constraints here before executing the command.
-#
-check_conflicts($command, $parcel);
-
-#####
 # Process the command
 #
 
@@ -397,6 +391,7 @@ if ($command eq "checkout") {
     need_parcel();
     need_network();
     update();
+    acquire_lock("$isrdir/$parcel.lock");
     checkout($userid, $parcel, $isrdir, $version);
 } 
 elsif ($command eq "resume") {
@@ -408,6 +403,7 @@ elsif ($command eq "resume") {
 	if ((!-e "$isrdir/$parcel") or
 	    (-e "$isrdir/$parcel" and !$disconnected));
     update();
+    acquire_lock("$isrdir/$parcel.lock");
     checkout($userid, $parcel, $isrdir, $version);
     run($userid, $parcel, $isrdir, $disconnected);
 } 
@@ -415,37 +411,44 @@ elsif ($command eq "checkin") {
     need_parcel();
     need_checked_out();
     need_network();
+    acquire_lock("$isrdir/$parcel.lock");
     checkin($userid, $parcel, $isrdir);
 } 
 elsif ($command eq "sync") {
     need_parcel();
     need_checked_out();
     need_network();
+    acquire_lock("$isrdir/$parcel.lock");
     sync($userid, $parcel, $isrdir);
 } 
 elsif ($command eq "discard") {
     need_parcel();
     need_checked_out();
+    acquire_lock("$isrdir/$parcel.lock");
     discard($userid, $parcel, $isrdir);
 }
 elsif ($command eq "hoard") {
     need_parcel();
+    acquire_lock("$isrdir/$parcel.lock");
     hoard($userid, $parcel, $isrdir);
 }
 elsif ($command eq "stat") {
     need_parcel();
     need_checked_out();
+    acquire_lock("$isrdir/$parcel.lock");
     statparcel($userid, $parcel, $isrdir);
 }
 elsif ($command eq "disconnect") {
     need_parcel();
     need_checked_out();
     need_network();
+    acquire_lock("$isrdir/$parcel.lock");
     disconnect($userid, $parcel, $isrdir, $nocheckstate);
 }
 elsif ($command eq "checkparcel") {
     need_parcel();
     need_network();
+    acquire_lock("$isrdir/$parcel.lock");
     checkparcel($userid, $parcel, $isrdir, $version, $checkstate);
 }
 elsif ($command eq "ls") {
@@ -472,6 +475,7 @@ elsif ($command eq "reset") {
 }
 elsif ($command eq "clean") {
     need_parcel();
+    acquire_lock("$isrdir/$parcel.lock");
     cleanclient($userid, $parcel, $isrdir, $allflag);
 }
 elsif ($command eq "run") {
@@ -1535,6 +1539,39 @@ sub need_network () {
 # Misc helper functions
 # 
 
+sub acquire_lock ($) {
+    my $file = shift;
+    
+    my $lockstruct;
+    
+    errexit("BUG: we already hold a lock on $lockfile")
+	if $lockfile;
+    
+    # This is black magic.  We don't want to make assumptions about whether
+    # we're using off_t or off64_t, or whether we're on a 64-bit architecture,
+    # or whether Perl is compiled to support 64-bit ints (so we can't use
+    # the "q" template flag).  Fortunately, we need to set both l_start
+    # and l_len to zero, and there's nothing after that whose alignment
+    # we care about.  So we just pad to the largest possible case, which
+    # is off64_t, in 32-bit chunks.  We do, however, still make assumptions
+    # about the ordering of the fields in the struct; there doesn't seem to
+    # be any way around that.
+    $lockstruct = pack("s!s!lllll", F_WRLCK, SEEK_SET);
+    open(LOCKFH, ">", $file)
+	or unix_errexit("Can't open $file for writing");
+    if (!fcntl(LOCKFH, F_SETLK, $lockstruct)) {
+	errexit("Parcel locked by another process")
+	    if ($! == EACCES or $! == EAGAIN);
+	unix_errexit("Can't acquire lock");
+    }
+    $lockfile = $file;
+}
+
+sub release_lock () {
+    unlink($lockfile);
+    close(LOCKFH);
+}
+
 #
 # clean - Erase all traces of a parcel from the client and do a soft
 #         (with nonce) or hard (no nonce) release of its lock.
@@ -2050,154 +2087,6 @@ sub block_sigtstp () {
     sigprocmask(SIG_BLOCK, $sigset)
 	or errexit("Could not block SIGTSTP");
     return $sigset;
-}
-
-#
-# check_conflicts - Make sure that running this isr process will not
-#                   conflict with other running isr processes
-#
-sub check_conflicts ($$) {
-    my $cmd= shift;
-    my $parcel = shift;
-
-    my $psline;
-    my $pspid;
-    my $pscmd;
-    my $psargs;
-    my $psparcel;
-    my $psuserid;
-
-    #
-    # List running isr processes in the form: PID followed by shell command
-    #
-    if (open(PS, "ps --no-headers -C isr -o pid -o cmd= |") == 0) {
-	err("Unable to run ps command to check process conflicts");
-	return;
-    }
-    
-    #
-    # Check each running isr process for a conflict with the current process
-    #
-    while ($psline = <PS>) {
-
-	# Extract the PID, command name, and optional parcel name from the 
-	# output line from the ps command
-
-	#$psline =~ /(\d+).+isr\s+(\w+)\s+/;
-
-        # the above line didn't work very well because it assumes that the 
-        # command name follows immediately after the "isr" part of the line.
-        #  but, users like me do things like this:
-        #  isr -u mtoups resume -p parcel
-        # which wouldn't match ... then we 'conflict' by default
-
-        # so... i'm going to strip off the pid, the 'isr' command, and then
-        # call everything else @ARGV -- which will then get processed by 
-        # GetOptions (same as the real program) and then leave only the
-        # command left over
-
-        $psline =~ /(\d+).+isr(.+)/;
-	$pspid = $1;
-	$psargs = $2;
-
-        @ARGV = split /\s+/, $psargs;
-        # do we care about "result" for this? -mt 
-        $result = GetOptions(
-                     "a|allstate"     => ,
-                     "b|bwlimit=i"    => ,
-                     "c|checkstate+"  => ,
-                     "x|nocheckstate" => ,
-                     "d|disconnected" => ,
-                     "h|help+"        => ,
-                     "l|long"         => ,
-                     "L|longvers=i"   => ,
-                     "n|nameserver=s" => ,
-                     "p|parcel=s"     => \$psparcel,
-                     "q|quiet"        => ,
-                     "r|revision"     => ,
-                     "u|userid=s"     => \$psuserid,
-                     "V|verbose+"     => ,
-                     "v|version=i"    => ,
-                     "g|guiflag"      => ,
-                     "X|noauto"       =>
-                     );
-
-        $pscmd = $ARGV[1];
-
-        # below lines are now obsolete also -- we'll let GetOptions 
-        # find psparcel for us --matt
-
-	#if ($psline =~ /(\-p|\-\-parcel|\-parcel)\s+(\w+)/) {
-	#    $psparcel = $2;
-	#}
-
-	# If the parcels conflict, then print message and exit
-	if (conflicting($$, $cmd, $parcel, $pspid, $pscmd, $psparcel)) {
-	    errexit("Conflicts with existing process \"isr $pscmd -p $psparcel\" (pid=$pspid)"); 
-	}
-    }
-    close(PS);
-}
-
-#
-# conflicting - Returns true if the current process (pid) conflicts with 
-#               an already existing process (pspid) culled from ps
-#
-sub conflicting($$$$$$) {
-    my $pid = shift;
-    my $cmd = shift;
-    my $parcel = shift;
-    my $pspid = shift;
-    my$pscmd = shift;
-    my $psparcel = shift;
-
-    # A command never conflicts with itself
-    if ($pid == $pspid) {
-	return 0;
-    }
-
-    # Some commands conflict with everything
-    if ($cmd eq "update" or $pscmd eq "update") {
-	return 1;
-    }
-
-    # Some commands never conflict, regardless of the parcels they manipulate
-    if ($cmd eq "ls" or $pscmd eq "ls" or
-	$cmd eq "auth" or $pscmd eq "auth" or
-	$cmd eq "checkparcel" or $pscmd eq "checkparcel" or
-	$cmd eq "deauth" or $pscmd eq "deauth" or
-	$cmd eq "reset" or $pscmd eq "reset" or
-	$cmd eq "stat" or $pscmd eq "stat" or
-	$cmd eq "passwd" or $pscmd eq "passwd") {
-	return 0;
-    }
-
-    # Resume always conflicts with itself, regardless of the parcel 
-    # the two instances are manipulating
-    if ($cmd eq "resume" and $pscmd eq "resume") {
-	return 1;
-    }
-
-    # For the remaining commands, different parcels implies no
-    # conflict If two commands operate on the same parcel, then they
-    # are in conflict, except in cases where exactly one of those
-    # commands is hoarding.
-    if ($parcel ne $psparcel) {
-	return 0;
-    }
-    else {
-	if (($cmd eq "hoard") or ($pscmd eq "hoard")) {
-	    if (!($cmd eq "hoard" and $pscmd eq "hoard")) {
-		return 0;
-	    }	
-	    else {
-		return 1;
-	    }
-	}
-    }
-
-    # Be conservative and assume a conflict
-    return 1;
 }
 
 #
