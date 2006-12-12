@@ -58,6 +58,7 @@ struct nexus_dev {
 	sector_t offset;
 	chunk_t chunks;
 	int devnum;
+	uid_t owner;
 	unsigned flags;	/* XXX racy */
 	struct nexus_stats stats;
 	

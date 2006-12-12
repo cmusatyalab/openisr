@@ -226,6 +226,7 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	INIT_WORK(&dev->cb_run_requests, nexus_run_requests, dev);
 	init_waitqueue_head(&dev->waiting_users);
 	dev->devnum=devnum;
+	dev->owner=current->uid;
 	
 	if (chunksize < 512 || (chunksize & (chunksize - 1)) != 0) {
 		log(KERN_ERR, "chunk size must be >= 512 and a power of 2");

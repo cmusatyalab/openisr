@@ -29,6 +29,12 @@ struct class_attribute class_attrs[] = {
 
 /* All of these can run before the ctr has finished! */
 
+static ssize_t dev_show_owner(struct class_device *class_dev, char *buf)
+{
+	struct nexus_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n", dev->owner);
+}
+
 static ssize_t dev_show_chunksize(struct class_device *class_dev, char *buf)
 {
 	struct nexus_dev *dev=class_get_devdata(class_dev);
@@ -162,6 +168,7 @@ static ssize_t dev_show_sect_written(struct class_device *class_dev, char *buf)
 }
 
 struct class_device_attribute class_dev_attrs[] = {
+	__ATTR(owner, S_IRUGO, dev_show_owner, NULL),
 	__ATTR(chunk_size, S_IRUGO, dev_show_chunksize, NULL),
 	__ATTR(cache_entries, S_IRUGO, dev_show_cachesize, NULL),
 	__ATTR(header_length, S_IRUGO, dev_show_offset, NULL),
