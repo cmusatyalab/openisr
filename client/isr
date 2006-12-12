@@ -80,7 +80,6 @@ sub conflicting ($$$$$$);
 sub block_sigint ();
 sub unblock_sigint ($);
 sub block_sigtstp ();
-sub cleantmp ();
 sub mysystem ($);
 sub sys_sync ();
 sub mktree ($);
@@ -126,13 +125,17 @@ my $noautoflag;      # Don't automatically start/stop VMWare at launch time
 my $allflag;         # Reset() should delete all state, including hoard cache
 
 # Write once globals that are visible in this module only. These globals are
-# needed to cleanly handle logging and exceptional termination.
+# needed to cleanly handle logging.
 my $pid;            # Pid of child created in mysystem
 my $hostid;         # Unique hostid from $Isr::HOSTID file
 my $sessionid = 0;  # Unique session id (nonce from lock operation)
 my $userid;         # ISR userid
 my $parcel;         # parcel name
-my $killvulpes = 0; # Set by run command, tells SIGINT handler to kill Vulpes
+
+# State globals, visible in this module only, which track which cleanup actions
+# will be necessary when we exit.
+my $no_shutdown = 0;# Set by forked children so the child won't run END
+my $killvulpes = 0; # Set by run command, tells END handler to kill Vulpes
 
 # Read-only command line arguments that are visible to other modules.
 our $verbose = 1;   # Verbosity level; by default, we print a few messages
@@ -152,13 +155,14 @@ our %cfg = ();
 #
 
 #
-# Install a signal handler that catches ctrl-c
+# Define what we do on shutdown (placed here for clarity)
 #
-$SIG{"INT"} = sub {
+END {
+    my $saved_status=$?;
     my $pid;
     
-    print "\n";
-    cleantmp();
+    return if $no_shutdown;
+    
     if ($killvulpes) {
 	$pid = get_vulpespid();
 	if ($pid != 0) {
@@ -169,7 +173,23 @@ $SIG{"INT"} = sub {
     }
     sys_sync();
     sys_sync();
-    message("EXIT", "SIGINT"); 
+    
+    # Remove temporary files
+    system("rm -f /tmp/*.$$");
+    system("rm -rf /tmp/parcel* /tmp/VERSION.srv /tmp/ls.* > /dev/null 2>&1");
+    system("rm -rf $isrdir/tmplast*")
+	if $isrdir;
+    
+    message("EXIT", $saved_status);
+    $? = $saved_status;
+}
+
+#
+# Install a signal handler that catches ctrl-c
+#
+$SIG{"INT"} = sub {
+    print "\n";
+    message("INFO", "Caught SIGINT"); 
     exit 1; 
 };
 
@@ -207,7 +227,6 @@ if (!$Isr::CONSOLE_LOGMASK) {
 # Check if the user is running as root
 #
 if ((getpwuid($<))[0] eq "root") {  # Reminder: '$<' is the UID 
-    cleantmp();
     errexit("Root is not allowed to run the isr client program.");
 }
 
@@ -233,8 +252,6 @@ message("ENTER", "@ARGV");
 if (@ARGV == 0) {
     print("$progname: Try '$progname --help' for more information.\n");
     message("INFO", "Help");
-    message("EXIT", "0");
-    cleantmp();
     exit 0;
 }
 
@@ -281,8 +298,7 @@ if ($revisionflag) {
 	print "$prot.pm:", isr_revision(), " ";
     }
     print "\n";
-    message("EXIT", "printed version info");
-    cleantmp();
+    message("INFO", "Printed version info");
     exit 0;
 }
 
@@ -470,8 +486,6 @@ else {
 # Clean up and exit
 #
 message("END", $command);
-message("EXIT", "0");
-cleantmp();
 exit 0;
 
 
@@ -1410,7 +1424,6 @@ sub update () {
 	mysystem("./isr_setup update");
 	mysystem("rm -rf isr_setup");
  	message("INFO", "ISR client software updated. Rerun checkout or resume");
-	message("EXIT", "0");
 	exit 0;
     }
     elsif ($needsupdate == 0 and $command eq "update") {
@@ -1422,7 +1435,6 @@ sub update () {
 	print RED, "This is a critical update, please run ", RESET;
 	print BLUE, "isr update ", RESET;
 	print RED, "on the command line\n", RESET;
-	message("EXIT", "0");
 	exit 0;
     }
 }
@@ -1473,9 +1485,6 @@ sub cleanclient($$$$) {
     if (clean($userid, $parcel, $isrdir, 0) > 0) {
 	return;
     }
-
-    # Remove any cruft that might be in the /tmp directory
-    cleantmp();
 
     # Optionally remove the parcel's hoard cache, too
     if ($allflag) {
@@ -1909,7 +1918,8 @@ sub connected () {
 
     # The child tries to establish a connection with root serve
     # on the name server 
-    if ($pid == 0) { 
+    if ($pid == 0) {
+	$no_shutdown = 1;
 	my $socket = IO::Socket::INET->new(PeerAddr => "$Isr::NAMESRV",
 					   PeerPort => "22",
 					   Proto    => "tcp",
@@ -2191,16 +2201,6 @@ sub conflicting($$$$$$) {
 }
 
 #
-# cleantmp - Clean up any stray tmp files created by this process
-#
-sub cleantmp () {
-    system("rm -f /tmp/*.$$");
-    system("rm -rf /tmp/parcel* /tmp/VERSION.srv /tmp/ls.* > /dev/null 2>&1");
-    system("rm -rf $isrdir/tmplast*")
-	if $isrdir;
-}
-
-#
 # mysystem - Version of Unix 'system' function that can be 
 #            interrupted with ctrl-c
 #
@@ -2213,6 +2213,7 @@ sub mysystem ($) {
 
     # Child
     elsif ($pid == 0) {
+	$no_shutdown = 1;
 	exec($cmd)
 	    or unix_errexit("Unable to exec $cmd in mysystem");
     } 
@@ -2290,8 +2291,6 @@ sub errexit ($) {
 
     print RED, "[$progname] Error: $msg\n", RESET;
     message("ERROR", "[$progname] Error: $msg");
-    message("EXIT" , "$Isr::EINVAL");
-    cleantmp();
     exit $Isr::EINVAL;
 }
 
@@ -2308,8 +2307,6 @@ sub unix_errexit ($) {
 
     print RED, "[$progname] Error: $msg ($!)\n", RESET;
     message("ERROR", "[$progname] Error: $msg ($!)");
-    message("EXIT", "$Isr::EINVAL");
-    cleantmp();
     exit $Isr::EINVAL;
 }
 
@@ -2331,10 +2328,8 @@ sub system_errexit ($) {
     # $dumped_core = $? & 128;
     print RED, "[$progname] Error: $msg\n", RESET;
     message("ERROR", "[$progname] Error: $msg");
-    message("EXIT", "$exit_value");
 
     # Pass the callee's exit value back to the caller
-    cleantmp();
     exit $exit_value; 
 }
 
@@ -2479,9 +2474,5 @@ sub usage ($) {
     print "  -X,--noauto        Don't automatically start/stop VMWare [resume].\n";
     print "\n";
     
-    message("EXIT", "0");
-    cleantmp();
     exit 0;
-
 }
-
