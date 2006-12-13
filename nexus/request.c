@@ -168,7 +168,7 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 	
 	BUG_ON(req->nr_phys_segments > MAX_SEGS_PER_IO);
 	
-	if (dev->flags & DEV_SHUTDOWN) {
+	if (dev_is_shutdown(dev)) {
 		end_that_request(req, 0, req->nr_sectors);
 		return -ENXIO;
 	}
@@ -234,8 +234,7 @@ void nexus_run_requests(void *data)
 	struct request *req;
 	int need_put;
 	
-	if (nexus_dev_get(dev) == NULL)
-		return;
+	nexus_dev_get(dev);
 	spin_lock(&dev->requests_lock);
 	/* We don't use the "safe" iterator because the next pointer might
 	   change out from under us between iterations */
@@ -286,7 +285,7 @@ void nexus_request(request_queue_t *q)
 	BUG_ON(in_interrupt());
 	while ((req = elv_next_request(q)) != NULL) {
 		blkdev_dequeue_request(req);
-		if (dev->flags & DEV_SHUTDOWN) {
+		if (dev_is_shutdown(dev)) {
 			__end_that_request(req, 0, req->nr_sectors);
 		} else {
 			spin_lock(&dev->requests_lock);

@@ -556,8 +556,7 @@ static void try_start_io(struct nexus_io *io)
 		default:
 			continue;
 		}
-		if ((io->flags & IO_WRITE) &&
-					(dev->flags & DEV_SHUTDOWN)) {
+		if ((io->flags & IO_WRITE) && dev_is_shutdown(dev)) {
 			/* Won't be able to do writeback. */
 			chunk->error=-EIO;
 			/* Subsequent reads to this chunk must not be allowed
@@ -578,7 +577,7 @@ static int queue_for_user(struct chunkdata *cd)
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	BUG_ON(!list_empty(&cd->lh_user));
 	BUG_ON(cd->state != ST_LOAD_META && cd->state != ST_STORE_META);
-	if (cd->table->dev->flags & DEV_SHUTDOWN)
+	if (dev_is_shutdown(cd->table->dev))
 		return -EIO;
 	list_add_tail(&cd->lh_user, &cd->table->user);
 	wake_up_interruptible(&cd->table->dev->waiting_users);
@@ -660,7 +659,7 @@ void shutdown_usermsg(struct nexus_dev *dev)
 	struct chunkdata *next;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
-	BUG_ON(!(dev->flags & DEV_SHUTDOWN));
+	BUG_ON(!dev_is_shutdown(dev));
 	list_for_each_entry_safe(cd, next, &dev->chunkdata->user, lh_user) {
 		transition_error(cd, -EIO);
 		__end_usermsg(cd);
@@ -873,8 +872,7 @@ int reserve_chunks(struct nexus_io *io)
 	}
 	if (!(dev->flags & DEV_HAVE_CD_REF)) {
 		dev->flags |= DEV_HAVE_CD_REF;
-		if (nexus_dev_get(dev) == NULL)
-			BUG();
+		nexus_dev_get(dev);
 	}
 	for (i=0; i<io_chunks(io); i++) {
 		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);

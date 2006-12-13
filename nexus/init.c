@@ -12,17 +12,18 @@
 
 static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
 static struct class class;
-static atomic_t cache_pages;
+static atomic_t cache_pages=ATOMIC_INIT(0);
+static LIST_HEAD(devs);
+static spinlock_t global_state_lock;
 struct workqueue_struct *wkqueue;
 int blk_major;
 
-struct nexus_dev *nexus_dev_get(struct nexus_dev *dev)
+/* It is an error to use this when the refcount may have already reached
+   zero.  (The kref infrastructure does not handle this case.) */
+void nexus_dev_get(struct nexus_dev *dev)
 {
-	if (dev == NULL)
-		return NULL;
 	if (class_device_get(dev->class_dev) == NULL)
-		return NULL;
-	return dev;
+		BUG();
 }
 
 /* @unlink is true if we should remove the sysfs entries - that is, if
@@ -56,6 +57,23 @@ void user_put(struct nexus_dev *dev)
 	ndebug("need_user now %u", dev->need_user);
 }
 
+int shutdown_dev(struct nexus_dev *dev, int force)
+{
+	BUG_ON(in_interrupt());
+	BUG_ON(!mutex_is_locked(&dev->lock));
+	if (dev_is_shutdown(dev))
+		return -ENXIO;
+	if (!force && dev->need_user != 0) {
+		return -EBUSY;
+	}
+	debug("Shutting down chardev");
+	spin_lock(&global_state_lock);
+	list_del_init(&dev->lh_devs);
+	spin_unlock(&global_state_lock);
+	shutdown_usermsg(dev);
+	return 0;
+}
+
 static void class_release_dummy(struct class *class)
 {
 	/* Dummy function: class is allocated statically, so we don't need
@@ -79,23 +97,29 @@ static int get_system_page_count(void)
 static int nexus_open(struct inode *ino, struct file *filp)
 {
 	struct nexus_dev *dev;
+	int found=0;
 	
-	dev=nexus_dev_get(ino->i_bdev->bd_disk->private_data);
-	if (dev == NULL)
+	spin_lock(&global_state_lock);
+	list_for_each_entry(dev, &devs, lh_devs) {
+		if (dev == ino->i_bdev->bd_disk->private_data) {
+			found=1;
+			/* Since it's still in the devs list, we know that
+			   chardev still holds a reference. */
+			nexus_dev_get(dev);
+			break;
+		}
+	}
+	spin_unlock(&global_state_lock);
+	if (!found)
 		return -ENODEV;
+	
 	if (mutex_lock_interruptible(&dev->lock)) {
 		nexus_dev_put(dev, 0);
 		return -ERESTARTSYS;
 	}
-	if (dev->flags & DEV_SHUTDOWN) {
-		mutex_unlock(&dev->lock);
-		nexus_dev_put(dev, 0);
-		return -ENODEV;
-	} else {
-		user_get(dev);
-		mutex_unlock(&dev->lock);
-		return 0;
-	}
+	user_get(dev);
+	mutex_unlock(&dev->lock);
+	return 0;
 }
 
 static int nexus_release(struct inode *ino, struct file *filp)
@@ -145,8 +169,8 @@ static void nexus_dev_dtr(struct class_device *class_dev)
 	struct nexus_dev *dev=class_get_devdata(class_dev);
 	
 	debug("Dtr called");
+	BUG_ON(!dev_is_shutdown(dev));
 	BUG_ON(!list_empty(&dev->requests));
-	/* XXX racy? */
 	if (dev->gendisk) {
 		if (dev->gendisk->flags & GENHD_FL_UP) {
 			del_gendisk(dev->gendisk);
@@ -227,6 +251,11 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	init_waitqueue_head(&dev->waiting_users);
 	dev->devnum=devnum;
 	dev->owner=current->uid;
+	
+	INIT_LIST_HEAD(&dev->lh_devs);
+	spin_lock(&global_state_lock);
+	list_add_tail(&dev->lh_devs, &devs);
+	spin_unlock(&global_state_lock);
 	
 	if (chunksize < 512 || (chunksize & (chunksize - 1)) != 0) {
 		log(KERN_ERR, "chunk size must be >= 512 and a power of 2");
@@ -356,8 +385,7 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	   If we called add_disk() directly here, we would deadlock. */
 	INIT_WORK(&dev->cb_add_disk, nexus_add_disk, dev);
 	/* Make sure the dev isn't freed until add_disk() completes */
-	if (nexus_dev_get(dev) == NULL)
-		BUG();
+	nexus_dev_get(dev);
 	/* We use the shared queue in order to prevent deadlock: if we
 	   used our own queue, add_disk() would block its own I/O to the
 	   partition table. */
@@ -371,6 +399,9 @@ bad_put_chunkdata:
 	   the dev that needs to be released or it won't be freed. */
 	nexus_dev_put(dev, 0);
 bad:
+	spin_lock(&global_state_lock);
+	list_del_init(&dev->lh_devs);
+	spin_unlock(&global_state_lock);
 	nexus_dev_put(dev, 1);
 	return ERR_PTR(ret);
 	/* Until we have a refcount, we can't fail through the destructor */
@@ -391,7 +422,7 @@ static int __init nexus_init(void)
 	debug("===================================================");
 	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
 	
-	atomic_set(&cache_pages, 0);
+	spin_lock_init(&global_state_lock);
 	
 	ret=request_start();
 	if (ret)

@@ -6,19 +6,6 @@
 #include <linux/miscdevice.h>
 #include "defs.h"
 
-static int shutdown_dev(struct nexus_dev *dev, int force)
-{
-	BUG_ON(!mutex_is_locked(&dev->lock));
-	if (dev->flags & DEV_SHUTDOWN)
-		return -ENXIO;
-	if (!force && dev->need_user != 0)
-		return -EBUSY;
-	debug("Shutting down chardev");
-	dev->flags |= DEV_SHUTDOWN;
-	shutdown_usermsg(dev);
-	return 0;
-}
-
 static int chr_release(struct inode *ino, struct file *filp)
 {
 	struct nexus_dev *dev=filp->private_data;
@@ -55,7 +42,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	
 	if (mutex_lock_interruptible(&dev->lock))
 		return -ERESTARTSYS;
-	if (dev->flags & DEV_SHUTDOWN) {
+	if (dev_is_shutdown(dev)) {
 		mutex_unlock(&dev->lock);
 		return -ENXIO;
 	}
@@ -129,7 +116,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 	
 	if (mutex_lock_interruptible(&dev->lock))
 		return -ERESTARTSYS;
-	if (dev->flags & DEV_SHUTDOWN) {
+	if (dev_is_shutdown(dev)) {
 		mutex_unlock(&dev->lock);
 		return -ENXIO;
 	}
@@ -236,7 +223,7 @@ static unsigned chr_poll(struct file *filp, poll_table *wait)
 	poll_wait(filp, &dev->waiting_users, wait);
 	/* There doesn't seem to be a good way to make this interruptible */
 	mutex_lock(&dev->lock);
-	if (!(dev->flags & DEV_SHUTDOWN)) {
+	if (!dev_is_shutdown(dev)) {
 		if (have_usermsg(dev))
 			mask |= POLLIN | POLLRDNORM;
 		if (dev->need_user == 0)

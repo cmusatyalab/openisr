@@ -41,6 +41,8 @@ struct nexus_stats {
 };
 
 struct nexus_dev {
+	struct list_head lh_devs;  /* updates synced by global_state_lock */
+	
 	struct class_device *class_dev;
 	struct gendisk *gendisk;
 	request_queue_t *queue;
@@ -59,7 +61,7 @@ struct nexus_dev {
 	chunk_t chunks;
 	int devnum;
 	uid_t owner;
-	unsigned flags;	/* XXX racy */
+	unsigned flags;  /* synchronized by device mutex */
 	struct nexus_stats stats;
 	
 	crypto_t suite;
@@ -86,13 +88,13 @@ struct nexus_dev {
 };
 
 enum dev_bits {
-	__DEV_SHUTDOWN,     /* Userspace keying daemon has gone away */
 	__DEV_HAVE_CD_REF,  /* chunkdata holds a dev reference */
 };
 
 /* nexus_dev flags */
-#define DEV_SHUTDOWN        (1 << __DEV_SHUTDOWN)
 #define DEV_HAVE_CD_REF     (1 << __DEV_HAVE_CD_REF)
+
+#define dev_is_shutdown(dev) (list_empty(&dev->lh_devs))
 
 struct nexus_io_chunk {
 	struct list_head lh_pending;
@@ -220,10 +222,11 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset, crypto_t crypto,
 			compress_t default_compress,
 			compress_t supported_compress);
-struct nexus_dev *nexus_dev_get(struct nexus_dev *dev);
+void nexus_dev_get(struct nexus_dev *dev);
 void nexus_dev_put(struct nexus_dev *dev, int unlink);
 void user_get(struct nexus_dev *dev);
 void user_put(struct nexus_dev *dev);
+int shutdown_dev(struct nexus_dev *dev, int force);
 
 /* request.c */
 int request_start(void);
