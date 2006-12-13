@@ -14,8 +14,8 @@
 #include "util.h"
 #include "nexus.h"
 
-static const int caught_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGINT, SIGQUIT, 
-			SIGABRT, SIGTERM, SIGTSTP, 0};
+static const int ignored_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGTSTP, 0};
+static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 
 #define DEVFILE_NAME "vulpes.dev"
 #define REQUESTS_PER_SYSCALL 64
@@ -150,6 +150,13 @@ vulpes_err_t driver_init(void)
   for (i=0; caught_signals[i] != 0; i++) {
     if (set_signal_handler(caught_signals[i], signal_handler)) {
       vulpes_log(LOG_ERRORS,"unable to register default signal handler for signal %d",caught_signals[i]);
+      return VULPES_CALLFAIL;
+    }
+  }
+  /* Ignore signals that don't make sense for us */
+  for (i=0; ignored_signals[i] != 0; i++) {
+    if (set_signal_handler(ignored_signals[i], SIG_IGN)) {
+      vulpes_log(LOG_ERRORS,"unable to ignore signal %d",ignored_signals[i]);
       return VULPES_CALLFAIL;
     }
   }
@@ -362,6 +369,10 @@ void driver_run(void)
     if (FD_ISSET(state.signal_fds[0], &readfds)) {
       while (read(state.signal_fds[0], &signal, sizeof(signal)) > 0) {
 	switch (signal) {
+	case SIGQUIT:
+	  vulpes_log(LOG_BASIC,"Caught SIGQUIT; shutting down immediately");
+	  vulpes_log(LOG_BASIC,"Loop unregistration may fail");
+	  return;
 	default:
 	  vulpes_log(LOG_BASIC,"Caught signal; shutdown pending");
 	  shutdown_pending=1;
