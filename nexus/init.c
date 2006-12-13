@@ -10,13 +10,16 @@
 #include <linux/interrupt.h>
 #include "defs.h"
 
-static unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
 static struct class class;
-static atomic_t cache_pages=ATOMIC_INIT(0);
-static LIST_HEAD(devs);
-static spinlock_t global_state_lock;
 struct workqueue_struct *wkqueue;
 int blk_major;
+
+static struct {
+	spinlock_t lock;
+	struct list_head devs;
+	unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
+	unsigned long cache_pages;
+} state;
 
 /* It is an error to use this when the refcount may have already reached
    zero.  (The kref infrastructure does not handle this case.) */
@@ -59,7 +62,6 @@ void user_put(struct nexus_dev *dev)
 
 int shutdown_dev(struct nexus_dev *dev, int force)
 {
-	BUG_ON(in_interrupt());
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	if (dev_is_shutdown(dev))
 		return -ENXIO;
@@ -67,9 +69,9 @@ int shutdown_dev(struct nexus_dev *dev, int force)
 		return -EBUSY;
 	}
 	debug("Shutting down chardev");
-	spin_lock(&global_state_lock);
+	spin_lock(&state.lock);
 	list_del_init(&dev->lh_devs);
-	spin_unlock(&global_state_lock);
+	spin_unlock(&state.lock);
 	shutdown_usermsg(dev);
 	return 0;
 }
@@ -82,16 +84,13 @@ static void class_release_dummy(struct class *class)
 	return;
 }
 
-/* Returns int because atomic_t is an int */
-static int get_system_page_count(void)
+static unsigned long get_system_page_count(void)
 {
 	struct sysinfo s;
 	
 	si_meminfo(&s);
 	BUG_ON(s.mem_unit != PAGE_SIZE);
-	/* If we have more than 8 TB of RAM, we can't use atomic_t anymore */
-	BUG_ON(s.totalram >= ((unsigned)(1 << 31)) - 1);
-	return (int)s.totalram;
+	return s.totalram;
 }
 
 static int nexus_open(struct inode *ino, struct file *filp)
@@ -99,8 +98,8 @@ static int nexus_open(struct inode *ino, struct file *filp)
 	struct nexus_dev *dev;
 	int found=0;
 	
-	spin_lock(&global_state_lock);
-	list_for_each_entry(dev, &devs, lh_devs) {
+	spin_lock(&state.lock);
+	list_for_each_entry(dev, &state.devs, lh_devs) {
 		if (dev == ino->i_bdev->bd_disk->private_data) {
 			found=1;
 			/* Since it's still in the devs list, we know that
@@ -109,7 +108,7 @@ static int nexus_open(struct inode *ino, struct file *filp)
 			break;
 		}
 	}
-	spin_unlock(&global_state_lock);
+	spin_unlock(&state.lock);
 	if (!found)
 		return -ENODEV;
 	
@@ -139,19 +138,22 @@ static int alloc_devnum(void)
 {
 	int num;
 
-	/* This is done unlocked, so we have to be careful */
-	for (;;) {
-		num=find_first_zero_bit(devnums, DEVICES);
-		if (num == DEVICES)
-			return -1;
-		if (!test_and_set_bit(num, devnums))
-			return num;
-	}
+	spin_lock(&state.lock);
+	num=find_first_zero_bit(state.devnums, DEVICES);
+	if (num != DEVICES)
+		__set_bit(num, state.devnums);
+	spin_unlock(&state.lock);
+	if (num == DEVICES)
+		return -1;
+	else
+		return num;
 }
 
 static void free_devnum(int devnum)
 {
-	clear_bit(devnum, devnums);
+	spin_lock(&state.lock);
+	__clear_bit(devnum, state.devnums);
+	spin_unlock(&state.lock);
 }
 
 /* Workqueue callback */
@@ -185,7 +187,9 @@ static void nexus_dev_dtr(struct class_device *class_dev)
 		blk_cleanup_queue(dev->queue);
 	if (dev->chunk_bdev)
 		close_bdev_excl(dev->chunk_bdev);
-	atomic_sub(dev->cachesize * chunk_pages(dev), &cache_pages);
+	spin_lock(&state.lock);
+	state.cache_pages -= dev->cachesize * chunk_pages(dev);
+	spin_unlock(&state.lock);
 	free_devnum(dev->devnum);
 	kfree(dev->class_dev);
 	kfree(dev);
@@ -205,9 +209,10 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 {
 	struct nexus_dev *dev;
 	sector_t capacity;
-	int pages=get_system_page_count();
+	unsigned long pages=get_system_page_count();
 	int devnum;
 	int ret;
+	int ok;
 	
 	debug("Ctr starting");
 	
@@ -253,9 +258,9 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	dev->owner=current->uid;
 	
 	INIT_LIST_HEAD(&dev->lh_devs);
-	spin_lock(&global_state_lock);
-	list_add_tail(&dev->lh_devs, &devs);
-	spin_unlock(&global_state_lock);
+	spin_lock(&state.lock);
+	list_add_tail(&dev->lh_devs, &state.devs);
+	spin_unlock(&state.lock);
 	
 	if (chunksize < 512 || (chunksize & (chunksize - 1)) != 0) {
 		log(KERN_ERR, "chunk size must be >= 512 and a power of 2");
@@ -280,14 +285,17 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 		goto bad;
 	}
 	dev->cachesize=cachesize;
+	spin_lock(&state.lock);
 	/* The dtr subtracts this off again only if chunksize and cachesize
 	   are nonzero */
-	atomic_add(cachesize * chunk_pages(dev), &cache_pages);
+	state.cache_pages += cachesize * chunk_pages(dev);
+	ok=(state.cache_pages <= pages * MAX_ALLOCATION_MULT
+				/ MAX_ALLOCATION_DIV);
+	spin_unlock(&state.lock);
 	/* This is racy wrt multiple simultaneous ctr calls, but it's
 	   conservatively racy: multiple ctr calls may fail when one of them
 	   should have succeeded */
-	if (atomic_read(&cache_pages) > pages * MAX_ALLOCATION_MULT /
-				MAX_ALLOCATION_DIV) {
+	if (!ok) {
 		log(KERN_ERR, "will not allocate more than %u/%u of system RAM "
 					"for cache", MAX_ALLOCATION_MULT,
 					MAX_ALLOCATION_DIV);
@@ -360,8 +368,10 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	
 	ndebug("Allocating chunkdata");
 	ret=chunkdata_alloc_table(dev);
-	if (ret)
+	if (ret) {
+		log(KERN_ERR, "couldn't allocate chunkdata");
 		goto bad;
+	}
 	
 	ndebug("Allocating disk");
 	dev->gendisk=alloc_disk(MINORS_PER_DEVICE);
@@ -399,9 +409,9 @@ bad_put_chunkdata:
 	   the dev that needs to be released or it won't be freed. */
 	nexus_dev_put(dev, 0);
 bad:
-	spin_lock(&global_state_lock);
+	spin_lock(&state.lock);
 	list_del_init(&dev->lh_devs);
-	spin_unlock(&global_state_lock);
+	spin_unlock(&state.lock);
 	nexus_dev_put(dev, 1);
 	return ERR_PTR(ret);
 	/* Until we have a refcount, we can't fail through the destructor */
@@ -422,7 +432,8 @@ static int __init nexus_init(void)
 	debug("===================================================");
 	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
 	
-	spin_lock_init(&global_state_lock);
+	spin_lock_init(&state.lock);
+	INIT_LIST_HEAD(&state.devs);
 	
 	ret=request_start();
 	if (ret)
