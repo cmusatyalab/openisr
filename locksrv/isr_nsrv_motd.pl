@@ -76,12 +76,14 @@ $motdfile = "/usr/local/isr/motd.txt";
 # Return the config file to the caller via stdout
 #
 open(INFILE, $motdfile) 
-    or unix_errexit("Unable to open $motdfile.");
+    or exit 0;
+print "\nServer message:\n";
 while (<INFILE>) {
     print $_;
 }
 close (INFILE) 
     or unix_errexit("Unable to close $motdfile.");
+print "\n";
 
 exit 0;
 
