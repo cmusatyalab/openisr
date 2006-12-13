@@ -59,7 +59,6 @@ sub release ($$$);
 sub clean ($$$$);
 sub resetclient ();
 sub cleanclient ($$$$);
-sub update ();
 sub hoard ($$$);
 sub checkparcel ($$$$$);
 sub statparcel ($$$);
@@ -179,7 +178,7 @@ END {
     
     # Remove temporary files
     system("rm -f /tmp/*.$$");
-    system("rm -rf /tmp/parcel* /tmp/VERSION.srv /tmp/ls.* > /dev/null 2>&1");
+    system("rm -rf /tmp/parcel* /tmp/ls.* > /dev/null 2>&1");
     system("rm -rf $isrdir/tmplast*")
 	if $isrdir;
     
@@ -390,7 +389,6 @@ message("BEGIN", $command);
 if ($command eq "checkout") {
     need_parcel();
     need_network();
-    update();
     acquire_lock("$isrdir/$parcel.lock");
     checkout($userid, $parcel, $isrdir, $version);
 } 
@@ -402,7 +400,6 @@ elsif ($command eq "resume") {
     need_network()
 	if ((!-e "$isrdir/$parcel") or
 	    (-e "$isrdir/$parcel" and !$disconnected));
-    update();
     acquire_lock("$isrdir/$parcel.lock");
     checkout($userid, $parcel, $isrdir, $version);
     run($userid, $parcel, $isrdir, $disconnected);
@@ -461,10 +458,6 @@ elsif ($command eq "auth") {
 }
 elsif ($command eq "deauth") {
     deauthenticate();
-}
-elsif ($command eq "update") {
-    need_network();
-    update();
 }
 elsif ($command eq "passwd") {
     need_network();
@@ -1350,100 +1343,6 @@ sub passwd ($) {
 }
 
 #
-# update - downloads latest version of isr_setup* 
-#          and runs an "isr_setup update"
-#
-#          In the future it will check version numbers
-#
-sub update () {
-    
-    my $serverversionline;
-    my $localversionline;
-    my $criticalline;
-    my $serverversion;
-    my $localversion;
-    my $tag;
-    my $versionsrv;
-
-    my $performupdate = "n";
-    my $needsupdate = 0;
-    my $iscritical = 0;
-
-    # Don't check for updates in disconnected mode
-    if ($disconnected) {
-	return;
-    }
-    
-    # If the local VERSION file does not exist, then never perform update
-    if (!-e "$Isr::ISRCLIENTBIN/VERSION") {
-	return;
-    }
-
-    # Grab the VERSION file from the update server
-    $versionsrv = "/tmp/VERSION.srv.$$";
-    if (mysystem("curl -f -s -G $Isr::UPDATEURL/client/VERSION > $versionsrv") != 0) {
-	unlink($versionsrv);
-	err("Unable to contact update server. No updates occurred");
-	return;
-    }
-
-    # Extract the version number from the remote VERSION file on update server
-    $serverversionline = `head -n 1 $versionsrv`;
-    chomp($serverversionline);
-    $serverversionline =~ s/\s+//g; # remove any whitespace
-    ($tag, $serverversion) = split("=", $serverversionline);
-
-    # Extract the version number from the local VERSION file
-    $localversionline = `head -n 1 $Isr::ISRCLIENTBIN/VERSION`;
-    chomp($localversionline);
-    $localversionline =~ s/\s+//g; # remove any whitespace
-    ($tag, $localversion) = split("=", $localversionline);
-
-    # Extract the critical flag from the remote VERSION file
-    $criticalline = `head -n 2 $versionsrv | tail -n 1`; 
-    chomp($criticalline);
-    $criticalline =~ s/\s+//g; # remove any whitespace
-    ($tag, $iscritical) = split("=", $criticalline);
-
-    # If the remote and local versions differ, then update
-    if ($localversion < $serverversion) {
-	$needsupdate = 1;
-	print RED, "Your system is currently running Release $localversion of the ISR software.\n", RESET;
-	print RED, "A newer release (Release $serverversion) is now available:\n", RESET;
-	mysystem("fgrep -v '=' $versionsrv | more");
-	print RED, "We would like to automatically update your system with the new release.\n", RESET;
-	$performupdate = query("Do you wish to proceed with the update?");
-    }
-    
-    unlink($versionsrv);
-
-    if($needsupdate and $performupdate eq "y") {
-	message("INFO", "Version skew detected, updating client software...");
-	chdir($Isr::ISRCLIENTBIN);
-	if (mysystem("curl -f -s -G -O $Isr::UPDATEURL/isr_setup") != 0) {
-	    err("Unable to download the setup script from update server. No updates occurred.");
-	    return;
-	}
-	mysystem("chmod 755 isr_setup");
-	mysystem("./isr_setup update");
-	mysystem("rm -rf isr_setup");
- 	message("INFO", "ISR client software updated. Rerun checkout or resume");
-	exit 0;
-    }
-    elsif ($needsupdate == 0 and $command eq "update") {
-	message("INFO", "ISR software is up to date.");
-	print GREEN, "Your ISR software is up to date.\n", RESET;
-    }
-    elsif ($iscritical eq 1) {
-	message("INFO", "Critical version skew detected, forcing client exit...");
-	print RED, "This is a critical update, please run ", RESET;
-	print BLUE, "isr update ", RESET;
-	print RED, "on the command line\n", RESET;
-	exit 0;
-    }
-}
-
-#
 # resetclient - Resets the ISR runtime
 #
 sub resetclient () {
@@ -2313,7 +2212,7 @@ sub usage ($) {
 
     print RED, "Usage: $progname command [options...]\n", RESET;
     print BLUE, "Commands: auth, checkin (ci), checkout (co), checkp, clean, deauth, discard,\n", RESET;
-    print BLUE, "          disconnect, hoard, ls, passwd, reset, resume, stat, sync, update\n", RESET;
+    print BLUE, "          disconnect, hoard, ls, passwd, reset, resume, stat, sync\n", RESET;
     if ($help) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR servers (once per X session only).\n";
@@ -2331,7 +2230,6 @@ sub usage ($) {
  	print "  resume     Checkout (if necessary) and run a parcel (-v and -d optional).\n";
 	print "  stat       Display information about local ISR state (-c optional).\n";
 	print "  sync       Make new parcel version on server w/o releasing lock (-b optional).\n";
-	print "  update     Install a new version of ISR, if available.\n";
     }
     print "Options:\n";
     print "  -a,--allstate      Remove all hoarded state from client [clean].\n";

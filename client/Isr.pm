@@ -10,10 +10,6 @@ package Isr;
 # Default name server domain name (override with -n)
 $NAMESRV = "isrserver02.isr.cmu.edu";
 
-# What is the URL of the software server for client auto updates
-# This should point to the directory that contains VERSIONS and isr_update
-$UPDATEURL = "http://isr.cmu.edu/software";
-
 # Location of bin dirs on client, content server, and name server
 #$ISRBIN = "/usr/local/isr/bin";
 $ISRCLIENTBIN = "/usr/local/isr/bin";
