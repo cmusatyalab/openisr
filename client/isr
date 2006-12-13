@@ -65,6 +65,7 @@ sub statparcel ($$$);
 sub upgrade_lev1 ($);
 sub get_parcelnames ($$);
 sub get_parcelcfg ($$$);
+sub get_motd ($$);
 sub parse_parcelcfg ($$$);
 sub emit_hdk_progressmeter ($$);
 sub reset_cursor ();
@@ -519,6 +520,11 @@ sub checkout ($$$$) {
 	    if $verbose;
 	return;
     }
+    
+    # Fetch and print message-of-the-day from the name server
+    print "Connecting to name server.\n"
+    	if $verbose;
+    get_motd($userid, $parcel);
 
     # Fetch and parse the config file from the name server and 
     # load protocol specific storage module
@@ -1635,6 +1641,17 @@ sub get_parcelcfg ($$$) {
 
     mysystem("ssh -l $userid $Isr::NAMESRV $Isr::ISRSERVERBIN/isr_nsrv_getconfig.pl -p $parcel -u $userid > $outfile") == 0
 	or system_errexit("Parcel $userid/$parcel does not exist on the name server ($Isr::NAMESRV).");
+}
+
+#
+# get_motd - Read message-of-the-day from the name server and print it out
+#
+sub get_motd ($$) {
+    my $userid = shift;
+    my $parcel = shift;
+
+    mysystem("ssh -l $userid $Isr::NAMESRV $Isr::ISRSERVERBIN/isr_nsrv_motd.pl -p $parcel -u $userid") == 0
+	or system_err("Couldn't read message of the day from the name server ($Isr::NAMESRV).");
 }
 
 #
