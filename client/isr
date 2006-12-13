@@ -296,7 +296,7 @@ if ($result == 0 or $help) {
 if ($revisionflag) {
     ($unused, $revision) = split(" ", $revision); 
     print("$progname:$revision "); 
-    foreach $prot ("HTTPSSH", "CODA") {
+    foreach $prot ("HTTPSSH") {
 	do "$Isr::ISRCLIENTBIN/$prot.pm"
 	    or errexit("Unable to load module $prot.pm");
 	print "$prot.pm:", isr_revision(), " ";
