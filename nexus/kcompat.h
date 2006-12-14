@@ -189,6 +189,7 @@ static inline void bio_set_destructor(struct bio *bio,
 /***** cryptoapi *************************************************************/
 
 #if (!defined(CONFIG_X86) && !defined(CONFIG_UML_X86)) || defined(CONFIG_64BIT)
+struct crypto_tfm;
 static inline int sha1_impl_is_suboptimal(struct crypto_tfm *tfm)
 {
 	/* No optimized implementation exists */
