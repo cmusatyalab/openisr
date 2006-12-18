@@ -4,6 +4,7 @@
 #include <linux/sched.h>
 #include "defs.h"
 
+/* XXX percpu vars */
 static struct task_struct *thr[NR_CPUS];
 
 /* This will always run on the processor to which it is bound, *except* during
@@ -22,14 +23,17 @@ static int cpu_start(int cpu)
 	int err;
 	
 	BUG_ON(thr[cpu] != NULL);
-	thr[cpu]=kthread_create(nexus_thread, NULL, KTHREAD_NAME "/%d",
-				cpu);
+	thr[cpu]=kthread_create(nexus_thread, NULL, KTHREAD_NAME "/%d", cpu);
 	if (IS_ERR(thr[cpu])) {
 		err=PTR_ERR(thr[cpu]);
 		thr[cpu]=NULL;
 		return err;
 	}
 	kthread_bind(thr[cpu], cpu);
+	/* Make sure the thread doesn't have a higher priority than interactive
+	   processes (e.g. the X server) because they'll become somewhat
+	   less interactive under high I/O load */
+	set_user_nice(thr[cpu], 0);
 	wake_up_process(thr[cpu]);
 	return 0;
 }
