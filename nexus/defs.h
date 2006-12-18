@@ -16,6 +16,7 @@
 #define MODULE_NAME "openisr"
 #define DEVICE_NAME "openisr"
 #define SUBMIT_QUEUE "openisr-io"
+#define KTHREAD_NAME "openisr-thr"
 #define CD_NR_STATES 11  /* must shadow NR_STATES in chunkdata.c */
 
 #include <linux/blkdev.h>
@@ -272,6 +273,10 @@ int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 			compress_t type, unsigned len);
 int compression_type_ok(struct nexus_dev *dev, compress_t compress);
+
+/* thread.c */
+int thread_start(void);
+void thread_shutdown(void);
 
 /* sysfs.c */
 extern struct class_attribute class_attrs[];

@@ -460,8 +460,14 @@ static int __init nexus_init(void)
 	wkqueue=create_workqueue(SUBMIT_QUEUE);
 	if (wkqueue == NULL) {
 		ret=-ENOMEM;
-		log(KERN_ERR, "couldn't start kernel thread");
+		log(KERN_ERR, "couldn't start workqueue");
 		goto bad_workqueue;
+	}
+	
+	ret=thread_start();
+	if (ret) {
+		log(KERN_ERR, "couldn't start kernel threads");
+		goto bad_thread;
 	}
 	
 	ret=register_blkdev(0, MODULE_NAME);
@@ -483,6 +489,8 @@ bad_chrdev:
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
 bad_blkdev:
+	thread_shutdown();
+bad_thread:
 	destroy_workqueue(wkqueue);
 bad_workqueue:
 	chunkdata_shutdown();
@@ -502,6 +510,8 @@ static void __exit nexus_shutdown(void)
 	
 	if (unregister_blkdev(blk_major, MODULE_NAME))
 		log(KERN_ERR, "block driver unregistration failed");
+	
+	thread_shutdown();
 	
 	destroy_workqueue(wkqueue);
 	
