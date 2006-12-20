@@ -190,7 +190,7 @@ static void nexus_dev_dtr(struct class_device *class_dev)
 	spin_lock(&state.lock);
 	state.cache_pages -= dev->cachesize * chunk_pages(dev);
 	spin_unlock(&state.lock);
-	free_devnum(dev->devnum);
+	free_devnum(dev->index);
 	kfree(dev->class_dev);
 	kfree(dev);
 	module_put(THIS_MODULE);
@@ -254,7 +254,7 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	spin_lock_init(&dev->requests_lock);
 	INIT_WORK(&dev->cb_run_requests, nexus_run_requests, dev);
 	init_waitqueue_head(&dev->waiting_users);
-	dev->devnum=devnum;
+	dev->index=devnum;
 	dev->owner=current->uid;
 	
 	INIT_LIST_HEAD(&dev->lh_devs);
