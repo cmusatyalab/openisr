@@ -42,7 +42,7 @@ struct nexus_stats {
 };
 
 struct nexus_dev {
-	struct list_head lh_devs;  /* updates synced by global_state_lock */
+	struct list_head lh_devs;  /* updates synced by state.lock in init.c */
 	
 	struct class_device *class_dev;
 	struct gendisk *gendisk;
@@ -138,6 +138,12 @@ enum io_bits {
 
 /* nexus_io flags */
 #define IO_WRITE           (1 << __IO_WRITE)
+
+/* enumerated from highest to lowest priority */
+enum callback {
+	CB_UPDATE_CHUNK,            /* chunkdata state machine */
+	NR_CALLBACKS
+};
 
 static inline void mutex_lock_workqueue(MUTEX *lock)
 {
@@ -260,6 +266,7 @@ void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid);
 int reserve_chunks(struct nexus_io *io);
 void unreserve_chunk(struct nexus_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct nexus_io_chunk *chunk);
+void run_chunk(struct list_head *entry);
 
 /* transform.c */
 int transform_alloc(struct nexus_dev *dev);
@@ -277,6 +284,7 @@ int compression_type_ok(struct nexus_dev *dev, compress_t compress);
 /* thread.c */
 int thread_start(void);
 void thread_shutdown(void);
+void schedule_callback(enum callback type, struct list_head *entry);
 
 /* sysfs.c */
 extern struct class_attribute class_attrs[];

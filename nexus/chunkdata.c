@@ -56,13 +56,12 @@ struct chunkdata_table {
 	struct nexus_dev *dev;
 	unsigned buckets;
 	unsigned busy_count;
+	unsigned pending_updates;
 	struct list_head lru;
 	struct list_head user;
-	struct list_head need_update;
 	struct list_head pending_completion;
 	spinlock_t pending_completion_lock;
 	struct list_head *hash;
-	struct work_struct cb_run_chunks;
 	struct work_struct cb_complete_io;
 };
 
@@ -164,9 +163,8 @@ static void update_chunk(struct chunkdata *cd)
 	BUG_ON(!mutex_is_locked(&table->dev->lock));
 	if (!list_empty(&cd->lh_need_update))
 		return;
-	list_add_tail(&cd->lh_need_update, &table->need_update);
-	/* Ignore return value: if it's already queued, that's fine */
-	queue_work(wkqueue, &table->cb_run_chunks);
+	table->pending_updates++;
+	schedule_callback(CB_UPDATE_CHUNK, &cd->lh_need_update);
 }
 
 static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
@@ -724,7 +722,7 @@ void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid)
 	__end_usermsg(cd);
 }
 
-static void run_chunk(struct chunkdata *cd)
+static void __run_chunk(struct chunkdata *cd)
 {
 	struct nexus_io_chunk *chunk;
 	
@@ -826,28 +824,21 @@ again:
 	}
 }
 
-/* Workqueue callback */
-static void run_chunks(void *data)
+/* Thread callback */
+void run_chunk(struct list_head *entry)
 {
-	struct nexus_dev *dev=data;
-	struct chunkdata *cd;
-	struct chunkdata *next;
+	struct chunkdata *cd=container_of(entry, struct chunkdata,
+				lh_need_update);
+	struct chunkdata_table *table=cd->table;
+	struct nexus_dev *dev=table->dev;
 	int need_release=0;
 	
-	/* Hack: make sure we don't have a higher priority than interactive
-	   processes (e.g. the X server) because they'll become somewhat
-	   less interactive under high I/O load */
-	set_user_nice(current, 0);
-	
 	mutex_lock_workqueue(&dev->lock);
-	list_for_each_entry_safe(cd, next, &dev->chunkdata->need_update,
-				lh_need_update) {
-		list_del_init(&cd->lh_need_update);
-		run_chunk(cd);
-	}
+	__run_chunk(cd);
+	table->pending_updates--;
 	if ((dev->flags & DEV_HAVE_CD_REF) &&
-				dev->chunkdata->busy_count == 0 &&
-				list_empty(&dev->chunkdata->need_update)) {
+				table->busy_count == 0 &&
+				table->pending_updates == 0) {
 		dev->flags &= ~DEV_HAVE_CD_REF;
 		need_release=1;
 	}
@@ -953,10 +944,8 @@ int chunkdata_alloc_table(struct nexus_dev *dev)
 		return -ENOMEM;
 	INIT_LIST_HEAD(&table->lru);
 	INIT_LIST_HEAD(&table->user);
-	INIT_LIST_HEAD(&table->need_update);
 	INIT_LIST_HEAD(&table->pending_completion);
 	spin_lock_init(&table->pending_completion_lock);
-	INIT_WORK(&table->cb_run_chunks, run_chunks, dev);
 	INIT_WORK(&table->cb_complete_io, chunkdata_complete_io, dev);
 	table->dev=dev;
 	dev->chunkdata=table;
