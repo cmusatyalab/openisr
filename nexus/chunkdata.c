@@ -424,7 +424,7 @@ static void chunkdata_complete_io(void *data)
 	struct chunkdata *cd;
 	unsigned long flags;
 	
-	mutex_lock_workqueue(&dev->lock);
+	mutex_lock_thread(&dev->lock);
 	spin_lock_irqsave(&table->pending_completion_lock, flags);
 	/* Don't use "safe" iterator, because the saved next pointer might
 	   have changed out from under us between iterations */
@@ -833,7 +833,7 @@ void run_chunk(struct list_head *entry)
 	struct nexus_dev *dev=table->dev;
 	int need_release=0;
 	
-	mutex_lock_workqueue(&dev->lock);
+	mutex_lock_thread(&dev->lock);
 	__run_chunk(cd);
 	table->pending_updates--;
 	if ((dev->flags & DEV_HAVE_CD_REF) &&

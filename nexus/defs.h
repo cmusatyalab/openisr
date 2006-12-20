@@ -145,9 +145,9 @@ enum callback {
 	NR_CALLBACKS
 };
 
-static inline void mutex_lock_workqueue(MUTEX *lock)
+static inline void mutex_lock_thread(MUTEX *lock)
 {
-	/* Workqueue threads can't receive signals, so they should never
+	/* Kernel threads can't receive signals, so they should never
 	   be interrupted.  On the other hand, if they're in uninterruptible
 	   sleep they contribute to the load average. */
 	if (mutex_lock_interruptible(lock))

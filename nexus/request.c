@@ -215,7 +215,7 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 				io->last_cid - io->first_cid + 1,
 				io->first_cid);
 	
-	mutex_lock_workqueue(&dev->lock);
+	mutex_lock_thread(&dev->lock);
 	if (reserve_chunks(io)) {
 		/* Couldn't allocate chunkdata for this io, so we have to
 		   tear the whole thing down */
