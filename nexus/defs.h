@@ -141,7 +141,8 @@ enum io_bits {
 
 /* enumerated from highest to lowest priority */
 enum callback {
-	CB_UPDATE_CHUNK,            /* chunkdata state machine */
+	CB_COMPLETE_IO,      /* completion of I/O to chunk store */
+	CB_UPDATE_CHUNK,     /* chunkdata state machine */
 	NR_CALLBACKS
 };
 
@@ -267,6 +268,7 @@ int reserve_chunks(struct nexus_io *io);
 void unreserve_chunk(struct nexus_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct nexus_io_chunk *chunk);
 void run_chunk(struct list_head *entry);
+void chunkdata_complete_io(struct list_head *entry);
 
 /* transform.c */
 int transform_alloc(struct nexus_dev *dev);

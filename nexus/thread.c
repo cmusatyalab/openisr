@@ -31,6 +31,9 @@ static int nexus_thread(void *data)
 				list_del_init(entry);
 				spin_unlock_irqrestore(&queues.lock, flags);
 				switch (type) {
+				case CB_COMPLETE_IO:
+					chunkdata_complete_io(entry);
+					break;
 				case CB_UPDATE_CHUNK:
 					run_chunk(entry);
 					break;

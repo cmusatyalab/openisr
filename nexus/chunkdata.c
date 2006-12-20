@@ -59,10 +59,7 @@ struct chunkdata_table {
 	unsigned pending_updates;
 	struct list_head lru;
 	struct list_head user;
-	struct list_head pending_completion;
-	spinlock_t pending_completion_lock;
 	struct list_head *hash;
-	struct work_struct cb_complete_io;
 };
 
 static struct bio_set *bio_pool;
@@ -416,62 +413,40 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 	return 0;
 }
 
-/* Runs in workqueue (user) context */
-static void chunkdata_complete_io(void *data)
+/* Runs in thread context */
+void chunkdata_complete_io(struct list_head *entry)
 {
-	struct nexus_dev *dev=data;
-	struct chunkdata_table *table=dev->chunkdata;
-	struct chunkdata *cd;
-	unsigned long flags;
+	struct chunkdata *cd=container_of(entry, struct chunkdata,
+				lh_pending_completion);
+	struct chunkdata_table *table=cd->table;
+	struct nexus_dev *dev=table->dev;
 	
 	mutex_lock_thread(&dev->lock);
-	spin_lock_irqsave(&table->pending_completion_lock, flags);
-	/* Don't use "safe" iterator, because the saved next pointer might
-	   have changed out from under us between iterations */
-	while (!list_empty(&table->pending_completion)) {
-		cd=list_entry(table->pending_completion.next, struct chunkdata,
-					lh_pending_completion);
-		list_del_init(&cd->lh_pending_completion);
-		spin_unlock_irqrestore(&table->pending_completion_lock, flags);
-		
-		if (cd->error) {
-			log(KERN_ERR, "I/O error %s chunk " SECTOR_FORMAT,
-						cd->state == ST_LOAD_DATA ?
-						"reading" : "writing", cd->cid);
-			/* XXX arguably we should report write errors to
-			   userspace */
-			transition_error(cd, cd->error);
-		} else if (cd->state == ST_LOAD_DATA) {
-			transition(cd, ST_ENCRYPTED);
-		} else if (cd->state == ST_STORE_DATA) {
-			transition(cd, ST_DIRTY_META);
-		} else {
-			BUG();
-		}
-		
-		update_chunk(cd);
-		spin_lock_irqsave(&table->pending_completion_lock, flags);
+	if (cd->error) {
+		log(KERN_ERR, "I/O error %s chunk " SECTOR_FORMAT,
+					cd->state == ST_LOAD_DATA ?
+					"reading" : "writing", cd->cid);
+		/* XXX arguably we should report write errors to
+		   userspace */
+		transition_error(cd, cd->error);
+	} else if (cd->state == ST_LOAD_DATA) {
+		transition(cd, ST_ENCRYPTED);
+	} else if (cd->state == ST_STORE_DATA) {
+		transition(cd, ST_DIRTY_META);
+	} else {
+		BUG();
 	}
-	spin_unlock_irqrestore(&table->pending_completion_lock, flags);
+	update_chunk(cd);
 	mutex_unlock(&dev->lock);
 }
 
 /* May be called from hardirq context or user context for the same nexus_dev */
 static void chunk_io_make_progress(struct chunkdata *cd, unsigned nbytes)
 {
-	unsigned long flags;
-	
 	if (atomic_sub_and_test(nbytes, &cd->remaining)) {
 		/* Can't call BUG() in interrupt */
 		WARN_ON(!list_empty(&cd->lh_pending_completion));
-		spin_lock_irqsave(&cd->table->pending_completion_lock, flags);
-		list_add_tail(&cd->lh_pending_completion,
-					&cd->table->pending_completion);
-		spin_unlock_irqrestore(&cd->table->pending_completion_lock,
-					flags);
-		/* Duplicate scheduling is okay, so we ignore the return
-		   value */
-		queue_work(wkqueue, &cd->table->cb_complete_io);
+		schedule_callback(CB_COMPLETE_IO, &cd->lh_pending_completion);
 	}
 }
 
@@ -944,9 +919,6 @@ int chunkdata_alloc_table(struct nexus_dev *dev)
 		return -ENOMEM;
 	INIT_LIST_HEAD(&table->lru);
 	INIT_LIST_HEAD(&table->user);
-	INIT_LIST_HEAD(&table->pending_completion);
-	spin_lock_init(&table->pending_completion_lock);
-	INIT_WORK(&table->cb_complete_io, chunkdata_complete_io, dev);
 	table->dev=dev;
 	dev->chunkdata=table;
 	/* Allocation failures after this point will result in a
