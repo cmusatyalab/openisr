@@ -6,8 +6,11 @@ char *states[]={
 	"META",
 	"LOAD_DATA",
 	"ENCRYPTED",
+	"DECRYPTING",
 	"CLEAN",
 	"DIRTY",
+	"ENCRYPTING",
+	"DIRTY_ENCRYPTED",
 	"STORE_DATA",
 	"DIRTY_META",
 	"STORE_META",
@@ -35,7 +38,7 @@ int main(int argc, char **argv)
 			fprintf(stderr, "Not enough values in file\n");
 			return 1;
 		}
-		printf("%15s %8u\n", *state, val);
+		printf("%18s %8u\n", *state, val);
 		state++;
 	}
 	if (fscanf(fp, "%u", &val) != EOF) {

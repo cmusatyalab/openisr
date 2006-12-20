@@ -22,8 +22,11 @@ enum cd_state {
 	ST_META,             /* Have metadata but not data */
 	ST_LOAD_DATA,        /* Loading data */
 	ST_ENCRYPTED,        /* Have metadata and clean, encrypted data */
+	ST_DECRYPTING,       /* Decrypting data */
 	ST_CLEAN,            /* Have metadata and data */
 	ST_DIRTY,            /* Data is dirty */
+	ST_ENCRYPTING,       /* Encrypting data */
+	ST_DIRTY_ENCRYPTED,  /* Data is dirty and encryption has finished */
 	ST_STORE_DATA,       /* Storing data */
 	ST_DIRTY_META,       /* Metadata is dirty */
 	ST_STORE_META,       /* Storing metadata */
@@ -37,6 +40,7 @@ struct chunkdata {
 	struct list_head lh_user;
 	struct list_head lh_need_update;
 	struct list_head lh_pending_completion;
+	struct list_head lh_need_tfm;
 	struct chunkdata_table *table;
 	chunk_t cid;
 	unsigned size;         /* encrypted size including padding */
@@ -341,7 +345,7 @@ bad:
 }
 
 /* XXX convert debug calls to log()? */
-static int chunk_tfm(struct chunkdata *cd, int type)
+static int __chunk_tfm(struct chunkdata *cd)
 {
 	struct nexus_dev *dev=cd->table->dev;
 	unsigned compressed_size;
@@ -349,7 +353,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 	char hash[NEXUS_MAX_HASH_LEN];
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
-	if (type == READ) {
+	if (cd->state == ST_DECRYPTING) {
 		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->cid);
 		/* Make sure encrypted data matches tag */
@@ -381,7 +385,7 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 						cd->cid);
 			return ret;
 		}
-	} else {
+	} else if (cd->state == ST_ENCRYPTING) {
 		/* If compression or encryption errors out, we don't try to
 		   recover the data because the cd will go into ST_ERROR state
 		   anyway and no one will be allowed to read it. */
@@ -409,8 +413,27 @@ static int chunk_tfm(struct chunkdata *cd, int type)
 		}
 		cd->size=ret;
 		crypto_hash(dev, cd->sg, cd->size, cd->tag);
+	} else {
+		BUG();
 	}
 	return 0;
+}
+
+/* Runs in thread context */
+void chunk_tfm(struct list_head *entry)
+{
+	struct chunkdata *cd=container_of(entry, struct chunkdata, lh_need_tfm);
+	struct nexus_dev *dev=cd->table->dev;
+	
+	mutex_lock_thread(&dev->lock);
+	if (__chunk_tfm(cd))
+		transition_error(cd, -EIO);
+	else if (cd->state == ST_ENCRYPTING)
+		transition(cd, ST_DIRTY_ENCRYPTED);
+	else
+		transition(cd, ST_CLEAN);
+	update_chunk(cd);
+	mutex_unlock(&dev->lock);
 }
 
 /* Runs in thread context */
@@ -746,15 +769,14 @@ again:
 			if (chunk->flags & CHUNK_READ) {
 				/* The first-in-queue needs to be able to
 				   read the chunk */
-				if (chunk_tfm(cd, READ))
-					transition_error(cd, -EIO);
-				else
-					transition(cd, ST_CLEAN);
-				goto again;
+				transition(cd, ST_DECRYPTING);
+				schedule_callback(CB_CRYPTO, &cd->lh_need_tfm);
 			} else {
 				try_start_io(chunk->parent);
 			}
 		}
+		break;
+	case ST_DECRYPTING:
 		break;
 	case ST_CLEAN:
 		/* Have metadata and data */
@@ -767,14 +789,16 @@ again:
 			try_start_io(chunk->parent);
 		} else {
 			ndebug("Writing out chunk " SECTOR_FORMAT, cd->cid);
-			transition(cd, ST_STORE_DATA);
-			if (chunk_tfm(cd, WRITE)) {
-				transition_error(cd, -EIO);
-				goto again;
-			} else {
-				issue_chunk_io(cd);
-			}
+			transition(cd, ST_ENCRYPTING);
+			schedule_callback(CB_CRYPTO, &cd->lh_need_tfm);
 		}
+	case ST_ENCRYPTING:
+		break;
+	case ST_DIRTY_ENCRYPTED:
+		/* Data is dirty and encryption has finished */
+		transition(cd, ST_STORE_DATA);
+		issue_chunk_io(cd);
+		break;
 	case ST_STORE_DATA:
 		break;
 	case ST_DIRTY_META:
@@ -948,6 +972,7 @@ int chunkdata_alloc_table(struct nexus_dev *dev)
 		INIT_LIST_HEAD(&cd->lh_user);
 		INIT_LIST_HEAD(&cd->lh_need_update);
 		INIT_LIST_HEAD(&cd->lh_pending_completion);
+		INIT_LIST_HEAD(&cd->lh_need_tfm);
 		INIT_LIST_HEAD(&cd->pending);
 		list_add(&cd->lh_lru, &table->lru);
 		if (alloc_chunk_buffer(cd))

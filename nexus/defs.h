@@ -17,7 +17,7 @@
 #define DEVICE_NAME "openisr"
 #define SUBMIT_QUEUE "openisr-io"
 #define KTHREAD_NAME "openisr-thr"
-#define CD_NR_STATES 11  /* must shadow NR_STATES in chunkdata.c */
+#define CD_NR_STATES 14  /* must shadow NR_STATES in chunkdata.c */
 
 #include <linux/blkdev.h>
 #include <linux/workqueue.h>
@@ -143,6 +143,7 @@ enum io_bits {
 enum callback {
 	CB_COMPLETE_IO,      /* completion of I/O to chunk store */
 	CB_UPDATE_CHUNK,     /* chunkdata state machine */
+	CB_CRYPTO,           /* encryption and decryption */
 	NR_CALLBACKS
 };
 
@@ -269,6 +270,7 @@ void unreserve_chunk(struct nexus_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct nexus_io_chunk *chunk);
 void run_chunk(struct list_head *entry);
 void chunkdata_complete_io(struct list_head *entry);
+void chunk_tfm(struct list_head *entry);
 
 /* transform.c */
 int transform_alloc(struct nexus_dev *dev);

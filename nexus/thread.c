@@ -37,6 +37,9 @@ static int nexus_thread(void *data)
 				case CB_UPDATE_CHUNK:
 					run_chunk(entry);
 					break;
+				case CB_CRYPTO:
+					chunk_tfm(entry);
+					break;
 				case NR_CALLBACKS:
 					BUG();
 				}
