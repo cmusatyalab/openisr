@@ -224,8 +224,6 @@ static int decompress_chunk_lzf(struct nexus_dev *dev, struct scatterlist *sg,
 	return 0;
 }
 
-/* Guaranteed to return data which is an even multiple of the crypto
-   block size. */
 int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 			compress_t type)
 {

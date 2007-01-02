@@ -17,7 +17,7 @@ int blk_major;
 static struct {
 	spinlock_t lock;
 	struct list_head devs;
-	unsigned long devnums[(DEVICES + BITS_PER_LONG - 1)/BITS_PER_LONG];
+	DECLARE_BITMAP(devnums, DEVICES);
 	unsigned long cache_pages;
 } state;
 
