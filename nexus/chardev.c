@@ -189,7 +189,7 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		setup.major=blk_major;
 		setup.num_minors=MINORS_PER_DEVICE;
 		setup.index=dev->index;
-		setup.hash_len=dev->hash_len;
+		setup.hash_len=suite_info(dev->suite)->hash_len;
 		if (copy_to_user((void __user *)arg, &setup, sizeof(setup)))
 			BUG(); /* XXX */
 		filp->private_data=dev;

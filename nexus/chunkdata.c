@@ -351,6 +351,7 @@ static int __chunk_tfm(struct chunkdata *cd)
 	unsigned compressed_size;
 	int ret;
 	char hash[NEXUS_MAX_HASH_LEN];
+	unsigned hash_len=suite_info(dev->suite)->hash_len;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	if (cd->state == ST_DECRYPTING) {
@@ -358,7 +359,7 @@ static int __chunk_tfm(struct chunkdata *cd)
 					cd->size, cd->cid);
 		/* Make sure encrypted data matches tag */
 		crypto_hash(dev, cd->sg, cd->size, hash);
-		if (memcmp(cd->tag, hash, dev->hash_len)) {
+		if (memcmp(cd->tag, hash, hash_len)) {
 			debug("Chunk " SECTOR_FORMAT ": Tag doesn't match "
 						"data", cd->cid);
 			return -EIO;
@@ -373,7 +374,7 @@ static int __chunk_tfm(struct chunkdata *cd)
 		compressed_size=ret;
 		/* Make sure decrypted data matches key */
 		crypto_hash(dev, cd->sg, compressed_size, hash);
-		if (memcmp(cd->key, hash, dev->hash_len)) {
+		if (memcmp(cd->key, hash, hash_len)) {
 			debug("Chunk " SECTOR_FORMAT ": Key doesn't match "
 						"decrypted data", cd->cid);
 			return -EIO;
@@ -673,19 +674,22 @@ void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 			unsigned *length, compress_t *compression, char key[],
 			char tag[])
 {
+	unsigned hash_len=suite_info(cd->table->dev->suite)->hash_len;
+	
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	BUG_ON(cd->state != ST_STORE_META);
 	*cid=cd->cid;
 	*length=cd->size;
 	*compression=cd->compression;
-	memcpy(key, cd->key, cd->table->dev->hash_len);
-	memcpy(tag, cd->tag, cd->table->dev->hash_len);
+	memcpy(key, cd->key, hash_len);
+	memcpy(tag, cd->tag, hash_len);
 }
 
 void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
 			compress_t compression, char key[], char tag[])
 {
 	struct chunkdata *cd;
+	unsigned hash_len=suite_info(dev->suite)->hash_len;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	cd=chunkdata_get(dev->chunkdata, cid);
@@ -697,8 +701,8 @@ void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
 	}
 	cd->size=length;
 	cd->compression=compression;
-	memcpy(cd->key, key, dev->hash_len);
-	memcpy(cd->tag, tag, dev->hash_len);
+	memcpy(cd->key, key, hash_len);
+	memcpy(cd->tag, tag, hash_len);
 	transition(cd, ST_META);
 	__end_usermsg(cd);
 }

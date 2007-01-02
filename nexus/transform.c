@@ -6,6 +6,53 @@
 #include "defs.h"
 #include "lzf.h"
 
+/* Must be in the same order as the NEXUS_* defines */
+static const struct tfm_suite_info suite_desc[] = {
+	{
+		.user_name = "blowfish-sha1",
+		.cipher_name = "blowfish",
+		.cipher_mode = CRYPTO_TFM_MODE_CBC,
+		.cipher_block = 8,
+		.key_len = 20,
+		.hash_name = "sha1",
+		.hash_len = 20
+	},
+	{
+		.user_name = "blowfish-sha1-compat",
+		.cipher_name = "blowfish",
+		.cipher_mode = CRYPTO_TFM_MODE_CBC,
+		.cipher_block = 8,
+		.key_len = 16,
+		.hash_name = "sha1",
+		.hash_len = 20
+	}
+};
+
+/* Must be in the same order as the NEXUS_* defines */
+static const struct tfm_compress_info compress_desc[] = {
+	{
+		.user_name = "none"
+	},
+	{
+		.user_name = "zlib"
+	},
+	{
+		.user_name = "lzf"
+	}
+};
+
+const struct tfm_suite_info *suite_info(crypto_t suite)
+{
+	int idx=suite_index(suite);
+	return &suite_desc[idx];
+}
+
+const struct tfm_compress_info *compress_info(compress_t alg)
+{
+	int idx=compress_index(alg);
+	return &compress_desc[idx];
+}
+
 /* XXX this needs to go away. */
 static void scatterlist_transfer(struct nexus_dev *dev, struct scatterlist *sg,
 			void *buf, int dir)
@@ -30,7 +77,8 @@ static void scatterlist_transfer(struct nexus_dev *dev, struct scatterlist *sg,
    data of length @datalen if padding is used */
 static inline unsigned crypto_pad_len(struct nexus_dev *dev, unsigned datalen)
 {
-	return dev->cipher_block - (datalen % dev->cipher_block);
+	unsigned cipher_block=suite_info(dev->suite)->cipher_block;
+	return cipher_block - (datalen % cipher_block);
 }
 
 /* Perform PKCS padding on a scatterlist.  Return the new length. */
@@ -69,6 +117,7 @@ static unsigned crypto_pad(struct nexus_dev *dev, struct scatterlist *sg,
 /* Perform PKCS unpadding on a scatterlist.  Return the new length. */
 static int crypto_unpad(struct nexus_dev *dev, struct scatterlist *sg, int len)
 {
+	unsigned cipher_block=suite_info(dev->suite)->cipher_block;
 	unsigned char *page;
 	unsigned padlen;
 	unsigned offset=len - 1;
@@ -86,7 +135,7 @@ static int crypto_unpad(struct nexus_dev *dev, struct scatterlist *sg, int len)
 	offset += sg->offset;
 	page=kmap_atomic(sg->page, KM_USER0);
 	padlen=page[offset--];
-	if (padlen == 0 || padlen > dev->cipher_block || padlen > len)
+	if (padlen == 0 || padlen > cipher_block || padlen > len)
 		goto out;
 	ndebug("Unpad %u", padlen);
 	for (i=1; i<padlen; i++) {
@@ -285,11 +334,12 @@ int crypto_cipher(struct nexus_dev *dev, struct scatterlist *sg,
 {
 	char iv[8]={0}; /* XXX */
 	int ret;
+	unsigned key_len=suite_info(dev->suite)->key_len;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	crypto_cipher_set_iv(dev->cipher, iv, sizeof(iv));
-	BUG_ON(dev->key_len > dev->hash_len);  /* XXX */
-	ret=crypto_cipher_setkey(dev->cipher, key, dev->key_len);
+	BUG_ON(key_len > suite_info(dev->suite)->hash_len);  /* XXX */
+	ret=crypto_cipher_setkey(dev->cipher, key, key_len);
 	if (ret)
 		return ret;
 	
@@ -311,54 +361,10 @@ int crypto_cipher(struct nexus_dev *dev, struct scatterlist *sg,
 	}
 }
 
-#define set_if_requested(lhs, rhs) do {if (lhs != NULL) *lhs=rhs;} while (0)
-static int suite_lookup(crypto_t suite, char **user_name, char **cipher_name,
-			unsigned *cipher_mode, unsigned *key_len,
-			char **hash_name)
-{
-	switch (suite) {
-	case NEXUS_CRYPTO_BLOWFISH_SHA1:
-		set_if_requested(user_name, "blowfish-sha1");
-		set_if_requested(cipher_name, "blowfish");
-		set_if_requested(cipher_mode, CRYPTO_TFM_MODE_CBC);
-		set_if_requested(key_len, 20);
-		set_if_requested(hash_name, "sha1");
-		break;
-	case NEXUS_CRYPTO_BLOWFISH_SHA1_COMPAT:
-		set_if_requested(user_name, "blowfish-sha1-compat");
-		set_if_requested(cipher_name, "blowfish");
-		set_if_requested(cipher_mode, CRYPTO_TFM_MODE_CBC);
-		set_if_requested(key_len, 16);
-		set_if_requested(hash_name, "sha1");
-		break;
-	default:
-		return -EINVAL;
-	}
-	return 0;
-}
-
-static int compression_lookup(compress_t type, char **user_name)
-{
-	switch (type) {
-	case NEXUS_COMPRESS_NONE:
-		set_if_requested(user_name, "none");
-		break;
-	case NEXUS_COMPRESS_ZLIB:
-		set_if_requested(user_name, "zlib");
-		break;
-	case NEXUS_COMPRESS_LZF:
-		set_if_requested(user_name, "lzf");
-		break;
-	default:
-		return -EINVAL;
-	}
-	return 0;
-}
-
 int compression_type_ok(struct nexus_dev *dev, compress_t compress)
 {
-	/* Make sure only one bit is set */
-	if (compress & (compress - 1))
+	/* Make sure exactly one bit is set */
+	if (compress == 0 || (compress & (compress - 1)))
 		return 0;
 	/* Make sure we have been configured to accept the bit */
 	if (!(compress & dev->supported_compression))
@@ -366,45 +372,53 @@ int compression_type_ok(struct nexus_dev *dev, compress_t compress)
 	return 1;
 }
 
+#define SUPPORTED_SUITES       (NEXUS_CRYPTO_BLOWFISH_SHA1 | \
+				NEXUS_CRYPTO_BLOWFISH_SHA1_COMPAT)
 #define SUPPORTED_COMPRESSION  (NEXUS_COMPRESS_NONE | \
 				NEXUS_COMPRESS_ZLIB | \
 				NEXUS_COMPRESS_LZF)
-int transform_alloc(struct nexus_dev *dev)
+int transform_alloc(struct nexus_dev *dev, crypto_t suite,
+			compress_t default_compress,
+			compress_t supported_compress)
 {
-	char *cipher_name;
-	unsigned cipher_mode;
-	unsigned keylen;
-	char *hash_name;
-	int ret;
+	const struct tfm_suite_info *info;
 	
-	ret=suite_lookup(dev->suite, &dev->suite_name, &cipher_name,
-				&cipher_mode, &keylen, &hash_name);
-	if (ret) {
-		log(KERN_ERR, "Unsupported crypto suite requested");
-		return ret;
+	/* We're careful not to set dev->suite and dev->default_compression
+	   until the provided values are validated, because otherwise there's
+	   an invalid memory access race with the related sysfs attributes */
+	
+	/* Sanity-check the suite: exactly one bit must be set */
+	if (suite == 0 || (suite & (suite - 1))) {
+		log(KERN_ERR, "Invalid crypto suite requested");
+		return -EINVAL;
 	}
+	/* Make sure we support it */
+	if ((suite & SUPPORTED_SUITES) != suite) {
+		log(KERN_ERR, "Unsupported crypto suite requested");
+		return -EINVAL;
+	}
+	info=suite_info(suite);
+	dev->suite=suite;
 	
-	if ((dev->supported_compression & SUPPORTED_COMPRESSION)
-				!= dev->supported_compression) {
+	if ((supported_compress & SUPPORTED_COMPRESSION)
+				!= supported_compress) {
 		log(KERN_ERR, "Unsupported compression algorithm requested");
 		return -EINVAL;
 	}
-	if (!compression_type_ok(dev, dev->default_compression)) {
+	dev->supported_compression=supported_compress;
+	if (!compression_type_ok(dev, default_compress)) {
 		log(KERN_ERR, "Requested invalid default compression "
 					"algorithm");
 		return -EINVAL;
 	}
-	compression_lookup(dev->default_compression,
-				&dev->default_compression_name);
+	dev->default_compression=default_compress;
 	
-	dev->cipher=crypto_alloc_tfm(cipher_name, cipher_mode);
-	dev->hash=crypto_alloc_tfm(hash_name, 0);
+	dev->cipher=crypto_alloc_tfm(info->cipher_name, info->cipher_mode);
+	dev->hash=crypto_alloc_tfm(info->hash_name, 0);
 	if (dev->cipher == NULL || dev->hash == NULL)
 		return -EINVAL;
-	dev->cipher_block=crypto_tfm_alg_blocksize(dev->cipher);
-	dev->key_len=keylen;
-	dev->hash_len=crypto_tfm_alg_digestsize(dev->hash);
-	if (!strcmp("sha1", hash_name) && sha1_impl_is_suboptimal(dev->hash)) {
+	if (!strcmp("sha1", info->hash_name) &&
+				sha1_impl_is_suboptimal(dev->hash)) {
 		/* Actually, the presence of sha1-i586.ko only matters
 		   when the device is created, since that's when the tfm
 		   is allocated.  Does anyone have better wording for this? */

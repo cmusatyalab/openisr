@@ -24,7 +24,23 @@
 #include "nexus.h"
 #include "kcompat.h"
 
+#define TFM_NR_SUITES (8*sizeof(crypto_t))
+#define TFM_NR_COMPRESS (8*sizeof(compress_t))
 typedef sector_t chunk_t;
+
+struct tfm_suite_info {
+	char *user_name;
+	char *cipher_name;
+	unsigned cipher_mode;
+	unsigned cipher_block;
+	unsigned key_len;
+	char *hash_name;
+	unsigned hash_len;
+};
+
+struct tfm_compress_info {
+	char *user_name;
+};
 
 struct nexus_stats {
 	unsigned state_count[CD_NR_STATES];
@@ -66,16 +82,11 @@ struct nexus_dev {
 	struct nexus_stats stats;
 	
 	crypto_t suite;
-	char *suite_name;
 	struct crypto_tfm *cipher;
-	unsigned cipher_block;
-	unsigned key_len;
 	struct crypto_tfm *hash;
-	unsigned hash_len;
 	
 	compress_t default_compression;
 	compress_t supported_compression;
-	char *default_compression_name;
 	void *buf_compressed;
 	void *buf_uncompressed;
 	void *zlib_deflate;
@@ -224,6 +235,26 @@ static inline unsigned io_chunks(struct nexus_io *io)
 	return io->last_cid - io->first_cid + 1;
 }
 
+/* The index of the named crypto suite.  Exactly one bit in @suite must be
+   set. */
+static inline int suite_index(crypto_t suite)
+{
+	unsigned long tmp=suite;
+	BUG_ON(suite == 0);
+	BUG_ON(suite & (suite - 1));
+	return find_first_bit(&tmp, TFM_NR_SUITES);
+}
+
+/* The index of the named compression algorithm.  Exactly one bit in @alg must
+   be set. */
+static inline int compress_index(compress_t alg)
+{
+	unsigned long tmp=alg;
+	BUG_ON(alg == 0);
+	BUG_ON(alg & (alg - 1));
+	return find_first_bit(&tmp, TFM_NR_COMPRESS);
+}
+
 /* init.c */
 extern struct workqueue_struct *wkqueue;
 extern int blk_major;
@@ -273,7 +304,9 @@ void chunkdata_complete_io(struct list_head *entry);
 void chunk_tfm(struct list_head *entry);
 
 /* transform.c */
-int transform_alloc(struct nexus_dev *dev);
+int transform_alloc(struct nexus_dev *dev, crypto_t suite,
+			compress_t default_compress,
+			compress_t supported_compress);
 void transform_free(struct nexus_dev *dev);
 int crypto_cipher(struct nexus_dev *dev, struct scatterlist *sg,
 			char key[], unsigned len, int dir, int doPad);
@@ -284,6 +317,8 @@ int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 			compress_t type, unsigned len);
 int compression_type_ok(struct nexus_dev *dev, compress_t compress);
+const struct tfm_suite_info *suite_info(crypto_t suite);
+const struct tfm_compress_info *compress_info(compress_t alg);
 
 /* thread.c */
 int thread_start(void);

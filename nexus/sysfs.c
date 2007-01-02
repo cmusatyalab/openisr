@@ -98,8 +98,11 @@ static ssize_t dev_show_state_times(struct class_device *class_dev, char *buf)
 static ssize_t dev_show_suite(struct class_device *class_dev, char *buf)
 {
 	struct nexus_dev *dev=class_get_devdata(class_dev);
-	char *str=dev->suite_name;
-	if (str == NULL)
+	char *str;
+	
+	if (dev->suite != 0)
+		str=suite_info(dev->suite)->user_name;
+	else
 		str="unknown";
 	return snprintf(buf, PAGE_SIZE, "%s\n", str);
 }
@@ -107,8 +110,11 @@ static ssize_t dev_show_suite(struct class_device *class_dev, char *buf)
 static ssize_t dev_show_compression(struct class_device *class_dev, char *buf)
 {
 	struct nexus_dev *dev=class_get_devdata(class_dev);
-	char *str=dev->default_compression_name;
-	if (str == NULL)
+	char *str;
+	
+	if (dev->default_compression != 0)
+		str=compress_info(dev->default_compression)->user_name;
+	else
 		str="unknown";
 	return snprintf(buf, PAGE_SIZE, "%s\n", str);
 }
