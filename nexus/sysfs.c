@@ -27,7 +27,10 @@ struct class_attribute class_attrs[] = {
 
 
 
-/* All of these can run before the ctr has finished! */
+/* For these functions, the caller holds a reference to the class device,
+   so we know the nexus_dev is valid.  These functions cannot run until
+   after device initialization has finished, but may run before the gendisk
+   is live. */
 
 static ssize_t dev_show_owner(struct class_device *class_dev, char *buf)
 {
@@ -59,9 +62,9 @@ static ssize_t dev_show_states(struct class_device *class_dev, char *buf)
 	int i;
 	int count=0;
 	
-	/* XXX if we wanted to be precise about this, we should have the ctr
-	   take the dev lock and then have this function lock it before
-	   running */
+	/* We don't take the device mutex.  This allows the state dump to be
+	   inconsistent, but also permits dumping if someone died holding
+	   the mutex */
 	for (i=0; i<CD_NR_STATES; i++) {
 		count += snprintf(buf+count, PAGE_SIZE-count, "%s%u",
 					i ? " " : "",
@@ -79,7 +82,6 @@ static ssize_t dev_show_state_times(struct class_device *class_dev, char *buf)
 	unsigned time;
 	unsigned samples;
 	
-	/* XXX poor locking discipline during setup */
 	mutex_lock(&dev->lock);
 	for (i=0; i<CD_NR_STATES; i++) {
 		time=dev->stats.state_time_us[i];
@@ -98,25 +100,15 @@ static ssize_t dev_show_state_times(struct class_device *class_dev, char *buf)
 static ssize_t dev_show_suite(struct class_device *class_dev, char *buf)
 {
 	struct nexus_dev *dev=class_get_devdata(class_dev);
-	char *str;
-	
-	if (dev->suite != 0)
-		str=suite_info(dev->suite)->user_name;
-	else
-		str="unknown";
-	return snprintf(buf, PAGE_SIZE, "%s\n", str);
+	return snprintf(buf, PAGE_SIZE, "%s\n",
+				suite_info(dev->suite)->user_name);
 }
 
 static ssize_t dev_show_compression(struct class_device *class_dev, char *buf)
 {
 	struct nexus_dev *dev=class_get_devdata(class_dev);
-	char *str;
-	
-	if (dev->default_compression != 0)
-		str=compress_info(dev->default_compression)->user_name;
-	else
-		str="unknown";
-	return snprintf(buf, PAGE_SIZE, "%s\n", str);
+	return snprintf(buf, PAGE_SIZE, "%s\n",
+			compress_info(dev->default_compression)->user_name);
 }
 
 static ssize_t dev_show_cache_hits(struct class_device *class_dev, char *buf)

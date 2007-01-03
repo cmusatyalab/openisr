@@ -374,7 +374,10 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 				chunk_sectors(dev) * (MAX_CHUNKS_PER_IO - 1));
 	
 	ndebug("Allocating transforms");
-	ret=transform_alloc(dev, suite, default_compress, supported_compress);
+	dev->suite=suite;
+	dev->default_compression=default_compress;
+	dev->supported_compression=supported_compress;
+	ret=transform_alloc(dev);
 	if (ret) {
 		log(KERN_ERR, "could not configure transforms");
 		goto bad;

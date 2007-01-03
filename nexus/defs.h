@@ -304,9 +304,7 @@ void chunkdata_complete_io(struct list_head *entry);
 void chunk_tfm(struct list_head *entry);
 
 /* transform.c */
-int transform_alloc(struct nexus_dev *dev, crypto_t suite,
-			compress_t default_compress,
-			compress_t supported_compress);
+int transform_alloc(struct nexus_dev *dev);
 void transform_free(struct nexus_dev *dev);
 int crypto_cipher(struct nexus_dev *dev, struct scatterlist *sg,
 			char key[], unsigned len, int dir, int doPad);

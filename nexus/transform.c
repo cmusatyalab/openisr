@@ -377,41 +377,32 @@ int compression_type_ok(struct nexus_dev *dev, compress_t compress)
 #define SUPPORTED_COMPRESSION  (NEXUS_COMPRESS_NONE | \
 				NEXUS_COMPRESS_ZLIB | \
 				NEXUS_COMPRESS_LZF)
-int transform_alloc(struct nexus_dev *dev, crypto_t suite,
-			compress_t default_compress,
-			compress_t supported_compress)
+int transform_alloc(struct nexus_dev *dev)
 {
 	const struct tfm_suite_info *info;
 	
-	/* We're careful not to set dev->suite and dev->default_compression
-	   until the provided values are validated, because otherwise there's
-	   an invalid memory access race with the related sysfs attributes */
-	
 	/* Sanity-check the suite: exactly one bit must be set */
-	if (suite == 0 || (suite & (suite - 1))) {
+	if (dev->suite == 0 || (dev->suite & (dev->suite - 1))) {
 		log(KERN_ERR, "Invalid crypto suite requested");
 		return -EINVAL;
 	}
 	/* Make sure we support it */
-	if ((suite & SUPPORTED_SUITES) != suite) {
+	if ((dev->suite & SUPPORTED_SUITES) != dev->suite) {
 		log(KERN_ERR, "Unsupported crypto suite requested");
 		return -EINVAL;
 	}
-	info=suite_info(suite);
-	dev->suite=suite;
+	info=suite_info(dev->suite);
 	
-	if ((supported_compress & SUPPORTED_COMPRESSION)
-				!= supported_compress) {
+	if ((dev->supported_compression & SUPPORTED_COMPRESSION)
+				!= dev->supported_compression) {
 		log(KERN_ERR, "Unsupported compression algorithm requested");
 		return -EINVAL;
 	}
-	dev->supported_compression=supported_compress;
-	if (!compression_type_ok(dev, default_compress)) {
+	if (!compression_type_ok(dev, dev->default_compression)) {
 		log(KERN_ERR, "Requested invalid default compression "
 					"algorithm");
 		return -EINVAL;
 	}
-	dev->default_compression=default_compress;
 	
 	dev->cipher=crypto_alloc_tfm(info->cipher_name, info->cipher_mode);
 	dev->hash=crypto_alloc_tfm(info->hash_name, 0);
