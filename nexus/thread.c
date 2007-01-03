@@ -2,6 +2,7 @@
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
 #include <linux/sched.h>
+#include <linux/notifier.h>
 #include "defs.h"
 
 /* XXX percpu vars */

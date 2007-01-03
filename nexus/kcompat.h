@@ -178,6 +178,12 @@ static inline void bio_set_destructor(struct bio *bio,
 
 /* XXX 2.6.19 workqueue changes */
 
+/***** CPU hotplug ***********************************************************/
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
+#define for_each_possible_cpu(cpu) for_each_cpu(cpu)
+#endif
+
 /***** file_operations methods ***********************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)
