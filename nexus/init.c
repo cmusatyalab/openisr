@@ -375,7 +375,7 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	if (dev->gendisk == NULL) {
 		log(KERN_ERR, "couldn't allocate gendisk");
 		ret=-ENOMEM;
-		goto bad_put_chunkdata;
+		goto bad;
 	}
 	dev->gendisk->major=blk_major;
 	dev->gendisk->first_minor=devnum*MINORS_PER_DEVICE;
@@ -401,10 +401,6 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	
 	return dev;
 	
-bad_put_chunkdata:
-	/* Once chunkdata has been started, there's an extra reference to
-	   the dev that needs to be released or it won't be freed. */
-	nexus_dev_put(dev, 0);
 bad:
 	spin_lock(&state.lock);
 	list_del_init(&dev->lh_devs);
