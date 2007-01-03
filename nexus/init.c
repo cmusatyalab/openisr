@@ -76,6 +76,23 @@ int shutdown_dev(struct nexus_dev *dev, int force)
 	return 0;
 }
 
+/* Add standard attributes to a class device.  On failure, the device may
+   be semi-populated, but that will be cleaned up when the device is deleted.
+   All attributes will be deleted when the classdev is unregistered */
+static int class_device_populate(struct class_device *class_dev)
+{
+	int i;
+	int err;
+	
+	for (i=0; class_dev_attrs[i].attr.name != NULL; i++) {
+		ndebug("Populating %d: %s", i, class_dev_attrs[i].attr.name);
+		err=class_device_create_file(class_dev, &class_dev_attrs[i]);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+
 static void class_release_dummy(struct class *class)
 {
 	/* Dummy function: class is allocated statically, so we don't need
@@ -386,6 +403,15 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	dev->gendisk->private_data=dev;
 	set_capacity(dev->gendisk, capacity);
 	
+	/* Everything has been done except actually adding the disk.  It's
+	   now safe to populate the sysfs directory (i.e., the attributes
+	   will be valid) */
+	ret=class_device_populate(dev->class_dev);
+	if (ret) {
+		log(KERN_ERR, "couldn't add sysfs attributes");
+		goto bad;
+	}
+	
 	ndebug("Adding disk");
 	/* add_disk() initiates I/O to read the partition tables, so userspace
 	   needs to be able to process key requests while it is running.
@@ -439,7 +465,6 @@ static int __init nexus_init(void)
 	class.class_release=class_release_dummy;
 	class.release=nexus_dev_dtr;
 	class.class_attrs=class_attrs;
-	class.class_dev_attrs=class_dev_attrs;
 	ret=class_register(&class);
 	if (ret)
 		goto bad_class;
