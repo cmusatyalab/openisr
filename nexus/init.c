@@ -10,7 +10,7 @@
 #include <linux/interrupt.h>
 #include "defs.h"
 
-static struct class class;
+static struct class *class;
 struct workqueue_struct *wkqueue;
 int blk_major;
 
@@ -76,6 +76,22 @@ int shutdown_dev(struct nexus_dev *dev, int force)
 	return 0;
 }
 
+/* Add standard attributes to our class.  On failure, the class may be
+   semi-populated, but that will be cleaned up when it is deleted.  All
+   attributes will be deleted on unregistration */
+static int class_populate(void)
+{
+	int i;
+	int err;
+	
+	for (i=0; class_attrs[i].attr.name != NULL; i++) {
+		err=class_create_file(class, &class_attrs[i]);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+
 /* Add standard attributes to a class device.  On failure, the device may
    be semi-populated, but that will be cleaned up when the device is deleted.
    All attributes will be deleted when the classdev is unregistered */
@@ -91,14 +107,6 @@ static int class_device_populate(struct class_device *class_dev)
 			return err;
 	}
 	return 0;
-}
-
-static void class_release_dummy(struct class *class)
-{
-	/* Dummy function: class is allocated statically, so we don't need
-	   a destructor, but if we don't have one the kernel will sometimes
-	   whine to the log */
-	return;
 }
 
 static unsigned long get_system_page_count(void)
@@ -254,14 +262,13 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 		goto early_fail_devalloc;
 	}
 	
-	dev->class_dev=create_class_dev(&class, DEVICE_NAME "%c", 'a' + devnum);
+	dev->class_dev=create_class_dev(class, nexus_dev_dtr,
+				DEVICE_NAME "%c", 'a' + devnum);
 	if (IS_ERR(dev->class_dev)) {
 		ret=PTR_ERR(dev->class_dev);
 		goto early_fail_classdev;
 	}
 	class_set_devdata(dev->class_dev, dev);
-	/* Use class-wide release function */
-	class_dev_set_release(dev->class_dev, NULL);
 	
 	/* Now we have refcounting, so all further errors should deallocate
 	   through the destructor */
@@ -461,16 +468,12 @@ static int __init nexus_init(void)
 	if (ret)
 		goto bad_request;
 	
-	/* class_create() doesn't let us preregister class attrs and doesn't
-	   exist before 2.6.13 */
-	class.name=DEVICE_NAME;
-	class_set_owner(&class);
-	class.class_release=class_release_dummy;
-	class.release=nexus_dev_dtr;
-	class.class_attrs=class_attrs;
-	ret=class_register(&class);
-	if (ret)
+	class=create_class(DEVICE_NAME, nexus_dev_dtr);
+	if (IS_ERR(class)) {
+		ret=PTR_ERR(class);
+		log(KERN_ERR, "couldn't create class");
 		goto bad_class;
+	}
 	
 	ret=chunkdata_start();
 	if (ret) {
@@ -498,12 +501,24 @@ static int __init nexus_init(void)
 	}
 	blk_major=ret;
 	
+	/* Okay, now all of our internal structure is set up.  We now must
+	   expose the interfaces that allow others to obtain a reference to
+	   us: the character device and the sysfs attributes.  Once we expose
+	   either interface, we can't fail, since our code will be unloaded
+	   while others have references to it.  The chardev is the really
+	   important part, so we start it first; sysfs registration failures
+	   can be ignored without causing too many problems. */
+	
 	ret=chardev_start();
 	if (ret) {
 		log(KERN_ERR, "couldn't register chardev");
 		goto bad_chrdev;
 	}
 	
+	ret=class_populate();
+	if (ret)
+		log(KERN_ERR, "couldn't add class attributes");
+
 	return 0;
 
 bad_chrdev:
@@ -516,7 +531,7 @@ bad_thread:
 bad_workqueue:
 	chunkdata_shutdown();
 bad_chunkdata:
-	class_unregister(&class);
+	class_unregister(class);
 bad_class:
 	request_shutdown();
 bad_request:
@@ -538,7 +553,8 @@ static void __exit nexus_shutdown(void)
 	
 	chunkdata_shutdown();
 	
-	class_unregister(&class);
+	/* Automatically unregisters attributes */
+	class_unregister(class);
 	
 	request_shutdown();
 }
