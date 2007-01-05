@@ -19,7 +19,7 @@ static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 
 #define DEVFILE_NAME "vulpes.dev"
 #define REQUESTS_PER_SYSCALL 64
-#define MY_INTERFACE_VERSION 4
+#define MY_INTERFACE_VERSION 5
 #if MY_INTERFACE_VERSION != NEXUS_INTERFACE_VERSION
 #error This code uses a different interface version than the one defined in convergent-user.h
 #endif
@@ -200,7 +200,7 @@ vulpes_err_t driver_init(void)
   setup.cachesize=128;
   setup.crypto=NEXUS_CRYPTO_BLOWFISH_SHA1_COMPAT;
   setup.compress_default=NEXUS_COMPRESS_ZLIB;
-  setup.compress_required=NEXUS_COMPRESS_NONE|NEXUS_COMPRESS_ZLIB;
+  setup.compress_required=(1<<NEXUS_COMPRESS_NONE)|(1<<NEXUS_COMPRESS_ZLIB);
   
   if (ioctl(state.chardev_fd, NEXUS_IOC_REGISTER, &setup)) {
     vulpes_log(LOG_ERRORS,"unable to register with device driver: %s",strerror(errno));
