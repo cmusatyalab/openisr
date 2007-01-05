@@ -6,7 +6,7 @@
 #include "defs.h"
 #include "lzf.h"
 
-/* Must be in the same order as the NEXUS_* defines */
+/* Must be in the same order as the nexus_crypto enum */
 static const struct tfm_suite_info suite_desc[] = {
 	{
 		.user_name = "blowfish-sha1",
@@ -28,7 +28,7 @@ static const struct tfm_suite_info suite_desc[] = {
 	}
 };
 
-/* Must be in the same order as the NEXUS_* defines */
+/* Must be in the same order as the nexus_compress enum */
 static const struct tfm_compress_info compress_desc[] = {
 	{
 		.user_name = "none"
@@ -41,16 +41,20 @@ static const struct tfm_compress_info compress_desc[] = {
 	}
 };
 
-const struct tfm_suite_info *suite_info(crypto_t suite)
+const struct tfm_suite_info *suite_info(enum nexus_crypto suite)
 {
-	int idx=suite_index(suite);
-	return &suite_desc[idx];
+	BUILD_BUG_ON((sizeof(suite_desc)/sizeof(suite_desc[0])) !=
+				NEXUS_NR_CRYPTO);
+	BUG_ON(suite < 0 || suite >= NEXUS_NR_CRYPTO);
+	return &suite_desc[suite];
 }
 
-const struct tfm_compress_info *compress_info(compress_t alg)
+const struct tfm_compress_info *compress_info(enum nexus_compress alg)
 {
-	int idx=compress_index(alg);
-	return &compress_desc[idx];
+	BUILD_BUG_ON((sizeof(compress_desc)/sizeof(compress_desc[0])) !=
+				NEXUS_NR_COMPRESS);
+	BUG_ON(alg < 0 || alg >= NEXUS_NR_COMPRESS);
+	return &compress_desc[alg];
 }
 
 /* XXX this needs to go away. */
@@ -274,7 +278,7 @@ static int decompress_chunk_lzf(struct nexus_dev *dev, struct scatterlist *sg,
 }
 
 int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
-			compress_t type)
+			enum nexus_compress type)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	switch (type) {
@@ -284,14 +288,14 @@ int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 		return compress_chunk_zlib(dev, sg);
 	case NEXUS_COMPRESS_LZF:
 		return compress_chunk_lzf(dev, sg);
-	default:
+	case NEXUS_NR_COMPRESS:
 		BUG();
-		return -EIO;
 	}
+	return -EIO;
 }
 
 int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
-			compress_t type, unsigned len)
+			enum nexus_compress type, unsigned len)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	switch (type) {
@@ -303,10 +307,10 @@ int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 		return decompress_chunk_zlib(dev, sg, len);
 	case NEXUS_COMPRESS_LZF:
 		return decompress_chunk_lzf(dev, sg, len);
-	default:
+	case NEXUS_NR_COMPRESS:
 		BUG();
-		return -EIO;
 	}
+	return -EIO;
 }
 
 /* For some reason, the cryptoapi digest functions expect nsg rather than
@@ -361,39 +365,31 @@ int crypto_cipher(struct nexus_dev *dev, struct scatterlist *sg,
 	}
 }
 
-int compression_type_ok(struct nexus_dev *dev, compress_t compress)
+int compression_type_ok(struct nexus_dev *dev, enum nexus_compress compress)
 {
-	/* Make sure exactly one bit is set */
-	if (compress == 0 || (compress & (compress - 1)))
+	/* Make sure we're within enum range */
+	if (compress < 0 || compress >= NEXUS_NR_COMPRESS)
 		return 0;
-	/* Make sure we have been configured to accept the bit */
-	if (!(compress & dev->supported_compression))
+	/* Make sure we have been configured to accept the algorithm */
+	if (!((1 << compress) & dev->supported_compression))
 		return 0;
 	return 1;
 }
 
-#define SUPPORTED_SUITES       (NEXUS_CRYPTO_BLOWFISH_SHA1 | \
-				NEXUS_CRYPTO_BLOWFISH_SHA1_COMPAT)
-#define SUPPORTED_COMPRESSION  (NEXUS_COMPRESS_NONE | \
-				NEXUS_COMPRESS_ZLIB | \
-				NEXUS_COMPRESS_LZF)
 int transform_alloc(struct nexus_dev *dev)
 {
 	const struct tfm_suite_info *info;
+	compressmask_t supported_algs=(1 << NEXUS_NR_COMPRESS) - 1;
 	
-	/* Sanity-check the suite: exactly one bit must be set */
-	if (dev->suite == 0 || (dev->suite & (dev->suite - 1))) {
-		log(KERN_ERR, "Invalid crypto suite requested");
-		return -EINVAL;
-	}
-	/* Make sure we support it */
-	if ((dev->suite & SUPPORTED_SUITES) != dev->suite) {
+	/* Sanity-check the suite */
+	if (dev->suite < 0 || dev->suite >= NEXUS_NR_CRYPTO) {
 		log(KERN_ERR, "Unsupported crypto suite requested");
 		return -EINVAL;
 	}
 	info=suite_info(dev->suite);
 	
-	if ((dev->supported_compression & SUPPORTED_COMPRESSION)
+	/* Sanity-check the compression algorithms */
+	if ((dev->supported_compression & supported_algs)
 				!= dev->supported_compression) {
 		log(KERN_ERR, "Unsupported compression algorithm requested");
 		return -EINVAL;
@@ -418,7 +414,7 @@ int transform_alloc(struct nexus_dev *dev)
 					dev->class_dev->class_id);
 	}
 	
-	if (dev->supported_compression != NEXUS_COMPRESS_NONE) {
+	if (dev->supported_compression & (1 << NEXUS_COMPRESS_NONE)) {
 		/* XXX this is not ideal, but there's no good way to support
 		   scatterlists in LZF without hacking the code. */
 		dev->buf_compressed=vmalloc(dev->chunksize);
@@ -428,7 +424,7 @@ int transform_alloc(struct nexus_dev *dev)
 			return -ENOMEM;
 	}
 	
-	if (dev->supported_compression & NEXUS_COMPRESS_ZLIB) {
+	if (dev->supported_compression & (1 << NEXUS_COMPRESS_ZLIB)) {
 		/* The deflate workspace size is too large for kmalloc */
 		dev->zlib_deflate=vmalloc(zlib_deflate_workspacesize());
 		dev->zlib_inflate=kmalloc(zlib_inflate_workspacesize(),
@@ -437,7 +433,7 @@ int transform_alloc(struct nexus_dev *dev)
 			return -ENOMEM;
 	}
 	
-	if (dev->supported_compression & NEXUS_COMPRESS_LZF) {
+	if (dev->supported_compression & (1 << NEXUS_COMPRESS_LZF)) {
 		dev->lzf_compress=kmalloc(sizeof(LZF_STATE), GFP_KERNEL);
 		if (dev->lzf_compress == NULL)
 			return -ENOMEM;

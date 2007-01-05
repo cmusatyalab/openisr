@@ -24,8 +24,6 @@
 #include "nexus.h"
 #include "kcompat.h"
 
-#define TFM_NR_SUITES (8*sizeof(crypto_t))
-#define TFM_NR_COMPRESS (8*sizeof(compress_t))
 typedef sector_t chunk_t;
 
 struct tfm_suite_info {
@@ -81,12 +79,12 @@ struct nexus_dev {
 	unsigned flags;  /* synchronized by device mutex */
 	struct nexus_stats stats;
 	
-	crypto_t suite;
+	enum nexus_crypto suite;
 	struct crypto_tfm *cipher;
 	struct crypto_tfm *hash;
 	
-	compress_t default_compression;
-	compress_t supported_compression;
+	enum nexus_compress default_compression;
+	compressmask_t supported_compression;
 	void *buf_compressed;
 	void *buf_uncompressed;
 	void *zlib_deflate;
@@ -235,33 +233,14 @@ static inline unsigned io_chunks(struct nexus_io *io)
 	return io->last_cid - io->first_cid + 1;
 }
 
-/* The index of the named crypto suite.  Exactly one bit in @suite must be
-   set. */
-static inline int suite_index(crypto_t suite)
-{
-	unsigned long tmp=suite;
-	BUG_ON(suite == 0);
-	BUG_ON(suite & (suite - 1));
-	return find_first_bit(&tmp, TFM_NR_SUITES);
-}
-
-/* The index of the named compression algorithm.  Exactly one bit in @alg must
-   be set. */
-static inline int compress_index(compress_t alg)
-{
-	unsigned long tmp=alg;
-	BUG_ON(alg == 0);
-	BUG_ON(alg & (alg - 1));
-	return find_first_bit(&tmp, TFM_NR_COMPRESS);
-}
-
 /* init.c */
 extern struct workqueue_struct *wkqueue;
 extern int blk_major;
 struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
-			unsigned cachesize, sector_t offset, crypto_t crypto,
-			compress_t default_compress,
-			compress_t supported_compress);
+			unsigned cachesize, sector_t offset,
+			enum nexus_crypto crypto,
+			enum nexus_compress default_compress,
+			compressmask_t supported_compress);
 void nexus_dev_get(struct nexus_dev *dev);
 void nexus_dev_put(struct nexus_dev *dev, int unlink);
 void user_get(struct nexus_dev *dev);
@@ -291,10 +270,11 @@ void end_usermsg(struct chunkdata *cd);
 void shutdown_usermsg(struct nexus_dev *dev);
 void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid);
 void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
-			unsigned *length, compress_t *compression, char key[],
-			char tag[]);
+			unsigned *length, enum nexus_compress *compression,
+			char key[], char tag[]);
 void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
-			compress_t compression, char key[], char tag[]);
+			enum nexus_compress compression, char key[],
+			char tag[]);
 void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid);
 int reserve_chunks(struct nexus_io *io);
 void unreserve_chunk(struct nexus_io_chunk *chunk);
@@ -311,12 +291,12 @@ int crypto_cipher(struct nexus_dev *dev, struct scatterlist *sg,
 void crypto_hash(struct nexus_dev *dev, struct scatterlist *sg,
 			unsigned nbytes, u8 *out);
 int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
-			compress_t type);
+			enum nexus_compress type);
 int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
-			compress_t type, unsigned len);
-int compression_type_ok(struct nexus_dev *dev, compress_t compress);
-const struct tfm_suite_info *suite_info(crypto_t suite);
-const struct tfm_compress_info *compress_info(compress_t alg);
+			enum nexus_compress type, unsigned len);
+int compression_type_ok(struct nexus_dev *dev, enum nexus_compress compress);
+const struct tfm_suite_info *suite_info(enum nexus_crypto suite);
+const struct tfm_compress_info *compress_info(enum nexus_compress alg);
 
 /* thread.c */
 int thread_start(void);

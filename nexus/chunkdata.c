@@ -43,14 +43,14 @@ struct chunkdata {
 	struct list_head lh_need_tfm;
 	struct chunkdata_table *table;
 	chunk_t cid;
-	unsigned size;         /* encrypted size including padding */
-	compress_t compression;/* compression type */
+	unsigned size;                   /* encrypted size including padding */
+	enum nexus_compress compression; /* compression type */
 	struct list_head pending;
-	atomic_t remaining;    /* bytes, for I/O */
+	atomic_t remaining;              /* bytes, for I/O */
 	int error;
 	unsigned flags;
 	enum cd_state state;
-	u64 state_begin;       /* usec since epoch */
+	u64 state_begin;                 /* usec since epoch */
 	char key[NEXUS_MAX_HASH_LEN];
 	char tag[NEXUS_MAX_HASH_LEN];
 	struct scatterlist *sg;
@@ -671,8 +671,8 @@ void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid)
 }
 
 void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
-			unsigned *length, compress_t *compression, char key[],
-			char tag[])
+			unsigned *length, enum nexus_compress *compression,
+			char key[], char tag[])
 {
 	unsigned hash_len=suite_info(cd->table->dev->suite)->hash_len;
 	
@@ -686,7 +686,8 @@ void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 }
 
 void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
-			compress_t compression, char key[], char tag[])
+			enum nexus_compress compression, char key[],
+			char tag[])
 {
 	struct chunkdata *cd;
 	unsigned hash_len=suite_info(dev->suite)->hash_len;

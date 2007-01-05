@@ -228,9 +228,10 @@ static struct block_device_operations nexus_ops = {
 };
 
 struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
-			unsigned cachesize, sector_t offset, crypto_t suite,
-			compress_t default_compress,
-			compress_t supported_compress)
+			unsigned cachesize, sector_t offset,
+			enum nexus_crypto suite,
+			enum nexus_compress default_compress,
+			compressmask_t supported_compress)
 {
 	struct nexus_dev *dev;
 	sector_t capacity;

@@ -32,6 +32,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	int err=0;
 	int do_end;
 	struct chunkdata *cd;
+	enum nexus_compress compress;
 	
 	ndebug("Entering chr_read");
 	if (dev == NULL)
@@ -74,8 +75,8 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 			break;
 		case NEXUS_MSGTYPE_UPDATE_META:
 			get_usermsg_update_meta(cd, &msg.chunk, &msg.length,
-						&msg.compression, msg.key,
-						msg.tag);
+						&compress, msg.key, msg.tag);
+			msg.compression=compress;  /* type conversion */
 			do_end=1;
 			break;
 		default:

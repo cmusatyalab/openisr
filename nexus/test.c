@@ -16,6 +16,10 @@
 
 #define MESSAGE_BATCH 64
 
+#define ONDISK_NONE 0x01
+#define ONDISK_ZLIB 0x02
+#define ONDISK_LZF  0x04
+
 struct params {
 	char control_device[NEXUS_MAX_DEVICE_LEN];
 	char chunk_device[NEXUS_MAX_DEVICE_LEN];
@@ -55,6 +59,36 @@ void sighandler(int signal)
 		/* Race-free method of catching signals */
 		write(pipefds[1], "a", 1);
 	}
+}
+
+enum nexus_compress comp_to_nexus(unsigned ondisk)
+{
+	switch (ondisk) {
+	case ONDISK_NONE:
+		return NEXUS_COMPRESS_NONE;
+	case ONDISK_ZLIB:
+		return NEXUS_COMPRESS_ZLIB;
+	case ONDISK_LZF:
+		return NEXUS_COMPRESS_LZF;
+	default:
+		printf("Invalid compression type\n");
+		return -1;
+	}
+}
+
+unsigned comp_to_ondisk(enum nexus_compress compress)
+{
+	switch (compress) {
+	case NEXUS_COMPRESS_NONE:
+		return ONDISK_NONE;
+	case NEXUS_COMPRESS_ZLIB:
+		return ONDISK_ZLIB;
+	case NEXUS_COMPRESS_LZF:
+		return ONDISK_LZF;
+	case NEXUS_NR_COMPRESS:
+		printf("Invalid compression type\n");
+	}
+	return -1;
 }
 
 int setup(struct params *params, char *storefile)
@@ -121,7 +155,7 @@ int setup(struct params *params, char *storefile)
 	EVP_DigestUpdate(&hash, crypted, params->chunksize);
 	EVP_DigestFinal(&hash, chunk.tag, &keylen);
 	
-	chunk.compression=NEXUS_COMPRESS_NONE;
+	chunk.compression=ONDISK_NONE;
 	fprintf(stderr, "Initializing %llu chunks", params->chunks);
 	for (tmp=0; tmp<params->chunks; tmp++) {
 		if (!(tmp % (params->chunks / 20)))
@@ -147,21 +181,23 @@ int handle_message(struct chunk *chunk, struct nexus_message *message,
 				struct nexus_message *message_out,
 				unsigned hash_len)
 {
+	enum nexus_compress comp;
+	
 	switch (message->type) {
 	case NEXUS_MSGTYPE_GET_META:
+		comp=comp_to_nexus(chunk->compression);
 		if (verbose) {
 			printf("Sending   chunk %8llu key ", message->chunk);
 			printkey(chunk->key, hash_len);
 			printf(" tag ");
 			printkey(chunk->tag, hash_len);
-			printf(" size %6u comp %u\n", chunk->length,
-						chunk->compression);
+			printf(" size %6u comp %u\n", chunk->length, comp);
 		}
 		memcpy(message_out->key, chunk->key, hash_len);
 		memcpy(message_out->tag, chunk->tag, hash_len);
 		message_out->chunk=message->chunk;
 		message_out->length=chunk->length;
-		message_out->compression=chunk->compression;
+		message_out->compression=comp;
 		message_out->type=NEXUS_MSGTYPE_SET_META;
 		return 1;
 	case NEXUS_MSGTYPE_UPDATE_META:
@@ -176,7 +212,7 @@ int handle_message(struct chunk *chunk, struct nexus_message *message,
 		memcpy(chunk->key, message->key, hash_len);
 		memcpy(chunk->tag, message->tag, hash_len);
 		chunk->length=message->length;
-		chunk->compression=message->compression;
+		chunk->compression=comp_to_ondisk(message->compression);
 		received++;
 		received_size += message->length;
 		dirty=1;
@@ -187,7 +223,7 @@ int handle_message(struct chunk *chunk, struct nexus_message *message,
 	}
 }
 
-int run(char *storefile, compress_t compress)
+int run(char *storefile, enum nexus_compress compress)
 {
 	int storefd, ctlfd, ret, count, in, out;
 	struct nexus_setup setup;
@@ -219,8 +255,9 @@ int run(char *storefile, compress_t compress)
 	setup.offset=params.offset;
 	setup.crypto=NEXUS_CRYPTO_BLOWFISH_SHA1;
 	setup.compress_default=compress;
-	setup.compress_required=NEXUS_COMPRESS_NONE | NEXUS_COMPRESS_ZLIB |
-				NEXUS_COMPRESS_LZF;
+	setup.compress_required=(1 << NEXUS_COMPRESS_NONE) |
+				(1 << NEXUS_COMPRESS_ZLIB) |
+				(1 << NEXUS_COMPRESS_LZF);
 	ret=ioctl(ctlfd, NEXUS_IOC_REGISTER, &setup);
 	if (ret) {
 		perror("Registering device");
@@ -318,7 +355,7 @@ int usage(char *prog)
 int main(int argc, char **argv)
 {
 	struct params params;
-	compress_t compress;
+	enum nexus_compress compress;
 	
 	if (argc == 7) {
 		memset(params.control_device, 0, NEXUS_MAX_DEVICE_LEN);
