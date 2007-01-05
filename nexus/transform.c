@@ -389,13 +389,17 @@ int transform_alloc(struct nexus_dev *dev)
 	info=suite_info(dev->suite);
 	
 	/* Sanity-check the compression algorithms */
+	if (dev->supported_compression == 0) {
+		log(KERN_ERR, "No compression algorithms requested");
+		return -EINVAL;
+	}
 	if ((dev->supported_compression & supported_algs)
 				!= dev->supported_compression) {
 		log(KERN_ERR, "Unsupported compression algorithm requested");
 		return -EINVAL;
 	}
 	if (!compression_type_ok(dev, dev->default_compression)) {
-		log(KERN_ERR, "Requested invalid default compression "
+		log(KERN_ERR, "Requested unreasonable default compression "
 					"algorithm");
 		return -EINVAL;
 	}
@@ -414,7 +418,7 @@ int transform_alloc(struct nexus_dev *dev)
 					dev->class_dev->class_id);
 	}
 	
-	if (dev->supported_compression & (1 << NEXUS_COMPRESS_NONE)) {
+	if (dev->supported_compression & ~(1 << NEXUS_COMPRESS_NONE)) {
 		/* XXX this is not ideal, but there's no good way to support
 		   scatterlists in LZF without hacking the code. */
 		dev->buf_compressed=vmalloc(dev->chunksize);
