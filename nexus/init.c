@@ -292,6 +292,12 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 		ret=-EINVAL;
 		goto bad;
 	}
+	if (chunksize > MAX_CHUNKSIZE) {
+		log(KERN_ERR, "chunk size exceeds configured maximum of %d",
+					MAX_CHUNKSIZE);
+		ret=-EINVAL;
+		goto bad;
+	}
 	dev->chunksize=chunksize;
 	if (cachesize < MIN_CONCURRENT_REQS * MAX_CHUNKS_PER_IO) {
 		log(KERN_ERR, "cache size may not be smaller than %u",

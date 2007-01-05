@@ -6,6 +6,7 @@
 #define MAX_SEGS_PER_IO 32
 #define MAX_CHUNKS_PER_IO 32
 #define MIN_CONCURRENT_REQS 2  /* XXX */
+#define MAX_CHUNKSIZE 131072  /* XXX hack for preallocated tfm bounce buffers */
 #define DEVICES 16  /* If this is more than 26, ctr will need to be fixed */
 #define MINORS_PER_DEVICE 16
 #define MAX_DEV_ALLOCATION_MULT 1  /* don't allocate > 10% RAM per device */
@@ -55,6 +56,17 @@ struct nexus_stats {
 	unsigned sectors_written;
 };
 
+struct nexus_tfm_state {
+	struct crypto_tfm *cipher[NEXUS_NR_CRYPTO];
+	struct crypto_tfm *hash[NEXUS_NR_CRYPTO];
+	void *buf_compressed;
+	void *buf_uncompressed;
+	int buf_refcount;
+	void *zlib_deflate;
+	void *zlib_inflate;
+	void *lzf_compress;
+};
+
 struct nexus_dev {
 	struct list_head lh_devs;  /* updates synced by state.lock in init.c */
 	
@@ -80,16 +92,9 @@ struct nexus_dev {
 	struct nexus_stats stats;
 	
 	enum nexus_crypto suite;
-	struct crypto_tfm *cipher;
-	struct crypto_tfm *hash;
-	
 	enum nexus_compress default_compression;
 	compressmask_t supported_compression;
-	void *buf_compressed;
-	void *buf_uncompressed;
-	void *zlib_deflate;
-	void *zlib_inflate;
-	void *lzf_compress;
+	struct nexus_tfm_state ts;
 	
 	struct chunkdata_table *chunkdata;
 	/* Count of activities that need the userspace process to be there */
@@ -295,6 +300,10 @@ int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
 			enum nexus_compress type, unsigned len);
 int compression_type_ok(struct nexus_dev *dev, enum nexus_compress compress);
+int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite);
+void suite_remove(struct nexus_tfm_state *ts, enum nexus_crypto suite);
+int compress_add(struct nexus_tfm_state *ts, enum nexus_compress alg);
+void compress_remove(struct nexus_tfm_state *ts, enum nexus_compress alg);
 const struct tfm_suite_info *suite_info(enum nexus_crypto suite);
 const struct tfm_compress_info *compress_info(enum nexus_compress alg);
 
