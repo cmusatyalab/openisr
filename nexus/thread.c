@@ -155,10 +155,11 @@ void schedule_callback(enum callback type, struct list_head *entry)
 	wake_up_interruptible(&queues.wq);
 }
 
+void thread_shutdown(void);
 int __init thread_start(void)
 {
 	int cpu;
-	int err;
+	int ret;
 	int i;
 	
 	spin_lock_init(&queues.lock);
@@ -171,37 +172,36 @@ int __init thread_start(void)
 	   prevent notifier callbacks from occurring.  threads.lock makes
 	   sure the callback can't run until we've finished initialization */
 	mutex_lock(&threads.lock);
-	err=register_cpu_notifier(&cpu_notifier);
-	if (err) {
+	ret=register_cpu_notifier(&cpu_notifier);
+	if (ret) {
 		mutex_unlock(&threads.lock);
-		return err;
+		return ret;
 	}
 	
 	lock_cpu_hotplug();
 	for_each_online_cpu(cpu) {
-		err=cpu_start(cpu);
-		if (err) {
-			unlock_cpu_hotplug();
-			goto bad;
-		}
+		ret=cpu_start(cpu);
+		if (ret)
+			break;
 	}
 	unlock_cpu_hotplug();
 	mutex_unlock(&threads.lock);
-	return 0;
 	
-bad:
-	unregister_cpu_notifier(&cpu_notifier);
-	for_each_possible_cpu(cpu)
-		cpu_stop(cpu);
-	return err;
+	if (ret) {
+		/* One of the threads failed to start.  Clean up. */
+		thread_shutdown();
+	}
+	return ret;
 }
 
-void __exit thread_shutdown(void)
+void thread_shutdown(void)
 {
 	int cpu;
 	
-	mutex_lock(&threads.lock);
+	/* unregister_cpu_notifier must be called unlocked, in case the
+	   notifier chain is currently running */
 	unregister_cpu_notifier(&cpu_notifier);
+	mutex_lock(&threads.lock);
 	for_each_possible_cpu(cpu)
 		cpu_stop(cpu);
 	mutex_unlock(&threads.lock);
