@@ -417,7 +417,9 @@ void suite_remove(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 {
 	BUG_ON(ts->cipher[suite] == NULL);
 	crypto_free_tfm(ts->cipher[suite]);
+	ts->cipher[suite]=NULL;
 	crypto_free_tfm(ts->hash[suite]);
+	ts->hash[suite]=NULL;
 }
 
 static int bounce_buffer_get(struct nexus_tfm_state *ts)
@@ -438,6 +440,7 @@ static int bounce_buffer_get(struct nexus_tfm_state *ts)
 		ts->buf_uncompressed=vmalloc(MAX_CHUNKSIZE);
 		if (ts->buf_uncompressed == NULL) {
 			vfree(ts->buf_compressed);
+			ts->buf_compressed=NULL;
 			return -ENOMEM;
 		}
 		ts->buf_refcount++;
@@ -450,7 +453,9 @@ static void bounce_buffer_put(struct nexus_tfm_state *ts)
 	if (--ts->buf_refcount == 0) {
 		BUG_ON(ts->buf_compressed == NULL);
 		vfree(ts->buf_compressed);
+		ts->buf_compressed=NULL;
 		vfree(ts->buf_uncompressed);
+		ts->buf_uncompressed=NULL;
 	}
 }
 
@@ -471,6 +476,7 @@ int compress_add(struct nexus_tfm_state *ts, enum nexus_compress alg)
 					GFP_KERNEL);
 		if (ts->zlib_inflate == NULL) {
 			vfree(ts->zlib_deflate);
+			ts->zlib_deflate=NULL;
 			return -ENOMEM;
 		}
 		break;
@@ -498,11 +504,14 @@ void compress_remove(struct nexus_tfm_state *ts, enum nexus_compress alg)
 	case NEXUS_COMPRESS_ZLIB:
 		BUG_ON(ts->zlib_inflate == NULL);
 		kfree(ts->zlib_inflate);
+		ts->zlib_inflate=NULL;
 		vfree(ts->zlib_deflate);
+		ts->zlib_deflate=NULL;
 		break;
 	case NEXUS_COMPRESS_LZF:
 		BUG_ON(ts->lzf_compress == NULL);
 		kfree(ts->lzf_compress);
+		ts->lzf_compress=NULL;
 		break;
 	case NEXUS_NR_COMPRESS:
 		BUG();
