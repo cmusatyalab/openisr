@@ -6,7 +6,9 @@
 #include "defs.h"
 
 /* XXX percpu vars */
-static struct task_struct *thr[NR_CPUS];
+static struct {
+	struct task_struct *task[NR_CPUS];
+} threads;
 
 static struct {
 	spinlock_t lock;       /* may be taken in interrupt context */
@@ -66,29 +68,30 @@ static int cpu_start(int cpu)
 {
 	int err;
 	
-	BUG_ON(thr[cpu] != NULL);
-	thr[cpu]=kthread_create(nexus_thread, NULL, KTHREAD_NAME "/%d", cpu);
-	if (IS_ERR(thr[cpu])) {
-		err=PTR_ERR(thr[cpu]);
-		thr[cpu]=NULL;
+	BUG_ON(threads.task[cpu] != NULL);
+	threads.task[cpu]=kthread_create(nexus_thread, NULL,
+				KTHREAD_NAME "/%d", cpu);
+	if (IS_ERR(threads.task[cpu])) {
+		err=PTR_ERR(threads.task[cpu]);
+		threads.task[cpu]=NULL;
 		return err;
 	}
-	kthread_bind(thr[cpu], cpu);
+	kthread_bind(threads.task[cpu], cpu);
 	/* Make sure the thread doesn't have a higher priority than interactive
 	   processes (e.g. the X server) because they'll become somewhat
 	   less interactive under high I/O load */
-	set_user_nice(thr[cpu], 0);
-	wake_up_process(thr[cpu]);
+	set_user_nice(threads.task[cpu], 0);
+	wake_up_process(threads.task[cpu]);
 	return 0;
 }
 
 static void cpu_stop(int cpu)
 {
-	if (thr[cpu]) {
+	if (threads.task[cpu]) {
 		debug("Calling kthread_stop on %d", cpu);
-		kthread_stop(thr[cpu]);
+		kthread_stop(threads.task[cpu]);
 		debug("...done");
-		thr[cpu]=NULL;
+		threads.task[cpu]=NULL;
 	}
 }
 
