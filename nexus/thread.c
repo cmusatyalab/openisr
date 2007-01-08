@@ -155,7 +155,19 @@ void schedule_callback(enum callback type, struct list_head *entry)
 	wake_up_interruptible(&queues.wq);
 }
 
-void thread_shutdown(void);
+void thread_shutdown(void)
+{
+	int cpu;
+	
+	/* unregister_cpu_notifier must be called unlocked, in case the
+	   notifier chain is currently running */
+	unregister_cpu_notifier(&cpu_notifier);
+	mutex_lock(&threads.lock);
+	for_each_possible_cpu(cpu)
+		cpu_stop(cpu);
+	mutex_unlock(&threads.lock);
+}
+
 int __init thread_start(void)
 {
 	int cpu;
@@ -192,17 +204,4 @@ int __init thread_start(void)
 		thread_shutdown();
 	}
 	return ret;
-}
-
-void thread_shutdown(void)
-{
-	int cpu;
-	
-	/* unregister_cpu_notifier must be called unlocked, in case the
-	   notifier chain is currently running */
-	unregister_cpu_notifier(&cpu_notifier);
-	mutex_lock(&threads.lock);
-	for_each_possible_cpu(cpu)
-		cpu_stop(cpu);
-	mutex_unlock(&threads.lock);
 }
