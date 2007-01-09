@@ -3,6 +3,7 @@
 #include <linux/cpumask.h>
 #include <linux/sched.h>
 #include <linux/notifier.h>
+#include <linux/bitmap.h>
 #include "defs.h"
 
 /* XXX percpu vars */
@@ -10,6 +11,9 @@ static struct {
 	MUTEX lock;
 	struct task_struct *task[NR_CPUS];
 	int count;
+	struct nexus_tfm_state ts[NR_CPUS];
+	DECLARE_BITMAP(suite_interest[NEXUS_NR_CRYPTO], DEVICES);
+	DECLARE_BITMAP(compress_interest[NEXUS_NR_COMPRESS], DEVICES);
 } threads;
 
 static struct {
@@ -17,6 +21,7 @@ static struct {
 	struct list_head list[NR_CALLBACKS];
 	wait_queue_head_t wq;
 } queues;
+
 
 /* This will always run on the processor to which it is bound, *except* during
    hot-unplug of that CPU, when it will run on an arbitrary processor. */
@@ -66,18 +71,212 @@ static int nexus_thread(void *data)
 	return 0;
 }
 
+#define nexus_suite nexus_crypto
+
+#define DEFINE_ALLOC_ON_ALL(TYPE)					\
+static int alloc_##TYPE##_on_all(enum nexus_##TYPE arg)			\
+{									\
+	int cpu;							\
+	int count;							\
+	int err;							\
+									\
+	BUG_ON(!mutex_is_locked(&threads.lock));			\
+	debug("Allocating " #TYPE " %s...",				\
+				TYPE##_info(arg)->user_name);		\
+	for (cpu=0, count=0; cpu<NR_CPUS; cpu++) {			\
+		/* We care about which threads are running, not which	\
+		   CPUs are online */					\
+		if (threads.task[cpu] == NULL)				\
+			continue;					\
+		err=TYPE##_add(&threads.ts[cpu], arg);			\
+		if (err)						\
+			goto bad;					\
+		count++;						\
+	}								\
+	debug("...allocated on %d cpus", count);			\
+	return 0;							\
+									\
+bad:									\
+	while (--cpu >= 0) {						\
+		if (threads.task[cpu] != NULL)				\
+			TYPE##_remove(&threads.ts[cpu], arg);		\
+	}								\
+	return err;							\
+}
+
+#define DEFINE_FREE_ON_ALL(TYPE)					\
+static void free_##TYPE##_on_all(enum nexus_##TYPE arg)			\
+{									\
+	int cpu;							\
+	int count;							\
+									\
+	BUG_ON(!mutex_is_locked(&threads.lock));			\
+	debug("Freeing " #TYPE " %s...", TYPE##_info(arg)->user_name);	\
+	for (cpu=0, count=0; cpu<NR_CPUS; cpu++) {			\
+		if (threads.task[cpu] == NULL)				\
+			continue;					\
+		TYPE##_remove(&threads.ts[cpu], arg);			\
+		count++;						\
+	}								\
+	debug("...freed on %d cpus", count);				\
+}
+
+DEFINE_ALLOC_ON_ALL(suite)
+DEFINE_FREE_ON_ALL(suite)
+DEFINE_ALLOC_ON_ALL(compress)
+DEFINE_FREE_ON_ALL(compress)
+#undef nexus_suite
+
+static int alloc_all_on_cpu(int cpu)
+{
+	enum nexus_crypto suite=0;
+	enum nexus_compress alg=0;
+	int suite_count;
+	int alg_count;
+	int err;
+	
+	BUG_ON(!mutex_is_locked(&threads.lock));
+	
+	for (suite_count=0; suite<NEXUS_NR_CRYPTO; suite++) {
+		if (!bitmap_empty(threads.suite_interest[suite], DEVICES)) {
+			err=suite_add(&threads.ts[cpu], suite);
+			if (err)
+				goto bad;
+			suite_count++;
+		}
+	}
+	for (alg_count=0; alg<NEXUS_NR_COMPRESS; alg++) {
+		if (!bitmap_empty(threads.compress_interest[alg], DEVICES)) {
+			err=compress_add(&threads.ts[cpu], alg);
+			if (err)
+				goto bad;
+			alg_count++;
+		}
+	}
+	debug("Allocated %d suites and %d compression algorithms for cpu %d",
+				suite_count, alg_count, cpu);
+	return 0;
+	
+bad:
+	while (--alg >= 0) {
+		if (!bitmap_empty(threads.compress_interest[alg], DEVICES))
+			compress_remove(&threads.ts[cpu], alg);
+	}
+	while (--suite >= 0) {
+		if (!bitmap_empty(threads.suite_interest[suite], DEVICES))
+			suite_remove(&threads.ts[cpu], suite);
+	}
+}
+
+static void free_all_on_cpu(int cpu)
+{
+	enum nexus_crypto suite;
+	enum nexus_compress alg;
+	int suite_count;
+	int alg_count;
+	
+	BUG_ON(!mutex_is_locked(&threads.lock));
+	
+	for (suite=0, suite_count=0; suite<NEXUS_NR_CRYPTO; suite++) {
+		if (!bitmap_empty(threads.suite_interest[suite], DEVICES)) {
+			suite_remove(&threads.ts[cpu], suite);
+			suite_count++;
+		}
+	}
+	for (alg=0, alg_count=0; alg<NEXUS_NR_COMPRESS; alg++) {
+		if (!bitmap_empty(threads.compress_interest[alg], DEVICES)) {
+			compress_remove(&threads.ts[cpu], alg);
+			alg_count++;
+		}
+	}
+	debug("Freed %d suites and %d compression algorithms for cpu %d",
+				suite_count, alg_count, cpu);
+}
+
+int thread_register(struct nexus_dev *dev)
+{
+	enum nexus_compress alg;
+	int err;
+	
+	/* We could use the interruptible variant and fail the device ctr
+	   if we get a signal, but that seems sorta stupid. */
+	mutex_lock(&threads.lock);
+	
+	/* Register suite */
+	if (bitmap_empty(threads.suite_interest[dev->suite], DEVICES)) {
+		err=alloc_suite_on_all(dev->suite);
+		if (err)
+			goto bad;
+	}
+	__set_bit(dev->index, threads.suite_interest[dev->suite]);
+	
+	/* Register compression */
+	for (alg=0; alg<NEXUS_NR_COMPRESS; alg++) {
+		if (dev->supported_compression & (1 << alg)) {
+			if (bitmap_empty(threads.compress_interest[alg],
+						DEVICES)) {
+				err=alloc_compress_on_all(alg);
+				if (err)
+					goto bad;
+			}
+			__set_bit(dev->index, threads.compress_interest[alg]);
+		}
+	}
+	mutex_unlock(&threads.lock);
+	return 0;
+	
+bad:
+	/* The dtr will call thread_unregister() later */
+	mutex_unlock(&threads.lock);
+	return err;
+}
+
+void thread_unregister(struct nexus_dev *dev)
+{
+	enum nexus_compress alg;
+	
+	mutex_lock(&threads.lock);
+	
+	/* Unregister suite */
+	if (__test_and_clear_bit(dev->index,
+				threads.suite_interest[dev->suite])) {
+		if (bitmap_empty(threads.suite_interest[dev->suite], DEVICES))
+			free_suite_on_all(dev->suite);
+	}
+	
+	/* Unregister compression */
+	for (alg=0; alg<NEXUS_NR_COMPRESS; alg++) {
+		if (__test_and_clear_bit(dev->index,
+					threads.compress_interest[alg])) {
+			if (bitmap_empty(threads.compress_interest[alg],
+						DEVICES))
+				free_compress_on_all(alg);
+		}
+	}
+	
+	mutex_unlock(&threads.lock);
+}
+
 static int cpu_start(int cpu)
 {
 	struct task_struct *thr;
+	int err;
 	
 	BUG_ON(!mutex_is_locked(&threads.lock));
 	if (threads.task[cpu] != NULL)
 		return 0;  /* See comment in cpu_callback() */
 	
 	debug("Onlining %d", cpu);
+	err=alloc_all_on_cpu(cpu);
+	if (err) {
+		debug("Failed to allocate transforms for CPU %d", cpu);
+		return err;
+	}
 	thr=kthread_create(nexus_thread, NULL, KTHREAD_NAME "/%d", cpu);
-	if (IS_ERR(thr))
+	if (IS_ERR(thr)) {
+		free_all_on_cpu(cpu);
 		return PTR_ERR(thr);
+	}
 	threads.task[cpu]=thr;
 	threads.count++;
 	kthread_bind(thr, cpu);
@@ -98,6 +297,7 @@ static void cpu_stop(int cpu)
 	debug("Offlining %d", cpu);
 	kthread_stop(threads.task[cpu]);
 	debug("...done");
+	free_all_on_cpu(cpu);
 	threads.task[cpu]=NULL;
 	threads.count--;
 }
@@ -110,7 +310,9 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 	
 	/* Due to the implementation of CPU hotplug, it is possible to receive
 	   CPU_ONLINE for cpus that thread_start() has already configured, or
-	   to receive CPU_DEAD for cpus we never started. */
+	   to receive CPU_DEAD for cpus we never started.  We can handle this
+	   without special locking, so we ignore CPU_LOCK_ACQUIRE/RELEASE.
+	   (Also, it's not portable to older kernel releases.) */
 	mutex_lock(&threads.lock);
 	switch (action) {
 	case CPU_ONLINE:

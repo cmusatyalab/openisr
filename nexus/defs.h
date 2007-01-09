@@ -310,6 +310,8 @@ const struct tfm_compress_info *compress_info(enum nexus_compress alg);
 /* thread.c */
 int thread_start(void);
 void thread_shutdown(void);
+int thread_register(struct nexus_dev *dev);
+void thread_unregister(struct nexus_dev *dev);
 void schedule_callback(enum callback type, struct list_head *entry);
 
 /* sysfs.c */

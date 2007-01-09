@@ -207,6 +207,7 @@ static void nexus_dev_dtr(struct class_device *class_dev)
 		}
 	}
 	chunkdata_free_table(dev);
+	thread_unregister(dev);
 	transform_free(dev);
 	if (dev->queue)
 		blk_cleanup_queue(dev->queue);
@@ -394,6 +395,13 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	ret=transform_alloc(dev);
 	if (ret) {
 		log(KERN_ERR, "could not configure transforms");
+		goto bad;
+	}
+	
+	ndebug("Registering with thread code");
+	ret=thread_register(dev);
+	if (ret) {
+		log(KERN_ERR, "couldn't register transforms with thread");
 		goto bad;
 	}
 	
