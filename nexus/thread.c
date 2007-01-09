@@ -157,14 +157,17 @@ static int alloc_all_on_cpu(int cpu)
 	return 0;
 	
 bad:
-	while (--alg >= 0) {
+	/* gcc makes enums unsigned.  Rather than making assumptions, we test
+	   for both signed and unsigned underflow. */
+	while (--alg >= 0 && alg < NEXUS_NR_COMPRESS) {
 		if (threads.compress_users[alg])
 			compress_remove(&threads.ts[cpu], alg);
 	}
-	while (--suite >= 0) {
+	while (--suite >= 0 && suite < NEXUS_NR_CRYPTO) {
 		if (threads.suite_users[suite])
 			suite_remove(&threads.ts[cpu], suite);
 	}
+	return err;
 }
 
 static void free_all_on_cpu(int cpu)
@@ -231,7 +234,9 @@ int thread_register(struct nexus_dev *dev)
 	return 0;
 	
 bad_dealloc:
-	while (--alg >= 0) {
+	/* gcc makes enums unsigned.  Rather than making assumptions, we test
+	   for both signed and unsigned underflow. */
+	while (--alg >= 0 && alg < NEXUS_NR_COMPRESS) {
 		if (dev->supported_compression & (1 << alg)) {
 			if (--threads.compress_users[alg] == 0)
 				free_compress_on_all(alg);
