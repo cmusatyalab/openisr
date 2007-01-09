@@ -103,11 +103,13 @@ struct nexus_dev {
 };
 
 enum dev_bits {
-	__DEV_HAVE_CD_REF,  /* chunkdata holds a dev reference */
+	__DEV_HAVE_CD_REF,    /* chunkdata holds a dev reference */
+	__DEV_THR_REGISTERED, /* registered with thread.c */
 };
 
 /* nexus_dev flags */
 #define DEV_HAVE_CD_REF     (1 << __DEV_HAVE_CD_REF)
+#define DEV_THR_REGISTERED  (1 << __DEV_THR_REGISTERED)
 
 #define dev_is_shutdown(dev) (list_empty(&dev->lh_devs))
 

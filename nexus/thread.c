@@ -3,7 +3,6 @@
 #include <linux/cpumask.h>
 #include <linux/sched.h>
 #include <linux/notifier.h>
-#include <linux/bitmap.h>
 #include "defs.h"
 
 /* XXX percpu vars */
@@ -12,8 +11,8 @@ static struct {
 	struct task_struct *task[NR_CPUS];
 	int count;
 	struct nexus_tfm_state ts[NR_CPUS];
-	DECLARE_BITMAP(suite_interest[NEXUS_NR_CRYPTO], DEVICES);
-	DECLARE_BITMAP(compress_interest[NEXUS_NR_COMPRESS], DEVICES);
+	unsigned suite_users[NEXUS_NR_CRYPTO];
+	unsigned compress_users[NEXUS_NR_COMPRESS];
 } threads;
 
 static struct {
@@ -138,7 +137,7 @@ static int alloc_all_on_cpu(int cpu)
 	BUG_ON(!mutex_is_locked(&threads.lock));
 	
 	for (suite_count=0; suite<NEXUS_NR_CRYPTO; suite++) {
-		if (!bitmap_empty(threads.suite_interest[suite], DEVICES)) {
+		if (threads.suite_users[suite]) {
 			err=suite_add(&threads.ts[cpu], suite);
 			if (err)
 				goto bad;
@@ -146,7 +145,7 @@ static int alloc_all_on_cpu(int cpu)
 		}
 	}
 	for (alg_count=0; alg<NEXUS_NR_COMPRESS; alg++) {
-		if (!bitmap_empty(threads.compress_interest[alg], DEVICES)) {
+		if (threads.compress_users[alg]) {
 			err=compress_add(&threads.ts[cpu], alg);
 			if (err)
 				goto bad;
@@ -159,11 +158,11 @@ static int alloc_all_on_cpu(int cpu)
 	
 bad:
 	while (--alg >= 0) {
-		if (!bitmap_empty(threads.compress_interest[alg], DEVICES))
+		if (threads.compress_users[alg])
 			compress_remove(&threads.ts[cpu], alg);
 	}
 	while (--suite >= 0) {
-		if (!bitmap_empty(threads.suite_interest[suite], DEVICES))
+		if (threads.suite_users[suite])
 			suite_remove(&threads.ts[cpu], suite);
 	}
 }
@@ -178,13 +177,13 @@ static void free_all_on_cpu(int cpu)
 	BUG_ON(!mutex_is_locked(&threads.lock));
 	
 	for (suite=0, suite_count=0; suite<NEXUS_NR_CRYPTO; suite++) {
-		if (!bitmap_empty(threads.suite_interest[suite], DEVICES)) {
+		if (threads.suite_users[suite]) {
 			suite_remove(&threads.ts[cpu], suite);
 			suite_count++;
 		}
 	}
 	for (alg=0, alg_count=0; alg<NEXUS_NR_COMPRESS; alg++) {
-		if (!bitmap_empty(threads.compress_interest[alg], DEVICES)) {
+		if (threads.compress_users[alg]) {
 			compress_remove(&threads.ts[cpu], alg);
 			alg_count++;
 		}
@@ -203,30 +202,44 @@ int thread_register(struct nexus_dev *dev)
 	mutex_lock(&threads.lock);
 	
 	/* Register suite */
-	if (bitmap_empty(threads.suite_interest[dev->suite], DEVICES)) {
+	if (threads.suite_users[dev->suite] == 0) {
 		err=alloc_suite_on_all(dev->suite);
 		if (err)
 			goto bad;
 	}
-	__set_bit(dev->index, threads.suite_interest[dev->suite]);
+	threads.suite_users[dev->suite]++;
 	
 	/* Register compression */
 	for (alg=0; alg<NEXUS_NR_COMPRESS; alg++) {
 		if (dev->supported_compression & (1 << alg)) {
-			if (bitmap_empty(threads.compress_interest[alg],
-						DEVICES)) {
+			if (threads.compress_users[alg] == 0) {
 				err=alloc_compress_on_all(alg);
 				if (err)
-					goto bad;
+					goto bad_dealloc;
 			}
-			__set_bit(dev->index, threads.compress_interest[alg]);
+			threads.compress_users[alg]++;
 		}
 	}
 	mutex_unlock(&threads.lock);
+	
+	/* Locking is not strictly necessary, since we're only called from
+	   the ctr, but them's the rules so we follow them. */
+	mutex_lock(&dev->lock);
+	BUG_ON(dev->flags & DEV_THR_REGISTERED);
+	dev->flags |= DEV_THR_REGISTERED;
+	mutex_unlock(&dev->lock);
 	return 0;
 	
+bad_dealloc:
+	while (--alg >= 0) {
+		if (dev->supported_compression & (1 << alg)) {
+			if (--threads.compress_users[alg] == 0)
+				free_compress_on_all(alg);
+		}
+	}
+	if (--threads.suite_users[dev->suite] == 0)
+		free_suite_on_all(dev->suite);
 bad:
-	/* The dtr will call thread_unregister() later */
 	mutex_unlock(&threads.lock);
 	return err;
 }
@@ -234,22 +247,28 @@ bad:
 void thread_unregister(struct nexus_dev *dev)
 {
 	enum nexus_compress alg;
+	int registered;
+	
+	/* Locking is not strictly necessary, since we're only called in the
+	   ctr/dtr cases. */
+	mutex_lock(&dev->lock);
+	registered=dev->flags & DEV_THR_REGISTERED;
+	dev->flags &= ~DEV_THR_REGISTERED;
+	mutex_unlock(&dev->lock);
+	/* Avoid corrupting refcounts if the registration failed earlier */
+	if (!registered)
+		return;
 	
 	mutex_lock(&threads.lock);
 	
 	/* Unregister suite */
-	if (__test_and_clear_bit(dev->index,
-				threads.suite_interest[dev->suite])) {
-		if (bitmap_empty(threads.suite_interest[dev->suite], DEVICES))
-			free_suite_on_all(dev->suite);
-	}
+	if (--threads.suite_users[dev->suite] == 0)
+		free_suite_on_all(dev->suite);
 	
 	/* Unregister compression */
 	for (alg=0; alg<NEXUS_NR_COMPRESS; alg++) {
-		if (__test_and_clear_bit(dev->index,
-					threads.compress_interest[alg])) {
-			if (bitmap_empty(threads.compress_interest[alg],
-						DEVICES))
+		if (dev->supported_compression & (1 << alg)) {
+			if (--threads.compress_users[alg] == 0)
 				free_compress_on_all(alg);
 		}
 	}
