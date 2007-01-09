@@ -86,7 +86,7 @@ struct nexus_dev {
 	unsigned cachesize;
 	sector_t offset;
 	chunk_t chunks;
-	int index;
+	int devnum;
 	uid_t owner;
 	unsigned flags;  /* synchronized by device mutex */
 	struct nexus_stats stats;
