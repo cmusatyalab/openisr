@@ -285,7 +285,7 @@ static int cpu_start(int cpu)
 	if (threads.task[cpu] != NULL)
 		return 0;  /* See comment in cpu_callback() */
 	
-	debug("Onlining %d", cpu);
+	debug("Onlining CPU %d", cpu);
 	err=alloc_all_on_cpu(cpu);
 	if (err) {
 		debug("Failed to allocate transforms for CPU %d", cpu);
@@ -313,7 +313,7 @@ static void cpu_stop(int cpu)
 	if (threads.task[cpu] == NULL)
 		return;
 	
-	debug("Offlining %d", cpu);
+	debug("Offlining CPU %d", cpu);
 	kthread_stop(threads.task[cpu]);
 	debug("...done");
 	free_all_on_cpu(cpu);
@@ -337,16 +337,16 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 	case CPU_ONLINE:
 		/* CPU is already up */
 		if (cpu_start(cpu))
-			log(KERN_ERR, "Failed to start thread for cpu %d", cpu);
+			log(KERN_ERR, "Failed to start thread for CPU %d", cpu);
 		break;
 	case CPU_DOWN_PREPARE:
-		debug("Preparing to offline %d", cpu);
 		if (threads.count == 1 && threads.task[cpu] != NULL) {
 			/* This is the last CPU on which we have a running
 			   thread, since we were unable to start a thread
 			   for a new CPU at some point in the past.  Cancel
 			   the shutdown. */
-			debug("...refusing");
+			log(KERN_ERR, "Refusing to stop CPU %d: it is running "
+						"our last worker thread", cpu);
 			mutex_unlock(&threads.lock);
 			return NOTIFY_BAD;
 		}
