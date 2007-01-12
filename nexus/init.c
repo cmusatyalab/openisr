@@ -208,7 +208,6 @@ static void nexus_dev_dtr(struct class_device *class_dev)
 	}
 	chunkdata_free_table(dev);
 	thread_unregister(dev);
-	transform_free(dev);
 	if (dev->queue)
 		blk_cleanup_queue(dev->queue);
 	if (dev->chunk_bdev)
@@ -388,20 +387,15 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	blk_queue_max_sectors(dev->queue,
 				chunk_sectors(dev) * (MAX_CHUNKS_PER_IO - 1));
 	
-	ndebug("Allocating transforms");
+	ndebug("Configuring transforms");
 	dev->suite=suite;
 	dev->default_compression=default_compress;
 	dev->supported_compression=supported_compress;
-	ret=transform_alloc(dev);
-	if (ret) {
-		log(KERN_ERR, "could not configure transforms");
-		goto bad;
-	}
-	
-	ndebug("Registering with thread code");
+	/* This also validates the parameters.  Perhaps the validation code
+	   should be moved to the ctr instead. */
 	ret=thread_register(dev);
 	if (ret) {
-		log(KERN_ERR, "couldn't register transforms with thread");
+		log(KERN_ERR, "could not configure transforms");
 		goto bad;
 	}
 	

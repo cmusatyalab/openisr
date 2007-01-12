@@ -201,6 +201,10 @@ int thread_register(struct nexus_dev *dev)
 	enum nexus_compress alg;
 	int err;
 	
+	err=transform_validate(dev);
+	if (err)
+		return err;
+	
 	/* We could use the interruptible variant and fail the device ctr
 	   if we get a signal, but that seems sorta stupid. */
 	mutex_lock(&threads.lock);

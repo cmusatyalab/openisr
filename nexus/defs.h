@@ -94,7 +94,6 @@ struct nexus_dev {
 	enum nexus_crypto suite;
 	enum nexus_compress default_compression;
 	compressmask_t supported_compression;
-	struct nexus_tfm_state ts;
 	
 	struct chunkdata_table *chunkdata;
 	/* Count of activities that need the userspace process to be there */
@@ -291,8 +290,7 @@ void chunkdata_complete_io(struct list_head *entry);
 void chunk_tfm(struct nexus_tfm_state *ts, struct list_head *entry);
 
 /* transform.c */
-int transform_alloc(struct nexus_dev *dev);
-void transform_free(struct nexus_dev *dev);
+int transform_validate(struct nexus_dev *dev);
 int crypto_cipher(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			struct scatterlist *sg, char key[], unsigned len,
 			int dir, int doPad);

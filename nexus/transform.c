@@ -513,19 +513,14 @@ void compress_remove(struct nexus_tfm_state *ts, enum nexus_compress alg)
 	bounce_buffer_put(ts);
 }
 
-int transform_alloc(struct nexus_dev *dev)
+int transform_validate(struct nexus_dev *dev)
 {
 	compressmask_t supported_algs=(1 << NEXUS_NR_COMPRESS) - 1;
-	int ret;
-	enum nexus_compress alg;
 	
-	/* Sanity-check the suite */
 	if (dev->suite < 0 || dev->suite >= NEXUS_NR_CRYPTO) {
 		log(KERN_ERR, "Unsupported crypto suite requested");
 		return -EINVAL;
 	}
-	
-	/* Sanity-check the compression algorithms */
 	if (dev->supported_compression == 0) {
 		log(KERN_ERR, "No compression algorithms requested");
 		return -EINVAL;
@@ -540,27 +535,5 @@ int transform_alloc(struct nexus_dev *dev)
 					"algorithm");
 		return -EINVAL;
 	}
-	
-	ret=suite_add(&dev->ts, dev->suite);
-	if (ret)
-		return ret;
-	
-	for (alg=0; alg<NEXUS_NR_COMPRESS; alg++) {
-		if (dev->supported_compression & (1 << alg)) {
-			ret=compress_add(&dev->ts, alg);
-			if (ret)
-				return ret;
-		}
-	}
 	return 0;
-}
-
-void transform_free(struct nexus_dev *dev)
-{
-	if (dev->ts.lzf_compress)
-		compress_remove(&dev->ts, NEXUS_COMPRESS_LZF);
-	if (dev->ts.zlib_inflate)
-		compress_remove(&dev->ts, NEXUS_COMPRESS_ZLIB);
-	if (dev->ts.cipher[dev->suite])
-		suite_remove(&dev->ts, dev->suite);
 }
