@@ -71,6 +71,18 @@ static int nexus_thread(void *data)
 	return 0;
 }
 
+void schedule_callback(enum callback type, struct list_head *entry)
+{
+	unsigned long flags;
+	
+	BUG_ON(type < 0 || type >= NR_CALLBACKS);
+	BUG_ON(!list_empty(entry));
+	spin_lock_irqsave(&queues.lock, flags);
+	list_add_tail(entry, &queues.list[type]);
+	spin_unlock_irqrestore(&queues.lock, flags);
+	wake_up_interruptible(&queues.wq);
+}
+
 #define nexus_suite nexus_crypto
 
 #define DEFINE_ALLOC_ON_ALL(TYPE)					\
@@ -374,18 +386,6 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 static struct notifier_block cpu_notifier = {
 	.notifier_call = cpu_callback
 };
-
-void schedule_callback(enum callback type, struct list_head *entry)
-{
-	unsigned long flags;
-	
-	BUG_ON(type < 0 || type >= NR_CALLBACKS);
-	BUG_ON(!list_empty(entry));
-	spin_lock_irqsave(&queues.lock, flags);
-	list_add_tail(entry, &queues.list[type]);
-	spin_unlock_irqrestore(&queues.lock, flags);
-	wake_up_interruptible(&queues.wq);
-}
 
 void thread_shutdown(void)
 {
