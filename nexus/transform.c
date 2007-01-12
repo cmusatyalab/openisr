@@ -169,7 +169,6 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 	int ret2;
 	int size;
 	
-	BUG_ON(!mutex_is_locked(&dev->lock));
 	scatterlist_transfer(dev, sg, ts->buf_uncompressed, READ);
 	strm.workspace=ts->zlib_deflate;
 	/* XXX keep persistent stream structures? */
@@ -216,7 +215,6 @@ static int decompress_chunk_zlib(struct nexus_dev *dev,
 	int ret;
 	int ret2;
 	
-	BUG_ON(!mutex_is_locked(&dev->lock));
 	/* XXX don't need to transfer whole scatterlist */
 	scatterlist_transfer(dev, sg, ts->buf_compressed, READ);
 	strm.workspace=ts->zlib_inflate;
@@ -246,7 +244,6 @@ static int compress_chunk_lzf(struct nexus_dev *dev,
 {
 	int size;
 	
-	BUG_ON(!mutex_is_locked(&dev->lock));
 	scatterlist_transfer(dev, sg, ts->buf_uncompressed, READ);
 	size=lzf_compress(ts->buf_uncompressed, dev->chunksize,
 				ts->buf_compressed, dev->chunksize,
@@ -270,7 +267,6 @@ static int decompress_chunk_lzf(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg,
 			unsigned len)
 {
-	BUG_ON(!mutex_is_locked(&dev->lock));
 	/* XXX don't need to transfer whole scatterlist */
 	scatterlist_transfer(dev, sg, ts->buf_compressed, READ);
 	len=lzf_decompress(ts->buf_compressed, len,
@@ -281,36 +277,35 @@ static int decompress_chunk_lzf(struct nexus_dev *dev,
 	return 0;
 }
 
-int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
-			enum nexus_compress type)
+int compress_chunk(struct nexus_dev *dev, struct nexus_tfm_state *ts,
+			struct scatterlist *sg, enum nexus_compress type)
 {
-	BUG_ON(!mutex_is_locked(&dev->lock));
 	switch (type) {
 	case NEXUS_COMPRESS_NONE:
 		return dev->chunksize;
 	case NEXUS_COMPRESS_ZLIB:
-		return compress_chunk_zlib(dev, &dev->ts, sg);
+		return compress_chunk_zlib(dev, ts, sg);
 	case NEXUS_COMPRESS_LZF:
-		return compress_chunk_lzf(dev, &dev->ts, sg);
+		return compress_chunk_lzf(dev, ts, sg);
 	case NEXUS_NR_COMPRESS:
 		BUG();
 	}
 	return -EIO;
 }
 
-int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
-			enum nexus_compress type, unsigned len)
+int decompress_chunk(struct nexus_dev *dev, struct nexus_tfm_state *ts,
+			struct scatterlist *sg, enum nexus_compress type,
+			unsigned len)
 {
-	BUG_ON(!mutex_is_locked(&dev->lock));
 	switch (type) {
 	case NEXUS_COMPRESS_NONE:
 		if (len != dev->chunksize)
 			return -EIO;
 		return 0;
 	case NEXUS_COMPRESS_ZLIB:
-		return decompress_chunk_zlib(dev, &dev->ts, sg, len);
+		return decompress_chunk_zlib(dev, ts, sg, len);
 	case NEXUS_COMPRESS_LZF:
-		return decompress_chunk_lzf(dev, &dev->ts, sg, len);
+		return decompress_chunk_lzf(dev, ts, sg, len);
 	case NEXUS_NR_COMPRESS:
 		BUG();
 	}
@@ -321,14 +316,13 @@ int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
    nbytes.  However, when we're hashing compressed data, we may want the
    hash to include only part of a page.  Thus this nonsense. */
 /* XXX verify this against test vectors */
-void crypto_hash(struct nexus_dev *dev, struct scatterlist *sg,
-			unsigned nbytes, u8 *out)
+void crypto_hash(struct nexus_dev *dev, struct nexus_tfm_state *ts,
+			struct scatterlist *sg, unsigned nbytes, u8 *out)
 {
-	struct crypto_tfm *tfm=dev->ts.hash[dev->suite];
+	struct crypto_tfm *tfm=ts->hash[dev->suite];
 	int i;
 	unsigned saved;
 	
-	BUG_ON(!mutex_is_locked(&dev->lock));
 	for (i=0; sg[i].length < nbytes; i++)
 		nbytes -= sg[i].length;
 	saved=sg[i].length;
@@ -338,15 +332,15 @@ void crypto_hash(struct nexus_dev *dev, struct scatterlist *sg,
 }
 
 /* Returns the new data size, or error */
-int crypto_cipher(struct nexus_dev *dev, struct scatterlist *sg,
-			char key[], unsigned len, int dir, int doPad)
+int crypto_cipher(struct nexus_dev *dev, struct nexus_tfm_state *ts,
+			struct scatterlist *sg, char key[], unsigned len,
+			int dir, int doPad)
 {
-	struct crypto_tfm *tfm=dev->ts.cipher[dev->suite];
+	struct crypto_tfm *tfm=ts->cipher[dev->suite];
 	char iv[8]={0}; /* XXX */
 	int ret;
 	unsigned key_len=suite_info(dev->suite)->key_len;
 	
-	BUG_ON(!mutex_is_locked(&dev->lock));
 	crypto_cipher_set_iv(tfm, iv, sizeof(iv));
 	BUG_ON(key_len > suite_info(dev->suite)->hash_len);  /* XXX */
 	ret=crypto_cipher_setkey(tfm, key, key_len);

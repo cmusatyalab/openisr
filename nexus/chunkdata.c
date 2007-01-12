@@ -345,7 +345,7 @@ bad:
 }
 
 /* XXX convert debug calls to log()? */
-static int __chunk_tfm(struct chunkdata *cd)
+static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 {
 	struct nexus_dev *dev=cd->table->dev;
 	unsigned compressed_size;
@@ -353,18 +353,17 @@ static int __chunk_tfm(struct chunkdata *cd)
 	char hash[NEXUS_MAX_HASH_LEN];
 	unsigned hash_len=suite_info(dev->suite)->hash_len;
 	
-	BUG_ON(!mutex_is_locked(&dev->lock));
 	if (cd->state == ST_DECRYPTING) {
 		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->cid);
 		/* Make sure encrypted data matches tag */
-		crypto_hash(dev, cd->sg, cd->size, hash);
+		crypto_hash(dev, ts, cd->sg, cd->size, hash);
 		if (memcmp(cd->tag, hash, hash_len)) {
 			debug("Chunk " SECTOR_FORMAT ": Tag doesn't match "
 						"data", cd->cid);
 			return -EIO;
 		}
-		ret=crypto_cipher(dev, cd->sg, cd->key, cd->size, READ,
+		ret=crypto_cipher(dev, ts, cd->sg, cd->key, cd->size, READ,
 					cd->compression != NEXUS_COMPRESS_NONE);
 		if (ret < 0) {
 			debug("Chunk " SECTOR_FORMAT ": Decryption failed",
@@ -373,13 +372,13 @@ static int __chunk_tfm(struct chunkdata *cd)
 		}
 		compressed_size=ret;
 		/* Make sure decrypted data matches key */
-		crypto_hash(dev, cd->sg, compressed_size, hash);
+		crypto_hash(dev, ts, cd->sg, compressed_size, hash);
 		if (memcmp(cd->key, hash, hash_len)) {
 			debug("Chunk " SECTOR_FORMAT ": Key doesn't match "
 						"decrypted data", cd->cid);
 			return -EIO;
 		}
-		ret=decompress_chunk(dev, cd->sg, cd->compression,
+		ret=decompress_chunk(dev, ts, cd->sg, cd->compression,
 					compressed_size);
 		if (ret) {
 			debug("Chunk " SECTOR_FORMAT ": Decompression failed",
@@ -390,7 +389,7 @@ static int __chunk_tfm(struct chunkdata *cd)
 		/* If compression or encryption errors out, we don't try to
 		   recover the data because the cd will go into ST_ERROR state
 		   anyway and no one will be allowed to read it. */
-		ret=compress_chunk(dev, cd->sg, dev->default_compression);
+		ret=compress_chunk(dev, ts, cd->sg, dev->default_compression);
 		if (ret == -EFBIG) {
 			compressed_size=dev->chunksize;
 			cd->compression=NEXUS_COMPRESS_NONE;
@@ -404,8 +403,9 @@ static int __chunk_tfm(struct chunkdata *cd)
 		}
 		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
 					compressed_size, cd->cid);
-		crypto_hash(dev, cd->sg, compressed_size, cd->key);
-		ret=crypto_cipher(dev, cd->sg, cd->key, compressed_size, WRITE,
+		crypto_hash(dev, ts, cd->sg, compressed_size, cd->key);
+		ret=crypto_cipher(dev, ts, cd->sg, cd->key, compressed_size,
+					WRITE,
 					cd->compression != NEXUS_COMPRESS_NONE);
 		if (ret < 0) {
 			debug("Chunk " SECTOR_FORMAT ": Encryption failed",
@@ -413,7 +413,7 @@ static int __chunk_tfm(struct chunkdata *cd)
 			return ret;
 		}
 		cd->size=ret;
-		crypto_hash(dev, cd->sg, cd->size, cd->tag);
+		crypto_hash(dev, ts, cd->sg, cd->size, cd->tag);
 	} else {
 		BUG();
 	}
@@ -421,13 +421,17 @@ static int __chunk_tfm(struct chunkdata *cd)
 }
 
 /* Runs in thread context */
-void chunk_tfm(struct list_head *entry)
+void chunk_tfm(struct nexus_tfm_state *ts, struct list_head *entry)
 {
 	struct chunkdata *cd=container_of(entry, struct chunkdata, lh_need_tfm);
 	struct nexus_dev *dev=cd->table->dev;
+	int err;
 	
+	/* The actual crypto is done using per-CPU temporary buffers, without
+	   the dev lock held, so that multiple CPUs can do crypto in parallel */
+	err=__chunk_tfm(ts, cd);
 	mutex_lock_thread(&dev->lock);
-	if (__chunk_tfm(cd))
+	if (err)
 		transition_error(cd, -EIO);
 	else if (cd->state == ST_ENCRYPTING)
 		transition(cd, ST_DIRTY_ENCRYPTED);

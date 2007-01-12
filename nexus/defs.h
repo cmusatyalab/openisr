@@ -288,19 +288,21 @@ void unreserve_chunk(struct nexus_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct nexus_io_chunk *chunk);
 void run_chunk(struct list_head *entry);
 void chunkdata_complete_io(struct list_head *entry);
-void chunk_tfm(struct list_head *entry);
+void chunk_tfm(struct nexus_tfm_state *ts, struct list_head *entry);
 
 /* transform.c */
 int transform_alloc(struct nexus_dev *dev);
 void transform_free(struct nexus_dev *dev);
-int crypto_cipher(struct nexus_dev *dev, struct scatterlist *sg,
-			char key[], unsigned len, int dir, int doPad);
-void crypto_hash(struct nexus_dev *dev, struct scatterlist *sg,
-			unsigned nbytes, u8 *out);
-int compress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
-			enum nexus_compress type);
-int decompress_chunk(struct nexus_dev *dev, struct scatterlist *sg,
-			enum nexus_compress type, unsigned len);
+int crypto_cipher(struct nexus_dev *dev, struct nexus_tfm_state *ts,
+			struct scatterlist *sg, char key[], unsigned len,
+			int dir, int doPad);
+void crypto_hash(struct nexus_dev *dev, struct nexus_tfm_state *ts,
+			struct scatterlist *sg, unsigned nbytes, u8 *out);
+int compress_chunk(struct nexus_dev *dev, struct nexus_tfm_state *ts,
+			struct scatterlist *sg, enum nexus_compress type);
+int decompress_chunk(struct nexus_dev *dev, struct nexus_tfm_state *ts,
+			struct scatterlist *sg, enum nexus_compress type,
+			unsigned len);
 int compression_type_ok(struct nexus_dev *dev, enum nexus_compress compress);
 int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite);
 void suite_remove(struct nexus_tfm_state *ts, enum nexus_crypto suite);

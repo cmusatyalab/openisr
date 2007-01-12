@@ -26,6 +26,7 @@ static struct {
    hot-unplug of that CPU, when it will run on an arbitrary processor. */
 static int nexus_thread(void *data)
 {
+	struct nexus_tfm_state *ts=data;
 	unsigned long flags;
 	enum callback type;
 	struct list_head *entry;
@@ -47,7 +48,7 @@ static int nexus_thread(void *data)
 					run_chunk(entry);
 					break;
 				case CB_CRYPTO:
-					chunk_tfm(entry);
+					chunk_tfm(ts, entry);
 					break;
 				case NR_CALLBACKS:
 					BUG();
@@ -296,7 +297,8 @@ static int cpu_start(int cpu)
 		debug("Failed to allocate transforms for CPU %d", cpu);
 		return err;
 	}
-	thr=kthread_create(nexus_thread, NULL, KTHREAD_NAME "/%d", cpu);
+	thr=kthread_create(nexus_thread, &threads.ts[cpu], KTHREAD_NAME "/%d",
+				cpu);
 	if (IS_ERR(thr)) {
 		free_all_on_cpu(cpu);
 		return PTR_ERR(thr);
