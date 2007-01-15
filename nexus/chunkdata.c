@@ -331,12 +331,12 @@ static void issue_chunk_io(struct chunkdata *cd)
 		} else {
 			ndebug("Submitting multiple bios: %u/%u", offset,
 						dev->chunksize);
-			generic_make_request(bio);
+			schedule_io(bio);
 			bio=NULL;
 		}
 	}
 	BUG_ON(bio == NULL);
-	generic_make_request(bio);
+	schedule_io(bio);
 	return;
 	
 bad:

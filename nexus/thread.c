@@ -21,6 +21,15 @@ static struct {
 	wait_queue_head_t wq;
 } queues;
 
+static struct {
+	spinlock_t lock;
+	struct bio *head;
+	struct bio *tail;
+	wait_queue_head_t wq;
+} pending_io;
+
+static struct task_struct *io_thread;
+
 
 /* This will always run on the processor to which it is bound, *except* during
    hot-unplug of that CPU, when it will run on an arbitrary processor. */
@@ -81,6 +90,62 @@ void schedule_callback(enum callback type, struct list_head *entry)
 	list_add_tail(entry, &queues.list[type]);
 	spin_unlock_irqrestore(&queues.lock, flags);
 	wake_up_interruptible(&queues.wq);
+}
+
+/* Helper thread to submit I/O.  We don't want to do this in the per-CPU
+   thread because it's allowed to block if there are already too many
+   outstanding requests to the chunk store, and we want to be able to continue
+   to do crypto and service other requests while we wait. */
+/* Technically we could spawn one thread per device so that a blocked queue
+   for one chunk store won't affect unrelated devices, but we have too many
+   threads already.  This can be changed later if it becomes a problem. */
+static int nexus_io_thread(void *ignored)
+{
+	struct bio *bio;
+	DEFINE_WAIT(wait);
+	
+	while (!kthread_should_stop()) {
+		spin_lock(&pending_io.lock);
+		bio=pending_io.head;
+		if (bio != NULL) {
+			pending_io.head=bio->bi_next;
+			bio->bi_next=NULL;
+		} else {
+			prepare_to_wait_exclusive(&pending_io.wq, &wait,
+						TASK_INTERRUPTIBLE);
+		}
+		spin_unlock(&pending_io.lock);
+		
+		if (bio != NULL) {
+			generic_make_request(bio);
+		} else {
+			if (!kthread_should_stop())
+				schedule();
+			finish_wait(&queues.wq, &wait);
+		}
+	}
+	return 0;
+}
+
+/* We don't want to have to do a memory allocation to queue I/O, so we need
+   to use the linked list mechanism already included in struct bio.
+   Unfortunately, this is just a "next" pointer rather than a
+   struct list_head. */
+void schedule_io(struct bio *bio)
+{
+	BUG_ON(bio->bi_next != NULL);
+	/* We don't use _bh or _irq spinlock variants */
+	BUG_ON(in_interrupt());
+	spin_lock(&pending_io.lock);
+	if (pending_io.head == NULL) {
+		pending_io.head=bio;
+		pending_io.tail=bio;
+	} else {
+		pending_io.tail->bi_next=bio;
+		pending_io.tail=bio;
+	}
+	spin_unlock(&pending_io.lock);
+	wake_up_interruptible(&pending_io.wq);
 }
 
 #define nexus_suite nexus_crypto
@@ -398,10 +463,18 @@ void thread_shutdown(void)
 	for_each_possible_cpu(cpu)
 		cpu_stop(cpu);
 	mutex_unlock(&threads.lock);
+	
+	if (io_thread != NULL) {
+		debug("Stopping I/O thread");
+		kthread_stop(io_thread);
+		debug("...done");
+		io_thread=NULL;
+	}
 }
 
 int __init thread_start(void)
 {
+	struct task_struct *thr;
 	int cpu;
 	int ret;
 	int i;
@@ -411,6 +484,8 @@ int __init thread_start(void)
 		INIT_LIST_HEAD(&queues.list[i]);
 	init_waitqueue_head(&queues.wq);
 	mutex_init(&threads.lock);
+	spin_lock_init(&pending_io.lock);
+	init_waitqueue_head(&pending_io.wq);
 	
 	/* lock_cpu_hotplug() only protects the online cpu map; it doesn't
 	   prevent notifier callbacks from occurring.  threads.lock makes
@@ -430,10 +505,21 @@ int __init thread_start(void)
 	}
 	unlock_cpu_hotplug();
 	mutex_unlock(&threads.lock);
+	if (ret)
+		goto bad;
 	
-	if (ret) {
-		/* One of the threads failed to start.  Clean up. */
-		thread_shutdown();
+	debug("Starting I/O thread");
+	thr=kthread_create(nexus_io_thread, NULL, IOTHREAD_NAME);
+	if (IS_ERR(thr)) {
+		ret=PTR_ERR(thr);
+		goto bad;
 	}
+	io_thread=thr;
+	wake_up_process(thr);
+	
+	return 0;
+	
+bad:
+	thread_shutdown();
 	return ret;
 }

@@ -18,6 +18,7 @@
 #define DEVICE_NAME "openisr"
 #define SUBMIT_QUEUE "openisr-io"
 #define KTHREAD_NAME "openisr-thr"
+#define IOTHREAD_NAME "openisr-io"
 #define CD_NR_STATES 14  /* must shadow NR_STATES in chunkdata.c */
 
 #include <linux/blkdev.h>
@@ -315,6 +316,7 @@ void thread_shutdown(void);
 int thread_register(struct nexus_dev *dev);
 void thread_unregister(struct nexus_dev *dev);
 void schedule_callback(enum callback type, struct list_head *entry);
+void schedule_io(struct bio *bio);
 
 /* sysfs.c */
 extern struct class_attribute class_attrs[];
