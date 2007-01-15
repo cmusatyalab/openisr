@@ -41,9 +41,8 @@ static int nexus_thread(void *data)
 	enum callback type;
 	struct list_head *entry;
 	DEFINE_WAIT(wait);
-	int did_work;
 	
-	for (did_work=0; !kthread_should_stop(); did_work=0) {
+	while (!kthread_should_stop()) {
 		/* CB_RUN_REQUESTS is special: it needs to be able to return
 		   callbacks to the head of the queue if an allocation failure
 		   occurs, and this operation must always preserve queue order;
@@ -98,23 +97,22 @@ static int nexus_thread(void *data)
 				case NR_CALLBACKS:
 					BUG();
 				}
-				did_work=1;
-				break;
+				goto next;
 			} else if (type == CB_RUN_REQUESTS) {
 				mutex_unlock(&queues.request_lock);
 			}
 		}
 		
-		if (!did_work) {
-			/* No pending callbacks */
-			prepare_to_wait_exclusive(&queues.wq, &wait,
-						TASK_INTERRUPTIBLE);
-			spin_unlock_irqrestore(&queues.lock, flags);
-			if (!kthread_should_stop())
-				schedule();
-			finish_wait(&queues.wq, &wait);
-		}
-		/* XXX barrier() */
+		/* No pending callbacks */
+		prepare_to_wait_exclusive(&queues.wq, &wait,
+					TASK_INTERRUPTIBLE);
+		spin_unlock_irqrestore(&queues.lock, flags);
+		if (!kthread_should_stop())
+			schedule();
+		finish_wait(&queues.wq, &wait);
+		
+next:
+		barrier();  /* nop to make compiler happy */
 	}
 	return 0;
 }
