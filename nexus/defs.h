@@ -89,7 +89,7 @@ struct nexus_dev {
 	chunk_t chunks;
 	int devnum;
 	uid_t owner;
-	unsigned flags;  /* synchronized by device mutex */
+	unsigned long flags;  /* use only atomic bit operations */
 	struct nexus_stats stats;
 	
 	enum nexus_crypto suite;
@@ -102,15 +102,11 @@ struct nexus_dev {
 	wait_queue_head_t waiting_users;
 };
 
+/* nexus_dev flags */
 enum dev_bits {
 	__DEV_HAVE_CD_REF,    /* chunkdata holds a dev reference */
 	__DEV_THR_REGISTERED, /* registered with thread.c */
 };
-
-/* nexus_dev flags */
-#define DEV_HAVE_CD_REF     (1 << __DEV_HAVE_CD_REF)
-#define DEV_THR_REGISTERED  (1 << __DEV_THR_REGISTERED)
-
 #define dev_is_shutdown(dev) (list_empty(&dev->lh_devs))
 
 struct nexus_io_chunk {

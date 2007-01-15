@@ -844,11 +844,9 @@ void run_chunk(struct list_head *entry)
 	mutex_lock_thread(&dev->lock);
 	__run_chunk(cd);
 	table->pending_updates--;
-	if ((dev->flags & DEV_HAVE_CD_REF) &&
-				table->busy_count == 0 &&
-				table->pending_updates == 0) {
-		dev->flags &= ~DEV_HAVE_CD_REF;
-		need_release=1;
+	if (table->busy_count == 0 && table->pending_updates == 0) {
+		if (test_and_clear_bit(__DEV_HAVE_CD_REF, &dev->flags))
+			need_release=1;
 	}
 	mutex_unlock(&dev->lock);
 	if (need_release)
@@ -869,10 +867,8 @@ int reserve_chunks(struct nexus_io *io)
 		list_add_tail(&io->chunks[i].lh_pending, &cd->pending);
 		user_get(dev);
 	}
-	if (!(dev->flags & DEV_HAVE_CD_REF)) {
-		dev->flags |= DEV_HAVE_CD_REF;
+	if (!test_and_set_bit(__DEV_HAVE_CD_REF, &dev->flags))
 		nexus_dev_get(dev);
-	}
 	for (i=0; i<io_chunks(io); i++) {
 		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
 		BUG_ON(cd == NULL);

@@ -307,12 +307,8 @@ int thread_register(struct nexus_dev *dev)
 	}
 	mutex_unlock(&threads.lock);
 	
-	/* Locking is not strictly necessary, since we're only called from
-	   the ctr, but them's the rules so we follow them. */
-	mutex_lock(&dev->lock);
-	BUG_ON(dev->flags & DEV_THR_REGISTERED);
-	dev->flags |= DEV_THR_REGISTERED;
-	mutex_unlock(&dev->lock);
+	if (test_and_set_bit(__DEV_THR_REGISTERED, &dev->flags))
+		BUG();
 	return 0;
 	
 bad_dealloc:
@@ -334,16 +330,9 @@ bad:
 void thread_unregister(struct nexus_dev *dev)
 {
 	enum nexus_compress alg;
-	int registered;
 	
-	/* Locking is not strictly necessary, since we're only called in the
-	   ctr/dtr cases. */
-	mutex_lock(&dev->lock);
-	registered=dev->flags & DEV_THR_REGISTERED;
-	dev->flags &= ~DEV_THR_REGISTERED;
-	mutex_unlock(&dev->lock);
 	/* Avoid corrupting refcounts if the registration failed earlier */
-	if (!registered)
+	if (!test_and_clear_bit(__DEV_THR_REGISTERED, &dev->flags))
 		return;
 	
 	mutex_lock(&threads.lock);
