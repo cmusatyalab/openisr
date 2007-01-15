@@ -11,7 +11,6 @@
 #include "defs.h"
 
 static struct class *class;
-struct workqueue_struct *wkqueue;
 int blk_major;
 
 static struct {
@@ -439,8 +438,8 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	INIT_WORK(&dev->cb_add_disk, nexus_add_disk, dev);
 	/* Make sure the dev isn't freed until add_disk() completes */
 	nexus_dev_get(dev);
-	/* We use the shared queue in order to prevent deadlock: if we
-	   used our own queue, add_disk() would block its own I/O to the
+	/* We use the shared workqueue in order to prevent deadlock: if we
+	   used our own threads, add_disk() would block its own I/O to the
 	   partition table. */
 	if (!schedule_work(&dev->cb_add_disk))
 		BUG();
@@ -491,13 +490,6 @@ static int __init nexus_init(void)
 		goto bad_chunkdata;
 	}
 	
-	wkqueue=create_workqueue(SUBMIT_QUEUE);
-	if (wkqueue == NULL) {
-		ret=-ENOMEM;
-		log(KERN_ERR, "couldn't start workqueue");
-		goto bad_workqueue;
-	}
-	
 	ret=thread_start();
 	if (ret) {
 		log(KERN_ERR, "couldn't start kernel threads");
@@ -537,8 +529,6 @@ bad_chrdev:
 bad_blkdev:
 	thread_shutdown();
 bad_thread:
-	destroy_workqueue(wkqueue);
-bad_workqueue:
 	chunkdata_shutdown();
 bad_chunkdata:
 	class_unregister(class);
@@ -558,8 +548,6 @@ static void __exit nexus_shutdown(void)
 		log(KERN_ERR, "block driver unregistration failed");
 	
 	thread_shutdown();
-	
-	destroy_workqueue(wkqueue);
 	
 	chunkdata_shutdown();
 	

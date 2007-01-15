@@ -16,7 +16,6 @@
 #define LOWMEM_WAIT_TIME (HZ/10)
 #define MODULE_NAME "openisr"
 #define DEVICE_NAME "openisr"
-#define SUBMIT_QUEUE "openisr-io"
 #define KTHREAD_NAME "openisr-thr"
 #define IOTHREAD_NAME "openisr-io"
 #define CD_NR_STATES 14  /* must shadow NR_STATES in chunkdata.c */
@@ -240,7 +239,6 @@ static inline unsigned io_chunks(struct nexus_io *io)
 }
 
 /* init.c */
-extern struct workqueue_struct *wkqueue;
 extern int blk_major;
 struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
