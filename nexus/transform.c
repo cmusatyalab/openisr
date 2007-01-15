@@ -419,6 +419,7 @@ void suite_remove(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 static int bounce_buffer_get(struct nexus_tfm_state *ts)
 {
 	if (ts->buf_refcount == 0) {
+		ndebug("Allocating compression bounce buffer");
 		/* XXX this is not ideal, but there's no good way to support
 		   scatterlists in LZF without hacking the code. */
 		/* XXX We always allocate a buffer of size MAX_CHUNKSIZE,
@@ -437,14 +438,15 @@ static int bounce_buffer_get(struct nexus_tfm_state *ts)
 			ts->buf_compressed=NULL;
 			return -ENOMEM;
 		}
-		ts->buf_refcount++;
 	}
+	ts->buf_refcount++;
 	return 0;
 }
 
 static void bounce_buffer_put(struct nexus_tfm_state *ts)
 {
 	if (--ts->buf_refcount == 0) {
+		ndebug("Freeing compression bounce buffer");
 		BUG_ON(ts->buf_compressed == NULL);
 		vfree(ts->buf_compressed);
 		ts->buf_compressed=NULL;
