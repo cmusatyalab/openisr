@@ -277,7 +277,8 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	spin_lock_init(&dev->queue_lock);
 	INIT_LIST_HEAD(&dev->requests);
 	spin_lock_init(&dev->requests_lock);
-	INIT_WORK(&dev->cb_run_requests, nexus_run_requests, dev);
+	setup_timer(&dev->requests_oom_timer, oom_timer_fn, (unsigned long)dev);
+	INIT_LIST_HEAD(&dev->lh_run_requests);
 	init_waitqueue_head(&dev->waiting_users);
 	dev->devnum=devnum;
 	dev->owner=current->uid;

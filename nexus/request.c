@@ -227,13 +227,24 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 	return 0;
 }
 
-/* Workqueue callback */
-void nexus_run_requests(void *data)
+/* Called from timer (i.e., softirq) context.  For dev->requests_oom_timer */
+void oom_timer_fn(unsigned long data)
 {
-	struct nexus_dev *dev=data;
+	struct nexus_dev *dev=(struct nexus_dev *)data;
+	ndebug("OOM delay expired");
+	schedule_callback(CB_RUN_REQUESTS, &dev->lh_run_requests);
+}
+
+/* Thread callback */
+void nexus_run_requests(struct list_head *entry)
+{
+	struct nexus_dev *dev=container_of(entry, struct nexus_dev,
+				lh_run_requests);
 	struct request *req;
 	int need_put;
 	
+	if (!test_and_clear_bit(__DEV_REQ_PENDING, &dev->flags))
+		BUG();
 	nexus_dev_get(dev);
 	spin_lock(&dev->requests_lock);
 	/* We don't use the "safe" iterator because the next pointer might
@@ -260,9 +271,14 @@ void nexus_run_requests(void *data)
 			if (list_empty(&dev->requests))
 				nexus_dev_get(dev);
 			list_add(&req->queuelist, &dev->requests);
-			/* Come back later when we're happier */
-			queue_delayed_work(wkqueue, &dev->cb_run_requests,
-						LOWMEM_WAIT_TIME);
+			/* Come back later when we're happier, if we haven't
+			   already been scheduled to run again immediately */
+			if (!test_and_set_bit(__DEV_REQ_PENDING, &dev->flags)) {
+				dev->requests_oom_timer.expires=jiffies +
+							LOWMEM_WAIT_TIME;
+				ndebug("OOM delay");
+				add_timer(&dev->requests_oom_timer);
+			}
 			goto out;
 		default:
 			BUG();
@@ -297,8 +313,10 @@ void nexus_request(request_queue_t *q)
 		}
 	}
 	if (need_queue) {
-		/* Duplicate enqueue requests will be ignored */
-		queue_work(wkqueue, &dev->cb_run_requests);
+		/* Avoid enqueueing if already enqueued */
+		if (!test_and_set_bit(__DEV_REQ_PENDING, &dev->flags))
+			schedule_callback(CB_RUN_REQUESTS,
+						&dev->lh_run_requests);
 	}
 }
 

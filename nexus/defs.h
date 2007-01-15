@@ -70,6 +70,7 @@ struct nexus_tfm_state {
 
 struct nexus_dev {
 	struct list_head lh_devs;  /* updates synced by state.lock in init.c */
+	struct list_head lh_run_requests;  /* ...queues.lock in thread.c */
 	
 	struct class_device *class_dev;
 	struct gendisk *gendisk;
@@ -80,7 +81,7 @@ struct nexus_dev {
 	
 	struct list_head requests;
 	spinlock_t requests_lock;
-	struct work_struct cb_run_requests;
+	struct timer_list requests_oom_timer;
 	
 	MUTEX lock;
 	unsigned chunksize;
@@ -106,6 +107,7 @@ struct nexus_dev {
 enum dev_bits {
 	__DEV_HAVE_CD_REF,    /* chunkdata holds a dev reference */
 	__DEV_THR_REGISTERED, /* registered with thread.c */
+	__DEV_REQ_PENDING,    /* a nexus_run_requests() job is pending */
 };
 #define dev_is_shutdown(dev) (list_empty(&dev->lh_devs))
 
@@ -153,6 +155,7 @@ enum io_bits {
 
 /* enumerated from highest to lowest priority */
 enum callback {
+	CB_RUN_REQUESTS,     /* process *all* pending requests for this dev */
 	CB_COMPLETE_IO,      /* completion of I/O to chunk store */
 	CB_UPDATE_CHUNK,     /* chunkdata state machine */
 	CB_CRYPTO,           /* encryption and decryption */
@@ -254,8 +257,9 @@ int shutdown_dev(struct nexus_dev *dev, int force);
 int request_start(void);
 void request_shutdown(void);
 void nexus_request(request_queue_t *q);
-void nexus_run_requests(void *data);
+void nexus_run_requests(struct list_head *entry);
 void nexus_process_chunk(struct nexus_io_chunk *chunk);
+void oom_timer_fn(unsigned long data);
 
 /* chardev.c */
 int chardev_start(void);

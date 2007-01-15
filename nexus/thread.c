@@ -18,6 +18,7 @@ static struct {
 static struct {
 	spinlock_t lock;       /* may be taken in interrupt context */
 	struct list_head list[NR_CALLBACKS];
+	MUTEX request_lock;    /* for CB_RUN_REQUESTS */
 	wait_queue_head_t wq;
 } queues;
 
@@ -43,13 +44,48 @@ static int nexus_thread(void *data)
 	int did_work;
 	
 	for (did_work=0; !kthread_should_stop(); did_work=0) {
+		/* CB_RUN_REQUESTS is special: it needs to be able to return
+		   callbacks to the head of the queue if an allocation failure
+		   occurs, and this operation must always preserve queue order;
+		   it needs to be able to delay walking the queue if there's
+		   an out-of-memory condition; and we need to be able to
+		   process one dev's requests even if another dev is out of
+		   chunkdata buffers.  Therefore, unlike the other callbacks,
+		   we use a two-stage queue walk: there's a per-dev request
+		   list, and one callback processes the entire per-dev list at
+		   once (in request.c).
+		   
+		   In order to ensure that allocation failures do not reorder
+		   requests in a particular dev's list, we must make sure
+		   that only one thread can process a dev's request list
+		   at a time.  We could have a per-dev lock for this purpose,
+		   but then we'd have to choose between: complex code, race
+		   conditions, or allowing threads to uselessly block on a dev
+		   mutex when they could be getting work done.  For simplicity,
+		   therefore, we use a global lock: only one thread can be
+		   in RUN_REQUESTS at a time, across *all* devs. */
+		if (mutex_trylock(&queues.request_lock)) {
+			/* We only want to hold onto request_lock while we're
+			   actually running CB_RUN_REQUESTS */
+			BUILD_BUG_ON(CB_RUN_REQUESTS != 0);
+			/* Start with CB_RUN_REQUESTS */
+			type=0;
+		} else {
+			/* Skip to the next callback */
+			type=1;
+		}
+		
 		spin_lock_irqsave(&queues.lock, flags);
-		for (type=0; type<NR_CALLBACKS; type++) {
+		for (; type<NR_CALLBACKS; type++) {
 			if (!list_empty(&queues.list[type])) {
 				entry=queues.list[type].next;
 				list_del_init(entry);
 				spin_unlock_irqrestore(&queues.lock, flags);
 				switch (type) {
+				case CB_RUN_REQUESTS:
+					nexus_run_requests(entry);
+					mutex_unlock(&queues.request_lock);
+					break;
 				case CB_COMPLETE_IO:
 					chunkdata_complete_io(entry);
 					break;
@@ -64,6 +100,8 @@ static int nexus_thread(void *data)
 				}
 				did_work=1;
 				break;
+			} else if (type == CB_RUN_REQUESTS) {
+				mutex_unlock(&queues.request_lock);
 			}
 		}
 		
@@ -76,6 +114,7 @@ static int nexus_thread(void *data)
 				schedule();
 			finish_wait(&queues.wq, &wait);
 		}
+		/* XXX barrier() */
 	}
 	return 0;
 }
@@ -471,6 +510,7 @@ int __init thread_start(void)
 	spin_lock_init(&queues.lock);
 	for (i=0; i<NR_CALLBACKS; i++)
 		INIT_LIST_HEAD(&queues.list[i]);
+	mutex_init(&queues.request_lock);
 	init_waitqueue_head(&queues.wq);
 	mutex_init(&threads.lock);
 	spin_lock_init(&pending_io.lock);

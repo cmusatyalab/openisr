@@ -41,6 +41,7 @@ static inline void *kzalloc(size_t size, gfp_t gfp)
 #define mutex_lock(lock) down(lock)
 #define mutex_lock_interruptible(lock) down_interruptible(lock)
 #define mutex_unlock(lock) up(lock)
+#define mutex_trylock(lock) (!down_trylock(lock))
 
 static inline int mutex_is_locked(MUTEX *lock)
 {
@@ -223,6 +224,17 @@ static inline void bio_set_destructor(struct bio *bio,
 #endif
 
 /***** Callbacks/deferred work ***********************************************/
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
+static inline void setup_timer(struct timer_list *timer,
+			void (*func)(unsigned long), unsigned long data)
+{
+	init_timer(timer);
+	timer->function=func;
+	timer->data=data;
+}
+#endif
+
 
 /* XXX 2.6.19 workqueue changes */
 
