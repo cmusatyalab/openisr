@@ -244,6 +244,12 @@ static inline void setup_timer(struct timer_list *timer,
 #define for_each_possible_cpu(cpu) for_each_cpu(cpu)
 #endif
 
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
+#define register_hotcpu_notifier(nb) register_cpu_notifier(nb)
+#define unregister_hotcpu_notifier(nb) unregister_cpu_notifier(nb)
+#endif
+
 /***** file_operations methods ***********************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)

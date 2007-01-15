@@ -482,9 +482,9 @@ void thread_shutdown(void)
 {
 	int cpu;
 	
-	/* unregister_cpu_notifier must be called unlocked, in case the
+	/* unregister_hotcpu_notifier must be called unlocked, in case the
 	   notifier chain is currently running */
-	unregister_cpu_notifier(&cpu_notifier);
+	unregister_hotcpu_notifier(&cpu_notifier);
 	mutex_lock(&threads.lock);
 	for_each_possible_cpu(cpu)
 		cpu_stop(cpu);
@@ -518,7 +518,7 @@ int __init thread_start(void)
 	   prevent notifier callbacks from occurring.  threads.lock makes
 	   sure the callback can't run until we've finished initialization */
 	mutex_lock(&threads.lock);
-	ret=register_cpu_notifier(&cpu_notifier);
+	ret=register_hotcpu_notifier(&cpu_notifier);
 	if (ret) {
 		mutex_unlock(&threads.lock);
 		return ret;
