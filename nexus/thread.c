@@ -435,6 +435,9 @@ static void cpu_stop(int cpu)
 	threads.count--;
 }
 
+/* We #ifdef this section because a bug in 2.6.18 and 2.6.19 generates compiler
+   warnings if we don't */
+#ifdef CONFIG_HOTPLUG_CPU
 /* Runs in process context; can sleep */
 static int cpu_callback(struct notifier_block *nb, unsigned long action,
 			void *data)
@@ -477,6 +480,7 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 static struct notifier_block cpu_notifier = {
 	.notifier_call = cpu_callback
 };
+#endif
 
 void thread_shutdown(void)
 {
@@ -502,7 +506,7 @@ int __init thread_start(void)
 {
 	struct task_struct *thr;
 	int cpu;
-	int ret;
+	int ret=0;
 	int i;
 	
 	spin_lock_init(&queues.lock);
@@ -518,12 +522,7 @@ int __init thread_start(void)
 	   prevent notifier callbacks from occurring.  threads.lock makes
 	   sure the callback can't run until we've finished initialization */
 	mutex_lock(&threads.lock);
-	ret=register_hotcpu_notifier(&cpu_notifier);
-	if (ret) {
-		mutex_unlock(&threads.lock);
-		return ret;
-	}
-	
+	register_hotcpu_notifier(&cpu_notifier);
 	lock_cpu_hotplug();
 	for_each_online_cpu(cpu) {
 		ret=cpu_start(cpu);
