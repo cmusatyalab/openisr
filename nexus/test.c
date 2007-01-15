@@ -30,8 +30,8 @@ struct params {
 };
 
 struct chunk {
-	char key[NEXUS_MAX_HASH_LEN];
-	char tag[NEXUS_MAX_HASH_LEN];
+	unsigned char key[NEXUS_MAX_HASH_LEN];
+	unsigned char tag[NEXUS_MAX_HASH_LEN];
 	unsigned length;
 	unsigned compression;
 };
@@ -42,7 +42,7 @@ static int dirty;
 static int pipefds[2];
 static int verbose=1;
 
-void printkey(char *key, int len)
+void printkey(unsigned char *key, int len)
 {
 	int i;
 	
@@ -95,12 +95,12 @@ int setup(struct params *params, char *storefile)
 {
 	int storefd, chunkfd;
 	unsigned long long tmp;
-	char *data;
-	char *crypted;
+	unsigned char *data;
+	unsigned char *crypted;
 	EVP_CIPHER_CTX cipher;
 	EVP_MD_CTX hash;
-	char iv[8];
-	int keylen;
+	unsigned char iv[8];
+	unsigned keylen;
 	struct chunk chunk;
 	
 	storefd=open(storefile, O_CREAT|O_WRONLY|O_TRUNC, 0600);
@@ -147,7 +147,7 @@ int setup(struct params *params, char *storefile)
 	EVP_CIPHER_CTX_set_key_length(&cipher, keylen);
 	EVP_CIPHER_CTX_set_padding(&cipher, 0);
 	EVP_EncryptInit_ex(&cipher, NULL, NULL, chunk.key, iv);
-	EVP_EncryptUpdate(&cipher, crypted, &chunk.length,
+	EVP_EncryptUpdate(&cipher, crypted, (int*)&chunk.length,
 				data, params->chunksize);
 	/* second and third arguments are irrelevant but must exist */
 	EVP_EncryptFinal(&cipher, data, (int*)data);
