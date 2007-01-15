@@ -16,7 +16,7 @@
 #define LOWMEM_WAIT_TIME (HZ/10)
 #define MODULE_NAME "openisr"
 #define DEVICE_NAME "openisr"
-#define KTHREAD_NAME "openisr-thr"
+#define KTHREAD_NAME "openisr"
 #define IOTHREAD_NAME "openisr-io"
 #define CD_NR_STATES 14  /* must shadow NR_STATES in chunkdata.c */
 
