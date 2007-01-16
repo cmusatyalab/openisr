@@ -1559,7 +1559,7 @@ sub upgrade_lev1 ($) {
 	print RED, "This parcel must be upgraded before it can be used with this version of ISR.\n";
 	print "Once upgraded, it will not be usable with older versions.\n", RESET;
 	if (-e "$hdkdir/0000") {
-	    errexit("This parcel has dirty state; run \"isr clean\" and try again");
+	    errexit("This parcel has dirty state; run \"isr discard\" and try again");
 	}
 	query("Upgrade parcel?") eq "y"
 	    or errexit("User declined parcel upgrade");

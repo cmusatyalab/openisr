@@ -76,6 +76,7 @@ static int __end_that_request(struct request *req, int uptodate, int nr_sectors)
 	
 	BUG_ON(!list_empty(&req->queuelist));
 	ret=end_that_request_first(req, uptodate, nr_sectors);
+	ndebug("Ending %d sectors, done=%d", nr_sectors, !ret);
 	if (!ret)
 		end_that_request_last(req, uptodate);
 	return ret;

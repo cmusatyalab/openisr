@@ -201,6 +201,7 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	}
 	
 	/* Can't get a chunk */
+	ndebug("Can't get cd for " SECTOR_FORMAT, cid);
 	return NULL;
 }
 
