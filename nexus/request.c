@@ -340,8 +340,7 @@ int __init request_start(void)
 	return 0;
 	
 bad_mempool:
-	if (kmem_cache_destroy(io_cache))
-		log(KERN_ERR, "couldn't destroy io cache");
+	kmem_cache_destroy(io_cache);
 bad_cache:
 	return ret;
 }
@@ -349,6 +348,5 @@ bad_cache:
 void __exit request_shutdown(void)
 {
 	mempool_destroy(io_pool);
-	if (kmem_cache_destroy(io_cache))
-		log(KERN_ERR, "couldn't destroy io cache");
+	kmem_cache_destroy(io_cache);
 }

@@ -10,8 +10,8 @@
 #error Kernels older than 2.6.8 are not supported
 #endif
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18)
-#error Kernels newer than 2.6.18 are not supported
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,19)
+#error Kernels newer than 2.6.19 are not supported
 #endif
 
 /***** Memory allocation *****************************************************/
@@ -236,7 +236,7 @@ static inline void setup_timer(struct timer_list *timer,
 #endif
 
 
-/* XXX 2.6.19 workqueue changes */
+/* XXX 2.6.20 workqueue changes */
 
 /***** CPU hotplug ***********************************************************/
 
