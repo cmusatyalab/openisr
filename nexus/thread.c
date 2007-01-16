@@ -435,9 +435,6 @@ static void cpu_stop(int cpu)
 	threads.count--;
 }
 
-/* We #ifdef this section because a bug in 2.6.18 and 2.6.19 generates compiler
-   warnings if we don't */
-#ifdef CONFIG_HOTPLUG_CPU
 /* Runs in process context; can sleep */
 static int cpu_callback(struct notifier_block *nb, unsigned long action,
 			void *data)
@@ -480,6 +477,13 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 static struct notifier_block cpu_notifier = {
 	.notifier_call = cpu_callback
 };
+
+#if !defined(CONFIG_HOTPLUG_CPU) && \
+			LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18) && \
+			LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,19)
+/* 2.6.18 and 2.6.19 have a bug with !CONFIG_HOTPLUG_CPU that causes the
+   compiler to complain that cpu_notifier is unused.  Avoid the warning. */
+struct notifier_block *__dummy_nb=&cpu_notifier;
 #endif
 
 void thread_shutdown(void)
