@@ -82,6 +82,7 @@ static ssize_t dev_show_state_times(struct class_device *class_dev, char *buf)
 	unsigned time;
 	unsigned samples;
 	
+	/* -ERESTARTSYS doesn't work here */
 	mutex_lock(&dev->lock);
 	for (i=0; i<CD_NR_STATES; i++) {
 		time=dev->stats.state_time_us[i];
@@ -165,6 +166,22 @@ static ssize_t dev_show_sect_written(struct class_device *class_dev, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.sectors_written);
 }
 
+static ssize_t dev_store_unwedge(struct class_device *class_dev,
+			const char *buf, size_t len)
+{
+	struct nexus_dev *dev=class_get_devdata(class_dev);
+	
+	if (!strcmp(buf, "cache\n")) {
+		/* -ERESTARTSYS doesn't work here */
+		mutex_lock(&dev->lock);
+		run_all_chunks(dev);
+		mutex_unlock(&dev->lock);
+	} else {
+		return -EINVAL;
+	}
+	return len;
+}
+
 struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(owner, S_IRUGO, dev_show_owner, NULL),
 	__ATTR(chunk_size, S_IRUGO, dev_show_chunksize, NULL),
@@ -183,5 +200,6 @@ struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(chunk_encrypted_discards, S_IRUGO, dev_show_discards, NULL),
 	__ATTR(sectors_read, S_IRUGO, dev_show_sect_read, NULL),
 	__ATTR(sectors_written, S_IRUGO, dev_show_sect_written, NULL),
+	__ATTR(unwedge, S_IWUSR, NULL, dev_store_unwedge),
 	__ATTR_NULL
 };

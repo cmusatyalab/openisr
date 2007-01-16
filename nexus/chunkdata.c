@@ -854,6 +854,21 @@ void run_chunk(struct list_head *entry)
 		nexus_dev_put(dev, 0);
 }
 
+/* Only for debugging via sysfs attribute!  This causes redundant processing
+   of all chunks through __run_chunk().  This should be harmless, but may be
+   useful if the state machine wedges */
+void run_all_chunks(struct nexus_dev *dev)
+{
+	struct chunkdata *cd;
+	
+	BUG_ON(!mutex_is_locked(&dev->lock));
+	log(KERN_NOTICE, "Unwedging chunk cache");
+	if (!test_and_set_bit(__DEV_HAVE_CD_REF, &dev->flags))
+		nexus_dev_get(dev);
+	list_for_each_entry(cd, &dev->chunkdata->lru, lh_lru)
+		update_chunk(cd);
+}
+
 int reserve_chunks(struct nexus_io *io)
 {
 	struct nexus_dev *dev=io->dev;

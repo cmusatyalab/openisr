@@ -285,6 +285,7 @@ int reserve_chunks(struct nexus_io *io);
 void unreserve_chunk(struct nexus_io_chunk *chunk);
 struct scatterlist *get_scatterlist(struct nexus_io_chunk *chunk);
 void run_chunk(struct list_head *entry);
+void run_all_chunks(struct nexus_dev *dev);
 void chunkdata_complete_io(struct list_head *entry);
 void chunk_tfm(struct nexus_tfm_state *ts, struct list_head *entry);
 
