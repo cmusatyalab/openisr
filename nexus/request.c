@@ -247,14 +247,18 @@ void nexus_run_requests(struct list_head *entry)
 	if (!test_and_clear_bit(__DEV_REQ_PENDING, &dev->flags))
 		BUG();
 	nexus_dev_get(dev);
-	spin_lock(&dev->requests_lock);
+	/* We need to use the _bh variant because CFQ has a timer which takes
+	   the queue lock.  If we didn't disable softirqs here, the timer
+	   could fire after we get the requests_lock and a lock-order inversion
+	   would occur between the queue and requests locks. */
+	spin_lock_bh(&dev->requests_lock);
 	/* We don't use the "safe" iterator because the next pointer might
 	   change out from under us between iterations */
 	while (!list_empty(&dev->requests)) {
 		req=list_entry(dev->requests.next, struct request, queuelist);
 		list_del_init(&req->queuelist);
 		need_put=list_empty(&dev->requests);
-		spin_unlock(&dev->requests_lock);
+		spin_unlock_bh(&dev->requests_lock);
 		if (need_put)
 			nexus_dev_put(dev, 0);
 		if (!blk_fs_request(req)) {
@@ -268,7 +272,7 @@ void nexus_run_requests(struct list_head *entry)
 		case -ENXIO:
 			break;
 		case -ENOMEM:
-			spin_lock(&dev->requests_lock);
+			spin_lock_bh(&dev->requests_lock);
 			if (list_empty(&dev->requests))
 				nexus_dev_get(dev);
 			list_add(&req->queuelist, &dev->requests);
@@ -284,10 +288,10 @@ void nexus_run_requests(struct list_head *entry)
 		default:
 			BUG();
 		}
-		spin_lock(&dev->requests_lock);
+		spin_lock_bh(&dev->requests_lock);
 	}
 out:
-	spin_unlock(&dev->requests_lock);
+	spin_unlock_bh(&dev->requests_lock);
 	nexus_dev_put(dev, 0);
 }
 
@@ -298,18 +302,18 @@ void nexus_request(request_queue_t *q)
 	struct request *req;
 	int need_queue=0;
 	
-	/* We don't spin_lock_bh() the requests lock */
-	BUG_ON(in_interrupt());
+	/* We don't spin_lock_irq() the requests lock */
+	BUG_ON(in_hardirq());
 	while ((req = elv_next_request(q)) != NULL) {
 		blkdev_dequeue_request(req);
 		if (dev_is_shutdown(dev)) {
 			__end_that_request(req, 0, req->nr_sectors);
 		} else {
-			spin_lock(&dev->requests_lock);
+			spin_lock_bh(&dev->requests_lock);
 			if (list_empty(&dev->requests))
 				nexus_dev_get(dev);
 			list_add_tail(&req->queuelist, &dev->requests);
-			spin_unlock(&dev->requests_lock);
+			spin_unlock_bh(&dev->requests_lock);
 			need_queue=1;
 		}
 	}
