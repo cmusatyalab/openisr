@@ -38,7 +38,6 @@ static struct task_struct *io_thread;
 static int nexus_thread(void *data)
 {
 	struct nexus_tfm_state *ts=data;
-	unsigned long flags;
 	enum callback type;
 	struct list_head *entry;
 	DEFINE_WAIT(wait);
@@ -75,12 +74,12 @@ static int nexus_thread(void *data)
 			type=1;
 		}
 		
-		spin_lock_irqsave(&queues.lock, flags);
+		spin_lock_irq(&queues.lock);
 		for (; type<NR_CALLBACKS; type++) {
 			if (!list_empty(&queues.list[type])) {
 				entry=queues.list[type].next;
 				list_del_init(entry);
-				spin_unlock_irqrestore(&queues.lock, flags);
+				spin_unlock_irq(&queues.lock);
 				switch (type) {
 				case CB_RUN_REQUESTS:
 					nexus_run_requests(entry);
@@ -107,7 +106,7 @@ static int nexus_thread(void *data)
 		/* No pending callbacks */
 		prepare_to_wait_exclusive(&queues.wq, &wait,
 					TASK_INTERRUPTIBLE);
-		spin_unlock_irqrestore(&queues.lock, flags);
+		spin_unlock_irq(&queues.lock);
 		if (!kthread_should_stop())
 			schedule();
 		finish_wait(&queues.wq, &wait);

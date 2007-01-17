@@ -295,25 +295,25 @@ out:
 	nexus_dev_put(dev, 0);
 }
 
-/* Called with queue lock held */
+/* Called with queue lock held and interrupts disabled */
 void nexus_request(request_queue_t *q)
 {
 	struct nexus_dev *dev=q->queuedata;
 	struct request *req;
 	int need_queue=0;
 	
-	/* We don't spin_lock_irq() the requests lock */
-	BUG_ON(in_irq());
 	while ((req = elv_next_request(q)) != NULL) {
 		blkdev_dequeue_request(req);
 		if (dev_is_shutdown(dev)) {
 			__end_that_request(req, 0, req->nr_sectors);
 		} else {
-			spin_lock_bh(&dev->requests_lock);
+			/* We don't use _bh or _irq variants since irqs are
+			   already disabled */
+			spin_lock(&dev->requests_lock);
 			if (list_empty(&dev->requests))
 				nexus_dev_get(dev);
 			list_add_tail(&req->queuelist, &dev->requests);
-			spin_unlock_bh(&dev->requests_lock);
+			spin_unlock(&dev->requests_lock);
 			need_queue=1;
 		}
 	}
