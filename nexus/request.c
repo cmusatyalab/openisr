@@ -303,7 +303,7 @@ void nexus_request(request_queue_t *q)
 	int need_queue=0;
 	
 	/* We don't spin_lock_irq() the requests lock */
-	BUG_ON(in_hardirq());
+	BUG_ON(in_irq());
 	while ((req = elv_next_request(q)) != NULL) {
 		blkdev_dequeue_request(req);
 		if (dev_is_shutdown(dev)) {
