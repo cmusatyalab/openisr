@@ -33,7 +33,8 @@ static struct task_struct *io_thread;
 
 
 /* This will always run on the processor to which it is bound, *except* during
-   hot-unplug of that CPU, when it will run on an arbitrary processor. */
+   hot-unplug of that CPU (or in a corner case on <= 2.6.9), when it will run
+   on an arbitrary processor. */
 static int nexus_thread(void *data)
 {
 	struct nexus_tfm_state *ts=data;
@@ -454,6 +455,7 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 			log(KERN_ERR, "Failed to start thread for CPU %d", cpu);
 		break;
 	case CPU_DOWN_PREPARE:
+		/* This is only called for >= 2.6.10 */
 		if (threads.count == 1 && threads.task[cpu] != NULL) {
 			/* This is the last CPU on which we have a running
 			   thread, since we were unable to start a thread
@@ -467,6 +469,23 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 		break;
 	case CPU_DEAD:
 		/* CPU is already down */
+		if (threads.count == 1) {
+			/* CPU_DOWN_PREPARE will prevent this for kernels
+			   >= 2.6.10.  For older kernels, we kludge: just
+			   allow the thread to keep running.  It will continue
+			   to use the downed CPU's data structure but will
+			   run on any available processor.  If more hotplug
+			   events follow, this thread will compete for CPU time
+			   with any thread which is *supposed* to be running
+			   on a given CPU.  However, correctness should not
+			   be compromised.  This is not worth fixing
+			   properly. */
+			log(KERN_NOTICE, "Disabled CPU %d, which was running "
+						"our last worker thread", cpu);
+			log(KERN_NOTICE, "Leaving "KTHREAD_NAME"/%d running "
+						"without CPU affinity", cpu);
+			break;
+		}
 		cpu_stop(cpu);
 		break;
 	}

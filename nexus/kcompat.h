@@ -240,6 +240,13 @@ static inline void setup_timer(struct timer_list *timer,
 
 /***** CPU hotplug ***********************************************************/
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,10)
+/* CPU_DOWN_PREPARE callback doesn't exist.  Define the constant anyway, such
+   that all plausible comparisons to it return false. */
+#define CPU_DOWN_PREPARE 0xbadda7a
+#endif
+
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
 #define for_each_possible_cpu(cpu) for_each_cpu(cpu)
 #endif
