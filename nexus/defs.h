@@ -23,23 +23,26 @@
 #include <linux/blkdev.h>
 #include <linux/workqueue.h>
 #include "nexus.h"
-#include "kcompat.h"
-
-typedef sector_t chunk_t;
 
 struct tfm_suite_info {
 	char *user_name;
-	char *cipher_name;
-	unsigned cipher_mode;
+	char *cipher_name;       /* For <= 2.6.18 */
+	unsigned cipher_mode;    /* For <= 2.6.18 */
+	char *cipher_spec;       /* For >= 2.6.19 */
 	unsigned cipher_block;
 	unsigned key_len;
 	char *hash_name;
 	unsigned hash_len;
 };
 
+/* This needs access to tfm_suite_info */
+#include "kcompat.h"
+
 struct tfm_compress_info {
 	char *user_name;
 };
+
+typedef sector_t chunk_t;
 
 struct nexus_stats {
 	unsigned state_count[CD_NR_STATES];
@@ -57,8 +60,8 @@ struct nexus_stats {
 };
 
 struct nexus_tfm_state {
-	struct crypto_tfm *cipher[NEXUS_NR_CRYPTO];
-	struct crypto_tfm *hash[NEXUS_NR_CRYPTO];
+	struct crypto_blkcipher *cipher[NEXUS_NR_CRYPTO];
+	struct crypto_hash *hash[NEXUS_NR_CRYPTO];
 	void *buf_compressed;
 	void *buf_uncompressed;
 	int buf_refcount;
@@ -294,7 +297,7 @@ int transform_validate(struct nexus_dev *dev);
 int crypto_cipher(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			struct scatterlist *sg, char key[], unsigned len,
 			int dir, int doPad);
-void crypto_hash(struct nexus_dev *dev, struct nexus_tfm_state *ts,
+int crypto_hash(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			struct scatterlist *sg, unsigned nbytes, u8 *out);
 int compress_chunk(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			struct scatterlist *sg, enum nexus_compress type);

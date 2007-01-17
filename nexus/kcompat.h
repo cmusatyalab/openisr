@@ -260,23 +260,105 @@ static inline void setup_timer(struct timer_list *timer,
 
 /***** cryptoapi *************************************************************/
 
+#include <linux/crypto.h>
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
+#define crypto_blkcipher crypto_tfm
+#define crypto_hash      crypto_tfm
+#define crypto_blkcipher_set_iv(tfm, iv, size) \
+	crypto_cipher_set_iv(tfm, iv, size)
+#define crypto_blkcipher_setkey(tfm, key, size) \
+	crypto_cipher_setkey(tfm, key, size)
+#define cryptoapi_encrypt(tfm, dst, src, len) \
+	crypto_cipher_encrypt(tfm, dst, src, len)
+#define cryptoapi_decrypt(tfm, dst, src, len) \
+	crypto_cipher_decrypt(tfm, dst, src, len)
+#define crypto_free_blkcipher(tfm) crypto_free_tfm(tfm)
+#define crypto_free_hash(tfm) crypto_free_tfm(tfm)
+
+static inline struct crypto_blkcipher
+		*cryptoapi_alloc_cipher(const struct tfm_suite_info *info)
+{
+	struct crypto_blkcipher *ret;
+	ret=crypto_alloc_tfm(info->cipher_name, info->cipher_mode);
+	if (ret == NULL)
+		return ERR_PTR(-EINVAL);
+	return ret;
+}
+
+static inline struct crypto_hash
+			*cryptoapi_alloc_hash(const struct tfm_suite_info *info)
+{
+	struct crypto_hash *ret;
+	ret=crypto_alloc_tfm(info->hash_name, 0);
+	if (ret == NULL)
+		return ERR_PTR(-EINVAL);
+	return ret;
+}
+
+/* XXX verify this against test vectors */
+static inline int cryptoapi_hash(struct crypto_hash *tfm,
+			struct scatterlist *sg, unsigned nbytes, u8 *out)
+{
+	int i;
+	unsigned saved;
+	
+	/* For some reason, the old-style digest function expects nsg rather
+	   than nbytes.  However, we may want the hash to include only part of
+	   a page.  Thus this nonsense. */
+	for (i=0; sg[i].length < nbytes; i++)
+		nbytes -= sg[i].length;
+	saved=sg[i].length;
+	sg[i].length=nbytes;
+	crypto_digest_digest(tfm, sg, i + 1, out);
+	sg[i].length=saved;
+	return 0;
+}
+#else
+#define cryptoapi_alloc_cipher(info) \
+	crypto_alloc_blkcipher(info->cipher_spec, 0, CRYPTO_ALG_ASYNC)
+#define cryptoapi_alloc_hash(info) \
+	crypto_alloc_hash(info->hash_name, 0, CRYPTO_ALG_ASYNC)
+
+static inline int cryptoapi_encrypt(struct crypto_blkcipher *tfm,
+			struct scatterlist *dst, struct scatterlist *src,
+			unsigned len)
+{
+	struct blkcipher_desc desc;
+	desc.tfm=tfm;
+	desc.flags=0;
+	return crypto_blkcipher_encrypt(&desc, dst, src, len);
+}
+
+static inline int cryptoapi_decrypt(struct crypto_blkcipher *tfm,
+			struct scatterlist *dst, struct scatterlist *src,
+			unsigned len)
+{
+	struct blkcipher_desc desc;
+	desc.tfm=tfm;
+	desc.flags=0;
+	return crypto_blkcipher_decrypt(&desc, dst, src, len);
+}
+
+static inline int cryptoapi_hash(struct crypto_hash *tfm,
+			struct scatterlist *sg, unsigned nbytes, u8 *out)
+{
+	struct hash_desc desc;
+	desc.tfm=tfm;
+	desc.flags=0;
+	return crypto_hash_digest(&desc, sg, nbytes, out);
+}
+#endif
+
+
 #if (!defined(CONFIG_X86) && !defined(CONFIG_UML_X86)) || defined(CONFIG_64BIT)
-struct crypto_tfm;
-static inline int sha1_impl_is_suboptimal(struct crypto_tfm *tfm)
+static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
 {
 	/* No optimized implementation exists */
 	return 0;
 }
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16)
-#include <linux/crypto.h>
-static inline int sha1_impl_is_suboptimal(struct crypto_tfm *tfm)
-{
-	/* There's a driver name field we can look at */
-	return strcmp(tfm->__crt_alg->cra_driver_name, "sha1-i586") ? 1 : 0;
-}
-#else
-#include <linux/crypto.h>
-static inline int sha1_impl_is_suboptimal(struct crypto_tfm *tfm)
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
+static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
 {
 	/* There's no driver name field, but optimized sha1 can never be
 	   compiled into the kernel, so we look at struct module */
@@ -284,10 +366,20 @@ static inline int sha1_impl_is_suboptimal(struct crypto_tfm *tfm)
 		return 1;
 	return strcmp(tfm->__crt_alg->cra_module->name, "sha1_i586") ? 1 : 0;
 }
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
+static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
+{
+	/* There's a driver name field we can look at */
+	return strcmp(tfm->__crt_alg->cra_driver_name, "sha1-i586") ? 1 : 0;
+}
+#else
+static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
+{
+	/* We need to extract the crypto_tfm from the crypto_hash */
+	return strcmp(crypto_hash_tfm(tfm)->__crt_alg->cra_driver_name,
+				"sha1-i586") ? 1 : 0;
+}
 #endif
-
-
-/* XXX 2.6.19 */
 
 /*****************************************************************************/
 

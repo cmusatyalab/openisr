@@ -358,7 +358,12 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->cid);
 		/* Make sure encrypted data matches tag */
-		crypto_hash(dev, ts, cd->sg, cd->size, hash);
+		ret=crypto_hash(dev, ts, cd->sg, cd->size, hash);
+		if (ret) {
+			debug("Unable to hash encrypted chunk " SECTOR_FORMAT,
+						cd->cid);
+			return ret;
+		}
 		if (memcmp(cd->tag, hash, hash_len)) {
 			debug("Chunk " SECTOR_FORMAT ": Tag doesn't match "
 						"data", cd->cid);
@@ -373,7 +378,12 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 		}
 		compressed_size=ret;
 		/* Make sure decrypted data matches key */
-		crypto_hash(dev, ts, cd->sg, compressed_size, hash);
+		ret=crypto_hash(dev, ts, cd->sg, compressed_size, hash);
+		if (ret) {
+			debug("Unable to hash decrypted chunk " SECTOR_FORMAT,
+						cd->cid);
+			return ret;
+		}
 		if (memcmp(cd->key, hash, hash_len)) {
 			debug("Chunk " SECTOR_FORMAT ": Key doesn't match "
 						"decrypted data", cd->cid);
@@ -404,7 +414,12 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 		}
 		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
 					compressed_size, cd->cid);
-		crypto_hash(dev, ts, cd->sg, compressed_size, cd->key);
+		ret=crypto_hash(dev, ts, cd->sg, compressed_size, cd->key);
+		if (ret) {
+			debug("Unable to hash decrypted chunk " SECTOR_FORMAT,
+						cd->cid);
+			return ret;
+		}
 		ret=crypto_cipher(dev, ts, cd->sg, cd->key, compressed_size,
 					WRITE,
 					cd->compression != NEXUS_COMPRESS_NONE);
@@ -414,7 +429,12 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 			return ret;
 		}
 		cd->size=ret;
-		crypto_hash(dev, ts, cd->sg, cd->size, cd->tag);
+		ret=crypto_hash(dev, ts, cd->sg, cd->size, cd->tag);
+		if (ret) {
+			debug("Unable to hash encrypted chunk " SECTOR_FORMAT,
+						cd->cid);
+			return ret;
+		}
 	} else {
 		BUG();
 	}

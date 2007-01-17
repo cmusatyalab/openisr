@@ -12,6 +12,7 @@ static const struct tfm_suite_info suite_desc[] = {
 		.user_name = "blowfish-sha1",
 		.cipher_name = "blowfish",
 		.cipher_mode = CRYPTO_TFM_MODE_CBC,
+		.cipher_spec = "cbc(blowfish)",
 		.cipher_block = 8,
 		.key_len = 20,
 		.hash_name = "sha1",
@@ -21,6 +22,7 @@ static const struct tfm_suite_info suite_desc[] = {
 		.user_name = "blowfish-sha1-compat",
 		.cipher_name = "blowfish",
 		.cipher_mode = CRYPTO_TFM_MODE_CBC,
+		.cipher_spec = "cbc(blowfish)",
 		.cipher_block = 8,
 		.key_len = 16,
 		.hash_name = "sha1",
@@ -312,23 +314,10 @@ int decompress_chunk(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 	return -EIO;
 }
 
-/* For some reason, the cryptoapi digest functions expect nsg rather than
-   nbytes.  However, when we're hashing compressed data, we may want the
-   hash to include only part of a page.  Thus this nonsense. */
-/* XXX verify this against test vectors */
-void crypto_hash(struct nexus_dev *dev, struct nexus_tfm_state *ts,
+int crypto_hash(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			struct scatterlist *sg, unsigned nbytes, u8 *out)
 {
-	struct crypto_tfm *tfm=ts->hash[dev->suite];
-	int i;
-	unsigned saved;
-	
-	for (i=0; sg[i].length < nbytes; i++)
-		nbytes -= sg[i].length;
-	saved=sg[i].length;
-	sg[i].length=nbytes;
-	crypto_digest_digest(tfm, sg, i + 1, out);
-	sg[i].length=saved;
+	return cryptoapi_hash(ts->hash[dev->suite], sg, nbytes, out);
 }
 
 /* Returns the new data size, or error */
@@ -336,19 +325,19 @@ int crypto_cipher(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			struct scatterlist *sg, char key[], unsigned len,
 			int dir, int doPad)
 {
-	struct crypto_tfm *tfm=ts->cipher[dev->suite];
+	struct crypto_blkcipher *tfm=ts->cipher[dev->suite];
 	char iv[8]={0}; /* XXX */
 	int ret;
 	unsigned key_len=suite_info(dev->suite)->key_len;
 	
-	crypto_cipher_set_iv(tfm, iv, sizeof(iv));
+	crypto_blkcipher_set_iv(tfm, iv, sizeof(iv));
 	BUG_ON(key_len > suite_info(dev->suite)->hash_len);  /* XXX */
-	ret=crypto_cipher_setkey(tfm, key, key_len);
+	ret=crypto_blkcipher_setkey(tfm, key, key_len);
 	if (ret)
 		return ret;
 	
 	if (dir == READ) {
-		ret=crypto_cipher_decrypt(tfm, sg, sg, len);
+		ret=cryptoapi_decrypt(tfm, sg, sg, len);
 		if (ret)
 			return ret;
 		if (doPad)
@@ -358,7 +347,7 @@ int crypto_cipher(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 	} else {
 		if (doPad)
 			len=crypto_pad(dev, sg, len);
-		ret=crypto_cipher_encrypt(tfm, sg, sg, len);
+		ret=cryptoapi_encrypt(tfm, sg, sg, len);
 		if (ret)
 			return ret;
 		return len;
@@ -379,19 +368,19 @@ int compression_type_ok(struct nexus_dev *dev, enum nexus_compress compress)
 int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 {
 	const struct tfm_suite_info *info;
-	struct crypto_tfm *cipher;
-	struct crypto_tfm *hash;
+	struct crypto_blkcipher *cipher;
+	struct crypto_hash *hash;
 	
 	BUG_ON(ts->cipher[suite] != NULL);
 	
 	info=suite_info(suite);
-	cipher=crypto_alloc_tfm(info->cipher_name, info->cipher_mode);
-	if (cipher == NULL)
-		return -EINVAL;
-	hash=crypto_alloc_tfm(info->hash_name, 0);
-	if (hash == NULL) {
-		crypto_free_tfm(cipher);
-		return -EINVAL;
+	cipher=cryptoapi_alloc_cipher(info);
+	if (IS_ERR(cipher))
+		return PTR_ERR(cipher);
+	hash=cryptoapi_alloc_hash(info);
+	if (IS_ERR(hash)) {
+		crypto_free_blkcipher(cipher);
+		return PTR_ERR(hash);
 	}
 	ts->cipher[suite]=cipher;
 	ts->hash[suite]=hash;
@@ -410,9 +399,9 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 void suite_remove(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 {
 	BUG_ON(ts->cipher[suite] == NULL);
-	crypto_free_tfm(ts->cipher[suite]);
+	crypto_free_blkcipher(ts->cipher[suite]);
 	ts->cipher[suite]=NULL;
-	crypto_free_tfm(ts->hash[suite]);
+	crypto_free_hash(ts->hash[suite]);
 	ts->hash[suite]=NULL;
 }
 
