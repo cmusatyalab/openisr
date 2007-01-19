@@ -185,6 +185,14 @@ void schedule_io(struct bio *bio)
 	wake_up_interruptible(&pending_io.wq);
 }
 
+/* Only for debug use via sysfs */
+void wake_all_threads(void)
+{
+	log(KERN_NOTICE, "Unwedging threads");
+	wake_up_all(&queues.wq);
+	wake_up_all(&pending_io.wq);
+}
+
 #define nexus_suite nexus_crypto
 
 #define DEFINE_ALLOC_ON_ALL(TYPE)					\
@@ -486,6 +494,9 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 			break;
 		}
 		cpu_stop(cpu);
+		/* Make sure someone takes over any work the downed thread
+		   was about to do */
+		wake_up_interruptible(&queues.wq);
 		break;
 	}
 	mutex_unlock(&threads.lock);

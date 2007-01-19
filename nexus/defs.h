@@ -319,6 +319,7 @@ int thread_register(struct nexus_dev *dev);
 void thread_unregister(struct nexus_dev *dev);
 void schedule_callback(enum callback type, struct list_head *entry);
 void schedule_io(struct bio *bio);
+void wake_all_threads(void);
 
 /* sysfs.c */
 extern struct class_attribute class_attrs[];

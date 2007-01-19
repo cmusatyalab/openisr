@@ -176,6 +176,8 @@ static ssize_t dev_store_unwedge(struct class_device *class_dev,
 		mutex_lock(&dev->lock);
 		run_all_chunks(dev);
 		mutex_unlock(&dev->lock);
+	} else if (!strcmp(buf, "threads\n")) {
+		wake_all_threads();
 	} else {
 		return -EINVAL;
 	}
