@@ -403,8 +403,11 @@ static int cpu_start(int cpu)
 	int err;
 	
 	BUG_ON(!mutex_is_locked(&threads.lock));
-	if (threads.task[cpu] != NULL)
-		return 0;  /* See comment in cpu_callback() */
+	if (threads.task[cpu] != NULL) {
+		/* This may happen in some hotplug cases.  Ignore the duplicate
+		   start request. */
+		return 0;
+	}
 	
 	debug("Onlining CPU %d", cpu);
 	err=alloc_all_on_cpu(cpu);
@@ -449,11 +452,9 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 {
 	int cpu=(int)data;
 	
-	/* Due to the implementation of CPU hotplug, it is possible to receive
-	   CPU_ONLINE for cpus that thread_start() has already configured, or
-	   to receive CPU_DEAD for cpus we never started.  We can handle this
-	   without special locking, so we ignore CPU_LOCK_ACQUIRE/RELEASE.
-	   (Also, it's not portable to older kernel releases.) */
+	/* Any of these handlers may run before thread_start has actually
+	   started any threads, so they must not make assumptions about the
+	   state of the system. */
 	mutex_lock(&threads.lock);
 	switch (action) {
 	case CPU_ONLINE:
@@ -551,19 +552,21 @@ int __init thread_start(void)
 	spin_lock_init(&pending_io.lock);
 	init_waitqueue_head(&pending_io.wq);
 	
-	/* lock_cpu_hotplug() only protects the online cpu map; it doesn't
-	   prevent notifier callbacks from occurring.  threads.lock makes
-	   sure the callback can't run until we've finished initialization */
-	mutex_lock(&threads.lock);
+	/* Lock-ordering issues dictate the order of these calls.  (2.6.19
+	   takes the hotplug lock in register_hotcpu_notifier(), and we must
+	   take the hotplug lock before threads.lock for consistency with
+	   cpu_callback().)  As a result, we may get a callback before we
+	   actually start any threads. */
 	register_hotcpu_notifier(&cpu_notifier);
 	lock_cpu_hotplug();
+	mutex_lock(&threads.lock);
 	for_each_online_cpu(cpu) {
 		ret=cpu_start(cpu);
 		if (ret)
 			break;
 	}
-	unlock_cpu_hotplug();
 	mutex_unlock(&threads.lock);
+	unlock_cpu_hotplug();
 	if (ret)
 		goto bad;
 	
