@@ -3,6 +3,7 @@
 #include <linux/cpumask.h>
 #include <linux/sched.h>
 #include <linux/notifier.h>
+#include <linux/interrupt.h>
 #include "defs.h"
 
 /* XXX percpu vars */
