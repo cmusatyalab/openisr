@@ -42,6 +42,7 @@ static int nexus_thread(void *data)
 	enum callback type;
 	struct list_head *entry;
 	DEFINE_WAIT(wait);
+	int do_requests;
 	
 	while (!kthread_should_stop()) {
 		/* CB_RUN_REQUESTS is special: it needs to be able to return
@@ -64,23 +65,27 @@ static int nexus_thread(void *data)
 		   mutex when they could be getting work done.  For simplicity,
 		   therefore, we use a global lock: only one thread can be
 		   in RUN_REQUESTS at a time, across *all* devs. */
-		if (mutex_trylock(&queues.request_lock)) {
-			/* We only want to hold onto request_lock while we're
-			   actually running CB_RUN_REQUESTS */
-			BUILD_BUG_ON(CB_RUN_REQUESTS != 0);
-			/* Start with CB_RUN_REQUESTS */
-			type=0;
-		} else {
-			/* Skip to the next callback */
-			type=1;
-		}
+		do_requests=mutex_trylock(&queues.request_lock);
+		/* There are some quasi-starvation issues with the extra lock
+		   if CB_RUN_REQUESTS is not the highest-priority queue.  If
+		   you change this, make sure you know what you're doing */
+		BUILD_BUG_ON(CB_RUN_REQUESTS != 0);
 		
 		spin_lock_irq(&queues.lock);
-		for (; type<NR_CALLBACKS; type++) {
+		for (type=0; type<NR_CALLBACKS; type++) {
+			if (type == CB_RUN_REQUESTS && !do_requests)
+				continue;
 			if (!list_empty(&queues.list[type])) {
 				entry=queues.list[type].next;
 				list_del_init(entry);
 				spin_unlock_irq(&queues.lock);
+				/* Kernels < 2.6.18 can enable interrupts in
+				   mutex_unlock() if mutex debugging is on,
+				   so we can't do this until we release
+				   queues.lock */
+				if (do_requests && type != CB_RUN_REQUESTS)
+					mutex_unlock(&queues.request_lock);
+				
 				switch (type) {
 				case CB_RUN_REQUESTS:
 					nexus_run_requests(entry);
@@ -99,8 +104,6 @@ static int nexus_thread(void *data)
 					BUG();
 				}
 				goto next;
-			} else if (type == CB_RUN_REQUESTS) {
-				mutex_unlock(&queues.request_lock);
 			}
 		}
 		
@@ -108,6 +111,8 @@ static int nexus_thread(void *data)
 		prepare_to_wait_exclusive(&queues.wq, &wait,
 					TASK_INTERRUPTIBLE);
 		spin_unlock_irq(&queues.lock);
+		if (do_requests)
+			mutex_unlock(&queues.request_lock);
 		if (!kthread_should_stop())
 			schedule();
 		finish_wait(&queues.wq, &wait);
