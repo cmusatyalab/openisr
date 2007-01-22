@@ -19,7 +19,6 @@ static struct {
 static struct {
 	spinlock_t lock;       /* may be taken in interrupt context */
 	struct list_head list[NR_CALLBACKS];
-	MUTEX request_lock;    /* for CB_RUN_REQUESTS */
 	wait_queue_head_t wq;
 } queues;
 
@@ -30,7 +29,14 @@ static struct {
 	wait_queue_head_t wq;
 } pending_io;
 
+static struct {
+	spinlock_t lock;
+	struct list_head list;
+	wait_queue_head_t wq;
+} pending_requests;
+
 static struct task_struct *io_thread;
+static struct task_struct *request_thread;
 
 
 /* This will always run on the processor to which it is bound, *except* during
@@ -42,55 +48,16 @@ static int nexus_thread(void *data)
 	enum callback type;
 	struct list_head *entry;
 	DEFINE_WAIT(wait);
-	int do_requests;
 	
 	while (!kthread_should_stop()) {
-		/* CB_RUN_REQUESTS is special: it needs to be able to return
-		   callbacks to the head of the queue if an allocation failure
-		   occurs, and this operation must always preserve queue order;
-		   it needs to be able to delay walking the queue if there's
-		   an out-of-memory condition; and we need to be able to
-		   process one dev's requests even if another dev is out of
-		   chunkdata buffers.  Therefore, unlike the other callbacks,
-		   we use a two-stage queue walk: there's a per-dev request
-		   list, and one callback processes the entire per-dev list at
-		   once (in request.c).
-		   
-		   In order to ensure that allocation failures do not reorder
-		   requests in a particular dev's list, we must make sure
-		   that only one thread can process a dev's request list
-		   at a time.  We could have a per-dev lock for this purpose,
-		   but then we'd have to choose between: complex code, race
-		   conditions, or allowing threads to uselessly block on a dev
-		   mutex when they could be getting work done.  For simplicity,
-		   therefore, we use a global lock: only one thread can be
-		   in RUN_REQUESTS at a time, across *all* devs. */
-		do_requests=mutex_trylock(&queues.request_lock);
-		/* There are some quasi-starvation issues with the extra lock
-		   if CB_RUN_REQUESTS is not the highest-priority queue.  If
-		   you change this, make sure you know what you're doing */
-		BUILD_BUG_ON(CB_RUN_REQUESTS != 0);
-		
 		spin_lock_irq(&queues.lock);
 		for (type=0; type<NR_CALLBACKS; type++) {
-			if (type == CB_RUN_REQUESTS && !do_requests)
-				continue;
 			if (!list_empty(&queues.list[type])) {
 				entry=queues.list[type].next;
 				list_del_init(entry);
 				spin_unlock_irq(&queues.lock);
-				/* Kernels < 2.6.18 can enable interrupts in
-				   mutex_unlock() if mutex debugging is on,
-				   so we can't do this until we release
-				   queues.lock */
-				if (do_requests && type != CB_RUN_REQUESTS)
-					mutex_unlock(&queues.request_lock);
 				
 				switch (type) {
-				case CB_RUN_REQUESTS:
-					nexus_run_requests(entry);
-					mutex_unlock(&queues.request_lock);
-					break;
 				case CB_COMPLETE_IO:
 					chunkdata_complete_io(entry);
 					break;
@@ -111,8 +78,6 @@ static int nexus_thread(void *data)
 		prepare_to_wait_exclusive(&queues.wq, &wait,
 					TASK_INTERRUPTIBLE);
 		spin_unlock_irq(&queues.lock);
-		if (do_requests)
-			mutex_unlock(&queues.request_lock);
 		if (!kthread_should_stop())
 			schedule();
 		finish_wait(&queues.wq, &wait);
@@ -191,12 +156,69 @@ void schedule_io(struct bio *bio)
 	wake_up_interruptible(&pending_io.wq);
 }
 
+/* Helper thread to run request queues.  Request queues are different from
+   other types of callbacks: the request queue code needs to be able to return
+   callbacks to the head of the queue if an allocation failure occurs, and
+   this operation must always preserve queue order; it needs to be able to
+   delay walking the queue if there's an out-of-memory condition; and we
+   need to be able to process one dev's requests even if another dev is out of
+   chunkdata buffers.  Therefore, we use a two-stage queue walk: there's a
+   per-dev request list, and one callback processes the entire per-dev list at
+   once (in request.c).
+
+   In order to ensure that allocation failures do not reorder requests in a
+   particular dev's list, we must make sure that only one thread can process
+   a dev's request list at a time.  We could do this in the per-CPU crypto
+   threads using a per-dev lock, but then we'd have to choose between:
+   complex code, race conditions, or allowing crypto threads to uselessly
+   block on a dev mutex when they could be getting work done.  For simplicity,
+   therefore, we only allow one thread to be processing request queues at a
+   time.  There's no clean way to do that within the per-CPU thread
+   architecture, so we have a special singleton thread for this purpose.  This
+   is separate from the I/O thread because we still want to process incoming
+   requests even if our underlying chunk store's request queue is full. */
+static int nexus_request_thread(void *ignored)
+{
+	struct list_head *entry;
+	DEFINE_WAIT(wait);
+	
+	while (!kthread_should_stop()) {
+		spin_lock_irq(&pending_requests.lock);
+		if (!list_empty(&pending_requests.list)) {
+			entry=pending_requests.list.next;
+			list_del_init(entry);
+			spin_unlock_irq(&pending_requests.lock);
+			nexus_run_requests(entry);
+		} else {
+			prepare_to_wait_exclusive(&pending_requests.wq, &wait,
+						TASK_INTERRUPTIBLE);
+			spin_unlock_irq(&pending_requests.lock);
+			if (!kthread_should_stop())
+				schedule();
+			finish_wait(&pending_requests.wq, &wait);
+		}
+	}
+	return 0;
+}
+
+void schedule_request_callback(struct list_head *entry)
+{
+	unsigned long flags;
+	
+	BUG_ON(!list_empty(entry));
+	spin_lock_irqsave(&pending_requests.lock, flags);
+	list_add_tail(entry, &pending_requests.list);
+	spin_unlock_irqrestore(&pending_requests.lock, flags);
+	wake_up_interruptible(&pending_requests.wq);
+}
+
 /* Only for debug use via sysfs */
 void wake_all_threads(void)
 {
 	log(KERN_NOTICE, "Unwedging threads");
 	wake_up_all(&queues.wq);
 	wake_up_all(&pending_io.wq);
+	wake_up_all(&pending_requests.wq);
 }
 
 #define nexus_suite nexus_crypto
@@ -540,6 +562,12 @@ void thread_shutdown(void)
 		debug("...done");
 		io_thread=NULL;
 	}
+	if (request_thread != NULL) {
+		debug("Stopping request thread");
+		kthread_stop(request_thread);
+		debug("...done");
+		request_thread=NULL;
+	}
 }
 
 int __init thread_start(void)
@@ -552,11 +580,13 @@ int __init thread_start(void)
 	spin_lock_init(&queues.lock);
 	for (i=0; i<NR_CALLBACKS; i++)
 		INIT_LIST_HEAD(&queues.list[i]);
-	mutex_init(&queues.request_lock);
 	init_waitqueue_head(&queues.wq);
 	mutex_init(&threads.lock);
 	spin_lock_init(&pending_io.lock);
 	init_waitqueue_head(&pending_io.wq);
+	spin_lock_init(&pending_requests.lock);
+	INIT_LIST_HEAD(&pending_requests.list);
+	init_waitqueue_head(&pending_requests.wq);
 	
 	/* Lock-ordering issues dictate the order of these calls.  (2.6.19
 	   takes the hotplug lock in register_hotcpu_notifier(), and we must
@@ -576,13 +606,20 @@ int __init thread_start(void)
 	if (ret)
 		goto bad;
 	
-	debug("Starting I/O thread");
+	debug("Starting singleton threads");
 	thr=kthread_create(nexus_io_thread, NULL, IOTHREAD_NAME);
 	if (IS_ERR(thr)) {
 		ret=PTR_ERR(thr);
 		goto bad;
 	}
 	io_thread=thr;
+	wake_up_process(thr);
+	thr=kthread_create(nexus_request_thread, NULL, REQTHREAD_NAME);
+	if (IS_ERR(thr)) {
+		ret=PTR_ERR(thr);
+		goto bad;
+	}
+	request_thread=thr;
 	wake_up_process(thr);
 	
 	return 0;

@@ -233,7 +233,7 @@ void oom_timer_fn(unsigned long data)
 {
 	struct nexus_dev *dev=(struct nexus_dev *)data;
 	ndebug("OOM delay expired");
-	schedule_callback(CB_RUN_REQUESTS, &dev->lh_run_requests);
+	schedule_request_callback(&dev->lh_run_requests);
 }
 
 /* Thread callback */
@@ -320,8 +320,7 @@ void nexus_request(request_queue_t *q)
 	if (need_queue) {
 		/* Avoid enqueueing if already enqueued */
 		if (!test_and_set_bit(__DEV_REQ_PENDING, &dev->flags))
-			schedule_callback(CB_RUN_REQUESTS,
-						&dev->lh_run_requests);
+			schedule_request_callback(&dev->lh_run_requests);
 	}
 }
 

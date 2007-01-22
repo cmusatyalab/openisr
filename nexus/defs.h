@@ -18,6 +18,7 @@
 #define DEVICE_NAME "openisr"
 #define KTHREAD_NAME "openisr"
 #define IOTHREAD_NAME "openisr-io"
+#define REQTHREAD_NAME "openisr-block"
 #define CD_NR_STATES 14  /* must shadow NR_STATES in chunkdata.c */
 
 #include <linux/blkdev.h>
@@ -157,7 +158,6 @@ enum io_bits {
 
 /* enumerated from highest to lowest priority */
 enum callback {
-	CB_RUN_REQUESTS,     /* process *all* pending requests for this dev */
 	CB_COMPLETE_IO,      /* completion of I/O to chunk store */
 	CB_UPDATE_CHUNK,     /* chunkdata state machine */
 	CB_CRYPTO,           /* encryption and decryption */
@@ -319,6 +319,7 @@ int thread_register(struct nexus_dev *dev);
 void thread_unregister(struct nexus_dev *dev);
 void schedule_callback(enum callback type, struct list_head *entry);
 void schedule_io(struct bio *bio);
+void schedule_request_callback(struct list_head *entry);
 void wake_all_threads(void);
 
 /* sysfs.c */
