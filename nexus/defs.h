@@ -257,6 +257,7 @@ int shutdown_dev(struct nexus_dev *dev, int force);
 /* request.c */
 int request_start(void);
 void request_shutdown(void);
+void kick_elevator(struct nexus_dev *dev);
 void nexus_request(request_queue_t *q);
 void nexus_run_requests(struct list_head *entry);
 void nexus_process_chunk(struct nexus_io_chunk *chunk);

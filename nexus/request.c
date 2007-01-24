@@ -73,12 +73,22 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 static int __end_that_request(struct request *req, int uptodate, int nr_sectors)
 {
 	int ret;
+	request_queue_t *q=req->q;
 	
 	BUG_ON(!list_empty(&req->queuelist));
 	ret=end_that_request_first(req, uptodate, nr_sectors);
 	ndebug("Ending %d sectors, done=%d", nr_sectors, !ret);
-	if (!ret)
+	if (!ret) {
 		end_that_request_last(req, uptodate);
+		/* XXX Arrange for our request function to be called again.
+		   If this isn't here, we'll wedge in under a minute when
+		   using the CFQ I/O scheduler: our request function won't be
+		   called when there are outstanding requests.  Other I/O
+		   schedulers work fine.  Email from Jens Axboe on 1/23/07
+		   seems to imply that we need to do this, but I'm not
+		   convinced it makes sense.  -BG */
+		blk_start_queue(q);
+	}
 	return ret;
 }
 
@@ -87,9 +97,14 @@ static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 	spinlock_t *lock=req->q->queue_lock;
 	int ret;
 	
-	spin_lock_bh(lock);
+	/* We don't use irqsave.  We can't BUG_ON because, by definition,
+	   interrupts are disabled */
+	WARN_ON(irqs_disabled());
+	/* This could be _bh except for the blk_start_queue() call in
+	   __end_that_request() */
+	spin_lock_irq(lock);
 	ret=__end_that_request(req, uptodate, nr_sectors);
-	spin_unlock_bh(lock);
+	spin_unlock_irq(lock);
 	return ret;
 }
 
@@ -322,6 +337,16 @@ void nexus_request(request_queue_t *q)
 		if (!test_and_set_bit(__DEV_REQ_PENDING, &dev->flags))
 			schedule_request_callback(&dev->lh_run_requests);
 	}
+}
+
+/* For debug use via sysfs only.  Force our request function to be called,
+   in case the elevator has failed to do it for us.  (This shouldn't be
+   necessary, but there are some not-fully-understood issues with CFQ
+   which may require it...) */
+void kick_elevator(struct nexus_dev *dev)
+{
+	log(KERN_NOTICE, "Unwedging elevator");
+	blk_run_queue(dev->queue);
 }
 
 int __init request_start(void)

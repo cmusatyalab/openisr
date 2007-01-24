@@ -177,7 +177,11 @@ static ssize_t dev_store_unwedge(struct class_device *class_dev,
 		run_all_chunks(dev);
 		mutex_unlock(&dev->lock);
 	} else if (!strcmp(buf, "threads\n")) {
+		/* XXX technically this shouldn't go in the per-device
+		   sysfs directory */
 		wake_all_threads();
+	} else if (!strcmp(buf, "elevator\n")) {
+		kick_elevator(dev);
 	} else {
 		return -EINVAL;
 	}
