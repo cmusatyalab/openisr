@@ -1127,13 +1127,15 @@ sub listparcels ($$$$$) {
 	    }
 	    else {
 		open(TMP, $tmpfile) or next;
-		$line = <TMP>;
+		while ($line = <TMP>) {
+		    # In the output for ls, replace [server] with
+		    # [server:protocol].  The server name is any combination
+		    # of letters, numbers, _ and -
+		    $line =~ s/\[([\w-]+)\]/\[$1:$cfg{PROTOCOL}\]/; 
+		    print "$line";
+		}
 		close(TMP);
 		unlink($tmpfile);
-		# In the output for ls, replace [server] with [server:protocol]
-		# the server name is any combination of letters, numbers, _ and -
-		$line =~ s/\[([\w-]+)\]/\[$1:$cfg{PROTOCOL}\]/; 
-		print "$line";
 	    }
 	}
     }
