@@ -66,6 +66,7 @@ sub upgrade_lev1 ($);
 sub get_parcelnames ($$);
 sub get_parcelcfg ($$$);
 sub get_motd ($$);
+sub parse_cfgfile ($);
 sub parse_parcelcfg ($$$);
 sub emit_hdk_progressmeter ($$);
 sub reset_cursor ();
@@ -513,6 +514,7 @@ sub checkout ($$$$) {
     my $cfg_sha1value;
     my $key_sha1value;
     my $clientname = hostname();
+    my %map;
 
     # If the parcel is already checked out on this machine, return immediately
     if (-e $parceldir) {
@@ -628,9 +630,10 @@ sub checkout ($$$$) {
 	clean($userid, $parcel, $isrdir, 0);
 	errexit("Unable to stat cfg.tgz.enc file on content server");
     }
-    $cfgsize = int(get_value($tmpfile, "SIZE")/(1<<20));
-    $cfg_sha1value = get_value($tmpfile, "SHA1");
+    %map = parse_cfgfile($tmpfile);
     unlink($tmpfile);
+    $cfgsize = int(get_value(\%map, "SIZE")/(1<<20));
+    $cfg_sha1value = get_value(\%map, "SHA1");
 
     $tmpfile = "/tmp/stat2.$$";
     if (isr_srun($userid, "stat", 
@@ -640,8 +643,9 @@ sub checkout ($$$$) {
 	clean($userid, $parcel, $isrdir, 0);
 	errexit("Unable to stat keyring.enc file on content server");
     }
-    $key_sha1value = get_value($tmpfile, "SHA1");
+    %map = parse_cfgfile($tmpfile);
     unlink($tmpfile);
+    $key_sha1value = get_value(\%map, "SHA1");
 
     #
     # Look aside to see if the memory image and/or keyring is available 
@@ -1549,8 +1553,10 @@ sub upgrade_lev1 ($) {
     my $line;
     my $key;
     my $value;
+    my %lev1idx;
     
-    $cur = get_value($indexfile, "VERSION");
+    %lev1idx = parse_cfgfile($indexfile);
+    $cur = get_value(\%lev1idx, "VERSION");
     $cur =~ s/^ *//;
     errexit("Parcel too new: expected version $supported, found version $cur")
 	if ($cur > $supported);
@@ -1657,6 +1663,48 @@ sub get_motd ($$) {
 }
 
 #
+# parse_cfgfile - Read a file consisting of key=value pairs (and possibly
+#                 comments) and return a hash mapping the keys to values.
+#                 Returns an empty hash on error.
+#
+sub parse_cfgfile ($) {
+    my $infile = shift;
+
+    my $line;
+    my $key;
+    my $value;
+
+    my %map = ();
+
+    # Load the key/value pairs into the hash
+    unless (open(INFILE, $infile)) {
+	unix_err("Config file $infile not found");
+	return ();
+    }
+    while ($line = <INFILE>) {
+	chomp($line);
+
+	# Skip comment lines
+	if ($line =~ /^\s*\#/) {
+	    next;
+	}
+
+	# Otherwise parse out key and value
+	($key, $value) = split(/\s*=\s*/, $line);
+	if (defined $value) {
+	    $map{$key} = $value;
+	}
+    }
+    unless (close(INFILE)) {
+	unix_err("Unable to close $infile");
+	return ();
+    }
+
+    # Return the hash of key/value pairs to the caller
+    return %map;
+}
+
+#
 # parse_parcelcfg - Read a local parcel.cfg file and return a hash containing 
 #                   its key/value pairs. Delete the file if there are any
 #                   problems.
@@ -1666,33 +1714,13 @@ sub parse_parcelcfg ($$$) {
     my $userid = shift;
     my $parcel = shift;
 
-    my $line;
-    my $key;
-    my $value;
-
-    my %cfg = ();
+    my %cfg;
 
     # Load the key/value pairs into the hash
-    open (INFILE, $infile) 
-	or errexit("Config file $infile not found.");
-    while ($line = <INFILE>) {
-	chomp($line);
-	$line =~ s/\s+//g; # remove any whitespace
-
-	# Skip comment lines
-	if ($line =~ /^\#/) {
-	    next;
-	}
-
-	# Otherwise parse out key and value
-	($key, $value) = split("=", $line);
-	if (defined $value) {
-	    $cfg{$key} = $value;
-	}
-    }
-    unless (close(INFILE)) {
+    %cfg = parse_cfgfile($infile);
+    if (!%cfg) {
 	unlink($infile);
-	unix_errexit("Unable to close $infile.");
+	errexit("Couldn't parse parcel.cfg for $userid/$parcel");
     }
 
     # Every parcel has a PROTOCOL entry
@@ -1832,8 +1860,9 @@ sub hdksize ($$$) {
     my $cachedir = "$parceldir/cache";
     my $imagefile = "$cachedir/hdk/image.lev1";
 
-    my $maxchunks = get_value("$lastdir/hdk/index.lev1", "NUMCHUNKS");
-    my $chunksize = get_value("$lastdir/hdk/index.lev1", "CHUNKSIZE");
+    my %lev1idx = parse_cfgfile("$lastdir/hdk/index.lev1");
+    my $maxchunks = get_value(\%lev1idx, "NUMCHUNKS");
+    my $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
 
     # hdk cache is trivialy empty
     if (!-e $cachedir) {
@@ -1922,35 +1951,17 @@ sub get_chunknum ($$) {
 }
 
 #
-# get_value - Given key, return corresponding value in a file with key=value pairs
+# get_value - Given hash reference and key, return corresponding value or
+#             call errexit() if not found
 #
 sub get_value ($$) {
-    my $indexfile = shift;
+    my $hashref = shift;
     my $search_key = shift;
 
-    my $line;
-    my $line_key;
-    my $line_value;
-    my $return_value;
-
-    open(INFILE, $indexfile)
-        or unix_errexit("Unable to open $indexfile in get_value");
-
-    while ($line = <INFILE>) {
-        chomp($line);
-        ($line_key, $line_value) = split("=", $line);
-        if ($line_key eq $search_key) {
-	    $return_value = $line_value;
-	    last;
-        }
-    }
-
-    close(INFILE)
-        or unix_errexit("Unable to close $indexfile");
-
-    if (!$return_value) {
-        errexit("get_value unable to find key=$search_key in $indexfile.");
-    }
+    my $return_value = $$hashref{$search_key};
+    
+    errexit("get_value unable to find key=$search_key")
+        if !defined($return_value);
 
     return $return_value;
 }

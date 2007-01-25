@@ -339,6 +339,7 @@ sub isr_hoard ($$$) {
     my $lastdir = "$parceldir/last";
     my $hoarddir = "$isrdir/$parcel-hoard";
     my @keyring;
+    my %lev1idx;
 
     #
     # If we don't have a local keyring on this host, then retrieve
@@ -404,9 +405,10 @@ sub isr_hoard ($$$) {
     # Initialize things for the hoarding process
     #
     @keyring = load_keyring("$lastdir/keyring");
-    $numdirs = get_value("$lastdir/hdk/index.lev1", "NUMDIRS");
-    $chunksperdir = get_value("$lastdir/hdk/index.lev1", "CHUNKSPERDIR");
-    $chunksize = get_value("$lastdir/hdk/index.lev1", "CHUNKSIZE");
+    %lev1idx = load_cfgfile("$lastdir/hdk/index.lev1");
+    $numdirs = get_value(\%lev1idx, "NUMDIRS");
+    $chunksperdir = get_value(\%lev1idx, "CHUNKSPERDIR");
+    $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
     $numchunks = $numdirs * $chunksperdir;
     $maxbytes = ($numdirs * $chunksperdir) * $chunksize;
 
@@ -505,6 +507,7 @@ sub isr_stathoard ($$$) {
     my $hoarddir = "$isrdir/$parcel-hoard";
 
     my @keyring = load_keyring("$lastdir/keyring");
+    my %lev1idx;
     $maxchunks = scalar(@keyring);
 
     #
@@ -516,7 +519,8 @@ sub isr_stathoard ($$$) {
     
     # Iterate over each of the keyring tags and count
     # the chunks that are hoarded
-    $chunksperdir = get_value("$lastdir/hdk/index.lev1", "CHUNKSPERDIR");
+    %lev1idx = parse_cfgfile("$lastdir/hdk/index.lev1");
+    $chunksperdir = get_value(\%lev1idx, "CHUNKSPERDIR");
     $numchunks = 0;
     for ($chunk = 0; $chunk < $maxchunks; $chunk++) {
 	# Check to see if it exists in hoard cache
@@ -644,6 +648,7 @@ sub isr_checkhoard ($$$$$) {
     my @files = ();
     my @keyring = ();
     my %filehash = ();
+    my %lev1idx;
 
     my $parceldir = "$isrdir/$parcel";
     my $cachedir = "$parceldir/cache";
@@ -676,7 +681,8 @@ sub isr_checkhoard ($$$$$) {
     #
     # Determine which files in the hoard cache are in the keyring
     #
-    $chunksize = get_value("$lastdir/hdk/index.lev1", "CHUNKSIZE");
+    %lev1idx = parse_cfgfile("$lastdir/hdk/index.lev1");
+    $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
     opendir(DIR, "$hoarddir")
 	or errexit("Unable to open hoard cache ($hoarddir)");
     @files = grep(!/^[\._]/, readdir(DIR)); # elide . and ..
@@ -780,6 +786,7 @@ sub isr_priv_upload ($$$) {
     my $virtualbytes;
     my $chunksize;
     my $sha1value;
+    my %lev1idx;
 
     my $parceldir = "$isrdir/$parcel";
     my $hoarddir = "$isrdir/$parcel-hoard";
@@ -868,7 +875,8 @@ sub isr_priv_upload ($$$) {
     #
     # Log the number of hdk bytes that were transferred
     #
-    $chunksize = get_value("$cachedir/hdk/index.lev1", "CHUNKSIZE");
+    %lev1idx = parse_cfgfile("$cachedir/hdk/index.lev1");
+    $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
     $virtualbytes = $dirtyblocks*$chunksize;
     message("INFO", "upload:hdk:$dirtybytes:$virtualbytes");
 
@@ -1093,6 +1101,7 @@ sub isr_priv_clientcommit($$$) {
 
     my @chunkdiffs = ();
     my @tags = ();
+    my %lev1idx;
 
     #
     # Create a hoard cache if necessary
@@ -1149,8 +1158,9 @@ sub isr_priv_clientcommit($$$) {
     # Move any dirty cache chunks to the hoard cache
     #
     message("INFO", "Client side commit - start moving hoard chunks");
-    $chunksperdir = get_value("$cachedir/hdk/index.lev1", "CHUNKSPERDIR");
-    $chunksize = get_value("$cachedir/hdk/index.lev1", "CHUNKSIZE");
+    %lev1idx = parse_cfgfile("$cachedir/hdk/index.lev1");
+    $chunksperdir = get_value(\%lev1idx, "CHUNKSPERDIR");
+    $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
     $numdirtybytes = $chunksize * $dirtyblocks;
 
     for ($i = 0; $i < $dirtyblocks; $i++) {
