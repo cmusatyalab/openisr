@@ -801,7 +801,7 @@ sub isr_priv_upload ($$$) {
     if (!-e $cachedir) {
 	print "Local cache is empty. Nothing to upload.\n"
 	    if $main::verbose;
-	return;
+	return $Isr::ESUCCESS;
     }
 
     #
@@ -1007,7 +1007,7 @@ sub isr_priv_commit ($$$) {
     if (!-e $cachedir) {
 	print "Local cache is empty. Nothing to commit.\n"
 	    if $main::verbose;
-	return;
+	return $Isr::ESUCCESS;
     }
 
     #
