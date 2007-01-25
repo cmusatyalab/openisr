@@ -120,7 +120,6 @@ my $longflag;        # Print default number of versions for ls long format
 my $longvers;        # Print specific number of versions for ls long format
 my $nameserver;      # Name server domain name
 my $revisionflag;    # Print revision number?
-my $guiflag;         # Hidden flag to help track gui use
 my $version;         # Rollback version
 my $checkstate = 0;  # Optionally check content consistency in some cmds
 my $quiet;           # No output except for errors
@@ -280,7 +279,6 @@ $result = GetOptions(
 		     "u|userid=s"     => \$userid,
 		     "V|verbose+"     => \$verbose,
 		     "v|version=i"    => \$version,
-		     "g|guiflag"      => \$guiflag,
 		     "X|noauto"       => \$noautoflag
 		     );
 
