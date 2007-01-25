@@ -56,14 +56,14 @@ void digest(const void *mesg, unsigned mesgLen, void *result)
  * ivec must point at an 8 byte long initialization vector
  */
 
-static const char iv[CIPHER_IV_SIZE] = {0};  /* A zero IV, same as SSH */
+static const unsigned char iv[CIPHER_IV_SIZE] = {0};  /* A zero IV, same as SSH */
 
 vulpes_err_t vulpes_encrypt(const void *inString, int inStringLength,
 			    void **outString, int *outStringLength,
 			    const void *key, int keyLen, int doPad)
 {
     int tmplen;
-    char *output;
+    unsigned char *output;
     EVP_CIPHER_CTX ctx;
 
     output = malloc(inStringLength + CIPHER_BLOCK_SIZE);
@@ -99,7 +99,7 @@ vulpes_err_t vulpes_decrypt(const void *inString, int inStringLength,
 			    const void *key, int keyLen, int doPad)
 {
     int tmplen;
-    char *output;
+    unsigned char *output;
     EVP_CIPHER_CTX ctx;
 
     output = malloc(inStringLength + CIPHER_BLOCK_SIZE);

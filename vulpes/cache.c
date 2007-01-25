@@ -42,14 +42,14 @@ const char *image_name = "image.lev1";
 struct chunk_data {
   unsigned length;
   unsigned status;
-  unsigned char tag[HASH_LEN];	/* was called o2 earlier */
-  unsigned char key[HASH_LEN];	/* was called o1 earlier */
+  char tag[HASH_LEN];	/* was called o2 earlier */
+  char key[HASH_LEN];	/* was called o1 earlier */
 };
 
 /* We keep this in a separate array because we don't want it in memory
    at runtime. */
 struct prev_chunk_data {
-  unsigned char tag[HASH_LEN];
+  char tag[HASH_LEN];
 };
 
 static unsigned writes_before_read = 0;
@@ -516,11 +516,11 @@ static vulpes_err_t open_cache_file(const char *path)
   return VULPES_SUCCESS;
 }
 
-static void updateKey(unsigned chunk_num, const unsigned char *new_key,
-                      const unsigned char *new_tag)
+static void updateKey(unsigned chunk_num, const char *new_key,
+                      const char *new_tag)
 {
   struct chunk_data *cdp;
-  unsigned char old_tag_log[HASH_LEN_HEX], tag_log[HASH_LEN_HEX];
+  char old_tag_log[HASH_LEN_HEX], tag_log[HASH_LEN_HEX];
 
   cdp=get_cdp_from_chunk_num(chunk_num);
   binToHex(cdp->tag, old_tag_log, HASH_LEN);
@@ -533,15 +533,15 @@ static void updateKey(unsigned chunk_num, const unsigned char *new_key,
   memcpy(cdp->key, new_key, HASH_LEN);
 }
 
-static vulpes_err_t check_tag(struct chunk_data *cdp, const unsigned char *tag)
+static vulpes_err_t check_tag(struct chunk_data *cdp, const char *tag)
 {
   return (memcmp(cdp->tag, tag, HASH_LEN) == 0) ? VULPES_SUCCESS : VULPES_TAGFAIL;
 }
 
-static void print_tag_check_error(unsigned char *expected, unsigned char *found)
+static void print_tag_check_error(char *expected, char *found)
 {
-  unsigned char s_expected[HASH_LEN_HEX];
-  unsigned char s_found[HASH_LEN_HEX];
+  char s_expected[HASH_LEN_HEX];
+  char s_found[HASH_LEN_HEX];
   binToHex(expected, s_expected, HASH_LEN);
   binToHex(found, s_found, HASH_LEN);
   vulpes_log(LOG_ERRORS,"expected %s, found %s",s_expected,s_found);
@@ -896,7 +896,7 @@ void cache_update(const struct nexus_message *req)
     mark_cdp_uncompressed(cdp);
   else
     mark_cdp_compressed(cdp);
-  updateKey(req->chunk, req->key, req->tag);
+  updateKey(req->chunk, (char*)req->key, (char*)req->tag);
   cdp->length=req->length;
 
   vulpes_log(LOG_CHUNKS,"update: %llu (size %u)",req->chunk,cdp->length);

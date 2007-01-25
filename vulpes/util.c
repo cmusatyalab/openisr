@@ -135,7 +135,7 @@ char *vulpes_strerror(vulpes_err_t err)
   return "(Unknown)";
 }
 
-inline void charToHex(const unsigned char* bin, unsigned char hex[2])
+inline void charToHex(const char *bin, char hex[2])
 {
 	int i;
 	unsigned char tmp;
@@ -153,7 +153,7 @@ inline void charToHex(const unsigned char* bin, unsigned char hex[2])
 		hex[1] = 'A' + (i-10);
 }
 
-inline unsigned char hexToChar(const unsigned char* hex)
+inline char hexToChar(const char hex[2])
 {
 	int i,j;
 
@@ -179,11 +179,11 @@ inline unsigned char hexToChar(const unsigned char* hex)
 		vulpes_log(LOG_ERRORS,"Invalid hex character: %c",hex[1]);
 	}
 	
-	return ((unsigned char)(16*i + j));
+	return 16*i + j;
 }
 
 /* @hex should be 2*binBytes+1 bytes long.  Result is null-terminated */
-void binToHex(const unsigned char *bin, unsigned char *hex, int binBytes)
+void binToHex(const char *bin, char *hex, int binBytes)
 {
   int i;
   
@@ -192,7 +192,7 @@ void binToHex(const unsigned char *bin, unsigned char *hex, int binBytes)
   *hex=0;
 }
 
-void hexToBin(const unsigned char *hex, unsigned char *bin, int binBytes)
+void hexToBin(const char *hex, char *bin, int binBytes)
 {
   int i;
   

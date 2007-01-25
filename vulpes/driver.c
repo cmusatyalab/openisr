@@ -79,7 +79,7 @@ static vulpes_err_t loop_bind(void) {
 	ioctl(fd, LOOP_CLR_FD, 0);
 	return VULPES_IOERR;
       }
-      snprintf(info.lo_file_name, LO_NAME_SIZE, "%s", state.image_name);
+      snprintf((char*)info.lo_file_name, LO_NAME_SIZE, "%s", state.image_name);
       if (ioctl(fd, LOOP_SET_STATUS64, &info)) {
 	vulpes_log(LOG_ERRORS,"Couldn't configure loop device");
 	ioctl(fd, LOOP_CLR_FD, 0);
@@ -194,7 +194,7 @@ vulpes_err_t driver_init(void)
   
   /* Register ourselves with the device */
   memset(&setup, 0, sizeof(setup));
-  snprintf(setup.chunk_device, NEXUS_MAX_DEVICE_LEN, "%s", state.loopdev_name);
+  snprintf((char*)setup.chunk_device, NEXUS_MAX_DEVICE_LEN, "%s", state.loopdev_name);
   setup.offset=state.offset_bytes / SECTOR_SIZE;
   setup.chunksize=state.chunksize_bytes;
   setup.cachesize=128;
