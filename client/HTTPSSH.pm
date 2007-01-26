@@ -519,7 +519,7 @@ sub isr_stathoard ($$$) {
     
     # Iterate over each of the keyring tags and count
     # the chunks that are hoarded
-    %lev1idx = parse_cfgfile("$lastdir/hdk/index.lev1");
+    parse_cfgfile("$lastdir/hdk/index.lev1", \%lev1idx);
     $chunksperdir = get_value(\%lev1idx, "CHUNKSPERDIR");
     $numchunks = 0;
     for ($chunk = 0; $chunk < $maxchunks; $chunk++) {
@@ -681,7 +681,7 @@ sub isr_checkhoard ($$$$$) {
     #
     # Determine which files in the hoard cache are in the keyring
     #
-    %lev1idx = parse_cfgfile("$lastdir/hdk/index.lev1");
+    parse_cfgfile("$lastdir/hdk/index.lev1", \%lev1idx);
     $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
     opendir(DIR, "$hoarddir")
 	or errexit("Unable to open hoard cache ($hoarddir)");
@@ -875,7 +875,7 @@ sub isr_priv_upload ($$$) {
     #
     # Log the number of hdk bytes that were transferred
     #
-    %lev1idx = parse_cfgfile("$cachedir/hdk/index.lev1");
+    parse_cfgfile("$cachedir/hdk/index.lev1", \%lev1idx);
     $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
     $virtualbytes = $dirtyblocks*$chunksize;
     message("INFO", "upload:hdk:$dirtybytes:$virtualbytes");
@@ -1158,7 +1158,7 @@ sub isr_priv_clientcommit($$$) {
     # Move any dirty cache chunks to the hoard cache
     #
     message("INFO", "Client side commit - start moving hoard chunks");
-    %lev1idx = parse_cfgfile("$cachedir/hdk/index.lev1");
+    parse_cfgfile("$cachedir/hdk/index.lev1", \%lev1idx);
     $chunksperdir = get_value(\%lev1idx, "CHUNKSPERDIR");
     $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
     $numdirtybytes = $chunksize * $dirtyblocks;
