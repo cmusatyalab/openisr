@@ -459,7 +459,13 @@ static vulpes_err_t open_cache_file(const char *path)
   struct ca_entry entry;
   unsigned chunk_num;
   int fd;
+  long page_size;
   
+  page_size=sysconf(_SC_PAGESIZE);
+  if (page_size == -1) {
+    vulpes_log(LOG_ERRORS,"couldn't get system page size");
+    return VULPES_CALLFAIL;
+  }
   fd=open(path, O_RDWR);
   if (fd == -1 && errno == ENOENT) {
     vulpes_log(LOG_BASIC,"No existing local cache; creating");
@@ -468,8 +474,15 @@ static vulpes_err_t open_cache_file(const char *path)
       vulpes_log(LOG_ERRORS,"couldn't create cache file");
       return VULPES_IOERR;
     }
+    /* There's a race condition in the way the loop driver interacts with
+       the memory management system for (at least) underlying file systems
+       that provide the prepare_write and commit_write address space
+       operations.  This can cause data not to be properly written to disk if
+       I/O submitted to the loop driver spans multiple page-cache pages and is
+       not aligned on page cache boundaries.  We therefore need to make sure
+       that our header is a multiple of the page size. */
     state.offset_bytes=((sizeof(hdr) + state.numchunks * sizeof(entry))
-                       + SECTOR_SIZE - 1) & ~(SECTOR_SIZE - 1);
+                       + page_size - 1) & ~(page_size - 1);
     write_cache_header(fd);
     if (ftruncate(fd, state.volsize * SECTOR_SIZE + state.offset_bytes)) {
       vulpes_log(LOG_ERRORS,"couldn't extend cache file");
@@ -499,6 +512,12 @@ static vulpes_err_t open_cache_file(const char *path)
     return VULPES_BADFORMAT;
   }
   state.offset_bytes=ntohl(hdr.offset) * SECTOR_SIZE;
+  if (state.offset_bytes % page_size != 0) {
+    /* This may occur with old cache files, or with cache files copied from
+       another system with a different page size. */
+    vulpes_log(LOG_ERRORS, "Cache file's header length %u is not a multiple of the page size %u", state.offset_bytes, page_size);
+    vulpes_log(LOG_ERRORS, "Data corruption may occur.  If it does, checkin will be disallowed");
+  }
   /* Don't trust valid_chunks field; it's informational only */
   
   foreach_chunk(chunk_num, cdp) {
