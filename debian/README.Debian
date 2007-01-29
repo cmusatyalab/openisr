@@ -1,0 +1,12 @@
+openisr for Debian
+------------------
+
+this is a start.
+
+SO FAR: * vulpes
+
+TODO: * libvdisk (easy, setuid)
+      * client (perl)
+      * nexus (kernel headers/sources)
+
+ -- Matt Toups <mtoups@cs.cmu.edu>  Mon, 29 Jan 2007 11:25:48 -0500

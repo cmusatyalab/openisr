@@ -1,0 +1,12 @@
+Source: openisr
+Section: net 
+Priority: extra
+Maintainer: Matt Toups <mtoups@cs.cmu.edu>
+Build-Depends: debhelper (>= 5), libcurl3-dev
+Standards-Version: 3.7.2
+
+Package: openisr
+Architecture: any
+Depends: curl (>= 7.12), openssh-client, ${shlibs:Depends}, ${misc:Depends}
+Description: Internet Suspend/Resume (ISR) client
+ OpenISR ... mobile computing environment... virtualization ...  yeah.
