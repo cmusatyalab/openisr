@@ -1448,7 +1448,7 @@ sub need_network () {
      print "Checking network connection...\n"
 	 if $verbose > 1;
      connected() 
-	 or errexit("You do not appear to have a network connection.");
+	 or errexit("You do not appear to have a network connection: couldn't contact $nameserver.");
 }
 
 #####
