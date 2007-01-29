@@ -26,10 +26,10 @@ use File::Copy;
 use IO::Socket;
 use lib "/usr/local/isr/bin";
 use Isr;
-use Isruser;
 use strict;
 use warnings;
 use Term::ANSIColor qw(:constants);
+use vars qw(%syscfg);
 
 ##############################
 # Section 1: Private variables
@@ -120,8 +120,8 @@ sub isr_sget ($$$$) {
     }
 	
     # Retry if the get operation fails
-    for ($i = 0; $i < $Isr::RETRIES; $i++) {
-	$retval = mysystem("curl --connect-timeout $Isr::CONNECT_TIMEOUT $flag -f -G $main::cfg{RPATH}/$frompath > $topath");
+    for ($i = 0; $i < $syscfg{retries}; $i++) {
+	$retval = mysystem("curl --connect-timeout $syscfg{connect_timeout} $flag -f -G $main::cfg{RPATH}/$frompath > $topath");
 	if ($retval == 0) {
 	    return ($Isr::ESUCCESS);
 	}
@@ -164,7 +164,7 @@ sub isr_sput ($$$$$) {
     }
 
     # Retry if the put operation fails
-    for ($i = 0; $i < $Isr::RETRIES; $i++) {
+    for ($i = 0; $i < $syscfg{retries}; $i++) {
 	$retval =  mysystem("rsync -e ssh --partial $vflag $cflag $bwflag $frompath $userid\@$main::cfg{WPATH}/$topath");
 	if ($retval == 0) {
 	    return ($retval);
@@ -207,7 +207,7 @@ sub isr_sputdir ($$$$$) {
     }
 
     # Retry if the putdir request fails
-    for ($i = 0; $i < $Isr::RETRIES; $i++) {
+    for ($i = 0; $i < $syscfg{retries}; $i++) {
 	$retval =  mysystem("rsync -e ssh --delete --partial --recursive $vflag $cflag $bwflag $fromdir/ $userid\@$main::cfg{WPATH}/$todir");
 	if ($retval == 0) {
 	    return ($retval);
@@ -288,7 +288,7 @@ sub isr_run_vulpes ($$$) {
     my $logstring = "|VULPES|" . message_string() ."|";
     my $cachedir = "$parceldir/cache";
     my $lastdir = "$parceldir/last";
-    my $vulpescmd = "$Isr::ISRCLIENTBIN/vulpes";
+    my $vulpescmd = "$Isr::LIBDIR/vulpes";
 
     my $lkadir = "$parceldir-hoard";
     my $lkaopt = "";
@@ -305,7 +305,7 @@ sub isr_run_vulpes ($$$) {
     #
     # Crank up Vulpes with all the right arguments
     #
-    $retval = system("$vulpescmd run --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $Isr::LOGMASK $Isr::CONSOLE_LOGMASK");
+    $retval = system("$vulpescmd run --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}");
 
     return $retval;
 }
@@ -603,7 +603,7 @@ sub isr_statparcel ($$$$) {
 	$checkflag = "";
     }
     if (-e "$cachedir") {
-	mysystem("$Isr::ISRCLIENTBIN/vulpes examine --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK $checkflag") == 0
+	mysystem("$Isr::LIBDIR/vulpes examine --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir --log /dev/null ':' 0x0 $syscfg{console_logmask} $checkflag") == 0
 	    or errexit("Could not examine cache");
     }
 
@@ -968,7 +968,7 @@ sub copy_dirtychunks ($) {
     #
     print("Collecting modified disk state...\n")
 	if $main::verbose;
-    mysystem("$Isr::ISRCLIENTBIN/vulpes upload --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --destdir $tmpdir/cache/hdk --lockdir $parceldir --log /dev/null ':' 0x0 $Isr::CONSOLE_LOGMASK") == 0
+	mysystem("$Isr::LIBDIR/vulpes upload --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --destdir $tmpdir/cache/hdk --lockdir $parceldir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
     # Hack to get stats from vulpes
     open(STATFILE, "$tmpdir/cache/hdk/stats");

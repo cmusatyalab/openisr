@@ -7,38 +7,14 @@ package Isr;
 # $Id$
 ##############################################################
 
-# Default name server domain name (override with -n)
-$NAMESRV = "isrserver02.isr.cmu.edu";
-
-# Location of bin dirs on client, content server, and name server
-#$ISRBIN = "/usr/local/isr/bin";
-$ISRCLIENTBIN = "/usr/local/isr/bin";
+# Locations of relevant directories
 $ISRSERVERBIN = "/usr/local/isr/bin";
-
-# VMware command (could be 'vmware' or 'vmplayer' or some other VMM)
-# might have different flags for different versions
-$VMCOMMAND = "vmware -q";
+$LIBDIR = "/usr/lib/openisr";
+$SHAREDIR = "/usr/share/openisr";
+$SYSCONFDIR = "/etc/openisr";
 
 # Client session log filename
 $LOGFILE = "session.log";
-
-# Vulpes logging mask
-$LOGMASK = "0xf";
-
-# Host ID filename
-$HOSTID = ".hostid";
-
-# How many seconds should elapse before we decide the client is unconnected
-$CONNECT_TIMEOUT = 10;
-
-# How many seconds should elapse before we restart a failed hoard operation
-$HOARD_SLEEP = 5;
-
-# How many times to retry if a read or write request fails
-$RETRIES = 5;
-
-# By default, how many of the most recent versions should "ls -l" display
-$LSVERSIONS = 5;
 
 # Existence of this file is a flag indicating that the temporary
 # dirty cache is consistent with the local cache.

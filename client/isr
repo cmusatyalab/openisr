@@ -35,9 +35,8 @@ use POSIX ":signal_h";
 use Fcntl qw(:DEFAULT :seek);
 use Errno qw(:POSIX);
 require "syscall.ph";
-use lib "/usr/local/isr/bin";
+use lib "/usr/share/openisr";
 use Isr;
-use Isruser;
 use IsrConfigTie;
 use strict;
 use warnings;
@@ -129,7 +128,7 @@ my $allflag;         # Reset() should delete all state, including hoard cache
 # Write once globals that are visible in this module only. These globals are
 # needed to cleanly handle logging.
 my $pid;            # Pid of child created in mysystem
-my $hostid;         # Unique hostid from $Isr::HOSTID file
+my $hostid;         # Unique hostid from "$Isr::SYSCONFDIR/hostid" file
 my $sessionid = 0;  # Unique session id (nonce from lock operation)
 my $userid;         # ISR userid
 my $parcel;         # parcel name
@@ -149,9 +148,17 @@ our $bwlimit;       # Bandwidth limit (KBytes/sec) in ci and sync
 # Read/write global variable: At any point in time, this hash contains
 # the key/value pairs from the name server for the current parcel. For
 # each command except listparcels, %cfg is initialized exactly once, 
-# and only by calls to parse_parcelcfg.
+# and only by calls to parse_parcelcfg.  This variable is tied such that
+# accesses to nonexistent keys will result in a call to errexit().
 #
-our %cfg = ();  
+our %cfg = ();
+
+#
+# Write-once global variable containing the key/value pairs from the
+# global and per-user configuration files.  This variable is tied such that
+# accesses to nonexistent keys will result in a call to errexit().
+#
+our %syscfg = ();
 
 #####
 # Some initialization steps
@@ -198,29 +205,32 @@ $SIG{"INT"} = sub {
 };
 
 #
+# Parse config files
+#
+
+# This file must exist, since it provides our defaults
+parse_cfgfile("$Isr::SHAREDIR/config", \%syscfg)
+    or errexit("Can't read defaults file $Isr::SHAREDIR/config");
+# These may not exist, but can override the earlier ones
+parse_cfgfile("$Isr::SYSCONFDIR/openisr.conf", \%syscfg);
+parse_cfgfile("$ENV{HOME}/.openisr.conf", \%syscfg);
+
+#
 # Make sure that the client has an existing hostid file
 # that contains a reasonable nonce value.
 #
-if (!-e "$Isr::ISRCLIENTBIN/$Isr::HOSTID") {
+if (!-e "$Isr::SYSCONFDIR/hostid") {
     $hostid = "999999";
-    err("The client host is misconfigured. Missing $Isr::HOSTID file.");
-}
-else {
-    open(INFILE, "$Isr::ISRCLIENTBIN/$Isr::HOSTID")
-	or errexit("Unable to open $Isr::HOSTID");
+    err("Missing $Isr::SYSCONFDIR/hostid file");
+} else {
+    open(INFILE, "$Isr::SYSCONFDIR/hostid")
+	or errexit("Unable to open $Isr::SYSCONFDIR/hostid");
     $hostid = <INFILE>;
     chomp($hostid);
     close(INFILE);
     if ($hostid <= 0) {
-	errexit("The client host is misconfigured. Invalid hostid nonce ($hostid).");
+	errexit("Invalid hostid nonce: $hostid");
     }
-}
-
-#
-# Provide defaults for $Isr:: options which might not be defined in Isr.pm
-#
-if (!$Isr::CONSOLE_LOGMASK) {
-  $Isr::CONSOLE_LOGMASK = "0x1";
 }
 
 #####
@@ -234,13 +244,16 @@ if ((getpwuid($<))[0] eq "root") {  # Reminder: '$<' is the UID
     errexit("Root is not allowed to run the isr client program.");
 }
 
-# The default ISR userid is defined by $Isr::USERID.
+# The default ISR userid is defined by $syscfg{userid}.
 # If this is empty, then the default is the Unix login name.
 # Override using the -u flag.
-$userid = $Isr::USERID;
-if (!$userid) {
-    $userid = $ENV{USER};           
-}
+$userid = $syscfg{userid}
+    if exists($syscfg{userid});
+$userid = $ENV{USER}
+    if (!$userid);
+
+# Set the default nameserver; may be overridden from command line
+$nameserver = $syscfg{nameserver};
 
 # Strip off pathname from the program name
 ($progname = $0) =~ s#.*/##s; # Strip off path from program name
@@ -296,7 +309,7 @@ if ($revisionflag) {
     ($unused, $revision) = split(" ", $revision); 
     print("$progname:$revision "); 
     foreach $prot ("HTTPSSH") {
-	do "$Isr::ISRCLIENTBIN/$prot.pm"
+	do "$Isr::SHAREDIR/$prot.pm"
 	    or errexit("Unable to load module $prot.pm");
 	print "$prot.pm:", isr_revision(), " ";
     }
@@ -340,13 +353,6 @@ if (!-e $isrdir) {
 }
 if (!-d $isrdir) {
     errexit("$isrdir is not a directory");
-}
-
-#
-# Override the defaults in Isr.pm if necessary
-#
-if ($nameserver) {
-    $Isr::NAMESRV = $nameserver;
 }
 
 #
@@ -753,7 +759,7 @@ sub run ($$$$) {
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
-    my $vulpescmd = "$Isr::ISRCLIENTBIN/vulpes";
+    my $vulpescmd = "$Isr::LIBDIR/vulpes";
     my $cdcache_file = "$parceldir/$Isr::CONSISTENT_DIRTYCACHE_FILE";
 
     # Block receipt of the SIGTSTP (ctrl-z)
@@ -865,7 +871,7 @@ sub run ($$$$) {
     if (!$noautoflag) {
         $vmware_opts = "-X";
     }
-    mysystem("LD_PRELOAD=libvdisk.so.0 VDISK_DEVICE=$devnode $Isr::VMCOMMAND $vmware_opts $cachedir/cfg/$cfgfile") == 0
+    mysystem("LD_PRELOAD=libvdisk.so.0 VDISK_DEVICE=$devnode $syscfg{vmcommand} $vmware_opts $cachedir/cfg/$cfgfile") == 0
 	or system_errexit("VMWare terminated abnormally.");
 
     # Wait here until the user suspends VMWare
@@ -1089,7 +1095,7 @@ sub listparcels ($$$$$) {
 	$lsargs = "-L $longvers";
     }
     elsif ($longflag) {
-	$lsargs = "-L $Isr::LSVERSIONS";
+	$lsargs = "-L $syscfg{ls_versions}";
     }
 
 
@@ -1106,7 +1112,7 @@ sub listparcels ($$$$$) {
     unlink($tmpfile);
 
     # Display information about each parcel
-    print "Parcels for $userid on name server $Isr::NAMESRV:\n";
+    print "Parcels for $userid on name server $nameserver:\n";
     $found = 0;
     foreach $parcel (@parcels) {
 	if (!$parcelname or (($parcelname and ($parcel eq $parcelname)))) {
@@ -1154,8 +1160,8 @@ sub listparcels ($$$$$) {
 sub authenticate ($) {
     my $userid = shift;
 
-    mysystem("ssh -A -l $userid $Isr::NAMESRV ssh-add") == 0
-	or system_errexit("Unable to run ssh-add on the name server ($Isr::NAMESRV)");
+    mysystem("ssh -A -l $userid $nameserver ssh-add") == 0
+	or system_errexit("Unable to run ssh-add on the name server ($nameserver)");
 
     return 0;
 }
@@ -1255,9 +1261,9 @@ sub hoard ($$$) {
 	if ($retval == $Isr::ESUCCESS) {
 	    last; 
 	}
-	print "Sleeping $Isr::HOARD_SLEEP secs before restarting hoard...\n"
+	print "Sleeping $syscfg{hoard_sleep} secs before restarting hoard...\n"
 	    if $verbose;
-	sleep($Isr::HOARD_SLEEP);
+	sleep($syscfg{hoard_sleep});
     }
 
     # The hoard finished without any errors. Declare success
@@ -1349,7 +1355,7 @@ sub passwd ($) {
     my $userid = shift;
 
     print "Changing password for ISR userid $userid:\n";
-    mysystem("ssh -l $userid $Isr::NAMESRV passwd") == 0
+    mysystem("ssh -l $userid $nameserver passwd") == 0
 	or errexit("Unable to change ISR password.");
 }
 
@@ -1634,8 +1640,8 @@ sub get_parcelnames ($$) {
     my $userid = shift;
     my $outfile = shift;
 
-    mysystem("ssh -l $userid $Isr::NAMESRV $Isr::ISRSERVERBIN/isr_nsrv_listparcels.pl -u $userid > $outfile") == 0
-	or system_errexit("Unable to run isr_nsrv_listparcels.pl on the name server ($Isr::NAMESRV)");
+    mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_listparcels.pl -u $userid > $outfile") == 0
+	or system_errexit("Unable to run isr_nsrv_listparcels.pl on the name server ($nameserver)");
 }
 
 #
@@ -1646,8 +1652,8 @@ sub get_parcelcfg ($$$) {
     my $parcel = shift;
     my $outfile = shift; # Put the retrieved file here
 
-    mysystem("ssh -l $userid $Isr::NAMESRV $Isr::ISRSERVERBIN/isr_nsrv_getconfig.pl -p $parcel -u $userid > $outfile") == 0
-	or system_errexit("Parcel $userid/$parcel does not exist on the name server ($Isr::NAMESRV).");
+    mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_getconfig.pl -p $parcel -u $userid > $outfile") == 0
+	or system_errexit("Parcel $userid/$parcel does not exist on the name server ($nameserver).");
 }
 
 #
@@ -1657,8 +1663,8 @@ sub get_motd ($$) {
     my $userid = shift;
     my $parcel = shift;
 
-    mysystem("ssh -l $userid $Isr::NAMESRV $Isr::ISRSERVERBIN/isr_nsrv_motd.pl -p $parcel -u $userid") == 0
-	or system_err("Couldn't read message of the day from the name server ($Isr::NAMESRV).");
+    mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_motd.pl -p $parcel -u $userid") == 0
+	or system_err("Couldn't read message of the day from the name server ($nameserver).");
 }
 
 #
@@ -1682,7 +1688,11 @@ sub parse_cfgfile ($$) {
     
     # Load the key/value pairs into the hash
     unless (open(INFILE, $infile)) {
-	unix_err("Config file $infile not found");
+	# If the hash already has keys in it, then we're only trying to
+	# override existing defaults, so we don't warn if the cfgfile doesn't
+	# exist
+	unix_err("Config file $infile not found")
+	    if (!scalar %$hashref);
 	return 0;
     }
     while ($line = <INFILE>) {
@@ -1740,7 +1750,7 @@ sub parse_parcelcfg ($$$) {
 
     # Load the protocol-specific module
     unless ($prot_loaded) {
-	do "$Isr::ISRCLIENTBIN/$cfg{PROTOCOL}.pm"
+	do "$Isr::SHAREDIR/$cfg{PROTOCOL}.pm"
 	    or errexit("Unable to load module $cfg{PROTOCOL}.pm in parse_parcelcfg for parcel $userid/$parcel");
 	$prot_loaded = 1;
     }
@@ -1911,7 +1921,7 @@ sub connected () {
     # on the name server 
     if ($pid == 0) {
 	$no_shutdown = 1;
-	my $socket = IO::Socket::INET->new(PeerAddr => "$Isr::NAMESRV",
+	my $socket = IO::Socket::INET->new(PeerAddr => $nameserver,
 					   PeerPort => "22",
 					   Proto    => "tcp",
 					   Type     => SOCK_STREAM);
@@ -1920,7 +1930,7 @@ sub connected () {
 
     # The parent waits a few seconds for the child to complete, then times out
     $SIG{'ALRM'} = sub {die "timeout"};
-    alarm($Isr::CONNECT_TIMEOUT);
+    alarm($syscfg{connect_timeout});
     eval {
 	waitpid($pid, 0);
     };
@@ -2157,9 +2167,17 @@ sub message($$) {
     my $msg = shift;
 
     my $date = localtime();
-    my $isrdir = "$ENV{HOME}/.isr/$userid";
     my $string = message_string();
+    my $isrdir;
 
+    if (defined $userid) {
+	$isrdir = "$ENV{HOME}/.isr/$userid";
+    } else {
+	# Failure very early in the startup process.  The program is likely
+	# exiting anyway, and we don't have a destination to write the log
+	# message into.
+	return;
+    }
     open(LOG, ">>$isrdir/$Isr::LOGFILE")
 	or return;
     print LOG "$date|$event|$string|$msg\n";
@@ -2173,7 +2191,7 @@ sub message_string {
     no warnings 'uninitialized';
     my $hostname = hostname();
 
-    return "$userid|$$|$hostid:$sessionid|$hostname|$cfg{PROTOCOL}|$Isr::NAMESRV|$parcel";
+    return "$userid|$$|$hostid:$sessionid|$hostname|$cfg{PROTOCOL}|$nameserver|$parcel";
 }
 
 #
