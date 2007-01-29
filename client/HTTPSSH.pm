@@ -55,27 +55,26 @@ sub isr_revision () {
 #
 # isr_checkcfg - Check key/value pairs in parcel.cfg hash
 #
-sub isr_checkcfg (\%) {
-    my $cfg = shift;
-    my %cfg = %$cfg; # dereference hash reference
+sub isr_checkcfg ($) {
+    my $cfgref = shift;
 
-    unless ($cfg{PROTOCOL} eq $PROTOCOL) {
-	err("Missing or inconsistent protocol ($cfg{PROTOCOL} != $PROTOCOL) in parcel.cfg.");
+    unless ($cfgref->{PROTOCOL} eq $PROTOCOL) {
+	err("Inconsistent protocol ($cfgref->{PROTOCOL} != $PROTOCOL) in parcel.cfg.");
 	return $Isr::EINVAL;
     }
-    unless ($cfg{RPATH}) {
+    unless (exists $cfgref->{RPATH}) {
 	err("Missing RPATH entry in parcel.cfg.");
 	return $Isr::EINVAL;
     }
-    unless ($cfg{WPATH}) {
+    unless (exists $cfgref->{WPATH}) {
 	err("Missing WPATH entry in parcel.cfg.");
 	return $Isr::EINVAL;
     }
-    unless ($cfg{KEYROOT}) {
+    unless (exists $cfgref->{KEYROOT}) {
 	err("Missing KEYROOT entry in parcel.cfg.");
 	return $Isr::EINVAL;
     }
-    unless ($cfg{SERVER}) {
+    unless (exists $cfgref->{SERVER}) {
 	err("Missing SERVER entry in parcel.cfg.");
 	return $Isr::EINVAL;
     }
@@ -406,9 +405,9 @@ sub isr_hoard ($$$) {
     #
     @keyring = load_keyring("$lastdir/keyring");
     %lev1idx = load_cfgfile("$lastdir/hdk/index.lev1");
-    $numdirs = get_value(\%lev1idx, "NUMDIRS");
-    $chunksperdir = get_value(\%lev1idx, "CHUNKSPERDIR");
-    $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
+    $numdirs = $lev1idx{NUMDIRS};
+    $chunksperdir = $lev1idx{CHUNKSPERDIR};
+    $chunksize = $lev1idx{CHUNKSIZE};
     $numchunks = $numdirs * $chunksperdir;
     $maxbytes = ($numdirs * $chunksperdir) * $chunksize;
 
@@ -520,7 +519,7 @@ sub isr_stathoard ($$$) {
     # Iterate over each of the keyring tags and count
     # the chunks that are hoarded
     parse_cfgfile("$lastdir/hdk/index.lev1", \%lev1idx);
-    $chunksperdir = get_value(\%lev1idx, "CHUNKSPERDIR");
+    $chunksperdir = $lev1idx{CHUNKSPERDIR};
     $numchunks = 0;
     for ($chunk = 0; $chunk < $maxchunks; $chunk++) {
 	# Check to see if it exists in hoard cache
@@ -648,7 +647,6 @@ sub isr_checkhoard ($$$$$) {
     my @files = ();
     my @keyring = ();
     my %filehash = ();
-    my %lev1idx;
 
     my $parceldir = "$isrdir/$parcel";
     my $cachedir = "$parceldir/cache";
@@ -681,8 +679,6 @@ sub isr_checkhoard ($$$$$) {
     #
     # Determine which files in the hoard cache are in the keyring
     #
-    parse_cfgfile("$lastdir/hdk/index.lev1", \%lev1idx);
-    $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
     opendir(DIR, "$hoarddir")
 	or errexit("Unable to open hoard cache ($hoarddir)");
     @files = grep(!/^[\._]/, readdir(DIR)); # elide . and ..
@@ -876,7 +872,7 @@ sub isr_priv_upload ($$$) {
     # Log the number of hdk bytes that were transferred
     #
     parse_cfgfile("$cachedir/hdk/index.lev1", \%lev1idx);
-    $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
+    $chunksize = $lev1idx{CHUNKSIZE};
     $virtualbytes = $dirtyblocks*$chunksize;
     message("INFO", "upload:hdk:$dirtybytes:$virtualbytes");
 
@@ -1159,8 +1155,8 @@ sub isr_priv_clientcommit($$$) {
     #
     message("INFO", "Client side commit - start moving hoard chunks");
     parse_cfgfile("$cachedir/hdk/index.lev1", \%lev1idx);
-    $chunksperdir = get_value(\%lev1idx, "CHUNKSPERDIR");
-    $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
+    $chunksperdir = $lev1idx{CHUNKSPERDIR};
+    $chunksize = $lev1idx{CHUNKSIZE};
     $numdirtybytes = $chunksize * $dirtyblocks;
 
     for ($i = 0; $i < $dirtyblocks; $i++) {

@@ -38,6 +38,7 @@ require "syscall.ph";
 use lib "/usr/local/isr/bin";
 use Isr;
 use Isruser;
+use IsrConfigTie;
 use strict;
 use warnings;
 
@@ -76,7 +77,6 @@ sub hdksize ($$$);
 sub connected ();
 sub get_dirnum ($$);
 sub get_chunknum ($$);
-sub get_value ($$);
 sub get_vulpespid ();
 sub block_sigint ();
 sub unblock_sigint ($);
@@ -630,8 +630,8 @@ sub checkout ($$$$) {
     }
     parse_cfgfile($tmpfile, \%map);
     unlink($tmpfile);
-    $cfgsize = int(get_value(\%map, "SIZE")/(1<<20));
-    $cfg_sha1value = get_value(\%map, "SHA1");
+    $cfgsize = int($map{SIZE}/(1<<20));
+    $cfg_sha1value = $map{SHA1};
 
     $tmpfile = "/tmp/stat2.$$";
     if (isr_srun($userid, "stat", 
@@ -644,7 +644,7 @@ sub checkout ($$$$) {
     %map = ();
     parse_cfgfile($tmpfile, \%map);
     unlink($tmpfile);
-    $key_sha1value = get_value(\%map, "SHA1");
+    $key_sha1value = $map{SHA1};
 
     #
     # Look aside to see if the memory image and/or keyring is available 
@@ -1555,7 +1555,7 @@ sub upgrade_lev1 ($) {
     my %lev1idx;
     
     parse_cfgfile($indexfile, \%lev1idx);
-    $cur = get_value(\%lev1idx, "VERSION");
+    $cur = $lev1idx{VERSION};
     $cur =~ s/^ *//;
     errexit("Parcel too new: expected version $supported, found version $cur")
 	if ($cur > $supported);
@@ -1665,6 +1665,7 @@ sub get_motd ($$) {
 # parse_cfgfile - Read a file consisting of key=value pairs (and possibly
 #                 comments) and add them to the hash whose ref is provided by
 #                 the caller, overriding existing values with the same keys.
+#                 The hash is also tied to IsrConfigTie if not already tied.
 #                 Returns 0 on error, 1 otherwise.
 #
 sub parse_cfgfile ($$) {
@@ -1675,6 +1676,10 @@ sub parse_cfgfile ($$) {
     my $key;
     my $value;
 
+    # Cause accesses to nonexistent keys to call errexit()
+    tie(%$hashref, "IsrConfigTie")
+        if (!tied(%$hashref));
+    
     # Load the key/value pairs into the hash
     unless (open(INFILE, $infile)) {
 	unix_err("Config file $infile not found");
@@ -1722,13 +1727,13 @@ sub parse_parcelcfg ($$$) {
     }
 
     # Every parcel has a PROTOCOL entry
-    unless ($cfg{PROTOCOL}) {
+    unless (exists $cfg{PROTOCOL}) {
 	unlink($infile);
 	errexit("Missing PROTOCOL entry in parcel.cfg for parcel $userid/$parcel.");
     }
 
     # Every parcel has a MAXKB entry
-    unless ($cfg{MAXKB}) {
+    unless (exists $cfg{MAXKB}) {
 	unlink($infile);
 	errexit("Missing MAXKB entry in parcel.cfg for parcel $userid/$parcel.");
     }
@@ -1863,8 +1868,8 @@ sub hdksize ($$$) {
 
     # Parse index.lev1
     parse_cfgfile("$lastdir/hdk/index.lev1", \%lev1idx);
-    $maxchunks = get_value(\%lev1idx, "NUMCHUNKS");
-    $chunksize = get_value(\%lev1idx, "CHUNKSIZE");
+    $maxchunks = $lev1idx{NUMCHUNKS};
+    $chunksize = $lev1idx{CHUNKSIZE};
     
     # hdk cache is trivialy empty
     if (!-e $cachedir) {
@@ -1953,23 +1958,6 @@ sub get_chunknum ($$) {
 }
 
 #
-# get_value - Given hash reference and key, return corresponding value or
-#             call errexit() if not found
-#
-sub get_value ($$) {
-    my $hashref = shift;
-    my $search_key = shift;
-
-    my $return_value = $$hashref{$search_key};
-    
-    errexit("get_value unable to find key=$search_key")
-        if !defined($return_value);
-
-    return $return_value;
-}
-
-
-#
 # get_vulpespid - Returns the PID of the Vulpes background process associated
 #                 with this parcel, or zero if none are running.
 #
@@ -1986,7 +1974,6 @@ sub get_vulpespid () {
     kill(0, $pid) or return 0;
     return $pid;
 }
-
 
 #
 # block_sigint - Block receipt of SIGINT (ctrl-c) and return sigmask
