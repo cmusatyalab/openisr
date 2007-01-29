@@ -24,7 +24,6 @@
 use File::Path;
 use File::Copy;
 use IO::Socket;
-use lib "/usr/local/isr/bin";
 use Isr;
 use strict;
 use warnings;
