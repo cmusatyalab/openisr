@@ -24,8 +24,9 @@ revision.dummy:
 
 .PHONY: install
 install: libvdisk.so
-	install -m 4644 -s libvdisk.so /usr/lib/libvdisk.so.$(MAJOR).$(MINOR).$(REV)
-	ldconfig
+	install -m 4644 -s libvdisk.so $(DESTDIR)/usr/lib/libvdisk.so.$(MAJOR).$(MINOR).$(REV)
+# ignore return value, ldconfig can be called by dpkg/rpm/etc
+	-ldconfig
 
 .PHONY: clean
 clean:
