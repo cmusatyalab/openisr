@@ -199,6 +199,7 @@ static struct block_device *nexus_open_bdev(struct nexus_dev *dev,
 {
 	struct block_device *bdev;
 	struct nameidata nd;
+	struct inode *inode;
 	dev_t devt;
 	int err;
 	
@@ -212,15 +213,16 @@ static struct block_device *nexus_open_bdev(struct nexus_dev *dev,
 	err=path_lookup(devpath, LOOKUP_FOLLOW, &nd);
 	if (err)
 		goto bad;
-	err=vfs_permission(&nd, MAY_READ|MAY_WRITE);
+	inode=nd.dentry->d_inode;
+	err=permission(inode, MAY_READ|MAY_WRITE, &nd);
 	if (err)
 		goto bad_release;
 	/* Prevent symlink attack from char device to block device */
-	if (!S_ISBLK(nd.dentry->d_inode->i_mode)) {
+	if (!S_ISBLK(inode->i_mode)) {
 		err=-ENOTBLK;
 		goto bad_release;
 	}
-	devt=nd.dentry->d_inode->i_rdev;
+	devt=inode->i_rdev;
 	path_release(&nd);
 	
 	bdev=open_bdev_excl(devpath, 0, dev);
