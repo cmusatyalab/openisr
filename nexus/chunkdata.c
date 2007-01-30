@@ -201,7 +201,7 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	}
 	
 	/* Can't get a chunk */
-	ndebug("Can't get cd for " SECTOR_FORMAT, cid);
+	ndebug(DBG_CD, "Can't get cd for " SECTOR_FORMAT, cid);
 	return NULL;
 }
 
@@ -269,7 +269,8 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 
 	bio->bi_bdev=dev->chunk_bdev;
 	bio->bi_sector=chunk_to_sector(dev, cd->cid) + dev->offset + offset;
-	ndebug("Creating bio with sector "SECTOR_FORMAT, bio->bi_sector);
+	ndebug(DBG_IO, "Creating bio with sector "SECTOR_FORMAT,
+				bio->bi_sector);
 	bio->bi_rw=dir;
 	if (dir == READ) {
 		chunk=pending_head(cd);
@@ -312,7 +313,7 @@ static void issue_chunk_io(struct chunkdata *cd)
 	cd->error=0;
 	atomic_set(&cd->remaining, dev->chunksize);
 	
-	ndebug("Submitting clone bio(s)");
+	ndebug(DBG_IO, "Submitting clone bio(s)");
 	/* We can't assume that we can fit the entire chunk io in one
 	   bio: it depends on the queue restrictions of the underlying
 	   device */
@@ -330,8 +331,8 @@ static void issue_chunk_io(struct chunkdata *cd)
 			offset += cd->sg[i].length;
 			i++;
 		} else {
-			ndebug("Submitting multiple bios: %u/%u", offset,
-						dev->chunksize);
+			ndebug(DBG_IO, "Submitting multiple bios: %u/%u",
+						offset, dev->chunksize);
 			schedule_io(bio);
 			bio=NULL;
 		}
@@ -355,45 +356,46 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 	unsigned hash_len=suite_info(dev->suite)->hash_len;
 	
 	if (cd->state == ST_DECRYPTING) {
-		ndebug("Decrypting %u bytes for chunk "SECTOR_FORMAT,
+		ndebug(DBG_TFM, "Decrypting %u bytes for chunk "SECTOR_FORMAT,
 					cd->size, cd->cid);
 		/* Make sure encrypted data matches tag */
 		ret=crypto_hash(dev, ts, cd->sg, cd->size, hash);
 		if (ret) {
-			debug("Unable to hash encrypted chunk " SECTOR_FORMAT,
-						cd->cid);
+			debug(DBG_TFM, "Unable to hash encrypted chunk "
+						SECTOR_FORMAT, cd->cid);
 			return ret;
 		}
 		if (memcmp(cd->tag, hash, hash_len)) {
-			debug("Chunk " SECTOR_FORMAT ": Tag doesn't match "
-						"data", cd->cid);
+			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Tag doesn't "
+						"match data", cd->cid);
 			return -EIO;
 		}
 		ret=crypto_cipher(dev, ts, cd->sg, cd->key, cd->size, READ,
 					cd->compression != NEXUS_COMPRESS_NONE);
 		if (ret < 0) {
-			debug("Chunk " SECTOR_FORMAT ": Decryption failed",
-						cd->cid);
+			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Decryption "
+						"failed", cd->cid);
 			return ret;
 		}
 		compressed_size=ret;
 		/* Make sure decrypted data matches key */
 		ret=crypto_hash(dev, ts, cd->sg, compressed_size, hash);
 		if (ret) {
-			debug("Unable to hash decrypted chunk " SECTOR_FORMAT,
-						cd->cid);
+			debug(DBG_TFM, "Unable to hash decrypted chunk "
+						SECTOR_FORMAT, cd->cid);
 			return ret;
 		}
 		if (memcmp(cd->key, hash, hash_len)) {
-			debug("Chunk " SECTOR_FORMAT ": Key doesn't match "
-						"decrypted data", cd->cid);
+			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Key doesn't "
+						"match decrypted data",
+						cd->cid);
 			return -EIO;
 		}
 		ret=decompress_chunk(dev, ts, cd->sg, cd->compression,
 					compressed_size);
 		if (ret) {
-			debug("Chunk " SECTOR_FORMAT ": Decompression failed",
-						cd->cid);
+			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Decompression "
+						"failed", cd->cid);
 			return ret;
 		}
 	} else if (cd->state == ST_ENCRYPTING) {
@@ -405,34 +407,34 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 			compressed_size=dev->chunksize;
 			cd->compression=NEXUS_COMPRESS_NONE;
 		} else if (ret < 0) {
-			debug("Chunk " SECTOR_FORMAT ": Compression failed",
-						cd->cid);
+			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Compression "
+						"failed", cd->cid);
 			return ret;
 		} else {
 			compressed_size=ret;
 			cd->compression=dev->default_compression;
 		}
-		ndebug("Encrypting %u bytes for chunk "SECTOR_FORMAT,
+		ndebug(DBG_TFM, "Encrypting %u bytes for chunk "SECTOR_FORMAT,
 					compressed_size, cd->cid);
 		ret=crypto_hash(dev, ts, cd->sg, compressed_size, cd->key);
 		if (ret) {
-			debug("Unable to hash decrypted chunk " SECTOR_FORMAT,
-						cd->cid);
+			debug(DBG_TFM, "Unable to hash decrypted chunk "
+						SECTOR_FORMAT, cd->cid);
 			return ret;
 		}
 		ret=crypto_cipher(dev, ts, cd->sg, cd->key, compressed_size,
 					WRITE,
 					cd->compression != NEXUS_COMPRESS_NONE);
 		if (ret < 0) {
-			debug("Chunk " SECTOR_FORMAT ": Encryption failed",
-						cd->cid);
+			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Encryption "
+						"failed", cd->cid);
 			return ret;
 		}
 		cd->size=ret;
 		ret=crypto_hash(dev, ts, cd->sg, cd->size, cd->tag);
 		if (ret) {
-			debug("Unable to hash encrypted chunk " SECTOR_FORMAT,
-						cd->cid);
+			debug(DBG_TFM, "Unable to hash encrypted chunk "
+						SECTOR_FORMAT, cd->cid);
 			return ret;
 		}
 	} else {
@@ -722,7 +724,8 @@ void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
 	if (cd == NULL || !(cd->flags & CD_USER) ||
 				cd->state != ST_LOAD_META) {
 		/* Userspace is messing with us. */
-		debug("Irrelevant metadata passed to usermsg_set_key()");
+		debug(DBG_CHARDEV, "Irrelevant metadata passed to "
+					"usermsg_set_key()");
 		return;
 	}
 	cd->size=length;
@@ -743,7 +746,8 @@ void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid)
 	if (cd == NULL || !(cd->flags & CD_USER) ||
 				cd->state != ST_LOAD_META) {
 		/* Userspace is messing with us. */
-		debug("Irrelevant chunk ID passed to usermsg_meta_err()");
+		debug(DBG_CHARDEV, "Irrelevant chunk ID passed to "
+					"usermsg_meta_err()");
 		return;
 	}
 	transition_error(cd, -EIO);
@@ -763,7 +767,7 @@ again:
 		if (chunk != NULL) {
 			/* No key or data */
 			if (chunk->flags & CHUNK_READ) {
-				ndebug("Requesting key for chunk "
+				ndebug(DBG_CD, "Requesting key for chunk "
 							SECTOR_FORMAT, cd->cid);
 				transition(cd, ST_LOAD_META);
 				if (queue_for_user(cd)) {
@@ -787,7 +791,7 @@ again:
 		BUG_ON(!(chunk->flags & CHUNK_READ));
 		
 		/* The first-in-queue needs the chunk read in. */
-		ndebug("Reading in chunk " SECTOR_FORMAT, cd->cid);
+		ndebug(DBG_CD, "Reading in chunk " SECTOR_FORMAT, cd->cid);
 		transition(cd, ST_LOAD_DATA);
 		issue_chunk_io(cd);
 		break;
@@ -818,7 +822,8 @@ again:
 		if (chunk != NULL) {
 			try_start_io(chunk->parent);
 		} else {
-			ndebug("Writing out chunk " SECTOR_FORMAT, cd->cid);
+			ndebug(DBG_CD, "Writing out chunk " SECTOR_FORMAT,
+						cd->cid);
 			transition(cd, ST_ENCRYPTING);
 			schedule_callback(CB_CRYPTO, &cd->lh_need_tfm);
 		}

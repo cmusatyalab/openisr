@@ -34,7 +34,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	struct chunkdata *cd;
 	enum nexus_compress compress;
 	
-	ndebug("Entering chr_read");
+	ndebug(DBG_CHARDEV, "Entering chr_read");
 	if (dev == NULL)
 		return -ENXIO;
 	if (count % sizeof(msg))
@@ -50,7 +50,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	for (i=0; i<count; i++) {
 		memset(&msg, 0, sizeof(msg));
 		
-		ndebug("Trying to get chunk");
+		ndebug(DBG_CHARDEV, "Trying to get chunk");
 		while ((cd=next_usermsg(dev, &msg.type)) == NULL) {
 			if (i > 0)
 				goto out;
@@ -96,7 +96,7 @@ out:
 	mutex_unlock(&dev->lock);
 	if (err && i == 0)
 		return err;
-	ndebug("Leaving chr_read: %d", i * sizeof(msg));
+	ndebug(DBG_CHARDEV, "Leaving chr_read: %d", i * sizeof(msg));
 	return i * sizeof(msg);
 }
 
@@ -108,7 +108,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 	int i;
 	int err=0;
 	
-	ndebug("Entering chr_write");
+	ndebug(DBG_CHARDEV, "Entering chr_write");
 	if (dev == NULL)
 		return -ENXIO;
 	if (count % sizeof(msg))
@@ -159,7 +159,7 @@ out:
 	mutex_unlock(&dev->lock);
 	if (err && i == 0)
 		return err;
-	ndebug("Leaving chr_write: %d", i * sizeof(msg));
+	ndebug(DBG_CHARDEV, "Leaving chr_write: %d", i * sizeof(msg));
 	return i * sizeof(msg);
 }
 

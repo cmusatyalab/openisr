@@ -179,9 +179,24 @@ static inline void mutex_lock_thread(MUTEX *lock)
 #define SECTOR_FORMAT "%lu"
 #endif
 
+#define DBG_ANY		0xffffffff	/* Print if any debugging is enabled */
+#define DBG_INIT	0x00000001	/* Module init and shutdown */
+#define DBG_CTR		0x00000002	/* Constructor and destructor */
+#define DBG_REFCOUNT	0x00000004	/* Device refcounting */
+#define DBG_THREAD	0x00000008	/* Thread operations */
+#define DBG_TFM		0x00000010	/* Crypto/compress operations */
+#define DBG_REQUEST	0x00000020	/* Request processing */
+#define DBG_CHARDEV	0x00000040	/* Character device */
+#define DBG_CD		0x00000080	/* Chunkdata */
+#define DBG_IO		0x00000100	/* Backing device I/O */
+#define DBG_SYSFS	0x00000200	/* Sysfs operations */
+
 #define log(prio, msg, args...) printk(prio MODULE_NAME ": " msg "\n", ## args)
 #ifdef DEBUG
-#define debug(msg, args...) log(KERN_DEBUG, msg, ## args)
+#define debug(type, msg, args...) do { \
+		if ((type) & debug_mask) \
+			log(KERN_DEBUG, msg, ## args); \
+	} while (0)
 #else
 #define debug(args...) do {} while (0)
 #endif
@@ -243,6 +258,7 @@ static inline unsigned io_chunks(struct nexus_io *io)
 
 /* init.c */
 extern int blk_major;
+extern unsigned debug_mask;
 struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
 			enum nexus_crypto crypto,

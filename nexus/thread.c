@@ -231,7 +231,7 @@ static int alloc_##TYPE##_on_all(enum nexus_##TYPE arg)			\
 	int err;							\
 									\
 	BUG_ON(!mutex_is_locked(&threads.lock));			\
-	debug("Allocating " #TYPE " %s...",				\
+	debug(DBG_THREAD, "Allocating " #TYPE " %s...",			\
 				TYPE##_info(arg)->user_name);		\
 	for (cpu=0, count=0; cpu<NR_CPUS; cpu++) {			\
 		/* We care about which threads are running, not which	\
@@ -243,7 +243,7 @@ static int alloc_##TYPE##_on_all(enum nexus_##TYPE arg)			\
 			goto bad;					\
 		count++;						\
 	}								\
-	debug("...allocated on %d cpus", count);			\
+	debug(DBG_THREAD, "...allocated on %d cpus", count);		\
 	return 0;							\
 									\
 bad:									\
@@ -261,14 +261,15 @@ static void free_##TYPE##_on_all(enum nexus_##TYPE arg)			\
 	int count;							\
 									\
 	BUG_ON(!mutex_is_locked(&threads.lock));			\
-	debug("Freeing " #TYPE " %s...", TYPE##_info(arg)->user_name);	\
+	debug(DBG_THREAD, "Freeing " #TYPE " %s...",			\
+				TYPE##_info(arg)->user_name);		\
 	for (cpu=0, count=0; cpu<NR_CPUS; cpu++) {			\
 		if (threads.task[cpu] == NULL)				\
 			continue;					\
 		TYPE##_remove(&threads.ts[cpu], arg);			\
 		count++;						\
 	}								\
-	debug("...freed on %d cpus", count);				\
+	debug(DBG_THREAD, "...freed on %d cpus", count);				\
 }
 
 DEFINE_ALLOC_ON_ALL(suite)
@@ -303,8 +304,8 @@ static int alloc_all_on_cpu(int cpu)
 			alg_count++;
 		}
 	}
-	debug("Allocated %d suites and %d compression algorithms for cpu %d",
-				suite_count, alg_count, cpu);
+	debug(DBG_THREAD, "Allocated %d suites and %d compression algorithms "
+				"for cpu %d", suite_count, alg_count, cpu);
 	return 0;
 	
 bad:
@@ -342,8 +343,8 @@ static void free_all_on_cpu(int cpu)
 			alg_count++;
 		}
 	}
-	debug("Freed %d suites and %d compression algorithms for cpu %d",
-				suite_count, alg_count, cpu);
+	debug(DBG_THREAD, "Freed %d suites and %d compression algorithms for "
+				"cpu %d", suite_count, alg_count, cpu);
 }
 
 int thread_register(struct nexus_dev *dev)
@@ -437,10 +438,11 @@ static int cpu_start(int cpu)
 		return 0;
 	}
 	
-	debug("Onlining CPU %d", cpu);
+	debug(DBG_THREAD, "Onlining CPU %d", cpu);
 	err=alloc_all_on_cpu(cpu);
 	if (err) {
-		debug("Failed to allocate transforms for CPU %d", cpu);
+		debug(DBG_THREAD, "Failed to allocate transforms for CPU %d",
+					cpu);
 		return err;
 	}
 	thr=kthread_create(nexus_thread, &threads.ts[cpu], KTHREAD_NAME "/%d",
@@ -466,9 +468,9 @@ static void cpu_stop(int cpu)
 	if (threads.task[cpu] == NULL)
 		return;
 	
-	debug("Offlining CPU %d", cpu);
+	debug(DBG_THREAD, "Offlining CPU %d", cpu);
 	kthread_stop(threads.task[cpu]);
-	debug("...done");
+	debug(DBG_THREAD, "...done");
 	free_all_on_cpu(cpu);
 	threads.task[cpu]=NULL;
 	threads.count--;
@@ -557,15 +559,15 @@ void thread_shutdown(void)
 	mutex_unlock(&threads.lock);
 	
 	if (io_thread != NULL) {
-		debug("Stopping I/O thread");
+		debug(DBG_THREAD, "Stopping I/O thread");
 		kthread_stop(io_thread);
-		debug("...done");
+		debug(DBG_THREAD, "...done");
 		io_thread=NULL;
 	}
 	if (request_thread != NULL) {
-		debug("Stopping request thread");
+		debug(DBG_THREAD, "Stopping request thread");
 		kthread_stop(request_thread);
-		debug("...done");
+		debug(DBG_THREAD, "...done");
 		request_thread=NULL;
 	}
 }
@@ -606,7 +608,7 @@ int __init thread_start(void)
 	if (ret)
 		goto bad;
 	
-	debug("Starting singleton threads");
+	debug(DBG_THREAD, "Starting singleton threads");
 	thr=kthread_create(nexus_io_thread, NULL, IOTHREAD_NAME);
 	if (IS_ERR(thr)) {
 		ret=PTR_ERR(thr);

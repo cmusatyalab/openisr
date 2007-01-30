@@ -21,6 +21,11 @@ static struct {
 	unsigned long cache_pages;
 } state;
 
+#ifdef DEBUG
+unsigned debug_mask;
+module_param(debug_mask, uint, S_IRUGO|S_IWUSR);
+#endif
+
 /* It is an error to use this when the refcount may have already reached
    zero.  (The kref infrastructure does not handle this case.) */
 void nexus_dev_get(struct nexus_dev *dev)
@@ -35,7 +40,7 @@ void nexus_dev_get(struct nexus_dev *dev)
    MUST NOT be held. */
 void nexus_dev_put(struct nexus_dev *dev, int unlink)
 {
-	ndebug("dev_put, refs %d, unlink %d",
+	ndebug(DBG_REFCOUNT, "dev_put, refs %d, unlink %d",
 			atomic_read(&dev->class_dev->kobj.kref.refcount),
 			unlink);
 	BUG_ON(in_atomic());
@@ -49,7 +54,7 @@ void user_get(struct nexus_dev *dev)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	dev->need_user++;
-	ndebug("need_user now %u", dev->need_user);
+	ndebug(DBG_REFCOUNT, "need_user now %u", dev->need_user);
 }
 
 void user_put(struct nexus_dev *dev)
@@ -57,7 +62,7 @@ void user_put(struct nexus_dev *dev)
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	if (!--dev->need_user)
 		wake_up_interruptible(&dev->waiting_users);
-	ndebug("need_user now %u", dev->need_user);
+	ndebug(DBG_REFCOUNT, "need_user now %u", dev->need_user);
 }
 
 int shutdown_dev(struct nexus_dev *dev, int force)
@@ -68,7 +73,7 @@ int shutdown_dev(struct nexus_dev *dev, int force)
 	if (!force && dev->need_user != 0) {
 		return -EBUSY;
 	}
-	debug("Shutting down chardev");
+	debug(DBG_CTR|DBG_CHARDEV, "Shutting down chardev");
 	spin_lock(&state.lock);
 	list_del_init(&dev->lh_devs);
 	spin_unlock(&state.lock);
@@ -101,7 +106,8 @@ static int class_device_populate(struct class_device *class_dev)
 	int err;
 	
 	for (i=0; class_dev_attrs[i].attr.name != NULL; i++) {
-		ndebug("Populating %d: %s", i, class_dev_attrs[i].attr.name);
+		ndebug(DBG_CTR|DBG_SYSFS, "Populating %d: %s", i,
+					class_dev_attrs[i].attr.name);
 		err=class_device_create_file(class_dev, &class_dev_attrs[i]);
 		if (err)
 			return err;
@@ -254,7 +260,7 @@ static void nexus_dev_dtr(struct class_device *class_dev)
 {
 	struct nexus_dev *dev=class_get_devdata(class_dev);
 	
-	debug("Dtr called");
+	debug(DBG_CTR, "Dtr called");
 	BUG_ON(!dev_is_shutdown(dev));
 	BUG_ON(!list_empty(&dev->requests));
 	if (dev->gendisk) {
@@ -299,7 +305,7 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	int ret;
 	int ok;
 	
-	debug("Ctr starting");
+	debug(DBG_CTR, "Ctr starting");
 	
 	/* If the userspace process goes away right after the ctr returns, the
 	   device will still exist until delayed_add_disk runs but the module
@@ -395,10 +401,11 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 		ret=-ENOSPC;
 		goto bad;
 	}
-	debug("chunksize %u, cachesize %u, backdev %s, offset " SECTOR_FORMAT,
-				chunksize, cachesize, devnode, offset);
+	debug(DBG_CTR, "chunksize %u, cachesize %u, backdev %s, offset "
+				SECTOR_FORMAT, chunksize, cachesize, devnode,
+				offset);
 	
-	ndebug("Opening %s", devnode);
+	ndebug(DBG_CTR, "Opening %s", devnode);
 	dev->chunk_bdev=nexus_open_bdev(dev, devnode);
 	if (IS_ERR(dev->chunk_bdev)) {
 		log(KERN_ERR, "couldn't open %s", devnode);
@@ -418,10 +425,11 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	/* Make sure the capacity, after offset adjustment, is a multiple
 	   of the chunksize */
 	capacity=(capacity - offset) & ~(loff_t)(chunk_sectors(dev) - 1);
-	debug("Chunk partition capacity: " SECTOR_FORMAT " MB", capacity >> 11);
+	debug(DBG_CTR, "Chunk partition capacity: " SECTOR_FORMAT " MB",
+				capacity >> 11);
 	dev->chunks=chunk_of(dev, capacity);
 	
-	ndebug("Allocating queue");
+	ndebug(DBG_CTR, "Allocating queue");
 	dev->queue=blk_init_queue(nexus_request, &dev->queue_lock);
 	if (dev->queue == NULL) {
 		log(KERN_ERR, "couldn't allocate request queue");
@@ -447,7 +455,7 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	blk_queue_max_sectors(dev->queue,
 				chunk_sectors(dev) * (MAX_CHUNKS_PER_IO - 1));
 	
-	ndebug("Configuring transforms");
+	ndebug(DBG_CTR, "Configuring transforms");
 	dev->suite=suite;
 	dev->default_compression=default_compress;
 	dev->supported_compression=supported_compress;
@@ -459,14 +467,14 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 		goto bad;
 	}
 	
-	ndebug("Allocating chunkdata");
+	ndebug(DBG_CTR, "Allocating chunkdata");
 	ret=chunkdata_alloc_table(dev);
 	if (ret) {
 		log(KERN_ERR, "couldn't allocate chunkdata");
 		goto bad;
 	}
 	
-	ndebug("Allocating disk");
+	ndebug(DBG_CTR, "Allocating disk");
 	dev->gendisk=alloc_disk(MINORS_PER_DEVICE);
 	if (dev->gendisk == NULL) {
 		log(KERN_ERR, "couldn't allocate gendisk");
@@ -491,7 +499,7 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 		goto bad;
 	}
 	
-	ndebug("Adding disk");
+	ndebug(DBG_CTR, "Adding disk");
 	/* add_disk() initiates I/O to read the partition tables, so userspace
 	   needs to be able to process key requests while it is running.
 	   If we called add_disk() directly here, we would deadlock. */
@@ -527,7 +535,7 @@ static int __init nexus_init(void)
 {
 	int ret;
 	
-	debug("===================================================");
+	debug(DBG_ANY, "===================================================");
 	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
 	
 	spin_lock_init(&state.lock);
