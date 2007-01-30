@@ -4,6 +4,7 @@
 #include <linux/genhd.h>
 #include <linux/blkdev.h>
 #include <linux/fs.h>
+#include <linux/namei.h>
 #include <linux/mm.h>
 #include <linux/device.h>
 #include <linux/wait.h>
@@ -189,6 +190,63 @@ static void nexus_add_disk(void *data)
 	nexus_dev_put(dev, 0);
 }
 
+/* open_bdev_excl() doesn't check permissions on the device node it's opening,
+   so we have to do it ourselves.  In order to prevent a symlink attack, we
+   save the dev_t from the permission check and verify that the device node we
+   eventually open matches that value. */
+static struct block_device *nexus_open_bdev(struct nexus_dev *dev,
+			char *devpath)
+{
+	struct block_device *bdev;
+	struct nameidata nd;
+	dev_t devt;
+	int err;
+	
+	/* path_lookup() is apparently willing to look up a zero-length
+	   path.  open_bdev_excl() would catch this later, but that doesn't
+	   seem like a good idea. */
+	if (devpath[0] == 0) {
+		err=-EINVAL;
+		goto bad;
+	}
+	err=path_lookup(devpath, LOOKUP_FOLLOW, &nd);
+	if (err)
+		goto bad;
+	err=vfs_permission(&nd, MAY_READ|MAY_WRITE);
+	if (err)
+		goto bad_release;
+	/* Prevent symlink attack from char device to block device */
+	if (!S_ISBLK(nd.dentry->d_inode->i_mode)) {
+		err=-ENOTBLK;
+		goto bad_release;
+	}
+	devt=nd.dentry->d_inode->i_rdev;
+	path_release(&nd);
+	
+	bdev=open_bdev_excl(devpath, 0, dev);
+	if (IS_ERR(bdev)) {
+		err=PTR_ERR(bdev);
+		goto bad;
+	}
+	if (bdev->bd_dev != devt) {
+		/* The device node at the given path changed between the
+		   permission check and the open_bdev_excl().  We could loop,
+		   but it's probably better to just fail. */
+		err=-EAGAIN;
+		goto bad_close;
+	}
+	return bdev;
+	
+bad:
+	return ERR_PTR(err);
+bad_release:
+	path_release(&nd);
+	goto bad;
+bad_close:
+	close_bdev_excl(bdev);
+	goto bad;
+}
+
 /* Called by dev->class_dev's release callback */
 static void nexus_dev_dtr(struct class_device *class_dev)
 {
@@ -339,7 +397,7 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 				chunksize, cachesize, devnode, offset);
 	
 	ndebug("Opening %s", devnode);
-	dev->chunk_bdev=open_bdev_excl(devnode, 0, dev);
+	dev->chunk_bdev=nexus_open_bdev(dev, devnode);
 	if (IS_ERR(dev->chunk_bdev)) {
 		log(KERN_ERR, "couldn't open %s", devnode);
 		ret=PTR_ERR(dev->chunk_bdev);
