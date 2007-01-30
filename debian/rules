@@ -44,6 +44,9 @@ build-arch-stamp: configure-stamp
 	( cd $(CURDIR)/vulpes && \
 	  $(MAKE) vulpes )
 
+	( cd $(CURDIR)/libvdisk && \
+	  $(MAKE) libvdisk.so )
+
 	touch $@
 
 build-indep: build-indep-stamp
@@ -59,7 +62,10 @@ clean:
 	rm -f build-arch-stamp build-indep-stamp #CONFIGURE-STAMP#
 
 	# Add here commands to clean up after the build process.
-	-$(MAKE) clean
+	# XXX: no toplevel makefile ... yet
+	#-$(MAKE) clean
+	( cd $(CURDIR)/vulpes && $(MAKE) clean )
+	( cd $(CURDIR)/libvdisk && $(MAKE) clean )
 
 	dh_clean 
 
@@ -90,6 +96,10 @@ install-arch:
 	mkdir -p $(CURDIR)/debian/openisr/usr/lib/openisr
 	cp $(CURDIR)/vulpes/vulpes $(CURDIR)/debian/openisr/usr/lib/openisr
 
+	# libvdisk Makefile will setuid root
+	(cd $(CURDIR)/libvdisk && \
+	 $(MAKE) DESTDIR=$(CURDIR)/debian/openisr install)
+
 	dh_install -s
 # Must not depend on anything. This is to be called by
 # binary-arch/binary-indep
@@ -98,8 +108,8 @@ binary-common:
 	dh_testdir
 	dh_testroot
 	dh_installchangelogs 
-#	dh_installdocs
-	dh_installexamples
+	dh_installdocs
+#	dh_installexamples
 #	dh_installmenu
 #	dh_installdebconf	
 #	dh_installlogrotate	

@@ -4,8 +4,9 @@ openisr for Debian
 this is a start.
 
 SO FAR: * vulpes
+	* libvdisk
 
-TODO: * libvdisk (easy, setuid)
+TODO: * libvdisk (fix suid and symlink in postinst)
       * client (perl)
       * nexus (kernel headers/sources)
 
