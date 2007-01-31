@@ -5,9 +5,9 @@ this is a start.
 
 SO FAR: * vulpes
 	* libvdisk
-
-TODO: * libvdisk (fix suid and symlink in postinst)
-      * client (perl)
+	* client (perl)
+TODO: 
+      * config files
       * nexus (kernel headers/sources)
 
  -- Matt Toups <mtoups@cs.cmu.edu>  Mon, 29 Jan 2007 11:25:48 -0500
