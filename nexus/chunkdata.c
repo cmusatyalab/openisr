@@ -346,7 +346,13 @@ bad:
 	chunk_io_make_progress(cd, dev->chunksize - offset);
 }
 
-/* XXX convert debug calls to log()? */
+static void format_hash(char *out, unsigned char *in, unsigned in_len)
+{
+	int i;
+	for (i=0; i<in_len; i++, in++, out += 2)
+		sprintf(out, "%.2x", *in);
+}
+
 static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 {
 	struct nexus_dev *dev=cd->table->dev;
@@ -356,46 +362,65 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 	unsigned hash_len=suite_info(dev->suite)->hash_len;
 	
 	if (cd->state == ST_DECRYPTING) {
-		ndebug(DBG_TFM, "Decrypting %u bytes for chunk "SECTOR_FORMAT,
+		ndebug(DBG_TFM, "Decrypting %u bytes for chunk " SECTOR_FORMAT,
 					cd->size, cd->cid);
 		/* Make sure encrypted data matches tag */
 		ret=crypto_hash(dev, ts, cd->sg, cd->size, hash);
 		if (ret) {
-			debug(DBG_TFM, "Unable to hash encrypted chunk "
-						SECTOR_FORMAT, cd->cid);
+			log_limit(KERN_ERR, "Decrypting chunk " SECTOR_FORMAT
+						": Unable to hash encrypted "
+						"data", cd->cid);
 			return ret;
 		}
 		if (memcmp(cd->tag, hash, hash_len)) {
-			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Tag doesn't "
-						"match data", cd->cid);
+			/* Conserve stack space in the common case */
+			char expected[2 * hash_len + 1];
+			char found[2 * hash_len + 1];
+			format_hash(expected, cd->tag, hash_len);
+			format_hash(found, hash, hash_len);
+			log_limit(KERN_ERR, "Decrypting chunk " SECTOR_FORMAT
+						": Expected tag %s, found %s",
+						cd->cid, expected, found);
 			return -EIO;
 		}
 		ret=crypto_cipher(dev, ts, cd->sg, cd->key, cd->size, READ,
 					cd->compression != NEXUS_COMPRESS_NONE);
 		if (ret < 0) {
-			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Decryption "
-						"failed", cd->cid);
+			/* Conserve stack space in the common case */
+			char tag[2 * hash_len + 1];
+			format_hash(tag, cd->tag, hash_len);
+			log_limit(KERN_ERR, "Decrypting chunk " SECTOR_FORMAT
+						": Decryption failed.  Tag: %s",
+						cd->cid, tag);
 			return ret;
 		}
 		compressed_size=ret;
 		/* Make sure decrypted data matches key */
 		ret=crypto_hash(dev, ts, cd->sg, compressed_size, hash);
 		if (ret) {
-			debug(DBG_TFM, "Unable to hash decrypted chunk "
-						SECTOR_FORMAT, cd->cid);
+			log_limit(KERN_ERR, "Decrypting chunk " SECTOR_FORMAT
+						": Unable to hash decrypted "
+						"data", cd->cid);
 			return ret;
 		}
 		if (memcmp(cd->key, hash, hash_len)) {
-			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Key doesn't "
-						"match decrypted data",
-						cd->cid);
+			/* Conserve stack space in the common case */
+			char tag[2 * hash_len + 1];
+			format_hash(tag, cd->tag, hash_len);
+			log_limit(KERN_ERR, "Decrypting chunk " SECTOR_FORMAT
+						": Key doesn't match decrypted "
+						"data, tag %s", cd->cid, tag);
 			return -EIO;
 		}
 		ret=decompress_chunk(dev, ts, cd->sg, cd->compression,
 					compressed_size);
 		if (ret) {
-			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Decompression "
-						"failed", cd->cid);
+			/* Conserve stack space in the common case */
+			char tag[2 * hash_len + 1];
+			format_hash(tag, cd->tag, hash_len);
+			log_limit(KERN_ERR, "Decrypting chunk " SECTOR_FORMAT
+						": Decompression failed.  "
+						"Tag: %s", cd->cid, tag);
 			return ret;
 		}
 	} else if (cd->state == ST_ENCRYPTING) {
@@ -407,8 +432,9 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 			compressed_size=dev->chunksize;
 			cd->compression=NEXUS_COMPRESS_NONE;
 		} else if (ret < 0) {
-			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Compression "
-						"failed", cd->cid);
+			log_limit(KERN_ERR, "Encrypting chunk " SECTOR_FORMAT
+						": Compression failed",
+						cd->cid);
 			return ret;
 		} else {
 			compressed_size=ret;
@@ -418,23 +444,25 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 					compressed_size, cd->cid);
 		ret=crypto_hash(dev, ts, cd->sg, compressed_size, cd->key);
 		if (ret) {
-			debug(DBG_TFM, "Unable to hash decrypted chunk "
-						SECTOR_FORMAT, cd->cid);
+			log_limit(KERN_ERR, "Encrypting chunk " SECTOR_FORMAT
+						": Unable to hash decrypted "
+						"data", cd->cid);
 			return ret;
 		}
 		ret=crypto_cipher(dev, ts, cd->sg, cd->key, compressed_size,
 					WRITE,
 					cd->compression != NEXUS_COMPRESS_NONE);
 		if (ret < 0) {
-			debug(DBG_TFM, "Chunk " SECTOR_FORMAT ": Encryption "
-						"failed", cd->cid);
+			log_limit(KERN_ERR, "Encrypting chunk " SECTOR_FORMAT
+						": Encryption failed", cd->cid);
 			return ret;
 		}
 		cd->size=ret;
 		ret=crypto_hash(dev, ts, cd->sg, cd->size, cd->tag);
 		if (ret) {
-			debug(DBG_TFM, "Unable to hash encrypted chunk "
-						SECTOR_FORMAT, cd->cid);
+			log_limit(KERN_ERR, "Encrypting chunk " SECTOR_FORMAT
+						": Unable to hash encrypted "
+						"data", cd->cid);
 			return ret;
 		}
 	} else {

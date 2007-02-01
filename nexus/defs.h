@@ -192,6 +192,10 @@ static inline void mutex_lock_thread(MUTEX *lock)
 #define DBG_SYSFS	0x00000200	/* Sysfs operations */
 
 #define log(prio, msg, args...) printk(prio MODULE_NAME ": " msg "\n", ## args)
+#define log_limit(prio, msg, args...) do { \
+		if (printk_ratelimit()) \
+			log(prio, msg, ## args); \
+	} while (0)
 #ifdef DEBUG
 #define debug(type, msg, args...) do { \
 		if ((type) & debug_mask) \
