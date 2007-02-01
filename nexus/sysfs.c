@@ -18,10 +18,37 @@ static ssize_t drv_show_revision(struct class *c, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%s\n", svn_revision);
 }
 
+/* Redundant with /sys/module/openisr/parameters/debug_mask, but more
+   convenient */
+static ssize_t drv_show_debug(struct class *c, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "0x%x\n", debug_mask);
+}
+
+/* Redundant with /sys/module/openisr/parameters/debug_mask, but more
+   convenient */
+static ssize_t drv_store_debug(struct class *c, const char *buf, size_t len)
+{
+	char *endp;
+	unsigned tmp;
+	
+	/* Make sure simple_strtoul() won't overrun the buffer */
+	if (len >= PAGE_SIZE)
+		return -EINVAL;
+	BUG_ON(buf[len] != 0);
+	
+	tmp=simple_strtol(buf, &endp, 0);
+	if (endp[0] != '\n' || endp[1] != 0)
+		return -EINVAL;
+	debug_mask=tmp;
+	return len;
+}
+
 struct class_attribute class_attrs[] = {
 	__ATTR(version, S_IRUGO, drv_show_version, NULL),
 	__ATTR(branch, S_IRUGO, drv_show_branch, NULL),
 	__ATTR(revision, S_IRUGO, drv_show_revision, NULL),
+	__ATTR(debug_mask, S_IRUGO|S_IWUSR, drv_show_debug, drv_store_debug),
 	__ATTR_NULL
 };
 

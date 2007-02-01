@@ -23,7 +23,7 @@ static struct {
 
 #ifdef DEBUG
 unsigned debug_mask;
-module_param(debug_mask, uint, S_IRUGO|S_IWUSR);
+module_param(debug_mask, int, S_IRUGO|S_IWUSR);
 #endif
 
 /* It is an error to use this when the refcount may have already reached
