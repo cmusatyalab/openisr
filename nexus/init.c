@@ -419,6 +419,17 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 		dev->chunk_bdev=NULL;
 		goto bad;
 	}
+	if (MAJOR(dev->chunk_bdev->bd_dev) == blk_major) {
+		/* The specified chunk device is itself a Nexus virtual disk.
+		   Allowing this could cause deadlocks, since both this device
+		   and its underlying chunk store would be allocating out of
+		   the same bioset (in chunkdata.c).  Also, it's
+		   unreasonable. */
+		log(KERN_ERR, "cannot use our own virtual device as a chunk "
+					"store");
+		ret=-EINVAL;
+		goto bad;
+	}
 	/* This is how the BLKGETSIZE64 ioctl is implemented, but
 	   bd_inode is labeled "will die" in fs.h */
 	capacity=dev->chunk_bdev->bd_inode->i_size / 512;

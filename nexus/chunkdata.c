@@ -260,16 +260,22 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 	struct nexus_dev *dev=cd->table->dev;
 	struct bio *bio;
 	struct nexus_io_chunk *chunk;
+	unsigned pages;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
-	/* XXX could alloc smaller bios if we're looping */
-	bio=bio_alloc_bioset(GFP_ATOMIC, chunk_pages(dev), bio_pool);
+	/* This assumes that every page has a zero offset and every page
+	   except the last one has a PAGE_SIZE length; this is true for
+	   chunkdata scatterlists but not necessarily for scatterlists received
+	   from the block layer.  We subtract off the number of *complete*
+	   pages which have already been stuffed into other bios. */
+	pages=chunk_pages(dev) - offset / (PAGE_SIZE / 512);
+	bio=bio_alloc_bioset(GFP_ATOMIC, pages, bio_pool);
 	if (bio == NULL)
 		return NULL;
 
 	bio->bi_bdev=dev->chunk_bdev;
 	bio->bi_sector=chunk_to_sector(dev, cd->cid) + dev->offset + offset;
-	debug(DBG_IO, "Creating bio with sector " SECTOR_FORMAT,
+	debug(DBG_IO, "Creating bio: %u pages, sector " SECTOR_FORMAT, pages,
 				bio->bi_sector);
 	bio->bi_rw=dir;
 	if (dir == READ) {
@@ -1068,9 +1074,6 @@ int __init chunkdata_start(void)
 	   of bvec_slabs[] in fs/bio.c, and on the chunk size.  Better too
 	   high than too low. */
 	/* XXX reduce a bit? */
-	/* XXX a global pool means that layering nexus on top of nexus could
-	   result in deadlocks.  we may want to prevent this in the
-	   registration interface. */
 	bio_pool=bioset_create_wrapper(4 * MIN_CONCURRENT_REQS,
 				4 * MIN_CONCURRENT_REQS, 4);
 	if (IS_ERR(bio_pool))
