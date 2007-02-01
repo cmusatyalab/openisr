@@ -857,8 +857,6 @@ again:
 		if (chunk != NULL) {
 			try_start_io(chunk->parent);
 		} else {
-			debug(DBG_CD, "Writing out chunk " SECTOR_FORMAT,
-						cd->cid);
 			transition(cd, ST_ENCRYPTING);
 			schedule_callback(CB_CRYPTO, &cd->lh_need_tfm);
 		}
@@ -866,6 +864,7 @@ again:
 		break;
 	case ST_DIRTY_ENCRYPTED:
 		/* Data is dirty and encryption has finished */
+		debug(DBG_CD, "Writing out chunk " SECTOR_FORMAT, cd->cid);
 		transition(cd, ST_STORE_DATA);
 		issue_chunk_io(cd);
 		break;

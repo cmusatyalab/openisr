@@ -12,6 +12,7 @@ static int chr_release(struct inode *ino, struct file *filp)
 	
 	if (dev == NULL)
 		return 0;
+	debug(DBG_CHARDEV, "Running chr_release");
 	/* We have no way to fail, so we can't lock interruptibly */
 	mutex_lock(&dev->lock);
 	/* Redundant if unregister ioctl has already been called */
@@ -50,7 +51,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	for (i=0; i<count; i++) {
 		memset(&msg, 0, sizeof(msg));
 		
-		debug(DBG_CHARDEV, "Trying to get chunk");
+		debug(DBG_CHARDEV, "chr_read trying to get chunk");
 		while ((cd=next_usermsg(dev, &msg.type)) == NULL) {
 			if (i > 0)
 				goto out;

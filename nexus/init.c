@@ -30,6 +30,8 @@ module_param(debug_mask, uint, S_IRUGO|S_IWUSR);
    zero.  (The kref infrastructure does not handle this case.) */
 void nexus_dev_get(struct nexus_dev *dev)
 {
+	debug(DBG_REFCOUNT, "dev_get, refs %d",
+			atomic_read(&dev->class_dev->kobj.kref.refcount));
 	if (class_device_get(dev->class_dev) == NULL)
 		BUG();
 }
@@ -106,8 +108,6 @@ static int class_device_populate(struct class_device *class_dev)
 	int err;
 	
 	for (i=0; class_dev_attrs[i].attr.name != NULL; i++) {
-		debug(DBG_CTR|DBG_SYSFS, "Populating %d: %s", i,
-					class_dev_attrs[i].attr.name);
 		err=class_device_create_file(class_dev, &class_dev_attrs[i]);
 		if (err)
 			return err;
@@ -143,6 +143,7 @@ static int nexus_open(struct inode *ino, struct file *filp)
 	if (!found)
 		return -ENODEV;
 	
+	debug(DBG_CTR, "nexus_open");
 	if (mutex_lock_interruptible(&dev->lock)) {
 		nexus_dev_put(dev, 0);
 		return -ERESTARTSYS;
@@ -156,6 +157,7 @@ static int nexus_release(struct inode *ino, struct file *filp)
 {
 	struct nexus_dev *dev=ino->i_bdev->bd_disk->private_data;
 	
+	debug(DBG_CTR, "nexus_release");
 	/* Our return value is ignored, so we must use the uninterruptible
 	   variant */
 	mutex_lock(&dev->lock);
@@ -192,6 +194,7 @@ static void nexus_add_disk(void *data)
 {
 	struct nexus_dev *dev=data;
 	
+	debug(DBG_CTR, "Adding gendisk");
 	add_disk(dev->gendisk);
 	nexus_dev_put(dev, 0);
 }
@@ -316,18 +319,21 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 		goto early_fail_module;
 	}
 	
+	debug(DBG_CTR, "Allocating devnum");
 	devnum=alloc_devnum();
 	if (devnum < 0) {
 		ret=-EMFILE;
 		goto early_fail_devnum;
 	}
 	
+	debug(DBG_CTR, "Allocating device struct");
 	dev=kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (dev == NULL) {
 		ret=-ENOMEM;
 		goto early_fail_devalloc;
 	}
 	
+	debug(DBG_CTR, "Allocating class device");
 	dev->class_dev=create_class_dev(class, nexus_dev_dtr,
 				DEVICE_NAME "%c", 'a' + devnum);
 	if (IS_ERR(dev->class_dev)) {
@@ -493,13 +499,14 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	/* Everything has been done except actually adding the disk.  It's
 	   now safe to populate the sysfs directory (i.e., the attributes
 	   will be valid) */
+	debug(DBG_CTR, "Populating sysfs attributes");
 	ret=class_device_populate(dev->class_dev);
 	if (ret) {
 		log(KERN_ERR, "couldn't add sysfs attributes");
 		goto bad;
 	}
 	
-	debug(DBG_CTR, "Adding disk");
+	debug(DBG_CTR, "Scheduling add_disk");
 	/* add_disk() initiates I/O to read the partition tables, so userspace
 	   needs to be able to process key requests while it is running.
 	   If we called add_disk() directly here, we would deadlock. */
@@ -541,10 +548,12 @@ static int __init nexus_init(void)
 	spin_lock_init(&state.lock);
 	INIT_LIST_HEAD(&state.devs);
 	
+	debug(DBG_INIT, "Initializing request handler");
 	ret=request_start();
 	if (ret)
 		goto bad_request;
 	
+	debug(DBG_INIT, "Creating class");
 	class=create_class(DEVICE_NAME, nexus_dev_dtr);
 	if (IS_ERR(class)) {
 		ret=PTR_ERR(class);
@@ -552,18 +561,21 @@ static int __init nexus_init(void)
 		goto bad_class;
 	}
 	
+	debug(DBG_INIT, "Starting chunkdata");
 	ret=chunkdata_start();
 	if (ret) {
 		log(KERN_ERR, "couldn't set up chunkdata");
 		goto bad_chunkdata;
 	}
 	
+	debug(DBG_INIT, "Starting threads");
 	ret=thread_start();
 	if (ret) {
 		log(KERN_ERR, "couldn't start kernel threads");
 		goto bad_thread;
 	}
 	
+	debug(DBG_INIT, "Registering block driver");
 	ret=register_blkdev(0, MODULE_NAME);
 	if (ret < 0) {
 		log(KERN_ERR, "block driver registration failed");
@@ -579,12 +591,14 @@ static int __init nexus_init(void)
 	   important part, so we start it first; sysfs registration failures
 	   can be ignored without causing too many problems. */
 	
+	debug(DBG_INIT, "Starting chardev");
 	ret=chardev_start();
 	if (ret) {
 		log(KERN_ERR, "couldn't register chardev");
 		goto bad_chrdev;
 	}
 	
+	debug(DBG_INIT, "Populating sysfs class");
 	ret=class_populate();
 	if (ret)
 		log(KERN_ERR, "couldn't add class attributes");

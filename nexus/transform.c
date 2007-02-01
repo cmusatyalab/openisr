@@ -198,6 +198,7 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 		   doing padding if we're doing compression, and compression
 		   failed to reduce the size of the chunk after padding,
 		   so we're better off just not compressing. */
+		debug(DBG_TFM, "Refusing to compress: borderline case");
 		return -EFBIG;
 	}
 	/* We write the whole chunk out to disk, so make sure we're not
@@ -256,6 +257,7 @@ static int compress_chunk_lzf(struct nexus_dev *dev,
 	} else if (size + crypto_pad_len(dev, size) >= dev->chunksize) {
 		/* Padding would make the compressed data at least as large
 		   as the uncompressed data */
+		debug(DBG_TFM, "Refusing to compress: borderline case");
 		return -EFBIG;
 	}
 	/* We write the whole chunk out to disk, so make sure we're not
