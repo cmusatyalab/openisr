@@ -746,14 +746,17 @@ void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
 {
 	struct chunkdata *cd;
 	unsigned hash_len=suite_info(dev->suite)->hash_len;
+	static int warn_count;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	cd=chunkdata_get(dev->chunkdata, cid);
 	if (cd == NULL || !(cd->flags & CD_USER) ||
 				cd->state != ST_LOAD_META) {
 		/* Userspace is messing with us. */
-		debug(DBG_CHARDEV, "Irrelevant metadata passed to "
-					"usermsg_set_key()");
+		if (++warn_count < 10)
+			log(KERN_WARNING, "Pid %d responded to nonexistent "
+					"query for chunk " SECTOR_FORMAT " "
+					"metadata", current->pid, cid);
 		return;
 	}
 	cd->size=length;
@@ -768,14 +771,18 @@ void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
 void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid)
 {
 	struct chunkdata *cd;
+	static int warn_count;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	cd=chunkdata_get(dev->chunkdata, cid);
 	if (cd == NULL || !(cd->flags & CD_USER) ||
 				cd->state != ST_LOAD_META) {
 		/* Userspace is messing with us. */
-		debug(DBG_CHARDEV, "Irrelevant chunk ID passed to "
-					"usermsg_meta_err()");
+		if (++warn_count < 10)
+			log(KERN_WARNING, "Pid %d returned error to "
+					"nonexistent query for chunk "
+					SECTOR_FORMAT "metadata", current->pid,
+					cid);
 		return;
 	}
 	transition_error(cd, -EIO);
