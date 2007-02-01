@@ -77,7 +77,7 @@ static int __end_that_request(struct request *req, int uptodate, int nr_sectors)
 	
 	BUG_ON(!list_empty(&req->queuelist));
 	ret=end_that_request_first(req, uptodate, nr_sectors);
-	ndebug(DBG_REQUEST, "Ending %d sectors, done=%d", nr_sectors, !ret);
+	debug(DBG_REQUEST, "Ending %d sectors, done=%d", nr_sectors, !ret);
 	if (!ret) {
 		end_that_request_last(req, uptodate);
 		/* XXX Arrange for our request function to be called again.
@@ -116,7 +116,7 @@ static void nexus_complete_chunk(struct nexus_io_chunk *chunk)
 	BUG_ON(!mutex_is_locked(&io->dev->lock));
 	
 	chunk->flags |= CHUNK_COMPLETED;
-	ndebug(DBG_REQUEST, "Completing chunk " SECTOR_FORMAT, chunk->cid);
+	debug(DBG_REQUEST, "Completing chunk " SECTOR_FORMAT, chunk->cid);
 	
 	for (i=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
@@ -124,7 +124,7 @@ static void nexus_complete_chunk(struct nexus_io_chunk *chunk)
 			continue;
 		if (!(chunk->flags & CHUNK_COMPLETED))
 			return;
-		ndebug(DBG_REQUEST, "end_that_request for chunk " SECTOR_FORMAT,
+		debug(DBG_REQUEST, "end_that_request for chunk " SECTOR_FORMAT,
 					chunk->cid);
 		end_that_request(io->orig_req,
 					chunk->error ? chunk->error : 1,
@@ -150,13 +150,13 @@ void nexus_process_chunk(struct nexus_io_chunk *chunk)
 	
 	/* The underlying chunk I/O might have errored out */
 	if (chunk->error) {
-		ndebug(DBG_REQUEST, "process_chunk I/O error: chunk "
+		debug(DBG_REQUEST, "process_chunk I/O error: chunk "
 					SECTOR_FORMAT, chunk->cid);
 		nexus_complete_chunk(chunk);
 		return;
 	}
 	
-	ndebug(DBG_REQUEST, "process_chunk called: chunk " SECTOR_FORMAT
+	debug(DBG_REQUEST, "process_chunk called: chunk " SECTOR_FORMAT
 				", offset %u, length %u", chunk->cid,
 				chunk->offset, chunk->len);
 	
@@ -203,7 +203,7 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 	if (rq_data_dir(req))
 		io->flags |= IO_WRITE;
 	nsegs=blk_rq_map_sg(dev->queue, req, io->orig_sg);
-	ndebug(DBG_REQUEST, "%d phys segs, %d coalesced segs",
+	debug(DBG_REQUEST, "%d phys segs, %d coalesced segs",
 				req->nr_phys_segments, nsegs);
 	
 	bytes=0;
@@ -227,7 +227,7 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 		bytes += chunk->len;
 	}
 	
-	ndebug(DBG_REQUEST, "setup_io called: %lu sectors over " SECTOR_FORMAT
+	debug(DBG_REQUEST, "setup_io called: %lu sectors over " SECTOR_FORMAT
 				" chunks at chunk " SECTOR_FORMAT,
 				req->nr_sectors,
 				io->last_cid - io->first_cid + 1,
@@ -249,7 +249,7 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 void oom_timer_fn(unsigned long data)
 {
 	struct nexus_dev *dev=(struct nexus_dev *)data;
-	ndebug(DBG_REQUEST, "OOM delay expired");
+	debug(DBG_REQUEST, "OOM delay expired");
 	schedule_request_callback(&dev->lh_run_requests);
 }
 
@@ -298,7 +298,7 @@ void nexus_run_requests(struct list_head *entry)
 			if (!test_and_set_bit(__DEV_REQ_PENDING, &dev->flags)) {
 				dev->requests_oom_timer.expires=jiffies +
 							LOWMEM_WAIT_TIME;
-				ndebug(DBG_REQUEST, "OOM delay");
+				debug(DBG_REQUEST, "OOM delay");
 				add_timer(&dev->requests_oom_timer);
 			}
 			goto out;

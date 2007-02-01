@@ -201,7 +201,7 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	}
 	
 	/* Can't get a chunk */
-	ndebug(DBG_CD, "Can't get cd for " SECTOR_FORMAT, cid);
+	debug(DBG_CD, "Can't get cd for " SECTOR_FORMAT, cid);
 	return NULL;
 }
 
@@ -269,7 +269,7 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 
 	bio->bi_bdev=dev->chunk_bdev;
 	bio->bi_sector=chunk_to_sector(dev, cd->cid) + dev->offset + offset;
-	ndebug(DBG_IO, "Creating bio with sector "SECTOR_FORMAT,
+	debug(DBG_IO, "Creating bio with sector " SECTOR_FORMAT,
 				bio->bi_sector);
 	bio->bi_rw=dir;
 	if (dir == READ) {
@@ -313,7 +313,6 @@ static void issue_chunk_io(struct chunkdata *cd)
 	cd->error=0;
 	atomic_set(&cd->remaining, dev->chunksize);
 	
-	ndebug(DBG_IO, "Submitting clone bio(s)");
 	/* We can't assume that we can fit the entire chunk io in one
 	   bio: it depends on the queue restrictions of the underlying
 	   device */
@@ -331,13 +330,14 @@ static void issue_chunk_io(struct chunkdata *cd)
 			offset += cd->sg[i].length;
 			i++;
 		} else {
-			ndebug(DBG_IO, "Submitting multiple bios: %u/%u",
-						offset, dev->chunksize);
+			debug(DBG_IO, "Submitting bio: %u/%u", offset,
+						dev->chunksize);
 			schedule_io(bio);
 			bio=NULL;
 		}
 	}
 	BUG_ON(bio == NULL);
+	debug(DBG_IO, "Submitting bio: %u/%u", offset, dev->chunksize);
 	schedule_io(bio);
 	return;
 	
@@ -362,7 +362,7 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 	unsigned hash_len=suite_info(dev->suite)->hash_len;
 	
 	if (cd->state == ST_DECRYPTING) {
-		ndebug(DBG_TFM, "Decrypting %u bytes for chunk " SECTOR_FORMAT,
+		debug(DBG_TFM, "Decrypting %u bytes for chunk " SECTOR_FORMAT,
 					cd->size, cd->cid);
 		/* Make sure encrypted data matches tag */
 		ret=crypto_hash(dev, ts, cd->sg, cd->size, hash);
@@ -440,7 +440,7 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 			compressed_size=ret;
 			cd->compression=dev->default_compression;
 		}
-		ndebug(DBG_TFM, "Encrypting %u bytes for chunk "SECTOR_FORMAT,
+		debug(DBG_TFM, "Encrypting %u bytes for chunk "SECTOR_FORMAT,
 					compressed_size, cd->cid);
 		ret=crypto_hash(dev, ts, cd->sg, compressed_size, cd->key);
 		if (ret) {
@@ -802,7 +802,7 @@ again:
 		if (chunk != NULL) {
 			/* No key or data */
 			if (chunk->flags & CHUNK_READ) {
-				ndebug(DBG_CD, "Requesting key for chunk "
+				debug(DBG_CD, "Requesting key for chunk "
 							SECTOR_FORMAT, cd->cid);
 				transition(cd, ST_LOAD_META);
 				if (queue_for_user(cd)) {
@@ -826,7 +826,7 @@ again:
 		BUG_ON(!(chunk->flags & CHUNK_READ));
 		
 		/* The first-in-queue needs the chunk read in. */
-		ndebug(DBG_CD, "Reading in chunk " SECTOR_FORMAT, cd->cid);
+		debug(DBG_CD, "Reading in chunk " SECTOR_FORMAT, cd->cid);
 		transition(cd, ST_LOAD_DATA);
 		issue_chunk_io(cd);
 		break;
@@ -857,7 +857,7 @@ again:
 		if (chunk != NULL) {
 			try_start_io(chunk->parent);
 		} else {
-			ndebug(DBG_CD, "Writing out chunk " SECTOR_FORMAT,
+			debug(DBG_CD, "Writing out chunk " SECTOR_FORMAT,
 						cd->cid);
 			transition(cd, ST_ENCRYPTING);
 			schedule_callback(CB_CRYPTO, &cd->lh_need_tfm);

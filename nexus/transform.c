@@ -99,7 +99,7 @@ static unsigned crypto_pad(struct nexus_dev *dev, struct scatterlist *sg,
 	BUG_ON(datalen + padlen > dev->chunksize);
 	/* We use KM_USER0 */
 	BUG_ON(in_interrupt());
-	ndebug(DBG_TFM, "Pad %u", padlen);
+	debug(DBG_TFM, "Pad %u", padlen);
 	
 	while (offset >= sg->length) {
 		offset -= sg->length;
@@ -143,7 +143,7 @@ static int crypto_unpad(struct nexus_dev *dev, struct scatterlist *sg, int len)
 	padlen=page[offset--];
 	if (padlen == 0 || padlen > cipher_block || padlen > len)
 		goto out;
-	ndebug(DBG_TFM, "Unpad %u", padlen);
+	debug(DBG_TFM, "Unpad %u", padlen);
 	for (i=1; i<padlen; i++) {
 		if (offset < sg->offset) {
 			kunmap_atomic(page, KM_USER0);
@@ -408,7 +408,7 @@ void suite_remove(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 static int bounce_buffer_get(struct nexus_tfm_state *ts)
 {
 	if (ts->buf_refcount == 0) {
-		ndebug(DBG_TFM, "Allocating compression bounce buffer");
+		debug(DBG_TFM, "Allocating compression bounce buffer");
 		/* XXX this is not ideal, but there's no good way to support
 		   scatterlists in LZF without hacking the code. */
 		/* XXX We always allocate a buffer of size MAX_CHUNKSIZE,
@@ -435,7 +435,7 @@ static int bounce_buffer_get(struct nexus_tfm_state *ts)
 static void bounce_buffer_put(struct nexus_tfm_state *ts)
 {
 	if (--ts->buf_refcount == 0) {
-		ndebug(DBG_TFM, "Freeing compression bounce buffer");
+		debug(DBG_TFM, "Freeing compression bounce buffer");
 		BUG_ON(ts->buf_compressed == NULL);
 		vfree(ts->buf_compressed);
 		ts->buf_compressed=NULL;
