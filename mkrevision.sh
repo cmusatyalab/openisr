@@ -18,16 +18,29 @@ BRANCH=`svn info . | egrep "^URL: " | sed -e "s:^.*/svn/openisr/::" \
 case $FILETYPE in
 object)
 	FILENAME=revision.c
-	echo "const char *svn_revision = \"$VER\";" > $FILENAME-new
-	echo "const char *svn_branch = \"$BRANCH\";" >> $FILENAME-new
+	cat > $FILENAME-new <<- EOF
+		const char *svn_revision = "$VER";
+		const char *svn_branch = "$BRANCH";
+	EOF
 	;;
 header)
 	FILENAME=revision.h
-	echo "#define SVN_REVISION \"$VER\"" > $FILENAME-new
-	echo "#define SVN_BRANCH \"$BRANCH\"" >> $FILENAME-new
+	cat > $FILENAME-new <<- EOF
+		#define SVN_REVISION "$VER"
+		#define SVN_BRANCH "$BRANCH"
+	EOF
+	;;
+perl)
+	FILENAME=IsrRevision.pm
+	cat > $FILENAME-new <<- EOF
+		package Isr;
+		\$SVN_REVISION = "$VER";
+		\$SVN_BRANCH = "$BRANCH";
+		1;
+	EOF
 	;;
 *)
-	echo "Usage: $0 {object|header} <subdir>" >&2
+	echo "Usage: $0 {object|header|perl} <subdir>" >&2
 	exit 1
 	;;
 esac
