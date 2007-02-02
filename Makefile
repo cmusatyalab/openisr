@@ -7,10 +7,9 @@ export DESTDIR BINDIR LIBDIR SHAREDIR SYSCONFDIR
 
 DIRS = client vulpes libvdisk nexus sha1-i586
 
-ifneq ($(strip $(DESTDIR)),)
 # Make sure DESTDIR is an absolute path
-$(shell install -d $(DESTDIR))
-DESTDIR := $(shell cd $(DESTDIR) ; pwd)
+ifneq ($(filter-out /%,$(strip $(DESTDIR))),)
+DESTDIR := $(CURDIR)/$(DESTDIR)
 endif
 
 TARGETS = all install clean
