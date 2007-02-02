@@ -9,9 +9,9 @@ package Isr;
 
 # Locations of relevant directories
 $ISRSERVERBIN = "/usr/local/isr/bin";
-$LIBDIR = "/usr/lib/openisr";
-$SHAREDIR = "/usr/share/openisr";
-$SYSCONFDIR = "/etc/openisr";
+$LIBDIR = "!!LIBDIR!!";
+$SHAREDIR = "!!SHAREDIR!!";
+$SYSCONFDIR = "!!SYSCONFDIR!!";
 
 # Client session log filename
 $LOGFILE = "session.log";

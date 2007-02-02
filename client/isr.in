@@ -35,7 +35,7 @@ use POSIX ":signal_h";
 use Fcntl qw(:DEFAULT :seek);
 use Errno qw(:POSIX);
 require "syscall.ph";
-use lib "/usr/share/openisr";
+use lib "!!SHAREDIR!!";
 use Isr;
 use IsrConfigTie;
 use strict;
