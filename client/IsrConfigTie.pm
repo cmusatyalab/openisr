@@ -1,7 +1,9 @@
+#######################################################################
+# IsrConfigTie.pm - Class that can be tied to a hash, such that lookups
+#                   for nonexistent values cause errexit() to be called
 #
-# IsrConfigTie - Class that can be tied to a hash, such that lookups for
-#                nonexistent values cause errexit() to be called
-#
+# $Id$
+#######################################################################
 
 package IsrConfigTie;
 use strict;

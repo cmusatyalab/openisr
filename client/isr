@@ -109,16 +109,13 @@ my $progname;
 my $unused;
 my $prot;
 my $prot_loaded = 0;
-my $revision = '$Revision$'; # Set by CVS at commit time
 
 # Command line arguments that are private to this module
 my $command;        
 my $disconnected;    # Run disconnected
-my $help;            # Print help info
 my $longflag;        # Print default number of versions for ls long format
 my $longvers;        # Print specific number of versions for ls long format
 my $nameserver;      # Name server domain name
-my $revisionflag;    # Print revision number?
 my $version;         # Rollback version
 my $checkstate = 0;  # Optionally check content consistency in some cmds
 my $quiet;           # No output except for errors
@@ -267,7 +264,7 @@ message("ENTER", "@ARGV");
 # Handle the case where the user calls the program with no arguments
 #
 if (@ARGV == 0) {
-    print("$progname: Try '$progname --help' for more information.\n");
+    print("$progname: Try '$progname help' for more information.\n");
     message("INFO", "Help");
     exit 0;
 }
@@ -282,13 +279,11 @@ $result = GetOptions(
 		     "c|checkstate+"  => \$checkstate,
 		     "x|nocheckstate" => \$nocheckstate,
 		     "d|disconnected" => \$disconnected,
-		     "h|help+"        => \$help,
 		     "l|long"         => \$longflag,
 		     "L|longvers=i"   => \$longvers,
 		     "n|nameserver=s" => \$nameserver,
 		     "p|parcel=s"     => \$parcel,  
 		     "q|quiet"        => \$quiet,
-		     "r|revision"     => \$revisionflag,
 		     "u|userid=s"     => \$userid,
 		     "V|verbose+"     => \$verbose,
 		     "v|version=i"    => \$version,
@@ -298,24 +293,8 @@ $result = GetOptions(
 if ($quiet) {
     $verbose = 0;
 }
-if ($result == 0 or $help) {
-    usage("");
-}
-
-#
-# Print revision numbers of the ISR client and its modules, then exit
-#
-if ($revisionflag) {
-    ($unused, $revision) = split(" ", $revision); 
-    print("$progname:$revision "); 
-    foreach $prot ("HTTPSSH") {
-	do "$Isr::SHAREDIR/$prot.pm"
-	    or errexit("Unable to load module $prot.pm");
-	print "$prot.pm:", isr_revision(), " ";
-    }
-    print "\n";
-    message("INFO", "Printed version info");
-    exit 0;
+if ($result == 0) {
+    usage("Invalid option(s) specified");
 }
 
 #
@@ -328,13 +307,6 @@ if (@ARGV > 1) {
     usage("Too many commands.");
 }
 $command = $ARGV[0];
-
-#
-# Handle the special case where someone types "isr help"
-#
-if ($command eq "help") {
-    usage("");
-}
 
 #
 # Set the the directory where ISR parcels will be stored and if
@@ -476,6 +448,14 @@ elsif ($command eq "clean") {
     need_parcel();
     acquire_lock("$isrdir/$parcel.lock");
     cleanclient($userid, $parcel, $isrdir, $allflag);
+}
+elsif ($command eq "help") {
+    usage("");
+}
+elsif ($command eq "version") {
+    
+    message("INFO", "Printed version info");
+    exit 0;
 }
 elsif ($command eq "run") {
     usage("\"run\" is no longer supported; use \"resume\" instead");
@@ -2232,7 +2212,8 @@ sub mypause($) {
 }
 
 #
-# usage - Print help message and terminate
+# usage - Print help message and terminate.  usage("") is special: it prints
+#         the long-form help.
 #
 sub usage ($) {
     my $msg = shift;
@@ -2249,8 +2230,9 @@ sub usage ($) {
 
     print RED, "Usage: $progname command [options...]\n", RESET;
     print BLUE, "Commands: auth, checkin (ci), checkout (co), checkp, clean, deauth, discard,\n", RESET;
-    print BLUE, "          disconnect, hoard, ls, passwd, reset, resume, stat, sync\n", RESET;
-    if ($help) {
+    print BLUE, "          disconnect, help, hoard, ls, passwd, reset, resume, stat, sync,\n", RESET;
+    print BLUE, "          version\n", RESET;
+    if (!$msg) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR servers (once per X session only).\n";
 	print "  checkin    Sync parcel to server and release lock (-b optional).\n";
@@ -2260,6 +2242,7 @@ sub usage ($) {
 	print "  deauth     Remove authentication credentials from your client.\n";
 	print "  discard    Discard all local changes to parcel since last checkout or sync.\n";
 	print "  disconnect Prepare the client to run a parcel disconnected (-x optional).\n";
+	print "  help       Print help message.\n";
 	print "  hoard      Fetch entire virtual disk so you can run disconnected.\n";
 	print "  ls         List info about your parcels (-p, -l and -L optional).\n";
 	print "  passwd     Change your ISR password on the default nameserver.\n";
@@ -2267,19 +2250,18 @@ sub usage ($) {
  	print "  resume     Checkout (if necessary) and run a parcel (-v and -d optional).\n";
 	print "  stat       Display information about local ISR state (-c optional).\n";
 	print "  sync       Make new parcel version on server w/o releasing lock (-b optional).\n";
+	print "  version    Print ISR version.\n";
     }
     print "Options:\n";
     print "  -a,--allstate      Remove all hoarded state from client [clean].\n";
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [ci, sync].\n";
     print "  -c,--checkstate    Do additional consistency check [checkp, stat].\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [resume].\n";
-    print "  -h,--help          Print help message.\n";
     print "  -l,--long          Long listing with default number of versions [ls].\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls].\n";
     print "  -n,--nameserver    Name server domain name (optional).\n";    
     print "  -p,--parcel        Parcel name (required by most commands).\n";    
     print "  -q,--quiet         Run silently (except if things go wrong).\n";    
-    print "  -r,--revision      Print revision number and exit.\n";    
     print "  -u,--user          Your ISR user name (defaults to your login name).\n";    
     print "  -v,--version       Rollback to or check version [co, checkp].\n";
     print "  -V,--verbose       Increment verbosity level.\n";

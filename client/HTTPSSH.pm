@@ -42,16 +42,6 @@ my $PROTOCOL = "HTTPSSH";
 #############################
 
 #
-# isr_revision - Return the version number of this module
-#
-sub isr_revision () {
-    my $unused;
-    my $revision = '$Revision$'; # CVS updates this on each commit
-    ($unused, $revision) = split(" ", $revision);
-    return $revision;
-}
-
-#
 # isr_checkcfg - Check key/value pairs in parcel.cfg hash
 #
 sub isr_checkcfg ($) {
