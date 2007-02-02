@@ -33,3 +33,9 @@ install: all
 	install -d $(DESTDIR)/$(BINDIR) $(DESTDIR)/$(SHAREDIR)
 	install -m 755 isr $(DESTDIR)/$(BINDIR)
 	install -m 644 $(PM) $(DESTDIR)/$(SHAREDIR)
+
+ifneq ($(MAKELEVEL), 0)
+.PHONY: install_revision
+install_revision:
+	install -m 644 IsrRevision.pm $(DESTDIR)/client/
+endif

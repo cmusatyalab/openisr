@@ -22,4 +22,9 @@ clean:
 .PHONY: install
 install:
 
+ifneq ($(MAKELEVEL), 0)
+.PHONY: install_revision
+install_revision:
+endif
+
 endif

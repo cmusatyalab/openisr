@@ -44,4 +44,10 @@ revision.dummy:
 	@../mkrevision.sh object nexus
 -include revision.dummy
 
+ifneq ($(MAKELEVEL), 0)
+.PHONY: install_revision
+install_revision:
+	install -m 644 revision.c $(DESTDIR)/nexus/
+endif
+
 endif

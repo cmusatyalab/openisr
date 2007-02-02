@@ -64,11 +64,8 @@ install: vulpes
 vulpes: $(OBJS)
 	$(CC) -o $@ $(LFLAGS) $^
 
-.PHONY: dist
-dist: REV=$(shell svnversion .)
-dist:
-	svn export -q . vulpes-$(REV)
-	cp revision.c vulpes-$(REV)
-	tar czf vulpes-$(REV).tgz --force-local vulpes-$(REV)
-	rm -rf vulpes-$(REV)
-	@echo "Created vulpes-$(REV).tgz"
+ifneq ($(MAKELEVEL), 0)
+.PHONY: install_revision
+install_revision:
+	install -m 644 revision.c $(DESTDIR)/vulpes/
+endif
