@@ -13,6 +13,7 @@ all: $(GEN)
 	@echo "Generating $@ from $^"
 	@sed -e "s=!!LIBDIR!!=$(LIBDIR)=g" -e "s=!!SHAREDIR!!=$(SHAREDIR)=g" \
 				-e "s=!!SYSCONFDIR!!=$(SYSCONFDIR)=g" $^ > $@
+	@[ $@ = "isr" ] && chmod +x $@ || true
 
 .PHONY: clean
 clean:
