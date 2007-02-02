@@ -5,7 +5,7 @@ SHAREDIR ?= /usr/share/openisr
 SYSCONFDIR ?= /etc/openisr
 export DESTDIR BINDIR LIBDIR SHAREDIR SYSCONFDIR
 
-DIRS=client vulpes libvdisk nexus sha1-i586
+DIRS = client vulpes libvdisk nexus sha1-i586
 
 ifneq ($(strip $(DESTDIR)),)
 # Make sure DESTDIR is an absolute path
@@ -13,10 +13,12 @@ $(shell install -d $(DESTDIR))
 DESTDIR := $(shell cd $(DESTDIR) ; pwd)
 endif
 
-.PHONY: default
-default: all
+TARGETS = all install clean
+DIRTARGETS := $(foreach tgt,$(TARGETS),$(DIRS:=__$(tgt)))
 
-%:
-	for dir in $(DIRS) ; do \
-		$(MAKE) -C $$dir $@; \
-	done
+.PHONY: $(TARGETS)
+$(TARGETS): $(DIRS:=__$$@)
+
+.PHONY: $(DIRTARGETS)
+$(DIRTARGETS):
+	$(MAKE) -C $(subst __, ,$@)
