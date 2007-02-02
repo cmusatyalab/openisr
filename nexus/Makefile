@@ -10,7 +10,7 @@ KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 CFLAGS = -O2 -g -W -Wall -Wstrict-prototypes
 
-LIBDIR = $(HOME)/bin
+LIBDIR ?= $(HOME)/bin
 
 .PHONY: all
 all: module test readstats

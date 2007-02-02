@@ -1,7 +1,7 @@
-BINDIR=$(HOME)/bin
-LIBDIR=$(HOME)/bin
-SHAREDIR=$(HOME)/bin
-SYSCONFDIR=$(HOME)/bin
+BINDIR ?= $(HOME)/bin
+LIBDIR ?= $(HOME)/bin
+SHAREDIR ?= $(HOME)/bin
+SYSCONFDIR ?= $(HOME)/bin
 
 GEN=isr Isr.pm
 PM=Isr.pm HTTPSSH.pm IsrConfigTie.pm IsrRevision.pm
@@ -9,7 +9,8 @@ PM=Isr.pm HTTPSSH.pm IsrConfigTie.pm IsrRevision.pm
 .PHONY: all
 all: $(GEN)
 
-%: %.in
+.PHONY: $(GEN)
+$(GEN): %: %.in
 	@echo "Generating $@ from $^"
 	@sed -e "s=!!LIBDIR!!=$(LIBDIR)=g" -e "s=!!SHAREDIR!!=$(SHAREDIR)=g" \
 				-e "s=!!SYSCONFDIR!!=$(SYSCONFDIR)=g" $^ > $@

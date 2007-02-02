@@ -2,7 +2,7 @@ CC=gcc
 CFLAGS= -MMD -g -O2 -Wall -Wstrict-prototypes -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -I../nexus
 LFLAGS= -lz -lssl -lcurl
 
-LIBDIR=$(HOME)/bin
+LIBDIR ?= $(HOME)/bin
 
 SRCS=revision.c main.c driver.c transport.c cache.c crypto.c log.c util.c lookaside.c
 
