@@ -29,6 +29,6 @@ revision.dummy:
 -include revision.dummy
 
 install: all
-	install -d $(BINDIR) $(SHAREDIR)
-	install -m 755 isr $(BINDIR)
-	install -m 644 $(PM) $(SHAREDIR)
+	install -d $(DESTDIR)/$(BINDIR) $(DESTDIR)/$(SHAREDIR)
+	install -m 755 isr $(DESTDIR)/$(BINDIR)
+	install -m 644 $(PM) $(DESTDIR)/$(SHAREDIR)

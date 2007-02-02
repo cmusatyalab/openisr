@@ -10,6 +10,8 @@ KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 CFLAGS = -O2 -g -W -Wall -Wstrict-prototypes
 
+LIBDIR = $(HOME)/bin
+
 .PHONY: all
 all: module test readstats
 
@@ -27,6 +29,11 @@ readstats: readstats.c
 clean:
 	rm -f test readstats
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
+
+.PHONY: install
+install: readstats
+	install -d $(DESTDIR)/$(LIBDIR)
+	install -m 755 readstats $(DESTDIR)/$(LIBDIR)
 
 # This is a hack.  The include directive forces make to always execute
 # the rule, and to recalculate its target selection afterward.  Note
