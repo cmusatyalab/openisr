@@ -1,0 +1,23 @@
+   ISR - Internet Suspend/Resume
+   http://isr.cmu.edu
+
+
+This directory contains programs that run on ISR client hosts:
+
+The ISR client program
+
+isr			- The main ISR client program
+Isr.pm			- Generic ISR config file
+HTTPSSH.pm		- HTTP/SSH version of the ISR storage API
+
+Other files:
+
+isr.1			- ISR man page
+isr_setup		- The ISR client and server setup program
+vulpes			- Vulpes binary
+vulpes_stop		- /etc/rc.d/init.d Vulpes shutdown script
+
+System requirements:
+
+- Linux 2.6.8 or higher
+- cUrl 7.12 or higher
