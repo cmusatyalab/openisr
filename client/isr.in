@@ -38,6 +38,7 @@ require "syscall.ph";
 use lib "!!SHAREDIR!!";
 use Isr;
 use IsrConfigTie;
+use IsrRevision;
 use strict;
 use warnings;
 
@@ -100,6 +101,9 @@ sub release_lock ();
 #########################
 # Section 1. Main routine
 #########################
+
+# Version string
+my $isrversion = "OpenISR 0.8";
 
 # Local variables
 my $isrdir;
@@ -453,7 +457,8 @@ elsif ($command eq "help") {
     usage("");
 }
 elsif ($command eq "version") {
-    
+    print("$isrversion\n");
+    print("Client revision $Isr::SVN_REVISION ($Isr::SVN_BRANCH)\n");
     message("INFO", "Printed version info");
     exit 0;
 }
