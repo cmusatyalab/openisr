@@ -8,6 +8,9 @@ else
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 
+.PHONY: all
+all: module
+
 .PHONY: module
 module:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
@@ -15,5 +18,8 @@ module:
 .PHONY: clean
 clean:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
+
+.PHONY: install
+install:
 
 endif
