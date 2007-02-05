@@ -1,12 +1,11 @@
-DESTDIR ?= dest
 BINDIR ?= /usr/bin
 LIBDIR ?= /usr/lib/openisr
 SHAREDIR ?= /usr/share/openisr
 SYSCONFDIR ?= /etc/openisr
 export DESTDIR BINDIR LIBDIR SHAREDIR SYSCONFDIR
 
-DIRS = client vulpes libvdisk nexus sha1-i586
-DISTDIRS = $(DIRS) conf debian
+DIRS = client vulpes libvdisk nexus sha1-i586 conf
+DISTDIRS = $(DIRS) debian
 
 # Make sure DESTDIR is an absolute path
 ifneq ($(filter-out /%,$(strip $(DESTDIR))),)
