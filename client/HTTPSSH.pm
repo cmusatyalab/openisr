@@ -562,7 +562,6 @@ sub isr_statparcel ($$$$) {
     my $checkcache = shift;  # 1->check all 2->local cache 3->hoard cache
 
     my $memsize;
-    my $checkflag;
 
     my @files = ();
 
@@ -585,15 +584,18 @@ sub isr_statparcel ($$$$) {
     #
     # Display local cache stats
     #
-    if ($checkcache == 1 or $checkcache == 2) {
-	# Verify that each block in cache has a valid keyring tag
-	$checkflag = "--validate";
-    } else {
-	$checkflag = "";
-    }
     if (-e "$cachedir") {
-	mysystem("$Isr::LIBDIR/vulpes examine --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir --log /dev/null ':' 0x0 $syscfg{console_logmask} $checkflag") == 0
+	mysystem("$Isr::LIBDIR/vulpes examine --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
 	    or errexit("Could not examine cache");
+    }
+    
+    #
+    # Verify that each block in local cache has a valid keyring tag, if
+    # requested
+    #
+    if ($checkcache == 1 or $checkcache == 2) {
+	mysystem("$Isr::LIBDIR/vulpes validate --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
+	    or errexit("Could not validate cache");
     }
 
     #

@@ -1106,7 +1106,7 @@ int copy_for_upload(void)
   return 0;
 }
 
-static int validate_cache(void)
+int validate_cache(void)
 {
   void *buf;
   unsigned chunk_num;
@@ -1164,9 +1164,5 @@ int examine_cache(void)
     dirty_pct=(100 * dirtychunks) / state.valid_chunks;
   printf("Local cache : %u%% populated (%u/%u MB), %u%% modified (%u/%u MB)\n",
     valid_pct, valid_mb, max_mb, dirty_pct, dirty_mb, valid_mb);
-  
-  if (config.check_consistency)
-    return validate_cache();
-  else
-    return 0;
+  return 0;
 }

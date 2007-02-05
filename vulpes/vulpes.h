@@ -52,7 +52,6 @@ extern struct vulpes_config {
   char *old_hex_keyring_name;
   char *old_bin_keyring_name;
   char *dest_dir_name;
-  int check_consistency;  /* for examine mode */
 
   int verbose;			/* currently not used */
   struct lka_svc *lka_svc;
@@ -104,6 +103,7 @@ vulpes_err_t transport_get(void *buf, int *bufsize, const char *src,
 			   unsigned chunk_num);
 void transport_shutdown(void);
 int copy_for_upload(void);
+int validate_cache(void);
 int examine_cache(void);
 vulpes_err_t cache_init(void);
 vulpes_err_t cache_get(const struct nexus_message *req,

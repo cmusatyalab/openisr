@@ -37,8 +37,9 @@ enum mode_type {
   MODE_RUN      = 0x01,
   MODE_UPLOAD   = 0x02,
   MODE_EXAMINE  = 0x04,
-  MODE_HELP     = 0x08,
-  MODE_VERSION  = 0x10,
+  MODE_VALIDATE = 0x08,
+  MODE_HELP     = 0x10,
+  MODE_VERSION  = 0x20,
 };
 
 struct vulpes_mode {
@@ -50,7 +51,8 @@ struct vulpes_mode {
 static struct vulpes_mode vulpes_modes[] = {
   {"run",       MODE_RUN,     "Bind and service a virtual disk"},
   {"upload",    MODE_UPLOAD,  "Split a cache file into individual chunks for upload"},
-  {"examine",   MODE_EXAMINE, "Print cache statistics and optionally validate vs. keyring"},
+  {"examine",   MODE_EXAMINE, "Print cache statistics"},
+  {"validate",  MODE_VALIDATE,"Validate cache against keyring"},
   {"help",      MODE_HELP,    "Show usage summary"},
   {"version",   MODE_VERSION, "Show version information"},
   {0}
@@ -89,10 +91,9 @@ enum option {
   OPT_FOREGROUND,
   OPT_LOCKDIR,
   OPT_MODE,
-  OPT_VALIDATE,
 };
 
-#define NONTRIVIAL_MODES (MODE_RUN|MODE_UPLOAD|MODE_EXAMINE)
+#define NONTRIVIAL_MODES (MODE_RUN|MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
 static struct vulpes_option vulpes_options[] = {
   {"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
   {"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
@@ -101,7 +102,6 @@ static struct vulpes_option vulpes_options[] = {
   {"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
   {"lockdir",        OPT_LOCKDIR,        REQUIRED, NONTRIVIAL_MODES               , {"lock_dir"},                                            "Directory for lock and pid files"},
   {"lka",            OPT_LKA,            ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
-  {"validate",       OPT_VALIDATE,       OPTIONAL, MODE_EXAMINE                   , {}},
   {"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES               , {"logfile", "info_str", "filemask", "stdoutmask"}},
   {"proxy",          OPT_PROXY,          OPTIONAL, MODE_RUN                       , {"proxy_server", "port_number"},                         "proxy_server is the ip address or the hostname of the proxy"},
   {"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
@@ -299,9 +299,6 @@ int main(int argc, char *argv[])
     case OPT_DESTDIR:
       config.dest_dir_name=optparams[0];
       break;
-    case OPT_VALIDATE:
-      config.check_consistency=1;
-      break;
     case OPT_LOG:
       config.log_file_name=optparams[0];
       config.log_infostr=optparams[1];
@@ -388,6 +385,9 @@ int main(int argc, char *argv[])
     break;
   case MODE_EXAMINE:
     ret=examine_cache();
+    break;
+  case MODE_VALIDATE:
+    ret=validate_cache();
     break;
   case MODE_RUN:
     /* Initialize transport */
