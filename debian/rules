@@ -90,19 +90,19 @@ install-arch:
 
 	# Add here commands to install the arch part of the package into 
 	# debian/tmp.
-	#$(MAKE) DESTDIR=$(CURDIR)/debian/openisr install
+	$(MAKE) DESTDIR=$(CURDIR)/debian/openisr install
 
 	# FIXME: should really fix vulpes Makefile...
-	mkdir -p $(CURDIR)/debian/openisr/usr/lib/openisr
-	cp $(CURDIR)/vulpes/vulpes $(CURDIR)/debian/openisr/usr/lib/openisr
+#	mkdir -p $(CURDIR)/debian/openisr/usr/lib/openisr
+#	cp $(CURDIR)/vulpes/vulpes $(CURDIR)/debian/openisr/usr/lib/openisr
 
 	# libvdisk Makefile will setuid root
-	(cd $(CURDIR)/libvdisk && \
-	 $(MAKE) DESTDIR=$(CURDIR)/debian/openisr install)
+#	(cd $(CURDIR)/libvdisk && \
+#	 $(MAKE) DESTDIR=$(CURDIR)/debian/openisr install)
 
-	install client/isr $(CURDIR)/debian/openisr/usr/bin
-	install -d $(CURDIR)/debian/openisr/usr/share/openisr
-	install client/Isr.pm client/IsrConfigTie.pm client/HTTPSSH.pm $(CURDIR)/debian/openisr/usr/share/openisr
+#	install client/isr $(CURDIR)/debian/openisr/usr/bin
+#	install -d $(CURDIR)/debian/openisr/usr/share/openisr
+#	install client/Isr.pm client/IsrConfigTie.pm client/HTTPSSH.pm $(CURDIR)/debian/openisr/usr/share/openisr
 
 	dh_install -s
 # Must not depend on anything. This is to be called by
@@ -124,7 +124,7 @@ binary-common:
 #	dh_installinit
 #	dh_installcron
 #	dh_installinfo
-	dh_installman client/isr.1
+#	dh_installman
 	dh_link
 	dh_strip
 	dh_compress 

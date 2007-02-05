@@ -1,8 +1,9 @@
 BINDIR ?= /usr/bin
 LIBDIR ?= /usr/lib/openisr
 SHAREDIR ?= /usr/share/openisr
+MANDIR ?= /usr/share/man
 SYSCONFDIR ?= /etc/openisr
-export DESTDIR BINDIR LIBDIR SHAREDIR SYSCONFDIR
+export DESTDIR BINDIR LIBDIR SHAREDIR MANDIR SYSCONFDIR
 
 DIRS = client vulpes libvdisk nexus sha1-i586 conf
 DISTDIRS = $(DIRS) debian

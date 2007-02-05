@@ -1,10 +1,12 @@
 BINDIR ?= $(HOME)/bin
 LIBDIR ?= $(HOME)/bin
 SHAREDIR ?= $(HOME)/bin
+MANDIR ?= $(HOME)/man/man1
 SYSCONFDIR ?= $(HOME)/bin
 
 GEN=isr Isr.pm
 PM=Isr.pm HTTPSSH.pm IsrConfigTie.pm IsrRevision.pm
+MAN=isr.1
 
 .PHONY: all
 all: $(GEN)
@@ -30,9 +32,10 @@ revision.dummy:
 -include revision.dummy
 
 install: all
-	install -d $(DESTDIR)/$(BINDIR) $(DESTDIR)/$(SHAREDIR)
+	install -d $(DESTDIR)/$(BINDIR) $(DESTDIR)/$(SHAREDIR) $(DESTDIR)/$(MANDIR)/man1
 	install -m 755 isr $(DESTDIR)/$(BINDIR)
 	install -m 644 $(PM) $(DESTDIR)/$(SHAREDIR)
+	install -m 644 $(MAN) $(DESTDIR)/$(MANDIR)/man1 
 
 ifneq ($(MAKELEVEL), 0)
 .PHONY: install_revision
