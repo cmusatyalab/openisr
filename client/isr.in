@@ -262,6 +262,7 @@ $nameserver = $syscfg{nameserver};
 # 
 # Log the fact that we are starting the client program
 #
+message("START", "$isrversion ($Isr::SVN_BRANCH, revision $Isr::SVN_REVISION)");
 message("ENTER", "@ARGV");
 
 #
