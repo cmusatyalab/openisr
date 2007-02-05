@@ -1,0 +1,17 @@
+#!/bin/bash
+set -e
+
+# Automatically added by dh_makeshlibs
+if [ "$1" = "configure" ]; then
+	ldconfig
+fi
+# End automatically added section
+
+if [ ! -a /etc/openisr/hostid ]; then
+
+	# could do something like this in sh... but formatted?
+	# dd if=/dev/urandom bs=4 count=1 | od -An -t d4 > /etc/openisr/hostid
+	# oh i'll put up with perl for now...
+
+	perl -e "print int(rand(1<<30))" > /etc/openisr/hostid
+fi
