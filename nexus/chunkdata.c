@@ -508,7 +508,7 @@ void chunkdata_complete_io(struct list_head *entry)
 	
 	mutex_lock_thread(&dev->lock);
 	if (cd->error) {
-		log(KERN_ERR, "I/O error %s chunk " SECTOR_FORMAT,
+		log_limit(KERN_ERR, "I/O error %s chunk " SECTOR_FORMAT,
 					cd->state == ST_LOAD_DATA ?
 					"reading" : "writing", cd->cid);
 		/* XXX arguably we should report write errors to
