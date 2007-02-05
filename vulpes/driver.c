@@ -8,6 +8,8 @@
 #include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sys/utsname.h>
+#include <sys/time.h>
+#include <time.h>
 #include <linux/loop.h>
 #include "vulpes.h"
 #include "log.h"
@@ -19,6 +21,8 @@ static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 
 #define DEVFILE_NAME "vulpes.dev"
 #define REQUESTS_PER_SYSCALL 64
+#define WRITEBACK_INTERVAL 60
+#define WRITEBACK_IDLE_TIME 5
 #define MY_INTERFACE_VERSION 5
 #if MY_INTERFACE_VERSION != NEXUS_INTERFACE_VERSION
 #error This code uses a different interface version than the one defined in convergent-user.h
@@ -341,8 +345,13 @@ void driver_run(void)
   int fdcount=max(state.signal_fds[0], state.chardev_fd) + 1;
   int shutdown_pending=0;
   char signal;
+  struct timeval time;
+  time_t next_update;
+  int ret;
   
   /* Enter processing loop */
+  gettimeofday(&time, NULL);
+  next_update=time.tv_sec + WRITEBACK_INTERVAL;
   FD_ZERO(&readfds);
   FD_ZERO(&exceptfds);
   for (;;) {
@@ -350,7 +359,11 @@ void driver_run(void)
     FD_SET(state.signal_fds[0], &readfds);
     if (shutdown_pending)
       FD_SET(state.chardev_fd, &exceptfds);
-    if (select(fdcount, &readfds, NULL, &exceptfds, NULL) == -1) {
+    gettimeofday(&time, NULL);
+    time.tv_sec=max(WRITEBACK_IDLE_TIME, next_update - time.tv_sec);
+    time.tv_usec=0;
+    ret=select(fdcount, &readfds, NULL, &exceptfds, &time);
+    if (ret == -1) {
       /* select(2) reports that the fdsets are now undefined, so we start
          over */
       FD_ZERO(&readfds);
@@ -363,6 +376,18 @@ void driver_run(void)
 	vulpes_log(LOG_ERRORS,"select() failed: %s",strerror(errno));
 	/* XXX now what? */
       }
+    }
+    
+    /* Run a periodic keyring/cache-header writeback whenever we haven't done
+       one in WRITEBACK_INTERVAL seconds and we haven't received any chardev
+       traffic in WRITEBACK_IDLE_TIME seconds. */
+    /* XXX We do writeout even if no chunks have been modified since the last
+       writeout.  In practice it seems that there are usually modified
+       chunks. */
+    if (ret == 0) {
+      gettimeofday(&time, NULL);
+      next_update=time.tv_sec + WRITEBACK_INTERVAL;
+      cache_writeout();
     }
     
     /* Process pending signals */
