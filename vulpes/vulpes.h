@@ -109,6 +109,7 @@ vulpes_err_t cache_init(void);
 vulpes_err_t cache_get(const struct nexus_message *req,
 		       struct nexus_message *reply);
 void cache_update(const struct nexus_message *req);
-vulpes_err_t cache_shutdown(void);
+vulpes_err_t cache_writeout(void);
+vulpes_err_t cache_shutdown(int do_writeout);
 
 #endif

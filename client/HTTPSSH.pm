@@ -584,7 +584,7 @@ sub isr_statparcel ($$$$) {
     # Display local cache stats
     #
     if (-e "$cachedir") {
-	mysystem("$Isr::LIBDIR/vulpes examine --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
+	mysystem("$Isr::LIBDIR/vulpes examine --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
 	    or errexit("Could not examine cache");
     }
     

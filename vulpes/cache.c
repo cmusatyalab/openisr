@@ -379,8 +379,10 @@ static vulpes_err_t write_bin_keyring(char *path)
   unsigned chunk_num;
   
   fd=open(path, O_CREAT|O_TRUNC|O_WRONLY, 0600);
-  if (fd == -1)
+  if (fd == -1) {
+    vulpes_log(LOG_ERRORS,"couldn't open binary keyring for writeback: %s",path);
     return VULPES_IOERR;
+  }
   
   memset(&hdr, 0, sizeof(hdr));
   hdr.magic=htonl(KR_MAGIC);
@@ -805,7 +807,29 @@ static vulpes_err_t update_modified_flags(unsigned *dirty_count)
 /* INTERFACE FUNCTIONS */
 
 /* XXX we need better error handling here */
-vulpes_err_t cache_shutdown(void)
+vulpes_err_t cache_writeout(void)
+{
+  vulpes_err_t ret;
+  
+  if (state.cd == NULL) {
+    vulpes_log(LOG_ERRORS,"cache_writeout() called with no chunk_data array");
+    return VULPES_NOTFOUND;
+  }
+  
+  /* Write the new keyrings */
+  ret=write_bin_keyring(config.bin_keyring_name);
+  if (ret)
+    return ret;
+  ret=write_hex_keyring(config.hex_keyring_name);
+  if (ret)
+    return ret;
+  
+  /* Update cache file */
+  return write_cache_header(state.cachefile_fd);
+}
+
+/* XXX we need better error handling here */
+vulpes_err_t cache_shutdown(int do_writeout)
 {
   struct chunk_data *cdp;
   vulpes_err_t ret;
@@ -814,21 +838,18 @@ vulpes_err_t cache_shutdown(void)
   unsigned modified_chunks = 0;
   unsigned accessed_chunks = 0;
   
+  vulpes_log(LOG_BASIC,"Shutting down cache");
+  
   if (state.cd == NULL) {
     vulpes_log(LOG_ERRORS,"cache_shutdown() called with no chunk_data array");
-    return 0;
+    return VULPES_NOTFOUND;
   }
   
-  /* Write the new keyrings */
-  ret=write_bin_keyring(config.bin_keyring_name);
-  if (ret) {
-    vulpes_log(LOG_ERRORS,"write_bin_keyring failed");
-    return ret;
-  }
-  ret=write_hex_keyring(config.hex_keyring_name);
-  if (ret) {
-    vulpes_log(LOG_ERRORS,"write_hex_keyring failed");
-    return ret;
+  /* Write out keyrings and cache header */
+  if (do_writeout) {
+    ret=cache_writeout();
+    if (ret)
+      return ret;
   }
   
   /* Gather statistics */
@@ -839,8 +860,7 @@ vulpes_err_t cache_shutdown(void)
       ++modified_chunks;
   }
   
-  /* Update and close cache file */
-  write_cache_header(state.cachefile_fd);
+  /* Close cache file and free memory */
   close(state.cachefile_fd);
   free(state.cd);
   state.cd = NULL;
@@ -849,11 +869,15 @@ vulpes_err_t cache_shutdown(void)
     state.pcd = NULL;
   }
   
-  /* Print close stats */
-  vulpes_log(LOG_STATS,"CHUNKS_ACCESSED:%u",accessed_chunks);
-  vulpes_log(LOG_STATS,"CHUNKS_MODIFIED:%u",modified_chunks);
-  vulpes_log(LOG_STATS,"CHUNKS_RAW:%u",writes_before_read);
-  vulpes_log(LOG_STATS,"CHUNKS_STRIPPED:%u",chunks_stripped);
+  /* Print close stats if any chunks have been accessed.  In run mode this
+     will always be true because the kernel tries to read the partition table
+     of the device.  In other modes it will never be true. */
+  if (accessed_chunks != 0) {
+    vulpes_log(LOG_STATS,"CHUNKS_ACCESSED:%u",accessed_chunks);
+    vulpes_log(LOG_STATS,"CHUNKS_MODIFIED:%u",modified_chunks);
+    vulpes_log(LOG_STATS,"CHUNKS_RAW:%u",writes_before_read);
+    vulpes_log(LOG_STATS,"CHUNKS_STRIPPED:%u",chunks_stripped);
+  }
 
   return VULPES_SUCCESS;
 }

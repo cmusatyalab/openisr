@@ -415,7 +415,8 @@ elsif ($command eq "hoard") {
 elsif ($command eq "stat") {
     need_parcel();
     need_checked_out();
-    acquire_lock("$isrdir/$parcel.lock");
+    acquire_lock("$isrdir/$parcel.lock")
+	if $checkstate;
     statparcel($userid, $parcel, $isrdir);
 }
 elsif ($command eq "disconnect") {

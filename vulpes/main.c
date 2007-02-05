@@ -95,13 +95,14 @@ enum option {
 
 #define POSTPROCESS_MODES (MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
 #define NONTRIVIAL_MODES (MODE_RUN|POSTPROCESS_MODES)
+#define UPDATING_MODES (MODE_RUN|MODE_UPLOAD|MODE_VALIDATE)
 static struct vulpes_option vulpes_options[] = {
   {"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
   {"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
   {"keyring",        OPT_KEYRING,        REQUIRED, NONTRIVIAL_MODES               , {"hex_keyring_file", "binary_keyring_file"}},
   {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, POSTPROCESS_MODES              , {"old_hex_keyring_file", "old_bin_keyring_file"}},
   {"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
-  {"lockdir",        OPT_LOCKDIR,        REQUIRED, NONTRIVIAL_MODES               , {"lock_dir"},                                            "Directory for lock and pid files"},
+  {"lockdir",        OPT_LOCKDIR,        REQUIRED, UPDATING_MODES                 , {"lock_dir"},                                            "Directory for lock and pid files"},
   {"lka",            OPT_LKA,            ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
   {"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES               , {"logfile", "info_str", "filemask", "stdoutmask"}},
   {"proxy",          OPT_PROXY,          OPTIONAL, MODE_RUN                       , {"proxy_server", "port_number"},                         "proxy_server is the ip address or the hostname of the proxy"},
@@ -346,13 +347,15 @@ int main(int argc, char *argv[])
   if (!foreground && fork_and_wait(&ret_fd))
     goto vulpes_exit;
   
-  /* Get lock */
-  err=acquire_lock();
-  if (err) {
-    vulpes_log(LOG_ERRORS,"Couldn't lock parcel: %s",vulpes_strerror(err));
-    goto vulpes_exit;
+  /* Get lock (read/write modes only) */
+  if (curmode->type != MODE_EXAMINE) {
+    err=acquire_lock();
+    if (err) {
+      vulpes_log(LOG_ERRORS,"Couldn't lock parcel: %s",vulpes_strerror(err));
+      goto vulpes_exit;
+    }
+    have_lock=1;
   }
-  have_lock=1;
   
   /* Start vulpes log */
   if (vulpes_log_init())
@@ -426,8 +429,9 @@ int main(int argc, char *argv[])
     break;
   }
   
-  /* Shut down cache */
-  err=cache_shutdown();
+  /* Shut down cache.  If we're just running "stat", don't write out state
+     (so that we don't interfere with other vulpes instances) */
+  err=cache_shutdown(curmode->type != MODE_EXAMINE);
   if (err) {
     vulpes_log(LOG_ERRORS,"cache shutdown failed: %s",vulpes_strerror(err));
     ret=1;
