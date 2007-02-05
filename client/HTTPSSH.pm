@@ -393,7 +393,7 @@ sub isr_hoard ($$$) {
     # Initialize things for the hoarding process
     #
     @keyring = load_keyring("$lastdir/keyring");
-    %lev1idx = load_cfgfile("$lastdir/hdk/index.lev1");
+    parse_cfgfile("$lastdir/hdk/index.lev1", \%lev1idx);
     $numdirs = $lev1idx{NUMDIRS};
     $chunksperdir = $lev1idx{CHUNKSPERDIR};
     $chunksize = $lev1idx{CHUNKSIZE};
