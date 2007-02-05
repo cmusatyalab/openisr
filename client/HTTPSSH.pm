@@ -276,7 +276,6 @@ sub isr_run_vulpes ($$$) {
 
     my $logstring = "|VULPES|" . message_string() ."|";
     my $cachedir = "$parceldir/cache";
-    my $lastdir = "$parceldir/last";
     my $vulpescmd = "$Isr::LIBDIR/vulpes";
 
     my $lkadir = "$parceldir-hoard";
@@ -294,7 +293,7 @@ sub isr_run_vulpes ($$$) {
     #
     # Crank up Vulpes with all the right arguments
     #
-    $retval = system("$vulpescmd run --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}");
+    $retval = system("$vulpescmd run --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --lockdir $parceldir $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}");
 
     return $retval;
 }

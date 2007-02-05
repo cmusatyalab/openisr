@@ -93,12 +93,13 @@ enum option {
   OPT_MODE,
 };
 
-#define NONTRIVIAL_MODES (MODE_RUN|MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
+#define POSTPROCESS_MODES (MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
+#define NONTRIVIAL_MODES (MODE_RUN|POSTPROCESS_MODES)
 static struct vulpes_option vulpes_options[] = {
   {"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
   {"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
   {"keyring",        OPT_KEYRING,        REQUIRED, NONTRIVIAL_MODES               , {"hex_keyring_file", "binary_keyring_file"}},
-  {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, NONTRIVIAL_MODES               , {"old_hex_keyring_file", "old_bin_keyring_file"}},
+  {"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, POSTPROCESS_MODES              , {"old_hex_keyring_file", "old_bin_keyring_file"}},
   {"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
   {"lockdir",        OPT_LOCKDIR,        REQUIRED, NONTRIVIAL_MODES               , {"lock_dir"},                                            "Directory for lock and pid files"},
   {"lka",            OPT_LKA,            ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
