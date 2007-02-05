@@ -1,7 +1,7 @@
 BINDIR ?= $(HOME)/bin
 LIBDIR ?= $(HOME)/bin
 SHAREDIR ?= $(HOME)/bin
-MANDIR ?= $(HOME)/man/man1
+MANDIR ?= $(HOME)/man
 SYSCONFDIR ?= $(HOME)/bin
 
 GEN=isr Isr.pm
