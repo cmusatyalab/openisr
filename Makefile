@@ -25,7 +25,8 @@ $(DIRTARGETS):
 	$(MAKE) -C $(subst __, ,$@) DESTDIR=$(DESTDIR)
 
 .PHONY: distclient
-distclient: distclient_tree install_revision
+distclient: install_revision
+$(DIRS:=__install_revision): distclient_tree
 
 .PHONY: distclient_tree
 distclient_tree:
