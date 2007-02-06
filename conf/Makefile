@@ -12,6 +12,9 @@ install:
 	install -d $(DESTDIR)/$(SYSCONFDIR) $(DESTDIR)/$(SHAREDIR)
 	install -m 644 config $(DESTDIR)/$(SHAREDIR)
 
+.PHONY: install_modules
+install_modules:
+
 ifneq ($(MAKELEVEL), 0)
 .PHONY: install_revision
 install_revision:

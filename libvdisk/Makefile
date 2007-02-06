@@ -29,6 +29,9 @@ install: libvdisk.so
 # ignore return value, ldconfig can be called by dpkg/rpm/etc
 	-ldconfig
 
+.PHONY: install_modules
+install_modules:
+
 .PHONY: clean
 clean:
 	rm -f *.o *.lo *.so

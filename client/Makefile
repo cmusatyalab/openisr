@@ -37,6 +37,9 @@ install: all
 	install -m 644 $(PM) $(DESTDIR)/$(SHAREDIR)
 	install -m 644 $(MAN) $(DESTDIR)/$(MANDIR)/man1 
 
+.PHONY: install_modules
+install_modules:
+
 ifneq ($(MAKELEVEL), 0)
 .PHONY: install_revision
 install_revision:

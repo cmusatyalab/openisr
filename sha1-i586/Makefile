@@ -22,6 +22,11 @@ clean:
 .PHONY: install
 install:
 
+.PHONY: install_modules
+install_modules: module
+	@$(MAKE) -C $(KERNELDIR) M=$(PWD) INSTALL_MOD_PATH=$(DESTDIR) \
+		INSTALL_MOD_DIR=openisr modules_install
+
 ifneq ($(MAKELEVEL), 0)
 .PHONY: install_revision
 install_revision:

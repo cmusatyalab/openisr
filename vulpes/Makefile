@@ -61,6 +61,9 @@ install: vulpes
 	install -d $(DESTDIR)/$(LIBDIR)
 	install -m 755 vulpes $(DESTDIR)/$(LIBDIR)
 
+.PHONY: install_modules
+install_modules:
+
 vulpes: $(OBJS)
 	$(CC) -o $@ $(LFLAGS) $^
 

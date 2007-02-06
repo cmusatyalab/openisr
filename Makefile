@@ -13,7 +13,7 @@ ifneq ($(filter-out /%,$(strip $(DESTDIR))),)
 override DESTDIR := $(CURDIR)/$(DESTDIR)
 endif
 
-TARGETS = all install clean install_revision
+TARGETS = all install clean install_revision install_modules
 DIRTARGETS := $(foreach tgt,$(TARGETS),$(DIRS:=__$(tgt)))
 
 .SECONDEXPANSION:

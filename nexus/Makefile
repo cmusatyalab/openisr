@@ -35,6 +35,11 @@ install: readstats
 	install -d $(DESTDIR)/$(LIBDIR)
 	install -m 755 readstats $(DESTDIR)/$(LIBDIR)
 
+.PHONY: install_modules
+install_modules: module
+	@$(MAKE) -C $(KERNELDIR) M=$(PWD) INSTALL_MOD_PATH=$(DESTDIR) \
+		INSTALL_MOD_DIR=openisr modules_install
+
 # This is a hack.  The include directive forces make to always execute
 # the rule, and to recalculate its target selection afterward.  Note
 # that if any source files have changed, this rule will be executed
