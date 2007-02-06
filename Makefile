@@ -16,6 +16,7 @@ endif
 TARGETS = all install clean install_revision
 DIRTARGETS := $(foreach tgt,$(TARGETS),$(DIRS:=__$(tgt)))
 
+.SECONDEXPANSION:
 .PHONY: $(TARGETS)
 $(TARGETS): $(DIRS:=__$$@)
 
