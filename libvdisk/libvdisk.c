@@ -270,9 +270,9 @@ static void fill_driveid(struct hd_driveid *id, uint64_t sects)
 	   the spaces to nulls, and in the "model" case ensures that the string
 	   is null-terminated.  To be safe we make all of the strings
 	   null-terminated. */
-	snprintf(id->model,     40, "libvdisk");
-	snprintf(id->fw_rev,     8, "0");
-	snprintf(id->serial_no, 20, "0");
+	snprintf((char*)id->model,     40, "libvdisk");
+	snprintf((char*)id->fw_rev,     8, "0");
+	snprintf((char*)id->serial_no, 20, "0");
 	id->capability=0x2;        /* LBA */
 	id->command_set_2=0x4400;  /* 48-bit LBA */
 	id->lba_capacity=min(sects, 0x0fffffff);
