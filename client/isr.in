@@ -95,8 +95,8 @@ sub usage ($);
 sub need_parcel ();
 sub need_checked_out ();
 sub need_network ();
-sub acquire_lock ($);
-sub release_lock ();
+sub acquire_lock ($$);
+sub release_locks ();
 
 #########################
 # Section 1. Main routine
@@ -124,7 +124,7 @@ my $version;         # Rollback version
 my $checkstate = 0;  # Optionally check content consistency in some cmds
 my $quiet;           # No output except for errors
 my $noautoflag;      # Don't automatically start/stop VMWare at launch time
-my $allflag;         # Reset() should delete all state, including hoard cache
+my $allflag;         # "clean" should delete all state, including hoard cache
 
 # Write once globals that are visible in this module only. These globals are
 # needed to cleanly handle logging.
@@ -138,7 +138,7 @@ my $parcel;         # parcel name
 # will be necessary when we exit.
 my $no_shutdown = 0;# Set by forked children so the child won't run END
 my $killvulpes = 0; # Set by run command, tells END handler to kill Vulpes
-my $lockfile;       # Path to lock file
+my @locks;          # Names and FDs of open lock files
 
 # Read-only command line arguments that are visible to other modules.
 our $verbose = 1;   # Verbosity level; by default, we print a few messages
@@ -192,7 +192,7 @@ END {
 	if $isrdir;
     
     message("EXIT", $saved_status);
-    release_lock() if $lockfile;
+    release_locks();
     $? = $saved_status;
 }
 
@@ -372,7 +372,7 @@ message("BEGIN", $command);
 if ($command eq "checkout") {
     need_parcel();
     need_network();
-    acquire_lock("$isrdir/$parcel.lock");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel");
     checkout($userid, $parcel, $isrdir, $version);
 } 
 elsif ($command eq "resume") {
@@ -383,7 +383,7 @@ elsif ($command eq "resume") {
     need_network()
 	if ((!-e "$isrdir/$parcel") or
 	    (-e "$isrdir/$parcel" and !$disconnected));
-    acquire_lock("$isrdir/$parcel.lock");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel");
     checkout($userid, $parcel, $isrdir, $version);
     run($userid, $parcel, $isrdir, $disconnected);
 } 
@@ -391,31 +391,31 @@ elsif ($command eq "checkin") {
     need_parcel();
     need_checked_out();
     need_network();
-    acquire_lock("$isrdir/$parcel.lock");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel");
     checkin($userid, $parcel, $isrdir);
 } 
 elsif ($command eq "sync") {
     need_parcel();
     need_checked_out();
     need_network();
-    acquire_lock("$isrdir/$parcel.lock");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel");
     sync($userid, $parcel, $isrdir);
 } 
 elsif ($command eq "discard") {
     need_parcel();
     need_checked_out();
-    acquire_lock("$isrdir/$parcel.lock");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel");
     discard($userid, $parcel, $isrdir);
 }
 elsif ($command eq "hoard") {
     need_parcel();
-    acquire_lock("$isrdir/$parcel.lock");
+    acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache");
     hoard($userid, $parcel, $isrdir);
 }
 elsif ($command eq "stat") {
     need_parcel();
     need_checked_out();
-    acquire_lock("$isrdir/$parcel.lock")
+    acquire_lock("$isrdir/$parcel.lock", "Parcel")
 	if $checkstate;
     statparcel($userid, $parcel, $isrdir);
 }
@@ -423,13 +423,13 @@ elsif ($command eq "disconnect") {
     need_parcel();
     need_checked_out();
     need_network();
-    acquire_lock("$isrdir/$parcel.lock");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel");
     disconnect($userid, $parcel, $isrdir, $nocheckstate);
 }
 elsif ($command eq "checkparcel") {
     need_parcel();
     need_network();
-    acquire_lock("$isrdir/$parcel.lock");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel");
     checkparcel($userid, $parcel, $isrdir, $version, $checkstate);
 }
 elsif ($command eq "ls") {
@@ -452,7 +452,9 @@ elsif ($command eq "reset") {
 }
 elsif ($command eq "clean") {
     need_parcel();
-    acquire_lock("$isrdir/$parcel.lock");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel");
+    acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache")
+	if $allflag;
     cleanclient($userid, $parcel, $isrdir, $allflag);
 }
 elsif ($command eq "help") {
@@ -1442,13 +1444,12 @@ sub need_network () {
 # Misc helper functions
 # 
 
-sub acquire_lock ($) {
+sub acquire_lock ($$) {
     my $file = shift;
+    my $desc = shift;
     
     my $lockstruct;
-    
-    errexit("BUG: we already hold a lock on $lockfile")
-	if $lockfile;
+    my $fh;
     
     # This is black magic.  We don't want to make assumptions about whether
     # we're using off_t or off64_t, or whether we're on a 64-bit architecture,
@@ -1460,19 +1461,23 @@ sub acquire_lock ($) {
     # about the ordering of the fields in the struct; there doesn't seem to
     # be any way around that.
     $lockstruct = pack("s!s!lllll", F_WRLCK, SEEK_SET);
-    open(LOCKFH, ">", $file)
+    open($fh, ">", $file)
 	or unix_errexit("Can't open $file for writing");
-    if (!fcntl(LOCKFH, F_SETLK, $lockstruct)) {
-	errexit("Parcel locked by another process")
+    if (!fcntl($fh, F_SETLK, $lockstruct)) {
+	errexit("$desc locked by another process")
 	    if ($! == EACCES or $! == EAGAIN);
 	unix_errexit("Can't acquire lock");
     }
-    $lockfile = $file;
+    push(@locks, {"NAME" => $file, "FH" => $fh});
 }
 
-sub release_lock () {
-    unlink($lockfile);
-    close(LOCKFH);
+sub release_locks () {
+    my $record;
+    
+    while ($record = pop(@locks)) {
+	unlink($record->{"NAME"});
+	close($record->{"FH"});
+    }
 }
 
 #
