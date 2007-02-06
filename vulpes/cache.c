@@ -284,13 +284,10 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 	struct chunk_data *cdp;
 	int fd;
 	char buf[HASH_LEN_HEX];
-	char tmp_path[strlen(userPath) + 8];
 	
-	sprintf(tmp_path, "%s.XXXXXX", userPath);
-	/* XXX glibc 2.0.6 and earlier create with mode 666 */
-	fd = mkstemp(tmp_path);
+	fd = open(userPath, O_WRONLY|O_TRUNC, 0600);
 	if (fd < 0) {
-		vulpes_log(LOG_ERRORS,"couldn't open temporary hex keyring for writeback: %s",tmp_path);
+		vulpes_log(LOG_ERRORS,"could not open keyring file for writeback: %s", userPath);
 		return VULPES_IOERR;
 	}
 	foreach_chunk(chunk_num, cdp) {
@@ -305,23 +302,13 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 	}
 	if (fsync(fd))
 		goto short_write;
-	if (close(fd)) {
-		vulpes_log(LOG_ERRORS,"failure closing keyring file: %s",tmp_path);
-		unlink(tmp_path);
-		return VULPES_IOERR;
-	}
-	if (rename(tmp_path, userPath)) {
-		vulpes_log(LOG_ERRORS,"couldn't rename %s to %s; keyring update failed",tmp_path,userPath);
-		unlink(tmp_path);
-		return VULPES_IOERR;
-	}
+	close(fd);
 	vulpes_log(LOG_BASIC,"wrote hex keyring %s: %d keys",userPath,state.numchunks);
 	return VULPES_SUCCESS;
 	
 short_write:
-	vulpes_log(LOG_ERRORS,"failure writing keyring file: %s",tmp_path);
+	vulpes_log(LOG_ERRORS,"failure writing keyring file: %s",userPath);
 	close(fd);
-	unlink(tmp_path);
 	return VULPES_IOERR;
 }
 
@@ -390,13 +377,10 @@ static vulpes_err_t write_bin_keyring(char *path)
   struct kr_entry entry;
   int fd;
   unsigned chunk_num;
-  char tmp_path[strlen(path) + 8];
   
-  sprintf(tmp_path, "%s.XXXXXX", path);
-  /* XXX glibc 2.0.6 and earlier create with mode 666 */
-  fd=mkstemp(tmp_path);
+  fd=open(path, O_CREAT|O_TRUNC|O_WRONLY, 0600);
   if (fd == -1) {
-    vulpes_log(LOG_ERRORS,"couldn't open temporary binary keyring for writeback: %s",tmp_path);
+    vulpes_log(LOG_ERRORS,"couldn't open binary keyring for writeback: %s",path);
     return VULPES_IOERR;
   }
   
@@ -417,23 +401,13 @@ static vulpes_err_t write_bin_keyring(char *path)
   }
   if (fsync(fd))
     goto short_write;
-  if (close(fd)) {
-    vulpes_log(LOG_ERRORS,"failure closing keyring file: %s",tmp_path);
-    unlink(tmp_path);
-    return VULPES_IOERR;
-  }
-  if (rename(tmp_path, path)) {
-    vulpes_log(LOG_ERRORS,"couldn't rename %s to %s; keyring update failed",tmp_path,path);
-    unlink(tmp_path);
-    return VULPES_IOERR;
-  }
+  close(fd);
   vulpes_log(LOG_BASIC, "wrote bin keyring %s: %d keys", path, state.numchunks);
   return VULPES_SUCCESS;
   
 short_write:
-  vulpes_log(LOG_ERRORS, "Couldn't write %s", tmp_path);
+  vulpes_log(LOG_ERRORS, "Couldn't write %s", path);
   close(fd);
-  unlink(tmp_path);
   return VULPES_IOERR;
 }
 
