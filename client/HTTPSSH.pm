@@ -516,11 +516,10 @@ sub isr_stathoard ($$$) {
 	if (-e $hoardfilename) {
 	    $numchunks++;
 	}
-	else {
+	elsif ($main::verbose > 2) {
 	    $dirname = sprintf("%04d", get_dirnum($chunk, $chunksperdir));
 	    $chunkname = sprintf("%04d", get_chunknum($chunk, $chunksperdir));
-	    print "Missing chunk $chunk ($dirname/$chunkname):$tag:) in hoard cache\n"
-		if $main::verbose > 2;
+	    print "Missing chunk $chunk ($dirname/$chunkname):$tag:) in hoard cache\n";
 	}
     }
     return $numchunks;

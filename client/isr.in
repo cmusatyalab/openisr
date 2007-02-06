@@ -1868,9 +1868,9 @@ sub hdksize ($$$) {
     $maxchunks = $lev1idx{NUMCHUNKS};
     $chunksize = $lev1idx{CHUNKSIZE};
     
-    # hdk cache is trivialy empty
+    # hdk cache is trivially empty
     if (!-e $cachedir) {
-	return (0, 0, $maxchunks, $chunksize);
+	return (0, $maxchunks, $chunksize);
     }
 
     # Read and unpack the cache file header
