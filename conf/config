@@ -29,7 +29,7 @@ connect_timeout = 10
 hoard_sleep = 5
 
 # How many times to retry if a read or write request fails
-retries = 5;
+retries = 5
 
 # By default, how many of the most recent versions should "ls -l" display
 ls_versions = 5
