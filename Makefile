@@ -3,14 +3,14 @@ LIBDIR ?= /usr/lib/openisr
 SHAREDIR ?= /usr/share/openisr
 MANDIR ?= /usr/share/man
 SYSCONFDIR ?= /etc/openisr
-export DESTDIR BINDIR LIBDIR SHAREDIR MANDIR SYSCONFDIR
+export BINDIR LIBDIR SHAREDIR MANDIR SYSCONFDIR
 
 DIRS = client vulpes libvdisk nexus sha1-i586 conf
 DISTDIRS = $(DIRS) debian
 
 # Make sure DESTDIR is an absolute path
 ifneq ($(filter-out /%,$(strip $(DESTDIR))),)
-DESTDIR := $(CURDIR)/$(DESTDIR)
+override DESTDIR := $(CURDIR)/$(DESTDIR)
 endif
 
 TARGETS = all install clean install_revision
@@ -22,7 +22,7 @@ $(TARGETS): $(DIRS:=__$$@)
 
 .PHONY: $(DIRTARGETS)
 $(DIRTARGETS):
-	$(MAKE) -C $(subst __, ,$@)
+	$(MAKE) -C $(subst __, ,$@) DESTDIR=$(DESTDIR)
 
 .PHONY: distclient
 distclient: distclient_tree install_revision
