@@ -18,6 +18,8 @@ export DH_OPTIONS
 
 CFLAGS = -Wall -g
 
+KSRCDIR = usr/src/modules/openisr
+
 ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
 	CFLAGS += -O0
 else
@@ -54,6 +56,7 @@ build-indep-stamp: configure-stamp
 
 	# Add here commands to compile the indep part of the package.
 	#$(MAKE) doc
+
 	touch $@
 
 clean:
@@ -103,6 +106,15 @@ install-arch:
 #	install client/isr $(CURDIR)/debian/openisr/usr/bin
 #	install -d $(CURDIR)/debian/openisr/usr/share/openisr
 #	install client/Isr.pm client/IsrConfigTie.pm client/HTTPSSH.pm $(CURDIR)/debian/openisr/usr/share/openisr
+
+#	kernel module stuff 
+	dh_installdirs $(KSRCDIR) $(KSRCDIR)/debian
+	dh_install nexus/* $(KSRCDIR)
+
+	(cd debian/openisr/usr/src \
+	&& chown -R root:src modules \
+	&& tar -c modules | bzip2 > openisr.tar.bz2 \
+	&& rm -rf modules)
 
 	dh_install -s
 # Must not depend on anything. This is to be called by

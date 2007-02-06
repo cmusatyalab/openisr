@@ -7,10 +7,10 @@ if [ "$1" = "configure" ]; then
 fi
 # End automatically added section
 
-if [ ! -a /etc/openisr/hostid ]; then
+if ! [ -a /etc/openisr/hostid ]; then
 
 	# client calls chomp() so we don't have to worry about the newline
-	dd if=/dev/urandom bs=4 count=1 | od -An -t d4 | tr -d " -" > /etc/openisr/hostid
+	dd if=/dev/urandom bs=4 count=1 status=noxfer | od -An -t d4 | tr -d " -" > /etc/openisr/hostid
 
 	# the old way:
 	#perl -e "print int(rand(1<<30))" > /etc/openisr/hostid
