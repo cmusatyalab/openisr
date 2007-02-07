@@ -161,17 +161,21 @@ out:
 }
 
 /* XXX consolidate duplicate code between this and lzf? */
-/* XXX this should be converted to use scatterlists rather than a vmalloc
-   buffer */
+/* XXX we could avoid the vmalloc buffer on output as well as input, and just
+   swap sg pointers between the chunkdata and a per-CPU spare.  note that
+   different devs may have different sg lengths. */
 static int compress_chunk_zlib(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg)
 {
 	z_stream strm;
+	void *page;
 	int ret;
 	int ret2;
 	int size;
+	int i;
+	int flush;
 	
-	scatterlist_transfer(dev, sg, ts->buf_uncompressed, READ);
+	might_sleep();
 	strm.workspace=ts->zlib_deflate;
 	/* XXX keep persistent stream structures? */
 	ret=zlib_deflateInit(&strm, Z_DEFAULT_COMPRESSION);
@@ -179,11 +183,20 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 		debug(DBG_TFM, "zlib_deflateInit failed");
 		return -EIO;
 	}
-	strm.next_in=ts->buf_uncompressed;
-	strm.avail_in=dev->chunksize;
 	strm.next_out=ts->buf_compressed;
 	strm.avail_out=dev->chunksize;
-	ret=zlib_deflate(&strm, Z_FINISH);
+	for (i=0, flush=0; ; i++, flush=(i == chunk_pages(dev) - 1)
+				? Z_FINISH : 0) {
+		page=kmap_atomic(sg[i].page, KM_USER0);
+		strm.next_in=page + sg[i].offset;
+		strm.avail_in=sg[i].length;
+		ret=zlib_deflate(&strm, flush);
+		kunmap_atomic(page, KM_USER0);
+		/* We get Z_STREAM_END on successful completion */
+		if (ret != Z_OK || strm.avail_out == 0)
+			break;
+		cond_resched();
+	}
 	size=strm.total_out;
 	ret2=zlib_deflateEnd(&strm);
 	if (ret == Z_OK) {
@@ -208,16 +221,20 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 	return size;
 }
 
-/* XXX this should be converted to use scatterlists rather than a vmalloc
-   buffer */
+/* XXX we could avoid the vmalloc buffer on input as well as output, and just
+   swap sg pointers between the chunkdata and a per-CPU spare.  note that
+   different devs may have different sg lengths. */
 static int decompress_chunk_zlib(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg,
 			unsigned len)
 {
 	z_stream strm;
+	void *page;
 	int ret;
 	int ret2;
+	int i;
 	
+	might_sleep();
 	/* XXX don't need to transfer whole scatterlist */
 	scatterlist_transfer(dev, sg, ts->buf_compressed, READ);
 	strm.workspace=ts->zlib_inflate;
@@ -229,16 +246,22 @@ static int decompress_chunk_zlib(struct nexus_dev *dev,
 	}
 	strm.next_in=ts->buf_compressed;
 	strm.avail_in=len;
-	strm.next_out=ts->buf_uncompressed;
-	strm.avail_out=dev->chunksize;
-	ret=zlib_inflate(&strm, Z_FINISH);
+	for (i=0; i<chunk_pages(dev); i++) {
+		page=kmap_atomic(sg[i].page, KM_USER0);
+		strm.next_out=page + sg[i].offset;
+		strm.avail_out=sg[i].length;
+		ret=zlib_inflate(&strm, Z_SYNC_FLUSH);
+		kunmap_atomic(page, KM_USER0);
+		if (ret != Z_OK)
+			break;
+		cond_resched();
+	}
 	len=strm.total_out;
 	ret2=zlib_inflateEnd(&strm);
 	if (ret != Z_STREAM_END || ret2 != Z_OK)
 		return -EIO;
 	if (len != dev->chunksize)
 		return -EIO;
-	scatterlist_transfer(dev, sg, ts->buf_uncompressed, WRITE);
 	return 0;
 }
 
