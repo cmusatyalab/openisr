@@ -276,10 +276,6 @@ static inline void setup_timer(struct timer_list *timer,
 	crypto_cipher_set_iv(tfm, iv, size)
 #define crypto_blkcipher_setkey(tfm, key, size) \
 	crypto_cipher_setkey(tfm, key, size)
-#define cryptoapi_encrypt(tfm, dst, src, len) \
-	crypto_cipher_encrypt(tfm, dst, src, len)
-#define cryptoapi_decrypt(tfm, dst, src, len) \
-	crypto_cipher_decrypt(tfm, dst, src, len)
 #define crypto_free_blkcipher(tfm) crypto_free_tfm(tfm)
 #define crypto_free_hash(tfm) crypto_free_tfm(tfm)
 
@@ -287,7 +283,8 @@ static inline struct crypto_blkcipher
 		*cryptoapi_alloc_cipher(const struct tfm_suite_info *info)
 {
 	struct crypto_blkcipher *ret;
-	ret=crypto_alloc_tfm(info->cipher_name, info->cipher_mode);
+	ret=crypto_alloc_tfm(info->cipher_name,
+				info->cipher_mode | CRYPTO_TFM_REQ_MAY_SLEEP);
 	if (ret == NULL)
 		return ERR_PTR(-EINVAL);
 	return ret;
@@ -297,10 +294,26 @@ static inline struct crypto_hash
 			*cryptoapi_alloc_hash(const struct tfm_suite_info *info)
 {
 	struct crypto_hash *ret;
-	ret=crypto_alloc_tfm(info->hash_name, 0);
+	ret=crypto_alloc_tfm(info->hash_name, CRYPTO_TFM_REQ_MAY_SLEEP);
 	if (ret == NULL)
 		return ERR_PTR(-EINVAL);
 	return ret;
+}
+
+static inline int cryptoapi_encrypt(struct crypto_hash *tfm,
+			struct scatterlist *dst, struct scatterlist *src,
+			unsigned len)
+{
+	might_sleep();
+	return crypto_cipher_encrypt(tfm, dst, src, len);
+}
+
+static inline int cryptoapi_decrypt(struct crypto_hash *tfm,
+			struct scatterlist *dst, struct scatterlist *src,
+			unsigned len)
+{
+	might_sleep();
+	return crypto_cipher_decrypt(tfm, dst, src, len);
 }
 
 /* XXX verify this against test vectors */
@@ -310,6 +323,7 @@ static inline int cryptoapi_hash(struct crypto_hash *tfm,
 	int i;
 	unsigned saved;
 	
+	might_sleep();
 	/* For some reason, the old-style digest function expects nsg rather
 	   than nbytes.  However, we may want the hash to include only part of
 	   a page.  Thus this nonsense. */
@@ -333,7 +347,8 @@ static inline int cryptoapi_encrypt(struct crypto_blkcipher *tfm,
 {
 	struct blkcipher_desc desc;
 	desc.tfm=tfm;
-	desc.flags=0;
+	desc.flags=CRYPTO_TFM_REQ_MAY_SLEEP;
+	might_sleep();
 	return crypto_blkcipher_encrypt(&desc, dst, src, len);
 }
 
@@ -343,7 +358,8 @@ static inline int cryptoapi_decrypt(struct crypto_blkcipher *tfm,
 {
 	struct blkcipher_desc desc;
 	desc.tfm=tfm;
-	desc.flags=0;
+	desc.flags=CRYPTO_TFM_REQ_MAY_SLEEP;
+	might_sleep();
 	return crypto_blkcipher_decrypt(&desc, dst, src, len);
 }
 
@@ -352,7 +368,8 @@ static inline int cryptoapi_hash(struct crypto_hash *tfm,
 {
 	struct hash_desc desc;
 	desc.tfm=tfm;
-	desc.flags=0;
+	desc.flags=CRYPTO_TFM_REQ_MAY_SLEEP;
+	might_sleep();
 	return crypto_hash_digest(&desc, sg, nbytes, out);
 }
 #endif
