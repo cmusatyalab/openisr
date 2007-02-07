@@ -28,8 +28,8 @@ install_modules: module
 		INSTALL_MOD_DIR=openisr modules_install
 
 ifneq ($(MAKELEVEL), 0)
-.PHONY: install_revision
-install_revision:
+.PHONY: distdir_version
+distdir_version:
 endif
 
 endif

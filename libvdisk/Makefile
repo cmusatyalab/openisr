@@ -37,7 +37,7 @@ clean:
 	rm -f *.o *.lo *.so
 
 ifneq ($(MAKELEVEL), 0)
-.PHONY: install_revision
-install_revision:
+.PHONY: distdir_version
+distdir_version:
 	install -m 644 revision.h $(DESTDIR)/libvdisk/
 endif

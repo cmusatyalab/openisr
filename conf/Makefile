@@ -16,6 +16,6 @@ install:
 install_modules:
 
 ifneq ($(MAKELEVEL), 0)
-.PHONY: install_revision
-install_revision:
+.PHONY: distdir_version
+distdir_version:
 endif

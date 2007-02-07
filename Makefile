@@ -5,37 +5,48 @@ MANDIR ?= /usr/share/man
 SYSCONFDIR ?= /etc/openisr
 export BINDIR LIBDIR SHAREDIR MANDIR SYSCONFDIR
 
-DIRS = client vulpes libvdisk nexus sha1-i586 conf
-DISTDIRS = $(DIRS) debian
+MODULEDIRS := nexus sha1-i586
+SRCDIRS := client vulpes libvdisk $(MODULEDIRS) conf
+OTHERDIRS := debian
+DIRS := $(SRCDIRS) $(OTHERDIRS)
 
 # Make sure DESTDIR is an absolute path
 ifneq ($(filter-out /%,$(strip $(DESTDIR))),)
 override DESTDIR := $(CURDIR)/$(DESTDIR)
 endif
 
-TARGETS = all install clean install_revision install_modules
-DIRTARGETS := $(foreach tgt,$(TARGETS),$(DIRS:=__$(tgt)))
+TARGETS = all install clean distdir_version install_modules
+DIRTARGETS := $(foreach tgt,$(TARGETS),$(SRCDIRS:=__$(tgt)))
+SRCDISTTARGETS := $(SRCDIRS:=__distdir)
+OTHERDISTTARGETS := $(OTHERDIRS:=__distdir) root__distdir
+DISTTARGETS := $(SRCDISTTARGETS) $(OTHERDISTTARGETS)
 
 .SECONDEXPANSION:
 .PHONY: $(TARGETS)
-$(TARGETS): $(DIRS:=__$$@)
+$(TARGETS): $(SRCDIRS:=__$$@)
 
 .PHONY: $(DIRTARGETS)
 $(DIRTARGETS):
 	$(MAKE) -C $(subst __, ,$@) DESTDIR=$(DESTDIR)
 
 .PHONY: distclient
-distclient: install_revision
-$(DIRS:=__install_revision): distclient_tree
+distclient: root__distdir $(DIRS:=__distdir)
 
-.PHONY: distclient_tree
-distclient_tree:
+.PHONY: distmodules
+distmodules: root__distdir $(MODULEDIRS:=__distdir)
+
+.PHONY: $(SRCDISTTARGETS) $(OTHERDISTTARGETS)
+$(SRCDISTTARGETS): $$@_copy $$@_version
+$(OTHERDISTTARGETS): $$@_copy
+
+.PHONY: $(DISTTARGETS:=_copy)
+$(DISTTARGETS:=_copy):
 	@set -e; \
 	if [ -z "$(DESTDIR)" ] ; then \
 		echo "You must specify \$$DESTDIR" ;\
 		exit 1 ;\
 	fi ;\
-	for dir in . $(DISTDIRS) ; do \
-		echo "Exporting $$dir" ;\
-		svn export -q -N -rHEAD $$dir $(DESTDIR)/$$dir ;\
-	done
+	dir=$(word 1,$(subst __, ,$@)) ;\
+	[ "$$dir" = "root" ] && dir=. || true ;\
+	echo "Exporting $$dir" ;\
+	svn export -q -N -rHEAD $$dir $(DESTDIR)/$$dir

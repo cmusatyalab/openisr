@@ -41,7 +41,7 @@ install: all
 install_modules:
 
 ifneq ($(MAKELEVEL), 0)
-.PHONY: install_revision
-install_revision:
+.PHONY: distdir_version
+distdir_version:
 	install -m 644 IsrRevision.pm $(DESTDIR)/client/
 endif
