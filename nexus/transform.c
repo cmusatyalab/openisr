@@ -175,7 +175,6 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 	int i;
 	int flush;
 	
-	might_sleep();
 	strm.workspace=ts->zlib_deflate;
 	/* XXX keep persistent stream structures? */
 	ret=zlib_deflateInit(&strm, Z_DEFAULT_COMPRESSION);
@@ -234,7 +233,6 @@ static int decompress_chunk_zlib(struct nexus_dev *dev,
 	int ret2;
 	int i;
 	
-	might_sleep();
 	/* XXX don't need to transfer whole scatterlist */
 	scatterlist_transfer(dev, sg, ts->buf_compressed, READ);
 	strm.workspace=ts->zlib_inflate;
