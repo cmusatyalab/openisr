@@ -113,7 +113,7 @@ install-arch:
 
 	(cd debian/openisr/usr/src \
 	&& chown -R root:src modules \
-	&& tar -c modules | bzip2 > openisr.tar.bz2 \
+	&& tar jcf opeinsr.tar.bz2 modules \
 	&& rm -rf modules)
 
 	dh_install -s
