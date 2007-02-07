@@ -40,7 +40,7 @@ static unsigned received_size;
 static unsigned received;
 static int dirty;
 static int pipefds[2];
-static int verbose=1;
+static int verbose;
 
 void printkey(unsigned char *key, int len)
 {
@@ -348,7 +348,7 @@ int usage(char *prog)
 {
 	printf("Usage: %s storefile ctldev chunkdev chunksize "
 				"cachesize offset\n", prog);
-	printf("Usage: %s storefile {none|zlib|lzf}\n", prog);
+	printf("Usage: %s storefile {none|zlib|lzf} [-v]\n", prog);
 	return 1;
 }
 
@@ -357,7 +357,8 @@ int main(int argc, char **argv)
 	struct params params;
 	enum nexus_compress compress;
 	
-	if (argc == 7) {
+	switch (argc) {
+	case 7:
 		memset(params.control_device, 0, NEXUS_MAX_DEVICE_LEN);
 		memset(params.chunk_device, 0, NEXUS_MAX_DEVICE_LEN);
 		snprintf(params.control_device, NEXUS_MAX_DEVICE_LEN, "%s",
@@ -368,7 +369,12 @@ int main(int argc, char **argv)
 		params.cachesize=atoi(argv[5]);
 		params.offset=atoi(argv[6]);
 		return setup(&params, argv[1]);
-	} else if (argc == 3) {
+	case 4:
+		if (strcmp(argv[3], "-v"))
+			return usage(argv[0]);
+		verbose=1;
+		/* Fall through */
+	case 3:
 		if (!strcmp(argv[2], "none"))
 			compress=NEXUS_COMPRESS_NONE;
 		else if (!strcmp(argv[2], "zlib"))
@@ -378,7 +384,7 @@ int main(int argc, char **argv)
 		else
 			return usage(argv[0]);
 		return run(argv[1], compress);
-	} else {
+	default:
 		return usage(argv[0]);
 	}
 }
