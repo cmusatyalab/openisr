@@ -41,13 +41,13 @@ build-arch: build-arch-stamp
 build-arch-stamp: configure-stamp 
 
 	# Add here commands to compile the arch part of the package.
-	#$(MAKE) 
+	$(MAKE) 
 
-	( cd $(CURDIR)/vulpes && \
-	  $(MAKE) vulpes )
+	#( cd $(CURDIR)/vulpes && \
+	#  $(MAKE) vulpes )
 
-	( cd $(CURDIR)/libvdisk && \
-	  $(MAKE) libvdisk.so )
+	#( cd $(CURDIR)/libvdisk && \
+	#  $(MAKE) libvdisk.so )
 
 	touch $@
 
@@ -108,12 +108,14 @@ install-arch:
 #	install client/Isr.pm client/IsrConfigTie.pm client/HTTPSSH.pm $(CURDIR)/debian/openisr/usr/share/openisr
 
 #	kernel module stuff 
-	dh_installdirs $(KSRCDIR) $(KSRCDIR)/debian
-	dh_install nexus/* $(KSRCDIR)
+	#dh_installdirs $(KSRCDIR) $(KSRCDIR)/debian
+	#dh_install nexus/* $(KSRCDIR)
+	$(MAKE) distmodules DESTDIR=debian/openisr/usr/src/modules/openisr
+	# TODO: debian/ dir for module
 
 	(cd debian/openisr/usr/src \
 	&& chown -R root:src modules \
-	&& tar jcf opeinsr.tar.bz2 modules \
+	&& tar jcf openisr.tar.bz2 modules \
 	&& rm -rf modules)
 
 	dh_install -s
@@ -142,7 +144,7 @@ binary-common:
 	dh_compress 
 	# please don't undo my permissions on libvdisk!
 	dh_fixperms -Xlibvdisk.so
-#	dh_perl
+	dh_perl
 	dh_makeshlibs
 	dh_installdeb
 	dh_shlibdeps
