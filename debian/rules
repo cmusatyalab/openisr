@@ -141,8 +141,10 @@ install-arch:
 
 	# Add here commands to install the arch part of the package into 
 	# debian/tmp.
-#	$(MAKE) distclient DESTDIR=$(CURDIR)/debian/openisr
-	$(MAKE) install DESTDIR=$(CURDIR)/debian/openisr
+	#$(MAKE) distclient DESTDIR=$(CURDIR)/debian/openisr
+	$(MAKE) -C client install DESTDIR=$(CURDIR)/debian/openisr
+	$(MAKE) -C vulpes install DESTDIR=$(CURDIR)/debian/openisr
+	$(MAKE) -C libvdisk install DESTDIR=$(CURDIR)/debian/openisr
 
 	# FIXME: should really fix vulpes Makefile...
 #	mkdir -p $(CURDIR)/debian/openisr/usr/lib/openisr
@@ -165,13 +167,12 @@ install-arch:
 	# only if needed
 	dh_installdirs -a usr/share/modass/overrides
 
-	$(MAKE) distmodules DESTDIR=debian/openisr/usr/src/modules/openisr
+	#$(MAKE) distmodules DESTDIR=debian/openisr/usr/src/modules/openisr
 
-	# TODO: debian/ dir for module
 	# copy all relevant debian/ files.
-	mkdir debian/openisr/usr/src/modules/openisr/debian
+	dh_installdirs -a usr/src/modules/openisr/debian
 
-	cd debian && cp changelog control.template compat *.modules.in rules copyright openisr/usr/src/modules/openisr/debian
+	cd debian && cp changelog control.template compat rules copyright openisr/usr/src/modules/openisr/debian
 
 	ln -s ../packages/default.sh debian/openisr/usr/share/modass/overrides/openisr	
 
