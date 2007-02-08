@@ -59,23 +59,27 @@ const struct tfm_compress_info *compress_info(enum nexus_compress alg)
 	return &compress_desc[alg];
 }
 
-/* XXX this needs to go away. */
-static void scatterlist_transfer(struct nexus_dev *dev, struct scatterlist *sg,
-			void *buf, int dir)
+/* Copy a scatterlist to/from a vmalloc bounce buffer, for compression
+   algorithms that can't handle scatterlists.  If the algorithm can run
+   page-at-a-time without sacrificing compression, try to do that instead. */
+static void scatterlist_transfer(struct scatterlist *sg, void *buf,
+			unsigned nbytes, int dir)
 {
 	void *page;
-	int i;
+	unsigned count;
+	unsigned total;
 	
 	/* We use KM_USER0 */
 	BUG_ON(in_interrupt());
-	for (i=0; i<chunk_pages(dev); i++) {
-		BUG_ON(sg[i].offset != 0);
-		page=kmap_atomic(sg[i].page, KM_USER0);
+	for (total=0; total < nbytes; sg++) {
+		count=min(sg->length, nbytes - total);
+		page=kmap_atomic(sg->page, KM_USER0);
 		if (dir == READ)
-			memcpy(buf + i * PAGE_SIZE, page, sg[i].length);
+			memcpy(buf + total, page + sg->offset, count);
 		else
-			memcpy(page, buf + i * PAGE_SIZE, sg[i].length);
+			memcpy(page + sg->offset, buf + total, count);
 		kunmap_atomic(page, KM_USER0);
+		total += count;
 	}
 }
 
@@ -216,7 +220,7 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 	/* We write the whole chunk out to disk, so make sure we're not
 	   leaking data. */
 	memset(ts->buf_compressed + size, 0, dev->chunksize - size);
-	scatterlist_transfer(dev, sg, ts->buf_compressed, WRITE);
+	scatterlist_transfer(sg, ts->buf_compressed, dev->chunksize, WRITE);
 	return size;
 }
 
@@ -233,8 +237,7 @@ static int decompress_chunk_zlib(struct nexus_dev *dev,
 	int ret2;
 	int i;
 	
-	/* XXX don't need to transfer whole scatterlist */
-	scatterlist_transfer(dev, sg, ts->buf_compressed, READ);
+	scatterlist_transfer(sg, ts->buf_compressed, len, READ);
 	strm.workspace=ts->zlib_inflate;
 	/* XXX keep persistent stream structures? */
 	ret=zlib_inflateInit(&strm);
@@ -268,7 +271,7 @@ static int compress_chunk_lzf(struct nexus_dev *dev,
 {
 	int size;
 	
-	scatterlist_transfer(dev, sg, ts->buf_uncompressed, READ);
+	scatterlist_transfer(sg, ts->buf_uncompressed, dev->chunksize, READ);
 	size=lzf_compress(ts->buf_uncompressed, dev->chunksize,
 				ts->buf_compressed, dev->chunksize,
 				ts->lzf_compress);
@@ -284,7 +287,7 @@ static int compress_chunk_lzf(struct nexus_dev *dev,
 	/* We write the whole chunk out to disk, so make sure we're not
 	   leaking data. */
 	memset(ts->buf_compressed + size, 0, dev->chunksize - size);
-	scatterlist_transfer(dev, sg, ts->buf_compressed, WRITE);
+	scatterlist_transfer(sg, ts->buf_compressed, dev->chunksize, WRITE);
 	return size;
 }
 
@@ -292,13 +295,12 @@ static int decompress_chunk_lzf(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg,
 			unsigned len)
 {
-	/* XXX don't need to transfer whole scatterlist */
-	scatterlist_transfer(dev, sg, ts->buf_compressed, READ);
+	scatterlist_transfer(sg, ts->buf_compressed, len, READ);
 	len=lzf_decompress(ts->buf_compressed, len,
 				ts->buf_uncompressed, dev->chunksize);
 	if (len != dev->chunksize)
 		return -EIO;
-	scatterlist_transfer(dev, sg, ts->buf_uncompressed, WRITE);
+	scatterlist_transfer(sg, ts->buf_uncompressed, dev->chunksize, WRITE);
 	return 0;
 }
 
