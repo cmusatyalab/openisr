@@ -1,0 +1,24 @@
+# this file is used for the module package (see below)
+
+Source: openisr
+Section: net 
+Priority: extra
+Maintainer: Matt Toups <mtoups@cs.cmu.edu>
+Build-Depends: debhelper (>= 5), libcurl3-dev
+Standards-Version: 3.7.2
+
+Package: openisr
+Architecture: any
+Depends: module-assistant, curl (>= 7.12), ssh | openssh-client, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
+Description: Internet Suspend/Resume (ISR) client
+ OpenISR ... mobile computing environment... virtualization ...  yeah.
+
+Package: openisr-modules-#KVERS#
+Provides: openisr-modules
+Depends: openisr
+Recommends: linux-image-#KVERS# | kernel-image-#KVERS#
+Description: openisr modules (nexus, sha1-i586) for Linux #KVERS#
+ Kernel modules required for openisr.  Actually, sha1-i586 is optional.
+ .
+ This package provides the binary kernel module for Linux #KVERS#.
+

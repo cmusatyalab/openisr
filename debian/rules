@@ -65,7 +65,6 @@ clean:
 	rm -f build-arch-stamp build-indep-stamp #CONFIGURE-STAMP#
 
 	# Add here commands to clean up after the build process.
-	# XXX: no toplevel makefile ... yet
 	#-$(MAKE) clean
 	( cd $(CURDIR)/vulpes && $(MAKE) clean )
 	( cd $(CURDIR)/libvdisk && $(MAKE) clean )
@@ -85,6 +84,55 @@ install-indep:
 
 	dh_install -i
 
+# BEGIN module stuff
+
+# prefix of the target package name
+PACKAGE=openisr
+# modifieable for experiments or debugging m-a
+MA_DIR ?= /usr/share/modass
+# load generic variable handling
+-include $(MA_DIR)/include/generic.make
+# load default rules
+-include $(MA_DIR)/include/common-rules.make
+
+MAJOR=$(shell echo $(KVERS) | sed -e 's/\(...\).*/\1/')
+ifeq ($(MAJOR),2.6)
+KO=k
+endif
+
+kdist_clean:
+	dh_clean
+	make -C nexus clean
+	make -C sha1-i586 clean
+
+# prep-deb-files rewrites the debian/ files as needed. See RATIONALE for
+# details
+kdist_config: prep-deb-files
+# ... additional kernel specific things to configure...
+
+kdist_configure: kdist_config
+
+binary-modules: prep-deb-files
+	dh_testdir
+	dh_testroot
+	dh_clean -k
+	sed -e 's/#KVERS#/$(KVERS)/g' \
+	     -e 's/#VERSION#/$(VERSION)/g' debian/control.template > $(CURDIR)/debian/control
+			    
+#	make -C Linux-$(MAJOR) KERNEL_SOURCES=$(KSRC) MODVERSIONS=detect KERNEL=linux-$(KVERS)
+	make -C nexus install_modules
+	make -C sha1-i586 install_modules
+#	install -m644 -b -D Linux-$(MAJOR)/openisr.$(KO)o $(CURDIR)/debian/$(PKGNAME)/lib/modules/$(KVERS)/openisr/openisr.$(KO)o
+	dh_installdocs
+	dh_installchangelogs
+	dh_compress
+	dh_fixperms
+	dh_installdeb
+	dh_gencontrol -- -v$(VERSION)
+	dh_md5sums
+	dh_builddeb --destdir=$(DEB_DESTDIR)
+
+
 install-arch:
 	dh_testdir
 	dh_testroot
@@ -93,7 +141,8 @@ install-arch:
 
 	# Add here commands to install the arch part of the package into 
 	# debian/tmp.
-	$(MAKE) DESTDIR=$(CURDIR)/debian/openisr install
+#	$(MAKE) distclient DESTDIR=$(CURDIR)/debian/openisr
+	$(MAKE) install DESTDIR=$(CURDIR)/debian/openisr
 
 	# FIXME: should really fix vulpes Makefile...
 #	mkdir -p $(CURDIR)/debian/openisr/usr/lib/openisr
@@ -110,8 +159,21 @@ install-arch:
 #	kernel module stuff 
 	#dh_installdirs $(KSRCDIR) $(KSRCDIR)/debian
 	#dh_install nexus/* $(KSRCDIR)
+
+	# create needed directories
+	#dh_installdirs -i usr/src/modules
+	# only if needed
+	dh_installdirs -a usr/share/modass/overrides
+
 	$(MAKE) distmodules DESTDIR=debian/openisr/usr/src/modules/openisr
+
 	# TODO: debian/ dir for module
+	# copy all relevant debian/ files.
+	mkdir debian/openisr/usr/src/modules/openisr/debian
+
+	cd debian && cp changelog control.template compat *.modules.in rules copyright openisr/usr/src/modules/openisr/debian
+
+	ln -s ../packages/default.sh debian/openisr/usr/share/modass/overrides/openisr	
 
 	(cd debian/openisr/usr/src \
 	&& chown -R root:src modules \

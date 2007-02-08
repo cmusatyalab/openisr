@@ -12,3 +12,10 @@ if ! [ -a /etc/openisr/hostid ]; then
 	dd if=/dev/urandom bs=4 count=1 status=noxfer | od -An -t d4 | tr -d " -" > /etc/openisr/hostid
 
 fi
+
+echo "For a good time, run:";
+echo "  sudo module-assistant auto-install openisr";
+
+# seems to have a problem with dpkg's status db lock.. will investigate
+#/usr/bin/module-assistant auto-install openisr;
+
