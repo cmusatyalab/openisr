@@ -247,8 +247,12 @@ static inline void setup_timer(struct timer_list *timer,
 #endif
 
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,17)
+/* for_each_possible_cpu() was added in the middle of the 2.6.16 stable
+   series */
+#ifndef for_each_possible_cpu
 #define for_each_possible_cpu(cpu) for_each_cpu(cpu)
+#endif
 #endif
 
 
