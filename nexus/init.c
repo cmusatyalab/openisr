@@ -31,7 +31,7 @@ module_param(debug_mask, int, S_IRUGO|S_IWUSR);
 void nexus_dev_get(struct nexus_dev *dev)
 {
 	debug(DBG_REFCOUNT, "dev_get, refs %d",
-			atomic_read(&dev->class_dev->kobj.kref.refcount));
+				read_refcount_debug(&dev->class_dev->kobj));
 	if (class_device_get(dev->class_dev) == NULL)
 		BUG();
 }
@@ -43,8 +43,8 @@ void nexus_dev_get(struct nexus_dev *dev)
 void nexus_dev_put(struct nexus_dev *dev, int unlink)
 {
 	debug(DBG_REFCOUNT, "dev_put, refs %d, unlink %d",
-			atomic_read(&dev->class_dev->kobj.kref.refcount),
-			unlink);
+				read_refcount_debug(&dev->class_dev->kobj),
+				unlink);
 	BUG_ON(in_atomic());
 	if (unlink)
 		class_device_unregister(dev->class_dev);

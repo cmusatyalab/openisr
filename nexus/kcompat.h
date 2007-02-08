@@ -58,6 +58,20 @@ static inline int mutex_is_locked(MUTEX *lock)
 
 /***** Device model/sysfs ****************************************************/
 
+/* Debug use only */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
+static inline int read_refcount_debug(struct kobject *kobj)
+{
+	return atomic_read(&kobj->refcount);
+}
+#else
+static inline int read_refcount_debug(struct kobject *kobj)
+{
+	return atomic_read(&kobj->kref.refcount);
+}
+#endif
+
+
 /* As of 2.6.18, there are three cases.  There are expected to be more in
    the future.
    
@@ -272,6 +286,13 @@ static inline void setup_timer(struct timer_list *timer,
 /***** cryptoapi *************************************************************/
 
 #include <linux/crypto.h>
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14)
+/* Older kernels just check for in_softirq() or in_atomic(), so no flag needs
+   to be set */
+#define CRYPTO_TFM_REQ_MAY_SLEEP 0
+#endif
+
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
 #define crypto_blkcipher crypto_tfm
