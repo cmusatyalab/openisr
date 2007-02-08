@@ -70,6 +70,7 @@ static int nexus_thread(void *data)
 				case NR_CALLBACKS:
 					BUG();
 				}
+				cond_resched();
 				goto next;
 			}
 		}
@@ -454,10 +455,9 @@ static int cpu_start(int cpu)
 	threads.task[cpu]=thr;
 	threads.count++;
 	kthread_bind(thr, cpu);
-	/* Make sure the thread doesn't have a higher priority than interactive
-	   processes (e.g. the X server) because they'll become somewhat
-	   less interactive under high I/O load */
-	set_user_nice(thr, 0);
+	/* Give the thread a lower priority than garden-variety interactive
+	   processes so that we don't kill their scheduling latency */
+	set_user_nice(thr, 5);
 	wake_up_process(thr);
 	return 0;
 }
@@ -621,6 +621,10 @@ int __init thread_start(void)
 		ret=PTR_ERR(thr);
 		goto bad;
 	}
+	/* Make sure the request thread doesn't have a higher priority than
+	   interactive processes.  This is not hugely necessary but seems to
+	   improve scheduling latency a little bit. */
+	set_user_nice(thr, 0);
 	request_thread=thr;
 	wake_up_process(thr);
 	

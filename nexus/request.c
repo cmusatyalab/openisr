@@ -305,6 +305,7 @@ void nexus_run_requests(struct list_head *entry)
 		default:
 			BUG();
 		}
+		cond_resched();
 		spin_lock_bh(&dev->requests_lock);
 	}
 out:
