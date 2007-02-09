@@ -1010,6 +1010,7 @@ void chunkdata_free_table(struct nexus_dev *dev)
 		list_del(&cd->lh_bucket);
 		list_del(&cd->lh_lru);
 		free_chunk_buffer(cd);
+		memset(cd->key, 0, sizeof(cd->key));
 		kfree(cd);
 	}
 	kfree(table->hash);

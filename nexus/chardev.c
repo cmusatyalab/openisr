@@ -95,6 +95,7 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 	}
 out:
 	mutex_unlock(&dev->lock);
+	memset(msg.key, 0, sizeof(msg.key));
 	if (err && i == 0)
 		return err;
 	debug(DBG_CHARDEV, "Leaving chr_read: %d", i * sizeof(msg));
@@ -158,6 +159,7 @@ static ssize_t chr_write(struct file *filp, const char __user *buf,
 	}
 out:
 	mutex_unlock(&dev->lock);
+	memset(msg.key, 0, sizeof(msg.key));
 	if (err && i == 0)
 		return err;
 	debug(DBG_CHARDEV, "Leaving chr_write: %d", i * sizeof(msg));
