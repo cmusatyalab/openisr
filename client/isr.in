@@ -290,9 +290,9 @@ $result = GetOptions(
 		     "n|nameserver=s" => \$nameserver,
 		     "p|parcel"       => undef,
 		     "q|quiet"        => sub { $verbose = 0 },
-		     "u|userid=s"     => \$userid,
-		     "V|verbose+"     => \$verbose,
-		     "v|version=i"    => \$version,
+		     "r|rollback=i"   => \$version,
+		     "u|user=s"       => \$userid,
+		     "v|verbose+"     => \$verbose,
 		     "X|noauto"       => \$noautoflag
 		     );
 
@@ -2262,8 +2262,8 @@ sub usage ($) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR servers (once per X session only).\n";
 	print "  checkin    Sync parcel to server and release lock (-b optional).\n";
-	print "  checkout   Fetch parcel from server and acquire its lock (-v optional).\n";
-	print "  checkp     Check parcel on server for consistency (-v and -c optional).\n";
+	print "  checkout   Fetch parcel from server and acquire its lock (-r optional).\n";
+	print "  checkp     Check parcel on server for consistency (-r and -c optional).\n";
 	print "  clean      Remove parcel from client and release its lock (-a optional).\n";
 	print "  deauth     Remove authentication credentials from your client.\n";
 	print "  discard    Discard all local changes to parcel since last checkout or sync.\n";
@@ -2273,7 +2273,7 @@ sub usage ($) {
 	print "  ls         List info about your parcels (parcel, -l and -L optional).\n";
 	print "  passwd     Change your ISR password on the default nameserver.\n";
  	print "  reset      Reset ISR runtime.\n";
- 	print "  resume     Checkout (if necessary) and run a parcel (-v and -d optional).\n";
+ 	print "  resume     Checkout (if necessary) and run a parcel (-r and -d optional).\n";
 	print "  stat       Display information about local ISR state (-c optional).\n";
 	print "  sync       Make new parcel version on server w/o releasing lock (-b optional).\n";
 	print "  version    Print ISR version.\n";
@@ -2288,9 +2288,9 @@ sub usage ($) {
     print "  -n,--nameserver    Name server domain name (optional).\n";    
     print "  -p,--parcel        Ignored.\n";    
     print "  -q,--quiet         Run silently (except if things go wrong).\n";    
+    print "  -r,--rollback      Rollback to or check version [co, checkp].\n";
     print "  -u,--user          Your ISR user name (defaults to your login name).\n";    
-    print "  -v,--version       Rollback to or check version [co, checkp].\n";
-    print "  -V,--verbose       Increment verbosity level.\n";
+    print "  -v,--verbose       Increment verbosity level.\n";
     print "  -x,--nocheckstate  Skip consistency check [ci, sync, disconnect].\n";
     print "  -X,--noauto        Don't automatically start/stop VMWare [resume].\n";
     print "\n";
