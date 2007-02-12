@@ -41,13 +41,7 @@ build-arch: build-arch-stamp
 build-arch-stamp: configure-stamp 
 
 	# Add here commands to compile the arch part of the package.
-	$(MAKE) 
-
-	#( cd $(CURDIR)/vulpes && \
-	#  $(MAKE) vulpes )
-
-	#( cd $(CURDIR)/libvdisk && \
-	#  $(MAKE) libvdisk.so )
+	$(MAKE)
 
 	touch $@
 
@@ -65,9 +59,7 @@ clean:
 	rm -f build-arch-stamp build-indep-stamp #CONFIGURE-STAMP#
 
 	# Add here commands to clean up after the build process.
-	#-$(MAKE) clean
-	( cd $(CURDIR)/vulpes && $(MAKE) clean )
-	( cd $(CURDIR)/libvdisk && $(MAKE) clean )
+	-$(MAKE) clean
 
 	dh_clean 
 
@@ -141,22 +133,7 @@ install-arch:
 
 	# Add here commands to install the arch part of the package into 
 	# debian/tmp.
-	#$(MAKE) distclient DESTDIR=$(CURDIR)/debian/openisr
-	$(MAKE) -C client install DESTDIR=$(CURDIR)/debian/openisr
-	$(MAKE) -C vulpes install DESTDIR=$(CURDIR)/debian/openisr
-	$(MAKE) -C libvdisk install DESTDIR=$(CURDIR)/debian/openisr
-
-	# FIXME: should really fix vulpes Makefile...
-#	mkdir -p $(CURDIR)/debian/openisr/usr/lib/openisr
-#	cp $(CURDIR)/vulpes/vulpes $(CURDIR)/debian/openisr/usr/lib/openisr
-
-	# libvdisk Makefile will setuid root
-#	(cd $(CURDIR)/libvdisk && \
-#	 $(MAKE) DESTDIR=$(CURDIR)/debian/openisr install)
-
-#	install client/isr $(CURDIR)/debian/openisr/usr/bin
-#	install -d $(CURDIR)/debian/openisr/usr/share/openisr
-#	install client/Isr.pm client/IsrConfigTie.pm client/HTTPSSH.pm $(CURDIR)/debian/openisr/usr/share/openisr
+	$(MAKE) install DESTDIR=$(CURDIR)/debian/openisr
 
 #	kernel module stuff 
 	#dh_installdirs $(KSRCDIR) $(KSRCDIR)/debian
@@ -182,6 +159,7 @@ install-arch:
 	&& rm -rf modules)
 
 	dh_install -s
+
 # Must not depend on anything. This is to be called by
 # binary-arch/binary-indep
 # in another 'make' thread.
