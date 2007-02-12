@@ -498,7 +498,7 @@ static void cpu_stop(int cpu)
 static int cpu_callback(struct notifier_block *nb, unsigned long action,
 			void *data)
 {
-	int cpu=(int)data;
+	int cpu=(long)data;
 	
 	/* Any of these handlers may run before thread_start has actually
 	   started any threads, so they must not make assumptions about the

@@ -116,7 +116,7 @@ out:
 	memset(msg.key, 0, sizeof(msg.key));
 	if (err && i == 0)
 		return err;
-	debug(DBG_CHARDEV, "Leaving chr_read: %d", i * sizeof(msg));
+	debug(DBG_CHARDEV, "Leaving chr_read: %d", i * (int)sizeof(msg));
 	return i * sizeof(msg);
 }
 
@@ -180,7 +180,7 @@ out:
 	memset(msg.key, 0, sizeof(msg.key));
 	if (err && i == 0)
 		return err;
-	debug(DBG_CHARDEV, "Leaving chr_write: %d", i * sizeof(msg));
+	debug(DBG_CHARDEV, "Leaving chr_write: %d", i * (int)sizeof(msg));
 	return i * sizeof(msg);
 }
 

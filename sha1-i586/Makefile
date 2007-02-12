@@ -1,7 +1,9 @@
 ifneq ($(KERNELRELEASE),)
 
+ifeq ($(ARCH),i386)
 obj-m := sha1-i586.o
 sha1-i586-objs := sha1-i586-asm.o sha1.o
+endif
 
 else
 
