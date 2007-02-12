@@ -173,6 +173,27 @@ static ssize_t dev_show_chunk_writes(struct class_device *class_dev, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.chunk_writes);
 }
 
+static ssize_t dev_show_comp_ratio(struct class_device *class_dev, char *buf)
+{
+	struct nexus_dev *dev=class_get_devdata(class_dev);
+	u64 bytes;
+	unsigned writes;
+	unsigned scaled_pct;
+	
+	/* -ERESTARTSYS doesn't work here */
+	mutex_lock(&dev->lock);
+	bytes=dev->stats.data_bytes_written;
+	writes=dev->stats.chunk_writes;
+	mutex_unlock(&dev->lock);
+	if (writes == 0)
+		return snprintf(buf, PAGE_SIZE, "n/a\n");
+	do_div(bytes, writes);
+	scaled_pct=bytes;
+	scaled_pct = (scaled_pct * 1000) / dev->chunksize;
+	return snprintf(buf, PAGE_SIZE, "%u.%u\n", scaled_pct / 10,
+				scaled_pct % 10);
+}
+
 static ssize_t dev_show_whole_writes(struct class_device *class_dev, char *buf)
 {
 	struct nexus_dev *dev=class_get_devdata(class_dev);
@@ -233,6 +254,7 @@ struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(chunk_errors, S_IRUGO, dev_show_chunk_errors, NULL),
 	__ATTR(chunk_reads, S_IRUGO, dev_show_chunk_reads, NULL),
 	__ATTR(chunk_writes, S_IRUGO, dev_show_chunk_writes, NULL),
+	__ATTR(compression_ratio_pct, S_IRUGO, dev_show_comp_ratio, NULL),
 	__ATTR(whole_chunk_updates, S_IRUGO, dev_show_whole_writes, NULL),
 	__ATTR(chunk_encrypted_discards, S_IRUGO, dev_show_discards, NULL),
 	__ATTR(sectors_read, S_IRUGO, dev_show_sect_read, NULL),

@@ -311,6 +311,7 @@ static void issue_chunk_io(struct chunkdata *cd)
 	} else if (cd->state == ST_STORE_DATA) {
 		dir=WRITE;
 		dev->stats.chunk_writes++;
+		dev->stats.data_bytes_written += cd->size;
 	} else {
 		BUG();
 		return;

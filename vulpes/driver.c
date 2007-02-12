@@ -220,38 +220,32 @@ vulpes_err_t driver_init(void)
   return VULPES_SUCCESS;
 }
 
-static void log_counter_value(char *attr)
+static void log_sysfs_value(char *attr)
 {
   char fname[MAX_PATH_LENGTH];
   char buf[32];
-  unsigned value;
-  char *endptr;
   
   snprintf(fname, sizeof(fname), "/sys/class/openisr/openisr%c/%s",
 				 'a' + state.bdev_index, attr);
   if (read_sysfs_file(fname, buf, sizeof(buf))) {
     vulpes_log(LOG_STATS,"%s:unknown",attr);
   } else {
-    value=strtoul(buf, &endptr, 10);
-    if (*buf == 0 || *endptr != 0) {
-      vulpes_log(LOG_STATS,"%s:unknown",attr);
-    } else {
-      vulpes_log(LOG_STATS,"%s:%u",attr,value);
-    }
+    vulpes_log(LOG_STATS,"%s:%s",attr,buf);
   }
 }
 
 void driver_shutdown(void)
 {
-  log_counter_value("cache_hits");
-  log_counter_value("cache_misses");
-  log_counter_value("chunk_reads");
-  log_counter_value("chunk_writes");
-  log_counter_value("chunk_errors");
-  log_counter_value("chunk_encrypted_discards");
-  log_counter_value("whole_chunk_updates");
-  log_counter_value("sectors_read");
-  log_counter_value("sectors_written");
+  log_sysfs_value("cache_hits");
+  log_sysfs_value("cache_misses");
+  log_sysfs_value("chunk_reads");
+  log_sysfs_value("chunk_writes");
+  log_sysfs_value("chunk_errors");
+  log_sysfs_value("chunk_encrypted_discards");
+  log_sysfs_value("whole_chunk_updates");
+  log_sysfs_value("sectors_read");
+  log_sysfs_value("sectors_written");
+  log_sysfs_value("compression_ratio_pct");
   
   close(state.chardev_fd);
   unlink(state.devfile_name);

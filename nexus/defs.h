@@ -53,6 +53,7 @@ struct nexus_stats {
 	unsigned cache_misses;
 	unsigned chunk_reads;
 	unsigned chunk_writes;
+	u64      data_bytes_written;
 	unsigned whole_chunk_updates;
 	unsigned encrypted_discards;
 	unsigned chunk_errors;
