@@ -288,7 +288,7 @@ $result = GetOptions(
 		     "l|long"         => \$longflag,
 		     "L|longvers=i"   => \$longvers,
 		     "n|nameserver=s" => \$nameserver,
-		     "p|parcel"       => undef,
+		     "p|parcel"       => sub {},
 		     "q|quiet"        => sub { $verbose = 0 },
 		     "r|rollback=i"   => \$version,
 		     "u|user=s"       => \$userid,
