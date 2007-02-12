@@ -1,3 +1,15 @@
+/* 
+ * Vulpes - support daemon for the OpenISR (TM) system virtual disk
+ * 
+ * Copyright (C) 2002-2005 Intel Corporation
+ * Copyright (C) 2005-2007 Carnegie Mellon University
+ * 
+ * This software is distributed under the terms of the Eclipse Public License, 
+ * Version 1.0 which can be found in the file named LICENSE.Eclipse.  ANY USE, 
+ * REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES RECIPIENT'S 
+ * ACCEPTANCE OF THIS AGREEMENT
+ */
+
 #ifndef VULPES_UTIL_H_
 #define VULPES_UTIL_H_
 
