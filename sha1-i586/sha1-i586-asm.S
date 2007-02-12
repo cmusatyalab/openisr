@@ -1,16 +1,22 @@
 /*
- * x86-optimized SHA1 hash algorithm
+ * sha1-i586 - x86-optimized SHA1 hash algorithm for CryptoAPI
  *
  * Originally from Nettle
  * Ported from M4 to cpp by Benjamin Gilbert <bgilbert@cs.cmu.edu>
  *
  * Copyright (C) 2004, Niels Möller
- * Copyright (c) 2006 Carnegie Mellon University
+ * Copyright (C) 2006 Carnegie Mellon University
  * 
- * This file is free software; you can redistribute it and/or modify it under
- * the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation; either version 2.1 of the License, or (at your
- * option) any later version.
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of version 2.1 of the GNU Lesser General Public License as
+ * published by the Free Software Foundation.  A copy of the GNU Lesser General
+ * Public License should have been distributed along with this library in the
+ * file LICENSE.LGPL.
+ * 
+ * This library is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
  */
 
 /* Register usage */
