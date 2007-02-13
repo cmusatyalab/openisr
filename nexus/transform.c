@@ -413,6 +413,7 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	const struct tfm_suite_info *info;
 	struct crypto_blkcipher *cipher;
 	struct crypto_hash *hash;
+	static int have_warned;
 	
 	BUG_ON(ts->cipher[suite] != NULL);
 	
@@ -428,13 +429,14 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	ts->cipher[suite]=cipher;
 	ts->hash[suite]=hash;
 	
-	if (!strcmp("sha1", info->hash_name) &&
+	if (!have_warned && !strcmp("sha1", info->hash_name) &&
 				sha1_impl_is_suboptimal(hash)) {
 		/* Actually, the presence of sha1-i586.ko only matters
 		   when the tfm is first allocated.  Does anyone have better
 		   wording for this? */
 		log(KERN_NOTICE, "Using unoptimized SHA1; load sha1-i586.ko "
 					"to improve performance");
+		have_warned=1;
 	}
 	return 0;
 }

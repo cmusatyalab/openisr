@@ -295,6 +295,9 @@ DEFINE_ALLOC_ON_ALL(suite)
 DEFINE_FREE_ON_ALL(suite)
 DEFINE_ALLOC_ON_ALL(compress)
 DEFINE_FREE_ON_ALL(compress)
+
+#undef DEFINE_ALLOC_ON_ALL
+#undef DEFINE_FREE_ON_ALL
 #undef nexus_suite
 
 static int alloc_all_on_cpu(int cpu)
