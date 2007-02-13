@@ -871,7 +871,7 @@ sub run ($$$$) {
 	or system_errexit("VMWare terminated abnormally.");
 
     # Wait here until the user suspends VMWare
-    print "Shutting down VMware.\n"
+    print "Shutting down VMWare.\n"
 	if $verbose;
     
     # Signal Vulpes to shut down and wait until it is gone
@@ -1359,6 +1359,9 @@ sub passwd ($) {
 # resetclient - Resets the ISR runtime
 #
 sub resetclient () {
+    my $vmname;
+    my $vmopts;
+    
     query("Really terminate all running ISR processes?") eq "y"
 	or return;
 
@@ -1368,7 +1371,8 @@ sub resetclient () {
 
     print("Terminating any VMWare processes.\n")
 	if $verbose;
-    system("killall vmware > /dev/null 2>&1");
+    ($vmname, $vmopts) = split(" ", $syscfg{vmcommand});
+    system("killall $vmname > /dev/null 2>&1");
 
     print("Terminating any ISR processes.\n")
 	if $verbose;
