@@ -34,9 +34,9 @@
 #define LOWMEM_WAIT_TIME (HZ/10)
 #define MODULE_NAME "openisr"
 #define DEVICE_NAME "openisr"
-#define KTHREAD_NAME "openisr"
-#define IOTHREAD_NAME "openisr-io"
-#define REQTHREAD_NAME "openisr-block"
+#define KTHREAD_NAME "kopenisrd"
+#define IOTHREAD_NAME "kopenisriod"
+#define REQTHREAD_NAME "kopenisrblockd"
 #define CD_NR_STATES 14  /* must shadow NR_STATES in chunkdata.c */
 
 #include <linux/blkdev.h>
