@@ -6,8 +6,7 @@ this is a start.
 SO FAR: * vulpes
 	* libvdisk
 	* client (perl)
-TODO: 
-      * config files
-      * nexus (kernel headers/sources)
+        * config files
+        * nexus (kernel headers/sources)
 
  -- Matt Toups <mtoups@cs.cmu.edu>  Mon, 29 Jan 2007 11:25:48 -0500
