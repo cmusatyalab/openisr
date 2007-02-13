@@ -336,7 +336,7 @@ int run(char *storefile, enum nexus_compress compress)
 		count=read(ctlfd, &message_in, sizeof(message_in));
 		if (count < 0 || (count % sizeof(message_in[0]))) {
 			printf("read() returned %d, message size %d\n", ret,
-						sizeof(message_in[0]));
+						(int)sizeof(message_in[0]));
 			continue;
 		}
 		count /= sizeof(message_in[0]);

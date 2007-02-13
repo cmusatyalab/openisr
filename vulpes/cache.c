@@ -1070,7 +1070,7 @@ int copy_for_upload(void)
   int fd;
   unsigned examined_chunks=0;
   unsigned modified_chunks=0;
-  uint64_t modified_bytes=0;
+  unsigned long long modified_bytes=0;
   FILE *fp;
   char calc_tag[HASH_LEN];
   unsigned dirty_count;
