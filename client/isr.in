@@ -864,6 +864,8 @@ sub run ($$$$) {
 	if $verbose;
     if (!$noautoflag) {
         $vmware_opts = "-X";
+    } else {
+        $vmware_opts = "";
     }
     mysystem("LD_PRELOAD=libvdisk.so.0 VDISK_DEVICE=$devnode $syscfg{vmcommand} $vmware_opts $cachedir/cfg/$cfgfile") == 0
 	or system_errexit("VMWare terminated abnormally.");
