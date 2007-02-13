@@ -4,7 +4,7 @@ SHAREDIR ?= $(HOME)/bin
 MANDIR ?= $(HOME)/man
 SYSCONFDIR ?= $(HOME)/bin
 
-GEN=isr Isr.pm
+GEN=isr Isr.pm isr.1
 PM=Isr.pm HTTPSSH.pm IsrConfigTie.pm IsrRevision.pm
 MAN=isr.1
 
@@ -15,7 +15,8 @@ all: $(GEN)
 $(GEN): %: %.in
 	@echo "Generating $@ from $^"
 	@sed -e "s=!!LIBDIR!!=$(LIBDIR)=g" -e "s=!!SHAREDIR!!=$(SHAREDIR)=g" \
-				-e "s=!!SYSCONFDIR!!=$(SYSCONFDIR)=g" $^ > $@
+				-e "s=!!SYSCONFDIR!!=$(SYSCONFDIR)=g" \
+				-e "s=!!BINDIR!!=$(BINDIR)=g" $^ > $@
 	@[ $@ = "isr" ] && chmod +x $@ || true
 
 .PHONY: clean
