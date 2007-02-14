@@ -365,9 +365,10 @@ static int compress_chunk_lzf(struct nexus_dev *dev,
 {
 	int size;
 	
-	scatterlist_transfer(sg, ts->buf_uncompressed, dev->chunksize, READ);
-	size=lzf_compress(ts->buf_uncompressed, dev->chunksize,
-				ts->buf_compressed, dev->chunksize,
+	scatterlist_transfer(sg, ts->lzf_buf_uncompressed, dev->chunksize,
+				READ);
+	size=lzf_compress(ts->lzf_buf_uncompressed, dev->chunksize,
+				ts->lzf_buf_compressed, dev->chunksize,
 				ts->lzf_compress);
 	if (size == 0) {
 		/* Compressed data larger than uncompressed data */
@@ -380,8 +381,8 @@ static int compress_chunk_lzf(struct nexus_dev *dev,
 	}
 	/* We write the whole chunk out to disk, so make sure we're not
 	   leaking data. */
-	memset(ts->buf_compressed + size, 0, dev->chunksize - size);
-	scatterlist_transfer(sg, ts->buf_compressed, dev->chunksize, WRITE);
+	memset(ts->lzf_buf_compressed + size, 0, dev->chunksize - size);
+	scatterlist_transfer(sg, ts->lzf_buf_compressed, dev->chunksize, WRITE);
 	return size;
 }
 
@@ -389,12 +390,13 @@ static int decompress_chunk_lzf(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg,
 			unsigned len)
 {
-	scatterlist_transfer(sg, ts->buf_compressed, len, READ);
-	len=lzf_decompress(ts->buf_compressed, len,
-				ts->buf_uncompressed, dev->chunksize);
+	scatterlist_transfer(sg, ts->lzf_buf_compressed, len, READ);
+	len=lzf_decompress(ts->lzf_buf_compressed, len,
+				ts->lzf_buf_uncompressed, dev->chunksize);
 	if (len != dev->chunksize)
 		return -EIO;
-	scatterlist_transfer(sg, ts->buf_uncompressed, dev->chunksize, WRITE);
+	scatterlist_transfer(sg, ts->lzf_buf_uncompressed, dev->chunksize,
+				WRITE);
 	return 0;
 }
 
@@ -526,53 +528,16 @@ void suite_remove(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	ts->hash[suite]=NULL;
 }
 
-static int bounce_buffer_get(struct nexus_tfm_state *ts)
-{
-	if (ts->buf_refcount == 0) {
-		debug(DBG_TFM, "Allocating compression bounce buffer");
-		/* XXX this is not ideal, but there's no good way to support
-		   scatterlists in LZF without hacking the code. */
-		/* XXX We always allocate a buffer of size MAX_CHUNKSIZE,
-		   which is defined for this purpose.  (There's no other
-		   reason the chunksize couldn't be larger.)  We should
-		   dynamically resize the vmalloc area to fit the largest
-		   chunksize we actually need at the moment, rather than
-		   using an arbitrary constant, but really we should find
-		   a way to eliminate the bounce buffers. */
-		ts->buf_compressed=vmalloc(MAX_CHUNKSIZE);
-		if (ts->buf_compressed == NULL)
-			return -ENOMEM;
-		ts->buf_uncompressed=vmalloc(MAX_CHUNKSIZE);
-		if (ts->buf_uncompressed == NULL) {
-			vfree(ts->buf_compressed);
-			ts->buf_compressed=NULL;
-			return -ENOMEM;
-		}
-	}
-	ts->buf_refcount++;
-	return 0;
-}
-
-static void bounce_buffer_put(struct nexus_tfm_state *ts)
-{
-	if (--ts->buf_refcount == 0) {
-		debug(DBG_TFM, "Freeing compression bounce buffer");
-		BUG_ON(ts->buf_compressed == NULL);
-		vfree(ts->buf_compressed);
-		ts->buf_compressed=NULL;
-		vfree(ts->buf_uncompressed);
-		ts->buf_uncompressed=NULL;
-	}
-}
-
+/* XXX We always allocate temporary buffers of size MAX_CHUNKSIZE, which is
+   defined for this purpose.  (There's no other reason the chunksize couldn't
+   be larger.)  We should dynamically resize the buffers to fit the largest
+   chunksize we actually need at the moment, rather than using an arbitrary
+   constant. */
 int compress_add(struct nexus_tfm_state *ts, enum nexus_compress alg)
 {
-	int err;
-	
 	switch (alg) {
 	case NEXUS_COMPRESS_NONE:
-		/* NONE is special: we never allocate bounce buffers for it */
-		return 0;
+		break;
 	case NEXUS_COMPRESS_ZLIB:
 		ts->zlib_sg=alloc_scatterlist(MAX_CHUNKSIZE);
 		if (ts->zlib_sg == NULL)
@@ -595,17 +560,27 @@ int compress_add(struct nexus_tfm_state *ts, enum nexus_compress alg)
 		}
 		break;
 	case NEXUS_COMPRESS_LZF:
-		ts->lzf_compress=kmalloc(sizeof(LZF_STATE), GFP_KERNEL);
-		if (ts->lzf_compress == NULL)
+		ts->lzf_buf_compressed=vmalloc(MAX_CHUNKSIZE);
+		if (ts->lzf_buf_compressed == NULL)
 			return -ENOMEM;
+		ts->lzf_buf_uncompressed=vmalloc(MAX_CHUNKSIZE);
+		if (ts->lzf_buf_uncompressed == NULL) {
+			vfree(ts->lzf_buf_compressed);
+			ts->lzf_buf_compressed=NULL;
+			return -ENOMEM;
+		}
+		ts->lzf_compress=kmalloc(sizeof(LZF_STATE), GFP_KERNEL);
+		if (ts->lzf_compress == NULL) {
+			vfree(ts->lzf_buf_uncompressed);
+			ts->lzf_buf_uncompressed=NULL;
+			vfree(ts->lzf_buf_compressed);
+			ts->lzf_buf_compressed=NULL;
+			return -ENOMEM;
+		}
 		break;
 	case NEXUS_NR_COMPRESS:
 		BUG();
 	}
-	
-	err=bounce_buffer_get(ts);
-	if (err)
-		return err;
 	return 0;
 }
 
@@ -613,8 +588,7 @@ void compress_remove(struct nexus_tfm_state *ts, enum nexus_compress alg)
 {
 	switch (alg) {
 	case NEXUS_COMPRESS_NONE:
-		/* Special case: don't decrement bounce buffer refcount */
-		return;
+		break;
 	case NEXUS_COMPRESS_ZLIB:
 		BUG_ON(ts->zlib_inflate == NULL);
 		kfree(ts->zlib_inflate);
@@ -628,11 +602,14 @@ void compress_remove(struct nexus_tfm_state *ts, enum nexus_compress alg)
 		BUG_ON(ts->lzf_compress == NULL);
 		kfree(ts->lzf_compress);
 		ts->lzf_compress=NULL;
+		vfree(ts->lzf_buf_uncompressed);
+		ts->lzf_buf_uncompressed=NULL;
+		vfree(ts->lzf_buf_compressed);
+		ts->lzf_buf_compressed=NULL;
 		break;
 	case NEXUS_NR_COMPRESS:
 		BUG();
 	}
-	bounce_buffer_put(ts);
 }
 
 int transform_validate(struct nexus_dev *dev)

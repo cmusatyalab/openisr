@@ -82,12 +82,11 @@ struct nexus_stats {
 struct nexus_tfm_state {
 	struct crypto_blkcipher *cipher[NEXUS_NR_CRYPTO];
 	struct crypto_hash *hash[NEXUS_NR_CRYPTO];
-	void *buf_compressed;
-	void *buf_uncompressed;
-	int buf_refcount;
 	struct scatterlist *zlib_sg;
 	void *zlib_deflate;
 	void *zlib_inflate;
+	void *lzf_buf_compressed;
+	void *lzf_buf_uncompressed;
 	void *lzf_compress;
 };
 
