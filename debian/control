@@ -7,6 +7,7 @@ Standards-Version: 3.7.2
 
 Package: openisr
 Architecture: any
+Suggests: kvm
 Depends: module-assistant, curl (>= 7.12), ssh | openssh-client, rsync, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
 Description: Internet Suspend/Resume (ISR) client
  OpenISR ... mobile computing environment... virtualization ...  yeah.
