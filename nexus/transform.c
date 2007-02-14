@@ -101,6 +101,42 @@ static void scatterlist_transfer(struct scatterlist *sg, void *buf,
 	}
 }
 
+static void scatterlist_zero(struct scatterlist *sg, unsigned start,
+			unsigned nbytes)
+{
+	void *page;
+	unsigned count;
+	
+	debug(DBG_TFM, "scatterlist_zero start %u count %u", start, nbytes);
+	/* We use KM_USER0 */
+	BUG_ON(in_interrupt());
+	while (start >= sg->length) {
+		start -= sg->length;
+		sg++;
+	}
+	while (nbytes > 0) {
+		page=kmap_atomic(sg->page, KM_USER0);
+		count=min(nbytes, sg->length - start);
+		memset(page + sg->offset + start, 0, count);
+		kunmap_atomic(page, KM_USER0);
+		nbytes -= count;
+		start=0;
+		sg++;
+	}
+}
+
+static void scatterlist_flip(struct scatterlist *s1, struct scatterlist *s2,
+			unsigned npages)
+{
+	struct page *tmp;
+	
+	for (; npages > 0; npages--, s1++, s2++) {
+		tmp=s1->page;
+		s1->page=s2->page;
+		s2->page=tmp;
+	}
+}
+
 /* Return the number of bytes of padding which need to be added to
    data of length @datalen if padding is used */
 static inline unsigned crypto_pad_len(struct nexus_dev *dev, unsigned datalen)
@@ -183,19 +219,19 @@ out:
 }
 
 /* XXX consolidate duplicate code between this and lzf? */
-/* XXX we could avoid the vmalloc buffer on output as well as input, and just
-   swap sg pointers between the chunkdata and a per-CPU spare.  note that
-   different devs may have different sg lengths. */
 static int compress_chunk_zlib(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg)
 {
 	z_stream strm;
-	void *page;
+	void *from;
+	void *to;
+	struct scatterlist *out_sg=ts->zlib_sg;
+	unsigned out_offset=0;
 	int ret;
 	int ret2;
 	int size;
-	int i;
 	int flush;
+	int i;
 	
 	strm.workspace=ts->zlib_deflate;
 	/* XXX keep persistent stream structures? */
@@ -204,24 +240,42 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 		debug(DBG_TFM, "zlib_deflateInit failed");
 		return -EIO;
 	}
-	strm.next_out=ts->buf_compressed;
-	strm.avail_out=dev->chunksize;
-	for (i=0, flush=0; ; i++, flush=(i == chunk_pages(dev) - 1)
-				? Z_FINISH : 0) {
-		page=kmap_atomic(sg[i].page, KM_USER0);
-		strm.next_in=page + sg[i].offset;
+	/* Compression is slow, so we call cond_resched() every input page to
+	   try to keep scheduling latency down, even though this may cause
+	   some unnecessary TLB misses for output pages. */
+	for (i=0; ; i++) {
+		from=kmap_atomic(sg[i].page, KM_USER0);
+		strm.next_in=from + sg[i].offset;
 		strm.avail_in=sg[i].length;
-		ret=zlib_deflate(&strm, flush);
-		kunmap_atomic(page, KM_USER0);
+		flush = (i == chunk_pages(dev) - 1) ? Z_FINISH : 0;
+		
+		do {
+			to=kmap_atomic(out_sg->page, KM_USER1);
+			strm.next_out=to + out_sg->offset + out_offset;
+			strm.avail_out=out_sg->length - out_offset;
+			ret=zlib_deflate(&strm, flush);
+			/* Unconditionally unmap the destination page: we can't
+			   hold a mapping across cond_resched() */
+			kunmap_atomic(to, KM_USER1);
+			if (strm.avail_out == 0) {
+				out_offset=0;
+				out_sg++;
+			} else {
+				out_offset=out_sg->length - strm.avail_out;
+			}
+		} while ((strm.avail_in > 0 || flush) && ret == Z_OK &&
+					strm.total_out < dev->chunksize);
+		
+		kunmap_atomic(from, KM_USER0);
 		/* We get Z_STREAM_END on successful completion */
-		if (ret != Z_OK || strm.avail_out == 0)
+		if (ret != Z_OK || strm.total_out >= dev->chunksize)
 			break;
 		cond_resched();
 	}
 	size=strm.total_out;
 	ret2=zlib_deflateEnd(&strm);
-	if (ret == Z_OK) {
-		/* Compressed data larger than uncompressed data */
+	if (size >= dev->chunksize) {
+		/* Compressed data larger than uncompressed data. */
 		return -EFBIG;
 	} else if (ret != Z_STREAM_END || ret2 != Z_OK) {
 		debug(DBG_TFM, "zlib compression failed");
@@ -235,27 +289,31 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 		debug(DBG_TFM, "Refusing to compress: borderline case");
 		return -EFBIG;
 	}
+	
+	/* We can't just swap the sg pointer with ts->zlib_sg because the
+	   scatterlists may be of different lengths (zlib_sg must be able
+	   to hold MAX_CHUNKSIZE bytes).  So we swap individual page
+	   pointers. */
+	scatterlist_flip(sg, ts->zlib_sg, (size + PAGE_SIZE - 1) / PAGE_SIZE);
 	/* We write the whole chunk out to disk, so make sure we're not
 	   leaking data. */
-	memset(ts->buf_compressed + size, 0, dev->chunksize - size);
-	scatterlist_transfer(sg, ts->buf_compressed, dev->chunksize, WRITE);
+	scatterlist_zero(sg, size, dev->chunksize - size);
 	return size;
 }
 
-/* XXX we could avoid the vmalloc buffer on input as well as output, and just
-   swap sg pointers between the chunkdata and a per-CPU spare.  note that
-   different devs may have different sg lengths. */
 static int decompress_chunk_zlib(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg,
 			unsigned len)
 {
 	z_stream strm;
-	void *page;
+	struct scatterlist *in_sg=sg;
+	struct scatterlist *out_sg=ts->zlib_sg;
+	unsigned out_offset=0;
+	void *from;
+	void *to;
 	int ret;
 	int ret2;
-	int i;
 	
-	scatterlist_transfer(sg, ts->buf_compressed, len, READ);
 	strm.workspace=ts->zlib_inflate;
 	/* XXX keep persistent stream structures? */
 	ret=zlib_inflateInit(&strm);
@@ -263,24 +321,42 @@ static int decompress_chunk_zlib(struct nexus_dev *dev,
 		debug(DBG_TFM, "zlib_inflateInit failed");
 		return -EIO;
 	}
-	strm.next_in=ts->buf_compressed;
-	strm.avail_in=len;
-	for (i=0; i<chunk_pages(dev); i++) {
-		page=kmap_atomic(sg[i].page, KM_USER0);
-		strm.next_out=page + sg[i].offset;
-		strm.avail_out=sg[i].length;
-		ret=zlib_inflate(&strm, Z_SYNC_FLUSH);
-		kunmap_atomic(page, KM_USER0);
-		if (ret != Z_OK)
-			break;
+	
+	/* Decompression is relatively fast, so we cond_resched() only every
+	   compressed (input) page.  If we called cond_resched() every output
+	   page, we'd be repeatedly mapping and unmapping the same input
+	   page, leading to lots of unnecessary TLB misses. */
+	do {
+		from=kmap_atomic(in_sg->page, KM_USER0);
+		strm.next_in=from + in_sg->offset;
+		strm.avail_in=min(len, in_sg->length);
+		len -= strm.avail_in;
+		in_sg++;
+		do {
+			to=kmap_atomic(out_sg->page, KM_USER1);
+			strm.next_out=to + out_sg->offset + out_offset;
+			strm.avail_out=out_sg->length - out_offset;
+			ret=zlib_inflate(&strm, Z_SYNC_FLUSH);
+			/* Can't hold the mapping across cond_resched() */
+			kunmap_atomic(to, KM_USER1);
+			if (strm.avail_out > 0) {
+				out_offset=out_sg->length - strm.avail_out;
+			} else {
+				out_offset=0;
+				out_sg++;
+			}
+		} while (strm.avail_in > 0 && ret == Z_OK);
+		kunmap_atomic(from, KM_USER0);
 		cond_resched();
-	}
+	} while (ret == Z_OK && len > 0 && strm.total_out < dev->chunksize);
+	
 	len=strm.total_out;
 	ret2=zlib_inflateEnd(&strm);
 	if (ret != Z_STREAM_END || ret2 != Z_OK)
 		return -EIO;
 	if (len != dev->chunksize)
 		return -EIO;
+	scatterlist_flip(sg, ts->zlib_sg, chunk_pages(dev));
 	return 0;
 }
 
@@ -498,15 +574,23 @@ int compress_add(struct nexus_tfm_state *ts, enum nexus_compress alg)
 		/* NONE is special: we never allocate bounce buffers for it */
 		return 0;
 	case NEXUS_COMPRESS_ZLIB:
+		ts->zlib_sg=alloc_scatterlist(MAX_CHUNKSIZE);
+		if (ts->zlib_sg == NULL)
+			return -ENOMEM;
 		/* The deflate workspace size is too large for kmalloc */
 		ts->zlib_deflate=vmalloc(zlib_deflate_workspacesize());
-		if (ts->zlib_deflate == NULL)
+		if (ts->zlib_deflate == NULL) {
+			free_scatterlist(ts->zlib_sg, MAX_CHUNKSIZE);
+			ts->zlib_sg=NULL;
 			return -ENOMEM;
+		}
 		ts->zlib_inflate=kmalloc(zlib_inflate_workspacesize(),
 					GFP_KERNEL);
 		if (ts->zlib_inflate == NULL) {
 			vfree(ts->zlib_deflate);
 			ts->zlib_deflate=NULL;
+			free_scatterlist(ts->zlib_sg, MAX_CHUNKSIZE);
+			ts->zlib_sg=NULL;
 			return -ENOMEM;
 		}
 		break;
@@ -537,6 +621,8 @@ void compress_remove(struct nexus_tfm_state *ts, enum nexus_compress alg)
 		ts->zlib_inflate=NULL;
 		vfree(ts->zlib_deflate);
 		ts->zlib_deflate=NULL;
+		free_scatterlist(ts->zlib_sg, MAX_CHUNKSIZE);
+		ts->zlib_sg=NULL;
 		break;
 	case NEXUS_COMPRESS_LZF:
 		BUG_ON(ts->lzf_compress == NULL);

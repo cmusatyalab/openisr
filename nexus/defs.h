@@ -24,7 +24,7 @@
 #define MAX_SEGS_PER_IO 32
 #define MAX_CHUNKS_PER_IO 32
 #define MIN_CONCURRENT_REQS 2  /* XXX */
-#define MAX_CHUNKSIZE 131072  /* XXX hack for preallocated tfm bounce buffers */
+#define MAX_CHUNKSIZE 131072  /* XXX hack for preallocated tfm scratch space */
 #define DEVICES 16  /* If this is more than 26, ctr will need to be fixed */
 #define MINORS_PER_DEVICE 16
 #define MAX_DEV_ALLOCATION_MULT 1  /* don't allocate > 10% RAM per device */
@@ -85,6 +85,7 @@ struct nexus_tfm_state {
 	void *buf_compressed;
 	void *buf_uncompressed;
 	int buf_refcount;
+	struct scatterlist *zlib_sg;
 	void *zlib_deflate;
 	void *zlib_inflate;
 	void *lzf_compress;
@@ -330,6 +331,8 @@ void run_chunk(struct list_head *entry);
 void run_all_chunks(struct nexus_dev *dev);
 void chunkdata_complete_io(struct list_head *entry);
 void chunk_tfm(struct nexus_tfm_state *ts, struct list_head *entry);
+struct scatterlist *alloc_scatterlist(unsigned nbytes);
+void free_scatterlist(struct scatterlist *sg, unsigned nbytes);
 
 /* transform.c */
 int transform_validate(struct nexus_dev *dev);

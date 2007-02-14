@@ -225,49 +225,50 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 
 /* Allocated buffer pages may be in high memory and thus may not have a
    kernel mapping */
-static int alloc_chunk_buffer(struct chunkdata *cd)
+struct scatterlist *alloc_scatterlist(unsigned nbytes)
 {
-	struct nexus_dev *dev=cd->table->dev;
-	int i;
-	unsigned npages=chunk_pages(dev);
+	struct scatterlist *sg;
+	struct scatterlist *cur=NULL;  /* initialization to avoid warning */
+	unsigned npages=(nbytes + PAGE_SIZE - 1) / PAGE_SIZE;
 	unsigned residual;
-	struct scatterlist *sg=NULL;  /* initialization to avoid warning */
+	int i;
 	
-	BUG_ON(cd->sg != NULL);
-	cd->sg=kmalloc(npages * sizeof(cd->sg[0]), GFP_KERNEL);
-	if (cd->sg == NULL)
-		return -ENOMEM;
+	sg=kmalloc(npages * sizeof(*sg), GFP_KERNEL);
+	if (sg == NULL)
+		return NULL;
 	for (i=0; i<npages; i++) {
-		sg=&cd->sg[i];
-		sg->page=alloc_page(GFP_KERNEL | __GFP_HIGHMEM);
-		if (sg->page == NULL)
+		cur=&sg[i];
+		cur->page=alloc_page(GFP_KERNEL | __GFP_HIGHMEM);
+		if (cur->page == NULL)
 			goto bad;
-		sg->offset=0;
-		sg->length=PAGE_SIZE;
+		cur->offset=0;
+		cur->length=PAGE_SIZE;
 	}
 	/* Possible partial last page */
-	residual=dev->chunksize % PAGE_SIZE;
+	residual=nbytes % PAGE_SIZE;
 	if (residual)
-		sg->length=residual;
-	return 0;
+		cur->length=residual;
+	return sg;
 	
 bad:
 	while (--i >= 0)
-		__free_page(cd->sg[i].page);
-	kfree(cd->sg);
-	return -ENOMEM;
+		__free_page(sg[i].page);
+	kfree(sg);
+	return NULL;
 }
 
-static void free_chunk_buffer(struct chunkdata *cd)
+/* @nbytes must be the value passed to alloc_scatterlist() */
+void free_scatterlist(struct scatterlist *sg, unsigned nbytes)
 {
-	struct nexus_dev *dev=cd->table->dev;
-	int i;
+	struct scatterlist *cur;
 	
-	if (cd->sg == NULL)
+	if (sg == NULL)
 		return;
-	for (i=0; i<chunk_pages(dev); i++)
-		__free_page(cd->sg[i].page);
-	kfree(cd->sg);
+	for (cur=sg; nbytes > 0; cur++) {
+		__free_page(cur->page);
+		nbytes -= cur->length;
+	}
+	kfree(sg);
 }
 
 BIO_DESTRUCTOR(bio_destructor, bio_pool)
@@ -1028,7 +1029,7 @@ void chunkdata_free_table(struct nexus_dev *dev)
 		BUG_ON(!is_idle_state(cd->state));
 		list_del(&cd->lh_bucket);
 		list_del(&cd->lh_lru);
-		free_chunk_buffer(cd);
+		free_scatterlist(cd->sg, dev->chunksize);
 		memset(cd->key, 0, sizeof(cd->key));
 		kfree(cd);
 	}
@@ -1081,7 +1082,8 @@ int chunkdata_alloc_table(struct nexus_dev *dev)
 		INIT_LIST_HEAD(&cd->lh_need_tfm);
 		INIT_LIST_HEAD(&cd->pending);
 		list_add(&cd->lh_lru, &table->lru);
-		if (alloc_chunk_buffer(cd))
+		cd->sg=alloc_scatterlist(dev->chunksize);
+		if (cd->sg == NULL)
 			return -ENOMEM;
 	}
 	dev->stats.state_count[ST_INVALID]=dev->cachesize;
