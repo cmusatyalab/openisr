@@ -100,9 +100,8 @@ static int nexus_thread(void *data)
 		if (!kthread_should_stop())
 			schedule();
 		finish_wait(&queues.wq, &wait);
-		
 next:
-		barrier();  /* nop to make compiler happy */
+		try_to_freeze();
 	}
 	return 0;
 }
@@ -150,6 +149,7 @@ static int nexus_io_thread(void *ignored)
 				schedule();
 			finish_wait(&queues.wq, &wait);
 		}
+		try_to_freeze();
 	}
 	return 0;
 }
@@ -216,6 +216,7 @@ static int nexus_request_thread(void *ignored)
 				schedule();
 			finish_wait(&pending_requests.wq, &wait);
 		}
+		try_to_freeze();
 	}
 	return 0;
 }
