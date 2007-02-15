@@ -39,7 +39,7 @@
 #define K3VALUE	$0x8F1BBCDC		/* Rounds 40-59 */
 #define K4VALUE	$0xCA62C1D6		/* Rounds 60-79 */
 
-/* Convert stack offsets in words to offsets in bytes */
+/* Convert stack offsets in 32-bit words to offsets in bytes */
 #define OFFSET(i) 4*(i)
 
 /* Reads the input via P_DATA into register, byteswaps it, and stores it in
@@ -49,9 +49,9 @@
 	bswap	register;					\
 	movl	register, OFFSET(index)(DATA)
 
-/* Sets the workspace word at the given index to zero. */
+/* Sets the workspace eightbyte at the given index to zero. */
 #define CLEAR(index)						\
-	movl	$0, OFFSET(index)(DATA)
+	movq	$0, OFFSET(index)(DATA)
 
 /*
  * expand(i) is the expansion function
@@ -140,7 +140,7 @@ sha1_compress:
 	push	%rbx		/* 80(%rsp) */
 	push	%rbp		/* 72(%rsp) */
 
-	subq	$72, %rsp	/* %rsp = W */
+	subq	$64, %rsp	/* %rsp = W */
 
 	/* Load and byteswap data */
 	SWAP( 0, %eax); SWAP( 1, %ebx); SWAP( 2, %ecx); SWAP( 3, %edx)
@@ -263,12 +263,10 @@ sha1_compress:
 	addl	SE, 16(P_STATE)
 
 	/* Clear the workspace for security */
-	CLEAR( 0); CLEAR( 1); CLEAR( 2); CLEAR( 3);
-	CLEAR( 4); CLEAR( 5); CLEAR( 6); CLEAR( 7);
-	CLEAR( 8); CLEAR( 9); CLEAR(10); CLEAR(11);
-	CLEAR(12); CLEAR(13); CLEAR(14); CLEAR(15);
+	CLEAR( 0); CLEAR( 2); CLEAR( 4); CLEAR( 6);
+	CLEAR( 8); CLEAR(10); CLEAR(12); CLEAR(14);
 
-	addq	$72, %rsp
+	addq	$64, %rsp
 	pop	%rbp
 	pop	%rbx
 	ret
