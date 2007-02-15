@@ -1,11 +1,5 @@
-openisr (0.799) UNRELEASED; urgency=low
+openisr (0.8-1) experimental; urgency=low
 
-  * more package cleanup
+  * Initial release.
 
- -- Matt Toups <mtoups@cs.cmu.edu>  Thu, 15 Feb 2007 00:40:42 -0500
-
-openisr (0.79) UNRELEASED; urgency=low
-
-  * preparing for real 0.8 release
-
- -- Matt Toups <mtoups@cs.cmu.edu>  Wed, 14 Feb 2007 21:13:45 -0500
+ -- Matt Toups <mtoups@cs.cmu.edu>  Thu, 15 Feb 2007 10:11:32 -0500
