@@ -114,11 +114,10 @@ binary-modules: prep-deb-files
 	sed -e 's/#KVERS#/$(KVERS)/g' \
 	     -e 's/#VERSION#/$(VERSION)/g' debian/control.template > $(CURDIR)/debian/control
 			    
-#	make -C Linux-$(MAJOR) KERNEL_SOURCES=$(KSRC) MODVERSIONS=detect KERNEL=linux-$(KVERS)
 	make -C nexus install_modules DESTDIR=$(CURDIR)/debian/openisr-modules-$(KVERS)
 	make -C sha1-i586 install_modules DESTDIR=$(CURDIR)/debian/openisr-modules-$(KVERS)
 
-#	install -m644 -b -D Linux-$(MAJOR)/openisr.$(KO)o $(CURDIR)/debian/$(PKGNAME)/lib/modules/$(KVERS)/openisr/openisr.$(KO)o
+	dh_installmodules
 	dh_installdocs
 	dh_installchangelogs
 	dh_compress
@@ -144,6 +143,7 @@ install-arch:
 	dh_install nexus $(KSRCDIR)
 	dh_install sha1-i586 $(KSRCDIR)
 	dh_install LICENSE.* $(KSRCDIR)
+	dh_install mkrevision.sh $(KSRCDIR)
 	cp -a Makefile.modules debian/openisr/$(KSRCDIR)/Makefile
 
 	# create needed directories
