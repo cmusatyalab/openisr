@@ -4,7 +4,7 @@ Source: openisr
 Section: net 
 Priority: extra
 Maintainer: Matt Toups <mtoups@cs.cmu.edu>
-Build-Depends: debhelper (>= 5), libcurl3-dev
+Build-Depends: debhelper (>= 5.0.24), libcurl3-dev
 Standards-Version: 3.7.2
 
 Package: openisr

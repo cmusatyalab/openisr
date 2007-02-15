@@ -7,8 +7,12 @@ Copyright: 2002-2007	Carnegie Mellon University
 
 License:
 
-This software is distributed under the terms of the Eclipse Public License,
-Version 1.0 which can be found in the file named LICENSE.  ANY USE,
-REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES RECIPIENT'S
-ACCEPTANCE OF THIS AGREEMENT
+The software components in this package are each licensed under one of 
+the following three licenses:
 
+LICENSE.Eclipse
+LICENSE.GPL
+LICENSE.LGPL
+
+Refer to the header on each source file for the copyright notice and
+appropriate license.
