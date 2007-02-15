@@ -140,6 +140,9 @@ install-arch:
 	# debian/tmp.
 	$(MAKE) install DESTDIR=$(CURDIR)/debian/openisr
 
+	# Debian policy manual section 8.1 says we need this symlink
+	(cd $(CURDIR)/debian/openisr/usr/lib && ln -s libvdisk.so.0.0.0 libvdisk.so.0)
+
 #	kernel module stuff
 	$(MAKE) clean
 
