@@ -249,7 +249,7 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 	int ret2;
 	int size;
 	int flush;
-	int i;
+	int i=0;
 	
 	strm.workspace=ts->zlib_deflate;
 	/* XXX keep persistent stream structures? */
@@ -261,12 +261,12 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 	/* Compression is slow, so we call cond_resched() every input page to
 	   try to keep scheduling latency down, even though this may cause
 	   some unnecessary TLB misses for output pages. */
-	for (i=0; ; i++) {
+	do {
 		from=kmap_atomic(sg[i].page, KM_USER0);
 		strm.next_in=from + sg[i].offset;
 		strm.avail_in=sg[i].length;
 		flush = (i == chunk_pages(dev) - 1) ? Z_FINISH : 0;
-		
+		i++;
 		do {
 			to=kmap_atomic(out_sg->page, KM_USER1);
 			strm.next_out=to + out_sg->offset + out_offset;
@@ -283,13 +283,9 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 			}
 		} while ((strm.avail_in > 0 || flush) && ret == Z_OK &&
 					strm.total_out < dev->chunksize);
-		
 		kunmap_atomic(from, KM_USER0);
-		/* We get Z_STREAM_END on successful completion */
-		if (ret != Z_OK || strm.total_out >= dev->chunksize)
-			break;
 		cond_resched();
-	}
+	} while (ret == Z_OK && strm.total_out < dev->chunksize);
 	size=strm.total_out;
 	ret2=zlib_deflateEnd(&strm);
 	if (!should_store_chunk_compressed(dev, size)) {
@@ -355,7 +351,8 @@ static int decompress_chunk_zlib(struct nexus_dev *dev,
 				out_offset=0;
 				out_sg++;
 			}
-		} while (strm.avail_in > 0 && ret == Z_OK);
+		} while (strm.avail_in > 0 && ret == Z_OK &&
+					strm.total_out < dev->chunksize);
 		kunmap_atomic(from, KM_USER0);
 		cond_resched();
 	} while (ret == Z_OK && len > 0 && strm.total_out < dev->chunksize);
