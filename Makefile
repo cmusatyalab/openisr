@@ -5,7 +5,7 @@ MANDIR ?= /usr/share/man
 SYSCONFDIR ?= /etc/openisr
 export BINDIR LIBDIR SHAREDIR MANDIR SYSCONFDIR
 
-MODULEDIRS := nexus sha1-i586
+MODULEDIRS := nexus sha1
 SRCDIRS := client vulpes libvdisk $(MODULEDIRS) conf
 OTHERDIRS := debian
 DIRS := $(SRCDIRS) $(OTHERDIRS)
