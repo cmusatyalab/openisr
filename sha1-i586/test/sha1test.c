@@ -10,10 +10,12 @@
 #include <asm/uaccess.h>
 
 static struct sha1 {
-	struct crypto_tfm *tfm;
 	struct mutex lock;
+	struct crypto_tfm *tfm;
 	struct scatterlist sg;
 	void *buf;
+	int users;
+	int leave_open;
 } sha;
 
 static ssize_t sha_read(struct file *filp, char __user *buf,
@@ -34,6 +36,7 @@ static ssize_t sha_read(struct file *filp, char __user *buf,
 	
 	crypto_digest_final(sha.tfm, hash);
 	crypto_digest_init(sha.tfm);
+	sha.leave_open=0;
 	
 	mutex_unlock(&sha.lock);
 	
@@ -65,6 +68,8 @@ static ssize_t sha_write(struct file *filp, const char __user *buf,
 		crypto_digest_update(sha.tfm, &sha.sg, 1);
 		done += cur;
 	}
+	if (done)
+		sha.leave_open=1;
 	mutex_unlock(&sha.lock);
 	if (done != 0) {
 		filp->private_data=(void*)0;
@@ -74,9 +79,45 @@ static ssize_t sha_write(struct file *filp, const char __user *buf,
 	}
 }
 
+static int sha_open(struct inode *ino, struct file *filp)
+{
+	int ret=0;
+	
+	nonseekable_open(ino, filp);
+	
+	if (mutex_lock_interruptible(&sha.lock))
+		return -ERESTARTSYS;
+	
+	if (sha.tfm == NULL) {
+		sha.tfm=crypto_alloc_tfm("sha1", 0);
+		if (sha.tfm == NULL) {
+			ret=-ENOMEM;
+			goto out;
+		}
+		crypto_digest_init(sha.tfm);
+	}
+	sha.users++;
+	
+out:
+	mutex_unlock(&sha.lock);
+	return ret;
+}
+
+static int sha_release(struct inode *ino, struct file *filp)
+{
+	mutex_lock(&sha.lock);
+	if (!--sha.users && !sha.leave_open) {
+		crypto_free_tfm(sha.tfm);
+		sha.tfm=NULL;
+	}
+	mutex_unlock(&sha.lock);
+	return 0;
+}
+
 static struct file_operations sha_ops = {
 	.owner =		THIS_MODULE,
-	.open =			nonseekable_open,
+	.open =			sha_open,
+	.release =		sha_release,
 	.read =			sha_read,
 	.write =		sha_write,
 	.llseek =		no_llseek,
@@ -92,14 +133,8 @@ static struct miscdevice sha_miscdev = {
 int __init init(void)
 {
 	int ret;
-	mutex_init(&sha.lock);
 	
-	sha.tfm=crypto_alloc_tfm("sha1", 0);
-	if (sha.tfm == NULL) {
-		ret=-EINVAL;
-		goto bad;
-	}
-	crypto_digest_init(sha.tfm);
+	mutex_init(&sha.lock);
 	
 	sha.sg.page=alloc_page(GFP_KERNEL);
 	if (sha.sg.page == NULL) {
@@ -118,7 +153,6 @@ int __init init(void)
 bad:
 	if (sha.sg.page != NULL)
 		__free_page(sha.sg.page);
-	crypto_free_tfm(sha.tfm);
 	return ret;
 }
 
@@ -126,7 +160,6 @@ void __exit fini(void)
 {
 	misc_deregister(&sha_miscdev);
 	__free_page(sha.sg.page);
-	crypto_free_tfm(sha.tfm);
 }
 
 module_init(init);
