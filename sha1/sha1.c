@@ -1,11 +1,11 @@
 /*
- * sha1-i586 - x86-optimized SHA1 hash algorithm for CryptoAPI
+ * sha1 - optimized SHA1 hash algorithm for CryptoAPI
  *
  * Originally from Nettle
  * Ported to CryptoAPI by Benjamin Gilbert <bgilbert@cs.cmu.edu>
  *
  * Copyright (C) 2001 Peter Gutmann, Andrew Kuchling, Niels Möller
- * Copyright (C) 2006 Carnegie Mellon University
+ * Copyright (C) 2006-2007 Carnegie Mellon University
  * 
  * This library is free software; you can redistribute it and/or modify it
  * under the terms of version 2.1 of the GNU Lesser General Public License as
