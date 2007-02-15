@@ -19,19 +19,18 @@
  * for more details.
  */
 
-/* XXX we may not use r12-r15 without saving them */
-/* Register usage */
+/* Register usage.  rbx, rbp, r12-15 must be saved if they will be used */
+#define P_STATE	%rdi			/* Pointer parameter */
+#define P_DATA	%rsi			/* Pointer parameter */
 #define SA	%eax
-#define SB	%ebx
-#define SC	%ecx
-#define SD	%edx
-#define SE	%ebp
-#define DATA	%rsp
-#define TMP	%r8d
-#define TMP2	%r9d			/* Used by F3 */
-#define CONST	%r10d
-#define P_STATE	%rdi
-#define P_DATA	%rsi
+#define SB	%ecx
+#define SC	%edx
+#define SD	%esi			/* Reuses P_DATA */
+#define SE	%r8d
+#define CONST	%r9d
+#define TMP	%r10d
+#define TMP2	%r11d			/* Used by F3 */
+#define DATA	%rsp			/* Scratch space pointer */
 
 /* Constants */
 #define K1VALUE	$0x5A827999		/* Rounds  0-19 */
@@ -136,17 +135,13 @@
 .align 4
 .globl sha1_compress
 sha1_compress:
-	/* save all registers that need to be saved */
-	push	%rbx		/* 80(%rsp) */
-	push	%rbp		/* 72(%rsp) */
-
 	subq	$64, %rsp	/* %rsp = W */
 
 	/* Load and byteswap data */
-	SWAP( 0, %eax); SWAP( 1, %ebx); SWAP( 2, %ecx); SWAP( 3, %edx)
-	SWAP( 4, %eax); SWAP( 5, %ebx); SWAP( 6, %ecx); SWAP( 7, %edx)
-	SWAP( 8, %eax); SWAP( 9, %ebx); SWAP(10, %ecx); SWAP(11, %edx)
-	SWAP(12, %eax); SWAP(13, %ebx); SWAP(14, %ecx); SWAP(15, %edx)
+	SWAP( 0,  %eax); SWAP( 1,  %ecx); SWAP( 2,  %edx); SWAP( 3,  %r8d)
+	SWAP( 4,  %r9d); SWAP( 5, %r10d); SWAP( 6, %r11d); SWAP( 7,  %eax)
+	SWAP( 8,  %ecx); SWAP( 9,  %edx); SWAP(10,  %r8d); SWAP(11,  %r9d)
+	SWAP(12, %r10d); SWAP(13, %r11d); SWAP(14,  %eax); SWAP(15,  %ecx)
 
 	/* load the state vector */
 	movl	(P_STATE),   SA
@@ -267,8 +262,6 @@ sha1_compress:
 	CLEAR( 8); CLEAR(10); CLEAR(12); CLEAR(14);
 
 	addq	$64, %rsp
-	pop	%rbp
-	pop	%rbx
 	ret
 
 /*
