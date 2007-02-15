@@ -19,16 +19,19 @@
  * for more details.
  */
 
+/* XXX we may not use r12-r15 without saving them */
 /* Register usage */
 #define SA	%eax
 #define SB	%ebx
 #define SC	%ecx
 #define SD	%edx
 #define SE	%ebp
-#define DATA	%esp
-#define TMP	%edi
-#define TMP2	%esi			/* Used by SWAP and F3 */
-#define TMP3	64(%esp)
+#define DATA	%rsp
+#define TMP	%r8d
+#define TMP2	%r9d			/* Used by SWAP and F3 */
+#define TMP3	%r10d
+#define P_STATE	%rdi
+#define P_DATA	%rsi
 
 /* Constants */
 #define K1VALUE	$0x5A827999		/* Rounds  0-19 */
@@ -39,10 +42,10 @@
 /* Convert stack offsets in words to offsets in bytes */
 #define OFFSET(i) 4*(i)
 
-/* Reads the input via TMP2 into register, byteswaps it, and stores it in
+/* Reads the input via P_DATA into register, byteswaps it, and stores it in
    the DATA array. */
 #define SWAP(index, register)					\
-	movl	OFFSET(index)(TMP2), register;			\
+	movl	OFFSET(index)(P_DATA), register;		\
 	bswap	register;					\
 	movl	register, OFFSET(index)(DATA)
 
@@ -132,28 +135,23 @@
 .globl sha1_compress
 sha1_compress:
 	/* save all registers that need to be saved */
-	pushl	%ebx		/* 80(%esp) */
-	pushl	%ebp		/* 76(%esp) */
-	pushl	%esi		/* 72(%esp) */
-	pushl	%edi		/* 68(%esp) */
+	push	%rbx		/* 80(%rsp) */
+	push	%rbp		/* 72(%rsp) */
 
-	subl	$68, %esp	/* %esp = W */
+	subq	$72, %rsp	/* %rsp = W */
 
 	/* Load and byteswap data */
-	movl	92(%esp), TMP2
-
 	SWAP( 0, %eax); SWAP( 1, %ebx); SWAP( 2, %ecx); SWAP( 3, %edx)
 	SWAP( 4, %eax); SWAP( 5, %ebx); SWAP( 6, %ecx); SWAP( 7, %edx)
 	SWAP( 8, %eax); SWAP( 9, %ebx); SWAP(10, %ecx); SWAP(11, %edx)
 	SWAP(12, %eax); SWAP(13, %ebx); SWAP(14, %ecx); SWAP(15, %edx)
 
 	/* load the state vector */
-	movl	88(%esp),TMP
-	movl	(TMP),   SA
-	movl	4(TMP),  SB
-	movl	8(TMP),  SC
-	movl	12(TMP), SD
-	movl	16(TMP), SE
+	movl	(P_STATE),   SA
+	movl	4(P_STATE),  SB
+	movl	8(P_STATE),  SC
+	movl	12(P_STATE), SD
+	movl	16(P_STATE), SE
 
 	movl	K1VALUE, TMP2	
 	ROUND(SA, SB, SC, SD, SE, F1, TMP2, OFFSET( 0)(DATA))
@@ -258,12 +256,11 @@ sha1_compress:
 	EXPAND(79); ROUND(SB, SC, SD, SE, SA, F2, TMP2, TMP)
 
 	/* Update the state vector */
-	movl	88(%esp),TMP
-	addl	SA, (TMP) 
-	addl	SB, 4(TMP) 
-	addl	SC, 8(TMP) 
-	addl	SD, 12(TMP) 
-	addl	SE, 16(TMP)
+	addl	SA, (P_STATE) 
+	addl	SB, 4(P_STATE) 
+	addl	SC, 8(P_STATE) 
+	addl	SD, 12(P_STATE) 
+	addl	SE, 16(P_STATE)
 
 	/* Clear the workspace for security */
 	CLEAR( 0); CLEAR( 1); CLEAR( 2); CLEAR( 3);
@@ -271,11 +268,9 @@ sha1_compress:
 	CLEAR( 8); CLEAR( 9); CLEAR(10); CLEAR(11);
 	CLEAR(12); CLEAR(13); CLEAR(14); CLEAR(15);
 
-	addl	$68, %esp
-	popl	%edi
-	popl	%esi
-	popl	%ebp
-	popl	%ebx
+	addq	$72, %rsp
+	pop	%rbp
+	pop	%rbx
 	ret
 
 /*
