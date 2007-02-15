@@ -32,6 +32,12 @@
 #define PRIVATE_DATA(arg) crypto_tfm_ctx(arg)
 #endif
 
+#ifdef CONFIG_X86_64
+#define DRIVER_NAME "sha1-x86_64"
+#else
+#define DRIVER_NAME "sha1-i586"
+#endif
+
 #define SHA1_DIGEST_SIZE 20
 #define SHA1_DATA_SIZE 64
 
@@ -144,7 +150,7 @@ static void sha1_final(CONTEXT_TYPE *data, u8 *digest)
 static struct crypto_alg alg = {
 	.cra_name	=	"sha1",
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,15)
-	.cra_driver_name=	"sha1-i586",
+	.cra_driver_name=	DRIVER_NAME,
 	.cra_priority	=	200,
 #endif
 	.cra_flags	=	CRYPTO_ALG_TYPE_DIGEST,
