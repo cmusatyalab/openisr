@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS= -MMD -g -O2 -Wall -Wstrict-prototypes -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -I../nexus
+CFLAGS= -MMD -g -O2 -Wall -Wstrict-prototypes -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -I../nexus -I/lib/modules/`uname -r`/build/include
 LFLAGS= -lz -lssl -lcurl
 
 LIBDIR ?= $(HOME)/bin
