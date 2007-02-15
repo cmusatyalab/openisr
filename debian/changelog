@@ -1,12 +1,5 @@
-openisr (0.2) experimental; urgency=low
+openisr (0.8-1) experimental; urgency=low
 
-  * now using module-assistant!
+  * Initial release.
 
- -- Matt Toups <mtoups@cs.cmu.edu>  Wed,  7 Feb 2007 20:45:53 -0500
-
-openisr (0.1-1) experimental; urgency=low
-
-  * no news is good news!
-
- -- Matt Toups <mtoups@cs.cmu.edu>  Mon, 29 Jan 2007 11:25:48 -0500
-
+ -- Matt Toups <mtoups@cs.cmu.edu>  Thu, 15 Feb 2007 10:11:32 -0500

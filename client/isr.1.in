@@ -1,9 +1,12 @@
 .\" =========================================================================
-.\" Copyright (c) 2004-2005 Carnegie Mellon University.
-.\" Copyright (c) 2003-2004 Intel Corp.  All rights reserved.
-.\"
-.\" See the accompanying file LICENSE, version 2004.10.05 or later
-.\" (the contents of which are also included in isr) for terms of use.
+.\" isr - Client user interface for the Internet Suspend/Resume (R) system
+.\" 
+.\" Copyright (C) 2004-2007 Carnegie Mellon University
+.\" 
+.\" This software is distributed under the terms of the Eclipse Public
+.\" License, Version 1.0 which can be found in the file named LICENSE.Eclipse.
+.\" ANY USE, REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES
+.\" RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
 .\" ==========================================================================
 .\"
 .\" $Id$

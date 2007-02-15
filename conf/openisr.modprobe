@@ -1,0 +1,7 @@
+# OpenISR modprobe rules for module-init-tools
+
+# When asked for sha1, load sha1-i586 if available and sha1 if not
+install sha1 /sbin/modprobe sha1-i586 $CMDLINE_OPTS 2>/dev/null || \
+			/sbin/modprobe --ignore-install sha1 $CMDLINE_OPTS
+remove sha1 /sbin/modprobe -r sha1-i586 2>/dev/null ; \
+			/sbin/modprobe -r --ignore-remove sha1

@@ -9,13 +9,13 @@ fi
 
 if ! [ -a /etc/openisr/hostid ]; then
 
-	dd if=/dev/urandom bs=4 count=1 status=noxfer | od -An -t d4 | tr -d " -" > /etc/openisr/hostid
+	dd if=/dev/urandom bs=4 count=1 | od -An -t d4 | tr -d " -" > /etc/openisr/hostid 2> /dev/null
 
 fi
 
-echo "For a good time, run:";
-echo "  sudo module-assistant auto-install openisr";
+# do this by hand for now
+update-rc.d openisr start 20 S .
 
-# seems to have a problem with dpkg's status db lock.. will investigate
-#/usr/bin/module-assistant auto-install openisr;
-
+echo -e "\n"
+echo "You will need the openisr kernel module and a virtual machine monitor,"
+echo "see /usr/share/doc/openisr/README.Debian for more info."

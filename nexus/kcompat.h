@@ -301,6 +301,22 @@ static inline void setup_timer(struct timer_list *timer,
 /* XXX implicit cast when converting from old ioctl on 64-bit systems? */
 #endif
 
+/***** Software suspend ******************************************************/
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)
+#include <linux/suspend.h>
+static inline int try_to_freeze(void) {
+	if (current->flags & PF_FREEZE) {
+		refrigerator(PF_FREEZE);
+		return 1;
+	} else {
+		return 0;
+	}
+}
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
+#define try_to_freeze() try_to_freeze(PF_FREEZE)
+#endif
+
 /***** cryptoapi *************************************************************/
 
 #include <linux/crypto.h>

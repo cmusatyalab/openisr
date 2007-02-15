@@ -25,6 +25,9 @@ DISTTARGETS := $(SRCDISTTARGETS) $(OTHERDISTTARGETS)
 .PHONY: $(TARGETS)
 $(TARGETS): $(SRCDIRS:=__$$@)
 
+.PHONY: clean_modules
+clean_modules: $(MODULEDIRS:=__clean)
+
 .PHONY: $(DIRTARGETS)
 $(DIRTARGETS):
 	$(MAKE) -C $(subst __, ,$@) DESTDIR=$(DESTDIR)

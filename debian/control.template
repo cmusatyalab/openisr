@@ -4,16 +4,17 @@ Source: openisr
 Section: net 
 Priority: extra
 Maintainer: Matt Toups <mtoups@cs.cmu.edu>
-Build-Depends: debhelper (>= 5), libcurl3-dev
+Build-Depends: debhelper (>= 5.0.24), libcurl3-dev
 Standards-Version: 3.7.2
 
 Package: openisr
 Architecture: any
-Depends: module-assistant, curl (>= 7.12), ssh | openssh-client, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
+Depends: module-assistant, curl (>= 7.12), ssh | openssh-client, rsync, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
 Description: Internet Suspend/Resume (ISR) client
  OpenISR ... mobile computing environment... virtualization ...  yeah.
 
 Package: openisr-modules-#KVERS#
+Architecture: any 
 Provides: openisr-modules
 Depends: openisr
 Recommends: linux-image-#KVERS# | kernel-image-#KVERS#

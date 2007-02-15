@@ -5,7 +5,7 @@
 # in /etc/openisr/openisr.conf or ~/.openisr.conf will override these defaults.
 
 # Default name server domain name (override with -n)
-nameserver = isrserver05.isr.cmu.edu
+nameserver = isrserver09.isr.cmu.edu
 
 # Default userid (override with -u)
 # If this variable is undefined or empty, then it defaults to the Unix
@@ -14,7 +14,7 @@ userid =
 
 # VMware command (could be 'vmware' or 'vmplayer' or some other VMM)
 # might have different flags for different versions
-vmcommand = vmware -q
+vmcommand = vmplayer
 
 # Vulpes logging mask
 logmask = 0xf
