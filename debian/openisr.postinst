@@ -9,7 +9,7 @@ fi
 
 if ! [ -a /etc/openisr/hostid ]; then
 
-	dd if=/dev/urandom bs=4 count=1 status=noxfer | od -An -t d4 | tr -d " -" > /etc/openisr/hostid
+	dd if=/dev/urandom bs=4 count=1 | od -An -t d4 | tr -d " -" > /etc/openisr/hostid 2> /dev/null
 
 fi
 
