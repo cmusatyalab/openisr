@@ -96,7 +96,8 @@ kdist_clean:
 	# below line: stupid to have this happen here too, but dh_clean chokes without control
 	sed -e 's/#KVERS#/$(KVERS)/g' \
 	    -e 's/#VERSION#/$(VERSION)/g' debian/control.template > $(CURDIR)/debian/control
-	dh_clean
+	dh_clean -d
+	make clean_modules
 	make -C nexus clean
 	make -C sha1-i586 clean
 
@@ -145,14 +146,12 @@ install-arch:
 	dh_install sha1-i586 $(KSRCDIR)
 	dh_install LICENSE.* $(KSRCDIR)
 	dh_install mkrevision.sh $(KSRCDIR)
-	cp -a Makefile.modules debian/openisr/$(KSRCDIR)/Makefile
+	dh_install Makefile $(KSRCDIR)
 
 	# create needed directories
 	#dh_installdirs -i usr/src/modules
 	# only if needed
 	dh_installdirs -a usr/share/modass/overrides
-
-	#$(MAKE) distmodules DESTDIR=debian/openisr/usr/src/modules/openisr
 
 	# copy all relevant debian/ files.
 	dh_installdirs -a usr/src/modules/openisr/debian

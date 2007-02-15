@@ -14,7 +14,7 @@ Description: Internet Suspend/Resume (ISR) client
  OpenISR ... mobile computing environment... virtualization ...  yeah.
 
 Package: openisr-modules-#KVERS#
-Architecture: i386 amd64
+Architecture: any 
 Provides: openisr-modules
 Depends: openisr
 Recommends: linux-image-#KVERS# | kernel-image-#KVERS#
