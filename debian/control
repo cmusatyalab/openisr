@@ -10,4 +10,9 @@ Architecture: any
 Suggests: kvm
 Depends: module-assistant, udev, curl (>= 7.12), ssh | openssh-client, rsync, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
 Description: Internet Suspend/Resume (ISR) client
- OpenISR ... mobile computing environment... virtualization ...  yeah.
+ OpenISR is the latest implementation of Internet Suspend/Resume, which combines a virtual
+ machine with distributed storage to provide the user with both mobility and consistent 
+ state without the need for mobile hardware.  This package contains a client (isr), a 
+ parcel manager (vulpes), a wrapper library for VMware (libvdisk), and the source to 
+ the openisr kernel module (nexus).  A virtual machine monitor (VMware, Xen, kvm, etc) 
+ should also be installed.   OpenISR is developed at Carnegie Mellon University.

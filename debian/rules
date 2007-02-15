@@ -140,17 +140,15 @@ install-arch:
 	# debian/tmp.
 	$(MAKE) install DESTDIR=$(CURDIR)/debian/openisr
 
-#	kernel module stuff 
-	#dh_installdirs $(KSRCDIR) $(KSRCDIR)/debian
+#	kernel module stuff
+	$(MAKE) clean
+
 	dh_install nexus $(KSRCDIR)
 	dh_install sha1-i586 $(KSRCDIR)
 	dh_install LICENSE.* $(KSRCDIR)
 	dh_install mkrevision.sh $(KSRCDIR)
 	dh_install Makefile $(KSRCDIR)
 
-	# create needed directories
-	#dh_installdirs -i usr/src/modules
-	# only if needed
 	dh_installdirs -a usr/share/modass/overrides
 
 	# copy all relevant debian/ files.

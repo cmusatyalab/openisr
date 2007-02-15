@@ -13,9 +13,6 @@ if ! [ -a /etc/openisr/hostid ]; then
 
 fi
 
-echo "For a good time, run:";
-echo "  sudo module-assistant auto-install openisr";
-
-# seems to have a problem with dpkg's status db lock.. will investigate
-#/usr/bin/module-assistant auto-install openisr;
-
+echo -e "\n"
+echo "You will need the openisr kernel module and a virtual machine monitor,"
+echo "see /usr/share/doc/openisr/README.Debian for more info."

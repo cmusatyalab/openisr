@@ -8,12 +8,15 @@ This package includes:
 	* isr client
         * modules: nexus and sha1-i586 (/usr/src/openisr.tar.bz2)
 
+>>> To build the openisr-modules package:
+
 To build the modules using module-assistant, use
  module-assistant auto-install openisr
 
 If you don't already have the right kernel headers,
  module-assistant prepare
 can often figure out what package to download for you.
+
 
 TODO: split off an openisr-modules-source package
 
