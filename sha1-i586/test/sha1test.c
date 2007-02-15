@@ -26,7 +26,7 @@ static ssize_t sha_read(struct file *filp, char __user *buf,
 	if (count < 20)
 		return -EINVAL;
 	
-	if ((unsigned)filp->private_data)
+	if ((unsigned long)filp->private_data)
 		return 0;
 	
 	if (mutex_lock_interruptible(&sha.lock))
@@ -58,7 +58,7 @@ static ssize_t sha_write(struct file *filp, const char __user *buf,
 		return -ERESTARTSYS;
 	
 	while (done < count) {
-		cur=min(count - done, (unsigned)PAGE_SIZE);
+		cur=min((unsigned)(count - done), (unsigned)PAGE_SIZE);
 		if (copy_from_user(sha.buf, buf + done, cur))
 			break;
 		sha.sg.length=cur;
