@@ -218,7 +218,25 @@ out:
 	return ret;
 }
 
-/* XXX consolidate duplicate code between this and lzf? */
+/* @size is the compressed size of the chunk */
+static int should_store_chunk_compressed(struct nexus_dev *dev, unsigned size)
+{
+	if (size >= dev->chunksize) {
+		/* Compressed data larger than uncompressed data. */
+		return 0;
+	}
+	if (size + crypto_pad_len(dev, size) >= dev->chunksize) {
+		/* If padding would bring us exactly to the length of
+		   the buffer, we refuse to do it.  Rationale: we're only
+		   doing padding if we're doing compression, and compression
+		   failed to reduce the size of the chunk after padding,
+		   so we're better off just not compressing. */
+		debug(DBG_TFM, "Refusing to compress: borderline case");
+		return 0;
+	}
+	return 1;
+}
+
 static int compress_chunk_zlib(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg)
 {
@@ -274,20 +292,12 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 	}
 	size=strm.total_out;
 	ret2=zlib_deflateEnd(&strm);
-	if (size >= dev->chunksize) {
-		/* Compressed data larger than uncompressed data. */
+	if (!should_store_chunk_compressed(dev, size)) {
+		/* Compressed data is too big */
 		return -EFBIG;
 	} else if (ret != Z_STREAM_END || ret2 != Z_OK) {
 		debug(DBG_TFM, "zlib compression failed");
 		return -EIO;
-	} else if (size + crypto_pad_len(dev, size) >= dev->chunksize) {
-		/* If padding would bring us exactly to the length of
-		   the buffer, we refuse to do it.  Rationale: we're only
-		   doing padding if we're doing compression, and compression
-		   failed to reduce the size of the chunk after padding,
-		   so we're better off just not compressing. */
-		debug(DBG_TFM, "Refusing to compress: borderline case");
-		return -EFBIG;
 	}
 	
 	/* We can't just swap the sg pointer with ts->zlib_sg because the
@@ -370,13 +380,8 @@ static int compress_chunk_lzf(struct nexus_dev *dev,
 	size=lzf_compress(ts->lzf_buf_uncompressed, dev->chunksize,
 				ts->lzf_buf_compressed, dev->chunksize,
 				ts->lzf_compress);
-	if (size == 0) {
-		/* Compressed data larger than uncompressed data */
-		return -EFBIG;
-	} else if (size + crypto_pad_len(dev, size) >= dev->chunksize) {
-		/* Padding would make the compressed data at least as large
-		   as the uncompressed data */
-		debug(DBG_TFM, "Refusing to compress: borderline case");
+	if (size == 0 || !should_store_chunk_compressed(dev, size)) {
+		/* Compressed data is too big */
 		return -EFBIG;
 	}
 	/* We write the whole chunk out to disk, so make sure we're not
