@@ -185,7 +185,7 @@ binary-common:
 #	dh_installpam
 #	dh_installmime
 #	dh_python
-#	dh_installinit
+	dh_installinit -o
 #	dh_installcron
 #	dh_installinfo
 #	dh_installman
