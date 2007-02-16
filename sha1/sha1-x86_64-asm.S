@@ -31,6 +31,7 @@
 #define SE	%ebp			/* Callee-saved */
 #define TMP	%ecx
 #define TMP2	%r8d			/* Used by F3 */
+#define QTMP	%rcx			/* 64-bit version of TMP for CLEAR() */
 #define CONST	%edx
 #define STATE	%r9
 #define DATA	%rsp			/* Scratch space pointer */
@@ -51,9 +52,9 @@
 	bswap	register;					\
 	movl	register, OFFSET(index)(DATA)
 
-/* Sets the workspace eightbyte at the given index to zero. */
+/* Sets the workspace eightbyte at the given index to QTMP. */
 #define CLEAR(index)						\
-	movq	$0, OFFSET(index)(DATA)
+	movq	QTMP, OFFSET(index)(DATA)
 
 /*
  * expand(i) is the expansion function
@@ -266,6 +267,7 @@ sha1_compress:
 	addl	SE, 16(STATE)
 
 	/* Clear the workspace for security */
+	xorq	QTMP, QTMP
 	CLEAR( 0); CLEAR( 2); CLEAR( 4); CLEAR( 6);
 	CLEAR( 8); CLEAR(10); CLEAR(12); CLEAR(14);
 

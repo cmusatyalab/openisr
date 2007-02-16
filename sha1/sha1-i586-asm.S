@@ -5,7 +5,7 @@
  * Ported from M4 to cpp by Benjamin Gilbert <bgilbert@cs.cmu.edu>
  *
  * Copyright (C) 2004, Niels Möller
- * Copyright (C) 2006 Carnegie Mellon University
+ * Copyright (C) 2006-2007 Carnegie Mellon University
  * 
  * This library is free software; you can redistribute it and/or modify it
  * under the terms of version 2.1 of the GNU Lesser General Public License as
@@ -46,9 +46,9 @@
 	bswap	register;					\
 	movl	register, OFFSET(index)(DATA)
 
-/* Sets the workspace word at the given index to zero. */
+/* Sets the workspace word at the given index to TMP. */
 #define CLEAR(index)						\
-	movl	$0, OFFSET(index)(DATA)
+	movl	TMP, OFFSET(index)(DATA)
 
 /*
  * expand(i) is the expansion function
@@ -266,6 +266,7 @@ sha1_compress:
 	addl	SE, 16(TMP)
 
 	/* Clear the workspace for security */
+	xorl	TMP, TMP
 	CLEAR( 0); CLEAR( 1); CLEAR( 2); CLEAR( 3);
 	CLEAR( 4); CLEAR( 5); CLEAR( 6); CLEAR( 7);
 	CLEAR( 8); CLEAR( 9); CLEAR(10); CLEAR(11);
