@@ -440,7 +440,16 @@ static inline int cryptoapi_hash(struct crypto_hash *tfm,
 #endif
 
 
-#if (!defined(CONFIG_X86) && !defined(CONFIG_UML_X86)) || defined(CONFIG_64BIT)
+#if (defined(CONFIG_X86) || defined(CONFIG_UML_X86))
+#ifdef CONFIG_64BIT
+#define SHA1_ACCEL_ARCH "x86_64"
+#else
+#define SHA1_ACCEL_ARCH "i586"
+#endif
+#endif
+
+#ifndef SHA1_ACCEL_ARCH
+#define SHA1_ACCEL_ARCH "unknown"
 static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
 {
 	/* No optimized implementation exists */
@@ -453,20 +462,22 @@ static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
 	   compiled into the kernel, so we look at struct module */
 	if (tfm->__crt_alg->cra_module == NULL)
 		return 1;
-	return strcmp(tfm->__crt_alg->cra_module->name, "sha1_i586") ? 1 : 0;
+	return strcmp(tfm->__crt_alg->cra_module->name, "sha1_" SHA1_ACCEL_ARCH)
+				? 1 : 0;
 }
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
 static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
 {
 	/* There's a driver name field we can look at */
-	return strcmp(tfm->__crt_alg->cra_driver_name, "sha1-i586") ? 1 : 0;
+	return strcmp(tfm->__crt_alg->cra_driver_name, "sha1-" SHA1_ACCEL_ARCH)
+				? 1 : 0;
 }
 #else
 static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
 {
 	/* We need to extract the crypto_tfm from the crypto_hash */
 	return strcmp(crypto_hash_tfm(tfm)->__crt_alg->cra_driver_name,
-				"sha1-i586") ? 1 : 0;
+				"sha1-" SHA1_ACCEL_ARCH) ? 1 : 0;
 }
 #endif
 

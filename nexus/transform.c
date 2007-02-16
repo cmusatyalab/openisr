@@ -511,11 +511,12 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	
 	if (!have_warned && !strcmp("sha1", info->hash_name) &&
 				sha1_impl_is_suboptimal(hash)) {
-		/* Actually, the presence of sha1-i586.ko only matters
+		/* Actually, the presence of the SHA1 accelerator only matters
 		   when the tfm is first allocated.  Does anyone have better
 		   wording for this? */
-		log(KERN_NOTICE, "Using unoptimized SHA1; load sha1-i586.ko "
-					"to improve performance");
+		log(KERN_NOTICE, "Using unoptimized SHA1; load sha1-"
+					SHA1_ACCEL_ARCH ".ko to improve "
+					"performance");
 		have_warned=1;
 	}
 	return 0;
