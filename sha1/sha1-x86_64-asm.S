@@ -20,17 +20,19 @@
  * for more details.
  */
 
-/* Register usage.  rbx, rbp, r12-15 must be saved if they will be used */
+/* Register usage.  r12-15 must be saved if they will be used.  Accessing
+   r8-r15 takes an extra instruction byte. */
 #define P_STATE	%rdi			/* Pointer parameter */
 #define P_DATA	%rsi			/* Pointer parameter */
-#define SA	%eax
-#define SB	%ecx
-#define SC	%edx
-#define SD	%esi			/* Reuses P_DATA */
-#define SE	%r8d
-#define CONST	%r9d
-#define TMP	%r10d
-#define TMP2	%r11d			/* Used by F3 */
+#define SA	%edi			/* Reuses P_STATE */
+#define SB	%esi			/* Reuses P_DATA */
+#define SC	%eax
+#define SD	%ebx			/* Callee-saved */
+#define SE	%ebp			/* Callee-saved */
+#define TMP	%ecx
+#define TMP2	%r8d			/* Used by F3 */
+#define CONST	%edx
+#define STATE	%r9
 #define DATA	%rsp			/* Scratch space pointer */
 
 /* Constants */
@@ -136,6 +138,8 @@
 .align 4
 .globl sha1_compress
 sha1_compress:
+	push	%rbx
+	push	%rbp
 	subq	$64, %rsp	/* %rsp = W */
 
 	/* Load and byteswap data */
@@ -144,12 +148,15 @@ sha1_compress:
 	SWAP( 8,  %ecx); SWAP( 9,  %edx); SWAP(10,  %r8d); SWAP(11,  %r9d)
 	SWAP(12, %r10d); SWAP(13, %r11d); SWAP(14,  %eax); SWAP(15,  %ecx)
 
+	/* P_DATA now dead; free up P_STATE for other uses */
+	movq	P_STATE, STATE
+
 	/* load the state vector */
-	movl	(P_STATE),   SA
-	movl	4(P_STATE),  SB
-	movl	8(P_STATE),  SC
-	movl	12(P_STATE), SD
-	movl	16(P_STATE), SE
+	movl	(STATE),   SA
+	movl	4(STATE),  SB
+	movl	8(STATE),  SC
+	movl	12(STATE), SD
+	movl	16(STATE), SE
 
 	movl	K1VALUE, CONST	
 	ROUND(SA, SB, SC, SD, SE, F1, OFFSET( 0)(DATA))
@@ -252,17 +259,19 @@ sha1_compress:
 	EXPAND(79); ROUND(SB, SC, SD, SE, SA, F2, TMP)
 
 	/* Update the state vector */
-	addl	SA, (P_STATE) 
-	addl	SB, 4(P_STATE) 
-	addl	SC, 8(P_STATE) 
-	addl	SD, 12(P_STATE) 
-	addl	SE, 16(P_STATE)
+	addl	SA, (STATE) 
+	addl	SB, 4(STATE) 
+	addl	SC, 8(STATE) 
+	addl	SD, 12(STATE) 
+	addl	SE, 16(STATE)
 
 	/* Clear the workspace for security */
 	CLEAR( 0); CLEAR( 2); CLEAR( 4); CLEAR( 6);
 	CLEAR( 8); CLEAR(10); CLEAR(12); CLEAR(14);
 
 	addq	$64, %rsp
+	pop	%rbp
+	pop	%rbx
 	ret
 
 /*
