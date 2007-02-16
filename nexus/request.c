@@ -26,7 +26,7 @@
 #include <linux/mempool.h>
 #include "defs.h"
 
-static kmem_cache_t *io_cache;
+static kmem_cache *io_cache;
 static mempool_t *io_pool;
 
 /* supports high memory pages */

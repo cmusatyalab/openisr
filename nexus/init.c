@@ -208,9 +208,10 @@ static void free_devnum(int devnum)
 }
 
 /* Workqueue callback */
-static void nexus_add_disk(void *data)
+static void nexus_add_disk(work_t *work_struct)
 {
-	struct nexus_dev *dev=data;
+	struct nexus_dev *dev=container_of(work_struct, struct nexus_dev,
+				cb_add_disk);
 	
 	debug(DBG_CTR, "Adding gendisk");
 	add_disk(dev->gendisk);
@@ -539,7 +540,7 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	/* add_disk() initiates I/O to read the partition tables, so userspace
 	   needs to be able to process key requests while it is running.
 	   If we called add_disk() directly here, we would deadlock. */
-	INIT_WORK(&dev->cb_add_disk, nexus_add_disk, dev);
+	WORK_INIT(&dev->cb_add_disk, nexus_add_disk);
 	/* Make sure the dev isn't freed until add_disk() completes */
 	nexus_dev_get(dev);
 	/* We use the shared workqueue in order to prevent deadlock: if we

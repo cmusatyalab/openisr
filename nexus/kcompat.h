@@ -28,8 +28,8 @@
 #error Kernels older than 2.6.8 are not supported
 #endif
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,19)
-#error Kernels newer than 2.6.19 are not supported
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,20)
+#error Kernels newer than 2.6.20 are not supported
 #endif
 
 /***** Memory allocation *****************************************************/
@@ -48,6 +48,16 @@ static inline void *kzalloc(size_t size, gfp_t gfp)
 		memset(ptr, 0, size);
 	return ptr;
 }
+#endif
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
+/* This is struct kmem_cache_s up to 2.6.14 and struct kmem_cache thereafter.
+   "#define kmem_cache kmem_cache_s" would pick up every instance of that
+   string, not just the struct names, so we don't do it. */
+typedef kmem_cache_t kmem_cache;
+#else
+typedef struct kmem_cache kmem_cache;
 #endif
 
 /***** Mutexes ***************************************************************/
@@ -268,7 +278,13 @@ static inline void setup_timer(struct timer_list *timer,
 #endif
 
 
-/* XXX 2.6.20 workqueue changes */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
+typedef void work_t;
+#define WORK_INIT(work, func) INIT_WORK(work, func, work)
+#else
+typedef struct work_struct work_t;
+#define WORK_INIT(work, func) INIT_WORK(work, func)
+#endif
 
 /***** CPU hotplug ***********************************************************/
 
@@ -315,6 +331,12 @@ static inline int try_to_freeze(void) {
 }
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
 #define try_to_freeze() try_to_freeze(PF_FREEZE)
+#endif
+
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
+/* This used to be in sched.h */
+#include <linux/freezer.h>
 #endif
 
 /***** cryptoapi *************************************************************/
