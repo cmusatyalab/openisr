@@ -119,7 +119,7 @@ binary-modules: prep-deb-files
 	make -C sha1-i586 install_modules DESTDIR=$(CURDIR)/debian/openisr-modules-$(KVERS)
 
 	dh_installmodules
-	dh_installudev
+#	dh_installudev
 	dh_installdocs
 	dh_installchangelogs
 	dh_compress
@@ -156,7 +156,7 @@ install-arch:
 
 	# copy all relevant debian/ files.
 	dh_installdirs -a usr/src/modules/openisr/debian
-	cp -a conf/openisr.rules debian/openisr/usr/src/modules/openisr/debian
+	cp -a conf/openisr.rules debian
 
 	cd debian && cp changelog control.template compat rules copyright openisr/usr/src/modules/openisr/debian
 
@@ -176,6 +176,7 @@ binary-common:
 	dh_testdir
 	dh_testroot
 	dh_installchangelogs 
+	dh_installudev
 	dh_installdocs
 #	dh_installexamples
 #	dh_installmenu
