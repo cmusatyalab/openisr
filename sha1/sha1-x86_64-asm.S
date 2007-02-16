@@ -143,10 +143,10 @@ sha1_compress:
 	subq	$64, %rsp	/* %rsp = W */
 
 	/* Load and byteswap data */
-	SWAP( 0,  %eax); SWAP( 1,  %ecx); SWAP( 2,  %edx); SWAP( 3,  %r8d)
-	SWAP( 4,  %r9d); SWAP( 5, %r10d); SWAP( 6, %r11d); SWAP( 7,  %eax)
-	SWAP( 8,  %ecx); SWAP( 9,  %edx); SWAP(10,  %r8d); SWAP(11,  %r9d)
-	SWAP(12, %r10d); SWAP(13, %r11d); SWAP(14,  %eax); SWAP(15,  %ecx)
+	SWAP( 0,  %eax); SWAP( 1,  %ebx); SWAP( 2,  %ecx); SWAP( 3,  %edx)
+	SWAP( 4,  %ebp); SWAP( 5,  %r8d); SWAP( 6,  %r9d); SWAP( 7, %r10d)
+	SWAP( 8,  %eax); SWAP( 9,  %ebx); SWAP(10,  %ecx); SWAP(11,  %edx)
+	SWAP(12,  %ebp); SWAP(13,  %r8d); SWAP(14,  %r9d); SWAP(15, %r10d)
 
 	/* P_DATA now dead; free up P_STATE for other uses */
 	movq	P_STATE, STATE
