@@ -13,7 +13,7 @@ CFLAGS = -O2 -g -W -Wall -Wstrict-prototypes
 LIBDIR ?= $(HOME)/bin
 
 .PHONY: all
-all: module test readstats
+all: module test readstats nexus_debug
 
 .PHONY: module
 module:
@@ -25,15 +25,19 @@ test: test.c nexus.h
 readstats: readstats.c
 	$(CC) $(CFLAGS) -o $@ $^
 
+nexus_debug: mask.c
+	$(CC) $(CFLAGS) -o $@ $^
+
 .PHONY: clean
 clean:
-	rm -f test readstats
+	rm -f test readstats nexus_debug
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
 
 .PHONY: install
-install: readstats
+install: readstats nexus_debug
 	install -d $(DESTDIR)/$(LIBDIR)
 	install -m 755 readstats $(DESTDIR)/$(LIBDIR)
+	install -m 755 nexus_debug $(DESTDIR)/$(LIBDIR)
 
 .PHONY: install_modules
 install_modules: module

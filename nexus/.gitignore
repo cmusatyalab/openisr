@@ -1,5 +1,6 @@
 test
 readstats
+nexus_debug
 revision.c
 .*.cmd
 .*.d
