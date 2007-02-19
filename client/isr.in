@@ -120,7 +120,7 @@ my $longvers;        # Print specific number of versions for ls long format
 my $nameserver;      # Name server domain name
 my $version;         # Rollback version
 my $checkstate = 0;  # Optionally check content consistency in some cmds
-my $noautoflag;      # Don't automatically start/stop VMWare at launch time
+my $noautoflag;      # Don't automatically start/stop VMware at launch time
 my $allflag;         # "clean" should delete all state, including hoard cache
 
 # Write once globals that are visible in this module only. These globals are
@@ -735,7 +735,7 @@ sub run ($$$$) {
     my $target;
     my @files;
     my $dirname;
-    my $cfgfile;  # VMWare configuration file
+    my $cfgfile;  # VMware configuration file
     my $numfiles;
     my $numchunks;
     my $maxchunks;
@@ -812,7 +812,7 @@ sub run ($$$$) {
     build_cache($cachedir, $lastdir);
     unblock_sigint($sigset);
 
-    # Make sure there is exactly one VMWare config file
+    # Make sure there is exactly one VMware config file
     opendir(DIR, "$cachedir/cfg")
 	or unix_errexit("Unable to open $cachedir/cfg");
     @files = grep(/\.vmx$/, readdir(DIR));
@@ -856,8 +856,8 @@ sub run ($$$$) {
 	    if (++$iters == 150);
     };
 
-    # Launch VMWare
-    print "Launching VMWare...\n"
+    # Launch VMware
+    print "Launching VMware...\n"
 	if $verbose;
     if (!$noautoflag) {
         $vmware_opts = "-X";
@@ -865,10 +865,10 @@ sub run ($$$$) {
         $vmware_opts = "";
     }
     mysystem("LD_PRELOAD=libvdisk.so.0 VDISK_DEVICE=$devnode $syscfg{vmcommand} $vmware_opts $cachedir/cfg/$cfgfile") == 0
-	or system_errexit("VMWare terminated abnormally.");
+	or system_errexit("VMware terminated abnormally.");
 
-    # Wait here until the user suspends VMWare
-    print "Shutting down VMWare.\n"
+    # Wait here until the user suspends VMware
+    print "Shutting down VMware.\n"
 	if $verbose;
     
     # Signal Vulpes to shut down and wait until it is gone
@@ -1366,7 +1366,7 @@ sub resetclient () {
 	if $verbose;
     system("killall vulpes > /dev/null 2>&1");
 
-    print("Terminating any VMWare processes.\n")
+    print("Terminating any VMware processes.\n")
 	if $verbose;
     ($vmname, $vmopts) = split(" ", $syscfg{vmcommand});
     system("killall $vmname > /dev/null 2>&1");
@@ -2295,7 +2295,7 @@ sub usage ($) {
     print "  -u,--user          Your ISR user name (defaults to your login name).\n";    
     print "  -v,--verbose       Increment verbosity level.\n";
     print "  -x,--nocheckstate  Skip consistency check [ci, sync, disconnect].\n";
-    print "  -X,--noauto        Don't automatically start/stop VMWare [resume].\n";
+    print "  -X,--noauto        Don't automatically start/stop VMware [resume].\n";
     print "\n";
     
     exit 0;
