@@ -1,10 +1,13 @@
-#                                               -*- Autoconf -*-
-# Process this file with autoconf to produce a configure script.
+## Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
 AC_INIT([OpenISR], [0.8], [isr-list@mailman.srv.cs.cmu.edu])
+AC_COPYRIGHT([Copyright (C) 2007 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([nexus/request.c])
 AC_CONFIG_HEADER([config.h])
+
+AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--disable-libvdisk],
+			[don't build libvdisk])],, [enable_libvdisk=yes])
 
 # Checks for programs.
 AC_PROG_CC
@@ -27,11 +30,12 @@ AC_CHECK_HEADERS([zlib.h],,
 AC_CHECK_LIB([z], [inflate],,
 			AC_MSG_FAILURE([Can't find zlib library]))
 
-# XXX only if libvdisk
-AC_CHECK_HEADERS([dlfcn.h],,
-			AC_MSG_FAILURE([Can't find dl headers]))
-AC_CHECK_LIB([dl], [dlopen],,
-			AC_MSG_FAILURE([Can't find dl library]))
+if test "z$enable_libvdisk" = "zyes" ; then
+	AC_CHECK_HEADERS([dlfcn.h],,
+				AC_MSG_FAILURE([Can't find dl headers]))
+	AC_CHECK_LIB([dl], [dlopen],,
+				AC_MSG_FAILURE([Can't find dl library]))
+fi
 
 AC_CONFIG_FILES([Makefile])
 #AC_CONFIG_FILES([Makefile
