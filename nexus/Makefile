@@ -7,41 +7,18 @@ openisr-objs += sysfs.o thread.o revision.o
 else
 
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
-PWD := $(shell pwd)
-CFLAGS = -O2 -g -W -Wall -Wstrict-prototypes
-
-LIBDIR ?= $(HOME)/bin
-
-.PHONY: all
-all: module test readstats nexus_debug
 
 .PHONY: module
 module:
-	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
-
-test: test.c nexus.h
-	$(CC) $(CFLAGS) -lssl -o $@ test.c
-
-readstats: readstats.c
-	$(CC) $(CFLAGS) -o $@ $^
-
-nexus_debug: mask.c
-	$(CC) $(CFLAGS) -o $@ $^
+	$(MAKE) -C $(KERNELDIR) M=$(CURDIR) modules
 
 .PHONY: clean
 clean:
-	rm -f test readstats nexus_debug
-	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
-
-.PHONY: install
-install: readstats nexus_debug
-	install -d $(DESTDIR)/$(LIBDIR)
-	install -m 755 readstats $(DESTDIR)/$(LIBDIR)
-	install -m 755 nexus_debug $(DESTDIR)/$(LIBDIR)
+	$(MAKE) -C $(KERNELDIR) M=$(CURDIR) clean
 
 .PHONY: install_modules
 install_modules: module
-	@$(MAKE) -C $(KERNELDIR) M=$(PWD) INSTALL_MOD_PATH=$(DESTDIR) \
+	@$(MAKE) -C $(KERNELDIR) M=$(CURDIR) INSTALL_MOD_PATH=$(DESTDIR) \
 		INSTALL_MOD_DIR=openisr modules_install
 
 # This is a hack.  The include directive forces make to always execute

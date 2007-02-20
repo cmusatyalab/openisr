@@ -1,1 +1,1 @@
-SUBDIRS = client vulpes libvdisk
+SUBDIRS = client vulpes libvdisk nexus

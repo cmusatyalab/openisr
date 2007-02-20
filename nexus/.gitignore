@@ -9,3 +9,7 @@ revision.c
 *.ko
 Module.symvers
 Modules.symvers
+GNUmakefile
+GNUmakefile.in
+.deps
+.libs

@@ -42,8 +42,8 @@ fi
 AC_CONFIG_FILES([Makefile
                  client/Makefile
                  libvdisk/Makefile
+                 nexus/GNUmakefile
                  vulpes/Makefile])
 #                 conf/Makefile
-#                 nexus/Makefile
 #                 sha1/Makefile
 AC_OUTPUT
