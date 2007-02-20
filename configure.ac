@@ -40,11 +40,11 @@ if test "z$enable_libvdisk" = "zyes" ; then
 fi
 
 AC_CONFIG_FILES([Makefile
+                 conf/Makefile
                  client/Makefile
                  libvdisk/Makefile
                  nexus/GNUmakefile
                  nexus/tools/Makefile
                  vulpes/Makefile])
-#                 conf/Makefile
 #                 sha1/Makefile
 AC_OUTPUT
