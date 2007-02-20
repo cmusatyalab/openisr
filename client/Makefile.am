@@ -1,10 +1,12 @@
+GEN = isr Isr.pm isr.1
 bin_SCRIPTS = isr
-pkgdata_DATA = Isr.pm HTTPSSH.pm IsrConfigTie.pm IsrRevision.pm
+pkgdata_DATA = Isr.pm
 man_MANS = isr.1
 
-GEN = isr Isr.pm isr.1
+dist_pkgdata_DATA = HTTPSSH.pm IsrConfigTie.pm IsrRevision.pm
 
 CLEANFILES = $(GEN)
+EXTRA_DIST = $(GEN:=.in)
 
 $(GEN): %: %.in Makefile
 	@echo "Generating $@ from $<"
