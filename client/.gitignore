@@ -2,3 +2,5 @@ isr
 Isr.pm
 IsrRevision.pm
 isr.1
+Makefile
+Makefile.in
