@@ -1,2 +1,5 @@
-libvdisk.so
 revision.h
+.libs
+.deps
+Makefile.in
+Makefile

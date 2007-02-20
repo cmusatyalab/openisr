@@ -2,6 +2,7 @@
 
 AC_PREREQ(2.59)
 AC_INIT([OpenISR], [0.8], [isr-list@mailman.srv.cs.cmu.edu])
+AM_INIT_AUTOMAKE([foreign])
 AC_COPYRIGHT([Copyright (C) 2007 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([nexus/request.c])
 AC_CONFIG_HEADER([config.h])
@@ -14,6 +15,7 @@ AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--disable-libvdisk],
 AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
+AC_PROG_LIBTOOL
 
 # Checks for libraries.
 AC_CHECK_CURL([7.12],, AC_MSG_FAILURE([curl too old]))
@@ -37,12 +39,11 @@ if test "z$enable_libvdisk" = "zyes" ; then
 				AC_MSG_FAILURE([Can't find dl library]))
 fi
 
-AC_CONFIG_FILES([Makefile])
-#AC_CONFIG_FILES([Makefile
-#                 client/Makefile
+AC_CONFIG_FILES([Makefile
+                 client/Makefile
+                 libvdisk/Makefile
+                 vulpes/Makefile])
 #                 conf/Makefile
-#                 libvdisk/Makefile
 #                 nexus/Makefile
 #                 sha1/Makefile
-#                 vulpes/Makefile])
 AC_OUTPUT
