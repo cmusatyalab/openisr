@@ -101,7 +101,7 @@ sub release_locks ();
 #########################
 
 # Version string
-my $isrversion = "OpenISR 0.8";
+my $isrversion = "OpenISR !!VERSION!!";
 
 # Local variables
 my $isrdir;

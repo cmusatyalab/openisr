@@ -13,7 +13,8 @@ $(GEN): %: %.in Makefile
 	@sed -e "s=!!LIBDIR!!=$(pkglibdir)=g" \
 				-e "s=!!SHAREDIR!!=$(pkgdatadir)=g" \
 				-e "s=!!SYSCONFDIR!!=$(sysconfdir)/openisr=g" \
-				-e "s=!!BINDIR!!=$(bindir)=g" $< > $@
+				-e "s=!!BINDIR!!=$(bindir)=g" \
+				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" $< > $@
 
 # This is a hack.  The include directive forces make to always execute
 # the rule, and to recalculate its target selection afterward.  Note
