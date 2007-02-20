@@ -7,9 +7,7 @@ AC_COPYRIGHT([Copyright (C) 2007 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([nexus/request.c])
 AC_CONFIG_HEADER([config.h])
 AC_CONFIG_MACRO_DIR([autoconf])
-
-AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--disable-libvdisk],
-			[don't build libvdisk])],, [enable_libvdisk=yes])
+AC_DISABLE_STATIC
 
 # Checks for programs.
 AC_PROG_CC
@@ -31,6 +29,10 @@ AC_CHECK_LIB([ssl], [EVP_EncryptUpdate],,
 			AC_MSG_FAILURE([Can't find OpenSSL library]))
 
 CHECK_ZLIB
+
+# Checks for optional features.
+AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--disable-libvdisk],
+			[don't build libvdisk])],, [enable_libvdisk=yes])
 
 if test "z$enable_libvdisk" = "zyes" ; then
 	AC_CHECK_HEADERS([dlfcn.h],,
