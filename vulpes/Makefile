@@ -11,23 +11,8 @@ ASS=$(SRCS:.c=.s)
 PRE=$(SRCS:.c=.i)
 DEP=$(SRCS:.c=.d)
 
-CURL_VER=
-CURL_VER :=  $(shell curl-config --version|cut -f2 -d' '|cut -f2 -d'.')
-ifneq (,$(CURL_VER))
-CURL_TOO_OLD :=  $(shell echo " ${CURL_VER} < 12 "|bc)
-else
-CURL_TOO_OLD=1
-endif
-
 .PHONY: all
-all: checklibs vulpes
-
-.PHONY: checklibs
-checklibs:
-ifeq (1,$(CURL_TOO_OLD))
-	@echo "You must have curl 7.12 or later installed."
-	@exit 1
-endif
+all: vulpes
 
 $(OBJS): %.o : %.c
 	$(CC) $(CFLAGS) $< -c -o $@
