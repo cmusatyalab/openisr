@@ -1,0 +1,7 @@
+EXTRA_DIST = Makefile sha1.c sha1-i586-asm.S sha1-i586-x86_64.S
+
+all-local:
+	$(MAKE) $(AM_MAKEFLAGS) -f Makefile module
+
+clean-local:
+	$(MAKE) $(AM_MAKEFLAGS) -f Makefile clean

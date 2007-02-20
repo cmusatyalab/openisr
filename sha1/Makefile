@@ -13,30 +13,18 @@ endif
 else
 
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
-PWD := $(shell pwd)
-
-.PHONY: all
-all: module
 
 .PHONY: module
 module:
-	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
+	$(MAKE) -C $(KERNELDIR) M=$(CURDIR) modules
 
 .PHONY: clean
 clean:
-	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
-
-.PHONY: install
-install:
+	$(MAKE) -C $(KERNELDIR) M=$(CURDIR) clean
 
 .PHONY: install_modules
 install_modules: module
-	@$(MAKE) -C $(KERNELDIR) M=$(PWD) INSTALL_MOD_PATH=$(DESTDIR) \
+	@$(MAKE) -C $(KERNELDIR) M=$(CURDIR) INSTALL_MOD_PATH=$(DESTDIR) \
 		INSTALL_MOD_DIR=openisr modules_install
-
-ifneq ($(MAKELEVEL), 0)
-.PHONY: distdir_version
-distdir_version:
-endif
 
 endif
