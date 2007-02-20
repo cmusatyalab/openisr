@@ -1,5 +1,5 @@
 AM_CFLAGS= -g -O2 -Wall -Wstrict-prototypes -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -I../nexus -I/lib/modules/`uname -r`/build/include
-AM_LFLAGS= -lz -lssl -lcurl
+AM_LDFLAGS= -lz -lssl -lcurl
 
 pkglib_PROGRAMS = vulpes
 vulpes_SOURCES = revision.c main.c driver.c transport.c cache.c crypto.c \
