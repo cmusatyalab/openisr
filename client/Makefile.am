@@ -4,7 +4,7 @@ man_MANS = isr.1
 
 GEN = isr Isr.pm isr.1
 
-MOSTLYCLEANFILES = $(GEN)
+CLEANFILES = $(GEN)
 
 $(GEN): %: %.in Makefile
 	@echo "Generating $@ from $<"
