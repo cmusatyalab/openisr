@@ -85,7 +85,8 @@ then
         CPPFLAGS="$CPPFLAGS -I${ZLIB_HOME}/include"
         AC_LANG_SAVE
         AC_LANG_C
-        AC_CHECK_LIB(z, inflateEnd, , AC_MSG_ERROR([couldn't link with zlib]))
+        AC_CHECK_LIB(z, inflateEnd, true,
+				AC_MSG_ERROR([couldn't link with zlib]))
         AC_CHECK_HEADER(zlib.h, , AC_MSG_ERROR([couldn't find zlib header]))
         AC_LANG_RESTORE
 else

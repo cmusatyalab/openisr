@@ -19,13 +19,13 @@ AC_PROG_LIBTOOL
 AC_CHECK_CURL([7.12],, AC_MSG_FAILURE([curl too old]))
 AC_CHECK_HEADERS([curl/curl.h],,
 			AC_MSG_FAILURE([Can't find cURL headers]))
-AC_CHECK_LIB([curl], [curl_easy_init],,
+AC_CHECK_LIB([curl], [curl_easy_init], true,
 			AC_MSG_FAILURE([Can't find cURL library]))
 
 CHECK_SSL
 AC_CHECK_HEADERS([openssl/evp.h openssl/blowfish.h],,
 			AC_MSG_FAILURE([Can't find OpenSSL headers]))
-AC_CHECK_LIB([ssl], [EVP_EncryptUpdate],,
+AC_CHECK_LIB([ssl], [EVP_EncryptUpdate], true,
 			AC_MSG_FAILURE([Can't find OpenSSL library]))
 
 CHECK_ZLIB
@@ -37,7 +37,7 @@ AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--disable-libvdisk],
 if test "z$enable_libvdisk" = "zyes" ; then
 	AC_CHECK_HEADERS([dlfcn.h],,
 				AC_MSG_FAILURE([Can't find dl headers]))
-	AC_CHECK_LIB([dl], [dlopen],,
+	AC_CHECK_LIB([dl], [dlopen], true,
 				AC_MSG_FAILURE([Can't find dl library]))
 fi
 
