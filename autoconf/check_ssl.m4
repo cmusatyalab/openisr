@@ -40,38 +40,28 @@
 #   the copyright notice and this notice are preserved.
 
 AC_DEFUN([CHECK_SSL],
-[AC_MSG_CHECKING(if ssl is wanted)
-AC_ARG_WITH(ssl,
-[  --with-ssl enable ssl [will check /usr/local/ssl
-                            /usr/lib/ssl /usr/ssl /usr/pkg /usr/local /usr ]
-],
-[   AC_MSG_RESULT(yes)
-    for dir in $withval /usr/local/ssl /usr/lib/ssl /usr/ssl /usr/pkg /usr/local /usr; do
+[
+    AC_MSG_CHECKING(for OpenSSL)
+    AC_ARG_WITH(ssl, [AS_HELP_STRING([--with-ssl=DIR],[look for OpenSSL in DIR])], chosen="$withval",)
+    for dir in "$chosen" /usr/local/ssl /usr/lib/ssl /usr/ssl /usr/pkg /usr/local /usr; do
         ssldir="$dir"
         if test -f "$dir/include/openssl/ssl.h"; then
             found_ssl="yes";
-            CFLAGS="$CFLAGS -I$ssldir/include/openssl -DHAVE_SSL";
-            CXXFLAGS="$CXXFLAGS -I$ssldir/include/openssl -DHAVE_SSL";
+            CFLAGS="$CFLAGS -I$ssldir/include/openssl";
+            CXXFLAGS="$CXXFLAGS -I$ssldir/include/openssl";
             break;
         fi
         if test -f "$dir/include/ssl.h"; then
             found_ssl="yes";
-            CFLAGS="$CFLAGS -I$ssldir/include/ -DHAVE_SSL";
-            CXXFLAGS="$CXXFLAGS -I$ssldir/include/ -DHAVE_SSL";
+            CFLAGS="$CFLAGS -I$ssldir/include/";
+            CXXFLAGS="$CXXFLAGS -I$ssldir/include/";
             break
         fi
     done
     if test x_$found_ssl != x_yes; then
-        AC_MSG_ERROR(Cannot find ssl libraries)
+        AC_MSG_ERROR(cannot find OpenSSL)
     else
-        printf "OpenSSL found in $ssldir\n";
-        LIBS="$LIBS -lssl -lcrypto";
+        AC_MSG_RESULT([$ssldir])
         LDFLAGS="$LDFLAGS -L$ssldir/lib";
-        HAVE_SSL=yes
     fi
-    AC_SUBST(HAVE_SSL)
-],
-[
-    AC_MSG_RESULT(no)
-])
 ])dnl

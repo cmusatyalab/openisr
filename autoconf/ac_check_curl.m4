@@ -28,9 +28,7 @@ AC_DEFUN([AC_CHECK_CURL], [
   fi
 
   if test "$CURL_CONFIG" = "no" ; then
-    echo "*** The curl-config script could not be found. Make sure it is"
-    echo "*** in your path, and that curl is properly installed."
-    echo "*** Or see http://curl.haxx.se/"
+    AC_MSG_ERROR([the curl-config script could not be found])
   else
     dnl curl-config --version returns "libcurl <version>", thus cut the number
     CURL_VERSION=`$CURL_CONFIG --version | cut -d" " -f2`
@@ -39,24 +37,11 @@ AC_DEFUN([AC_CHECK_CURL], [
         if test "$VERSION_CHECK" = "1" ; then
             AC_MSG_RESULT(yes)
             succeeded=yes
-
-            AC_MSG_CHECKING(CURL_CFLAGS)
-            CURL_CFLAGS=`$CURL_CONFIG --cflags`
-            AC_MSG_RESULT($CURL_CFLAGS)
-
-            AC_MSG_CHECKING(CURL_LIBS)
-            CURL_LIBS=`$CURL_CONFIG --libs`
-            AC_MSG_RESULT($CURL_LIBS)
         else
-            CURL_CFLAGS=""
-            CURL_LIBS=""
             ## If we have a custom action on failure, don't print errors, but
             ## do set a variable so people can do so.
-            ifelse([$3], ,echo "can't find curl >= $1",)
+            ifelse([$3], ,echo "can't find curl >= $1",:)
         fi
-
-        AC_SUBST(CURL_CFLAGS)
-        AC_SUBST(CURL_LIBS)
   fi
 
   if test $succeeded = yes; then
