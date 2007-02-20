@@ -43,6 +43,7 @@ AC_CONFIG_FILES([Makefile
                  client/Makefile
                  libvdisk/Makefile
                  nexus/GNUmakefile
+                 nexus/tools/Makefile
                  vulpes/Makefile])
 #                 conf/Makefile
 #                 sha1/Makefile

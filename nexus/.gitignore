@@ -1,6 +1,3 @@
-test
-readstats
-nexus_debug
 revision.c
 .*.cmd
 .*.d
@@ -12,4 +9,3 @@ Modules.symvers
 GNUmakefile
 GNUmakefile.in
 .deps
-.libs
