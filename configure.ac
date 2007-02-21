@@ -30,6 +30,11 @@ PROCESS_ENABLE_VAR([$enable_libvdisk], [WANT_LIBVDISK],
 PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
 			[whether we should build the kernel modules])
 
+if test z$srcdir != z. -a $enable_modules = yes; then
+	AC_MSG_ERROR([cannot build outside source tree when --enable-modules=yes])
+	# ...because Kbuild doesn't support it
+fi
+
 # Checks for libraries.
 AC_ARG_WITH([ssl], [AS_HELP_STRING([--with-ssl=DIR],
 			[look for OpenSSL in DIR])])
