@@ -25,7 +25,7 @@ install_modules: module
 # the rule, and to recalculate its target selection afterward.
 .PHONY: revision.dummy
 revision.dummy:
-	@$../mkrevision.sh object nexus
+	@../mkrevision.sh object nexus
 -include revision.dummy
 
 endif
