@@ -42,9 +42,13 @@ AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules],
 AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--enable-libvdisk],
 			[build libvdisk [$client]])],,
 			[enable_libvdisk=${enable_client}])
-AM_CONDITIONAL([WANT_CLIENT], [test x$enable_client = xyes])
-AM_CONDITIONAL([WANT_MODULES], [test x$enable_modules = xyes])
-AM_CONDITIONAL([WANT_LIBVDISK], [test x$enable_libvdisk = xyes])
+
+PROCESS_ENABLE_VAR([$enable_client], [WANT_CLIENT],
+			[whether we should build the client])
+PROCESS_ENABLE_VAR([$enable_libvdisk], [WANT_LIBVDISK],
+			[whether we should build libvdisk])
+PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
+			[whether we should build the kernel modules])
 
 if test "z$enable_libvdisk" = "zyes" ; then
 	AC_CHECK_HEADERS([dlfcn.h],,
