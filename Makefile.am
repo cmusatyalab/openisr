@@ -2,18 +2,15 @@ if WANT_CLIENT
 CLIENTDIRS = client vulpes conf
 endif
 
-# NOTE: We cannot support VPATH builds when WANT_MODULES is enabled, because
-# Kbuild does not support VPATH builds for external modules.
-if WANT_MODULES
-SHADIR = sha1
-endif
-
 if WANT_LIBVDISK
 VDISKDIR = libvdisk
 endif
 
-# Unconditionally descend into nexus to pick up the tools
-SUBDIRS = $(CLIENTDIRS) $(VDISKDIR) nexus $(SHADIR)
+# Unconditionally descend into kernel directories: even if we didn't, the
+# GNUmakefiles there would still need to condition their calls into Kbuild
+# on WANT_MODULES or else distclean would break for VPATH builds.  Also, Nexus
+# has tools it may want to build even if !WANT_MODULES.
+SUBDIRS = $(CLIENTDIRS) $(VDISKDIR) nexus sha1
 dist_noinst_SCRIPTS = mkrevision.sh
 EXTRA_DIST = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL debian
 

@@ -6,7 +6,8 @@ SUBDIRS = tools
 endif
 
 if WANT_MODULES
-# VPATH builds unsupported
+# NOTE: We cannot support VPATH builds when WANT_MODULES is enabled, because
+# Kbuild does not support VPATH builds for external modules.
 all-local:
 	$(MAKE) $(AM_MAKEFLAGS) -f Makefile module
 
