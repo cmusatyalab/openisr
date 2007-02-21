@@ -1,10 +1,14 @@
 include Files.mk
 EXTRA_DIST = Makefile $(NEXUS_OBJS:.o=.c) $(NEXUS_HDRS)
 
+if WANT_CLIENT
 SUBDIRS = tools
+endif
 
+if WANT_MODULES
 all-local:
 	$(MAKE) $(AM_MAKEFLAGS) -f Makefile module
 
 clean-local:
 	$(MAKE) $(AM_MAKEFLAGS) -f Makefile clean
+endif

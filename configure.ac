@@ -34,8 +34,17 @@ AC_CHECK_LIB([ssl], [EVP_EncryptUpdate], true,
 CHECK_ZLIB
 
 # Checks for optional features.
-AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--disable-libvdisk],
-			[don't build libvdisk])],, [enable_libvdisk=yes])
+AC_ARG_ENABLE([client], [AS_HELP_STRING([--enable-client],
+			[build client code [yes]])],, [enable_client=yes])
+AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules],
+			[build kernel modules [$client]])],,
+			[enable_modules=${enable_client}])
+AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--enable-libvdisk],
+			[build libvdisk [$client]])],,
+			[enable_libvdisk=${enable_client}])
+AM_CONDITIONAL([WANT_CLIENT], [test x$enable_client = xyes])
+AM_CONDITIONAL([WANT_MODULES], [test x$enable_modules = xyes])
+AM_CONDITIONAL([WANT_LIBVDISK], [test x$enable_libvdisk = xyes])
 
 if test "z$enable_libvdisk" = "zyes" ; then
 	AC_CHECK_HEADERS([dlfcn.h],,
