@@ -42,7 +42,7 @@ AC_ARG_WITH([curl], [AS_HELP_STRING([--with-curl=DIR],
 if test z$enable_client = zyes; then
 	FIND_LIBRARY([curl], [curl], [curl_easy_init], [curl/curl.h],
 				[$with_curl /usr/local /usr])
-	AC_CHECK_CURL([7.12],, AC_MSG_FAILURE([curl too old]))
+	CHECK_CURL_VERSION([$FOUND_PATH], [7.12])
 	
 	FIND_LIBRARY([OpenSSL], [ssl], [EVP_EncryptUpdate],
 				[openssl/ssl.h openssl/evp.h openssl/blowfish.h],
