@@ -7,7 +7,6 @@ openisr-objs := $(NEXUS_OBJS)
 else
 
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
-top_srcdir ?= ..
 
 .PHONY: module
 module:
@@ -26,7 +25,7 @@ install_modules: module
 # the rule, and to recalculate its target selection afterward.
 .PHONY: revision.dummy
 revision.dummy:
-	@$(top_srcdir)/mkrevision.sh object nexus
+	@$../mkrevision.sh object nexus
 -include revision.dummy
 
 endif
