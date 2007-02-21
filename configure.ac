@@ -32,31 +32,30 @@ PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
 			[whether we should build the kernel modules])
 
 # Checks for libraries.
-# NOTE: By default, AC_CHECK_LIB([foo], ...) will add "-lfoo" to the linker
-# flags for ALL programs and libraries, which is likely not what you want.
-# Put "true" in the third argument (as a no-op) and then add the -l flags
-# on a per-program basis.
-if test x$enable_client = zyes; then
+AC_ARG_WITH([ssl], [AS_HELP_STRING([--with-ssl=DIR],
+			[look for OpenSSL in DIR])])
+AC_ARG_WITH([zlib], [AS_HELP_STRING([--with-zlib=DIR],
+			[look for zlib in DIR])])
+AC_ARG_WITH([curl], [AS_HELP_STRING([--with-curl=DIR],
+			[look for curl in DIR])])
+
+if test z$enable_client = zyes; then
+	FIND_LIBRARY([curl], [curl], [curl_easy_init], [curl/curl.h],
+				[$with_curl /usr/local /usr])
 	AC_CHECK_CURL([7.12],, AC_MSG_FAILURE([curl too old]))
-	AC_CHECK_HEADERS([curl/curl.h],,
-				AC_MSG_FAILURE([Can't find cURL headers]))
-	AC_CHECK_LIB([curl], [curl_easy_init], true,
-				AC_MSG_FAILURE([Can't find cURL library]))
 	
-	CHECK_SSL
-	AC_CHECK_HEADERS([openssl/evp.h openssl/blowfish.h],,
-				AC_MSG_FAILURE([Can't find OpenSSL headers]))
-	AC_CHECK_LIB([ssl], [EVP_EncryptUpdate], true,
-				AC_MSG_FAILURE([Can't find OpenSSL library]))
+	FIND_LIBRARY([OpenSSL], [ssl], [EVP_EncryptUpdate],
+				[openssl/ssl.h openssl/evp.h openssl/blowfish.h],
+				[$with_ssl /usr/local/ssl /usr/lib/ssl /usr/ssl /usr/local /usr])
 	
-	CHECK_ZLIB
+	FIND_LIBRARY([zlib], [z], [inflate], [zlib.h],
+				[$with_zlib /usr/local /usr])
 fi
 
 if test "z$enable_libvdisk" = "zyes" ; then
-	AC_CHECK_HEADERS([dlfcn.h],,
-				AC_MSG_FAILURE([Can't find dl headers]))
-	AC_CHECK_LIB([dl], [dlopen], true,
-				AC_MSG_FAILURE([Can't find dl library]))
+	# We don't provide a --with-dl=DIR option because this is supposed
+	# to be a system function.
+	FIND_LIBRARY([libdl], [dl], [dlopen], [dlfcn.h], [/usr])
 fi
 
 AC_CONFIG_FILES([Makefile
