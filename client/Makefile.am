@@ -17,10 +17,8 @@ $(GEN): %: %.in Makefile
 				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" $< > $@
 
 # This is a hack.  The include directive forces make to always execute
-# the rule, and to recalculate its target selection afterward.  Note
-# that if any source files have changed, this rule will be executed
-# twice due to %.d updates.
+# the rule, and to recalculate its target selection afterward.
 .PHONY: revision.dummy
 revision.dummy:
-	@../mkrevision.sh perl client
+	@$(top_srcdir)/mkrevision.sh perl client
 -include revision.dummy

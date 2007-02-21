@@ -5,7 +5,6 @@ AC_INIT([OpenISR], [0.8], [isr-list@mailman.srv.cs.cmu.edu])
 AM_INIT_AUTOMAKE([foreign])
 AC_COPYRIGHT([Copyright (C) 2007 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([nexus/request.c])
-AC_CONFIG_MACRO_DIR([autoconf])
 AC_DISABLE_STATIC
 
 # Checks for programs.

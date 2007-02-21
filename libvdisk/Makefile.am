@@ -1,7 +1,7 @@
 AM_CFLAGS=-W -Wall -Wstrict-prototypes -O2 -fno-strict-aliasing
 
 lib_LTLIBRARIES = libvdisk.la
-libvdisk_la_SOURCES = libvdisk.c
+libvdisk_la_SOURCES = libvdisk.c revision.h
 
 # If the user passed --enable-static to configure, it still doesn't make
 # any sense to install a static version of the library, so make sure we
@@ -16,10 +16,8 @@ install-exec-hook:
 	chmod 4644 $(DESTDIR)$(libdir)/libvdisk.so.0.0.0
 
 # This is a hack.  The include directive forces make to always execute
-# the rule, and to recalculate its target selection afterward.  Note
-# that if any source files have changed, this rule will be executed
-# twice due to %.d updates.
+# the rule, and to recalculate its target selection afterward.
 .PHONY: revision.dummy
 revision.dummy:
-	@../mkrevision.sh header libvdisk
+	@$(top_srcdir)/mkrevision.sh header libvdisk
 -include revision.dummy

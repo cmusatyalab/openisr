@@ -6,6 +6,8 @@ SUBDIRS = tools
 endif
 
 if WANT_MODULES
+export top_srcdir
+
 all-local:
 	$(MAKE) $(AM_MAKEFLAGS) -f Makefile module
 
