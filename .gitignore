@@ -6,3 +6,9 @@ Makefile
 Makefile.in
 libtool
 aclocal.m4
+config.guess
+config.sub
+depcomp
+ltmain.sh
+missing
+install-sh
