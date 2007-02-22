@@ -3,6 +3,9 @@ EXTRA_DIST = Makefile sha1.c sha1-i586-asm.S sha1-x86_64-asm.S
 if WANT_MODULES
 # NOTE: We cannot support VPATH builds when WANT_MODULES is enabled, because
 # Kbuild does not support VPATH builds for external modules.
+
+export KERNELDIR
+
 all-local:
 	@$(MAKE) $(AM_MAKEFLAGS) -f Makefile module
 

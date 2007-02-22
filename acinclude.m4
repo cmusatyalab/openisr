@@ -2,12 +2,12 @@
 # ----------------------------------------------------------
 AC_DEFUN([PROCESS_ENABLE_VAR], [
 	AC_MSG_CHECKING($3)
-	if test x$1 = xyes; then
+	if test x$1 != xno; then
 		AC_MSG_RESULT([yes])
 	else
 		AC_MSG_RESULT([no])
 	fi
-	AM_CONDITIONAL($2, [test x$1 = xyes])
+	AM_CONDITIONAL($2, [test x$1 != xno])
 ])
 
 

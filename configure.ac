@@ -16,12 +16,13 @@ AC_PROG_LIBTOOL
 # Checks for optional features.
 AC_ARG_ENABLE([client], [AS_HELP_STRING([--enable-client],
 			[build client code [yes]])],, [enable_client=yes])
-AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules],
-			[build kernel modules [$client]])],,
-			[enable_modules=${enable_client}])
 AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--enable-libvdisk],
 			[build libvdisk [$client]])],,
 			[enable_libvdisk=${enable_client}])
+AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules=DIR],
+			[build kernel modules (against kernel source in DIR,
+			if specified) [$client]])],,
+			[enable_modules=${enable_client}])
 
 PROCESS_ENABLE_VAR([$enable_client], [WANT_CLIENT],
 			[whether we should build the client])
@@ -30,9 +31,28 @@ PROCESS_ENABLE_VAR([$enable_libvdisk], [WANT_LIBVDISK],
 PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
 			[whether we should build the kernel modules])
 
-if test z$srcdir != z. -a $enable_modules = yes; then
-	AC_MSG_ERROR([cannot build outside source tree when --enable-modules=yes])
-	# ...because Kbuild doesn't support it
+if test z$enable_modules != zno ; then
+	if test z$srcdir != z. ; then
+		AC_MSG_ERROR([cannot build outside source tree when --enable-modules is set])
+		# ...because Kbuild doesn't support it
+	fi
+	
+	AC_MSG_CHECKING([for kernel source])
+	# KERNELDIR is set to the argument passed to --enable-modules, if not
+	# "yes".  Otherwise, it's the value of the KERNELDIR environment
+	# variable, if set.  Otherwise, we produce a default from uname -r.
+	if test z$enable_modules != zyes ; then
+		KERNELDIR=$enable_modules
+	elif test z$KERNELDIR != z ; then
+		KERNELDIR=/lib/modules/`uname -r`/build
+	fi
+	AC_MSG_RESULT([$KERNELDIR])
+	
+	if test ! -f $KERNELDIR/include/linux/version.h ; then
+		AC_MSG_ERROR([$KERNELDIR is not a configured kernel source tree])
+	fi
+	AC_SUBST([KERNELDIR])
+	AC_ARG_VAR([KERNELDIR], [location of configured kernel source])
 fi
 
 # Checks for libraries.
