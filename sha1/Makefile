@@ -58,4 +58,5 @@ ifeq ($(KERN_RELEASE),)
 	@echo "Kernel tree at $(KERNELDIR) not configured"
 	@exit 1
 endif
+
 endif
