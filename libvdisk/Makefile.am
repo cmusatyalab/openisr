@@ -2,7 +2,7 @@ AM_CFLAGS=-W -Wall -Wstrict-prototypes -O2 -fno-strict-aliasing
 
 # libvdisk will not work if it's not in /lib or /usr/lib, since it needs
 # to be LD_PRELOADed into a setuid root program
-sysexeclibdir = "/usr/lib"
+sysexeclibdir = /usr/lib
 
 sysexeclib_LTLIBRARIES = libvdisk.la
 libvdisk_la_SOURCES = libvdisk.c revision.h

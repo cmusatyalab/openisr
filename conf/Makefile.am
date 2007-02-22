@@ -1,6 +1,6 @@
-modprobedir="${sysconfdir}/modprobe.d"
-initexecdir="${sysconfdir}/init.d"
-udevdir="${sysconfdir}/udev"
+modprobedir = ${sysconfdir}/modprobe.d
+initexecdir = ${sysconfdir}/init.d
+udevdir = ${sysconfdir}/udev
 
 dist_pkgdata_DATA = config
 dist_modprobe_DATA = openisr.modprobe
