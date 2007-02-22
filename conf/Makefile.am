@@ -6,6 +6,8 @@ dist_pkgdata_DATA = config
 dist_modprobe_DATA = openisr.modprobe
 dist_udev_DATA = openisr.rules
 dist_initexec_SCRIPTS = openisr.init
+# Dummy variable to cause the directory to be created
+dist_pkgsysconf_DATA = 
 EXTRA_DIST = magic
 
 install-exec-hook:

@@ -12,7 +12,7 @@ $(GEN): %: %.in Makefile
 	@echo "Generating $@ from $<"
 	@sed -e "s=!!LIBDIR!!=$(pkglibdir)=g" \
 				-e "s=!!SHAREDIR!!=$(pkgdatadir)=g" \
-				-e "s=!!SYSCONFDIR!!=$(sysconfdir)/openisr=g" \
+				-e "s=!!SYSCONFDIR!!=$(pkgsysconfdir)=g" \
 				-e "s=!!BINDIR!!=$(bindir)=g" \
 				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" $< > $@
 

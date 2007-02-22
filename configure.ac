@@ -43,7 +43,7 @@ if test z$enable_modules != zno ; then
 	# variable, if set.  Otherwise, we produce a default from uname -r.
 	if test z$enable_modules != zyes ; then
 		KERNELDIR=$enable_modules
-	elif test z$KERNELDIR != z ; then
+	elif test z$KERNELDIR = z ; then
 		KERNELDIR=/lib/modules/`uname -r`/build
 	fi
 	AC_MSG_RESULT([$KERNELDIR])
@@ -82,6 +82,7 @@ if test "z$enable_libvdisk" = "zyes" ; then
 	FIND_LIBRARY([libdl], [dl], [dlopen], [dlfcn.h], [/usr])
 fi
 
+AC_SUBST([pkgsysconfdir], [\$\(sysconfdir\)/$PACKAGE])
 AC_CONFIG_FILES([Makefile
                  conf/Makefile
                  client/Makefile
