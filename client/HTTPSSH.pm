@@ -1207,7 +1207,7 @@ sub isr_priv_cleanhoard ($$$) {
     my $numkeys;
 
 
-    print "Garbage collecting hoard cache..."
+    print "Garbage-collecting hoard cache..."
 	if $main::verbose;
 
     #
