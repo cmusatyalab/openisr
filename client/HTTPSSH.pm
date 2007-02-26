@@ -572,8 +572,10 @@ sub isr_statparcel ($$$$) {
 	    or unix_errexit("Unable to open $cachedir/cfg.");
 	@files = grep(/\.vmem$/, readdir(DIR));
 	closedir(DIR);
-	$memsize = (stat("$cachedir/cfg/$files[0]")->size)/(1<<20);
-	printf("Memory image: %d MB (uncompressed)\n", $memsize);
+	if (@files > 0) {
+	    $memsize = (stat("$cachedir/cfg/$files[0]")->size)/(1<<20);
+	    printf("Memory image: %d MB (uncompressed)\n", $memsize);
+	}
     }
 
     #
