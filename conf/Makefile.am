@@ -21,7 +21,7 @@ install-exec-hook:
 install-data-hook:
 	mv $(DESTDIR)$(modprobedir)/openisr.modprobe \
 				$(DESTDIR)$(modprobedir)/openisr
-	ln -s ../openisr.rules $(DESTDIR)$(udevrulesdir)
+	ln -sf ../openisr.rules $(DESTDIR)$(udevrulesdir)
 
 uninstall-hook:
 	rm -f $(DESTDIR)$(initexecdir)/openisr \
