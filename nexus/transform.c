@@ -316,7 +316,7 @@ static int decompress_chunk_zlib(struct nexus_dev *dev,
 	struct scatterlist *out_sg=ts->zlib_sg;
 	unsigned out_offset=0;
 	void *from;
-	void *to;
+	void *to=NULL;  /* silence compiler warning */
 	int ret;
 	int ret2;
 	
@@ -339,10 +339,32 @@ static int decompress_chunk_zlib(struct nexus_dev *dev,
 		len -= strm.avail_in;
 		in_sg++;
 		do {
-			to=kmap_atomic(out_sg->page, KM_USER1);
-			strm.next_out=to + out_sg->offset + out_offset;
-			strm.avail_out=out_sg->length - out_offset;
+			if (strm.total_out < dev->chunksize) {
+				to=kmap_atomic(out_sg->page, KM_USER1);
+				strm.next_out=to + out_sg->offset + out_offset;
+				strm.avail_out=out_sg->length - out_offset;
+			} else {
+				/* If total_out == chunksize but zlib_inflate()
+				   returns Z_OK, we call into zlib_inflate()
+				   one more time with a zero-byte output
+				   buffer.  The reason is that the 4-byte
+				   ADLER32 trailer may span an input page
+				   boundary; in this case there is more work to
+				   be done but no more output will be produced.
+				   If there *is* more output to be produced
+				   (because we've been given an invalid block),
+				   zlib_inflate() will return Z_BUF_ERROR when
+				   we do this.
+				   
+				   In the kernel's zlib, unlike in vanilla
+				   zlib, it's permissible to set next_out to
+				   NULL. */
+				strm.next_out=NULL;
+				strm.avail_out=0;
+			}
 			ret=zlib_inflate(&strm, Z_SYNC_FLUSH);
+			if (strm.next_out == NULL)
+				continue;
 			/* Can't hold the mapping across cond_resched() */
 			kunmap_atomic(to, KM_USER1);
 			if (strm.avail_out > 0) {
@@ -352,17 +374,22 @@ static int decompress_chunk_zlib(struct nexus_dev *dev,
 				out_sg++;
 			}
 		} while (strm.avail_in > 0 && ret == Z_OK &&
-					strm.total_out < dev->chunksize);
+					strm.total_out <= dev->chunksize);
 		kunmap_atomic(from, KM_USER0);
 		cond_resched();
-	} while (ret == Z_OK && len > 0 && strm.total_out < dev->chunksize);
+	} while (ret == Z_OK && len > 0 && strm.total_out <= dev->chunksize);
 	
 	len=strm.total_out;
 	ret2=zlib_inflateEnd(&strm);
-	if (ret != Z_STREAM_END || ret2 != Z_OK)
+	if (ret != Z_STREAM_END || ret2 != Z_OK) {
+		debug(DBG_TFM, "reached end of decompression output buffer");
 		return -EIO;
-	if (len != dev->chunksize)
+	}
+	if (len != dev->chunksize) {
+		debug(DBG_TFM, "chunk did not decompress to %d bytes",
+					dev->chunksize);
 		return -EIO;
+	}
 	scatterlist_flip(sg, ts->zlib_sg, chunk_pages(dev));
 	return 0;
 }
