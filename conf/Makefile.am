@@ -12,7 +12,17 @@ dist_initexec_SCRIPTS = openisr.init
 dist_pkgsysconf_DATA = 
 dist_udevrules_DATA = 
 
-EXTRA_DIST = magic
+GEN = openisr.init
+CLEANFILES = $(GEN)
+EXTRA_DIST = $(GEN:=.in) magic
+
+$(GEN): %: %.in Makefile
+	@echo "Generating $@ from $<"
+	@sed -e "s=!!LIBDIR!!=$(pkglibdir)=g" \
+				-e "s=!!SHAREDIR!!=$(pkgdatadir)=g" \
+				-e "s=!!SYSCONFDIR!!=$(pkgsysconfdir)=g" \
+				-e "s=!!BINDIR!!=$(bindir)=g" \
+				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" $< > $@
 
 install-exec-hook:
 	mv $(DESTDIR)$(initexecdir)/openisr.init \

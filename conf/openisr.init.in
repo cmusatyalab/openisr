@@ -1,0 +1,75 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:		openisr
+# Required-Start:	$local_fs $remote_fs
+# Required-Stop:	$local_fs $remote_fs
+# Default-Start:	S
+# Short-Description:	Load kernel modules for the OpenISR system
+### END INIT INFO
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+LIBDIR=!!LIBDIR!!
+CONFDIR=!!SYSCONFDIR!!
+SCRIPTNAME=/etc/init.d/openisr
+
+# Don't run if the package is no longer installed
+[ -d $LIBDIR ] || exit 0
+
+get_modname() {
+	case `uname -m` in
+		i586|i686)
+			echo "sha1-i586"
+			;;
+		x86_64)
+			echo "sha1-x86_64"
+	esac
+}
+
+make_hostid() {
+	if [ ! -r $CONFDIR/hostid ] ; then
+		echo -n "Creating $CONFDIR/hostid..."
+		dd if=/dev/urandom bs=4 count=1 2> /dev/null | od -An -t d4 | \
+					tr -d " -" > $CONFDIR/hostid
+		echo "done."
+	fi
+}
+
+do_start() {
+	make_hostid
+	modname=`get_modname`
+	
+	echo -n "Loading OpenISR kernel modules:"
+	modprobe openisr 2>/dev/null && echo -n " openisr" || echo -n " failed"
+	
+	if [ "$modname" != "none" ] ; then
+		modprobe $modname 2>/dev/null && echo -n " $modname"
+	fi
+	
+	echo "."
+}
+
+do_stop() {
+	modname=`get_modname`
+	
+	echo -n "Unloading OpenISR kernel modules:"
+	modprobe -r $modname 2>/dev/null && echo -n " $modname"
+	modprobe -r openisr 2>/dev/null && echo -n " openisr" || echo -n " failed"
+	echo "."
+}
+
+case "$1" in
+	start)
+		do_start
+		;;
+	stop)
+		do_stop
+		;;
+	restart|force-reload)
+		do_stop
+		do_start
+		;;
+	*)
+		echo "Usage: $SCRIPTNAME {start|stop|restart|force-reload}" >&2
+		exit 1
+		;;
+esac

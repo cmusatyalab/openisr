@@ -1,6 +1,0 @@
-#!/bin/sh
-
-# Quick hack; will be replaced with something reasonable
-echo -n "Loading OpenISR kernel module..."
-modprobe openisr 2>/dev/null && echo "" || echo "failed"
-
