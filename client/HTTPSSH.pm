@@ -483,7 +483,6 @@ sub isr_stathoard ($$$) {
     my $chunksperdir;
     my $dirname;
     my $chunkname;
-    my $hoardfilename;
     my $tag;
     
     my $parceldir = "$isrdir/$parcel";
@@ -491,6 +490,7 @@ sub isr_stathoard ($$$) {
     my $hoarddir = "$isrdir/$parcel-hoard";
 
     my @keyring = load_keyring("$lastdir/keyring");
+    my %hoardchunks;
     my %lev1idx;
     $maxchunks = scalar(@keyring);
 
@@ -501,16 +501,23 @@ sub isr_stathoard ($$$) {
 	return 0;
     }
     
-    # Iterate over each of the keyring tags and count
-    # the chunks that are hoarded
+    # Load metadata and read the hoard directory
     parse_cfgfile("$lastdir/hdk/index.lev1", \%lev1idx);
     $chunksperdir = $lev1idx{CHUNKSPERDIR};
+    opendir(HOARDDIR, $hoarddir)
+        or unix_errexit("Couldn't open hoard cache $hoarddir");
+    while ($tag = readdir(HOARDDIR)) {
+	$hoardchunks{$tag} = undef;
+    }
+    closedir(HOARDDIR);
+    
+    # Iterate over each of the keyring tags and count
+    # the chunks that are hoarded
     $numchunks = 0;
     for ($chunk = 0; $chunk < $maxchunks; $chunk++) {
 	# Check to see if it exists in hoard cache
 	$tag = $keyring[$chunk][0];
-	$hoardfilename = "$hoarddir/$tag";
-	if (-e $hoardfilename) {
+	if (exists($hoardchunks{$tag})) {
 	    $numchunks++;
 	}
 	elsif ($main::verbose > 2) {
