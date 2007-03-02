@@ -45,6 +45,11 @@ static const struct tfm_suite_info suite_desc[] = {
 		.key_len = 16,
 		.hash_name = "sha1",
 		.hash_len = 20
+	},
+	{
+		.user_name = "none-sha1",
+		.hash_name = "sha1",
+		.hash_len = 20
 	}
 };
 
@@ -142,7 +147,10 @@ static void scatterlist_flip(struct scatterlist *s1, struct scatterlist *s2,
 static inline unsigned crypto_pad_len(struct nexus_dev *dev, unsigned datalen)
 {
 	unsigned cipher_block=suite_info(dev->suite)->cipher_block;
-	return cipher_block - (datalen % cipher_block);
+	if (cipher_block == 0)
+		return 0;
+	else
+		return cipher_block - (datalen % cipher_block);
 }
 
 /* Perform PKCS padding on a scatterlist.  Return the new length. */
@@ -154,6 +162,7 @@ static unsigned crypto_pad(struct nexus_dev *dev, struct scatterlist *sg,
 	unsigned char *page;
 	unsigned i;
 	
+	BUG_ON(padlen == 0);  /* crypto_unpad() will be confused on decrypt */
 	BUG_ON(datalen + padlen > dev->chunksize);
 	/* We use KM_USER0 */
 	BUG_ON(in_interrupt());
@@ -525,13 +534,17 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	BUG_ON(ts->cipher[suite] != NULL);
 	
 	info=suite_info(suite);
-	cipher=cryptoapi_alloc_cipher(info);
-	if (IS_ERR(cipher))
-		return PTR_ERR(cipher);
 	hash=cryptoapi_alloc_hash(info);
-	if (IS_ERR(hash)) {
-		crypto_free_blkcipher(cipher);
+	if (IS_ERR(hash))
 		return PTR_ERR(hash);
+	if (info->cipher_name != NULL) {
+		cipher=cryptoapi_alloc_cipher(info);
+		if (IS_ERR(cipher)) {
+			crypto_free_hash(hash);
+			return PTR_ERR(cipher);
+		}
+	} else {
+		cipher=NULL;
 	}
 	ts->cipher[suite]=cipher;
 	ts->hash[suite]=hash;
@@ -551,11 +564,13 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 
 void suite_remove(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 {
-	BUG_ON(ts->cipher[suite] == NULL);
-	crypto_free_blkcipher(ts->cipher[suite]);
-	ts->cipher[suite]=NULL;
+	BUG_ON(ts->hash[suite] == NULL);
 	crypto_free_hash(ts->hash[suite]);
 	ts->hash[suite]=NULL;
+	if (ts->cipher[suite] != NULL) {
+		crypto_free_blkcipher(ts->cipher[suite]);
+		ts->cipher[suite]=NULL;
+	}
 }
 
 /* XXX We always allocate temporary buffers of size MAX_CHUNKSIZE, which is

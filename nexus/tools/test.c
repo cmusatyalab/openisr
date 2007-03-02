@@ -32,17 +32,22 @@
 #include <openssl/evp.h>
 #include "nexus.h"
 
+#define CONTROL_DEV "/dev/openisrctl"
 #define MESSAGE_BATCH 64
 
 #define ONDISK_NONE 0x01
 #define ONDISK_ZLIB 0x02
 #define ONDISK_LZF  0x04
 
+#define ONDISK_BF        0
+#define ONDISK_BF_COMPAT 1
+#define ONDISK_NOCRYPT   2
+
 struct params {
-	char control_device[NEXUS_MAX_DEVICE_LEN];
 	char chunk_device[NEXUS_MAX_DEVICE_LEN];
 	unsigned chunksize;
 	unsigned cachesize;
+	unsigned suite;
 	unsigned long long offset;
 	unsigned long long chunks;
 };
@@ -109,6 +114,21 @@ unsigned comp_to_ondisk(enum nexus_compress compress)
 	return -1;
 }
 
+enum nexus_crypto suite_to_nexus(unsigned ondisk)
+{
+	switch (ondisk) {
+	case ONDISK_BF:
+		return NEXUS_CRYPTO_BLOWFISH_SHA1;
+	case ONDISK_BF_COMPAT:
+		return NEXUS_CRYPTO_BLOWFISH_SHA1_COMPAT;
+	case ONDISK_NOCRYPT:
+		return NEXUS_CRYPTO_NONE_SHA1;
+	default:
+		printf("Invalid compression type\n");
+		return -1;
+	}
+}
+
 int setup(struct params *params, char *storefile)
 {
 	int storefd, chunkfd;
@@ -156,19 +176,27 @@ int setup(struct params *params, char *storefile)
 		return 1;
 	}
 	memset(data, 0, params->chunksize);
-	EVP_DigestInit(&hash, EVP_sha1());
-	EVP_DigestUpdate(&hash, data, params->chunksize);
-	EVP_DigestFinal(&hash, chunk.key, &keylen);
-	memset(iv, 0, sizeof(iv));
-	EVP_CIPHER_CTX_init(&cipher);
-	EVP_EncryptInit_ex(&cipher, EVP_bf_cbc(), NULL, NULL, NULL);
-	EVP_CIPHER_CTX_set_key_length(&cipher, keylen);
-	EVP_CIPHER_CTX_set_padding(&cipher, 0);
-	EVP_EncryptInit_ex(&cipher, NULL, NULL, chunk.key, iv);
-	EVP_EncryptUpdate(&cipher, crypted, (int*)&chunk.length,
-				data, params->chunksize);
-	/* second and third arguments are irrelevant but must exist */
-	EVP_EncryptFinal(&cipher, data, (int*)data);
+	if (params->suite != ONDISK_NOCRYPT) {
+		EVP_DigestInit(&hash, EVP_sha1());
+		EVP_DigestUpdate(&hash, data, params->chunksize);
+		EVP_DigestFinal(&hash, chunk.key, &keylen);
+		memset(iv, 0, sizeof(iv));
+		if (params->suite == ONDISK_BF_COMPAT)
+			keylen=16;
+		EVP_CIPHER_CTX_init(&cipher);
+		EVP_EncryptInit_ex(&cipher, EVP_bf_cbc(), NULL, NULL, NULL);
+		EVP_CIPHER_CTX_set_key_length(&cipher, keylen);
+		EVP_CIPHER_CTX_set_padding(&cipher, 0);
+		EVP_EncryptInit_ex(&cipher, NULL, NULL, chunk.key, iv);
+		EVP_EncryptUpdate(&cipher, crypted, (int*)&chunk.length,
+					data, params->chunksize);
+		/* second and third arguments are irrelevant but must exist */
+		EVP_EncryptFinal(&cipher, data, (int*)data);
+	} else {
+		memset(chunk.key, 0, sizeof(chunk.key));
+		chunk.length=params->chunksize;
+		crypted=data;
+	}
 	EVP_DigestInit(&hash, EVP_sha1());
 	EVP_DigestUpdate(&hash, crypted, params->chunksize);
 	EVP_DigestFinal(&hash, chunk.tag, &keylen);
@@ -262,7 +290,11 @@ int run(char *storefile, enum nexus_compress compress)
 		perror("Reading store file header");
 		return 1;
 	}
-	ctlfd=open(params.control_device, O_RDWR);
+	if (!strcmp(params.chunk_device, "/dev/openisrctl")) {
+		printf("Old-format store file detected; aborting\n");
+		return 1;
+	}
+	ctlfd=open(CONTROL_DEV, O_RDWR);
 	if (ctlfd < 0) {
 		perror("Opening device");
 		return 1;
@@ -271,7 +303,7 @@ int run(char *storefile, enum nexus_compress compress)
 	setup.chunksize=params.chunksize;
 	setup.cachesize=params.cachesize;
 	setup.offset=params.offset;
-	setup.crypto=NEXUS_CRYPTO_BLOWFISH_SHA1;
+	setup.crypto=suite_to_nexus(params.suite);
 	setup.compress_default=compress;
 	setup.compress_required=(1 << NEXUS_COMPRESS_NONE) |
 				(1 << NEXUS_COMPRESS_ZLIB) |
@@ -364,8 +396,8 @@ int run(char *storefile, enum nexus_compress compress)
 
 int usage(char *prog)
 {
-	printf("Usage: %s storefile ctldev chunkdev chunksize "
-				"cachesize offset\n", prog);
+	printf("Usage: %s storefile chunkdev chunksize cachesize offset "
+				"{bf|compat|none}\n", prog);
 	printf("Usage: %s storefile {none|zlib|lzf} [-v]\n", prog);
 	return 1;
 }
@@ -377,15 +409,20 @@ int main(int argc, char **argv)
 	
 	switch (argc) {
 	case 7:
-		memset(params.control_device, 0, NEXUS_MAX_DEVICE_LEN);
 		memset(params.chunk_device, 0, NEXUS_MAX_DEVICE_LEN);
-		snprintf(params.control_device, NEXUS_MAX_DEVICE_LEN, "%s",
-					argv[2]);
 		snprintf(params.chunk_device, NEXUS_MAX_DEVICE_LEN, "%s",
-					argv[3]);
-		params.chunksize=atoi(argv[4]);
-		params.cachesize=atoi(argv[5]);
-		params.offset=atoi(argv[6]);
+					argv[2]);
+		params.chunksize=atoi(argv[3]);
+		params.cachesize=atoi(argv[4]);
+		params.offset=atoi(argv[5]);
+		if (!strcmp(argv[6], "bf"))
+			params.suite=ONDISK_BF;
+		else if (!strcmp(argv[6], "bf-compat"))
+			params.suite=ONDISK_BF_COMPAT;
+		else if (!strcmp(argv[6], "none"))
+			params.suite=ONDISK_NOCRYPT;
+		else
+			return usage(argv[0]);
 		return setup(&params, argv[1]);
 	case 4:
 		if (strcmp(argv[3], "-v"))
