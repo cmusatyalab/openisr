@@ -63,7 +63,8 @@ static unsigned received_size;
 static unsigned received;
 static int dirty;
 static int pipefds[2];
-static int verbose;
+static int verbosity=1;
+static char *progname;
 
 void printkey(unsigned char *key, int len)
 {
@@ -232,7 +233,7 @@ int handle_message(struct chunk *chunk, struct nexus_message *message,
 	switch (message->type) {
 	case NEXUS_MSGTYPE_GET_META:
 		comp=comp_to_nexus(chunk->compression);
-		if (verbose) {
+		if (verbosity > 1) {
 			printf("Sending   chunk %8llu key ", message->chunk);
 			printkey(chunk->key, hash_len);
 			printf(" tag ");
@@ -247,7 +248,7 @@ int handle_message(struct chunk *chunk, struct nexus_message *message,
 		message_out->type=NEXUS_MSGTYPE_SET_META;
 		return 1;
 	case NEXUS_MSGTYPE_UPDATE_META:
-		if (verbose) {
+		if (verbosity > 1) {
 			printf("Receiving chunk %8llu key ", message->chunk);
 			printkey(message->key, hash_len);
 			printf(" tag ");
@@ -372,7 +373,8 @@ int run(char *storefile, enum nexus_compress compress)
 			continue;
 		}
 		count /= sizeof(message_in[0]);
-		printf("Read %d\n", count);
+		if (verbosity > 0)
+			printf("Read %d\n", count);
 		for (in=0, out=0; in<count; in++) {
 			if (handle_message(&chunks[message_in[in].chunk],
 						&message_in[in],
@@ -381,7 +383,8 @@ int run(char *storefile, enum nexus_compress compress)
 				out++;
 		}
 		if (out) {
-			printf("Write %d\n", out);
+			if (verbosity > 0)
+				printf("Write %d\n", out);
 			out *= sizeof(message_out[0]);
 			if (write(ctlfd, &message_out, out) != out)
 				printf("Error on write\n");
@@ -394,11 +397,11 @@ int run(char *storefile, enum nexus_compress compress)
 	return 0;
 }
 
-int usage(char *prog)
+int usage(void)
 {
-	printf("Usage: %s storefile chunkdev chunksize cachesize offset "
-				"{bf|compat|none}\n", prog);
-	printf("Usage: %s storefile {none|zlib|lzf} [-v]\n", prog);
+	printf("Usage: %s -s storefile chunkdev chunksize cachesize offset "
+				"{bf|compat|none}\n", progname);
+	printf("Usage: %s [-v|-q] storefile {none|zlib|lzf}\n", progname);
 	return 1;
 }
 
@@ -406,40 +409,57 @@ int main(int argc, char **argv)
 {
 	struct params params;
 	enum nexus_compress compress;
+	int opt;
+	int do_setup=0;
 	
-	switch (argc) {
-	case 7:
+	progname=argv[0];
+	while ((opt=getopt(argc, argv, "vqs")) != -1) {
+		switch (opt) {
+		case 'v':
+			verbosity++;
+			break;
+		case 'q':
+			verbosity--;
+			break;
+		case 's':
+			do_setup=1;
+			break;
+		case '?':
+			return usage();
+		}
+	}
+	argc -= optind;
+	argv += optind;
+	
+	if (do_setup) {
+		if (argc != 6)
+			return usage();
 		memset(params.chunk_device, 0, NEXUS_MAX_DEVICE_LEN);
 		snprintf(params.chunk_device, NEXUS_MAX_DEVICE_LEN, "%s",
-					argv[2]);
-		params.chunksize=atoi(argv[3]);
-		params.cachesize=atoi(argv[4]);
-		params.offset=atoi(argv[5]);
-		if (!strcmp(argv[6], "bf"))
+					argv[1]);
+		params.chunksize=atoi(argv[2]);
+		params.cachesize=atoi(argv[3]);
+		params.offset=atoi(argv[4]);
+		if (!strcmp(argv[5], "bf"))
 			params.suite=ONDISK_BF;
-		else if (!strcmp(argv[6], "bf-compat"))
+		else if (!strcmp(argv[5], "bf-compat"))
 			params.suite=ONDISK_BF_COMPAT;
-		else if (!strcmp(argv[6], "none"))
+		else if (!strcmp(argv[5], "none"))
 			params.suite=ONDISK_NOCRYPT;
 		else
-			return usage(argv[0]);
-		return setup(&params, argv[1]);
-	case 4:
-		if (strcmp(argv[3], "-v"))
-			return usage(argv[0]);
-		verbose=1;
-		/* Fall through */
-	case 3:
-		if (!strcmp(argv[2], "none"))
+			return usage();
+		return setup(&params, argv[0]);
+	} else {
+		if (argc != 2)
+			return usage();
+		if (!strcmp(argv[1], "none"))
 			compress=NEXUS_COMPRESS_NONE;
-		else if (!strcmp(argv[2], "zlib"))
+		else if (!strcmp(argv[1], "zlib"))
 			compress=NEXUS_COMPRESS_ZLIB;
-		else if (!strcmp(argv[2], "lzf"))
+		else if (!strcmp(argv[1], "lzf"))
 			compress=NEXUS_COMPRESS_LZF;
 		else
-			return usage(argv[0]);
-		return run(argv[1], compress);
-	default:
-		return usage(argv[0]);
+			return usage();
+		return run(argv[0], compress);
 	}
 }
