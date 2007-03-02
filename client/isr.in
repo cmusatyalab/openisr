@@ -1348,7 +1348,7 @@ sub passwd ($) {
     my $userid = shift;
 
     print "Changing password for ISR userid $userid:\n";
-    mysystem("ssh -l $userid $nameserver passwd") == 0
+    mysystem("ssh -l $userid -t $nameserver passwd") == 0
 	or errexit("Unable to change ISR password.");
 }
 
