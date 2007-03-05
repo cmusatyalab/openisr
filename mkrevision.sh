@@ -15,11 +15,16 @@ set -e
 FILETYPE=$1
 SUBDIR=$2
 
-[ -e .svn ] || exit 0
-
-VER=`svnversion .`
-BRANCH=`svn info . | egrep "^URL: " | sed -e "s:^.*/svn/openisr/::" \
-		-e "s:/${SUBDIR}$::"`
+if [ -e .svn ] ; then
+	VER=`svnversion .`
+	BRANCH=`svn info . | egrep "^URL: " | sed -e "s:^.*/svn/openisr/::" \
+				-e "s:/${SUBDIR}$::"`
+elif [ -d `dirname $0`/.git ] ; then
+	VER=`git-describe`
+	BRANCH=`git-name-rev HEAD | cut -d\  -f2`
+else
+	exit 0
+fi
 
 # It's better to use a separate object file for the revision data,
 # since "svn update" will then force a relink but not a recompile.
