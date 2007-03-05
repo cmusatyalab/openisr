@@ -1,0 +1,17 @@
+====== 0.8.1
+
+- Improve efficiency of zlib compression/decompression
+- Add optimized SHA-1 implementation for x86-64 architecture
+- Add support for kernel 2.6.20
+- Add "nexus_debug" helper program to list/show/set Nexus debug bits
+- Convert build system to GNU Autotools
+- Improve performance of "isr stat"
+- Add support for null encryption in Nexus and its test harness
+- Eliminate "hostid" per-system unique identifier.  Upgrades from 0.8 will
+  retain the identifier in /etc/openisr/hostid, but it will be ignored.
+- Improved documentation
+- Minor fixes
+
+====== 0.8
+
+- First release of OpenISR
