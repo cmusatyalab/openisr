@@ -126,7 +126,6 @@ my $allflag;         # "clean" should delete all state, including hoard cache
 # Write once globals that are visible in this module only. These globals are
 # needed to cleanly handle logging.
 my $pid;            # Pid of child created in mysystem
-my $hostid;         # Unique hostid from "$Isr::SYSCONFDIR/hostid" file
 my $sessionid = 0;  # Unique session id (nonce from lock operation)
 my $userid;         # ISR userid
 my $parcel;         # parcel name
@@ -212,24 +211,6 @@ parse_cfgfile("$Isr::SHAREDIR/config", \%syscfg)
 # These may not exist, but can override the earlier ones
 parse_cfgfile("$Isr::SYSCONFDIR/openisr.conf", \%syscfg);
 parse_cfgfile("$ENV{HOME}/.openisr.conf", \%syscfg);
-
-#
-# Make sure that the client has an existing hostid file
-# that contains a reasonable nonce value.
-#
-if (!-e "$Isr::SYSCONFDIR/hostid") {
-    $hostid = "999999";
-    err("Missing $Isr::SYSCONFDIR/hostid file");
-} else {
-    open(INFILE, "$Isr::SYSCONFDIR/hostid")
-	or errexit("Unable to open $Isr::SYSCONFDIR/hostid");
-    $hostid = <INFILE>;
-    chomp($hostid);
-    close(INFILE);
-    if ($hostid <= 0) {
-	errexit("Invalid hostid nonce: $hostid");
-    }
-}
 
 #####
 # Various defaults
@@ -2199,7 +2180,7 @@ sub message_string {
     no warnings 'uninitialized';
     my $hostname = hostname();
 
-    return "$userid|$$|$hostid:$sessionid|$hostname|$cfg{PROTOCOL}|$nameserver|$parcel";
+    return "$userid|$$|$sessionid|$hostname|$cfg{PROTOCOL}|$nameserver|$parcel";
 }
 
 #
