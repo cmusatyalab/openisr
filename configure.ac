@@ -1,3 +1,14 @@
+#
+# configure.ac - build infrastructure for the OpenISR system
+#
+# Copyright (C) 2007 Carnegie Mellon University
+#
+# This software is distributed under the terms of the Eclipse Public
+# License, Version 1.0 which can be found in the file named LICENSE.Eclipse.
+# ANY USE, REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES
+# RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
+#
+
 ## Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)

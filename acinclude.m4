@@ -1,3 +1,14 @@
+#
+# acinclude.m4 - autoconf macros for the OpenISR system
+#
+# Copyright (C) 2007 Carnegie Mellon University
+#
+# This software is distributed under the terms of the Eclipse Public
+# License, Version 1.0 which can be found in the file named LICENSE.Eclipse.
+# ANY USE, REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES
+# RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
+#
+
 # PROCESS_ENABLE_VAR([SHELL_VAR], [AUTOMAKE_VAR], [MESSAGE])
 # ----------------------------------------------------------
 AC_DEFUN([PROCESS_ENABLE_VAR], [
