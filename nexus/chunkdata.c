@@ -364,9 +364,9 @@ static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error);
 
 /**
  * bio_create - create a &bio to do I/O to the chunk store
- * cd    : the chunk in question
- * dir   : %READ or %WRITE
- * offset: the sector offset into the chunk at which we're starting
+ * @cd    : the chunk in question
+ * @dir   : %READ or %WRITE
+ * @offset: the sector offset into the chunk at which we're starting
  *
  * bio_create() creates a &bio with the appropriate parameters to read or
  * write the chunk store for the given chunk.  Due to restrictions imposed
@@ -483,9 +483,9 @@ bad:
 
 /**
  * format_hash - debug/logging helper to convert a hash to hex representation
- * out   : buffer in which to store the hex digits
- * in    : hash bytes
- * in_len: number of bytes in @in
+ * @out   : buffer in which to store the hex digits
+ * @in    : hash bytes
+ * @in_len: number of bytes in @in
  *
  * @out must be able to store 2 * @in_len + 1 bytes.
  **/
@@ -498,8 +498,8 @@ static void format_hash(char *out, unsigned char *in, unsigned in_len)
 
 /**
  * __chunk_tfm - encode or decode a chunk
- * ts: per-CPU transform state buffer
- * cd: the chunk in question
+ * @ts: per-CPU transform state buffer
+ * @cd: the chunk in question
  * 
  * If %ST_DECRYPTING, decrypt/decompress the chunk and check its tag and key.
  * If %ST_ENCRYPTING, compress/encrypt the chunk and generate a new tag, key,
@@ -641,8 +641,8 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 
 /**
  * chunk_tfm - thread callback for encoding/decoding a chunk
- * ts   : per-CPU transform state buffer
- * entry: the list head passed to the thread code
+ * @ts   : per-CPU transform state buffer
+ * @entry: the list head passed to the thread code
  *
  * Runs in thread context.  Do the chunk transform using per-CPU buffers, with
  * no locks held, and then acquire the dev lock and transition the chunk to
@@ -670,7 +670,7 @@ void chunk_tfm(struct nexus_tfm_state *ts, struct list_head *entry)
 
 /**
  * chunkdata_complete_io - thread callback on completion of chunk store I/O
- * entry: the list head passed to the thread code
+ * @entry: the list head passed to the thread code
  *
  * Runs in thread context.  Called when all bios associated with the given
  * chunk have completed.  Transitions the chunk to the next state and logs
@@ -1208,7 +1208,7 @@ again:
 
 /**
  * run_chunk - thread callback for state machine processing
- * entry: the list head passed to the thread code
+ * @entry: the list head passed to the thread code
  *
  * This is the thread callback corresponding to __run_chunk().  It processes
  * the given chunk through __run_chunk() and then, if appropriate, releases
