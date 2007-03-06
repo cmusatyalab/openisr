@@ -1337,34 +1337,6 @@ struct scatterlist *get_scatterlist(struct nexus_io_chunk *chunk)
 }
 
 /**
- * chunkdata_free_table - release chunkdata state for @dev
- *
- * This is called unconditionally by the dtr, so it must be able to handle
- * unallocated or partially allocated chunkdata structures.
- **/
-void chunkdata_free_table(struct nexus_dev *dev)
-{
-	struct chunkdata_table *table=dev->chunkdata;
-	struct chunkdata *cd;
-	struct chunkdata *next;
-	
-	if (table == NULL)
-		return;
-	BUG_ON(!list_empty(&table->user));
-	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
-		BUG_ON(!list_empty(&cd->pending));
-		BUG_ON(!is_idle_state(cd->state));
-		list_del(&cd->lh_bucket);
-		list_del(&cd->lh_lru);
-		free_scatterlist(cd->sg, dev->chunksize);
-		memset(cd->key, 0, sizeof(cd->key));
-		kfree(cd);
-	}
-	kfree(table->hash);
-	kfree(table);
-}
-
-/**
  * chunkdata_alloc_table - allocate chunkdata state for new device @dev
  *
  * Does not back out allocations on failure, since the @dev dtr will just
@@ -1421,6 +1393,34 @@ int chunkdata_alloc_table(struct nexus_dev *dev)
 	}
 	dev->stats.state_count[ST_INVALID]=dev->cachesize;
 	return 0;
+}
+
+/**
+ * chunkdata_free_table - release chunkdata state for @dev
+ *
+ * This is called unconditionally by the dtr, so it must be able to handle
+ * unallocated or partially allocated chunkdata structures.
+ **/
+void chunkdata_free_table(struct nexus_dev *dev)
+{
+	struct chunkdata_table *table=dev->chunkdata;
+	struct chunkdata *cd;
+	struct chunkdata *next;
+	
+	if (table == NULL)
+		return;
+	BUG_ON(!list_empty(&table->user));
+	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
+		BUG_ON(!list_empty(&cd->pending));
+		BUG_ON(!is_idle_state(cd->state));
+		list_del(&cd->lh_bucket);
+		list_del(&cd->lh_lru);
+		free_scatterlist(cd->sg, dev->chunksize);
+		memset(cd->key, 0, sizeof(cd->key));
+		kfree(cd);
+	}
+	kfree(table->hash);
+	kfree(table);
 }
 
 /**
