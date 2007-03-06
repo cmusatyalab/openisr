@@ -300,7 +300,8 @@ void request_shutdown(void);
 void kick_elevator(struct nexus_dev *dev);
 void nexus_request(request_queue_t *q);
 void nexus_run_requests(struct list_head *entry);
-void nexus_process_chunk(struct nexus_io_chunk *chunk);
+void nexus_process_chunk(struct nexus_io_chunk *chunk,
+			struct scatterlist *chunk_sg);
 void oom_timer_fn(unsigned long data);
 
 /* chardev.c */
@@ -327,7 +328,6 @@ void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
 void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid);
 int reserve_chunks(struct nexus_io *io);
 void unreserve_chunk(struct nexus_io_chunk *chunk);
-struct scatterlist *get_scatterlist(struct nexus_io_chunk *chunk);
 void run_chunk(struct list_head *entry);
 void run_all_chunks(struct nexus_dev *dev);
 void chunkdata_complete_io(struct list_head *entry);

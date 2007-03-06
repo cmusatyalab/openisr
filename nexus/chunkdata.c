@@ -832,7 +832,7 @@ static void try_start_io(struct nexus_io *io)
 		if (!(chunk->flags & CHUNK_READ))
 			dev->stats.whole_chunk_updates++;
 		chunk->flags |= CHUNK_STARTED;
-		nexus_process_chunk(&io->chunks[i]);
+		nexus_process_chunk(&io->chunks[i], cd->sg);
 	}
 }
 
@@ -1323,17 +1323,6 @@ void unreserve_chunk(struct nexus_io_chunk *chunk)
 	list_del_init(&chunk->lh_pending);
 	user_put(dev);
 	update_chunk(cd);
-}
-
-struct scatterlist *get_scatterlist(struct nexus_io_chunk *chunk)
-{
-	struct nexus_dev *dev=chunk->parent->dev;
-	struct chunkdata *cd;
-	
-	BUG_ON(!mutex_is_locked(&dev->lock));
-	cd=chunkdata_get(dev->chunkdata, chunk->cid);
-	BUG_ON(cd == NULL || !pending_head_is(cd, chunk));
-	return cd->sg;
 }
 
 /**

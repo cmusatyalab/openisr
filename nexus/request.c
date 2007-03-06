@@ -160,11 +160,11 @@ static void nexus_complete_chunk(struct nexus_io_chunk *chunk)
 }
 
 /* Process one chunk from an io. */
-void nexus_process_chunk(struct nexus_io_chunk *chunk)
+void nexus_process_chunk(struct nexus_io_chunk *chunk,
+			struct scatterlist *chunk_sg)
 {
 	struct nexus_io *io=chunk->parent;
 	struct nexus_dev *dev=io->dev;
-	struct scatterlist *chunk_sg;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	
@@ -180,7 +180,6 @@ void nexus_process_chunk(struct nexus_io_chunk *chunk)
 				", offset %u, length %u", chunk->cid,
 				chunk->offset, chunk->len);
 	
-	chunk_sg=get_scatterlist(chunk);
 	if (io->flags & IO_WRITE) {
 		dev->stats.sectors_written += chunk->len / 512;
 		scatterlist_copy(io->orig_sg, chunk_sg, chunk->orig_offset,
