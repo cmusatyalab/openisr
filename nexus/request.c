@@ -31,7 +31,15 @@
 static kmem_cache *io_cache;
 static mempool_t *io_pool;
 
-/* supports high memory pages */
+/**
+ * scatterlist_copy - copy bytes between scatterlists
+ * @soffset: source offset in bytes
+ * @doffset: destination offset in bytes
+ * @len    : length in bytes
+ *
+ * This function supports copying to/from scatterlist pages in both high and
+ * low memory.  It must be run from user context, since it uses KM_USER*.
+ **/
 static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 			unsigned soffset, unsigned doffset, unsigned len)
 {
@@ -90,6 +98,13 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	kunmap_atomic(dbuf - 1, KM_USER1);
 }
 
+/**
+ * __end_that_request - report completion of blockdev I/O to the block layer
+ *
+ * Call end_that_request_first() and, if this completes the entire request,
+ * end_that_request_last().  This must be called with the queue lock held and
+ * interrupts disabled.
+ **/
 static int __end_that_request(struct request *req, int uptodate, int nr_sectors)
 {
 	int ret;
@@ -112,6 +127,12 @@ static int __end_that_request(struct request *req, int uptodate, int nr_sectors)
 	return ret;
 }
 
+/**
+ * end_that_request - report completion of blockdev I/O to the block layer
+ *
+ * After taking the queue lock, call end_that_request_first() and, if this
+ * completes the entire request, end_that_request_last().
+ **/
 static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 {
 	spinlock_t *lock=req->q->queue_lock;
@@ -128,6 +149,21 @@ static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 	return ret;
 }
 
+/**
+ * nexus_complete_chunk - register completion of @chunk
+ *
+ * The block layer requires that bytes in a request be completed in order.
+ * When we complete one chunk of a &nexus_io, we mark it completed in the
+ * &nexus_io_chunk but don't report completion to the block layer until all
+ * previous chunks in the io have been marked completed.  If we discover
+ * completed chunks which can now be reported to the block layer, but have
+ * not been (because they were waiting on other chunks), we do so.  After
+ * reporting a completion to the block layer, we unreserve the chunk in
+ * chunkdata (even if the whole &nexus_io hasn't finished yet), since there
+ * can no longer be ordering issues with that chunk wrt this io.
+ *
+ * If all chunks in this &nexus_io have been completed, we free the io.
+ **/
 static void nexus_complete_chunk(struct nexus_io_chunk *chunk)
 {
 	int i;
@@ -159,7 +195,14 @@ static void nexus_complete_chunk(struct nexus_io_chunk *chunk)
 	mempool_free(io, io_pool);
 }
 
-/* Process one chunk from an io. */
+/**
+ * nexus_process_chunk - process one &nexus_io_chunk from a &nexus_io
+ * @chunk_sg: the scatterlist with the canonical copy of the chunk data
+ *
+ * This function is called by chunkdata, in thread context, when @chunk is
+ * ready to execute (or has errored out).  This is where we actually do the
+ * data copying.
+ **/
 void nexus_process_chunk(struct nexus_io_chunk *chunk,
 			struct scatterlist *chunk_sg)
 {
@@ -192,7 +235,36 @@ void nexus_process_chunk(struct nexus_io_chunk *chunk,
 	nexus_complete_chunk(chunk);
 }
 
-/* Do initial setup, memory allocations, anything that can fail. */
+/**
+ * nexus_setup_io - set up Nexus data structures for an incoming request @req
+ *
+ * Allocate and fill in a &nexus_io data structure (and its associated array of
+ * &nexus_io_chunk) corresponding to @req, and request a reservation from
+ * chunkdata for each of the chunks in the io.  This function is the gatekeeper
+ * between the block layer and the rest of Nexus; if any memory or other
+ * resource allocations necessary for completing the request could experience
+ * temporary failures (e.g., out-of-memory, chunkdata cache full, etc.),
+ * they need to be done from this function.  nexus_setup_io() may return
+ * -ENOMEM if it cannot preallocate the resources it needs, in which
+ * case the caller must be prepared to back off and try again later.
+ * Any errors encountered after nexus_setup_io() completes will turn into
+ * I/O errors visible to the rest of the system; there will be no further
+ * opportunities for retry.
+ *
+ * If the device has been shut down, this function will error out the request
+ * and return -ENXIO, since this is a hard failure.
+ *
+ * After this function completes successfully, the request code will not
+ * deal with this io again until chunkdata decides to start calling
+ * nexus_process_chunk() on its io_chunks.
+ *
+ * &struct nexus_io and &struct nexus_io_chunk contain several fields that
+ * are redundant with &struct request.  The intent is that once &nexus_io
+ * and &nexus_io_chunk are filled in by this function, the rest of Nexus
+ * can deal only with those structures and remain insulated from the details
+ * of the block layer.  This philosophy extends to copying the entire
+ * bio/bio_vec hierarchy into a scatterlist for ease of access.
+ **/
 static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 {
 	struct nexus_io *io;
@@ -264,7 +336,12 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 	return 0;
 }
 
-/* Called from timer (i.e., softirq) context.  For dev->requests_oom_timer */
+/**
+ * oom_timer_fn - schedule request thread callback when OOM delay expires
+ *
+ * Called from timer (i.e., softirq) context.  Bound to &nexus_dev
+ * requests_oom_timer by ctr.
+ **/
 void oom_timer_fn(unsigned long data)
 {
 	struct nexus_dev *dev=(struct nexus_dev *)data;
@@ -272,7 +349,36 @@ void oom_timer_fn(unsigned long data)
 	schedule_request_callback(&dev->lh_run_requests);
 }
 
-/* Thread callback */
+/**
+ * nexus_run_requests - thread callback to process requests from block layer
+ *
+ * The block layer runs our request function with the queue lock held and
+ * interrupts disabled.  For a number of reasons, it's difficult to get work
+ * done in that environment, so the request function just queues requests
+ * until we can process them in a thread callback; nexus_run_requests() is
+ * the corresponding callback function.  When called, we iterate over all
+ * pending requests, calling nexus_setup_io() on each one.
+ * 
+ * This thread callback is different from all of the others in Nexus in that
+ * it processes all pending requests rather than just one at a time, and the
+ * thread code ensures that only one CPU/thread can be executing here at a
+ * time; this is necessary to ensure that our out-of-memory handling can never
+ * reorder pending requests.
+ *
+ * If nexus_setup_io() reports an out-of-memory condition, we requeue the
+ * request at the head of the queue and arrange for a timer to schedule us
+ * again later, in the hope that resources will have been freed up by then.
+ * While the timer is pending, the request function will not attempt to
+ * schedule us again, even if further requests arrive.
+ *
+ * In order to make sure the &nexus_dev isn't freed while there are pending
+ * requests, both this function and the request function always gets a dev
+ * reference when adding a request to an empty run_requests queue, and this
+ * function always puts the reference when removing the last request from
+ * the queue.  In order to make sure the dev isn't freed out from under us
+ * while we're running, we get an additional dev reference for the duration
+ * of nexus_run_requests().
+ **/
 void nexus_run_requests(struct list_head *entry)
 {
 	struct nexus_dev *dev=container_of(entry, struct nexus_dev,
@@ -332,7 +438,20 @@ out:
 	nexus_dev_put(dev, 0);
 }
 
-/* Called with queue lock held and interrupts disabled */
+/**
+ * nexus_request - the block layer request function
+ *
+ * The block layer calls this when it has requests it wants us to process.
+ * We are expected to process every pending request from the queue (or
+ * explicitly notify the block layer that we will not, but we don't do that).
+ *
+ * This function is called with the queue lock held and interrupts disabled.
+ * All we do here is enqueue requests for the nexus_run_requests() callback
+ * and schedule it if it's not already scheduled.  If the dev is already
+ * shut down, we bypass the run_requests callback and error out the requests
+ * directly from here.  (Downstream functions still need to check for this
+ * case, since the dev may have been shut down with I/O in flight.)
+ **/
 void nexus_request(request_queue_t *q)
 {
 	struct nexus_dev *dev=q->queuedata;
@@ -361,16 +480,23 @@ void nexus_request(request_queue_t *q)
 	}
 }
 
-/* For debug use via sysfs only.  Force our request function to be called,
-   in case the elevator has failed to do it for us.  (This shouldn't be
-   necessary, but there are some not-fully-understood issues with CFQ
-   which may require it...) */
+/**
+ * kick_elevator - force the request function to be called
+ *
+ * For debug use via sysfs only.  Force our request function to be called,
+ * in case the elevator has failed to do it for us.  (This shouldn't be
+ * necessary, but there are some not-fully-understood issues with CFQ
+ * which may require it...)
+ **/
 void kick_elevator(struct nexus_dev *dev)
 {
 	log(KERN_NOTICE, "Unwedging elevator");
 	blk_run_queue(dev->queue);
 }
 
+/**
+ * request_start - module initialization for request processing code
+ **/
 int __init request_start(void)
 {
 	int ret;
@@ -395,6 +521,9 @@ bad_cache:
 	return ret;
 }
 
+/**
+ * request_shutdown - module de-initialization for request processing code
+ **/
 void __exit request_shutdown(void)
 {
 	mempool_destroy(io_pool);
