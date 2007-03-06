@@ -1,3 +1,5 @@
+/* chunkdata.c - chunk cache and state machine */
+
 /* 
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
  *         system
@@ -87,6 +89,9 @@ struct chunkdata_table {
 static struct bio_set *bio_pool;
 
 
+/**
+ * current_time_usec - return the number of microseconds since the epoch
+ **/
 static u64 current_time_usec(void)
 {
 	struct timeval curtime;
@@ -95,11 +100,19 @@ static u64 current_time_usec(void)
 	return curtime.tv_sec * USEC_PER_SEC + curtime.tv_usec;
 }
 
+/**
+ * hash - return the number of the hash table bucket for the given chunk
+ **/
 static inline unsigned hash(struct chunkdata_table *table, chunk_t cid)
 {
 	return (unsigned)cid % table->buckets;
 }
 
+/**
+ * pending_head - return the first &nexus_io_chunk pending on this @cd
+ *
+ * Returns NULL if no &nexus_io_chunk is pending.
+ **/
 static inline struct nexus_io_chunk *pending_head(struct chunkdata *cd)
 {
 	if (list_empty(&cd->pending))
@@ -107,6 +120,9 @@ static inline struct nexus_io_chunk *pending_head(struct chunkdata *cd)
 	return list_entry(cd->pending.next, struct nexus_io_chunk, lh_pending);
 }
 
+/**
+ * pending_head_is - return true if @chunk is the first io_chunk pending on @cd
+ **/
 static inline int pending_head_is(struct chunkdata *cd,
 			struct nexus_io_chunk *chunk)
 {
@@ -115,6 +131,14 @@ static inline int pending_head_is(struct chunkdata *cd,
 	return (pending_head(cd) == chunk);
 }
 
+/**
+ * is_idle_state - return true if @state is potentially idle
+ *
+ * Non-idle states are those which always indicate that processing or I/O
+ * is ongoing.  If is_idle_state() returns true, AND no I/O is pending on a
+ * chunk in @state (i.e., pending_head(cd) == NULL), that chunk's cache line
+ * can safely be recycled for a different chunk.
+ **/
 static inline int is_idle_state(enum cd_state state)
 {
 	switch (state) {
@@ -128,12 +152,28 @@ static inline int is_idle_state(enum cd_state state)
 	}
 }
 
+/**
+ * chunkdata_hit - move @cd to the MRU side of the chunkdata LRU list
+ **/
 static void chunkdata_hit(struct chunkdata *cd)
 {
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	list_move_tail(&cd->lh_lru, &cd->table->lru);
 }
 
+/**
+ * __transition - internals of state machine transition code
+ *
+ * Don't call this; call transition() or transition_error().
+ *
+ * This is where the actual state transition is done.  For statistics purposes,
+ * we keep track of the number of chunkdata lines in each state, as well
+ * as (information allowing us to calculate) the amount of time spent in each
+ * state.  We also maintain a user reference for every chunk in non-idle state;
+ * this prevents the chardev from going away (assuming userspace uses
+ * NEXUS_IOC_UNREGISTER) if the block device has been closed but writeback
+ * is still in progress.
+ **/
 static void __transition(struct chunkdata *cd, enum cd_state new_state)
 {
 	struct nexus_dev *dev=cd->table->dev;
@@ -162,12 +202,18 @@ static void __transition(struct chunkdata *cd, enum cd_state new_state)
 	cd->state_begin=curtime;
 }
 
+/**
+ * transition - transition @cd to a new non-error state @new_state
+ **/
 static void transition(struct chunkdata *cd, enum cd_state new_state)
 {
 	BUG_ON(new_state == ST_ERROR);
 	__transition(cd, new_state);
 }
 
+/**
+ * transition_error - transition @cd into error state, with error code @error
+ **/
 static void transition_error(struct chunkdata *cd, int error)
 {
 	cd->error=error;
@@ -175,6 +221,17 @@ static void transition_error(struct chunkdata *cd, int error)
 	__transition(cd, ST_ERROR);
 }
 
+/**
+ * update_chunk - schedule @cd to be processed through the state machine
+ *
+ * update_chunk() arranges for the current state and pending I/O queue of @cd
+ * to be examined in a kernel thread, at some point in the future, at which
+ * point any work that needs to be started on @cd will be started.
+ * update_chunk() is usually called right after some work on a chunk has
+ * completed and transition() has been called to move the chunk to a new state.
+ * It is always safe to call update_chunk() on a chunk, whether or not work
+ * is pending for it and whether or not it is already queued for processing.
+ **/
 static void update_chunk(struct chunkdata *cd)
 {
 	struct chunkdata_table *table=cd->table;
@@ -186,6 +243,14 @@ static void update_chunk(struct chunkdata *cd)
 	schedule_callback(CB_UPDATE_CHUNK, &cd->lh_need_update);
 }
 
+/**
+ * chunkdata_get - get a &struct chunkdata for the specified @cid
+ *
+ * chunkdata_get() will return the existing &struct chunkdata for @cid, or
+ * if none exists, it will allocate a new one by recycling the LRU &chunkdata
+ * which does not have work pending against it.  If neither of these are
+ * possible (not an infrequent occurrence!) it returns NULL.
+ **/
 static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 			chunk_t cid)
 {
@@ -223,8 +288,19 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	return NULL;
 }
 
-/* Allocated buffer pages may be in high memory and thus may not have a
-   kernel mapping */
+/**
+ * alloc_scatterlist - create a scatterlist capable of holding @nbytes bytes
+ *
+ * alloc_scatterlist() creates and returns a scatterlist capable of holding
+ * exactly @nbytes bytes.  Both the &struct scatterlist array and the pages
+ * themselves are allocated.  Each page except the last is fully utilized
+ * (i.e., offset == 0 and length == PAGE_SIZE), and the last page will have
+ * offset == 0; this sort of scatterlist is referred to elsewhere as a
+ * "chunkdata scatterlist".  Allocated pages may be in high memory and thus
+ * may not have a kernel mapping.
+ * 
+ * On error, NULL is returned.
+ **/
 struct scatterlist *alloc_scatterlist(unsigned nbytes)
 {
 	struct scatterlist *sg;
@@ -257,7 +333,10 @@ bad:
 	return NULL;
 }
 
-/* @nbytes must be the value passed to alloc_scatterlist() */
+/**
+ * free_scatterlist - free a scatterlist allocated with alloc_scatterlist()
+ * @nbytes: must be the value previously passed to alloc_scatterlist()
+ **/
 void free_scatterlist(struct scatterlist *sg, unsigned nbytes)
 {
 	struct scatterlist *cur;
@@ -271,9 +350,32 @@ void free_scatterlist(struct scatterlist *sg, unsigned nbytes)
 	kfree(sg);
 }
 
+/**
+ * bio_destructor - free a bio into its bio_pool
+ * 
+ * This is called by the block layer when a &bio's refcount hits zero.
+ * 
+ * Older kernels do not support bio_pools.  This is a kcompat macro which
+ * generates the destructor only on kernels that support it.
+ **/
 BIO_DESTRUCTOR(bio_destructor, bio_pool)
 
 static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error);
+
+/**
+ * bio_create - create a &bio to do I/O to the chunk store
+ * cd    : the chunk in question
+ * dir   : %READ or %WRITE
+ * offset: the sector offset into the chunk at which we're starting
+ *
+ * bio_create() creates a &bio with the appropriate parameters to read or
+ * write the chunk store for the given chunk.  Due to restrictions imposed
+ * by the device driver of the underlying block device, the &bio may not
+ * be large enough to cover the entire chunk.  If this occurs, bio_add_page()
+ * calls on the &bio will eventually fail, and bio_create() should be called
+ * again with an @offset equal to the number of sectors already associated
+ * with a previous &bio.
+ **/
 static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 {
 	struct nexus_dev *dev=cd->table->dev;
@@ -309,11 +411,18 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 }
 
 static void chunk_io_make_progress(struct chunkdata *cd, unsigned nbytes);
-/* We read or write the whole chunk, even if we don't need all of the sectors
-   due to compression.  This ensures that the I/O elevator can still coalesce
-   our requests, which is more important than minimizing the requested
-   sector count since the excess data will be in the disk's track buffer
-   anyway. */
+
+/**
+ * issue_chunk_io - read or write the given @cd to the chunk store
+ *
+ * issue_chunk_io() reads @cd from the chunk store if @cd is in %ST_LOAD_DATA
+ * and writes it to the chunk store if @cd is in %ST_STORE_DATA.  We always
+ * read or write the whole chunk, even if we don't need all of the sectors
+ * due to compression.  This ensures that the I/O elevator can still coalesce
+ * our requests, which is more important than minimizing the requested
+ * sector count since the excess data will be in the disk's track buffer
+ * anyway.
+ **/
 static void issue_chunk_io(struct chunkdata *cd)
 {
 	struct nexus_dev *dev=cd->table->dev;
@@ -372,6 +481,14 @@ bad:
 	chunk_io_make_progress(cd, dev->chunksize - offset);
 }
 
+/**
+ * format_hash - debug/logging helper to convert a hash to hex representation
+ * out   : buffer in which to store the hex digits
+ * in    : hash bytes
+ * in_len: number of bytes in @in
+ *
+ * @out must be able to store 2 * @in_len + 1 bytes.
+ **/
 static void format_hash(char *out, unsigned char *in, unsigned in_len)
 {
 	int i;
@@ -379,6 +496,16 @@ static void format_hash(char *out, unsigned char *in, unsigned in_len)
 		sprintf(out, "%.2x", *in);
 }
 
+/**
+ * __chunk_tfm - encode or decode a chunk
+ * ts: per-CPU transform state buffer
+ * cd: the chunk in question
+ * 
+ * If %ST_DECRYPTING, decrypt/decompress the chunk and check its tag and key.
+ * If %ST_ENCRYPTING, compress/encrypt the chunk and generate a new tag, key,
+ * and length.  Returns 0 or error, and prints messages to the kernel log
+ * on failure.
+ **/
 static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 {
 	struct nexus_dev *dev=cd->table->dev;
@@ -512,7 +639,15 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 	return 0;
 }
 
-/* Runs in thread context */
+/**
+ * chunk_tfm - thread callback for encoding/decoding a chunk
+ * ts   : per-CPU transform state buffer
+ * entry: the list head passed to the thread code
+ *
+ * Runs in thread context.  Do the chunk transform using per-CPU buffers, with
+ * no locks held, and then acquire the dev lock and transition the chunk to
+ * the next state.
+ **/
 void chunk_tfm(struct nexus_tfm_state *ts, struct list_head *entry)
 {
 	struct chunkdata *cd=container_of(entry, struct chunkdata, lh_need_tfm);
@@ -533,7 +668,14 @@ void chunk_tfm(struct nexus_tfm_state *ts, struct list_head *entry)
 	mutex_unlock(&dev->lock);
 }
 
-/* Runs in thread context */
+/**
+ * chunkdata_complete_io - thread callback on completion of chunk store I/O
+ * entry: the list head passed to the thread code
+ *
+ * Runs in thread context.  Called when all bios associated with the given
+ * chunk have completed.  Transitions the chunk to the next state and logs
+ * I/O errors.
+ **/
 void chunkdata_complete_io(struct list_head *entry)
 {
 	struct chunkdata *cd=container_of(entry, struct chunkdata,
@@ -560,7 +702,15 @@ void chunkdata_complete_io(struct list_head *entry)
 	mutex_unlock(&dev->lock);
 }
 
-/* May be called from hardirq context or user context for the same nexus_dev */
+/**
+ * chunk_io_make_progress - register completion of @nbytes of chunk store I/O
+ * 
+ * Arranges for chunkdata_complete_io() callback to be called once all of the
+ * I/O for @cd has completed.  May be called from hardirq context or user
+ * context for the SAME &nexus_dev!  (Usually will be called by
+ * nexus_endio_func(), which may be in hardirq context depending on the
+ * underlying chunk store, but may be called by issue_chunk_io() on error.)
+ **/
 static void chunk_io_make_progress(struct chunkdata *cd, unsigned nbytes)
 {
 	if (atomic_sub_and_test(nbytes, &cd->remaining)) {
@@ -570,7 +720,13 @@ static void chunk_io_make_progress(struct chunkdata *cd, unsigned nbytes)
 	}
 }
 
-/* May be called from hardirq context */
+/**
+ * nexus_endio_func - register completion of @bio
+ * 
+ * This is called by the block layer upon completion of a single &bio to the
+ * chunk store.  Depending on the device driver for the chunk store, it may
+ * be called in hardirq context.
+ **/
 static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error)
 {
 	struct chunkdata *cd=bio->bi_private;
@@ -582,8 +738,13 @@ static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error)
 	return 0;
 }
 
-/* Returns 1 if all chunks in the io are either at the front of their
-   pending queues or have already been unreserved */
+/**
+ * io_has_reservation - returns true if @io is ready to be processed
+ * 
+ * Returns true if all chunks in the io are either at the front of their
+ * pending queues or have already been unreserved, or false if at least one
+ * chunk is not at head-of-queue.
+ **/
 static int io_has_reservation(struct nexus_io *io)
 {
 	struct nexus_io_chunk *chunk;
@@ -605,6 +766,17 @@ static int io_has_reservation(struct nexus_io *io)
 	return 1;
 }
 
+/**
+ * try_start_io - try to make progress on @io
+ * 
+ * We cannot do anything with @io if another &nexus_io is ahead of us in line
+ * for any of the constituent chunks of @io.  (This preserves read- and
+ * write-ordering for multiple requests on the same chunk.)  Otherwise, for
+ * each &nexus_io_chunk in @io which has not already been processed, if the
+ * &chunkdata is in a state such that we can perform the requisite read or
+ * write, we mark the &nexus_io_chunk "started" and call into the request-queue
+ * interface code to perform the actual copy.
+ **/
 static void try_start_io(struct nexus_io *io)
 {
 	struct nexus_dev *dev=io->dev;
@@ -664,7 +836,11 @@ static void try_start_io(struct nexus_io *io)
 	}
 }
 
-/* Returns error if the queue is shut down */
+/**
+ * queue_for_user - arrange for @cd metadata to be passed to/from userspace
+ *
+ * Returns -EIO if the chardev is already shut down.
+ **/
 static int queue_for_user(struct chunkdata *cd)
 {
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
@@ -677,6 +853,9 @@ static int queue_for_user(struct chunkdata *cd)
 	return 0;
 }
 
+/**
+ * have_usermsg - returns false if the usermsg queue has no pending entries
+ **/
 int have_usermsg(struct nexus_dev *dev)
 {
 	struct chunkdata *cd;
@@ -691,6 +870,22 @@ int have_usermsg(struct nexus_dev *dev)
 	return 0;
 }
 
+/**
+ * next_usermsg - retrieve the next pending entry in the usermsg queue
+ * 
+ * Returns a pointer to the &struct chunkdata corresponding to the selected
+ * entry, or NULL if there are no pending entries.  @*type is filled in
+ * with the message type of the selected entry.  The &chunkdata pointer is
+ * used as an opaque cookie by the chardev code (since &struct chunkdata
+ * is static to this file) to retrieve the details of the particular message
+ * using the get_usermsg_*() family of functions.
+ * 
+ * The selected entry is not removed from the usermsg queue, but marked with
+ * the %CD_USER flag.  This allows us to reinsert the entry if the chardev code
+ * later discovers that the buffer passed to the read() syscall is invalid, and
+ * also allows us to validate that replies coming from userspace do in fact
+ * correspond to pending usermsgs.
+ **/
 struct chunkdata *next_usermsg(struct nexus_dev *dev, msgtype_t *type)
 {
 	struct chunkdata *cd;
@@ -711,6 +906,13 @@ struct chunkdata *next_usermsg(struct nexus_dev *dev, msgtype_t *type)
 	return NULL;
 }
 
+/**
+ * fail_usermsg - revert the @cd usermsg to pending state
+ * 
+ * This is called by the chardev code when it discovers that the usermsg it
+ * has just retrieved to write to userspace, cannot be written to userspace,
+ * because userspace gave us an invalid buffer to write into.
+ **/
 void fail_usermsg(struct chunkdata *cd)
 {
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
@@ -718,6 +920,11 @@ void fail_usermsg(struct chunkdata *cd)
 	cd->flags &= ~CD_USER;
 }
 
+/**
+ * __end_usermsg - internal function to remove a usermsg from the queue
+ * 
+ * This just abstracts out some common code.
+ **/
 static void __end_usermsg(struct chunkdata *cd)
 {
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
@@ -727,11 +934,16 @@ static void __end_usermsg(struct chunkdata *cd)
 	update_chunk(cd);
 }
 
+/**
+ * end_usermsg - report completion on usermsgs that don't require a reply
+ *
+ * This is called by the chardev code when a usermsg has successfully been
+ * copied to userspace, for usermsgs which do NOT require a reply from
+ * userspace.  Others should be completed through the per-message functions
+ * provided.
+ **/
 void end_usermsg(struct chunkdata *cd)
 {
-	/* chardev.c should only call this on usermsgs which don't require
-	   a response from userspace.  Others should be ended through the
-	   per-message functions provided. */
 	BUG_ON(!(cd->flags & CD_USER));
 	switch (cd->state) {
 	case ST_STORE_META:
@@ -746,6 +958,14 @@ void end_usermsg(struct chunkdata *cd)
 	}
 }
 
+/**
+ * shutdown_usermsg - error out all usermsgs in the queue (pending or not)
+ * 
+ * This should be used during the chardev shutdown process, *after* new
+ * usermsgs have been prevented from entering the queue, to ensure that
+ * messages already in-queue are removed from limbo (since they'd never
+ * be processed otherwise).
+ **/
 void shutdown_usermsg(struct nexus_dev *dev)
 {
 	struct chunkdata *cd;
@@ -759,6 +979,9 @@ void shutdown_usermsg(struct nexus_dev *dev)
 	}
 }
 
+/**
+ * get_usermsg_get_meta - accessor for GET_META usermsg fields
+ **/
 void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid)
 {
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
@@ -766,6 +989,9 @@ void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid)
 	*cid=cd->cid;
 }
 
+/**
+ * get_usermsg_update_meta - accessor for UPDATE_META usermsg fields
+ **/
 void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 			unsigned *length, enum nexus_compress *compression,
 			char key[], char tag[])
@@ -781,6 +1007,13 @@ void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 	memcpy(tag, cd->tag, hash_len);
 }
 
+/**
+ * set_usermsg_set_meta - report completion on GET_META usermsg
+ * 
+ * GET_META messages sent to userspace produce either a SET_META or META_ERR
+ * reply.  The chardev code calls this function when a SET_META message is
+ * received from userspace.
+ **/
 void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
 			enum nexus_compress compression, char key[],
 			char tag[])
@@ -808,7 +1041,14 @@ void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
 	__end_usermsg(cd);
 }
 
-/* Called instead of SET_META when userspace can't produce the chunk */
+/**
+ * set_usermsg_meta_err - report error completion on GET_META usermsg
+ * 
+ * GET_META messages sent to userspace produce either a SET_META or META_ERR
+ * reply.  The chardev code calls this function when a META_ERR message is
+ * received from userspace, which occurs when userspace can't produce the
+ * chunk.  The chunk will go into error state as a result.
+ **/
 void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid)
 {
 	struct chunkdata *cd;
@@ -830,6 +1070,39 @@ void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid)
 	__end_usermsg(cd);
 }
 
+/**
+ * __run_chunk - try to make a transition in the @cd state machine
+ *
+ * This is the core state machine code.
+ * 
+ * The state list contains four types of states.  Stable states (which we
+ * call "idle" states) are those in which a chunk can rest indefinitely if
+ * no I/O is submitted against it.  Unstable states are those in which work
+ * such as I/O, crypto, or userspace interaction is scheduled or in progress.
+ * The other states are metastable, meaning that they are intermediate states
+ * in a series of actions which must be done on a chunk (e.g., in between
+ * encrypting a chunk and writing it back to disk, there is a metastable
+ * state called %ST_DIRTY_ENCRYPTED).
+ *
+ * The fourth type is the error state.  All chunks in this state stay there
+ * until they have aged out of the chunkdata cache or until their data is
+ * overwritten in a single I/O.  (This last limitation is due to the fact that
+ * we currently have no infrastructure for tracking which *parts* of a chunk
+ * have been updated.)
+ *
+ * If __run_chunk() is called on a chunk in unstable state, it will do nothing.
+ * If the chunk is in metastable state, it will transition it to the
+ * appropriate unstable or metastable state and arrange for the corresponding
+ * work to be done.  If it is in stable state but I/O is pending to the chunk,
+ * then it will likewise transition to the appropriate state and arrange for
+ * the work to be done.
+ *
+ * The various thread callbacks which perform the actual work each end their
+ * processing by transitioning to an appropriate state (stable, metastable,
+ * or error; never directly to another unstable state) and calling
+ * update_chunk(), which arranges for this function to be run from a thread
+ * callback.
+ **/
 static void __run_chunk(struct chunkdata *cd)
 {
 	struct nexus_io_chunk *chunk;
@@ -933,7 +1206,14 @@ again:
 	}
 }
 
-/* Thread callback */
+/**
+ * run_chunk - thread callback for state machine processing
+ * entry: the list head passed to the thread code
+ *
+ * This is the thread callback corresponding to __run_chunk().  It processes
+ * the given chunk through __run_chunk() and then, if appropriate, releases
+ * the chunkdata dev reference.
+ **/
 void run_chunk(struct list_head *entry)
 {
 	struct chunkdata *cd=container_of(entry, struct chunkdata,
@@ -954,9 +1234,13 @@ void run_chunk(struct list_head *entry)
 		nexus_dev_put(dev, 0);
 }
 
-/* Only for debugging via sysfs attribute!  This causes redundant processing
-   of all chunks through __run_chunk().  This should be harmless, but may be
-   useful if the state machine wedges */
+/**
+ * run_all_chunks - debug function to run every chunk through the state machine
+ * 
+ * Only for debugging via sysfs attribute!  This causes redundant processing
+ * of all chunks through __run_chunk().  This should be harmless, but may be
+ * useful if the state machine wedges.
+ **/
 void run_all_chunks(struct nexus_dev *dev)
 {
 	struct chunkdata *cd;
@@ -969,6 +1253,25 @@ void run_all_chunks(struct nexus_dev *dev)
 		update_chunk(cd);
 }
 
+/**
+ * reserve_chunks - enqueue every &nexus_io_chunk in @io for processing
+ * 
+ * Called by request queue code to inject a new &nexus_io into the chunkdata
+ * queues.  reserve_chunks() places each chunk in @io at the end of the queue
+ * for its corresponding &chunkdata.  When each io_chunk reaches the
+ * head of the line for that chunk, and the chunk is ready to exchange data,
+ * the request queue code will receive a nexus_process_chunk() call for that
+ * io_chunk.
+ *
+ * The chunkdata code always maintains a dev reference whenever there are
+ * chunks pending for __run_chunk() or chunks in non-idle state.  That
+ * reference is acquired here and released in run_chunk().
+ *
+ * reserve_chunks() may return an error if it is unable to get a &chunkdata
+ * structure for each &nexus_io_chunk in @io.  This may happen frequently
+ * during heavy I/O load.  The request queue code should perform out-of-memory
+ * throttling in that case and try again later.
+ **/
 int reserve_chunks(struct nexus_io *io)
 {
 	struct nexus_dev *dev=io->dev;
@@ -1006,6 +1309,9 @@ bad:
 	return -ENOMEM;
 }
 
+/**
+ * unreserve_chunk - release chunk reservation after the @chunk has completed
+ **/
 void unreserve_chunk(struct nexus_io_chunk *chunk)
 {
 	struct nexus_dev *dev=chunk->parent->dev;
@@ -1030,6 +1336,12 @@ struct scatterlist *get_scatterlist(struct nexus_io_chunk *chunk)
 	return cd->sg;
 }
 
+/**
+ * chunkdata_free_table - release chunkdata state for @dev
+ *
+ * This is called unconditionally by the dtr, so it must be able to handle
+ * unallocated or partially allocated chunkdata structures.
+ **/
 void chunkdata_free_table(struct nexus_dev *dev)
 {
 	struct chunkdata_table *table=dev->chunkdata;
@@ -1052,6 +1364,12 @@ void chunkdata_free_table(struct nexus_dev *dev)
 	kfree(table);
 }
 
+/**
+ * chunkdata_alloc_table - allocate chunkdata state for new device @dev
+ *
+ * Does not back out allocations on failure, since the @dev dtr will just
+ * call chunkdata_free_table() anyway.
+ **/
 int chunkdata_alloc_table(struct nexus_dev *dev)
 {
 	struct chunkdata_table *table;
@@ -1105,6 +1423,9 @@ int chunkdata_alloc_table(struct nexus_dev *dev)
 	return 0;
 }
 
+/**
+ * chunkdata_start - module initialization for chunkdata
+ **/
 int __init chunkdata_start(void)
 {
 	/* The second and third parameters are dependent on the contents
@@ -1119,6 +1440,9 @@ int __init chunkdata_start(void)
 	return 0;
 }
 
+/**
+ * chunkdata_shutdown - module de-initialization for chunkdata
+ **/
 void __exit chunkdata_shutdown(void)
 {
 	bioset_free(bio_pool);

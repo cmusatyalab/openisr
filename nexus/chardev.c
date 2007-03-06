@@ -1,3 +1,5 @@
+/* chardev.c - support for the /dev/openisrctl character device */
+
 /* 
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
  *         system
@@ -24,6 +26,9 @@
 #include <linux/miscdevice.h>
 #include "defs.h"
 
+/**
+ * chr_release - clean up after the last user closes a chardev fd
+ **/
 static int chr_release(struct inode *ino, struct file *filp)
 {
 	struct nexus_dev *dev=filp->private_data;
@@ -40,6 +45,11 @@ static int chr_release(struct inode *ino, struct file *filp)
 	return 0;
 }
 
+/**
+ * chr_write - handle reads from the chardev
+ *
+ * @count must be a multiple of sizeof(&struct nexus_message) bytes.
+ **/
 static ssize_t chr_read(struct file *filp, char __user *buf,
 			size_t count, loff_t *offp)
 {
@@ -120,6 +130,11 @@ out:
 	return i * sizeof(msg);
 }
 
+/**
+ * chr_write - handle writes to the chardev
+ *
+ * All writes must be a multiple of sizeof(&struct nexus_message) bytes.
+ **/
 static ssize_t chr_write(struct file *filp, const char __user *buf,
 			size_t count, loff_t *offp)
 {
@@ -184,7 +199,27 @@ out:
 	return i * sizeof(msg);
 }
 
-/* XXX we may want to eliminate this later */
+/**
+ * chr_ioctl - ioctl support for chardev
+ * 
+ * The only operations we perform via ioctl are registration and
+ * unregistration, and even those may be moved in-band at some later date.
+ * Certainly we should try to avoid adding new ioctls.
+ * 
+ * NEXUS_IOC_REGISTER: Create a blockdev associated with this chardev fd.
+ * When the chardev is first opened, the fd has no blockdev associated with it.
+ * Only one blockdev may ever be associated with a chardev fd over its
+ * lifetime.
+ * 
+ * NEXUS_IOC_UNREGISTER: Request to unbind the blockdev from this chardev
+ * fd.  The only difference between calling UNREGISTER and just closing the
+ * chardev fd is that UNREGISTER will fail with -EBUSY if the blockdev is in
+ * use.  (Closing the fd will succeed even if there are existing users, who
+ * will then receive I/O errors on writes and uncached reads until they
+ * close the block device.)  After UNREGISTER successfully completes, the
+ * sysfs entries for the block device will remain present until the fd is
+ * closed.  The fd may not be reused to create another block device.
+ **/
 static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 {
 	struct nexus_dev *dev=filp->private_data;
@@ -229,12 +264,20 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 	}
 }
 
+/**
+ * chr_old_ioctl - wrapper for old-style ioctl call
+ * 
+ * This is called with the BKL held.  Kernels >= 2.6.11 will never call this.
+ **/
 static int chr_old_ioctl(struct inode *ino, struct file *filp, unsigned cmd,
 			unsigned long arg)
 {
 	return chr_ioctl(filp, cmd, arg);
 }
 
+/**
+ * chr_poll - select()/poll() support for chardev
+ **/
 static unsigned chr_poll(struct file *filp, poll_table *wait)
 {
 	struct nexus_dev *dev=filp->private_data;
@@ -282,11 +325,17 @@ static struct miscdevice nexus_miscdev = {
 	.list =			LIST_HEAD_INIT(nexus_miscdev.list),
 };
 
+/**
+ * chardev_start - module initialization for character device
+ **/
 int __init chardev_start(void)
 {
 	return misc_register(&nexus_miscdev);
 }
 
+/**
+ * chardev_shutdown - module de-initialization for character device
+ **/
 void __exit chardev_shutdown(void)
 {
 	misc_deregister(&nexus_miscdev);

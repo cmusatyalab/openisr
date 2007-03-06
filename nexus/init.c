@@ -1,3 +1,5 @@
+/* init.c - startup/shutdown, device constructor/destructor, refcounting */
+
 /* 
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
  *         system
@@ -44,8 +46,12 @@ unsigned debug_mask;
 module_param(debug_mask, int, S_IRUGO|S_IWUSR);
 #endif
 
-/* It is an error to use this when the refcount may have already reached
-   zero.  (The kref infrastructure does not handle this case.) */
+/**
+ * nexus_dev_get - increment the device refcount
+ * 
+ * It is an error to use this when the refcount may have already reached
+ * zero.  (The kref infrastructure does not handle this case.)
+ **/
 void nexus_dev_get(struct nexus_dev *dev)
 {
 	debug(DBG_REFCOUNT, "dev_get, refs %d",
@@ -54,10 +60,13 @@ void nexus_dev_get(struct nexus_dev *dev)
 		BUG();
 }
 
-/* @unlink is true if we should remove the sysfs entries - that is, if
-   the character device is going away or the ctr has errored out.  This
-   must be called with @unlink true exactly once per device.  The dev lock
-   MUST NOT be held. */
+/**
+ * nexus_dev_put - decrement the device refcount
+ * @unlink: true if we should remove the sysfs entries
+ * 
+ * This function must be called with @unlink true exactly once per device.
+ * The dev lock MUST NOT be held.
+ **/
 void nexus_dev_put(struct nexus_dev *dev, int unlink)
 {
 	debug(DBG_REFCOUNT, "dev_put, refs %d, unlink %d",
@@ -70,6 +79,9 @@ void nexus_dev_put(struct nexus_dev *dev, int unlink)
 		class_device_put(dev->class_dev);
 }
 
+/**
+ * user_get - increment the count of active blockdev users
+ **/
 void user_get(struct nexus_dev *dev)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
@@ -77,6 +89,9 @@ void user_get(struct nexus_dev *dev)
 	debug(DBG_REFCOUNT, "need_user now %u", dev->need_user);
 }
 
+/**
+ * user_put - decrement the count of active blockdev users
+ **/
 void user_put(struct nexus_dev *dev)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
@@ -85,6 +100,10 @@ void user_put(struct nexus_dev *dev)
 	debug(DBG_REFCOUNT, "need_user now %u", dev->need_user);
 }
 
+/**
+ * shutdown_dev - disconnect the chardev from its blockdev
+ * @force: if false, fail if the blockdev has active users
+ **/
 int shutdown_dev(struct nexus_dev *dev, int force)
 {
 	BUG_ON(!mutex_is_locked(&dev->lock));
@@ -101,9 +120,12 @@ int shutdown_dev(struct nexus_dev *dev, int force)
 	return 0;
 }
 
-/* Add standard attributes to our class.  On failure, the class may be
-   semi-populated, but that will be cleaned up when it is deleted.  All
-   attributes will be deleted on unregistration */
+/**
+ * class_populate - add standard attributes to our class
+ * 
+ * On failure, the class may be semi-populated, but that will be cleaned up
+ * when it is deleted.  All attributes will be deleted on unregistration.
+ **/
 static int class_populate(void)
 {
 	int i;
@@ -117,9 +139,13 @@ static int class_populate(void)
 	return 0;
 }
 
-/* Add standard attributes to a class device.  On failure, the device may
-   be semi-populated, but that will be cleaned up when the device is deleted.
-   All attributes will be deleted when the classdev is unregistered */
+/**
+ * class_device_populate - add standard attributes to a class device
+ * 
+ * On failure, the device may be semi-populated, but that will be cleaned up
+ * when the device is deleted.  All attributes will be deleted when the
+ * classdev is unregistered.
+ **/
 static int class_device_populate(struct class_device *class_dev)
 {
 	int i;
@@ -133,6 +159,9 @@ static int class_device_populate(struct class_device *class_dev)
 	return 0;
 }
 
+/**
+ * get_system_page_count - return the total number of memory pages
+ **/
 static unsigned long get_system_page_count(void)
 {
 	struct sysinfo s;
@@ -142,6 +171,12 @@ static unsigned long get_system_page_count(void)
 	return s.totalram;
 }
 
+/**
+ * nexus_open - handle open() of a Nexus block device node
+ *
+ * We fail the request if the corresponding character device has already been
+ * shut down.
+ **/
 static int nexus_open(struct inode *ino, struct file *filp)
 {
 	struct nexus_dev *dev;
@@ -171,6 +206,12 @@ static int nexus_open(struct inode *ino, struct file *filp)
 	return 0;
 }
 
+/**
+ * nexus_release - handle close() of a Nexus block device node
+ *
+ * The kernel guarantees that calls to nexus_release() will always be paired
+ * with calls to nexus_open().
+ **/
 static int nexus_release(struct inode *ino, struct file *filp)
 {
 	struct nexus_dev *dev=ino->i_bdev->bd_disk->private_data;
@@ -185,6 +226,9 @@ static int nexus_release(struct inode *ino, struct file *filp)
 	return 0;
 }
 
+/**
+ * alloc_devnum - allocate a device number from the pool
+ **/
 static int alloc_devnum(void)
 {
 	int num;
@@ -200,6 +244,9 @@ static int alloc_devnum(void)
 		return num;
 }
 
+/**
+ * free_devnum - free a previously-allocated device number
+ **/
 static void free_devnum(int devnum)
 {
 	spin_lock(&state.lock);
@@ -207,7 +254,14 @@ static void free_devnum(int devnum)
 	spin_unlock(&state.lock);
 }
 
-/* Workqueue callback */
+/**
+ * nexus_add_disk - register a newly-created device with the block layer
+ * 
+ * We have to call add_disk() from a workqueue callback in order to prevent
+ * deadlock.  This is the function that does so.  The function which sets
+ * up the callback must first grab a dev reference, which nexus_add_disk()
+ * will put after the add_disk().
+ **/
 static void nexus_add_disk(work_t *work_struct)
 {
 	struct nexus_dev *dev=container_of(work_struct, struct nexus_dev,
@@ -218,10 +272,14 @@ static void nexus_add_disk(work_t *work_struct)
 	nexus_dev_put(dev, 0);
 }
 
-/* open_bdev_excl() doesn't check permissions on the device node it's opening,
-   so we have to do it ourselves.  In order to prevent a symlink attack, we
-   save the dev_t from the permission check and verify that the device node we
-   eventually open matches that value. */
+/**
+ * nexus_open_bdev - bind a block device to a &nexus_dev given its path
+ * 
+ * open_bdev_excl() doesn't check permissions on the device node it's opening,
+ * so we have to do it ourselves, here.  In order to prevent a symlink attack,
+ * we save the dev_t from the permission check and verify that the device node
+ * we eventually open matches that value.
+ **/
 static struct block_device *nexus_open_bdev(struct nexus_dev *dev,
 			char *devpath)
 {
@@ -277,7 +335,15 @@ bad_close:
 	goto bad;
 }
 
-/* Called by dev->class_dev's release callback */
+/**
+ * nexus_dev_dtr - tear down an existing Nexus device
+ *
+ * This is called by the release callback of the &struct class_device
+ * embedded in &struct nexus_dev, when the device's reference count goes
+ * to zero.  It must be able to handle the case that the device was not
+ * fully initialized, if the constructor errored out after refcounting
+ * was set up.
+ **/
 static void nexus_dev_dtr(struct class_device *class_dev)
 {
 	struct nexus_dev *dev=class_get_devdata(class_dev);
@@ -314,6 +380,14 @@ static struct block_device_operations nexus_ops = {
 	.release =	nexus_release,
 };
 
+/**
+ * nexus_dev_ctr - create and initialize a new Nexus device
+ *
+ * This is called by the character device when it receives a request to
+ * create a new block device.  Validation of the content of the parameters
+ * is the responsibility of this function, but validation of their form (e.g.,
+ * strings being null-terminated) is the responsibility of the caller.
+ **/
 struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
 			enum nexus_crypto suite,
@@ -568,6 +642,9 @@ early_fail_module:
 	return ERR_PTR(ret);
 }
 
+/**
+ * nexus_init - module initialization function
+ **/
 static int __init nexus_init(void)
 {
 	int ret;
@@ -650,6 +727,9 @@ bad_request:
 	return ret;
 }
 
+/**
+ * nexus_shutdown - module de-initialization function
+ **/
 static void __exit nexus_shutdown(void)
 {
 	log(KERN_INFO, "unloading");
