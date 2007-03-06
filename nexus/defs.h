@@ -1,3 +1,5 @@
+/* defs.h - struct/symbol definitions, utility fns, exported fn prototypes */
+
 /* 
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
  *         system

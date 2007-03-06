@@ -1,3 +1,5 @@
+/* sysfs.c - sysfs attribute functions */
+
 /* 
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
  *         system

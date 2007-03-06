@@ -1,3 +1,5 @@
+/* nexus.h - interface exported to userspace via character device */
+
 /* 
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
  *         system

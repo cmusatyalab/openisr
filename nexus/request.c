@@ -1,3 +1,5 @@
+/* request.c - request queue interface code */
+
 /* 
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
  *         system

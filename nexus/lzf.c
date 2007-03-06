@@ -1,3 +1,5 @@
+/* lzf.c - LZF compression/decompression */
+
 /*
  * Copyright (c) 2000-2005 Marc Alexander Lehmann <schmorp@schmorp.de>
  * 

@@ -1,3 +1,5 @@
+/* kcompat.h - compatibility macros for different kernel versions */
+
 /* 
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
  *         system

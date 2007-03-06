@@ -1,3 +1,5 @@
+/* thread.c - kernel threads */
+
 /* 
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
  *         system

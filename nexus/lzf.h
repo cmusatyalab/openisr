@@ -1,3 +1,5 @@
+/* lzf.h - LZF compression/decompression headers */
+
 /*
  * Copyright (c) 2000-2005 Marc Alexander Lehmann <schmorp@schmorp.de>
  * 
