@@ -20,9 +20,6 @@ install-exec-hook:
 				$(DESTDIR)$(sysexeclibdir)/libvdisk.so
 	chmod 4644 $(DESTDIR)$(sysexeclibdir)/libvdisk.so.0.0.0
 
-# This is a hack.  The include directive forces make to always execute
-# the rule, and to recalculate its target selection afterward.
-.PHONY: revision.dummy
-revision.dummy:
-	@$(top_srcdir)/mkrevision.sh header libvdisk
--include revision.dummy
+REVISION_TYPE = header
+REVISION_DIR = libvdisk
+include $(top_srcdir)/mkrevision.mk

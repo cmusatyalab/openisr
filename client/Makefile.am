@@ -16,9 +16,6 @@ $(GEN): %: %.in Makefile
 				-e "s=!!BINDIR!!=$(bindir)=g" \
 				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" $< > $@
 
-# This is a hack.  The include directive forces make to always execute
-# the rule, and to recalculate its target selection afterward.
-.PHONY: revision.dummy
-revision.dummy:
-	@$(top_srcdir)/mkrevision.sh perl client
--include revision.dummy
+REVISION_TYPE = perl
+REVISION_DIR = client
+include $(top_srcdir)/mkrevision.mk

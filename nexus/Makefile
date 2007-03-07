@@ -53,11 +53,8 @@ ifeq ($(KERN_RELEASE),)
 	@exit 1
 endif
 
-# This is a hack.  The include directive forces make to always execute
-# the rule, and to recalculate its target selection afterward.
-.PHONY: revision.dummy
-revision.dummy:
-	@../mkrevision.sh object nexus
--include revision.dummy
+REVISION_TYPE = object
+REVISION_DIR = nexus
+include ../mkrevision.mk
 
 endif
