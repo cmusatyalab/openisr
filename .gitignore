@@ -12,3 +12,6 @@ depcomp
 ltmain.sh
 missing
 install-sh
+config.h.in
+config.h
+stamp-h1

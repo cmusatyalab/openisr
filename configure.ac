@@ -18,6 +18,13 @@ AC_COPYRIGHT([Copyright (C) 2007 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([nexus/request.c])
 AC_DISABLE_STATIC
 
+# We must choose between generating a config.h, which we don't need, or
+# including several lines worth of -D flags on every gcc command line.
+# In the interest of (somewhat) more readable compile logs, we generate
+# a useless config.h.
+AC_CONFIG_HEADERS([config.h])
+AH_TOP([/* This file is not used, but generating it makes compiles quieter */])
+
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_INSTALL
