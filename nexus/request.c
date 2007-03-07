@@ -403,32 +403,34 @@ void nexus_run_requests(struct list_head *entry)
 		spin_unlock_bh(&dev->requests_lock);
 		if (need_put)
 			nexus_dev_put(dev, 0);
-		if (!blk_fs_request(req)) {
+		if (blk_fs_request(req)) {
+			switch (nexus_setup_io(dev, req)) {
+			case 0:
+			case -ENXIO:
+				break;
+			case -ENOMEM:
+				spin_lock_bh(&dev->requests_lock);
+				if (list_empty(&dev->requests))
+					nexus_dev_get(dev);
+				list_add(&req->queuelist, &dev->requests);
+				/* Come back later when we're happier, if we
+				   haven't already been scheduled to run again
+				   immediately */
+				if (!test_and_set_bit(__DEV_REQ_PENDING,
+								&dev->flags)) {
+					dev->requests_oom_timer.expires=jiffies
+							+ LOWMEM_WAIT_TIME;
+					debug(DBG_REQUEST, "OOM delay");
+					add_timer(&dev->requests_oom_timer);
+				}
+				goto out;
+			default:
+				BUG();
+			}
+		} else {
 			/* XXX */
 			debug(DBG_REQUEST, "Skipping non-fs request");
 			end_that_request(req, 0, req->nr_sectors);
-			continue;
-		}
-		switch (nexus_setup_io(dev, req)) {
-		case 0:
-		case -ENXIO:
-			break;
-		case -ENOMEM:
-			spin_lock_bh(&dev->requests_lock);
-			if (list_empty(&dev->requests))
-				nexus_dev_get(dev);
-			list_add(&req->queuelist, &dev->requests);
-			/* Come back later when we're happier, if we haven't
-			   already been scheduled to run again immediately */
-			if (!test_and_set_bit(__DEV_REQ_PENDING, &dev->flags)) {
-				dev->requests_oom_timer.expires=jiffies +
-							LOWMEM_WAIT_TIME;
-				debug(DBG_REQUEST, "OOM delay");
-				add_timer(&dev->requests_oom_timer);
-			}
-			goto out;
-		default:
-			BUG();
 		}
 		cond_resched();
 		spin_lock_bh(&dev->requests_lock);
