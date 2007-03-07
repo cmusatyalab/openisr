@@ -30,9 +30,8 @@
 #error Kernels older than 2.6.8 are not supported
 #endif
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,20)
-#error Kernels newer than 2.6.20 are not supported
-#endif
+/* We (optimistically) don't check for kernel releases that are too new; the
+   module will either build or it won't.  We are known to support <= 2.6.20. */
 
 /***** Memory allocation *****************************************************/
 
@@ -406,6 +405,13 @@ static inline int cryptoapi_hash(struct crypto_hash *tfm,
 	return 0;
 }
 #else
+#ifndef CRYPTO_TFM_MODE_CBC
+/* The old crypto mode constants have been removed starting in 2.6.21.  We
+   don't use them when compiled against the new cryptoapi, but they're still
+   included in the tfm_suite_info struct, so we have to define them anyway. */
+#define CRYPTO_TFM_MODE_CBC 0
+#endif
+
 #define cryptoapi_alloc_cipher(info) \
 	crypto_alloc_blkcipher(info->cipher_spec, 0, CRYPTO_ALG_ASYNC)
 #define cryptoapi_alloc_hash(info) \
