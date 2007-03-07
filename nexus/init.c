@@ -650,7 +650,7 @@ static int __init nexus_init(void)
 	int ret;
 	
 	debug(DBG_ANY, "===================================================");
-	log(KERN_INFO, "loading (%s, rev %s)", svn_branch, svn_revision);
+	log(KERN_INFO, "loading, revision %s", rcs_revision);
 	
 	spin_lock_init(&state.lock);
 	INIT_LIST_HEAD(&state.devs);

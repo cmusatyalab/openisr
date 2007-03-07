@@ -85,7 +85,7 @@ static void __attribute__((constructor)) libvdisk_init(void)
 		verbose=1;
 	
 	if (verbose)
-		warn("Initializing (" SVN_BRANCH ", rev " SVN_REVISION ")");
+		warn("Initializing, revision " RCS_REVISION);
 	GET_SYMBOL(open);
 	GET_SYMBOL(ioctl);
 	GET_SYMBOL(close);

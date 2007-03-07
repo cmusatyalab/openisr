@@ -25,8 +25,7 @@
 #define VULPES_DEBUG(fmt, args...)     ;
 #endif
 
-extern const char *svn_revision;
-extern const char *svn_branch;
+extern const char *rcs_revision;
 
 typedef enum vulpes_err {
   VULPES_SUCCESS=0,

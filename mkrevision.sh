@@ -19,9 +19,9 @@ if [ -e .svn ] ; then
 	VER=`svnversion .`
 	BRANCH=`svn info . | egrep "^URL: " | sed -e "s:^.*/svn/openisr/::" \
 				-e "s:/${SUBDIR}$::"`
+	REV="$VER ($BRANCH)"
 elif [ -d `dirname $0`/.git ] ; then
-	VER=`git-describe`
-	BRANCH=`git-name-rev HEAD | cut -d\  -f2`
+	REV=`git-describe`
 else
 	exit 0
 fi
@@ -29,28 +29,25 @@ fi
 # It's better to use a separate object file for the revision data,
 # since "svn update" will then force a relink but not a recompile.
 # However, we shouldn't do this for shared libraries, because then
-# "svn_revision" and "svn_branch" become part of the library's ABI.
+# "rcs_revision" becomes part of the library's ABI.
 case $FILETYPE in
 object)
 	FILENAME=revision.c
 	cat > $FILENAME-new <<- EOF
-		const char *svn_revision = "$VER";
-		const char *svn_branch = "$BRANCH";
+		const char *rcs_revision = "$REV";
 	EOF
 	;;
 header)
 	FILENAME=revision.h
 	cat > $FILENAME-new <<- EOF
-		#define SVN_REVISION "$VER"
-		#define SVN_BRANCH "$BRANCH"
+		#define RCS_REVISION "$REV"
 	EOF
 	;;
 perl)
 	FILENAME=IsrRevision.pm
 	cat > $FILENAME-new <<- EOF
 		package Isr;
-		\$SVN_REVISION = "$VER";
-		\$SVN_BRANCH = "$BRANCH";
+		\$RCS_REVISION = "$REV";
 		1;
 	EOF
 	;;

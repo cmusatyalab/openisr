@@ -334,7 +334,7 @@ int main(int argc, char *argv[])
     usage(help_mode);
     /* Does not return */
   case MODE_VERSION:
-    printf("OpenISR Vulpes revision %s (%s)\n", svn_revision, svn_branch);
+    printf("OpenISR Vulpes revision %s\n", rcs_revision);
     return 1;
   default:
     break;
@@ -357,8 +357,8 @@ int main(int argc, char *argv[])
   /* Start vulpes log */
   if (vulpes_log_init())
     goto vulpes_exit;
-  vulpes_log(LOG_BASIC,"Starting. Revision: %s (%s), PID: %u",
-             svn_revision, svn_branch, (unsigned)getpid());
+  vulpes_log(LOG_BASIC,"Starting. Revision: %s, PID: %u",
+             rcs_revision, (unsigned)getpid());
   
   /* Remove stale pidfile, if any */
   remove_pidfile();

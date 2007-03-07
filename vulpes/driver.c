@@ -114,8 +114,7 @@ vulpes_err_t driver_init(void)
   struct nexus_setup setup;
   vulpes_err_t ret;
   int i;
-  char revision[32];
-  char branch[64];
+  char revision[64];
   char protocol[8];
   unsigned protocol_i;
   struct utsname utsname;
@@ -138,12 +137,11 @@ vulpes_err_t driver_init(void)
     vulpes_log(LOG_ERRORS,"protocol mismatch: expected version %u, got version %u",MY_INTERFACE_VERSION,protocol_i);
     return VULPES_PROTOFAIL;
   }
-  if (read_sysfs_file("/sys/class/openisr/branch", branch, sizeof(branch)) ||
-      read_sysfs_file("/sys/class/openisr/revision", revision, sizeof(revision))) {
+  if (read_sysfs_file("/sys/class/openisr/revision", revision, sizeof(revision))) {
     vulpes_log(LOG_ERRORS,"can't get driver revision");
     return VULPES_PROTOFAIL;
   }
-  vulpes_log(LOG_BASIC,"Driver protocol %u, revision %s (%s)",protocol_i,revision,branch);
+  vulpes_log(LOG_BASIC,"Driver protocol %u, revision %s",protocol_i,revision);
   
   /* Log kernel version */
   if (uname(&utsname))

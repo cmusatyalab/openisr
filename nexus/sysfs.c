@@ -28,14 +28,9 @@ static ssize_t drv_show_version(struct class *c, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%u\n", NEXUS_INTERFACE_VERSION);
 }
 
-static ssize_t drv_show_branch(struct class *c, char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%s\n", svn_branch);
-}
-
 static ssize_t drv_show_revision(struct class *c, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%s\n", svn_revision);
+	return snprintf(buf, PAGE_SIZE, "%s\n", rcs_revision);
 }
 
 #ifdef DEBUG
@@ -68,7 +63,6 @@ static ssize_t drv_store_debug(struct class *c, const char *buf, size_t len)
 
 struct class_attribute class_attrs[] = {
 	__ATTR(version, S_IRUGO, drv_show_version, NULL),
-	__ATTR(branch, S_IRUGO, drv_show_branch, NULL),
 	__ATTR(revision, S_IRUGO, drv_show_revision, NULL),
 #ifdef DEBUG
 	__ATTR(debug_mask, S_IRUGO|S_IWUSR, drv_show_debug, drv_store_debug),

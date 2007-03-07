@@ -240,7 +240,7 @@ $nameserver = $syscfg{nameserver};
 # 
 # Log the fact that we are starting the client program
 #
-message("START", "$isrversion ($Isr::SVN_BRANCH, revision $Isr::SVN_REVISION)");
+message("START", "$isrversion, revision $Isr::RCS_REVISION");
 message("ENTER", "@ARGV");
 
 #
@@ -447,7 +447,7 @@ elsif ($command eq "version") {
     # These are the copyrights for the entire OpenISR client codebase, not
     # just the user interface.
     print <<END;
-$isrversion, client revision $Isr::SVN_REVISION ($Isr::SVN_BRANCH)
+$isrversion, client revision $Isr::RCS_REVISION
 
 Copyright (C) 2000-2007 Carnegie Mellon University and others
 The OpenISR system comes with ABSOLUTELY NO WARRANTY.  Different parts of

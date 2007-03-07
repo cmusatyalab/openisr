@@ -370,8 +370,7 @@ extern struct class_attribute class_attrs[];
 extern struct class_device_attribute class_dev_attrs[];
 
 /* revision.c */
-extern char *svn_branch;
-extern char *svn_revision;
+extern char *rcs_revision;
 
 #else  /* __KERNEL__ */
 #error This header is not exported outside the Nexus implementation
