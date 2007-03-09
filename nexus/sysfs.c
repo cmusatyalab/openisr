@@ -169,6 +169,13 @@ static ssize_t dev_show_cache_misses(struct class_device *class_dev, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.cache_misses);
 }
 
+static ssize_t dev_show_cache_fails(struct class_device *class_dev, char *buf)
+{
+	struct nexus_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%u\n",
+				dev->stats.cache_alloc_failures);
+}
+
 static ssize_t dev_show_chunk_errors(struct class_device *class_dev, char *buf)
 {
 	struct nexus_dev *dev=class_get_devdata(class_dev);
@@ -265,6 +272,7 @@ struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(compression, S_IRUGO, dev_show_compression, NULL),
 	__ATTR(cache_hits, S_IRUGO, dev_show_cache_hits, NULL),
 	__ATTR(cache_misses, S_IRUGO, dev_show_cache_misses, NULL),
+	__ATTR(cache_alloc_failures, S_IRUGO, dev_show_cache_fails, NULL),
 	__ATTR(chunk_errors, S_IRUGO, dev_show_chunk_errors, NULL),
 	__ATTR(chunk_reads, S_IRUGO, dev_show_chunk_reads, NULL),
 	__ATTR(chunk_writes, S_IRUGO, dev_show_chunk_writes, NULL),

@@ -285,6 +285,7 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	
 	/* Can't get a chunk */
 	debug(DBG_CD, "Can't get cd for " SECTOR_FORMAT, cid);
+	table->dev->stats.cache_alloc_failures++;
 	return NULL;
 }
 

@@ -248,6 +248,7 @@ void driver_shutdown(void)
 {
   log_sysfs_value("cache_hits");
   log_sysfs_value("cache_misses");
+  log_sysfs_value("cache_alloc_failures");
   log_sysfs_value("chunk_reads");
   log_sysfs_value("chunk_writes");
   log_sysfs_value("chunk_errors");

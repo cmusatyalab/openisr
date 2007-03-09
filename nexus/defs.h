@@ -71,6 +71,7 @@ struct nexus_stats {
 	unsigned state_time_samples[CD_NR_STATES];
 	unsigned cache_hits;
 	unsigned cache_misses;
+	unsigned cache_alloc_failures;
 	unsigned chunk_reads;
 	unsigned chunk_writes;
 	u64      data_bytes_written;
