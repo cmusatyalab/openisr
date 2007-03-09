@@ -281,10 +281,7 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 		return -ENXIO;
 	}
 	
-	io=mempool_alloc(io_pool, GFP_ATOMIC);
-	if (io == NULL)
-		return -ENOMEM;
-	
+	io=mempool_alloc(io_pool, GFP_NOIO);  /* always succeeds */
 	io->dev=dev;
 	io->orig_req=req;
 	io->flags=0;

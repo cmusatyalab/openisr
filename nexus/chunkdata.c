@@ -375,6 +375,9 @@ static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error);
  * calls on the &bio will eventually fail, and bio_create() should be called
  * again with an @offset equal to the number of sectors already associated
  * with a previous &bio.
+ *
+ * bio_create() never fails; if no memory is available to allocate the bio, we
+ * sleep in bio_alloc_bioset() until it is.
  **/
 static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 {
@@ -390,10 +393,7 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 	   from the block layer.  We subtract off the number of *complete*
 	   pages which have already been stuffed into other bios. */
 	pages=chunk_pages(dev) - offset / (PAGE_SIZE / 512);
-	bio=bio_alloc_bioset(GFP_ATOMIC, pages, bio_pool);
-	if (bio == NULL)
-		return NULL;
-
+	bio=bio_alloc_bioset(GFP_NOIO, pages, bio_pool);
 	bio->bi_bdev=dev->chunk_bdev;
 	bio->bi_sector=chunk_to_sector(dev, cd->cid) + dev->offset + offset;
 	debug(DBG_IO, "Creating bio: %u pages, sector " SECTOR_FORMAT, pages,
@@ -409,8 +409,6 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 	bio_set_destructor(bio, bio_destructor);
 	return bio;
 }
-
-static void chunk_io_make_progress(struct chunkdata *cd, unsigned nbytes);
 
 /**
  * issue_chunk_io - read or write the given @cd to the chunk store
@@ -451,14 +449,9 @@ static void issue_chunk_io(struct chunkdata *cd)
 	/* We can't assume that we can fit the entire chunk io in one
 	   bio: it depends on the queue restrictions of the underlying
 	   device */
-	/* XXX is it okay to be failing requests with -ENOMEM?  or should we
-	   be doing some sort of retry? */
 	while (offset < dev->chunksize) {
-		if (bio == NULL) {
+		if (bio == NULL)
 			bio=bio_create(cd, dir, offset/512);
-			if (bio == NULL)
-				goto bad;
-		}
 		if (bio_add_page(bio, cd->sg[i].page,
 					cd->sg[i].length,
 					cd->sg[i].offset)) {
@@ -474,11 +467,6 @@ static void issue_chunk_io(struct chunkdata *cd)
 	BUG_ON(bio == NULL);
 	debug(DBG_IO, "Submitting bio: %u/%u", offset, dev->chunksize);
 	schedule_io(bio);
-	return;
-	
-bad:
-	cd->error=-ENOMEM;
-	chunk_io_make_progress(cd, dev->chunksize - offset);
 }
 
 /**
@@ -703,29 +691,12 @@ void chunkdata_complete_io(struct list_head *entry)
 }
 
 /**
- * chunk_io_make_progress - register completion of @nbytes of chunk store I/O
- * 
- * Arranges for chunkdata_complete_io() callback to be called once all of the
- * I/O for @cd has completed.  May be called from hardirq context or user
- * context for the SAME &nexus_dev!  (Usually will be called by
- * nexus_endio_func(), which may be in hardirq context depending on the
- * underlying chunk store, but may be called by issue_chunk_io() on error.)
- **/
-static void chunk_io_make_progress(struct chunkdata *cd, unsigned nbytes)
-{
-	if (atomic_sub_and_test(nbytes, &cd->remaining)) {
-		/* Can't call BUG() in interrupt */
-		WARN_ON(!list_empty(&cd->lh_pending_completion));
-		schedule_callback(CB_COMPLETE_IO, &cd->lh_pending_completion);
-	}
-}
-
-/**
  * nexus_endio_func - register completion of @bio
  * 
  * This is called by the block layer upon completion of a single &bio to the
  * chunk store.  Depending on the device driver for the chunk store, it may
- * be called in hardirq context.
+ * be called in hardirq context.  Arranges for chunkdata_complete_io()
+ * callback to be called once all of the I/O for the chunk has completed.
  **/
 static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error)
 {
@@ -734,7 +705,11 @@ static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error)
 		/* Racy, but who cares */
 		cd->error=error;
 	}
-	chunk_io_make_progress(cd, nbytes);
+	if (atomic_sub_and_test(nbytes, &cd->remaining)) {
+		/* Can't call BUG() in interrupt */
+		WARN_ON(!list_empty(&cd->lh_pending_completion));
+		schedule_callback(CB_COMPLETE_IO, &cd->lh_pending_completion);
+	}
 	return 0;
 }
 
