@@ -68,6 +68,9 @@ static const struct tfm_compress_info compress_desc[] = {
 	}
 };
 
+/**
+ * suite_info - returns &tfm_suite_info associated with @suite
+ **/
 const struct tfm_suite_info *suite_info(enum nexus_crypto suite)
 {
 	BUILD_BUG_ON((sizeof(suite_desc)/sizeof(suite_desc[0])) !=
@@ -76,6 +79,9 @@ const struct tfm_suite_info *suite_info(enum nexus_crypto suite)
 	return &suite_desc[suite];
 }
 
+/**
+ * compress_info - returns &tfm_compress_info associated with @alg
+ **/
 const struct tfm_compress_info *compress_info(enum nexus_compress alg)
 {
 	BUILD_BUG_ON((sizeof(compress_desc)/sizeof(compress_desc[0])) !=
@@ -84,9 +90,18 @@ const struct tfm_compress_info *compress_info(enum nexus_compress alg)
 	return &compress_desc[alg];
 }
 
-/* Copy a scatterlist to/from a vmalloc bounce buffer, for compression
-   algorithms that can't handle scatterlists.  If the algorithm can run
-   page-at-a-time without sacrificing compression, try to do that instead. */
+/**
+ * scatterlist_transfer - copy scatterlist to/from vmalloc bounce buffer
+ * @dir: %READ if copying to @buf, %WRITE if copying from @buf
+ *
+ * This imposes overhead, of course, and is intended only for compression
+ * algorithms that can't handle scatterlists.  (All crypto and hash algorithms
+ * should be able to do so via cryptoapi.)  If the algorithm can run
+ * page-at-a-time without sacrificing compression (e.g., deflate), try to do
+ * that instead.
+ *
+ * We use KM_USER0, so this should only be called from process context.
+ **/
 static void scatterlist_transfer(struct scatterlist *sg, void *buf,
 			unsigned nbytes, int dir)
 {
@@ -108,6 +123,13 @@ static void scatterlist_transfer(struct scatterlist *sg, void *buf,
 	}
 }
 
+/**
+ * scatterlist_zero - zero out part of a scatterlist
+ * @start : starting offset in bytes
+ * @nbytes: number of zero bytes to write
+ *
+ * We use KM_USER0, so this should only be called from process context.
+ **/
 static void scatterlist_zero(struct scatterlist *sg, unsigned start,
 			unsigned nbytes)
 {
@@ -132,6 +154,9 @@ static void scatterlist_zero(struct scatterlist *sg, unsigned start,
 	}
 }
 
+/**
+ * scatterlist_flip - swap page pointers between @s1 and @s2
+ **/
 static void scatterlist_flip(struct scatterlist *s1, struct scatterlist *s2,
 			unsigned npages)
 {
@@ -144,8 +169,13 @@ static void scatterlist_flip(struct scatterlist *s1, struct scatterlist *s2,
 	}
 }
 
-/* Return the number of bytes of padding which need to be added to
-   data of length @datalen if padding is used */
+/**
+ * crypto_pad_len - return length of PKCS padding needed for @datalen bytes
+ *
+ * Returns the number of bytes of padding which need to be added to
+ * data of length @datalen if padding is used.  Returns 0 if encryption has
+ * been disabled for this suite.
+ **/
 static inline unsigned crypto_pad_len(struct nexus_dev *dev, unsigned datalen)
 {
 	unsigned cipher_block=suite_info(dev->suite)->cipher_block;
@@ -155,7 +185,15 @@ static inline unsigned crypto_pad_len(struct nexus_dev *dev, unsigned datalen)
 		return cipher_block - (datalen % cipher_block);
 }
 
-/* Perform PKCS padding on a scatterlist.  Return the new length. */
+/**
+ * crypto_pad - perform PKCS padding on a chunkdata scatterlist
+ *
+ * Returns the new length.  It is an error to call crypto_pad() if encryption
+ * is disabled for the suite associated with @dev, or if the scatterlist
+ * does not have room for the pad bytes.
+ *
+ * We use KM_USER0, so this should only be called from process context.
+ **/
 static unsigned crypto_pad(struct nexus_dev *dev, struct scatterlist *sg,
 			unsigned datalen)
 {
@@ -189,7 +227,16 @@ static unsigned crypto_pad(struct nexus_dev *dev, struct scatterlist *sg,
 	return datalen + padlen;
 }
 
-/* Perform PKCS unpadding on a scatterlist.  Return the new length. */
+/**
+ * crypto_unpad - perform PKCS unpadding on a chunkdata scatterlist
+ * @len: data length including padding
+ *
+ * Returns the new length, or -EINVAL if the padding is invalid.  It is an
+ * error to call crypto_unpad() if encryption is disabled for the suite
+ * associated with @dev.
+ *
+ * We use KM_USER0, so this should only be called from process context.
+ **/
 static int crypto_unpad(struct nexus_dev *dev, struct scatterlist *sg, int len)
 {
 	unsigned cipher_block=suite_info(dev->suite)->cipher_block;
@@ -229,25 +276,34 @@ out:
 	return ret;
 }
 
-/* @size is the compressed size of the chunk */
+/**
+ * should_store_chunk_compressed - returns true if compression was worthwhile
+ * @size: compressed size of the chunk in bytes
+ *
+ * Returns true if the compressed data, plus the PKCS padding, is at least
+ * one byte smaller than the uncompressed data.  (We do padding iff we're
+ * doing compression, so the uncompressed data is always chunksize bytes.)
+ **/
 static int should_store_chunk_compressed(struct nexus_dev *dev, unsigned size)
 {
-	if (size >= dev->chunksize) {
-		/* Compressed data larger than uncompressed data. */
+	if (size >= dev->chunksize)
 		return 0;
-	}
 	if (size + crypto_pad_len(dev, size) >= dev->chunksize) {
-		/* If padding would bring us exactly to the length of
-		   the buffer, we refuse to do it.  Rationale: we're only
-		   doing padding if we're doing compression, and compression
-		   failed to reduce the size of the chunk after padding,
-		   so we're better off just not compressing. */
+		/* Padding pushes us over the threshold */
 		debug(DBG_TFM, "Refusing to compress: borderline case");
 		return 0;
 	}
 	return 1;
 }
 
+/**
+ * compress_chunk_zlib - compress a chunk using the zlib (deflate) algorithm
+ * @ts: the per-CPU temporary state buffer
+ *
+ * Returns the compressed size, -EFBIG if the chunk isn't worth storing
+ * compressed (because it didn't compress well), or -EIO on error.  Must
+ * be called from process context.
+ **/
 static int compress_chunk_zlib(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg)
 {
@@ -318,6 +374,13 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 	return size;
 }
 
+/**
+ * decompress_chunk_zlib - decompress a zlib-compressed chunk
+ * @ts : the per-CPU temporary state buffer
+ * @len: the length of the compressed data
+ *
+ * Returns 0 on success or -EIO on error.  Must be called from process context.
+ **/
 static int decompress_chunk_zlib(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg,
 			unsigned len)
@@ -405,6 +468,14 @@ static int decompress_chunk_zlib(struct nexus_dev *dev,
 	return 0;
 }
 
+/**
+ * compress_chunk_lzf - compress a chunk using the LZF algorithm
+ * @ts: the per-CPU temporary state buffer
+ *
+ * Returns the compressed size or -EFBIG if the chunk isn't worth storing
+ * compressed (because it didn't compress well).  Must be called from process
+ * context.
+ **/
 static int compress_chunk_lzf(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg)
 {
@@ -426,6 +497,13 @@ static int compress_chunk_lzf(struct nexus_dev *dev,
 	return size;
 }
 
+/**
+ * decompress_chunk_lzf - decompress an LZF-compressed chunk
+ * @ts : the per-CPU temporary state buffer
+ * @len: the length of the compressed data
+ *
+ * Returns 0 on success or -EIO on error.  Must be called from process context.
+ **/
 static int decompress_chunk_lzf(struct nexus_dev *dev,
 			struct nexus_tfm_state *ts, struct scatterlist *sg,
 			unsigned len)
@@ -440,6 +518,14 @@ static int decompress_chunk_lzf(struct nexus_dev *dev,
 	return 0;
 }
 
+/**
+ * compress_chunk - compress a chunk with the specified algorithm
+ * @ts: the per-CPU temporary state buffer
+ *
+ * Returns the compressed size, -EFBIG if the chunk isn't worth storing
+ * compressed (because it didn't compress well), or -EIO on error.  Must
+ * be called from process context.  @sg is updated in place.
+ **/
 int compress_chunk(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			struct scatterlist *sg, enum nexus_compress type)
 {
@@ -456,6 +542,14 @@ int compress_chunk(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 	return -EIO;
 }
 
+/**
+ * decompress_chunk - decompress a chunk with the specified algorithm
+ * @ts: the per-CPU temporary state buffer
+ * @len: the length of the compressed data
+ *
+ * Returns 0 on success or -EIO on error.  Must be called from process context.
+ * @sg is updated in place.
+ **/
 int decompress_chunk(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			struct scatterlist *sg, enum nexus_compress type,
 			unsigned len)
@@ -475,13 +569,36 @@ int decompress_chunk(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 	return -EIO;
 }
 
+/**
+ * crypto_hash - generate the cryptographic hash of some data
+ * @ts    : the per-CPU temporary state buffer
+ * @nbytes: the number of input bytes in @sg
+ * @out   : where to write the hash value
+ *
+ * We use whichever hash algorithm is associated with the crypto suite
+ * associated with @dev.  @out must be able to hold the appropriate number
+ * of bytes.
+ **/
 int crypto_hash(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			struct scatterlist *sg, unsigned nbytes, u8 *out)
 {
 	return cryptoapi_hash(ts->hash[dev->suite], sg, nbytes, out);
 }
 
-/* Returns the new data size, or error */
+/**
+ * crypto_cipher - encrypt or decrypt some data
+ * @ts   : the per-CPU temporary state buffer
+ * @len  : the number of input bytes in @sg
+ * @dir  : %READ to decrypt, %WRITE to encrypt
+ * @doPad: whether to do PKCS padding
+ *
+ * @key must have a length equal to the key length parameter for the cipher
+ * suite associated with @dev.  @sg is updated in place.  @doPad must be
+ * true if @len is not a multiple of the cipher block size.
+ *
+ * Returns the length of the encrypted data, or an error code.  If @doPad is
+ * false, the encrypted length will always be equal to @len.
+ **/
 int crypto_cipher(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			struct scatterlist *sg, char key[], unsigned len,
 			int dir, int doPad)
@@ -515,6 +632,9 @@ int crypto_cipher(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 	}
 }
 
+/**
+ * compression_type_ok - returns true if @compress is valid for @dev
+ **/
 int compression_type_ok(struct nexus_dev *dev, enum nexus_compress compress)
 {
 	/* Make sure we're within enum range */
@@ -526,6 +646,15 @@ int compression_type_ok(struct nexus_dev *dev, enum nexus_compress compress)
 	return 1;
 }
 
+/**
+ * suite_add - allocate transforms in @ts for @suite
+ *
+ * Returns 0 or error code.  @suite must not already be allocated in @ts.
+ * If @suite uses the SHA-1 hash, and cryptoapi selects an unoptimized SHA-1
+ * implementation on architectures where an optimized one is available,
+ * and we have not complained about this yet, a warning is printed to the
+ * system log.
+ **/
 int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 {
 	const struct tfm_suite_info *info;
@@ -564,6 +693,11 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	return 0;
 }
 
+/**
+ * suite_remove - free transforms in @ts for @suite
+ *
+ * @suite must already be allocated in @ts.
+ **/
 void suite_remove(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 {
 	BUG_ON(ts->hash[suite] == NULL);
@@ -575,11 +709,17 @@ void suite_remove(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	}
 }
 
-/* XXX We always allocate temporary buffers of size MAX_CHUNKSIZE, which is
-   defined for this purpose.  (There's no other reason the chunksize couldn't
-   be larger.)  We should dynamically resize the buffers to fit the largest
-   chunksize we actually need at the moment, rather than using an arbitrary
-   constant. */
+/**
+ * compress_add - allocate buffers in @ts for @alg
+ *
+ * Returns 0 or error code.  @alg must not already be allocated in @ts.
+ *
+ * XXX We always allocate temporary buffers of size %MAX_CHUNKSIZE, which is
+ * defined for this purpose.  (There's no other reason the chunksize couldn't
+ * be larger.)  We should dynamically resize the buffers to fit the largest
+ * chunksize we actually need at the moment, rather than using an arbitrary
+ * constant.
+ **/
 int compress_add(struct nexus_tfm_state *ts, enum nexus_compress alg)
 {
 	switch (alg) {
@@ -631,6 +771,11 @@ int compress_add(struct nexus_tfm_state *ts, enum nexus_compress alg)
 	return 0;
 }
 
+/**
+ * compress_remove - free buffers in @ts for @alg
+ *
+ * @alg must already be allocated in @ts.
+ **/
 void compress_remove(struct nexus_tfm_state *ts, enum nexus_compress alg)
 {
 	switch (alg) {
@@ -659,6 +804,13 @@ void compress_remove(struct nexus_tfm_state *ts, enum nexus_compress alg)
 	}
 }
 
+/**
+ * transform_validate - perform sanity-checks on transforms specified in @dev
+ *
+ * Tests suite and compress fields in @dev to verify that userspace requested
+ * reasonable transforms.  Returns 0 if all tests pass.  If a test fails,
+ * returns -EINVAL and prints a message to the system log.
+ **/
 int transform_validate(struct nexus_dev *dev)
 {
 	compressmask_t supported_algs=(1 << NEXUS_NR_COMPRESS) - 1;
