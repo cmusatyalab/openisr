@@ -65,7 +65,7 @@ static struct task_struct *request_thread;
  * 
  * One of these will normally be running on each CPU in the system; this is
  * the process context in which much of the Nexus code runs.  It is structured
- * in terms of callbacks: Nexus code calls schedule_callback() passing
+ * in terms of callbacks; Nexus code calls schedule_callback() passing
  * a callback type and a pointer to a &list_head to be queued for that callback
  * type.  nexus_thread() then runs callbacks in priority order.  Callback
  * types are assigned a priority by their enumeration order in &enum callback;
@@ -220,7 +220,7 @@ void schedule_io(struct bio *bio)
 /**
  * nexus_request_thread - helper thread to run request queues
  * 
- * Request queues are different from other types of callbacks: the request
+ * Request queues are different from other types of callbacks.  The request
  * queue code needs to be able to return callbacks to the head of the queue if
  * an allocation failure occurs, and this operation must always preserve queue
  * order; it needs to be able to delay walking the queue if there's an
