@@ -48,7 +48,7 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	unsigned bytesThisRound;
 	
 	/* We use KM_USER* */
-	BUG_ON(in_interrupt());
+	WARN_ON(in_interrupt());
 	
 	/* Necessary to preserve invariant of comment A */
 	if (len == 0)

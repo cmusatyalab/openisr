@@ -108,7 +108,7 @@ static void scatterlist_transfer(struct scatterlist *sg, void *buf,
 	unsigned total;
 	
 	/* We use KM_USER0 */
-	BUG_ON(in_interrupt());
+	WARN_ON(in_interrupt());
 	for (total=0; total < nbytes; sg++) {
 		count=min(sg->length, nbytes - total);
 		page=kmap_atomic(sg->page, KM_USER0);
@@ -136,7 +136,7 @@ static void scatterlist_zero(struct scatterlist *sg, unsigned start,
 	
 	debug(DBG_TFM, "scatterlist_zero start %u count %u", start, nbytes);
 	/* We use KM_USER0 */
-	BUG_ON(in_interrupt());
+	WARN_ON(in_interrupt());
 	while (start >= sg->length) {
 		start -= sg->length;
 		sg++;
@@ -203,7 +203,7 @@ static unsigned crypto_pad(struct nexus_dev *dev, struct scatterlist *sg,
 	BUG_ON(padlen == 0);  /* crypto_unpad() will be confused on decrypt */
 	BUG_ON(datalen + padlen > dev->chunksize);
 	/* We use KM_USER0 */
-	BUG_ON(in_interrupt());
+	WARN_ON(in_interrupt());
 	debug(DBG_TFM, "Pad %u", padlen);
 	
 	while (offset >= sg->length) {
@@ -246,7 +246,7 @@ static int crypto_unpad(struct nexus_dev *dev, struct scatterlist *sg, int len)
 	
 	BUG_ON(len == 0);
 	/* We use KM_USER0 */
-	BUG_ON(in_interrupt());
+	WARN_ON(in_interrupt());
 	
 	while (offset >= sg->length) {
 		offset -= sg->length;

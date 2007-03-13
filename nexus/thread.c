@@ -173,8 +173,9 @@ void schedule_callback(enum callback type, struct list_head *entry)
 {
 	unsigned long flags;
 	
-	BUG_ON(type < 0 || type >= NR_CALLBACKS);
-	BUG_ON(!list_empty(entry));
+	/* Can't call BUG() from interrupt context */
+	WARN_ON(type < 0 || type >= NR_CALLBACKS);
+	WARN_ON(!list_empty(entry));
 	spin_lock_irqsave(&queues.lock, flags);
 	list_add_tail(entry, &queues.list[type]);
 	spin_unlock_irqrestore(&queues.lock, flags);
@@ -237,7 +238,7 @@ void schedule_io(struct bio *bio)
 {
 	BUG_ON(bio->bi_next != NULL);
 	/* We don't use _bh or _irq spinlock variants */
-	BUG_ON(in_interrupt());
+	WARN_ON(in_interrupt());
 	spin_lock(&pending_io.lock);
 	if (pending_io.head == NULL) {
 		pending_io.head=bio;
@@ -308,7 +309,8 @@ void schedule_request_callback(struct list_head *entry)
 {
 	unsigned long flags;
 	
-	BUG_ON(!list_empty(entry));
+	/* Can't call BUG() from interrupt context */
+	WARN_ON(!list_empty(entry));
 	spin_lock_irqsave(&pending_requests.lock, flags);
 	list_add_tail(entry, &pending_requests.list);
 	spin_unlock_irqrestore(&pending_requests.lock, flags);
