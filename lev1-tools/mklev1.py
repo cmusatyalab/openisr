@@ -3,7 +3,7 @@
 import sys, os
 
 # defaults
-VERSION= 1
+VERSION= 2
 CHUNKSIZE= 128 * 1024
 CHUNKSPERDIR= 512
 MAXNUMDIRS= 512
@@ -21,7 +21,7 @@ destdir, size = sys.argv[1:]
 exp = { 'k' : 1024, 'm' : 1024 * 1024, 'g' : 1024 * 1024 * 1024,
 	'K' : 1024, 'M' : 1024 * 1024, 'G' : 1024 * 1024 * 1024 }
 try:
-    if size[-1] in 'kmg':
+    if size[-1] in 'kmgKMG':
 	size = int(size[:-1]) * exp[size[-1]]
     else: size = int(size)
 except ValueError:
@@ -48,11 +48,11 @@ def processchunk(chunk):
     import Crypto.Cipher.Blowfish as cipher
 
     # compress the chunk
-    compressed = compress(chunk, 9)
+    compressed = compress(chunk, 6)
 
     # extract encryption key based on the compressed data
-    key1 = hash.new(compressed).digest()
-    ekey = key1[:16] # vulpes bug?
+    key = hash.new(compressed).digest()
+    ekey = key[:16] # bug-compatibility with ISR-3 vulpes
 
     # encrypt chunk using zero iv, blowfish encryption and pkcs block padding
     iv = '\0' * cipher.block_size
@@ -60,13 +60,13 @@ def processchunk(chunk):
     alg = cipher.new(ekey, cipher.MODE_CBC, iv)
     encrypted = alg.encrypt(compressed + chr(pkcs_val) * pkcs_val)
 
-    # lookup key based on the final encrypted data
-    key2 = hash.new(encrypted).digest() # lookup key
+    # tag based on the final encrypted data
+    tag = hash.new(encrypted).digest()
 
-    return (key1, key2, encrypted)
+    return (key, tag, encrypted)
 
 # create compressed/encrypted zero filled chunk
-key1, key2, encrypted = processchunk('\0' * CHUNKSIZE)
+key, tag, encrypted = processchunk('\0' * CHUNKSIZE)
 
 # write chunks to disk
 os.mkdir(destdir, 0700)
@@ -83,11 +83,11 @@ for i in range(NUMCHUNKS):
     f.close()
 
 # create keyring
-key1, key2 = map(lambda x:x.encode('hex').upper(), (key1, key2))
+key, tag = map(lambda x:x.encode('hex').upper(), (key, tag))
 
 keyring = open(os.path.join(destdir, KEYRING), 'a')
 for n in range(NUMCHUNKS):
-    keyring.write("%s %s\n" % (key2, key1))
+    keyring.write("%s %s\n" % (tag, key))
 keyring.close()
 
 # create index
