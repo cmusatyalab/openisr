@@ -45,11 +45,22 @@
 #include <linux/workqueue.h>
 #include "nexus.h"
 
+/**
+ * struct tfm_suite_info - read-only parameter block for a crypto suite
+ * @user_name    : the name seen by the user (e.g. in sysfs)
+ * @cipher_name  : cryptoapi cipher name          (for <= 2.6.18)
+ * @cipher_mode  : cryptoapi cipher mode constant (for <= 2.6.18)
+ * @cipher_spec  : cryptoapi cipher spec          (for >= 2.6.19)
+ * @cipher_block : this cipher's block size
+ * @key_len      : how much of the hash to use for the key
+ * @hash_name    : cryptoapi hash name
+ * @hash_len     : this hash algorithm's hash length
+ **/
 struct tfm_suite_info {
 	char *user_name;
-	char *cipher_name;       /* For <= 2.6.18 */
-	unsigned cipher_mode;    /* For <= 2.6.18 */
-	char *cipher_spec;       /* For >= 2.6.19 */
+	char *cipher_name;
+	unsigned cipher_mode;
+	char *cipher_spec;
 	unsigned cipher_block;
 	unsigned key_len;
 	char *hash_name;
@@ -59,12 +70,33 @@ struct tfm_suite_info {
 /* This needs access to tfm_suite_info */
 #include "kcompat.h"
 
+/**
+ * struct tfm_compress_info - read-only parameter block for a compression alg
+ * @user_name    : the name seen by the user (e.g. in sysfs)
+ **/
 struct tfm_compress_info {
 	char *user_name;
 };
 
 typedef sector_t chunk_t;
 
+/**
+ * struct nexus_stats - per-device statistics
+ * @state_count         : number of chunkdata chunks in each state
+ * @state_time_us       : total time spent in each state since counters cleared
+ * @state_time_samples  : number of transitions out of each state since cleared
+ * @cache_hits          : io_chunk reservations against chunks already in cache
+ * @cache_misses        : io_chunk reservations against chunks not in cache
+ * @cache_alloc_failures: chunkdata alloc attempts when every cd was busy
+ * @chunk_reads         : chunk reads from chunk store
+ * @chunk_writes        : chunk writebacks to chunk store
+ * @data_bytes_written  : (compressed) bytes of data written to chunk store
+ * @whole_chunk_updates : writes to an entire chunk from a single nexus_io
+ * @encrypted_discards  : expirations of chunkdata lines in ST_ENCRYPTED
+ * @chunk_errors        : entries of chunks into ST_ERROR
+ * @sectors_read        : sectors of completed read I/O through request queue
+ * @sectors_written     : sectors of completed write I/O through request queue
+ **/
 struct nexus_stats {
 	unsigned state_count[CD_NR_STATES];
 	unsigned state_time_us[CD_NR_STATES];
@@ -82,6 +114,17 @@ struct nexus_stats {
 	unsigned sectors_written;
 };
 
+/**
+ * struct nexus_tfm_state - per-CPU pre-allocated transform buffers
+ * @cipher              : cipher transforms
+ * @hash                : hash transforms
+ * @zlib_sg             : zlib - scratch sg for newly (un)compressed data
+ * @zlib_deflate        : zlib - deflate workspace
+ * @zlib_inflate        : zlib - inflate workspace
+ * @lzf_buf_compressed  : LZF - bounce buffer for compressed chunk data
+ * @lzf_buf_uncompressed: LZF - bounce buffer for uncompressed chunk data
+ * @lzf_compress        : LZF - compress workspace
+ **/
 struct nexus_tfm_state {
 	struct crypto_blkcipher *cipher[NEXUS_NR_CRYPTO];
 	struct crypto_hash *hash[NEXUS_NR_CRYPTO];
@@ -93,9 +136,43 @@ struct nexus_tfm_state {
 	void *lzf_compress;
 };
 
+/**
+ * struct nexus_dev - one Nexus block device
+ * @lh_devs              : list head for list of active devices (state.lock)
+ * @lh_run_requests      : list head for request thread (queues.lock)
+ * @class_dev            : for device model
+ * @gendisk              : for block layer
+ * @queue                : request queue for our block device (*)
+ * @queue_lock           : spinlock associated with @queue
+ * @chunk_bdev           : &block_device for our chunk store
+ * @cb_add_disk          : workqueue callback for ctr
+ * @requests             : queue for nexus_run_requests() (requests_lock)
+ * @requests_lock        : lock for @requests
+ * @requests_oom_timer   : out-of-memory callback for nexus_run_requests() (*)
+ * @lock                 : master device lock (r/w)
+ * @chunksize            : size of one chunk in bytes
+ * @cachesize            : size of chunkdata cache in entries
+ * @offset               : offset of first chunk in chunk store, in sectors
+ * @chunks               : number of chunks in this device
+ * @devnum               : device ID -- maps to range of minor numbers
+ * @owner                : UID that opened the character device
+ * @flags                : DEV_ flags (atomic bit operations)
+ * @stats                : various statistics (dev lock)
+ * @suite                : cipher suite
+ * @default_compression  : compress alg to use for new chunks
+ * @supported_compression: bitmask of compress algs we must support
+ * @chunkdata            : chunkdata table pointer
+ * @need_user            : "refcount" for userspace process (dev lock)
+ * @waiting_users        : wait queue for chardev (r/w)
+ *
+ * Fields must only be manipulated as specified in parentheses.  Fields not
+ * labeled should be considered read-only, and should not be manipulated except
+ * by the ctr/dtr and routines called by them.  Fields marked (*) have
+ * manipulation rules not easily summarized in 80 characters; see the code.
+ **/
 struct nexus_dev {
-	struct list_head lh_devs;  /* updates synced by state.lock in init.c */
-	struct list_head lh_run_requests;  /* ...queues.lock in thread.c */
+	struct list_head lh_devs;
+	struct list_head lh_run_requests;
 	
 	struct class_device *class_dev;
 	struct gendisk *gendisk;
@@ -115,7 +192,7 @@ struct nexus_dev {
 	chunk_t chunks;
 	int devnum;
 	uid_t owner;
-	unsigned long flags;  /* use only atomic bit operations */
+	unsigned long flags;
 	struct nexus_stats stats;
 	
 	enum nexus_crypto suite;
@@ -123,7 +200,6 @@ struct nexus_dev {
 	compressmask_t supported_compression;
 	
 	struct chunkdata_table *chunkdata;
-	/* Count of activities that need the userspace process to be there */
 	unsigned need_user;
 	wait_queue_head_t waiting_users;
 };
@@ -136,13 +212,24 @@ enum dev_bits {
 };
 #define dev_is_shutdown(dev) (list_empty(&dev->lh_devs))
 
+/**
+ * struct nexus_io_chunk - the part of a &nexus_io that applies to one chunk
+ * @lh_pending : list head for &chunkdata pending queue
+ * @parent     : the &nexus_io that contains us
+ * @cid        : the chunk number
+ * @orig_offset: byte offset into parent->orig_sg
+ * @offset     : byte offset into chunk
+ * @len        : length in bytes
+ * @flags      : CHUNK_ flags
+ * @error      : error code on I/O error, or zero
+ **/
 struct nexus_io_chunk {
 	struct list_head lh_pending;
 	struct nexus_io *parent;
 	chunk_t cid;
-	unsigned orig_offset;  /* byte offset into orig_sg */
-	unsigned offset;       /* byte offset into chunk */
-	unsigned len;          /* bytes */
+	unsigned orig_offset;
+	unsigned offset;
+	unsigned len;
 	unsigned flags;
 	int error;
 };
@@ -160,6 +247,23 @@ enum chunk_bits {
 #define CHUNK_COMPLETED       (1 << __CHUNK_COMPLETED)
 #define CHUNK_DEAD            (1 << __CHUNK_DEAD)
 
+/**
+ * struct nexus_io - wrapper data structure for a &struct request
+ * @dev      : the parent device
+ * @flags    : IO_ flags
+ * @first_cid: the first chunk to which this io applies
+ * @last_cid : the last chunk to which this io applies
+ * @prio     : the I/O priority from @orig_req
+ * @orig_req : the request we received from the block layer
+ * @orig_sg  : mapping of the bio/bio_vec tree into a scatterlist
+ * @chunks   : data structures for each chunk in the io
+ *
+ * A single &nexus_io consists of either a read or a write to a contiguous
+ * range of sectors, and may span multiple chunks.  Each chunk within the
+ * io is represented by a &struct nexus_io_chunk, and is processed
+ * independently until completion.  Completion is in-order to satisfy
+ * block-layer rules.
+ **/
 struct nexus_io {
 	struct nexus_dev *dev;
 	unsigned flags;

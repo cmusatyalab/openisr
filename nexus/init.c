@@ -34,7 +34,14 @@
 static struct class *class;
 int blk_major;
 
-static struct {
+/**
+ * struct state - singleton tracking global, modifiable state
+ * @lock       : lock for the other fields
+ * @devs       : list of non-shutdown &nexus_dev (for nexus_open())
+ * @devnums    : bitmap of allocated device numbers (for minornum allocation)
+ * @cache_pages: count of &struct page allocated to all &nexus_dev caches
+ **/
+static struct state {
 	spinlock_t lock;
 	struct list_head devs;
 	DECLARE_BITMAP(devnums, DEVICES);

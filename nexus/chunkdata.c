@@ -27,8 +27,6 @@
 #include <linux/wait.h>
 #include "defs.h"
 
-/* XXX rename all this */
-
 enum cd_bits {
 	__CD_USER,           /* Was given to userspace; waiting for reply */
 	__CD_NR_BITS
@@ -54,6 +52,33 @@ enum cd_state {
 	NR_STATES
 };
 
+/**
+ * struct chunkdata - one chunk in the chunkdata cache/state machine
+ * @lh_bucket            : list head for &chunkdata_table bucket
+ * @lh_lru               : list head for LRU list
+ * @lh_user              : list head for usermsg queue
+ * @lh_need_update       : list head for CB_UPDATE_CHUNK
+ * @lh_pending_completion: list head for CB_COMPLETE_IO
+ * @lh_need_tfm          : list head for CB_CRYPTO
+ * @table                : pointer to parent &chunkdata_table
+ * @cid                  : the chunk number for this chunk
+ * @size;                : encrypted size including padding, in bytes
+ * @compression          : compression type
+ * @pending              : queue of pending &nexus_io_chunk for this chunk
+ * @remaining            : bytes which have not yet completed chunk store I/O
+ * @error                : error code if in ST_ERROR
+ * @flags                : CD_ flags
+ * @state                : current state in state machine
+ * @state_begin          : when we entered @state (usec since epoch)
+ * @key                  : key as of last encrypt/decrypt
+ * @tag                  : tag as of last encrypt/decrypt
+ * @sg                   : scatterlist pointing to chunk contents
+ *
+ * &struct chunkdata is protected by the dev lock, with a few exceptions.
+ * The list heads for thread callbacks are updated under the appropriate
+ * locks by thread.c.  @remaining is not protected by any lock; it may be
+ * updated from hardirq context.
+ **/
 struct chunkdata {
 	struct list_head lh_bucket;
 	struct list_head lh_lru;
@@ -63,19 +88,31 @@ struct chunkdata {
 	struct list_head lh_need_tfm;
 	struct chunkdata_table *table;
 	chunk_t cid;
-	unsigned size;                   /* encrypted size including padding */
-	enum nexus_compress compression; /* compression type */
+	unsigned size;
+	enum nexus_compress compression;
 	struct list_head pending;
-	atomic_t remaining;              /* bytes, for I/O */
+	atomic_t remaining;
 	int error;
 	unsigned flags;
 	enum cd_state state;
-	u64 state_begin;                 /* usec since epoch */
+	u64 state_begin;
 	char key[NEXUS_MAX_HASH_LEN];
 	char tag[NEXUS_MAX_HASH_LEN];
 	struct scatterlist *sg;
 };
 
+/**
+ * struct chunkdata_table - chunkdata state for a single &nexus_dev
+ * @dev            : the parent &nexus_dev (r/o)
+ * @buckets        : the number of buckets in @hash (r/o)
+ * @busy_count     : count of &chunkdata in non-idle state
+ * @pending_updates: length of CB_UPDATE_CHUNK queue
+ * @lru            : LRU list for chunkdata_get()
+ * @user           : usermsg queue for chardev
+ * @hash           : &chunkdata hash table -- array of @buckets list_heads
+ *
+ * &chunkdata_table is protected by the dev lock.
+ **/
 struct chunkdata_table {
 	struct nexus_dev *dev;
 	unsigned buckets;

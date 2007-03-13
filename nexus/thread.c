@@ -27,7 +27,17 @@
 #include "defs.h"
 
 /* XXX percpu vars */
-static struct {
+
+/**
+ * struct threads - singleton for per-CPU thread state
+ * @lock          : lock for the other fields
+ * @task          : task struct for a given per-CPU thread, or NULL if none
+ * @count         : number of running threads
+ * @ts            : per-CPU preallocated transforms and compress buffers
+ * @suite_users   : number of devs holding a reference to each suite
+ * @compress_users: number of devs holding a reference to each compress alg
+ **/
+static struct threads {
 	MUTEX lock;
 	struct task_struct *task[NR_CPUS];
 	int count;
@@ -36,20 +46,43 @@ static struct {
 	unsigned compress_users[NEXUS_NR_COMPRESS];
 } threads;
 
-static struct {
-	spinlock_t lock;       /* may be taken in interrupt context */
+/**
+ * struct queues - singleton for nexus_thread
+ * @lock: lock for the other fields; may be taken in interrupt context
+ * @list: queue of pending tasks for each callback type
+ * @wq  : wait queue for new work
+ **/
+static struct queues {
+	spinlock_t lock;
 	struct list_head list[NR_CALLBACKS];
 	wait_queue_head_t wq;
 } queues;
 
-static struct {
+/**
+ * struct pending_io - singleton for nexus_io_thread
+ * @lock: lock for the other fields
+ * @head: the next bio to be submitted
+ * @tail: the last bio in line to be submitted
+ * @wq  : wait queue for new work
+ *
+ * &struct bio does not contain a list_head that we can use to enqueue it;
+ * bios are linked into a &struct request via a singly linked list.  Thus,
+ * @head and @tail are used to implement a singly linked list.
+ **/
+static struct pending_io {
 	spinlock_t lock;
 	struct bio *head;
 	struct bio *tail;
 	wait_queue_head_t wq;
 } pending_io;
 
-static struct {
+/**
+ * struct pending_requests - singleton for nexus_request_thread
+ * @lock: lock for the other fields
+ * @list: queue of pending tasks
+ * @wq  : wait queue for new work
+ **/
+static struct pending_requests {
 	spinlock_t lock;
 	struct list_head list;
 	wait_queue_head_t wq;
