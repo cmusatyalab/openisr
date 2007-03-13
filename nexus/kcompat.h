@@ -87,7 +87,11 @@ static inline int mutex_is_locked(MUTEX *lock)
 
 /***** Device model/sysfs ****************************************************/
 
-/* Debug use only */
+/**
+ * read_refcount_debug - return the current refcount of @kobj
+ *
+ * This is for debug use only.
+ **/
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
 static inline int read_refcount_debug(struct kobject *kobj)
 {
@@ -448,6 +452,14 @@ static inline int cryptoapi_hash(struct crypto_hash *tfm,
 #endif
 
 
+/**
+ * sha1_impl_is_suboptimal - return true if we want a better SHA-1
+ *
+ * Checks the underlying implementation of the supplied @tfm.  If @tfm
+ * uses the generic C implementation and we're on an architecture that has
+ * an optimized assembly implementation, returns true.  Otherwise returns
+ * false.
+ **/
 #if (defined(CONFIG_X86) || defined(CONFIG_UML_X86))
 #ifdef CONFIG_64BIT
 #define SHA1_ACCEL_ARCH "x86_64"
