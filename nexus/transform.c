@@ -730,6 +730,7 @@ int compress_add(struct nexus_tfm_state *ts, enum nexus_compress alg)
 	case NEXUS_COMPRESS_NONE:
 		break;
 	case NEXUS_COMPRESS_ZLIB:
+		BUG_ON(ts->zlib_sg != NULL);
 		ts->zlib_sg=alloc_scatterlist(MAX_CHUNKSIZE);
 		if (ts->zlib_sg == NULL)
 			return -ENOMEM;
@@ -751,6 +752,7 @@ int compress_add(struct nexus_tfm_state *ts, enum nexus_compress alg)
 		}
 		break;
 	case NEXUS_COMPRESS_LZF:
+		BUG_ON(ts->lzf_buf_compressed != NULL);
 		ts->lzf_buf_compressed=vmalloc(MAX_CHUNKSIZE);
 		if (ts->lzf_buf_compressed == NULL)
 			return -ENOMEM;
