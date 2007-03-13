@@ -27,6 +27,7 @@
 #define NEXUS_MAX_DEVICE_LEN 64
 #define NEXUS_MAX_HASH_LEN 32
 
+/* ioctls */
 #define NEXUS_IOC_REGISTER      _IOWR(0x1a, 0, struct nexus_setup)
 #define NEXUS_IOC_UNREGISTER      _IO(0x1a, 1)
 
@@ -51,33 +52,95 @@ enum nexus_compress {
 	NEXUS_NR_COMPRESS
 };
 
-/* This structure must have an identical layout on 32-bit and 64-bit systems.
-   We don't use enum types for crypto and compress fields because the compiler
-   could pick any size for them */
+/**
+ * struct nexus_setup - information exchanged during NEXUS_IOC_REGISTER
+ * @chunk_device     : path to the chunk-store block device (k)
+ * @offset           : starting sector of first chunk in chunk store (k)
+ * @chunksize        : chunk size in bytes (k)
+ * @cachesize        : size of in-core chunk cache in entries (k)
+ * @crypto           : &enum nexus_crypto choice for this device (k)
+ * @compress_default : &enum nexus_compress choice for new chunks (k)
+ * @compress_required: bitmask of compression algorithms we must support (k)
+ * @pad              : reserved
+ * @chunks           : number of chunks the chunk store will hold (u)
+ * @major            : the major number of the allocated block device (u)
+ * @num_minors       : number of minor numbers given to each Nexus blkdev (u)
+ * @index            : the index of this block device (u)
+ * @hash_len         : length of key and tag values in bytes (u)
+ *
+ * Fields labeled (k) are provided to the kernel on NEXUS_IOC_REGISTER.
+ * Fields labeled (u) are filled in by the kernel when the ioctl returns.
+ *
+ * @index can be used to determine the name of the device node (e.g.,
+ * printf("/dev/openisr%c", 'a' + index)).
+ *
+ * @compress_required is a bitmask with bits of the form
+ * (1 << NEXUS_COMPRESS_FOO).
+ *
+ * This structure must have an identical layout on 32-bit and 64-bit systems.
+ * We don't use enum types for crypto and compress fields because the compiler
+ * is allowed to pick any size for them.
+ **/
 struct nexus_setup {
-	__u8 chunk_device[NEXUS_MAX_DEVICE_LEN]; /* to kernel */
-	__u64 offset;                            /* to kernel */
-	__u32 chunksize;                         /* to kernel */
-	__u32 cachesize;                         /* to kernel */
-	__u8 crypto;                      /* to kernel, enum nexus_crypto */
-	__u8 compress_default;            /* to kernel, enum nexus_compress */
-	compressmask_t compress_required; /* to kernel, bitmask */
+	/* To kernel: */
+	__u8 chunk_device[NEXUS_MAX_DEVICE_LEN];
+	__u64 offset;
+	__u32 chunksize;
+	__u32 cachesize;
+	__u8 crypto;
+	__u8 compress_default;
+	compressmask_t compress_required;
+	
 	__u32 pad;
-	__u64 chunks;                            /* to user */
-	__u32 major;                             /* to user */
-	__u32 num_minors;                        /* to user */
-	__u32 index;                             /* to user */
-	__u8 hash_len;                           /* to user */
+	
+	/* To user: */
+	__u64 chunks;
+	__u32 major;
+	__u32 num_minors;
+	__u32 index;
+	__u8 hash_len;
 };
 
-/* This structure must have an identical layout on 32-bit and 64-bit systems.
-   We don't use enum types for crypto and compress fields because the compiler
-   could pick any size for them */
+/**
+ * struct nexus_message - a message sent over the character device
+ * @chunk      : the chunk number
+ * @length     : the data length (may be < chunksize if compressed)
+ * @type       : message type
+ * @compression: compression type for this chunk (&enum nexus_compress)
+ * @key        : encryption key
+ * @tag        : CAS tag
+ *
+ * This structure must have an identical layout on 32-bit and 64-bit systems.
+ * We don't use enum types for crypto and compress fields because the compiler
+ * is allowed to pick any size for them.
+ *
+ * NEXUS_MSGTYPE_GET_META:
+ * Sent from kernel to userspace to request information on a chunk.  @chunk is
+ * valid.  Userspace must respond with SET_META or META_HARDERR.  Responses do
+ * not need to be in the same order as requests.
+ *
+ * NEXUS_MSGTYPE_UPDATE_META:
+ * Sent from kernel to userspace to report new metadata for a chunk.  All
+ * fields are valid.  No reply is necessary.
+ *
+ * NEXUS_MSGTYPE_SET_META:
+ * Sent from userspace to kernel to supply requested information for a chunk.
+ * May only be sent in response to GET_META; unsolicited SET_META is not
+ * allowed.  All fields must be valid.
+ *
+ * NEXUS_MSGTYPE_META_HARDERR:
+ * Sent from userspace to kernel to report inability to supply the information
+ * requested via GET_META.  May only be sent in response to GET_META.  Only
+ * @chunk need be valid.  This causes the chunk to enter an state in which all
+ * I/O to the chunk will be failed with an I/O error.  The chunk will remain
+ * in this state until it ages out of cache or the entire chunk is overwritten
+ * in a single I/O.
+ **/
 struct nexus_message {
 	__u64 chunk;
 	__u32 length;
 	msgtype_t type;
-	__u8 compression;                  /* enum nexus_compress */
+	__u8 compression;
 	__u8 key[NEXUS_MAX_HASH_LEN];
 	__u8 tag[NEXUS_MAX_HASH_LEN];
 };
