@@ -366,9 +366,6 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 	   to hold MAX_CHUNKSIZE bytes).  So we swap individual page
 	   pointers. */
 	scatterlist_flip(sg, ts->zlib_sg, (size + PAGE_SIZE - 1) / PAGE_SIZE);
-	/* We write the whole chunk out to disk, so make sure we're not
-	   leaking data. */
-	scatterlist_zero(sg, size, dev->chunksize - size);
 	return size;
 }
 
@@ -488,10 +485,7 @@ static int compress_chunk_lzf(struct nexus_dev *dev,
 		/* Compressed data is too big */
 		return -EFBIG;
 	}
-	/* We write the whole chunk out to disk, so make sure we're not
-	   leaking data. */
-	memset(ts->lzf_buf_compressed + size, 0, dev->chunksize - size);
-	scatterlist_transfer(sg, ts->lzf_buf_compressed, dev->chunksize, WRITE);
+	scatterlist_transfer(sg, ts->lzf_buf_compressed, size, WRITE);
 	return size;
 }
 
@@ -522,22 +516,34 @@ static int decompress_chunk_lzf(struct nexus_dev *dev,
  *
  * Returns the compressed size, -EFBIG if the chunk isn't worth storing
  * compressed (because it didn't compress well), or -EIO on error.  Must
- * be called from process context.  @sg is updated in place.
+ * be called from process context.  @sg is updated in place, and the tail
+ * is zeroed if the compressed size is less than chunksize.
  **/
 int compress_chunk(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			struct scatterlist *sg, enum nexus_compress type)
 {
+	int size=-EIO;
+	
 	switch (type) {
 	case NEXUS_COMPRESS_NONE:
-		return dev->chunksize;
+		size=dev->chunksize;
+		break;
 	case NEXUS_COMPRESS_ZLIB:
-		return compress_chunk_zlib(dev, ts, sg);
+		size=compress_chunk_zlib(dev, ts, sg);
+		break;
 	case NEXUS_COMPRESS_LZF:
-		return compress_chunk_lzf(dev, ts, sg);
+		size=compress_chunk_lzf(dev, ts, sg);
+		break;
 	case NEXUS_NR_COMPRESS:
 		BUG();
 	}
-	return -EIO;
+	
+	if (size >= 0 && size < dev->chunksize) {
+		/* We write the whole chunk out to disk, so make sure we're not
+		   leaking data. */
+		scatterlist_zero(sg, size, dev->chunksize - size);
+	}
+	return size;
 }
 
 /**
