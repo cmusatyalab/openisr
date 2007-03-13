@@ -35,6 +35,11 @@ object)
 	FILENAME=revision.c
 	cat > $FILENAME-new <<- EOF
 		const char *rcs_revision = "$REV";
+		
+		#ifdef __KERNEL__
+		#include <linux/module.h>
+		MODULE_INFO(revision, "$REV");
+		#endif
 	EOF
 	;;
 header)

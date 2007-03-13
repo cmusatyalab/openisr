@@ -73,8 +73,7 @@ static const struct tfm_compress_info compress_desc[] = {
  **/
 const struct tfm_suite_info *suite_info(enum nexus_crypto suite)
 {
-	BUILD_BUG_ON((sizeof(suite_desc)/sizeof(suite_desc[0])) !=
-				NEXUS_NR_CRYPTO);
+	BUILD_BUG_ON(ARRAY_SIZE(suite_desc) != NEXUS_NR_CRYPTO);
 	BUG_ON(suite < 0 || suite >= NEXUS_NR_CRYPTO);
 	return &suite_desc[suite];
 }
@@ -84,8 +83,7 @@ const struct tfm_suite_info *suite_info(enum nexus_crypto suite)
  **/
 const struct tfm_compress_info *compress_info(enum nexus_compress alg)
 {
-	BUILD_BUG_ON((sizeof(compress_desc)/sizeof(compress_desc[0])) !=
-				NEXUS_NR_COMPRESS);
+	BUILD_BUG_ON(ARRAY_SIZE(compress_desc) != NEXUS_NR_COMPRESS);
 	BUG_ON(alg < 0 || alg >= NEXUS_NR_COMPRESS);
 	return &compress_desc[alg];
 }

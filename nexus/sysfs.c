@@ -34,15 +34,11 @@ static ssize_t drv_show_revision(struct class *c, char *buf)
 }
 
 #ifdef DEBUG
-/* Redundant with /sys/module/openisr/parameters/debug_mask, but more
-   convenient */
 static ssize_t drv_show_debug(struct class *c, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "0x%x\n", debug_mask);
 }
 
-/* Redundant with /sys/module/openisr/parameters/debug_mask, but more
-   convenient */
 static ssize_t drv_store_debug(struct class *c, const char *buf, size_t len)
 {
 	char *endp;

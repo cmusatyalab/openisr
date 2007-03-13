@@ -50,7 +50,8 @@ static struct state {
 
 #ifdef DEBUG
 unsigned debug_mask;
-module_param(debug_mask, int, S_IRUGO|S_IWUSR);
+module_param(debug_mask, int, 0);
+MODULE_PARM_DESC(debug_mask, "initial bitmask for debug messages");
 #endif
 
 /**
@@ -761,5 +762,4 @@ module_exit(nexus_shutdown);
 
 MODULE_AUTHOR("Benjamin Gilbert <bgilbert@cs.cmu.edu>");
 MODULE_DESCRIPTION("OpenISR virtual block device");
-/* We must use a GPL-compatible license to use the crypto API */
 MODULE_LICENSE("GPL");

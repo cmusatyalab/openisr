@@ -216,7 +216,7 @@ static int nexus_io_thread(void *ignored)
 		} else {
 			if (!kthread_should_stop())
 				schedule();
-			finish_wait(&queues.wq, &wait);
+			finish_wait(&pending_io.wq, &wait);
 		}
 		try_to_freeze();
 	}
