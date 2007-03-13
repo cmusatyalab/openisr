@@ -290,11 +290,17 @@ enum callback {
 	NR_CALLBACKS
 };
 
+/**
+ * mutex_lock_thread - lock a mutex from kthread context
+ * @lock: the mutex
+ *
+ * Kernel threads can't receive signals, so they should never be interrupted.
+ * On the other hand, if they're in uninterruptible sleep they contribute to
+ * the load average.  So from thread context, we do an interruptible sleep
+ * with no provision for catching signals.
+ **/
 static inline void mutex_lock_thread(MUTEX *lock)
 {
-	/* Kernel threads can't receive signals, so they should never
-	   be interrupted.  On the other hand, if they're in uninterruptible
-	   sleep they contribute to the load average. */
 	if (mutex_lock_interruptible(lock))
 		BUG();
 }
@@ -331,19 +337,27 @@ static inline void mutex_lock_thread(MUTEX *lock)
 #endif
 #define ndebug(args...) do {} while (0)
 
-/* 512-byte sectors per chunk */
+/**
+ * chunk_sectors - return the number of 512-byte sectors in one chunk
+ **/
 static inline sector_t chunk_sectors(struct nexus_dev *dev)
 {
 	return dev->chunksize/512;
 }
 
-/* PAGE_SIZE-sized pages per chunk, rounding up in case of a partial page */
+/**
+ * chunk_pages - return the number of PAGE_SIZE-sized pages per chunk
+ *
+ * We round up in case of a partial page.
+ **/
 static inline unsigned chunk_pages(struct nexus_dev *dev)
 {
 	return (dev->chunksize + PAGE_SIZE - 1) / PAGE_SIZE;
 }
 
-/* The sector number of the beginning of the chunk containing @sect */
+/**
+ * chunk_start - return the sector# of the start of the chunk containing @sect
+ **/
 static inline sector_t chunk_start(struct nexus_dev *dev, sector_t sect)
 {
 	/* We can't use the divide operator on a sector_t, because sector_t
@@ -352,19 +366,26 @@ static inline sector_t chunk_start(struct nexus_dev *dev, sector_t sect)
 	return sect & ~(chunk_sectors(dev) - 1);
 }
 
-/* The byte offset of sector @sect within its chunk */
+/**
+ * chunk_offset - return the byte offset of sector @sect within its chunk
+ **/
 static inline unsigned chunk_offset(struct nexus_dev *dev, sector_t sect)
 {
 	return 512 * (sect - chunk_start(dev, sect));
 }
 
-/* The number of bytes between @offset and the end of the chunk */
+/**
+ * chunk_remaining - return the number of bytes between @offset and chunk end
+ * @offset: the offset into the chunk
+ **/
 static inline unsigned chunk_remaining(struct nexus_dev *dev, unsigned offset)
 {
 	return dev->chunksize - offset;
 }
 
-/* The chunk number of @sect */
+/**
+ * chunk_of - return the chunk number of @sect
+ **/
 static inline chunk_t chunk_of(struct nexus_dev *dev, sector_t sect)
 {
 	/* Again, no division allowed */
@@ -372,14 +393,18 @@ static inline chunk_t chunk_of(struct nexus_dev *dev, sector_t sect)
 	return sect >> shift;
 }
 
-/* The sector number corresponding to the first sector of @chunk */
+/**
+ * chunk_to_sector - return sector number for the first sector of chunk @cid
+ **/
 static inline sector_t chunk_to_sector(struct nexus_dev *dev, chunk_t cid)
 {
 	unsigned shift=fls(chunk_sectors(dev)) - 1;
 	return cid << shift;
 }
 
-/* The number of chunks in this io */
+/**
+ * io_chunks - return the number of chunks in this io
+ **/
 static inline unsigned io_chunks(struct nexus_io *io)
 {
 	return io->last_cid - io->first_cid + 1;
