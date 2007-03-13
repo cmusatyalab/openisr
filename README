@@ -166,3 +166,10 @@ SHA-1 Accelerator
 	built-in SHA-1 implementation at reduced performance.  This component
 	is licensed under version 2.1 of the GNU Lesser General Public License
 	and can be found in the "sha1" directory of the source tree.
+
+ACKNOWLEDGEMENTS
+----------------
+
+Internet Suspend/Resume is a registered trademark and OpenISR is a trademark
+of Carnegie Mellon University.  All other trademarks are the property of their
+respective owners.
