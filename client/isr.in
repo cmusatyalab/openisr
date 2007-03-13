@@ -95,6 +95,7 @@ sub need_checked_out ();
 sub need_network ();
 sub acquire_lock ($$);
 sub release_locks ();
+sub exit_handler ($);
 
 #########################
 # Section 1. Main routine
@@ -164,8 +165,9 @@ our %syscfg = ();
 #
 # Define what we do on shutdown (placed here for clarity)
 #
-END {
-    my $saved_status=$?;
+sub exit_handler ($) {
+    my $status = shift;
+    
     my $pid;
     
     return if $no_shutdown;
@@ -187,9 +189,17 @@ END {
     system("rm -rf $isrdir/tmplast*")
 	if $isrdir;
     
-    message("EXIT", $saved_status);
+    message("EXIT", $status);
     release_locks();
-    $? = $saved_status;
+}
+
+#
+# Run the exit handler during normal termination
+#
+END {
+    my $status=$?;
+    exit_handler($status);
+    $? = $status;
 }
 
 #
@@ -197,8 +207,13 @@ END {
 #
 $SIG{"INT"} = sub {
     print "\n";
-    message("INFO", "Caught SIGINT"); 
-    exit 1; 
+    message("INFO", "Caught SIGINT");
+    # Call the exit handler, then unregister the signal handler and send the
+    # signal again (whereupon we will die).  This ensures that our exit status
+    # properly reports that we were killed by a signal.
+    exit_handler(-1);
+    $SIG{"INT"} = 'DEFAULT';
+    kill("INT", $$);
 };
 
 #
