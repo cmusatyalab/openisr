@@ -14,6 +14,9 @@ REQUIREMENTS
 - VMware or VMware Player (other VMMs to follow)
 - An ISR server
 
+This release requires a (slightly modified) ISR-3 server.  Future releases will
+include a completely new server implementation.
+
 The OpenISR system has not been tested on architectures other than 32-bit x86.
 
 INSTALLATION
