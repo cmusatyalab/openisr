@@ -6,6 +6,9 @@
 - Add "nexus_debug" helper program to list/show/set Nexus debug bits
 - Convert build system to GNU Autotools
 - Improve performance of "isr stat"
+- Improve reliability of "isr disconnect"
+- Allow the checkout process to be cancelled with ctrl-C during memory image
+  download
 - Add support for null encryption in Nexus and its test harness
 - Eliminate "hostid" per-system unique identifier.  Upgrades from 0.8 will
   retain the identifier in /etc/openisr/hostid, but it will be ignored.
