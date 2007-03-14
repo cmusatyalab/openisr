@@ -1,0 +1,232 @@
+This is an (incomplete) high-level description of the Nexus kernel module.
+
+=== Theory of operation
+
+Nexus is a Linux 2.6 kernel module implementing a convergently encrypting
+passthrough block device.  Nexus exports a block device in /dev/openisr*
+which chunks, compresses, and convergently encrypts the data written to it,
+and then stores it to another block device (the "chunk store") which serves
+as a backing store for the Nexus block device.  Nexus maintains an in-memory
+cache of recently-accessed chunks and their associated metadata, but
+responsibility for maintaining metadata (including encryption keys) for the
+full set of chunks lies with a userspace process.  This process is involved
+with all stages of the Nexus device lifecycle: it requests creation of a
+device, manages its keyring, and ultimately requests that the device be
+torn down.
+
+Nexus exports a character device, /dev/openisrctl.  Userspace processes open
+the character device and call the NEXUS_IOC_REGISTER ioctl to create a block
+device, which then persists until NEXUS_IOC_UNREGISTER is called or the
+character device fd is closed.  A chardev fd can be bound to at most one
+block device over its lifetime, and copies of the fd (via dup() or fork())
+are interchangeable with the original.  The unregister logic only runs when
+the last copy of the fd has closed.
+
+After registration has successfully completed, messages are exchanged via
+read() and write() over the character device.  O_NONBLOCK and select()/poll()
+work as expected.  When Nexus needs metadata for a chunk, it sends a message
+to userspace requesting that metadata (key, tag, etc.).  Userspace then replies
+with the key data or with a message saying that it cannot produce the key; the
+latter case causes I/O errors to be issued for I/O to the affected chunk.
+These replies need not be in the same order as the requests, and may be
+delayed arbitrarily (e.g., while userspace downloads the chunk and writes
+it to the chunk store).  When Nexus writes a chunk back to disk, it sends a
+message to userspace with the new metadata.
+
+When the userspace process wants to shut down a block device, it can use the
+NEXUS_IOC_UNREGISTER ioctl or just close the chardev fd.  NEXUS_IOC_UNREGISTER
+is preferred, as it will fail with an error code if the block device is
+currently in use by another process.  Closing the fd, in contrast, will cause
+all further I/O to the block device to produce I/O errors.
+NEXUS_IOC_UNREGISTER will only succeed if there are no open fds to the block
+device and if no chunk writeback is currently pending.  Userspace can wait
+until an unregister would succeed by using the POLLPRI bit with poll() or the
+exceptfd set with select(). Note that userspace must be prepared for
+unregistration to fail even after these checks have passed, since someone may
+have opened the block device in the meantime.
+
+Once unregistration has succeeded, the only valid operation on the chardev
+fd is to close it.  sysfs entries associated with the block device will
+persist until the fd is closed, allowing userspace to collect statistics
+after the block device has been shut down.
+
+=== Features and Limitations
+
+Nexus is able to handle chunks within a device which are compressed with
+different algorithms.  All chunks written in a session are compressed with the
+same algorithm (chosen at registration time), but chunks read from disk
+may be compressed with any of a set of algorithms also chosen at registration
+time.  Any chunk whose compressed size is larger than its uncompressed size
+is stored uncompressed instead.  All chunks associated with a given device
+must use the same crypto suite.
+
+Nexus maintains a sysfs directory in /sys/class/openisr.  There are global
+attributes giving the userspace protocol version and Subversion revision
+number of the module, and per-device directories containing a variety of
+statistics and debugging attributes.
+
+Nexus tries to spread crypto processing across all CPUs in the system.
+Cipher, hash, and compression work is processed through a global queue served
+by one kernel thread per CPU.
+
+The Subversion revision of the module can be determined via the message
+printed to the kernel log at load time, the /sys/class/openisr/revision
+file, or the "revision" modinfo property.
+
+Nexus can currently export no more than 26 block devices at a time.
+
+=== Debugging
+
+Nexus has a debug_mask parameter controlling a variety of debug messages which
+can be printed to the kernel log.  (This support is only enabled if DEBUG
+is defined in defs.h.)  The debug_mask parameter can be passed to the module
+at load-time (modprobe openisr debug_mask=0x1) and can be changed thereafter
+by writing to /sys/class/openisr/debug_mask.  The "nexus_debug" helper program
+(normally installed in /usr/lib/openisr) can query or set the debug bits in a
+human-readable way, or produce a debug mask which can be passed to the
+load-time parameter.
+
+There is a per-device "unwedge" attribute in sysfs which can be used if
+the device becomes wedged.  Here are the strings which can be written to
+that file:
+- "cache" - start pending work for all cached chunks
+- "threads" - wake up all kernel threads
+- "elevator" - force the request function to be called
+
+The "states" sysfs attribute gives the number of cache lines in each state
+of the cache's state machine.  The "state_times" attribute gives the average
+number of microseconds a chunk spends in each state; the counters for this
+attribute are reset every time the attribute is read.  The "readstats" program
+(normally installed in /usr/lib/openisr) can display this data in a
+human-readable form; run it with something like 
+"/usr/lib/openisr/readstats /sys/class/openisr/openisra/states".
+
+The Nexus code ships with a test program which exports and services a block
+device via the Nexus kernel module.  This code is not built by default; use
+"make test" in the "tools" source directory to build it.  The program has
+two modes; the first mode creates a keyring ("storefile") and populates a
+chunk store to match it, and the second creates and services a Nexus block
+device using that keyring and chunk store.
+
+=== Coding style
+
+We use the kernel coding style, more or less.  Continuation lines should be
+indented three tabs to the right of the original line, where possible.  As in
+the rest of the kernel, lines should never exceed column 80.
+
+=== Refcounting
+
+Each nexus_dev has two reference counts.  The one embedded in dev->class_dev
+includes references held by chardev fds, blockdev fds, sysfs attribute fds,
+and chunkdata thread callbacks.  This refcount governs deallocation of the
+nexus_dev structures; when it reaches zero, the dtr is called.
+
+The second refcount is dev->need_user and includes references held by
+blockdev fds and chunkdata lines which are in a non-idle state (that is,
+those which could not be safely freed from their current state).  These
+represent users which cannot safely complete operations if the userspace
+process is not present and able to service key requests/updates.  If the
+need_user refcount is not zero, NEXUS_IOC_UNREGISTER will not succeed.
+The chardev fd may be closed when need_user is not zero (e.g. if the
+userspace program crashes); in this case, subsequent chunkdata updates and
+I/O to the Nexus block device will fail.
+
+The refcount of the openisr module itself is manipulated by the device
+constructor and destructor in such a way that the module is guaranteed not
+to be unloadable while any nexus_dev exists.
+
+=== Device setup and teardown
+
+The device constructor initializes the class_dev refcount as soon as possible.
+After the refcount is available, device shutdown occurs through the destructor
+even if the shutdown is due to an error occurring later on in the constructor.
+This means that all teardown code called from the dtr must be able to handle
+the case that the corresponding setup code has not yet been called.  (Or,
+the teardown call can be made conditional in the dtr, but the other approach
+is preferred.)  It also means that setup code does not need to back out
+allocations upon failure if the corresponding teardown code knows how to
+handle a partially-allocated structure.
+
+=== Thread model
+
+For reasons of simplicity, scheduling latency, and CPU accounting, Nexus does
+as much work as possible from process context.  Module initialization,
+device setup and teardown, and chardev support are, of course, handled in
+the context of the invoking process.  Most other work is handled from a
+variety of kernel threads which are set up for this purpose.  Workqueues
+are not used (except for one tiny case during device setup), as this gives us
+greater flexibility to schedule tasks on particular CPUs and in a
+task-priority-aware way.
+
+=== Request queue interface
+
+Code which interacts with the Linux block layer is isolated in request.c
+(except for ctr/dtr code in init.c).  The locking regime imposed by the
+calling convention for the request function is rather punitive, so incoming
+requests are not processed directly from the request function; instead, they
+are immediately placed onto a linked list for later processing from a thread
+callback.  The callback chunks the I/O and requests a "reservation" for each
+chunk with the chunkdata code.  The chunkdata code does its thing, and when
+a chunk's reservation comes up, chunkdata calls back into request.c to ask that
+the actual data copy be performed.  Chunks in a request can finish processing
+out of order, depending on the flow of other requests in the system.  However,
+the request code ensures that completions within a request are reported back
+to the block layer in order, as the block layer expects.
+
+=== chunkdata state machine
+
+The scheduling of I/O within a nexus_dev is coordinated by chunkdata.c.  The
+chunkdata code coordinates read-in and write-out of chunk data, encryption,
+key requests and updates to userspace, and sequencing of I/O received to
+the Nexus block device.  (chunkdata preserves the ordering of reads and writes
+to a chunk's buffer in order to protect data integrity.)
+
+Requests enter the chunkdata system by means of "reservations", which provide
+a guarantee that all chunks within the request have been queued for processing.
+The chunkdata code works with a fixed set of chunk buffers, allocated at setup
+time; if a request attempts to obtain a reservation when insufficient chunk
+buffers are available, the reservation will be denied and the request code
+will need to try again later.
+
+Each chunk buffer has associated with it a state in the chunkdata state
+machine, which describes what is currently happening (or what needs to happen)
+with the chunk.  The core state machine processing occurs in __run_chunk().
+
+=== Transform allocation
+
+Most operations on a nexus_dev or its subordinate data structures are protected
+by the device lock.  However, we want to perform crypto and compression
+operations on all CPUs in parallel, even if only one nexus_dev is present.
+This is accomplished by performing the transforms in per-CPU threads, without
+the dev lock held, and then taking the dev lock to update the chunk state
+after the transforms have completed.  This means that the chunkdata scatterlist
+can be updated without the dev lock held.
+
+Each per-CPU worker thread is allocated its own cryptoapi transforms and
+compression buffers, depending on what crypto suites and compression algorithms
+are in use in the system.  The thread code keeps these allocations uniform,
+such that every thread is able to process any chunk which may be submitted
+from any nexus_dev.  During device setup, the ctr registers the suite and
+algorithms with the thread code, which updates refcounts on each suite
+and algorithm and allocates any required transforms or buffers.  If CPUs come
+or go (via CPU hotplug), the thread code performs the necessary allocations
+or deallocations.  When the device dtr is called, the thread code updates the
+refcounts and, if necessary, frees any unused transforms or compression
+buffers allocated to each worker thread.
+
+=== kcompat
+
+Nexus works on several kernel versions (as of this writing, it supports 2.6.8
+through 2.6.20).  kcompat.h includes compatibility functions and macros which
+allow this to work.  The general approach is to always use the most recent
+kernel API in the Nexus codebase, and provide wrappers for older kernels in
+kcompat.h.  When this is not possible, a Nexus-specific function is defined in
+kcompat.h and used from the Nexus codebase, and kcompat.h maps that function to
+the proper code for each kernel version.
+
+kcompat wrappers should be static inline functions instead of macros except
+when necessary or when their code is really really tiny.
+
+kcompat.h generally tests KERNEL_VERSION_CODE to determine which wrappers to
+build for a particular kernel.  As a result, builds on prerelease kernels
+may fail.  kcompat.h only attempts to provide support for released kernels.
