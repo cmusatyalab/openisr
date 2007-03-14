@@ -205,8 +205,7 @@ END {
 #
 # Install a signal handler that catches ctrl-c
 #
-$SIG{"INT"} = sub {
-    print "\n";
+sub sigint_handler () {
     message("INFO", "Caught SIGINT");
     # Call the exit handler, then unregister the signal handler and send the
     # signal again (whereupon we will die).  This ensures that our exit status
@@ -215,6 +214,8 @@ $SIG{"INT"} = sub {
     $SIG{"INT"} = 'DEFAULT';
     kill("INT", $$);
 };
+
+$SIG{"INT"} = \&sigint_handler;
 
 #
 # Parse config files
@@ -509,13 +510,14 @@ sub checkout ($$$$) {
     my $diskinfo = `df -P -k $isrhome | tail -n 1`;
     my ($diskpartition, $diskblocks, $diskused, $diskspace, $diskpercent, $diskroot) = split(" ", $diskinfo);
 
-    my $errmsg;
+    my $retval;
     my $target;
     my $cfgsize;
     my $tmpfile;
     my $cfg_sha1value;
     my $key_sha1value;
     my $clientname = hostname();
+    my $sigset;
     my %map;
 
     # If the parcel is already checked out on this machine, return immediately
@@ -552,7 +554,7 @@ sub checkout ($$$$) {
     }
 
     # From this point on, the operation should not be interrupted by the user
-    block_sigint();
+    $sigset = block_sigint();
 
     # Grab the lock from the content server
     print("Acquiring lock from content server.\n")
@@ -669,27 +671,40 @@ sub checkout ($$$$) {
     }    
 
     #
-    # Fetch the memory and meta files to a temp file and then commit
+    # Fetch the memory and meta files to a temp file and then commit.
+    # isr_sget() will block SIGINT while curl runs, but will return
+    # $Isr::EINTR if curl itself dies on a signal.  In order to let
+    # this work, we unblock SIGINT and install a dummy signal handler
+    # for the duration of this loop so that curl doesn't end up
+    # blocking or ignoring SIGINT as well.  This means we lose SIGINTs
+    # which are pending from before this loop.
     #
     unlink("$lastdir/tmpfile");
+    $SIG{'INT'} = sub {};
+    unblock_sigint($sigset);
     foreach $target ("keyring.enc", "hdk/index.lev1", "cfg.tgz.enc") {
 	if (!-e "$lastdir/$target") {
 	    print "Fetching $target...\n"
 		if ($verbose > 1);
 
 	    # Show a progress meter only for the big cfg file
-	    if ($target eq "cfg.tgz.enc") {
-		isr_sget($userid, "last/$target", "$lastdir/tmpfile", 1) == $Isr::ESUCCESS
-		or errexit("Unable to fetch $target file");
+	    $retval = isr_sget($userid, "last/$target", "$lastdir/tmpfile",
+				($target eq "cfg.tgz.enc"));
+	    if ($retval == $Isr::EINTR) {
+		print "\n";
+		# We now have an inconsistent parcel directory.  Blow it away
+		# and release the server lock.
+		clean($userid, $parcel, $isrdir, $sessionid);
+		errexit("Fetch interrupted by signal");
 	    }
-	    else {
-		isr_sget($userid, "last/$target", "$lastdir/tmpfile", 0) == $Isr::ESUCCESS
+	    $retval == $Isr::ESUCCESS
 		or errexit("Unable to fetch $target file");
-	    }
 	    rename("$lastdir/tmpfile", "$lastdir/$target")
 		or unix_errexit("Unable to commit $lastdir/$target");
 	}
     }
+    $sigset = block_sigint();
+    $SIG{'INT'} = \&sigint_handler;
     
     #
     # Decrypt the virtualization and Vulpes files
@@ -727,6 +742,7 @@ sub checkout ($$$$) {
     sys_sync();
     print(GREEN, "Success: Parcel $userid/$parcel now checked out (and lock acquired).\n", RESET)
 	if $verbose;
+    unblock_sigint($sigset);
     return;
 }
 
@@ -1260,6 +1276,8 @@ sub hoard ($$$) {
 	$retval = isr_hoard($userid, $parcel, $isrdir);
 	if ($retval == $Isr::ESUCCESS) {
 	    last; 
+	} elsif ($retval == $Isr::EINTR) {
+	    errexit("Interrupted");
 	}
 	print "Sleeping $syscfg{hoard_sleep} secs before restarting hoard...\n"
 	    if $verbose;

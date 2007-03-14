@@ -37,6 +37,7 @@ $ENOSPACE  = 1;  # Not enough space
 $ENOTSUPP  = 2;  # Operation not supported
 $ETIMEDOUT = 3;  # Network/server failure partway through
 $EINVAL    = 4;  # Misc error
+$EINTR     = 5;  # Child terminated on signal
 
 # Every module must end with a 1; 
 1;

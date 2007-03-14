@@ -88,7 +88,10 @@ sub isr_make_hdk ($$) {
 }
 
 #
-# isr_sget - Copy a file from remote store to local store
+# isr_sget - Copy a file from remote store to local store.  The client will
+#            ignore SIGINT/SIGQUIT while the transfer is in progress;
+#            $Isr::EINTR will be returned if one of these was received by
+#            the child process.
 #
 sub isr_sget ($$$$) {
     my $userid = shift;    # ISR userid
@@ -107,9 +110,13 @@ sub isr_sget ($$$$) {
 	
     # Retry if the get operation fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
-	$retval = mysystem("curl --connect-timeout $syscfg{connect_timeout} $flag -f -G $main::cfg{RPATH}/$frompath > $topath");
+	$retval = system("curl --connect-timeout $syscfg{connect_timeout} $flag -f -G $main::cfg{RPATH}/$frompath > $topath");
 	if ($retval == 0) {
 	    return ($Isr::ESUCCESS);
+	}
+	if (WIFSIGNALED($retval)) {
+	    # curl process killed by signal.  Don't retry.
+	    return $Isr::EINTR;
 	}
 	print "[isr] get operation failed. Retrying...\n"
 	    if $main::verbose;
@@ -318,6 +325,7 @@ sub isr_hoard ($$$) {
     my $tmpfile;
     my $corruptfile;
     my $target;
+    my $retval;
     
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
@@ -431,10 +439,13 @@ sub isr_hoard ($$$) {
 	    # version k into k+1. When this happens during an sget, the
 	    # requested chunk no longer exists, so we need to rerun the 
 	    # hoard operation.
-	    isr_sget($userid, 
-		     "last/hdk/$dirname/$chunkname",  
-		     "$tmpfile", 0) == $Isr::ESUCCESS 
-			 or return $Isr::ETIMEDOUT;
+	    $retval = isr_sget($userid, "last/hdk/$dirname/$chunkname",  
+			       "$tmpfile", 0);
+	    if ($retval == $Isr::EINTR) {
+		return $Isr::EINTR;
+	    } elsif ($retval != $Isr::ESUCCESS) {
+		return $Isr::ETIMEDOUT;
+	    }
 
 	    # Verify the tag and commit the temp file if everything checks out
 	    $computed_tag = `openssl sha1 < $tmpfile`;
