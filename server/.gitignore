@@ -1,0 +1,6 @@
+Makefile.in
+Makefile
+isrserv
+revision.c
+.libs
+.deps
