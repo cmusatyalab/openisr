@@ -62,7 +62,7 @@ int main(int argc, char **argv)
 		die("Couldn't create socket");
 	setsockoptval(listenfd, SOL_SOCKET, SO_REUSEADDR, 1);
 	addr.sin_family=AF_INET;
-	addr.sin_addr.s_addr=INADDR_ANY;
+	addr.sin_addr.s_addr=htonl(INADDR_ANY);
 	addr.sin_port=htons(SRVPORT);
 	if (bind(listenfd, (struct sockaddr*)&addr, sizeof(addr)))
 		die("Couldn't bind socket to port %d", SRVPORT);
