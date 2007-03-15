@@ -1,4 +1,4 @@
-AM_CFLAGS = -g -O2 -Wall -Wstrict-prototypes -D_FILE_OFFSET_BITS=64
+AM_CFLAGS = -Wall -Wstrict-prototypes -D_FILE_OFFSET_BITS=64
 AM_LDFLAGS = -lmysqlclient
 
 sbin_PROGRAMS = isrserv

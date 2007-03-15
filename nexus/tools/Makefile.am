@@ -1,4 +1,4 @@
-AM_CFLAGS = -O2 -g -W -Wall -Wstrict-prototypes -I..
+AM_CFLAGS = -W -Wall -Wstrict-prototypes -I..
 
 EXTRA_PROGRAMS = test
 pkglib_PROGRAMS = readstats nexus_debug

@@ -1,4 +1,4 @@
-AM_CFLAGS=-W -Wall -Wstrict-prototypes -O2 -fno-strict-aliasing
+AM_CFLAGS=-W -Wall -Wstrict-prototypes -fno-strict-aliasing
 AM_LDFLAGS= -ldl
 
 # libvdisk will not work if it's not in /lib or /usr/lib, since it needs
