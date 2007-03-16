@@ -8,6 +8,9 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <string.h>
+#include <libgen.h>
+#include "splice.h"
 
 #define SRVPORT 52501
 #define BACKLOG 16
@@ -16,7 +19,7 @@
 extern const char *rcs_revision;
 
 /* XXX copied from libvdisk */
-#define warn(s, args...) fprintf(stderr, s "\n", ## args)
+#define warn(s, args...) fprintf(stderr, s ": %s\n", ## args, strerror(errno))
 #define ndebug(s, args...) do {} while (0)
 #define die(s, args...) do { warn(s, ## args); exit(1); } while (0)
 #ifdef DEBUG
@@ -34,20 +37,58 @@ void setsockoptval(int fd, int level, int optname, int value)
 void process(int fd)
 {
 	char buf[512];
+	FILE *fp;
+	int filefd;
 	int count;
+	off_t off;
+	int ret;
+	int ret2;
+	int pipefd[2];
+	const char notfound[]="Not found\n";
 	
 	setsockoptval(fd, SOL_SOCKET, SO_KEEPALIVE, 1);
 	setsockoptval(fd, SOL_TCP, TCP_CORK, 1);
+	if (pipe(pipefd))
+		die("Couldn't create pipe");
+	fp=fdopen(fd, "r");
+	if (fp == NULL)
+		die("Couldn't fdopen");
 	while (1) {
-		count=read(fd, buf, sizeof(buf) - 1);
-		if (count <= 0) {
+		if (fgets(buf, sizeof(buf), fp) == NULL) {
 			warn("Closed");
 			break;
 		}
-		buf[count]=0;
-		printf("%s", buf);
+		count=strlen(buf);
+		if (buf[count-1] == '\n')
+			buf[count-1]=0;
+		printf("%s\n", buf);
+		filefd=open(basename(buf), O_RDONLY);
+		if (filefd == -1) {
+			write(fd, notfound, sizeof(notfound));
+			continue;
+		}
+		count=lseek(filefd, 0, SEEK_END);
+		if (count == -1)
+			die("Couldn't get file length");
+		for (off=0; off < count; ) {
+			ret=splice(filefd, &off, pipefd[1], NULL, count - off,
+						0);
+			if (ret == -1)
+				die("Couldn't splice input");
+			printf("Spliced %d input bytes\n", ret);
+			off += ret;
+			while (ret > 0) {
+				ret2=splice(pipefd[0], NULL, fd, NULL, ret, 0);
+				if (ret2 == -1)
+					die("Couldn't splice output");
+				ret -= ret2;
+			}
+		}
+		close(filefd);
 	}
-	close(fd);
+	fclose(fp);
+	close(pipefd[0]);
+	close(pipefd[1]);
 }
 
 int main(int argc, char **argv)
