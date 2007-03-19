@@ -107,7 +107,7 @@ AC_ARG_WITH([mysql], [AS_HELP_STRING([--with-mysql=DIR],
 if test z$enable_client = zyes; then
 	FIND_LIBRARY([curl], [curl], [curl_easy_init], [curl/curl.h],
 				[$with_curl /usr/local /usr])
-	CHECK_CURL_VERSION([$FOUND_PATH], [7.12])
+	CHECK_CURL_VERSION([$FOUND_PATH], [7.12.3])
 	
 	FIND_LIBRARY([OpenSSL], [ssl], [EVP_EncryptUpdate],
 				[openssl/ssl.h openssl/evp.h openssl/blowfish.h],

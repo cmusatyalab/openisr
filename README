@@ -6,7 +6,7 @@ REQUIREMENTS
 ------------
 
 - Linux kernel (versions 2.6.8 through 2.6.20 supported)
-- curl >= 7.12
+- curl >= 7.12.3
 - Perl
 - udev
 - ssh
