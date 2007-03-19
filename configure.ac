@@ -77,6 +77,23 @@ if test z$enable_modules != zno ; then
 	AC_ARG_VAR([KERNELDIR], [location of configured kernel source])
 fi
 
+# Checks for stale kernel headers in /usr/include/linux
+if test z$enable_client = zyes; then
+	# Die on 2.4 headers (for vulpes driver code)
+	CHECK_KERNEL_HEADERS([whether loop.h is usable],
+				[AC_LANG_PROGRAM([#include <linux/loop.h>],
+				[unsigned get=LOOP_GET_STATUS64;
+				unsigned set=LOOP_SET_STATUS64;])])
+fi
+
+if test z$enable_libvdisk = zyes ; then
+	# Die on old headers that don't know about 48-bit LBA
+	CHECK_KERNEL_HEADERS([for lba_capacity_2 in hd_driveid],
+				[AC_LANG_PROGRAM([#include <linux/hdreg.h>], 
+				[struct hd_driveid id;
+				unsigned long long cap=id.lba_capacity_2;])])
+fi
+
 # Checks for libraries.
 AC_ARG_WITH([ssl], [AS_HELP_STRING([--with-ssl=DIR],
 			[look for OpenSSL in DIR])])

@@ -1,4 +1,4 @@
-AM_CFLAGS= -Wall -Wstrict-prototypes -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -I$(top_srcdir)/nexus -I/lib/modules/`uname -r`/build/include
+AM_CFLAGS= -Wall -Wstrict-prototypes -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -I$(top_srcdir)/nexus
 AM_LDFLAGS= -lz -lssl -lcurl
 
 pkglib_PROGRAMS = vulpes

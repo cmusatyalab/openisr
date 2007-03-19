@@ -98,3 +98,17 @@ AC_DEFUN([CHECK_CURL_VERSION], [
 		AC_MSG_ERROR([curl too old])
 	fi
 ])
+
+
+# CHECK_KERNEL_HEADERS([MESSAGE], [TEST_PROGRAM])
+# -----------------------------------------------------------
+AC_DEFUN([CHECK_KERNEL_HEADERS], [
+	AC_MSG_CHECKING($1)
+	AC_COMPILE_IFELSE([$2], [result=ok], [result=bad])
+	if test z$result = zok ; then
+		AC_MSG_RESULT([yes])
+	else
+		AC_MSG_RESULT([no])
+		AC_MSG_ERROR([kernel headers in /usr/include/linux are too old])
+	fi
+])
