@@ -112,7 +112,7 @@ POST-INSTALLATION
 If you install the OpenISR system from source, you should perform several
 additional steps to complete the installation:
 
-- Run "ldconfig" as root
+- Run "ldconfig; depmod" as root
 
 - Configure your system to start the "openisr" init script at boot, probably
 in the "S" runlevel
