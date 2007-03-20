@@ -1,5 +1,3 @@
-# this file is used for the module package (see below)
-
 Source: openisr
 Section: net 
 Priority: extra
@@ -8,13 +6,29 @@ Build-Depends: debhelper (>= 5.0.24), libcurl3-dev
 Standards-Version: 3.7.2
 
 Package: openisr
-Architecture: any
-Depends: module-assistant, curl (>= 7.12), ssh | openssh-client, rsync, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
+Architecture: all 
+Suggests: kvm
+Depends: module-assistant, udev, curl (>= 7.12), ssh | openssh-client, rsync, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
 Description: Internet Suspend/Resume (ISR) client
- OpenISR ... mobile computing environment... virtualization ...  yeah.
+ OpenISR is the latest implementation of Internet Suspend/Resume, which 
+ combines a virtual machine with distributed storage to provide the user 
+ with both mobility and consistent state without the need for mobile hardware.
+ This package contains a client (isr), a parcel manager (vulpes), a wrapper 
+ library for VMware (libvdisk), and the source to the openisr kernel module 
+ (nexus).  A virtual machine monitor (VMware, Xen, kvm, etc) should also be 
+ installed.   OpenISR is developed at Carnegie Mellon University.
+
+Package: openisr-modules-source
+Architecture: any
+Depends: module-assistant, debhelper (>= 5), make, bzip2
+Description: source code for OpenISR kernel modules
+ OpenISR is the latest implementation of Internet Suspend/Resume.  The
+ sources for the nexus kernel module (and a sha-1 accelerator module) are
+ included in this package.  They can be built into a binary debian package
+ using module-assistant, or other means.
 
 Package: openisr-modules-#KVERS#
-Architecture: any 
+Architecture: any
 Provides: openisr-modules
 Depends: openisr
 Recommends: linux-image-#KVERS# | kernel-image-#KVERS#
@@ -22,4 +36,3 @@ Description: openisr modules (nexus, sha1-i586) for Linux #KVERS#
  Kernel modules required for openisr.  Actually, sha1-i586 is optional.
  .
  This package provides the binary kernel module for Linux #KVERS#.
-
