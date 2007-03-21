@@ -11,7 +11,7 @@
 # build-arch and build-indep targets  by Bill Allombert 2001
 
 # Uncomment this to turn on verbose mode.
-export DH_VERBOSE=1
+#export DH_VERBOSE=1
 
 # This has to be exported to make some magic below work.
 export DH_OPTIONS
@@ -86,7 +86,7 @@ install-indep:
 	dh_install -p$(psource) Makefile Makefile.* config* install-sh *.mk *.m4 mkrevision.sh $(KSRCDIR)
 
 	# misc
-	dh_install -p$(psource) LICENSE.* $(KSRCDIR)
+	dh_install -p$(psource) LICENSE.Eclipse $(KSRCDIR)
 	dh_install -p$(psource) conf/ $(KSRCDIR)
 
 	dh_installdirs -p$(psource) -a usr/share/modass/overrides
@@ -156,7 +156,6 @@ binary-modules: prep-deb-files
 	$(MAKE) install DESTDIR=$(CURDIR)/debian/openisr-modules-$(KVERS)
 
 	dh_installmodules
-#	dh_installudev
 	dh_installdocs
 	dh_installchangelogs
 	dh_compress
@@ -187,7 +186,6 @@ binary-common:
 	dh_testdir
 	dh_testroot
 	dh_installchangelogs 
-	-dh_installudev
 	dh_installdocs
 #	dh_installexamples
 #	dh_installmenu

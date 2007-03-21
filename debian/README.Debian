@@ -1,12 +1,18 @@
 openisr for Debian
 ------------------
 
-This package includes:
+The openisr package includes:
 
 	* vulpes
 	* libvdisk
 	* isr client
-        * modules: nexus and sha1-i586 (/usr/src/openisr.tar.bz2)
+
+The openisr-modules-source package includes:
+
+        * modules: nexus and sha1-i586 (in /usr/src/openisr.tar.bz2)
+
+The openisr package will not be useful without a binary openisr-modules
+package built from the source.  This can be done easily, see below.
 
 >>> To build the openisr-modules package:
 
@@ -16,8 +22,5 @@ To build the modules using module-assistant, use
 If you don't already have the right kernel headers,
  module-assistant prepare
 can often figure out what package to download for you.
-
-
-TODO: split off an openisr-modules-source package
 
  -- Matt Toups <mtoups@cs.cmu.edu>  Mon, 29 Jan 2007 11:25:48 -0500
