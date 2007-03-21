@@ -18,10 +18,10 @@
  * for more details.
  */
 
+#include <linux/sched.h>
 #include <linux/kthread.h>
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
-#include <linux/sched.h>
 #include <linux/notifier.h>
 #include <linux/interrupt.h>
 #include "defs.h"
