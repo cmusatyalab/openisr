@@ -1,7 +1,2 @@
 hextostream
 monte
-.*.cmd
-*.mod.c
-*.ko
-.tmp_versions
-Module.symvers

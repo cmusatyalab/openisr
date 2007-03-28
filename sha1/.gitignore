@@ -1,8 +1,0 @@
-.*.cmd
-.tmp_versions
-*.mod.c
-*.ko
-Module.symvers
-Modules.symvers
-GNUmakefile
-GNUmakefile.in

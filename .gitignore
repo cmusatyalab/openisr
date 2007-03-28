@@ -1,9 +1,8 @@
+# Top-level Autotools files
 configure
 config.log
 config.status
 autom4te.cache
-Makefile
-Makefile.in
 libtool
 aclocal.m4
 config.guess
@@ -15,3 +14,28 @@ install-sh
 config.h.in
 config.h
 stamp-h1
+
+# Commonly generated files
+Makefile
+Makefile.in
+*.o
+*.la
+*.lo
+.libs
+.deps
+
+# Kernel module build stuff
+GNUmakefile
+GNUmakefile.in
+Module.symvers
+Modules.symvers
+.tmp_versions
+*.ko
+*.mod.c
+.*.cmd
+.*.d
+
+# Revision headers
+revision.h
+revision.c
+IsrRevision.pm

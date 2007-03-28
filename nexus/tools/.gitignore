@@ -1,7 +1,3 @@
 test
 readstats
 nexus_debug
-Makefile
-Makefile.in
-.deps
-.libs
