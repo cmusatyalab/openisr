@@ -18,6 +18,7 @@ stamp-h1
 # Commonly generated files
 Makefile
 Makefile.in
+*~
 *.o
 *.la
 *.lo
