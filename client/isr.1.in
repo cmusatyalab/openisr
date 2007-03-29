@@ -9,8 +9,6 @@
 .\" RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
 .\" ==========================================================================
 .\"
-.\" $Id$
-.\"
 .TH ISR 1 "Feb 13, 2007" "OpenISR !!VERSION!!" "User Commands"
 .LO 1
 
