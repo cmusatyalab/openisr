@@ -537,8 +537,8 @@ sub checkout ($$$$) {
     # load protocol specific storage module
     print "Fetching configuration data for $userid/$parcel from name server.\n"
 	if $verbose;
-    get_parcelcfg($userid, $parcel, "$isrdir/parcel.cfg");
-    %cfg = parse_parcelcfg("$isrdir/parcel.cfg", $userid, $parcel);
+    get_parcelcfg($userid, $parcel, "$isrdir/$parcel-parcel.cfg");
+    %cfg = parse_parcelcfg("$isrdir/$parcel-parcel.cfg", $userid, $parcel);
 
     # Before going any further, make sure we have a protocol level
     # connection to the content server and a consistent parcel.
@@ -563,13 +563,13 @@ sub checkout ($$$$) {
 
     if (isr_srun($userid, "lock", 
 		 "-p $userid/$parcel -n $clientname -a", 
-		 "$isrdir/nonce", 0) != 0) {
-	unlink("$isrdir/nonce");
+		 "$isrdir/$parcel-nonce", 0) != 0) {
+	unlink("$isrdir/$parcel-nonce");
 	errexit("Unable to acquire lock for $parcel.");
     }
 
     # Use the nonce from the lock operation as the unique session id
-    if (-e "$isrdir/nonce" && open(NONCE, "$isrdir/nonce")) {
+    if (-e "$isrdir/$parcel-nonce" && open(NONCE, "$isrdir/$parcel-nonce")) {
 	$sessionid = <NONCE>;
 	close(NONCE);
 	chomp($sessionid);
@@ -606,13 +606,13 @@ sub checkout ($$$$) {
 	errexit("Unable to create last dir $lastdir/hdk.");
     }
 
-    if (!rename("$isrdir/nonce", "$parceldir/nonce")) {
+    if (!rename("$isrdir/$parcel-nonce", "$parceldir/nonce")) {
 	clean($userid, $parcel, $isrdir, 0);
-	errexit("Unable to move $isrdir/nonce to $parceldir");
+	errexit("Unable to move $isrdir/$parcel-nonce to $parceldir");
     }
-    if (!rename("$isrdir/parcel.cfg", "$parceldir/parcel.cfg") != 0) {
+    if (!rename("$isrdir/$parcel-parcel.cfg", "$parceldir/parcel.cfg") != 0) {
 	clean($userid, $parcel, $isrdir, 0);
-	errexit("Unable to move $isrdir/parcel.cfg to $parceldir");
+	errexit("Unable to move $isrdir/$parcel-parcel.cfg to $parceldir");
     }
 
     #
@@ -1252,7 +1252,7 @@ sub hoard ($$$) {
 
     $parcelcfgfile = "$parceldir/parcel.cfg";
     if (!-e $parceldir) {
-	$parcelcfgfile = "$isrdir/$parcel-parcel.cfg.$$";
+	$parcelcfgfile = "$isrdir/$parcel-parcel.cfg.hoard";
 	print "Fetching configuration data for $userid/$parcel from name server.\n"
 	    if $verbose;
 	get_parcelcfg($userid, $parcel, $parcelcfgfile);
