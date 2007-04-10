@@ -103,6 +103,7 @@ static vulpes_err_t loop_bind(void) {
       }
       break;
     }
+    close(fd);
   }
   state.loopdev_fd=fd;
   vulpes_log(LOG_BASIC,"Bound to loop device %s",state.loopdev_name);
@@ -260,7 +261,8 @@ void driver_shutdown(void)
   
   close(state.chardev_fd);
   unlink(state.devfile_name);
-  ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
+  if (ioctl(state.loopdev_fd, LOOP_CLR_FD, 0))
+    vulpes_log(LOG_ERRORS,"Couldn't unbind loop device");
   close(state.loopdev_fd);
   /* We don't trust the loop driver */
   sync();
