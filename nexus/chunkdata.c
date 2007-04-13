@@ -748,6 +748,8 @@ static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error)
 		WARN_ON(!list_empty(&cd->lh_pending_completion));
 		schedule_callback(CB_COMPLETE_IO, &cd->lh_pending_completion);
 	}
+	if (bio->bi_size == 0)
+		bio_put(bio);
 	return 0;
 }
 
