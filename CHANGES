@@ -1,3 +1,15 @@
+====== 0.8.2
+
+- Fix memory leak in Nexus kernel module.  After upgrading to 0.8.2, you should
+  reboot your system to free up leaked memory.
+- Fix race condition when performing checkouts on multiple parcels at once,
+  potentially leading to nonce mismatches at checkin
+- Fix loop device leak when running multiple parcels simultaneously.  This
+  could eventually cause Vulpes to refuse to start until loop devices were
+  manually deallocated.
+- Compile fixes for some Linux distributions
+- Documentation updates
+
 ====== 0.8.1
 
 - Improve efficiency of zlib compression/decompression
