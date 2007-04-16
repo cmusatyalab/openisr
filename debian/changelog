@@ -1,3 +1,9 @@
+openisr (0.8.2-1) experimental; urgency=low
+
+  * New upstream release
+
+ -- Benjamin Gilbert <bgilbert@cs.cmu.edu>  Mon, 16 Apr 2007 00:14:15 -0400
+
 openisr (0.8.1-1) experimental; urgency=low
 
   * updated debian packaging to support new build system

@@ -1,6 +1,6 @@
 ### begin RPM spec
 %define name openisr
-%define version 0.8.1
+%define version 0.8.2
 
 Summary: 	OpenISR Internet Suspend-Resume client
 Name: 		%name
@@ -14,7 +14,7 @@ BuildRoot: 	/var/tmp/%{name}-buildroot
 Packager:	Matt Toups <mtoups@cs.cmu.edu>
 
 URL:		http://isr.cmu.edu
-Source: 	http://isr.cmu.edu/software/openisr-0.8.1.tar.gz
+Source: 	http://isr.cmu.edu/software/openisr-0.8.2.tar.gz
 # line below is working around an annoying rpm "feature"
 Provides:	perl(IsrRevision)
 
@@ -73,6 +73,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Mon Apr 16 2007 Benjamin Gilbert <bgilbert@cs.cmu.edu> 0.8.2-1
+- New upstream release
+
 * Tue Apr 10 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.1-2
 - fix spec file bugs
 - fix permissions on doc files
