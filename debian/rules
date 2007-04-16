@@ -11,12 +11,18 @@
 # build-arch and build-indep targets  by Bill Allombert 2001
 
 # Uncomment this to turn on verbose mode.
-export DH_VERBOSE=1
+#export DH_VERBOSE=1
 
 # This has to be exported to make some magic below work.
 export DH_OPTIONS
 
 CFLAGS = -Wall -g
+
+# Name of the source package
+psource:=openisr-modules-source
+
+# The short upstream name, used for the module source directory
+sname:=openisr
 
 KSRCDIR = usr/src/modules/openisr
 
@@ -29,10 +35,9 @@ endif
 configure: configure-stamp
 configure-stamp:
 	dh_testdir
-	# XXX: Add here commands to configure the package.
+	./configure --host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) --prefix=/usr --sysconfdir=/etc --mandir=\$${prefix}/share/man --infodir=\$${prefix}/share/info --disable-modules CFLAGS="$(CFLAGS)" LDFLAGS="-Wl,-z,defs"
 
 	touch configure-stamp
-
 
 #Architecture 
 build: build-arch build-indep
@@ -49,7 +54,6 @@ build-indep: build-indep-stamp
 build-indep-stamp: configure-stamp 
 
 	# Add here commands to compile the indep part of the package.
-	#$(MAKE) doc
 
 	touch $@
 
@@ -70,16 +74,44 @@ install-indep:
 	dh_clean -k -i 
 	dh_installdirs -i
 
-	# Add here commands to install the indep part of the package into
-	# debian/<package>-doc.
-	#INSTALLDOC#
+	dh_installdirs -p$(psource) $(KSRCDIR)/debian
+
+	# module sources
+	dh_install -p$(psource) nexus sha1 $(KSRCDIR)
+	# client and other non-module sources shouldn't be necessary
+	# but configure wants them to be there
+	dh_install -p$(psource) client libvdisk vulpes $(KSRCDIR)
+
+	#stuff needed for build
+	dh_install -p$(psource) Makefile Makefile.* config* install-sh *.mk *.m4 mkrevision.sh $(KSRCDIR)
+
+	# misc
+	dh_install -p$(psource) LICENSE.Eclipse $(KSRCDIR)
+	dh_install -p$(psource) conf/ $(KSRCDIR)
+
+	dh_installdirs -p$(psource) -a usr/share/modass/overrides
+
+	# copy all relevant debian/ files.
+	dh_installdirs -p$(psource) -a usr/src/modules/openisr/debian
+	cp -a conf/openisr.rules debian
+
+	cd debian && cp changelog control.template compat rules copyright $(psource)/usr/src/modules/openisr/debian
+
+	ln -s ../packages/default.sh debian/$(psource)/usr/share/modass/overrides/openisr
+
+	(cd debian/openisr-modules-source/usr/src \
+	&& chown -R root:src modules \
+	&& tar jcf openisr.tar.bz2 modules \
+	&& rm -rf modules)
 
 	dh_install -i
 
-# BEGIN module stuff
+### KERNEL SETUP
+### Setup the stuff needed for making kernel module packages
+### taken from /usr/share/kernel-package/sample.module.rules
 
 # prefix of the target package name
-PACKAGE=openisr
+PACKAGE=openisr-modules
 # modifieable for experiments or debugging m-a
 MA_DIR ?= /usr/share/modass
 # load generic variable handling
@@ -92,20 +124,26 @@ ifeq ($(MAJOR),2.6)
 KO=k
 endif
 
+# the kdist_clean target is called by make-kpkg modules_clean and from
+# kdist* rules. It is responsible for cleaning up any changes that have
+# been made by the other kdist_commands (except for the .deb files created)
 kdist_clean:
 	# below line: stupid to have this happen here too, but dh_clean chokes without control
 	sed -e 's/#KVERS#/$(KVERS)/g' \
 	    -e 's/#VERSION#/$(VERSION)/g' debian/control.template > $(CURDIR)/debian/control
 	dh_clean -d
-	make clean_modules
-	make -C nexus clean
-	make -C sha1-i586 clean
+	-$(MAKE) clean
 
 # prep-deb-files rewrites the debian/ files as needed. See RATIONALE for
 # details
 kdist_config: prep-deb-files
 # ... additional kernel specific things to configure...
+	./configure --host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) --prefix=/usr --mandir=\$${prefix}/share/man --infodir=\$${prefix}/share/info --enable-modules --disable-client CFLAGS="$(CFLAGS)" LDFLAGS="-Wl,-z,defs"
 
+# The kdist_configure target is called by make-kpkg modules_config and
+# by kdist* rules by dependency. It should configure the module so it is
+# ready for compilation (mostly useful for calling configure).
+# prep-deb-files from module-assistant creates the neccessary debian/ files
 kdist_configure: kdist_config
 
 binary-modules: prep-deb-files
@@ -114,12 +152,10 @@ binary-modules: prep-deb-files
 	dh_clean -k
 	sed -e 's/#KVERS#/$(KVERS)/g' \
 	     -e 's/#VERSION#/$(VERSION)/g' debian/control.template > $(CURDIR)/debian/control
-			    
-	make -C nexus install_modules DESTDIR=$(CURDIR)/debian/openisr-modules-$(KVERS)
-	make -C sha1-i586 install_modules DESTDIR=$(CURDIR)/debian/openisr-modules-$(KVERS)
+
+	$(MAKE) install DESTDIR=$(CURDIR)/debian/openisr-modules-$(KVERS)
 
 	dh_installmodules
-#	dh_installudev
 	dh_installdocs
 	dh_installchangelogs
 	dh_compress
@@ -129,43 +165,17 @@ binary-modules: prep-deb-files
 	dh_md5sums
 	dh_builddeb --destdir=$(DEB_DESTDIR)
 
-
 install-arch:
 	dh_testdir
 	dh_testroot
 	dh_clean -k -s 
 	dh_installdirs -s
 
-	# Add here commands to install the arch part of the package into 
-	# debian/tmp.
+	# Add here commands to install the arch part of the package
 	$(MAKE) install DESTDIR=$(CURDIR)/debian/openisr
 
 	# Debian policy manual section 8.1 says we need this symlink
-	(cd $(CURDIR)/debian/openisr/usr/lib && ln -s libvdisk.so.0.0.0 libvdisk.so.0)
-
-#	kernel module stuff
-	$(MAKE) clean
-
-	dh_install nexus $(KSRCDIR)
-	dh_install sha1-i586 $(KSRCDIR)
-	dh_install LICENSE.* $(KSRCDIR)
-	dh_install mkrevision.sh $(KSRCDIR)
-	dh_install Makefile $(KSRCDIR)
-
-	dh_installdirs -a usr/share/modass/overrides
-
-	# copy all relevant debian/ files.
-	dh_installdirs -a usr/src/modules/openisr/debian
-	cp -a conf/openisr.rules debian
-
-	cd debian && cp changelog control.template compat rules copyright openisr/usr/src/modules/openisr/debian
-
-	ln -s ../packages/default.sh debian/openisr/usr/share/modass/overrides/openisr	
-
-	(cd debian/openisr/usr/src \
-	&& chown -R root:src modules \
-	&& tar jcf openisr.tar.bz2 modules \
-	&& rm -rf modules)
+#	(cd $(CURDIR)/debian/openisr/usr/lib && ln -s libvdisk.so.0.0.0 libvdisk.so.0)
 
 	dh_install -s
 
@@ -176,7 +186,6 @@ binary-common:
 	dh_testdir
 	dh_testroot
 	dh_installchangelogs 
-	dh_installudev
 	dh_installdocs
 #	dh_installexamples
 #	dh_installmenu
@@ -210,5 +219,5 @@ binary-indep: build-indep install-indep
 binary-arch: build-arch install-arch
 	$(MAKE) -f debian/rules DH_OPTIONS=-s binary-common
 
-binary: binary-arch 
+binary: binary-arch binary-indep 
 .PHONY: build clean binary-indep binary-arch binary install install-indep install-arch configure

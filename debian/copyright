@@ -10,9 +10,20 @@ License:
 The software components in this package are each licensed under one of 
 the following three licenses:
 
-LICENSE.Eclipse
-LICENSE.GPL
-LICENSE.LGPL
+GNU General Public License
+
+ The text of this license may be found on Debian systems in the file:
+ /usr/share/common-licenses/GPL-2
+
+GNU Lesser General Public License
+
+ The text of this license may be found on Debian systems in the file
+ /usr/share/common-licenses/LGPL-2
+
+Eclipse Public License
+ 
+ The text of this license may be found in this directory,
+ /usr/share/doc/openisr/LICENSE.Eclipse.gz
 
 Refer to the header on each source file for the copyright notice and
 appropriate license.
