@@ -1,5 +1,8 @@
-AM_CFLAGS= -Wall -Wstrict-prototypes -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -I$(top_srcdir)/nexus
-AM_LDFLAGS= -lz -lssl -lcurl
+# We need the 2.6 version of <linux/loop.h>, and some distros have the
+# 2.4 version in /usr/include
+AM_CPPFLAGS = -I$(top_srcdir)/nexus -I$(KERNELDIR)/include
+AM_CFLAGS = -Wall -Wstrict-prototypes -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
+AM_LDFLAGS = -lz -lssl -lcurl
 
 pkglib_PROGRAMS = vulpes
 vulpes_SOURCES = revision.c main.c driver.c transport.c cache.c crypto.c \

@@ -26,6 +26,7 @@
 #include <linux/hdreg.h>
 #include <scsi/scsi.h>
 #include <pthread.h>
+#include "config.h"
 #include "revision.h"
 
 #undef DEBUG
@@ -289,7 +290,11 @@ static void fill_driveid(struct hd_driveid *id, uint64_t sects)
 	id->lba_capacity=min(sects, 0x0fffffff);
 	id->cur_capacity0=(unsigned short)(id->lba_capacity & 0xffff);
 	id->cur_capacity1=(unsigned short)(id->lba_capacity >> 16);
+#ifdef HAVE_LBA_CAPACITY_2
 	id->lba_capacity_2=sects;
+#else
+	*(uint64_t*)&id->words94_125[6]=sects;
+#endif
 }
 
 #define get_last_arg(last_named_arg, arg_type, dest) do { \

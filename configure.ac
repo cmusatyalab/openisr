@@ -18,12 +18,9 @@ AC_COPYRIGHT([Copyright (C) 2007 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([nexus/request.c])
 AC_DISABLE_STATIC
 
-# We must choose between generating a config.h, which we don't need, or
-# including several lines worth of -D flags on every gcc command line.
-# In the interest of (somewhat) more readable compile logs, we generate
-# a useless config.h.
+# Generating a config.h prevents the introduction of several lines' worth of
+# -D flags on every gcc command line
 AC_CONFIG_HEADERS([config.h])
-AH_TOP([/* This file is not used, but generating it makes compiles quieter */])
 
 # Checks for programs.
 AC_PROG_CC
@@ -77,21 +74,15 @@ if test z$enable_modules != zno ; then
 	AC_ARG_VAR([KERNELDIR], [location of configured kernel source])
 fi
 
-# Checks for stale kernel headers in /usr/include/linux
-if test z$enable_client = zyes; then
-	# Die on 2.4 headers (for vulpes driver code)
-	CHECK_KERNEL_HEADERS([whether loop.h is usable],
-				[AC_LANG_PROGRAM([#include <linux/loop.h>],
-				[unsigned get=LOOP_GET_STATUS64;
-				unsigned set=LOOP_SET_STATUS64;])])
-fi
-
+# Check for old hd_driveid definition that doesn't know about 48-bit LBA
 if test z$enable_libvdisk = zyes ; then
 	# Die on old headers that don't know about 48-bit LBA
-	CHECK_KERNEL_HEADERS([for lba_capacity_2 in hd_driveid],
+	CHECK_COMPILE([for lba_capacity_2 in hd_driveid],
 				[AC_LANG_PROGRAM([#include <linux/hdreg.h>], 
 				[struct hd_driveid id;
-				unsigned long long cap=id.lba_capacity_2;])])
+				unsigned long long cap=id.lba_capacity_2;])],
+				HAVE_LBA_CAPACITY_2,
+				[Define if struct hd_driveid in <linux/hdreg.h> contains an lba_capacity_2 member.])
 fi
 
 # Checks for libraries.
