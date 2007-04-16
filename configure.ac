@@ -34,9 +34,8 @@ AC_ARG_ENABLE([client], [AS_HELP_STRING([--enable-client],
 AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--enable-libvdisk],
 			[build libvdisk [$client]])],,
 			[enable_libvdisk=${enable_client}])
-AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules=DIR],
-			[build kernel modules (against kernel source in DIR,
-			if specified) [$client]])],,
+AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules],
+			[build kernel modules [$client]])],,
 			[enable_modules=${enable_client}])
 
 PROCESS_ENABLE_VAR([$enable_client], [WANT_CLIENT],
@@ -46,28 +45,11 @@ PROCESS_ENABLE_VAR([$enable_libvdisk], [WANT_LIBVDISK],
 PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
 			[whether we should build the kernel modules])
 
-if test z$enable_modules != zno ; then
+if test z$enable_modules = zyes ; then
 	if test z$srcdir != z. ; then
 		AC_MSG_ERROR([cannot build outside source tree when --enable-modules is set])
 		# ...because Kbuild doesn't support it
 	fi
-	
-	AC_MSG_CHECKING([for kernel source])
-	# KERNELDIR is set to the argument passed to --enable-modules, if not
-	# "yes".  Otherwise, it's the value of the KERNELDIR environment
-	# variable, if set.  Otherwise, we produce a default from uname -r.
-	if test z$enable_modules != zyes ; then
-		KERNELDIR=$enable_modules
-	elif test z$KERNELDIR = z ; then
-		KERNELDIR=/lib/modules/`uname -r`/build
-	fi
-	AC_MSG_RESULT([$KERNELDIR])
-	
-	if test ! -f $KERNELDIR/include/linux/version.h ; then
-		AC_MSG_ERROR([$KERNELDIR is not a configured kernel source tree])
-	fi
-	AC_SUBST([KERNELDIR])
-	AC_ARG_VAR([KERNELDIR], [location of configured kernel source])
 fi
 
 # Check for old hd_driveid definition that doesn't know about 48-bit LBA
@@ -82,6 +64,8 @@ if test z$enable_libvdisk = zyes ; then
 fi
 
 # Checks for libraries.
+AC_ARG_WITH([kernel], [AS_HELP_STRING([--with-kernel=DIR],
+			[look for configured kernel source tree in DIR])])
 AC_ARG_WITH([ssl], [AS_HELP_STRING([--with-ssl=DIR],
 			[look for OpenSSL in DIR])])
 AC_ARG_WITH([zlib], [AS_HELP_STRING([--with-zlib=DIR],
@@ -89,7 +73,28 @@ AC_ARG_WITH([zlib], [AS_HELP_STRING([--with-zlib=DIR],
 AC_ARG_WITH([curl], [AS_HELP_STRING([--with-curl=DIR],
 			[look for curl in DIR])])
 
-if test z$enable_client = zyes; then
+# We need this for the kernel modules and for Vulpes (since it grabs loop.h
+# from the kernel source tree)
+if test z$enable_client = zyes -o z$enable_modules = zyes ; then
+	AC_MSG_CHECKING([for kernel source])
+	# KERNELDIR is set to the argument passed to --with-kernel, if set.
+	# Otherwise, it's the value of the KERNELDIR environment variable,
+	# if set.  Otherwise, we produce a default from uname -r.
+	if test z$with_kernel != z ; then
+		KERNELDIR=$with_kernel
+	elif test z$KERNELDIR = z ; then
+		KERNELDIR=/lib/modules/`uname -r`/build
+	fi
+	AC_MSG_RESULT([$KERNELDIR])
+	
+	if test ! -f $KERNELDIR/include/linux/version.h ; then
+		AC_MSG_ERROR([$KERNELDIR is not a configured kernel source tree])
+	fi
+	AC_SUBST([KERNELDIR])
+	AC_ARG_VAR([KERNELDIR], [location of configured kernel source (equivalent to --with-kernel)])
+fi
+
+if test z$enable_client = zyes ; then
 	FIND_LIBRARY([curl], [curl], [curl_easy_init], [curl/curl.h],
 				[$with_curl /usr/local /usr])
 	CHECK_CURL_VERSION([$FOUND_PATH], [7.12.3])
@@ -102,7 +107,7 @@ if test z$enable_client = zyes; then
 				[$with_zlib /usr/local /usr])
 fi
 
-if test "z$enable_libvdisk" = "zyes" ; then
+if test z$enable_libvdisk = zyes ; then
 	# We don't provide a --with-dl=DIR option because this is supposed
 	# to be a system function.
 	FIND_LIBRARY([libdl], [dl], [dlopen], [dlfcn.h], [/usr])

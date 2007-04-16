@@ -32,13 +32,13 @@ CONFIGURE OPTIONS
 Aside from the standard options, the OpenISR configure script supports the
 following command line options:
 
+--with-kernel=DIR
 --with-ssl=DIR
 --with-zlib=DIR
 --with-curl=DIR
-	Specifies an additional search path for OpenSSL, zlib, and curl,
-	respectively.  In addition to the specified paths, configure will
-	check a set of default paths for the library and header files needed
-	to build the client.
+	Specifies an additional search path for, respectively, the kernel
+	source, OpenSSL, zlib, or curl.  In addition to the specified paths,
+	configure will check a set of default paths for each component.
 
 --disable-client
 	Do not build components that are only used by the OpenISR client.
@@ -55,12 +55,11 @@ following command line options:
 	setuid rules.
 
 --enable-modules
---enable-modules=DIR
 --disable-modules
 	Do, or do not, build and install the OpenISR kernel modules.  The
 	default is to build and install these modules unless --disable-client
-	is specified.  If DIR is specified, the modules are built against
-	the configured kernel source tree specified by DIR; otherwise,
+	is specified.  If --with-kernel=DIR is specified, the modules are built
+	against the configured kernel source tree specified by DIR; otherwise,
 	configure attempts to locate the source tree corresponding to the
 	running kernel.  If you are using a kernel provided by your Linux
 	distribution, you must install the kernel-headers package corresponding
