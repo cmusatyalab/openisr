@@ -15,8 +15,6 @@ Packager:	Matt Toups <mtoups@cs.cmu.edu>
 
 URL:		http://isr.cmu.edu
 Source: 	http://isr.cmu.edu/software/openisr-0.8.1.tar.gz
-# patch below needed to compile on fc5/fc6 systems
-Patch:		libvdisk-lba_capacity_2.patch
 # line below is working around an annoying rpm "feature"
 Provides:	perl(IsrRevision)
 
@@ -32,7 +30,6 @@ Provides:	perl(IsrRevision)
 
 %prep
 %setup -q
-%patch
 
 %build
 ./configure --enable-client --disable-modules --prefix=/usr --sysconfdir=/etc && make DESTDIR=%{buildroot}
