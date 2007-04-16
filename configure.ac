@@ -38,8 +38,6 @@ AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules=DIR],
 			[build kernel modules (against kernel source in DIR,
 			if specified) [$client]])],,
 			[enable_modules=${enable_client}])
-AC_ARG_ENABLE([server], [AS_HELP_STRING([--enable-server],
-			[build server code [no]])],, [enable_server=no])
 
 PROCESS_ENABLE_VAR([$enable_client], [WANT_CLIENT],
 			[whether we should build the client])
@@ -47,8 +45,6 @@ PROCESS_ENABLE_VAR([$enable_libvdisk], [WANT_LIBVDISK],
 			[whether we should build libvdisk])
 PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
 			[whether we should build the kernel modules])
-PROCESS_ENABLE_VAR([$enable_server], [WANT_SERVER],
-			[whether we should build the server])
 
 if test z$enable_modules != zno ; then
 	if test z$srcdir != z. ; then
@@ -92,8 +88,6 @@ AC_ARG_WITH([zlib], [AS_HELP_STRING([--with-zlib=DIR],
 			[look for zlib in DIR])])
 AC_ARG_WITH([curl], [AS_HELP_STRING([--with-curl=DIR],
 			[look for curl in DIR])])
-AC_ARG_WITH([mysql], [AS_HELP_STRING([--with-mysql=DIR],
-			[look for MySQL client library in DIR])])
 
 if test z$enable_client = zyes; then
 	FIND_LIBRARY([curl], [curl], [curl_easy_init], [curl/curl.h],
@@ -114,12 +108,6 @@ if test "z$enable_libvdisk" = "zyes" ; then
 	FIND_LIBRARY([libdl], [dl], [dlopen], [dlfcn.h], [/usr])
 fi
 
-if test z$enable_server = zyes ; then
-	FIND_LIBRARY([MySQL client library], [mysqlclient], [mysql_init],
-				[mysql/mysql.h],
-				[$with_mysql /usr/local/mysql /usr/local /usr])
-fi
-
 AC_SUBST([pkgsysconfdir], [\$\(sysconfdir\)/$PACKAGE])
 AC_CONFIG_FILES([Makefile
                  conf/Makefile
@@ -127,7 +115,6 @@ AC_CONFIG_FILES([Makefile
                  libvdisk/Makefile
                  nexus/GNUmakefile
                  nexus/tools/Makefile
-                 server/Makefile
                  sha1/GNUmakefile
                  vulpes/Makefile])
 AC_OUTPUT
