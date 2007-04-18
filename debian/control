@@ -1,14 +1,14 @@
 Source: openisr
-Section: net 
+Section: net
 Priority: extra
 Maintainer: Matt Toups <mtoups@cs.cmu.edu>
-Build-Depends: debhelper, libcurl-dev (>= 7.12.3), zlib1g-dev, libssl-dev
+Build-Depends: debhelper, libcurl-dev, zlib1g-dev, libssl-dev
 Standards-Version: 3.7.2
 
 Package: openisr
 Architecture: any
-Suggests: kvm
-Depends: udev, curl (>= 7.12.3), ssh | openssh-client, openssl, rsync, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
+Suggests: kvm | vmware-player
+Depends: openisr-modules-source (= 0.8.2-2), udev, curl (>= 7.12.3), ssh | openssh-client, openssl, rsync, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
 Description: Internet Suspend/Resume (ISR) client
  OpenISR is the latest implementation of Internet Suspend/Resume, which 
  combines a virtual machine with distributed storage to provide the user 

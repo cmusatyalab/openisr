@@ -1,3 +1,10 @@
+openisr (0.8.2-2) experimental; urgency=low
+
+  * control file updates (Depends/Build-Depends/Recommends)
+  * pull in "upstream" changelog
+
+ -- Matt Toups <mtoups@cs.cmu.edu>  Wed, 18 Apr 2007 18:29:12 -0400
+
 openisr (0.8.2-1) experimental; urgency=low
 
   * New upstream release
