@@ -1,0 +1,8 @@
+#!/bin/sh
+
+cat <<EOF
+
+The automatic update system is no longer supported.  Software for the OpenISR
+system can be obtained from <http://isr.cmu.edu/>.
+EOF
+exit 0
