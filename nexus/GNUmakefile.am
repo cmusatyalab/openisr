@@ -6,3 +6,12 @@ SUBDIRS = tools
 endif
 
 include $(top_srcdir)/autokernel.mk
+
+# The Kbuild makefile is intended to be self-sufficient; nothing in the
+# Automake wrapper is necessary in order to build Nexus.  For that reason,
+# mkrevision is handled by the Kbuild makefile.  However, Automake also needs
+# to know how to build revision.c so that the correct revision.c is used for
+# "make dist".  Therefore we generate revision.c twice.
+REVISION_TYPE = object
+REVISION_DIR = nexus
+include ../mkrevision.mk
