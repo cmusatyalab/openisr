@@ -211,6 +211,38 @@ static inline struct class_device *create_class_dev(struct class *cls,
 
 /***** Request queue/bio *****************************************************/
 
+/* The CFQ I/O scheduler in kernels 2.6.10 and above can hold request queue
+   references for a very long time: if a process (e.g. kblockd) has ever done
+   I/O to a block device, the process will hold a reference to its queue
+   until it exits.  At that time, the request queue spinlock will be locked,
+   which means we can't have freed the lock while shutting down the block
+   device.  Kernels 2.6.12 and above allow us to pass a NULL spinlock pointer
+   to blk_init_queue(), which will allocate a spinlock along with the request
+   queue structure, thus maintaining these lifetime rules.  For older kernels,
+   we pass a static spinlock instead, in an attempt to ensure that the spinlock
+   lasts as long as we need it to.  For kernels 2.6.10 and above, we also
+   disallow module unloading, since we can make no assumptions about the
+   lifetimes of all processes which ever opened our block device.  According to
+   Jens Axboe, the block layer core may also hold a reference to the request
+   queue after the device is gone, but only for a short time, so for < 2.6.10
+   we take the risk of an unload race and allow the module to be unloaded.
+   
+   Note that this approach prevents request functions for multiple block
+   devices from running at the same time, for kernels < 2.6.12. */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,12)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,10)
+#define NEXUS_NO_UNLOAD
+#endif
+#define init_request_queue(reqfn, lock) blk_init_queue(reqfn, lock)
+#define GLOBAL_QUEUE_LOCK(lockname) static spinlock_t lockname
+#define INIT_QUEUE_LOCK(lockname) spin_lock_init(lockname)
+#else
+#define init_request_queue(reqfn, lock) blk_init_queue(reqfn, NULL)
+#define GLOBAL_QUEUE_LOCK(lockname)
+#define INIT_QUEUE_LOCK(lockname)
+#endif
+
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,12)
 /* XXX this may introduce low-memory deadlocks.  theoretically we could
    reimplement bio_alloc() to avoid this. */

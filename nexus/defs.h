@@ -177,7 +177,6 @@ struct nexus_dev {
 	struct class_device *class_dev;
 	struct gendisk *gendisk;
 	request_queue_t *queue;
-	spinlock_t queue_lock;
 	struct block_device *chunk_bdev;
 	struct work_struct cb_add_disk;
 	

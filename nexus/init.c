@@ -33,6 +33,7 @@
 
 static struct class *class;
 int blk_major;
+GLOBAL_QUEUE_LOCK(queue_lock);
 
 /**
  * struct state - singleton tracking global, modifiable state
@@ -446,7 +447,6 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	/* Now we have refcounting, so all further errors should deallocate
 	   through the destructor */
 	mutex_init(&dev->lock);
-	spin_lock_init(&dev->queue_lock);
 	INIT_LIST_HEAD(&dev->requests);
 	spin_lock_init(&dev->requests_lock);
 	setup_timer(&dev->requests_oom_timer, oom_timer_fn, (unsigned long)dev);
@@ -548,7 +548,7 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	dev->chunks=chunk_of(dev, capacity);
 	
 	debug(DBG_CTR, "Allocating queue");
-	dev->queue=blk_init_queue(nexus_request, &dev->queue_lock);
+	dev->queue=init_request_queue(nexus_request, &queue_lock);
 	if (dev->queue == NULL) {
 		log(KERN_ERR, "couldn't allocate request queue");
 		ret=-ENOMEM;
@@ -662,6 +662,7 @@ static int __init nexus_init(void)
 	
 	spin_lock_init(&state.lock);
 	INIT_LIST_HEAD(&state.devs);
+	INIT_QUEUE_LOCK(&queue_lock);
 	
 	debug(DBG_INIT, "Initializing request handler");
 	ret=request_start();
@@ -734,7 +735,9 @@ bad_class:
 bad_request:
 	return ret;
 }
+module_init(nexus_init);
 
+#ifndef NEXUS_NO_UNLOAD   /* defined by kcompat.h */
 /**
  * nexus_shutdown - module de-initialization function
  **/
@@ -756,9 +759,8 @@ static void __exit nexus_shutdown(void)
 	
 	request_shutdown();
 }
-
-module_init(nexus_init);
 module_exit(nexus_shutdown);
+#endif
 
 MODULE_AUTHOR("Benjamin Gilbert <bgilbert@cs.cmu.edu>");
 MODULE_DESCRIPTION("OpenISR virtual block device");
