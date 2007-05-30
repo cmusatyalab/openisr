@@ -22,6 +22,10 @@ if [ -e .svn ] ; then
 	REV="$VER ($BRANCH)"
 elif [ -d `dirname $0`/.git ] ; then
 	REV=`git-describe`
+	if git-diff-index HEAD | read junk ; then
+		# There are uncommitted changes in the working copy
+		REV="$REV-dirty"
+	fi
 else
 	exit 0
 fi
