@@ -29,6 +29,7 @@ use POSIX ":sys_wait_h";
 use POSIX ":signal_h";
 use Fcntl qw(:DEFAULT :seek);
 use Errno qw(:POSIX);
+use Config;
 require "syscall.ph";
 use lib "!!SHAREDIR!!";
 use Isr;
@@ -2091,7 +2092,16 @@ sub mysystem ($) {
 # sys_sync - Call sync(2)
 #
 sub sys_sync () {
-    syscall(&SYS_sync);
+    if ($Config{'myarchname'} =~ /i.86-linux/ and SYS_sync() == 162) {
+	# On Ubuntu Feisty on 32-bit x86, SYS_sync() reports the syscall number
+	# for sync() on the AMD64 architecture, which is not the same number.
+	# In this case syscall(&SYS_sync) is actually a call to nanosleep()
+	# with garbage arguments, which hangs forever.  So we hardcode the
+	# syscall number for this case.
+	syscall(36);
+    } else {
+	syscall(&SYS_sync);
+    }
 }
 
 #
