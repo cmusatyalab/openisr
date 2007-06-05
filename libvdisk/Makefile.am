@@ -20,6 +20,12 @@ install-exec-hook:
 				$(DESTDIR)$(sysexeclibdir)/libvdisk.so
 	chmod 4644 $(DESTDIR)$(sysexeclibdir)/libvdisk.so.0.0.0
 
+# Automake handles "make uninstall" through libtool, but we never installed
+# libvdisk.la, so libtool fails to complete the uninstall.
+uninstall-local:
+	rm -f $(DESTDIR)$(sysexeclibdir)/libvdisk.so.0 \
+				$(DESTDIR)$(sysexeclibdir)/libvdisk.so.0.0.0
+
 REVISION_TYPE = header
 REVISION_DIR = libvdisk
 include $(top_srcdir)/mkrevision.mk
