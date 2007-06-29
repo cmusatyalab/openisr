@@ -1145,7 +1145,7 @@ sub isr_priv_clientcommit($$$) {
     foreach $name (readdir(DIR)) {
 	next if ($name eq "." || $name eq "..");
 	copy("$cachedir/cfg/$name", "$lastdir/cfg/$name")
-	    or unix_errexit("Unable to copy memory image from $cachedir to $lastdir/cfg.");
+	    or unix_errexit("Unable to copy $name from $cachedir/cfg to $lastdir/cfg.");
     }
     closedir(DIR);
     copy("$cachedir/keyring", "$lastdir/keyring")

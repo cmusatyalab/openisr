@@ -1883,11 +1883,11 @@ sub build_cache ($$) {
 	mkdir("$cachedir/cfg")
 	    or unix_errexit("Unable to make $cachedir/cfg");
 	opendir(DIR, "$lastdir/cfg")
-	    or unix_errexit("Unable to read memory image directory $lastdir");
+	    or unix_errexit("Unable to read memory image directory $lastdir/cfg");
 	foreach $name (readdir(DIR)) {
 	    next if ($name eq "." || $name eq "..");
 	    copy("$lastdir/cfg/$name", "$cachedir/cfg/$name")
-		or unix_errexit("Unable to copy virtualization config files.");
+		or unix_errexit("Unable to copy $name from $lastdir/cfg to $cachedir/cfg.");
 	}
 	closedir(DIR);
     }
