@@ -24,15 +24,26 @@ get_modname() {
 	esac
 }
 
+probe_module() {
+	name="$1"
+	direction="$2"
+	required="$3"
+	
+	[ "$direction" = "remove" ] && flags="-r" || flags=""
+	if modprobe $flags "$name" 2>/dev/null ; then
+		echo -n " $name"
+	else
+		[ "$required" = "required" ] && echo -n " failed"
+	fi
+}
+
 do_start() {
 	modname=`get_modname`
 	
 	echo -n "Loading OpenISR kernel modules:"
-	modprobe openisr 2>/dev/null && echo -n " openisr" || echo -n " failed"
-	
-	if [ "$modname" != "none" ] ; then
-		modprobe $modname 2>/dev/null && echo -n " $modname"
-	fi
+	probe_module loop insert
+	probe_module openisr insert required
+	[ "$modname" != "none" ] && probe_module $modname insert
 	
 	echo "."
 }
@@ -41,8 +52,9 @@ do_stop() {
 	modname=`get_modname`
 	
 	echo -n "Unloading OpenISR kernel modules:"
-	modprobe -r $modname 2>/dev/null && echo -n " $modname"
-	modprobe -r openisr 2>/dev/null && echo -n " openisr" || echo -n " failed"
+	probe_module $modname remove
+	probe_module openisr remove required
+	probe_module loop remove
 	echo "."
 }
 
