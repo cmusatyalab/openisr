@@ -86,12 +86,13 @@ by writing to /sys/class/openisr/debug_mask.  The "nexus_debug" helper program
 human-readable way, or produce a debug mask which can be passed to the
 load-time parameter.
 
-There is a per-device "unwedge" attribute in sysfs which can be used if
-the device becomes wedged.  Here are the strings which can be written to
-that file:
-- "cache" - start pending work for all cached chunks
-- "threads" - wake up all kernel threads
-- "elevator" - force the request function to be called
+There is a per-device "action" attribute in sysfs which can be used for
+various debugging tasks; this can be useful if the device becomes wedged.
+Here are the strings which can be written to that file:
+- "kick-cache" - start pending work for all cached chunks
+- "kick-threads" - wake up all kernel threads
+- "kick-elevator" - force the request function to be called
+- "zap" - forcibly unregister the block device
 
 The "states" sysfs attribute gives the number of cache lines in each state
 of the cache's state machine.  The "state_times" attribute gives the average

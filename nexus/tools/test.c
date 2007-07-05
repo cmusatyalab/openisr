@@ -363,6 +363,10 @@ int run(char *storefile, enum nexus_compress compress)
 		if (pollfds[0].revents & POLLPRI)
 			if (!ioctl(ctlfd, NEXUS_IOC_UNREGISTER))
 				break;
+		if (pollfds[0].revents & POLLERR) {
+			printf("Device no longer exists\n");
+			break;
+		}
 		if (!(pollfds[0].revents & POLLIN))
 			continue;
 		

@@ -235,22 +235,34 @@ static ssize_t dev_show_sect_written(struct class_device *class_dev, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.sectors_written);
 }
 
-static ssize_t dev_store_unwedge(struct class_device *class_dev,
+static ssize_t dev_store_action(struct class_device *class_dev,
 			const char *buf, size_t len)
 {
 	struct nexus_dev *dev=class_get_devdata(class_dev);
+	int ret;
 	
-	if (!strcmp(buf, "cache\n")) {
+	if (!strcmp(buf, "kick-cache\n")) {
 		/* -ERESTARTSYS doesn't work here */
 		mutex_lock(&dev->lock);
 		run_all_chunks(dev);
 		mutex_unlock(&dev->lock);
-	} else if (!strcmp(buf, "threads\n")) {
+	} else if (!strcmp(buf, "kick-threads\n")) {
 		/* XXX technically this shouldn't go in the per-device
 		   sysfs directory */
 		wake_all_threads();
-	} else if (!strcmp(buf, "elevator\n")) {
+	} else if (!strcmp(buf, "kick-elevator\n")) {
 		kick_elevator(dev);
+	} else if (!strcmp(buf, "zap\n")) {
+		ret=-ENXIO;
+		mutex_lock(&dev->lock);
+		if (!dev_is_shutdown(dev)) {
+			log(KERN_NOTICE, "Forcing shutdown of " DEVICE_NAME
+						"%c", 'a' + dev->devnum);
+			ret=shutdown_dev(dev, 1);
+		}
+		mutex_unlock(&dev->lock);
+		if (ret)
+			return ret;
 	} else {
 		return -EINVAL;
 	}
@@ -277,6 +289,6 @@ struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(chunk_encrypted_discards, S_IRUGO, dev_show_discards, NULL),
 	__ATTR(sectors_read, S_IRUGO, dev_show_sect_read, NULL),
 	__ATTR(sectors_written, S_IRUGO, dev_show_sect_written, NULL),
-	__ATTR(unwedge, S_IWUSR, NULL, dev_store_unwedge),
+	__ATTR(action, S_IWUSR, NULL, dev_store_action),
 	__ATTR_NULL
 };
