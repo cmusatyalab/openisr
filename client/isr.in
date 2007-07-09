@@ -45,7 +45,7 @@ $| = 1; # Autoflush output on every print statement
 sub checkout ($$$$);
 sub run ($$$$);
 sub checkin ($$$);
-sub sync ($$$);
+sub sync ($$$$);
 sub discard ($$$);
 sub disconnect ($$$$);
 sub listparcels ($$$$$);
@@ -392,7 +392,7 @@ elsif ($command eq "sync") {
     need_checked_out();
     need_network();
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
-    sync($userid, $parcel, $isrdir);
+    sync($userid, $parcel, $isrdir, 0);
 } 
 elsif ($command eq "discard") {
     need_parcel();
@@ -933,7 +933,7 @@ sub checkin ($$$) {
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
 
     # Sync the dirty blocks on the server
-    sync($userid, $parcel, $isrdir) == $Isr::ESUCCESS
+    sync($userid, $parcel, $isrdir, 1) == $Isr::ESUCCESS
 	or errexit("Sync of parcel $userid/$parcel failed.");
 
     # Release the lock on the parcel
@@ -944,19 +944,21 @@ sub checkin ($$$) {
 #
 # sync - Make local state clean
 #
-sub sync ($$$) {
+sub sync ($$$$) {
     my $userid = shift;     # login name
     my $parcel = shift;     # parcel name
     my $isrdir = shift;     # absolute path of local ISR home dir
+    my $releasing = shift;  # whether we're releasing the lock afterward
 
     my $parceldir = "$isrdir/$parcel";
+    my $relstring = "";
 
     # Parse config file that was retrieved during checkout
     # and load the protocol specific module
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
 
     # Now call the protocol-specific sync function
-    isr_sync($userid, $parcel, $isrdir) == $Isr::ESUCCESS
+    isr_sync($userid, $parcel, $isrdir, $releasing) == $Isr::ESUCCESS
 	or errexit("Sync of parcel $userid/$parcel failed.");
     
     # Append the session log to the persistent log in remote storage
@@ -971,8 +973,10 @@ sub sync ($$$) {
 	    unlink("$isrdir/$Isr::LOGFILE");
 	}
     }
-	
-    print(GREEN, "Success: Sync completed. Parcel checkpointed (but not released).\n", RESET)
+    
+    $relstring = " (but not released)"
+	if !$releasing;
+    print(GREEN, "Success: Sync completed. Parcel checkpointed$relstring.\n", RESET)
 	if $verbose;
 
     return $Isr::ESUCCESS;

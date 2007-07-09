@@ -541,10 +541,11 @@ sub isr_stathoard ($$$) {
 #
 # isr_sync - Make local state clean
 #
-sub isr_sync ($$$) {
+sub isr_sync ($$$$) {
     my $userid = shift;     # login name
     my $parcel = shift;     # parcel name
     my $isrdir = shift;     # absolute path of local ISR home dir
+    my $releasing = shift;  # whether we're releasing the lock afterward
 
     # Garbage collect the hoard cache
     isr_priv_cleanhoard($userid, $parcel, $isrdir);
@@ -557,8 +558,11 @@ sub isr_sync ($$$) {
     block_sigint();
 
     # Commit the dirty blocks to a new version
-    isr_priv_commit($userid, $parcel, $isrdir) == $Isr::ESUCCESS
+    isr_priv_commit($userid, $parcel, $isrdir, $releasing) == $Isr::ESUCCESS
 	or errexit("Commit of parcel $userid/$parcel failed.");
+
+    # If $releasing == 1, it is not safe to unblock SIGINT until the parceldir
+    # is removed by our caller, since the last/ dir is not up-to-date.
 
     return $Isr::ESUCCESS;
 }
@@ -992,10 +996,11 @@ sub copy_dirtychunks ($) {
 # isr_priv_commit - Commit files that were copied to server-side 
 #                   cache by upload
 #
-sub isr_priv_commit ($$$) {
+sub isr_priv_commit ($$$$) {
     my $userid = shift;
     my $parcel = shift;
     my $isrdir = shift;
+    my $releasing = shift;
 
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
@@ -1059,7 +1064,7 @@ sub isr_priv_commit ($$$) {
     # client-side commit. 
     print "Committing updates on client...\n"
 	if $main::verbose;
-    isr_priv_clientcommit($userid, $parcel, $isrdir);
+    isr_priv_clientcommit($userid, $parcel, $isrdir, $releasing);
 
     return $Isr::ESUCCESS;
 
@@ -1072,10 +1077,11 @@ sub isr_priv_commit ($$$) {
 #     Second, move any dirty hdk chunks from the local cache to the hoard
 #     cache so that the hoard cache stays fully populated.
 #
-sub isr_priv_clientcommit($$$) {
+sub isr_priv_clientcommit($$$$) {
     my $userid = shift;
     my $parcel = shift;
     my $isrdir = shift;
+    my $releasing = shift;
 
     my $chunksperdir;
     my $chunksize;
@@ -1139,20 +1145,27 @@ sub isr_priv_clientcommit($$$) {
     # Now that we have determined the dirty disk state, we can copy
     # the memory image, keyring, and index.lev1 from cache to last
     #
-    message("INFO", "Client side commit - start copying memory image");
-    opendir(DIR, "$cachedir/cfg")
-        or unix_errexit("Unable to read memory image directory $cachedir");
-    foreach $name (readdir(DIR)) {
-	next if ($name eq "." || $name eq "..");
-	copy("$cachedir/cfg/$name", "$lastdir/cfg/$name")
-	    or unix_errexit("Unable to copy $name from $cachedir/cfg to $lastdir/cfg.");
+    if ($releasing) {
+	# There's no point in copying the memory from cache/ to last/ if the
+	# whole directory tree is going to be removed.  SIGINT is blocked, and
+	# must remain blocked until the lock is released.
+	message("INFO", "Client side commit - skipping copy of memory image");
+    } else {
+	message("INFO", "Client side commit - start copying memory image");
+	opendir(DIR, "$cachedir/cfg")
+	    or unix_errexit("Unable to read memory image directory $cachedir");
+	foreach $name (readdir(DIR)) {
+	    next if ($name eq "." || $name eq "..");
+	    copy("$cachedir/cfg/$name", "$lastdir/cfg/$name")
+		or unix_errexit("Unable to copy $name from $cachedir/cfg to $lastdir/cfg.");
+	}
+	closedir(DIR);
+	copy("$cachedir/keyring", "$lastdir/keyring")
+	    or unix_errexit("Unable to copy keyring from $cachedir to $lastdir.");
+	copy("$cachedir/hdk/index.lev1", "$lastdir/hdk/index.lev1")
+	    or unix_errexit("Unable to copy index.lev1 from $cachedir to $lastdir.");
+	message("INFO", "Client side commit - finish copying memory image");
     }
-    closedir(DIR);
-    copy("$cachedir/keyring", "$lastdir/keyring")
-	or unix_errexit("Unable to copy keyring from $cachedir to $lastdir.");
-    copy("$cachedir/hdk/index.lev1", "$lastdir/hdk/index.lev1")
-        or unix_errexit("Unable to copy index.lev1 from $cachedir to $lastdir.");
-    message("INFO", "Client side commit - finish copying memory image");
 
     #
     # Move any dirty cache chunks to the hoard cache
