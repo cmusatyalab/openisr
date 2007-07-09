@@ -30,6 +30,7 @@
 /* ioctls */
 #define NEXUS_IOC_REGISTER      _IOWR(0x1a, 0, struct nexus_setup)
 #define NEXUS_IOC_UNREGISTER      _IO(0x1a, 1)
+#define NEXUS_IOC_CONFIG_THREAD   _IO(0x1a, 2)
 
 #define NEXUS_INTERFACE_VERSION 5
 

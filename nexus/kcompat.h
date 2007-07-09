@@ -354,6 +354,14 @@ typedef struct work_struct work_t;
 /* XXX implicit cast when converting from old ioctl on 64-bit systems? */
 #endif
 
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
+#define fops_flush_method(name, filp) int name(struct file *filp)
+#else
+#define fops_flush_method(name, filp) \
+	int name(struct file *filp, fl_owner_t ignored)
+#endif
+
 /***** Software suspend ******************************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)

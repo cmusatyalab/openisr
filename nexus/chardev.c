@@ -27,6 +27,63 @@
 #include "defs.h"
 
 /**
+ * chr_config_thread - configure task state for the userspace process
+ *
+ * Set task flags for the current process to help prevent kernel-user deadlock,
+ * etc.  This is an interim hacky solution until we have a real one.
+ *
+ * The only thing this does right now is set the %PF_LESS_THROTTLE flag, which
+ * allows userspace to dirty *more* pages than everyone else can before being
+ * throttled.  Without this, if userspace tries to dirty a page when the Nexus
+ * block device it's servicing is congested and the dirty ratio exceeds 
+ * vm_dirty_ratio, the block device deadlocks.
+ *
+ * Problems with this approach:
+ *
+ * 1.  We don't get notified when an existing process/thread gets a copy of an
+ * existing chardev fd, so we can't configure the thread.  We work around this
+ * by providing an ioctl that a new thread can call to be configured.  Note
+ * that newly forked/cloned tasks inherit PF_LESS_THROTTLE.
+ *
+ * 2.  We're not allowed to write to a task's flags unless we're called from
+ * that task's context.  So, in the case of multithreaded processes, only the
+ * thread that directly calls close() will be properly deconfigured.
+ *
+ * 3.  If a thread has more than one chardev fd open, and it unregisters or
+ * closes one of them, the thread will be deconfigured.  The thread can work
+ * around this by using the configure ioctl afterward.
+ **/
+static int chr_config_thread(void)
+{
+	if (current->flags & PF_LESS_THROTTLE)
+		return -EEXIST;
+	debug(DBG_CHARDEV, "Configuring thread %d", current->pid);
+	current->flags |= PF_LESS_THROTTLE;
+	return 0;
+}
+
+/**
+ * chr_unconfig_thread - unconfigure task state for the userspace process
+ **/
+static void chr_unconfig_thread(void)
+{
+	if (!(current->flags & PF_LESS_THROTTLE))
+		return;
+	debug(DBG_CHARDEV, "Unconfiguring thread %d", current->pid);
+	current->flags &= ~PF_LESS_THROTTLE;
+}
+
+/**
+ * chr_flush - clean up after an individual thread closes a chardev fd
+ **/
+static fops_flush_method(chr_flush, filp)
+{
+	debug(DBG_CHARDEV, "Running chr_flush");
+	chr_unconfig_thread();
+	return 0;
+}
+
+/**
  * chr_release - clean up after the last user closes a chardev fd
  **/
 static int chr_release(struct inode *ino, struct file *filp)
@@ -250,6 +307,7 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		if (copy_to_user((void __user *)arg, &setup, sizeof(setup)))
 			BUG(); /* XXX */
 		filp->private_data=dev;
+		chr_config_thread();
 		return 0;
 	case NEXUS_IOC_UNREGISTER:
 		if (dev == NULL)
@@ -258,7 +316,13 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 			return -ERESTARTSYS;
 		ret=shutdown_dev(dev, 0);
 		mutex_unlock(&dev->lock);
+		if (!ret)
+			chr_unconfig_thread();
 		return ret;
+	case NEXUS_IOC_CONFIG_THREAD:
+		if (dev == NULL || dev_is_shutdown(dev))
+			return -ENXIO;
+		return chr_config_thread();
 	default:
 		return -ENOTTY;
 	}
@@ -305,6 +369,7 @@ static struct file_operations nexus_char_ops = {
 	.open =			nonseekable_open,
 	.read =			chr_read,
 	.write =		chr_write,
+	.flush =		chr_flush,
 	.release =		chr_release,
 	.llseek =		no_llseek,
 	.poll =			chr_poll,
