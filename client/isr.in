@@ -1692,8 +1692,10 @@ sub get_parcelnames ($$) {
     my $userid = shift;
     my $outfile = shift;
 
-    mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_listparcels.pl -u $userid > $outfile") == 0
-	or system_errexit("Unable to run isr_nsrv_listparcels.pl on the name server ($nameserver)");
+    if (mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_listparcels.pl -u $userid > $outfile")) {
+	unlink($outfile);
+	system_errexit("Unable to run isr_nsrv_listparcels.pl on the name server ($nameserver)");
+    }
 }
 
 #
@@ -1704,8 +1706,10 @@ sub get_parcelcfg ($$$) {
     my $parcel = shift;
     my $outfile = shift; # Put the retrieved file here
 
-    mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_getconfig.pl -p $parcel -u $userid > $outfile") == 0
-	or system_errexit("Parcel $userid/$parcel does not exist on the name server ($nameserver).");
+    if (mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_getconfig.pl -p $parcel -u $userid > $outfile")) {
+	unlink($outfile);
+	system_errexit("Parcel $userid/$parcel does not exist on the name server ($nameserver).");
+    }
 }
 
 #
