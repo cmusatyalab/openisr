@@ -14,7 +14,7 @@ BuildRoot: 	/var/tmp/%{name}-buildroot
 Packager:	Matt Toups <mtoups@cs.cmu.edu>
 
 URL:		http://isr.cmu.edu
-Source: 	http://isr.cmu.edu/software/openisr-0.8.2.tar.gz
+Source: 	http://isr.cmu.edu/software/openisr-%{version}.tar.gz
 # line below is working around an annoying rpm "feature"
 Provides:	perl(IsrRevision)
 
