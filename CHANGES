@@ -1,3 +1,16 @@
+====== 0.8.3
+
+- Fix deadlock under high I/O load with large guest memory image
+- Fix kernel oops occurring with some kernel builds (e.g. Fedora Core 5) after
+  Nexus block device shutdown.  As a side effect, Nexus is no longer unloadable
+  on 2.6.10 and 2.6.11.
+- Fix hang of "isr" command on 32-bit Ubuntu 7.04 systems
+- Add support for kernels 2.6.21 and 2.6.22
+- Improve performance of client commit phase of "isr checkin"
+- Automatically load the loop driver at boot
+- Packaging updates
+- Minor fixes
+
 ====== 0.8.2
 
 - Fix memory leak in Nexus kernel module.  After upgrading to 0.8.2, you should

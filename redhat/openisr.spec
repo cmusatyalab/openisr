@@ -1,6 +1,6 @@
 ### begin RPM spec
 %define name openisr
-%define version 0.8.2
+%define version 0.8.3
 
 Summary: 	OpenISR Internet Suspend-Resume client
 Name: 		%name
