@@ -1432,12 +1432,16 @@ void chunkdata_free_table(struct nexus_dev *dev)
  **/
 int __init chunkdata_start(void)
 {
-	/* The second and third parameters are dependent on the contents
-	   of bvec_slabs[] in fs/bio.c, and on the chunk size.  Better too
-	   high than too low. */
-	/* XXX reduce a bit? */
+	/* We need to ensure that we can always allocate enough to complete
+	   one io, which may require multiple requests to the backing device
+	   (depending on its queue limits).  So, these values depend on the
+	   queue properties of the backing device and the number of Nexus
+	   devices competing for allocations.  We just pick numbers that seem
+	   to have enough headroom. */
+	/* XXX further io could still block in bio_create(), preventing
+	   completed requests from being processed by the worker thread */
 	bio_pool=bioset_create_wrapper(4 * MIN_CONCURRENT_REQS,
-				4 * MIN_CONCURRENT_REQS, 4);
+				4 * MIN_CONCURRENT_REQS);
 	if (IS_ERR(bio_pool))
 		return PTR_ERR(bio_pool);
 	

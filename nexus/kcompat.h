@@ -31,7 +31,7 @@
 #endif
 
 /* We (optimistically) don't check for kernel releases that are too new; the
-   module will either build or it won't.  We are known to support <= 2.6.21. */
+   module will either build or it won't.  We are known to support <= 2.6.22. */
 
 /***** Memory allocation *****************************************************/
 
@@ -247,13 +247,22 @@ static inline struct class_device *create_class_dev(struct class *cls,
 /* XXX this may introduce low-memory deadlocks.  theoretically we could
    reimplement bio_alloc() to avoid this. */
 #define bio_alloc_bioset(mask, vecs, set) bio_alloc(mask, vecs)
-#define bioset_create_wrapper(biosz, bvecsz, scale) (NULL)
+#define bioset_create_wrapper(biosz, bvecsz) (NULL)
 #define bioset_free(bset) do {} while (0)
-#else
-static inline struct bio_set *bioset_create_wrapper(int bio_cnt, int bvec_cnt,
-			int scale)
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
+static inline struct bio_set *bioset_create_wrapper(int bio_cnt, int bvec_cnt)
 {
-	struct bio_set *bset=bioset_create(bio_cnt, bvec_cnt, scale);
+	/* For consistency across kernel versions, set the "scale" parameter
+	   high enough that no scaling will take place. */
+	struct bio_set *bset=bioset_create(bio_cnt, bvec_cnt, 32);
+	if (bset == NULL)
+		return ERR_PTR(-ENOMEM);
+	return bset;
+}
+#else
+static inline struct bio_set *bioset_create_wrapper(int bio_cnt, int bvec_cnt)
+{
+	struct bio_set *bset=bioset_create(bio_cnt, bvec_cnt);
 	if (bset == NULL)
 		return ERR_PTR(-ENOMEM);
 	return bset;
