@@ -73,6 +73,9 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed Jul 11 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.3-1
+- New upstream release
+
 * Mon Apr 16 2007 Benjamin Gilbert <bgilbert@cs.cmu.edu> 0.8.2-1
 - New upstream release
 
