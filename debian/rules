@@ -138,7 +138,7 @@ kdist_clean:
 # details
 kdist_config: prep-deb-files
 # ... additional kernel specific things to configure...
-	./configure --host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) --prefix=/usr --mandir=\$${prefix}/share/man --infodir=\$${prefix}/share/info --enable-modules --disable-client CFLAGS="$(CFLAGS)" LDFLAGS="-Wl,-z,defs"
+	./configure --host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) --prefix=/usr --mandir=\$${prefix}/share/man --infodir=\$${prefix}/share/info --enable-modules --disable-client CFLAGS="$(CFLAGS)" --with-kernel=$(KSRC) LDFLAGS="-Wl,-z,defs"
 
 # The kdist_configure target is called by make-kpkg modules_config and
 # by kdist* rules by dependency. It should configure the module so it is
