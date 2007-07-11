@@ -1,6 +1,8 @@
 openisr (0.8.3-1) experimental; urgency=low
 
   * New upstream release
+  * fix a problem with the module package when using
+    make-kpkg instead of module-assistant
 
  -- Matt Toups <mtoups@cs.cmu.edu>  Tue, 10 Jul 2007 17:58:26 -0400
 
