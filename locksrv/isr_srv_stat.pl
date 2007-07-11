@@ -40,7 +40,7 @@ $| = 1; # Autoflush output on every print statement
 my $filepath;
 my $verbose;
 my $item;
-my @metadata;
+my $metadata;
 
 #
 # Parse the command line args
@@ -67,20 +67,21 @@ use strict 'vars';
 #
 # Return the stat metadata as a list of key-value pairs
 #
-print "DEV=", stat($filepath)->dev, "\n";
-print "INO=", stat($filepath)->ino, "\n";
-print "SIZE=", stat($filepath)->size, "\n";
-print "MODE=", stat($filepath)->mode, "\n";
-print "NLINK=", stat($filepath)->nlink, "\n";
-print "UID=", stat($filepath)->uid, "\n";
-print "GID=", stat($filepath)->gid, "\n";
-print "RDEV=", stat($filepath)->rdev, "\n";
-print "SIZE=", stat($filepath)->size, "\n";
-print "ATIME=", stat($filepath)->atime, "\n";
-print "MTIME=", stat($filepath)->mtime, "\n";
-print "CTIME=", stat($filepath)->ctime, "\n";
-print "BLKSSIZE=", stat($filepath)->blksize, "\n";
-print "BLOCKS=", stat($filepath)->blocks, "\n";
+$metadata = stat($filepath);
+print "DEV=", $metadata->dev, "\n";
+print "INO=", $metadata->ino, "\n";
+print "SIZE=", $metadata->size, "\n";
+print "MODE=", $metadata->mode, "\n";
+print "NLINK=", $metadata->nlink, "\n";
+print "UID=", $metadata->uid, "\n";
+print "GID=", $metadata->gid, "\n";
+print "RDEV=", $metadata->rdev, "\n";
+print "SIZE=", $metadata->size, "\n";
+print "ATIME=", $metadata->atime, "\n";
+print "MTIME=", $metadata->mtime, "\n";
+print "CTIME=", $metadata->ctime, "\n";
+print "BLKSSIZE=", $metadata->blksize, "\n";
+print "BLOCKS=", $metadata->blocks, "\n";
 print "SHA1=", `openssl sha1 < $filepath`, "\n";
 #
 # Clean up and exit
