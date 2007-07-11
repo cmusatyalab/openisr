@@ -105,6 +105,8 @@ if test z$enable_client = zyes ; then
 	
 	FIND_LIBRARY([zlib], [z], [inflate], [zlib.h],
 				[$with_zlib /usr/local /usr])
+	
+	PKG_CHECK_MODULES([SQLITE], [sqlite3])
 fi
 
 if test z$enable_libvdisk = zyes ; then
