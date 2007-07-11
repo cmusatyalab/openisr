@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sqlite3.h>
@@ -38,21 +41,39 @@ struct kr_entry {
 
 static FILE *in;
 static sqlite3 *db;
+static char *dbpath;
 extern int optind;
 
 
 /**** Helpers ****/
 
-#define die(str, args...) do { \
-		printf(str "\n", ##args); \
-		exit(1); \
-	} while (0)
+static void __attribute__ ((noreturn)) die(char *str, ...)
+{
+	va_list ap;
 
-static void sqlerr(char *prefix)
+	va_start(ap, str);
+	vprintf(str, ap);
+	printf("\n");
+	va_end(ap);
+	if (dbpath != NULL)
+		unlink(dbpath);
+	exit(1);
+}
+
+static void __attribute__ ((noreturn)) sqlerr(char *prefix)
 {
 	printf("%s: %s\n", prefix, sqlite3_errmsg(db));
 	sqlite3_close(db);
+	if (dbpath != NULL)
+		unlink(dbpath);
 	exit(1);
+}
+
+static int exists(char *file)
+{
+	struct stat buf;
+
+	return stat(file, &buf) ? 0 : 1;
 }
 
 static void step(char *desc, sqlite3_stmt *step)
@@ -205,6 +226,8 @@ static void usage(char *argv0)
 
 int main(int argc, char **argv)
 {
+	char *infile;
+	char *outfile;
 	int opt;
 	int binary=0;
 
@@ -219,14 +242,19 @@ int main(int argc, char **argv)
 	}
 	if (optind != argc - 2)
 		usage(argv[0]);
+	infile=argv[optind];
+	outfile=argv[optind+1];
 
-	in=fopen(argv[optind], "r");
+	in=fopen(infile, "r");
 	if (in == NULL)
-		die("Couldn't open %s", argv[optind]);
+		die("Couldn't open %s", infile);
 	if (binary)
 		validate_binary_header();
-	if (sqlite3_open(argv[optind + 1], &db))
+	if (exists(outfile))
+		die("%s already exists", outfile);
+	if (sqlite3_open(outfile, &db))
 		sqlerr("Opening database");
+	dbpath=outfile;
 
 	if (sqlite3_exec(db, "PRAGMA auto_vacuum = none", NULL, NULL, NULL))
 		sqlerr("Disabling auto-vacuum");
