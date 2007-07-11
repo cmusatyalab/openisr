@@ -2,18 +2,14 @@ ISR Remote Storage and Name Server Directory
 
 This directory contains two types of programs: those that run on the
 name server (isr_nsrv_*), and those that implement the basic ISR
-operations on parcels in remote storage (isr_srv_*). Depending on the
-storage model, these operations either run locally (CODA) or remotely
-(HTTP).
+operations on parcels in remote storage (isr_srv_*).
 
 Each program takes a -h command line argument that prints help info.
 
 Files:
 README
 	This file
-VERSION
-	The file that sits on the update server and controls auto
-	updates on the clients.
+
 Server.pm	
 	Perl module imported by each program that exports  
 	configuration variables and common functions.
@@ -23,6 +19,9 @@ isr_nsrv_getconfig.pl
 
 isr_nsrv_listparcels.pl	
 	Lists the parcels managed by this name server for a particular user.
+
+isr_nsrv_motd.pl
+	Prints the message of the day, if any.
 
 isr_srv_catlog.pl 
 	Appends a temporary session log to a user's permanent ISR log
