@@ -16,6 +16,8 @@ package built from the source.  This can be done easily, see below.
 
 >>> To build the openisr-modules package:
 
+(as root, or with sudo)
+
 To build the modules using module-assistant, use
  module-assistant auto-install openisr
 
@@ -23,4 +25,15 @@ If you don't already have the right kernel headers,
  module-assistant prepare
 can often figure out what package to download for you.
 
- -- Matt Toups <mtoups@cs.cmu.edu>  Mon, 29 Jan 2007 11:25:48 -0500
+>>> Loop device permissions
+
+On Debian systems, the loop devices should be writable by group 'disk'.  So,
+for users who should have ISR access, add them to the disk group with:
+
+adduser <username> disk
+
+(again, as root, or with sudo)
+
+The loop driver should already be loaded for you by the openisr init script.
+
+ -- Matt Toups <mtoups@cs.cmu.edu>
