@@ -123,5 +123,6 @@ AC_CONFIG_FILES([Makefile
                  nexus/GNUmakefile
                  nexus/tools/Makefile
                  sha1/GNUmakefile
+                 tools/Makefile
                  vulpes/Makefile])
 AC_OUTPUT
