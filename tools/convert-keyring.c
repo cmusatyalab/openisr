@@ -1,9 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
 #include <sqlite3.h>
 
 #define HASHLEN 20
 #define ASCII_HASHLEN 40
+#define DELIM1_OFFSET (ASCII_HASHLEN)
+#define KEY_OFFSET (ASCII_HASHLEN + 1)
+#define DELIM2_OFFSET (KEY_OFFSET + ASCII_HASHLEN)
+#define LINE_LENGTH (DELIM2_OFFSET + 1)
 
 enum kr_compress {
 	KR_COMPRESS_NONE = 0,
@@ -11,7 +19,29 @@ enum kr_compress {
 	KR_COMPRESS_LZF  = 2
 };
 
-sqlite3 *db;
+#define KR_MAGIC 0x51528039
+#define KR_VERSION 0
+
+/* All u32's in network byte order */
+struct kr_header {
+	uint32_t magic;
+	uint32_t entries;
+	uint8_t version;
+	uint8_t reserved[31];
+};
+
+struct kr_entry {
+	uint8_t compress;
+	uint8_t tag[HASHLEN];
+	uint8_t key[HASHLEN];
+};
+
+static FILE *in;
+static sqlite3 *db;
+extern int optind;
+
+
+/**** Helpers ****/
 
 #define die(str, args...) do { \
 		printf(str "\n", ##args); \
@@ -24,6 +54,17 @@ static void sqlerr(char *prefix)
 	sqlite3_close(db);
 	exit(1);
 }
+
+static void step(char *desc, sqlite3_stmt *step)
+{
+	if (sqlite3_step(step) != SQLITE_DONE)
+		sqlerr(desc);
+	if (sqlite3_reset(step))
+		sqlerr(desc);
+}
+
+
+/**** ASCII keyring ****/
 
 static inline int charval(unsigned char c)
 {
@@ -45,32 +86,146 @@ static inline void hex2bin(char *hex, char *bin, int bin_len)
 		bin[i] = (charval(uhex[2*i]) << 4) + charval(uhex[2*i+1]);
 }
 
-static void step(char *desc, sqlite3_stmt *step)
+static int fetch_entry_ascii(int line, char *tag, char *key, int *compress)
 {
-	if (sqlite3_step(step) != SQLITE_DONE)
-		sqlerr(desc);
-	if (sqlite3_reset(step))
-		sqlerr(desc);
+	char buf[LINE_LENGTH];
+
+	if (!fread(buf, sizeof(buf), 1, in))
+		return -1;
+	if (buf[DELIM1_OFFSET] != ' ' || buf[DELIM2_OFFSET] != '\n')
+		die("Parse error at line %d", line);
+	hex2bin(buf, tag, HASHLEN);
+	hex2bin(buf + KEY_OFFSET, key, HASHLEN);
+	*compress=KR_COMPRESS_ZLIB;
+	return 0;
+}
+
+
+/**** Binary keyring ****/
+
+static void validate_binary_header(void)
+{
+	struct kr_header hdr;
+	unsigned long len;
+
+	fseek(in, 0, SEEK_END);
+	len=ftell(in);
+	rewind(in);
+	if (!fread(&hdr, sizeof(hdr), 1, in))
+		die("Couldn't read binary keyring header");
+	hdr.magic=htonl(hdr.magic);
+	hdr.entries=htonl(hdr.entries);
+	if (hdr.magic != KR_MAGIC)
+		die("Invalid magic number for binary keyring: 0x%x", hdr.magic);
+	if (hdr.version != KR_VERSION)
+		die("Invalid version for binary keyring: %d", hdr.version);
+	if (len != hdr.entries * sizeof(struct kr_entry) +
+				sizeof(struct kr_header))
+		die("Invalid keyring length");
+}
+
+static int fetch_entry_binary(int line, char *tag, char *key, int *compress)
+{
+	struct kr_entry entry;
+
+	if (!fread(&entry, sizeof(entry), 1, in))
+		return -1;
+	if (entry.compress > 2)
+		die("Decode error at line %d", line);
+	*compress=entry.compress;
+	memcpy(tag, entry.tag, HASHLEN);
+	memcpy(key, entry.key, HASHLEN);
+	return 0;
+}
+
+
+/**** Main ****/
+
+static void process_entries(int binary)
+{
+	int (*fetch_entry)(int, char *, char *, int *);
+	sqlite3_stmt *begin;
+	sqlite3_stmt *ins;
+	sqlite3_stmt *end;
+	char *tag;
+	char *key;
+	int compress;
+	int i;
+
+	if (binary)
+		fetch_entry=fetch_entry_binary;
+	else
+		fetch_entry=fetch_entry_ascii;
+
+	if (sqlite3_prepare(db, "BEGIN TRANSACTION", -1, &begin, NULL))
+		sqlerr("Preparing begin statement");
+	if (sqlite3_prepare(db, "COMMIT", -1, &end, NULL))
+		sqlerr("Preparing commit statement");
+	if (sqlite3_prepare(db, "INSERT INTO keys "
+				"(chunk, tag, key, compression) "
+				"VALUES (?1, ?2, ?3, ?4)", -1, &ins, NULL))
+		sqlerr("Preparing insert statement");
+
+	step("Beginning transaction", begin);
+	for (i=0; ; i++) {
+		tag=malloc(HASHLEN);
+		key=malloc(HASHLEN);
+		if (tag == NULL || key == NULL)
+			die("malloc failed");
+		if (fetch_entry(i + 1, tag, key, &compress))
+			break;
+		if (sqlite3_bind_int(ins, 1, i))
+			sqlerr("Binding chunk number");
+		if (sqlite3_bind_blob(ins, 2, tag, HASHLEN, free))
+			sqlerr("Binding tag");
+		if (sqlite3_bind_blob(ins, 3, key, HASHLEN, free))
+			sqlerr("Binding key");
+		if (sqlite3_bind_int(ins, 4, compress))
+			sqlerr("Binding compression");
+		step("Executing insert", ins);
+		if (i > 0 && i % 5000 == 0) {
+			step("Ending transaction", end);
+			step("Beginning transaction", begin);
+		}
+	}
+	step("Ending transaction", end);
+
+	if (sqlite3_finalize(begin))
+		sqlerr("Finalizing begin statement");
+	if (sqlite3_finalize(ins))
+		sqlerr("Finalizing insert statement");
+	if (sqlite3_finalize(end))
+		sqlerr("Finalizing end statement");
+}
+
+static void usage(char *argv0)
+{
+	die("Usage: %s [-b] infile outfile", argv0);
 }
 
 int main(int argc, char **argv)
 {
-	sqlite3_stmt *begin;
-	sqlite3_stmt *ins;
-	sqlite3_stmt *end;
-	FILE *fp;
-	char buf[128];
-	int i;
-	char *tag;
-	char *key;
+	int opt;
+	int binary=0;
 
-	if (argc != 3)
-		die("Usage: %s infile outfile", argv[0]);
+	while (1) {
+		opt=getopt(argc, argv, "b");
+		if (opt == 'b')
+			binary=1;
+		else if (opt == -1)
+			break;
+		else
+			usage(argv[0]);
+	}
+	if (optind != argc - 2)
+		usage(argv[0]);
 
-	fp=fopen(argv[1], "r");
-	if (fp == NULL)
-		die("Couldn't open %s", argv[1]);
-	if (sqlite3_open(argv[2], &db))
+	in=fopen(argv[optind], "r");
+	if (in == NULL)
+		die("Couldn't open %s", argv[optind]);
+	if (binary)
+		validate_binary_header();
+	if (sqlite3_open(argv[optind + 1], &db))
 		sqlerr("Opening database");
 
 	if (sqlite3_exec(db, "PRAGMA auto_vacuum = none", NULL, NULL, NULL))
@@ -93,52 +248,10 @@ int main(int argc, char **argv)
 				NULL, NULL, NULL))
 		sqlerr("Creating index");
 
-	if (sqlite3_prepare(db, "BEGIN TRANSACTION", -1, &begin, NULL))
-		sqlerr("Preparing begin statement");
-	if (sqlite3_prepare(db, "COMMIT", -1, &end, NULL))
-		sqlerr("Preparing commit statement");
-	if (sqlite3_prepare(db, "INSERT INTO keys "
-				"(chunk, tag, key, compression) "
-				"VALUES (?1, ?2, ?3, ?4)", -1, &ins, NULL))
-		sqlerr("Preparing insert statement");
-
-	step("Beginning transaction", begin);
-	for (i=0; fgets(buf, sizeof(buf), fp); i++) {
-		tag=malloc(HASHLEN);
-		key=malloc(HASHLEN);
-		if (tag == NULL || key == NULL)
-			die("malloc failed");
-		if (buf[ASCII_HASHLEN] != ' ' ||
-					buf[2 * ASCII_HASHLEN + 1] != '\n')
-			die("Parse error at line %d", i + 1);
-		buf[ASCII_HASHLEN]=buf[2 * ASCII_HASHLEN + 1]=0;
-		hex2bin(buf, tag, HASHLEN);
-		hex2bin(buf + ASCII_HASHLEN + 1, key, HASHLEN);
-		if (sqlite3_bind_int(ins, 1, i))
-			sqlerr("Binding chunk number");
-		if (sqlite3_bind_blob(ins, 2, tag, HASHLEN, free))
-			sqlerr("Binding tag");
-		if (sqlite3_bind_blob(ins, 3, key, HASHLEN, free))
-			sqlerr("Binding key");
-		if (sqlite3_bind_int(ins, 4, KR_COMPRESS_ZLIB))
-			sqlerr("Binding compression");
-		step("Executing insert", ins);
-		if (i > 0 && i % 5000 == 0) {
-			step("Ending transaction", end);
-			step("Beginning transaction", begin);
-		}
-	}
-	step("Ending transaction", end);
-
-	if (sqlite3_finalize(begin))
-		sqlerr("Finalizing begin statement");
-	if (sqlite3_finalize(ins))
-		sqlerr("Finalizing insert statement");
-	if (sqlite3_finalize(end))
-		sqlerr("Finalizing end statement");
+	process_entries(binary);
 
 	if (sqlite3_close(db))
 		sqlerr("Closing database");
-	fclose(fp);
+	fclose(in);
 	return 0;
 }
