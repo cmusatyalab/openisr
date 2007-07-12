@@ -63,13 +63,55 @@ static void handle_row(sqlite3_stmt *stmt)
 		printf("\n");
 }
 
+static int make_queries(char *str)
+{
+	const char *query;
+	sqlite3_stmt *stmt;
+	int ret;
+
+	for (query=str; *query; ) {
+		if (sqlite3_prepare(db, query, -1, &stmt, &query)) {
+			sqlerr("Preparing query");
+			return -1;
+		}
+		while ((ret=sqlite3_step(stmt)) != SQLITE_DONE) {
+			if (ret == SQLITE_ROW) {
+				handle_row(stmt);
+			} else {
+				if (ret != SQLITE_BUSY)
+					sqlerr("Executing query");
+				sqlite3_finalize(stmt);
+				return -1;
+			}
+		}
+		sqlite3_finalize(stmt);
+	}
+	return 0;
+}
+
+static int commit(void)
+{
+	int ret;
+	int i;
+
+	for (i=0; i<20; i++) {
+		ret=sqlite3_exec(db, "COMMIT", NULL, NULL, NULL);
+		if (ret == SQLITE_BUSY) {
+			usleep(RETRY_USECS);
+		} else if (ret) {
+			sqlerr("Committing transaction");
+			return -1;
+		} else {
+			return 0;
+		}
+	}
+	return -1;
+}
+
 int main(int argc, char **argv)
 {
-	sqlite3_stmt *stmt;
-	const char *query;
-	int ret;
-	int i=0;
-	int j;
+	int i;
+	int ret=0;
 
 	if (argc != 3)
 		die("Usage: %s database query", argv[0]);
@@ -77,63 +119,25 @@ int main(int argc, char **argv)
 		sqlerr("Opening database");
 		exit(1);
 	}
-retry:
-	if (i++ >= 10) {
-		sqlite3_close(db);
-		die("Retries exceeded");
-	}
-	if (sqlite3_exec(db, "BEGIN", NULL, NULL, NULL)) {
-		sqlerr("Beginning transaction");
-		sqlite3_close(db);
-		exit(1);
-	}
-	for (query=argv[2]; *query; ) {
-		if (sqlite3_prepare(db, query, -1, &stmt, &query)) {
-			sqlerr("Preparing query");
-			goto rollback;
+	for (i=0; i<10; i++) {
+		if (sqlite3_exec(db, "BEGIN", NULL, NULL, NULL)) {
+			sqlerr("Beginning transaction");
+			ret=1;
+			break;
 		}
-		while (1) {
-			ret=sqlite3_step(stmt);
-			switch (ret) {
-			case SQLITE_ROW:
-				handle_row(stmt);
+		if (make_queries(argv[2]) || commit()) {
+			if (sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) {
+				sqlerr("Rolling back transaction");
+				ret=1;
 				break;
-			case SQLITE_DONE:
-				goto out;
-			default:
-				sqlerr("Executing query");
-				/* Fall through */
-			case SQLITE_BUSY:
-				sqlite3_finalize(stmt);
-				goto rollback;
 			}
-		}
-out:
-		sqlite3_finalize(stmt);
-	}
-	for (j=0; ; j++) {
-		if (j >= 50)
-			goto rollback;
-		ret=sqlite3_exec(db, "COMMIT", NULL, NULL, NULL);
-		if (ret == SQLITE_BUSY) {
-			usleep(RETRY_USECS);
-			continue;
-		} else if (ret) {
-			sqlerr("Committing transaction");
-			goto rollback;
 		} else {
 			break;
 		}
 	}
 	if (sqlite3_close(db))
 		sqlerr("Closing database");
-	return 0;
-
-rollback:
-	if (sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) {
-		sqlerr("Rolling back transaction");
-		sqlite3_close(db);
-		exit(1);
-	}
-	goto retry;
+	if (i == 10)
+		die("Retries exceeded");
+	return ret;
 }
