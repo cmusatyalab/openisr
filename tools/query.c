@@ -7,6 +7,7 @@
 #define RETRY_USECS 5000
 
 static sqlite3 *db;
+static FILE *tmp;
 
 static void sqlerr(char *prefix)
 {
@@ -45,7 +46,7 @@ static void handle_row(sqlite3_stmt *stmt)
 
 	for (i=0; i<count; i++) {
 		if (i)
-			printf("|");
+			fprintf(tmp, "|");
 		if (sqlite3_column_type(stmt, i) == SQLITE_BLOB) {
 			out=sqlite3_column_blob(stmt, i);
 			len=sqlite3_column_bytes(stmt, i);
@@ -53,14 +54,14 @@ static void handle_row(sqlite3_stmt *stmt)
 			if (buf == NULL)
 				die("malloc failure");
 			bin2hex(out, buf, len);
-			printf("%s", buf);
+			fprintf(tmp, "%s", buf);
 			free(buf);
 		} else {
-			printf("%s", sqlite3_column_text(stmt, i));
+			fprintf(tmp, "%s", sqlite3_column_text(stmt, i));
 		}
 	}
 	if (count)
-		printf("\n");
+		fprintf(tmp, "\n");
 }
 
 static int make_queries(char *str)
@@ -108,6 +109,18 @@ static int commit(void)
 	return -1;
 }
 
+static void cat_tmp(void)
+{
+	char buf[4096];
+	size_t len;
+	size_t i;
+
+	rewind(tmp);
+	while ((len=fread(buf, 1, sizeof(buf), tmp))) {
+		for (i=0; i<len; i += fwrite(buf + i, 1, len - i, stdout));
+	}
+}
+
 int main(int argc, char **argv)
 {
 	int i;
@@ -115,6 +128,9 @@ int main(int argc, char **argv)
 
 	if (argc != 3)
 		die("Usage: %s database query", argv[0]);
+	tmp=tmpfile();
+	if (tmp == NULL)
+		die("Can't create temporary file");
 	if (sqlite3_open(argv[1], &db)) {
 		sqlerr("Opening database");
 		exit(1);
@@ -126,12 +142,16 @@ int main(int argc, char **argv)
 			break;
 		}
 		if (make_queries(argv[2]) || commit()) {
+			fflush(tmp);
+			rewind(tmp);
+			ftruncate(fileno(tmp), 0);
 			if (sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) {
 				sqlerr("Rolling back transaction");
 				ret=1;
 				break;
 			}
 		} else {
+			cat_tmp();
 			break;
 		}
 	}
