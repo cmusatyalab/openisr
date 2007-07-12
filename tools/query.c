@@ -64,6 +64,7 @@ static void handle_row(sqlite3_stmt *stmt)
 		fprintf(tmp, "\n");
 }
 
+/* Returns 0 on success, 1 on temporary error, -1 on fatal error */
 static int make_queries(char *str)
 {
 	const char *query;
@@ -82,7 +83,7 @@ static int make_queries(char *str)
 				if (ret != SQLITE_BUSY)
 					sqlerr("Executing query");
 				sqlite3_finalize(stmt);
-				return -1;
+				return 1;
 			}
 		}
 		sqlite3_finalize(stmt);
@@ -125,6 +126,7 @@ int main(int argc, char **argv)
 {
 	int i;
 	int ret=0;
+	int qres;
 
 	if (argc != 3)
 		die("Usage: %s database query", argv[0]);
@@ -141,12 +143,17 @@ int main(int argc, char **argv)
 			ret=1;
 			break;
 		}
-		if (make_queries(argv[2]) || commit()) {
+		qres=make_queries(argv[2]);
+		if (qres || commit()) {
 			fflush(tmp);
 			rewind(tmp);
 			ftruncate(fileno(tmp), 0);
 			if (sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) {
 				sqlerr("Rolling back transaction");
+				ret=1;
+				break;
+			}
+			if (qres < 0) {
 				ret=1;
 				break;
 			}
