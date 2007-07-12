@@ -154,7 +154,7 @@ static int make_queries(char *str)
 				if (ret != SQLITE_BUSY)
 					sqlerr("Executing query");
 				sqlite3_finalize(stmt);
-				return 1;
+				return (ret == SQLITE_BUSY) ? 1 : -1;
 			}
 		}
 		sqlite3_finalize(stmt);
