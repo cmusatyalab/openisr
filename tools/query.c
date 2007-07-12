@@ -1,13 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <string.h>
 #include <unistd.h>
 #include <sqlite3.h>
 
 #define RETRY_USECS 5000
+#define MAX_PARAMS 256
 
 static sqlite3 *db;
 static FILE *tmp;
+static char *params[MAX_PARAMS];
+static unsigned param_length[MAX_PARAMS];  /* zero if not blob */
+static int num_params;
+static int used_params;
+extern char *optarg;
+extern int optind;
 
 static void sqlerr(char *prefix)
 {
@@ -34,6 +42,42 @@ static void bin2hex(unsigned const char *bin, char *hex, int bin_len)
 		cur=bin[i];
 		sprintf(hex+2*i, "%.2x", cur);
 	}
+}
+
+static inline int charval(unsigned char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	die("Invalid hex character '%c'", c);
+}
+
+static inline void hex2bin(char *hex, char *bin, int bin_len)
+{
+	unsigned char *uhex=(unsigned char *)hex;
+	int i;
+
+	for (i=0; i<bin_len; i++)
+		bin[i] = (charval(uhex[2*i]) << 4) + charval(uhex[2*i+1]);
+}
+
+static char *mkbin(char *hex, unsigned *length)
+{
+	size_t len=strlen(hex);
+	char *buf;
+
+	if (len == 0 || len % 2)
+		die("Invalid hex string: %s", hex);
+	len /= 2;
+	buf=malloc(len);
+	if (buf == NULL)
+		die("malloc failure");
+	hex2bin(hex, buf, len);
+	*length=len;
+	return buf;
 }
 
 static void handle_row(sqlite3_stmt *stmt)
@@ -70,11 +114,38 @@ static int make_queries(char *str)
 	const char *query;
 	sqlite3_stmt *stmt;
 	int ret;
+	int i;
+	int count;
 
+	used_params=0;
 	for (query=str; *query; ) {
 		if (sqlite3_prepare(db, query, -1, &stmt, &query)) {
 			sqlerr("Preparing query");
 			return -1;
+		}
+		count=sqlite3_bind_parameter_count(stmt);
+		for (i=1; i <= count; i++) {
+			if (used_params == num_params) {
+				fprintf(stderr, "Not enough parameters "
+						"for query\n");
+				sqlite3_finalize(stmt);
+				return -1;
+			}
+			if (param_length[used_params])
+				ret=sqlite3_bind_blob(stmt, i,
+						params[used_params],
+						param_length[used_params],
+						SQLITE_STATIC);
+			else
+				ret=sqlite3_bind_text(stmt, i,
+						params[used_params], -1,
+						SQLITE_STATIC);
+			if (ret) {
+				sqlerr("Binding parameter");
+				sqlite3_finalize(stmt);
+				return (ret == SQLITE_NOMEM) ? 1 : -1;
+			}
+			used_params++;
 		}
 		while ((ret=sqlite3_step(stmt)) != SQLITE_DONE) {
 			if (ret == SQLITE_ROW) {
@@ -122,18 +193,43 @@ static void cat_tmp(void)
 	}
 }
 
+static void usage(char *argv0)
+{
+	fprintf(stderr, "Usage: %s [flags] database query\n", argv0);
+	fprintf(stderr, "\t-p param - statement parameter\n");
+	fprintf(stderr, "\t-b param - blob parameter in hex\n");
+	exit(2);
+}
+
 int main(int argc, char **argv)
 {
 	int i;
 	int ret=0;
 	int qres;
+	int opt;
 
-	if (argc != 3)
-		die("Usage: %s database query", argv[0]);
+	while ((opt=getopt(argc, argv, "b:p:")) != -1) {
+		if (opt == '?')
+			usage(argv[0]);
+		if (opt == 'b' || opt == 'p') {
+			if (num_params == MAX_PARAMS)
+				die("Too many parameters");
+			if (opt == 'b') {
+				params[num_params]=mkbin(optarg,
+						&param_length[num_params]);
+			} else {
+				params[num_params]=optarg;
+			}
+			num_params++;
+		}
+	}
+	if (optind != argc - 2)
+		usage(argv[0]);
+
 	tmp=tmpfile();
 	if (tmp == NULL)
 		die("Can't create temporary file");
-	if (sqlite3_open(argv[1], &db)) {
+	if (sqlite3_open(argv[optind], &db)) {
 		sqlerr("Opening database");
 		exit(1);
 	}
@@ -143,7 +239,7 @@ int main(int argc, char **argv)
 			ret=1;
 			break;
 		}
-		qres=make_queries(argv[2]);
+		qres=make_queries(argv[optind+1]);
 		if (qres || commit()) {
 			fflush(tmp);
 			rewind(tmp);
@@ -162,6 +258,9 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
+	if (ret == 0 && used_params < num_params)
+		fprintf(stderr, "Warning: %d params provided but only %d "
+					"used\n", num_params, used_params);
 	if (sqlite3_close(db))
 		sqlerr("Closing database");
 	if (i == 10)
