@@ -256,7 +256,7 @@ int main(int argc, char **argv)
 		sqlerr("Opening database");
 	dbpath=outfile;
 
-	if (sqlite3_exec(db, "PRAGMA auto_vacuum = none", NULL, NULL, NULL))
+	if (sqlite3_exec(db, "PRAGMA auto_vacuum = 0", NULL, NULL, NULL))
 		sqlerr("Disabling auto-vacuum");
 	if (sqlite3_exec(db, "PRAGMA legacy_file_format = ON", NULL, NULL,
 				NULL))
