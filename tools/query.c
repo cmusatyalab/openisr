@@ -7,13 +7,17 @@
 
 #define RETRY_USECS 5000
 #define MAX_PARAMS 256
+#define MAX_ATTACHED 10
 
 static sqlite3 *db;
 static FILE *tmp;
 static char *params[MAX_PARAMS];
 static unsigned param_length[MAX_PARAMS];  /* zero if not blob */
+static char *attached_names[MAX_ATTACHED];
+static char *attached_files[MAX_ATTACHED];
 static int num_params;
 static int used_params;
+static int num_attached;
 extern char *optarg;
 extern int optind;
 
@@ -78,6 +82,56 @@ static char *mkbin(char *hex, unsigned *length)
 	hex2bin(hex, buf, len);
 	*length=len;
 	return buf;
+}
+
+static int attach_dbs(void)
+{
+	sqlite3_stmt *stmt;
+	int i;
+	int j;
+	int ret;
+
+	for (i=0; i<MAX_ATTACHED; i++) {
+		if (attached_names[i] == NULL)
+			break;
+		/* A successful ATTACH invalidates prepared statements, so we
+		   have to redo this every iteration */
+		if (sqlite3_prepare(db, "ATTACH ?1 as ?2", -1, &stmt, NULL)) {
+			sqlerr("Preparing ATTACH statement");
+			return -1;
+		}
+		if (sqlite3_bind_text(stmt, 1, attached_files[i], -1,
+					SQLITE_STATIC)) {
+			sqlerr("Binding database filename");
+			goto bad;
+		}
+		if (sqlite3_bind_text(stmt, 2, attached_names[i], -1,
+					SQLITE_STATIC)) {
+			sqlerr("Binding database name");
+			goto bad;
+		}
+		for (j=0; ; j++) {
+			if (j >= 10) {
+				fprintf(stderr, "Retries exceeded\n");
+				goto bad;
+			}
+			ret=sqlite3_step(stmt);
+			if (ret == SQLITE_DONE) {
+				break;
+			} else if (ret == SQLITE_BUSY) {
+				usleep(RETRY_USECS);
+			} else {
+				sqlerr("Executing ATTACH statement");
+				goto bad;
+			}
+		}
+		sqlite3_finalize(stmt);
+	}
+	return 0;
+
+bad:
+	sqlite3_finalize(stmt);
+	return -1;
 }
 
 static void handle_row(sqlite3_stmt *stmt)
@@ -193,25 +247,62 @@ static void cat_tmp(void)
 	}
 }
 
+static int do_transaction(char *sql)
+{
+	int qres;
+	int i;
+
+	for (i=0; i<10; i++) {
+		if (sqlite3_exec(db, "BEGIN", NULL, NULL, NULL)) {
+			sqlerr("Beginning transaction");
+			return -1;
+		}
+		qres=make_queries(sql);
+		if (qres || commit()) {
+			fflush(tmp);
+			rewind(tmp);
+			ftruncate(fileno(tmp), 0);
+			if (sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) {
+				sqlerr("Rolling back transaction");
+				return -1;
+			}
+			if (qres < 0)
+				return -1;
+		} else {
+			cat_tmp();
+			if (used_params < num_params)
+				fprintf(stderr, "Warning: %d params provided "
+							"but only %d used\n",
+							num_params,
+							used_params);
+			return 0;
+		}
+	}
+	fprintf(stderr, "Retries exceeded\n");
+	return -1;
+}
+
 static void usage(char *argv0)
 {
 	fprintf(stderr, "Usage: %s [flags] database query\n", argv0);
+	fprintf(stderr, "\t-a name:file - attach database\n");
 	fprintf(stderr, "\t-p param - statement parameter\n");
 	fprintf(stderr, "\t-b param - blob parameter in hex\n");
 	exit(2);
 }
 
-int main(int argc, char **argv)
+static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
 {
-	int i;
-	int ret=0;
-	int qres;
 	int opt;
+	char *cp;
 
-	while ((opt=getopt(argc, argv, "b:p:")) != -1) {
-		if (opt == '?')
+	while ((opt=getopt(argc, argv, "a:b:p:")) != -1) {
+		switch (opt) {
+		case '?':
 			usage(argv[0]);
-		if (opt == 'b' || opt == 'p') {
+			break;
+		case 'b':
+		case 'p':
 			if (num_params == MAX_PARAMS)
 				die("Too many parameters");
 			if (opt == 'b') {
@@ -221,49 +312,44 @@ int main(int argc, char **argv)
 				params[num_params]=optarg;
 			}
 			num_params++;
+			break;
+		case 'a':
+			if (num_attached == MAX_ATTACHED)
+				die("Too many attached databases");
+			cp=strchr(optarg, ':');
+			if (cp == NULL)
+				usage(argv[0]);
+			*cp=0;
+			attached_names[num_attached]=optarg;
+			attached_files[num_attached]=cp+1;
+			num_attached++;
+			break;
 		}
 	}
 	if (optind != argc - 2)
 		usage(argv[0]);
+	*dbfile=argv[optind];
+	*sql=argv[optind+1];
+}
+
+int main(int argc, char **argv)
+{
+	char *dbfile;
+	char *sql;
+	int ret=0;
+
+	parse_cmdline(argc, argv, &dbfile, &sql);
 
 	tmp=tmpfile();
 	if (tmp == NULL)
 		die("Can't create temporary file");
-	if (sqlite3_open(argv[optind], &db)) {
+	if (sqlite3_open(dbfile, &db)) {
 		sqlerr("Opening database");
 		exit(1);
 	}
-	for (i=0; i<10; i++) {
-		if (sqlite3_exec(db, "BEGIN", NULL, NULL, NULL)) {
-			sqlerr("Beginning transaction");
-			ret=1;
-			break;
-		}
-		qres=make_queries(argv[optind+1]);
-		if (qres || commit()) {
-			fflush(tmp);
-			rewind(tmp);
-			ftruncate(fileno(tmp), 0);
-			if (sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) {
-				sqlerr("Rolling back transaction");
-				ret=1;
-				break;
-			}
-			if (qres < 0) {
-				ret=1;
-				break;
-			}
-		} else {
-			cat_tmp();
-			break;
-		}
-	}
-	if (ret == 0 && used_params < num_params)
-		fprintf(stderr, "Warning: %d params provided but only %d "
-					"used\n", num_params, used_params);
+	if (attach_dbs() || do_transaction(sql))
+		ret=1;
 	if (sqlite3_close(db))
 		sqlerr("Closing database");
-	if (i == 10)
-		die("Retries exceeded");
 	return ret;
 }
