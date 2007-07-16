@@ -47,21 +47,21 @@
 
 /**
  * struct tfm_suite_info - read-only parameter block for a crypto suite
- * @user_name    : the name seen by the user (e.g. in sysfs)
- * @cipher_name  : cryptoapi cipher name          (for <= 2.6.18)
- * @cipher_mode  : cryptoapi cipher mode constant (for <= 2.6.18)
- * @cipher_spec  : cryptoapi cipher spec          (for >= 2.6.19)
- * @cipher_block : this cipher's block size
- * @cipher_iv    : this cipher's IV size
- * @key_len      : how much of the hash to use for the key
- * @hash_name    : cryptoapi hash name
- * @hash_len     : this hash algorithm's hash length
+ * @user_name         : the name seen by the user (e.g. in sysfs)
+ * @cipher_name       : cryptoapi cipher name
+ * @cipher_mode       : cryptoapi cipher mode constant (for <= 2.6.18)
+ * @cipher_mode_name  : cryptoapi cipher mode name     (for >= 2.6.19)
+ * @cipher_block      : this cipher's block size
+ * @cipher_iv         : this cipher's IV size
+ * @key_len           : how much of the hash to use for the key
+ * @hash_name         : cryptoapi hash name
+ * @hash_len          : this hash algorithm's hash length
  **/
 struct tfm_suite_info {
 	char *user_name;
 	char *cipher_name;
 	unsigned cipher_mode;
-	char *cipher_spec;
+	char *cipher_mode_name;
 	unsigned cipher_block;
 	unsigned cipher_iv;
 	unsigned key_len;

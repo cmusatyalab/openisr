@@ -465,10 +465,17 @@ static inline int cryptoapi_hash(struct crypto_hash *tfm,
 #define CRYPTO_TFM_MODE_CBC 0
 #endif
 
-#define cryptoapi_alloc_cipher(info) \
-	crypto_alloc_blkcipher(info->cipher_spec, 0, CRYPTO_ALG_ASYNC)
 #define cryptoapi_alloc_hash(info) \
 	crypto_alloc_hash(info->hash_name, 0, CRYPTO_ALG_ASYNC)
+
+static inline struct crypto_blkcipher
+		*cryptoapi_alloc_cipher(const struct tfm_suite_info *info)
+{
+	char alg[CRYPTO_MAX_ALG_NAME];
+	snprintf(alg, sizeof(alg), "%s(%s)", info->cipher_mode_name,
+				info->cipher_name);
+	return crypto_alloc_blkcipher(alg, 0, CRYPTO_ALG_ASYNC);
+}
 
 static inline int cryptoapi_encrypt(struct crypto_blkcipher *tfm,
 			struct scatterlist *dst, struct scatterlist *src,
