@@ -526,11 +526,8 @@ static inline int cryptoapi_hash(struct crypto_hash *tfm,
 
 #ifndef SHA1_ACCEL_ARCH
 #define SHA1_ACCEL_ARCH "unknown"
-static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
-{
-	/* No optimized implementation exists */
-	return 0;
-}
+/* No optimized implementation exists */
+#define sha1_impl_is_suboptimal(tfm) (0)
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
 static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
 {
@@ -554,6 +551,53 @@ static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
 	/* We need to extract the crypto_tfm from the crypto_hash */
 	return strcmp(crypto_hash_tfm(tfm)->__crt_alg->cra_driver_name,
 				"sha1-" SHA1_ACCEL_ARCH) ? 1 : 0;
+}
+#endif
+
+
+/**
+ * aes_impl_is_suboptimal - return true if we want a better AES
+ *
+ * Checks the underlying implementation of the supplied @tfm.  If @tfm
+ * uses the generic C implementation and we're on an architecture that
+ * experiences dramatic performance improvements with an assembly
+ * implementation, returns true.  Otherwise returns false.
+ *
+ * x86-64 is not considered, since the performance improvements provided
+ * by the optimized implementation appear to be minimal.
+ **/
+#if (defined(CONFIG_X86) || defined(CONFIG_UML_X86)) && !defined(CONFIG_64BIT)
+#define AES_ACCEL_ARCH "i586"
+#endif
+
+#ifndef AES_ACCEL_ARCH
+#define AES_ACCEL_ARCH "unknown"
+/* No sufficiently-optimized implementation exists */
+#define aes_impl_is_suboptimal(info, tfm) (0)
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
+/* For architectures with optimized AES, Kconfig does not offer to build the
+   generic version.  If we have AES, it's optimized. */
+#define aes_impl_is_suboptimal(info, tfm) (0)
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
+static inline int aes_impl_is_suboptimal(const struct tfm_suite_info *info,
+			struct crypto_blkcipher *tfm)
+{
+	/* Look at the driver name field */
+	return strcmp(tfm->__crt_alg->cra_driver_name, "aes-" AES_ACCEL_ARCH)
+				? 1 : 0;
+}
+#else
+static inline int aes_impl_is_suboptimal(const struct tfm_suite_info *info,
+			struct crypto_blkcipher *tfm)
+{
+	/* Look at the driver name field in the crypto_tfm, which needs to be
+	   extracted from the crypto_blkcipher.  The driver name contains the
+	   cipher mode. */
+	char buf[CRYPTO_MAX_ALG_NAME];
+	snprintf(buf, sizeof(buf), "%s(aes-" AES_ACCEL_ARCH ")",
+				info->cipher_mode_name);
+	return strcmp(crypto_blkcipher_tfm(tfm)->__crt_alg->cra_driver_name,
+				buf) ? 1 : 0;
 }
 #endif
 

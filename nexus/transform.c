@@ -678,7 +678,8 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	const struct tfm_suite_info *info;
 	struct crypto_blkcipher *cipher;
 	struct crypto_hash *hash;
-	static int have_warned;
+	static int have_warned_sha;
+	static int have_warned_aes;
 	
 	BUG_ON(ts->cipher[suite] != NULL);
 	
@@ -698,15 +699,23 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	ts->cipher[suite]=cipher;
 	ts->hash[suite]=hash;
 	
-	if (!have_warned && !strcmp("sha1", info->hash_name) &&
+	if (!have_warned_aes && !strcmp("aes", info->cipher_name) &&
+				aes_impl_is_suboptimal(info, cipher)) {
+		/* Actually, the presence of the optimized AES module only
+		   matters when the tfm is first allocated.  Does anyone have
+		   better wording for this? */
+		log(KERN_NOTICE, "Using unoptimized AES; load aes-"
+					AES_ACCEL_ARCH ".ko to improve "
+					"performance");
+		have_warned_aes=1;
+	}
+	if (!have_warned_sha && !strcmp("sha1", info->hash_name) &&
 				sha1_impl_is_suboptimal(hash)) {
-		/* Actually, the presence of the SHA1 accelerator only matters
-		   when the tfm is first allocated.  Does anyone have better
-		   wording for this? */
+		/* Ditto. */
 		log(KERN_NOTICE, "Using unoptimized SHA1; load sha1-"
 					SHA1_ACCEL_ARCH ".ko to improve "
 					"performance");
-		have_warned=1;
+		have_warned_sha=1;
 	}
 	return 0;
 }
