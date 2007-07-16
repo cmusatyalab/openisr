@@ -404,7 +404,7 @@ int run(char *storefile, enum nexus_compress compress)
 int usage(void)
 {
 	printf("Usage: %s -s storefile chunkdev chunksize cachesize offset "
-				"{bf|compat|none}\n", progname);
+				"{bf|bf-compat|none}\n", progname);
 	printf("Usage: %s [-v|-q] storefile {none|zlib|lzf}\n", progname);
 	return 1;
 }
