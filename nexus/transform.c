@@ -34,6 +34,7 @@ static const struct tfm_suite_info suite_desc[] = {
 		.cipher_mode = CRYPTO_TFM_MODE_CBC,
 		.cipher_spec = "cbc(blowfish)",
 		.cipher_block = 8,
+		.cipher_iv = 8,
 		.key_len = 20,
 		.hash_name = "sha1",
 		.hash_len = 20
@@ -44,6 +45,7 @@ static const struct tfm_suite_info suite_desc[] = {
 		.cipher_mode = CRYPTO_TFM_MODE_CBC,
 		.cipher_spec = "cbc(blowfish)",
 		.cipher_block = 8,
+		.cipher_iv = 8,
 		.key_len = 16,
 		.hash_name = "sha1",
 		.hash_len = 20
@@ -608,13 +610,14 @@ int crypto_cipher(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			int dir, int doPad)
 {
 	struct crypto_blkcipher *tfm=ts->cipher[dev->suite];
-	char iv[8]={0}; /* XXX */
+	const struct tfm_suite_info *info=suite_info(dev->suite);
+	char iv[info->cipher_iv];
 	int ret;
-	unsigned key_len=suite_info(dev->suite)->key_len;
 	
+	memset(iv, 0, sizeof(iv));
 	crypto_blkcipher_set_iv(tfm, iv, sizeof(iv));
-	BUG_ON(key_len > suite_info(dev->suite)->hash_len);  /* XXX */
-	ret=crypto_blkcipher_setkey(tfm, key, key_len);
+	BUG_ON(info->key_len > info->hash_len);
+	ret=crypto_blkcipher_setkey(tfm, key, info->key_len);
 	if (ret)
 		return ret;
 	

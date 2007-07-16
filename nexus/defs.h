@@ -52,6 +52,7 @@
  * @cipher_mode  : cryptoapi cipher mode constant (for <= 2.6.18)
  * @cipher_spec  : cryptoapi cipher spec          (for >= 2.6.19)
  * @cipher_block : this cipher's block size
+ * @cipher_iv    : this cipher's IV size
  * @key_len      : how much of the hash to use for the key
  * @hash_name    : cryptoapi hash name
  * @hash_len     : this hash algorithm's hash length
@@ -62,6 +63,7 @@ struct tfm_suite_info {
 	unsigned cipher_mode;
 	char *cipher_spec;
 	unsigned cipher_block;
+	unsigned cipher_iv;
 	unsigned key_len;
 	char *hash_name;
 	unsigned hash_len;
