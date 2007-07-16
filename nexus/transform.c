@@ -54,6 +54,17 @@ static const struct tfm_suite_info suite_desc[] = {
 		.user_name = "none-sha1",
 		.hash_name = "sha1",
 		.hash_len = 20
+	},
+	{
+		.user_name = "aes-sha1",
+		.cipher_name = "aes",
+		.cipher_mode = CRYPTO_TFM_MODE_CBC,
+		.cipher_spec = "cbc(aes)",
+		.cipher_block = 16,
+		.cipher_iv = 16,
+		.key_len = 16,
+		.hash_name = "sha1",
+		.hash_len = 20
 	}
 };
 

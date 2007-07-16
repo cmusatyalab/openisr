@@ -42,6 +42,7 @@
 #define ONDISK_BF        0
 #define ONDISK_BF_COMPAT 1
 #define ONDISK_NOCRYPT   2
+#define ONDISK_AES       3
 
 struct params {
 	char chunk_device[NEXUS_MAX_DEVICE_LEN];
@@ -122,6 +123,8 @@ enum nexus_crypto suite_to_nexus(unsigned ondisk)
 		return NEXUS_CRYPTO_BLOWFISH_SHA1;
 	case ONDISK_BF_COMPAT:
 		return NEXUS_CRYPTO_BLOWFISH_SHA1_COMPAT;
+	case ONDISK_AES:
+		return NEXUS_CRYPTO_AES_SHA1;
 	case ONDISK_NOCRYPT:
 		return NEXUS_CRYPTO_NONE_SHA1;
 	default:
@@ -138,7 +141,7 @@ int setup(struct params *params, char *storefile)
 	unsigned char *crypted;
 	EVP_CIPHER_CTX cipher;
 	EVP_MD_CTX hash;
-	unsigned char iv[8];
+	unsigned char iv[16];
 	unsigned keylen;
 	struct chunk chunk;
 	
@@ -182,10 +185,16 @@ int setup(struct params *params, char *storefile)
 		EVP_DigestUpdate(&hash, data, params->chunksize);
 		EVP_DigestFinal(&hash, chunk.key, &keylen);
 		memset(iv, 0, sizeof(iv));
-		if (params->suite == ONDISK_BF_COMPAT)
+		if (params->suite == ONDISK_BF_COMPAT ||
+					params->suite == ONDISK_AES)
 			keylen=16;
 		EVP_CIPHER_CTX_init(&cipher);
-		EVP_EncryptInit_ex(&cipher, EVP_bf_cbc(), NULL, NULL, NULL);
+		if (params->suite == ONDISK_AES)
+			EVP_EncryptInit_ex(&cipher, EVP_aes_128_cbc(), NULL,
+						NULL, NULL);
+		else
+			EVP_EncryptInit_ex(&cipher, EVP_bf_cbc(), NULL, NULL,
+						NULL);
 		EVP_CIPHER_CTX_set_key_length(&cipher, keylen);
 		EVP_CIPHER_CTX_set_padding(&cipher, 0);
 		EVP_EncryptInit_ex(&cipher, NULL, NULL, chunk.key, iv);
@@ -404,7 +413,7 @@ int run(char *storefile, enum nexus_compress compress)
 int usage(void)
 {
 	printf("Usage: %s -s storefile chunkdev chunksize cachesize offset "
-				"{bf|bf-compat|none}\n", progname);
+				"{bf|bf-compat|aes|none}\n", progname);
 	printf("Usage: %s [-v|-q] storefile {none|zlib|lzf}\n", progname);
 	return 1;
 }
@@ -448,6 +457,8 @@ int main(int argc, char **argv)
 			params.suite=ONDISK_BF;
 		else if (!strcmp(argv[5], "bf-compat"))
 			params.suite=ONDISK_BF_COMPAT;
+		else if (!strcmp(argv[5], "aes"))
+			params.suite=ONDISK_AES;
 		else if (!strcmp(argv[5], "none"))
 			params.suite=ONDISK_NOCRYPT;
 		else
