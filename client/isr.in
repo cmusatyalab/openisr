@@ -709,36 +709,23 @@ sub checkout ($$$$) {
     $SIG{'INT'} = \&sigint_handler;
     
     #
-    # Decrypt the virtualization and Vulpes files
+    # Decrypt and unpack the virtualization and Vulpes files
     #
-    print("Decrypting virtual machine memory image...\n")
+    print("Decrypting and uncompressing virtual machine memory image...\n")
 	if $verbose;
-    foreach $target ("keyring", "cfg.tgz") {
-	if (mysystem("openssl enc -d -bf -in $lastdir/${target}.enc -out $lastdir/$target -pass file:$lastdir/keyroot -nosalt") != 0) {
-	    errexit("Did not find a $target.enc file to decrypt");
-	}
-	if (!unlink("$lastdir/$target.enc")) {
+    if (mysystem("openssl enc -d -bf -in $lastdir/keyring.enc -out $lastdir/keyring -pass file:$lastdir/keyroot -nosalt") != 0) {
+	errexit("Could not decrypt keyring.enc");
+    }
+    if (mysystem("openssl enc -d -bf -in $lastdir/cfg.tgz.enc -pass file:$lastdir/keyroot -nosalt | tar xz --directory $lastdir") != 0) {
+	errexit("Could not decrypt and unpack cfg.tgz.enc");
+    }
+    # Keyroot no longer needed, get rid of it
+    foreach $target ("keyring.enc", "cfg.tgz.enc", "keyroot") {
+	if (!unlink("$lastdir/$target")) {
 	    clean($userid, $parcel, $isrdir, 0);
-	    errexit("Unable to remove $target.enc.");
+	    errexit("Unable to remove $target.");
 	}
     }
-
-    #
-    # Keyroot no longer needed, get rid of it
-    #
-    unlink("$lastdir/keyroot")
-	or unix_errexit("Unable to delete $lastdir/keyroot.");
-
-    #
-    # Unpack the memory image and other virtual machine files
-    #
-    print("Uncompressing virtual machine memory image...\n")
-	if $verbose;
-
-    mysystem("tar -xzf $lastdir/cfg.tgz --directory $lastdir") == 0
-	or system_errexit("Unable to unpack $lastdir/$target.");
-    unlink("$lastdir/cfg.tgz")
-	or unix_errexit("Unable to delete compressed files from $lastdir");
 
     # Clean up and return
     sys_sync();
