@@ -887,11 +887,6 @@ sub isr_priv_upload ($$$) {
     # rsync doesn't blow everything away
     unlink($cdcache_file);
 
-    #
-    # Clean up the local cache directory 
-    #
-    unlink("$cachedir/cfg.tgz"); 
-
     # Return successful status
     print("Upload completed, all updates have been sent to the server.\n")
 	if $main::verbose;
@@ -933,19 +928,16 @@ sub copy_dirtychunks ($) {
     #
     # Create cfg tarball and encrypt it and the keyring
     #
-    print("Compressing virtual machine memory image...")
+    print("Compressing and encrypting virtual machine memory image...")
 	if $main::verbose;
     chdir($cachedir);
-    mysystem("tar czf cfg.tgz cfg") == 0
-	or system_errexit("Unable to create cfg.tgz.");
-    printf("%d MB\n", (stat("$cachedir/cfg.tgz")->size)/(1<<20));
-
-
-    print("Encrypting virtual machine memory image...\n")
-	if $main::verbose;
+    mysystem("tar cz cfg | openssl enc -bf -out $tmpdir/cache/cfg.tgz.enc -pass file:$cachedir/keyroot -nosalt") == 0
+	or system_errexit("Unable to create cfg.tgz.enc.");
+    printf("%d MB\n", (stat("$tmpdir/cache/cfg.tgz.enc")->size)/(1<<20))
+    	if $main::verbose;
+    mysystem("openssl enc -bf -in $cachedir/keyring -out $tmpdir/cache/keyring.enc -pass file:$cachedir/keyroot -nosalt") == 0
+	or system_errexit("Unable to encrypt keyring.");
     foreach $target ("cfg.tgz", "keyring") {
-	mysystem("openssl enc -bf -in $cachedir/$target -out $tmpdir/cache/$target.enc -pass file:$cachedir/keyroot -nosalt") == 0
-	    or system_errexit("Unable to encrypt $target.");
 	message("INFO", 
 		sprintf("upload:$target.enc:%d:", 
 			stat("$tmpdir/cache/$target.enc")->size));
