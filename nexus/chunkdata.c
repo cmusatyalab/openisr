@@ -154,7 +154,8 @@ static inline struct nexus_io_chunk *pending_head(struct chunkdata *cd)
 {
 	if (list_empty(&cd->pending))
 		return NULL;
-	return list_entry(cd->pending.next, struct nexus_io_chunk, lh_pending);
+	return list_first_entry(&cd->pending, struct nexus_io_chunk,
+				lh_pending);
 }
 
 /**

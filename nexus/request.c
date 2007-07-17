@@ -394,7 +394,7 @@ void nexus_run_requests(struct list_head *entry)
 	/* We don't use the "safe" iterator because the next pointer might
 	   change out from under us between iterations */
 	while (!list_empty(&dev->requests)) {
-		req=list_entry(dev->requests.next, struct request, queuelist);
+		req=list_first_entry(&dev->requests, struct request, queuelist);
 		list_del_init(&req->queuelist);
 		need_put=list_empty(&dev->requests);
 		spin_unlock_bh(&dev->requests_lock);

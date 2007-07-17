@@ -85,6 +85,13 @@ static inline int mutex_is_locked(MUTEX *lock)
 #define MUTEX struct mutex
 #endif
 
+/***** Linked lists **********************************************************/
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
+#define list_first_entry(head, type, field) \
+			list_entry((head)->next, type, field)
+#endif
+
 /***** Device model/sysfs ****************************************************/
 
 /**
