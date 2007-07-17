@@ -518,6 +518,8 @@ sub checkout ($$$$) {
     my $tmpfile;
     my $cfg_sha1value;
     my $key_sha1value;
+    my $cfg_file;
+    my $key_file;
     my $clientname = hostname();
     my $sigset;
     my %map;
@@ -663,13 +665,13 @@ sub checkout ($$$$) {
     if (-e "$hoarddir/$cfg_sha1value") {
 	print "Found local match for encrypted memory image.\n"
 	    if $verbose;
-	rename("$hoarddir/$cfg_sha1value", "$lastdir/cfg.tgz.enc");
+	$cfg_file = "$hoarddir/$cfg_sha1value";
     }
 
     if (-e "$hoarddir/$key_sha1value") {
 	print "Found local match for encrypted keyring.\n"
 	    if $verbose;
-	rename("$hoarddir/$key_sha1value", "$lastdir/keyring.enc");
+	$key_file = "$hoarddir/$key_sha1value";
     }    
 
     #
@@ -685,25 +687,26 @@ sub checkout ($$$$) {
     $SIG{'INT'} = sub {};
     unblock_sigint($sigset);
     foreach $target ("keyring.enc", "hdk/index.lev1", "cfg.tgz.enc") {
-	if (!-e "$lastdir/$target") {
-	    print "Fetching $target...\n"
-		if ($verbose > 1);
+	next if ($target eq "keyring.enc" && $key_file);
+	next if ($target eq "cfg.tgz.enc" && $cfg_file);
+	
+	print "Fetching $target...\n"
+	    if ($verbose > 1);
 
-	    # Show a progress meter only for the big cfg file
-	    $retval = isr_sget($userid, "last/$target", "$lastdir/tmpfile",
-				($target eq "cfg.tgz.enc"));
-	    if ($retval == $Isr::EINTR) {
-		print "\n";
-		# We now have an inconsistent parcel directory.  Blow it away
-		# and release the server lock.
-		clean($userid, $parcel, $isrdir, $sessionid);
-		errexit("Fetch interrupted by signal");
-	    }
-	    $retval == $Isr::ESUCCESS
-		or errexit("Unable to fetch $target file");
-	    rename("$lastdir/tmpfile", "$lastdir/$target")
-		or unix_errexit("Unable to commit $lastdir/$target");
+	# Show a progress meter only for the big cfg file
+	$retval = isr_sget($userid, "last/$target", "$lastdir/tmpfile",
+			    ($target eq "cfg.tgz.enc"));
+	if ($retval == $Isr::EINTR) {
+	    print "\n";
+	    # We now have an inconsistent parcel directory.  Blow it away
+	    # and release the server lock.
+	    clean($userid, $parcel, $isrdir, $sessionid);
+	    errexit("Fetch interrupted by signal");
 	}
+	$retval == $Isr::ESUCCESS
+	    or errexit("Unable to fetch $target file");
+	rename("$lastdir/tmpfile", "$lastdir/$target")
+	    or unix_errexit("Unable to commit $lastdir/$target");
     }
     $sigset = block_sigint();
     $SIG{'INT'} = \&sigint_handler;
@@ -713,15 +716,19 @@ sub checkout ($$$$) {
     #
     print("Decrypting and uncompressing virtual machine memory image...\n")
 	if $verbose;
-    if (mysystem("openssl enc -d -bf -in $lastdir/keyring.enc -out $lastdir/keyring -pass file:$lastdir/keyroot -nosalt") != 0) {
+    $key_file = "$lastdir/keyring.enc"
+    	if !$key_file;
+    $cfg_file = "$lastdir/cfg.tgz.enc"
+    	if !$cfg_file;
+    if (mysystem("openssl enc -d -bf -in $key_file -out $lastdir/keyring -pass file:$lastdir/keyroot -nosalt") != 0) {
 	errexit("Could not decrypt keyring.enc");
     }
-    if (mysystem("openssl enc -d -bf -in $lastdir/cfg.tgz.enc -pass file:$lastdir/keyroot -nosalt | tar xz --directory $lastdir") != 0) {
+    if (mysystem("openssl enc -d -bf -in $cfg_file -pass file:$lastdir/keyroot -nosalt | tar xz --directory $lastdir") != 0) {
 	errexit("Could not decrypt and unpack cfg.tgz.enc");
     }
     # Keyroot no longer needed, get rid of it
     foreach $target ("keyring.enc", "cfg.tgz.enc", "keyroot") {
-	if (!unlink("$lastdir/$target")) {
+	if (-e "$lastdir/$target" && !unlink("$lastdir/$target")) {
 	    clean($userid, $parcel, $isrdir, 0);
 	    errexit("Unable to remove $target.");
 	}
