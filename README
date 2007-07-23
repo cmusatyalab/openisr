@@ -11,6 +11,7 @@ REQUIREMENTS
 - udev
 - ssh
 - rsync
+- pv (available from <http://www.ivarch.com/programs/pv.shtml>)
 - VMware or VMware Player (other VMMs to follow)
 - An accessible ISR server
 

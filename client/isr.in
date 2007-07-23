@@ -640,7 +640,7 @@ sub checkout ($$$$) {
     }
     parse_cfgfile($tmpfile, \%map);
     unlink($tmpfile);
-    $cfgsize = int($map{SIZE}/(1<<20));
+    $cfgsize = $map{SIZE};
     $cfg_sha1value = $map{SHA1};
 
     $tmpfile = "/tmp/stat2.$$";
@@ -659,7 +659,7 @@ sub checkout ($$$$) {
     #
     # Look aside to see if the memory image and/or keyring is available 
     #
-    print "Fetching virtual machine memory image ($cfgsize MB)...\n"
+    printf("Fetching virtual machine memory image (%d MB)...\n", int($cfgsize/(1<<20)))
 	if $verbose;
 
     if (-e "$hoarddir/$cfg_sha1value") {
@@ -723,7 +723,7 @@ sub checkout ($$$$) {
     if (mysystem("openssl enc -d -bf -in $key_file -out $lastdir/keyring -pass file:$lastdir/keyroot -nosalt") != 0) {
 	errexit("Could not decrypt keyring.enc");
     }
-    if (mysystem("openssl enc -d -bf -in $cfg_file -pass file:$lastdir/keyroot -nosalt | tar xz --directory $lastdir") != 0) {
+    if (mysystem("pv -peW -s $cfgsize $cfg_file | openssl enc -d -bf -pass file:$lastdir/keyroot -nosalt | tar xz --directory $lastdir") != 0) {
 	errexit("Could not decrypt and unpack cfg.tgz.enc");
     }
     # Keyroot no longer needed, get rid of it

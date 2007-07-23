@@ -903,10 +903,13 @@ sub copy_dirtychunks ($) {
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
     my $tmpdir = "$parceldir/tmp";
+    my $tarsize = 0;
     
     my $dirtyblocks;
     my $dirtybytes;
     my $target;
+    my $curfile;
+    my $stat;
 
     #
     # Build an empty temporary cache directory structure on the client
@@ -926,14 +929,29 @@ sub copy_dirtychunks ($) {
     close(KEYROOT);
 
     #
+    # Figure out (roughly) how large the cfg tarball will be, so that we can
+    # generate a progress bar
+    #
+    opendir(CFG, "$cachedir/cfg")
+	or unix_errexit("Couldn't read memory image directory $cachedir/cfg");
+    foreach $curfile (readdir(CFG)) {
+	next if ($curfile eq "." || $curfile eq "..");
+	$stat = stat("$cachedir/cfg/$curfile");
+	unix_errexit("Couldn't stat $cachedir/cfg/$curfile")
+	    if !$stat;
+	$tarsize += $stat->size;
+    }
+    closedir(CFG);
+    
+    #
     # Create cfg tarball and encrypt it and the keyring
     #
-    print("Compressing and encrypting virtual machine memory image...")
+    print("Compressing and encrypting virtual machine memory image...\n")
 	if $main::verbose;
     chdir($cachedir);
-    mysystem("tar cz cfg | openssl enc -bf -out $tmpdir/cache/cfg.tgz.enc -pass file:$cachedir/keyroot -nosalt") == 0
+    mysystem("tar c cfg | pv -peW -s $tarsize | gzip -c | openssl enc -bf -out $tmpdir/cache/cfg.tgz.enc -pass file:$cachedir/keyroot -nosalt") == 0
 	or system_errexit("Unable to create cfg.tgz.enc.");
-    printf("%d MB\n", (stat("$tmpdir/cache/cfg.tgz.enc")->size)/(1<<20))
+    printf("Compressed size: %d MB\n", (stat("$tmpdir/cache/cfg.tgz.enc")->size)/(1<<20))
     	if $main::verbose;
     mysystem("openssl enc -bf -in $cachedir/keyring -out $tmpdir/cache/keyring.enc -pass file:$cachedir/keyroot -nosalt") == 0
 	or system_errexit("Unable to encrypt keyring.");
