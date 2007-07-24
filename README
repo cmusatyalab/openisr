@@ -18,8 +18,6 @@ REQUIREMENTS
 This release requires a (slightly modified) ISR-3 server.  Future releases will
 include a completely new server implementation.
 
-The OpenISR system has not been tested on architectures other than 32-bit x86.
-
 INSTALLATION SUMMARY
 --------------------
 
@@ -43,7 +41,7 @@ following command line options:
 
 --disable-client
 	Do not build components that are only used by the OpenISR client.
-	
+
 --enable-libvdisk
 --disable-libvdisk
 	Do, or do not, build and install the libvdisk LD_PRELOAD library.  The
@@ -51,9 +49,12 @@ following command line options:
 	specified.  libvdisk is installed setuid root so that it can be
 	preloaded into virtual machine monitors that are themselves setuid
 	root.  Due to the LD_PRELOAD rules for setuid programs, libvdisk is
-	always installed in DESTDIR/usr/lib regardless of the setting of
-	libdir.  See the ld.so(8) man page for details on the LD_PRELOAD
-	setuid rules.
+	installed in DESTDIR/usr/lib regardless of the setting of libdir.
+	On 64-bit systems, a 64-bit version of libvdisk is installed in
+	DESTDIR/usr/lib64 or DESTDIR/usr/lib, depending on your Linux
+	distribution, and a 32-bit version is installed in DESTDIR/usr/lib32
+	or DESTDIR/usr/lib.  See the ld.so(8) man page for details on the
+	LD_PRELOAD setuid rules.
 
 --enable-modules
 --disable-modules
@@ -101,10 +102,11 @@ INSTALLATION PATHS
 "make install" will install several components outside the directories
 specified on the configure command line.  Kernel modules will always be
 installed in the /lib/modules subdirectory corresponding to the kernel
-source you chose.  libvdisk will always be installed in /usr/lib and marked
-setuid root; see the documentation on --disable-libvdisk (above) for details.
-If the --disable-libvdisk and --disable-modules options are both passed to
-configure, files will be installed only in the configured directories.
+source you chose.  libvdisk will always be installed in the appropriate
+/usr/lib* directories and marked setuid root; see the documentation on
+--disable-libvdisk (above) for details.  If the --disable-libvdisk and
+--disable-modules options are both passed to configure, files will be
+installed only in the configured directories.
 
 By default, the OpenISR init script and udev rules are installed in
 subdirectories of $prefix/etc.  However, most systems only look for these
