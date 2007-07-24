@@ -9,6 +9,7 @@ config.guess
 config.sub
 depcomp
 ltmain.sh
+compile
 missing
 install-sh
 config.h.in

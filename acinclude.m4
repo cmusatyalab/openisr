@@ -113,3 +113,22 @@ AC_DEFUN([CHECK_COMPILE], [
 		AC_MSG_RESULT([no])
 	fi
 ])
+
+
+# CHECK_COMPILER_OPTION_VAR([OPTION])
+# If the compiler supports the command line option OPTION, set $have_option
+# to "yes".  Otherwise, set $have_option to "no".
+# -------------------------------------------------------------------------
+AC_DEFUN([CHECK_COMPILER_OPTION_VAR], [
+	AC_MSG_CHECKING([if compiler supports $1])
+	saved_cflags="$CFLAGS"
+	CFLAGS="$saved_cflags $1"
+	AC_COMPILE_IFELSE([AC_LANG_SOURCE([])], [have_option=yes],
+				[have_option=no])
+	if test z$have_option = zyes ; then
+		AC_MSG_RESULT([yes])
+	else
+		AC_MSG_RESULT([no])
+	fi
+	CFLAGS="$saved_cflags"
+])
