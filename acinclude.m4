@@ -132,3 +132,27 @@ AC_DEFUN([CHECK_COMPILER_OPTION_VAR], [
 	fi
 	CFLAGS="$saved_cflags"
 ])
+
+
+# FIND_DIR([PRETTY_NAME], [PATH_LIST], [SUBST])
+# Print a message saying that we are looking for the path to PRETTY_NAME.
+# Check each of the paths in PATH_LIST to see whether it is a valid directory.
+# If so, subst the path into SUBST and stop.  If none of the paths are valid,
+# error out.
+# ----------------------------------------------------------------------------
+AC_DEFUN([FIND_DIR], [
+	AC_MSG_CHECKING([for path to $1])
+	found_dir=0
+	for path in $2
+	do
+		if test -d $path ; then
+			AC_MSG_RESULT([$path])
+			AC_SUBST([$3], [$path])
+			found_dir=1
+			break
+		fi
+	done
+	if test $found_dir = 0 ; then
+		AC_MSG_ERROR([not found in $2])
+	fi
+])

@@ -5,12 +5,12 @@ SOURCEFILES = libvdisk.c revision.h
 
 # libvdisk will not work if it's not in /lib or /usr/lib, since it needs
 # to be LD_PRELOADed into a setuid root program
-sysexeclibdir = /usr/lib
+sysexeclibdir = $(LIBVDISK_DIRPATH)
 sysexeclib_LTLIBRARIES = libvdisk.la
 libvdisk_la_SOURCES = $(SOURCEFILES)
 
 if LIBVDISK_BUILD_32
-sysexeclib32dir = /usr/lib32
+sysexeclib32dir = $(LIBVDISK_DIRPATH_32)
 sysexeclib32_LTLIBRARIES = 32/libvdisk.la
 32_libvdisk_la_SOURCES = $(SOURCEFILES)
 32_libvdisk_la_CFLAGS = -m32
