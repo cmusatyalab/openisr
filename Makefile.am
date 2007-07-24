@@ -12,8 +12,4 @@ endif
 # has tools it may want to build even if !WANT_MODULES.
 SUBDIRS = $(CLIENTDIRS) $(VDISKDIR) nexus sha1
 dist_noinst_SCRIPTS = mkrevision.sh
-EXTRA_DIST  = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL CHANGES kernel.mk
-#EXTRA_DIST += debian openisr.spec
-
-dist-hook:
-	rm -rf $(distdir)/debian/.svn
+EXTRA_DIST = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL CHANGES kernel.mk
