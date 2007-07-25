@@ -12,6 +12,8 @@ REQUIREMENTS
 - ssh
 - rsync
 - pv (available from <http://www.ivarch.com/programs/pv.shtml>)
+- On 64-bit systems: 32-bit glibc (if you are building libvdisk)
+- ssh-agent running in your X session (most systems provide this by default)
 - VMware or VMware Player (other VMMs to follow)
 - An accessible ISR server
 
@@ -81,6 +83,9 @@ If you compile your own kernels, you must enable the following options (either
 built-in or as modules) in order to use the OpenISR system:
 
 - Cryptographic API (CONFIG_CRYPTO)
+- Architecture-optimized AES cipher, if available on your architecture
+  (CONFIG_CRYPTO_AES_586 or CONFIG_CRYPTO_AES_X86_64)
+- Generic AES cipher, if no optimized version is available (CONFIG_CRYPTO_AES)
 - Blowfish cipher (CONFIG_CRYPTO_BLOWFISH)
 - SHA-1 hash, for architectures other than x86 and x86-64 (CONFIG_CRYPTO_SHA1)
 - CBC support, for kernels > 2.6.18 (CONFIG_CRYPTO_CBC)
