@@ -122,7 +122,7 @@ AC_CONFIG_FILES([Makefile
                  libvdisk/Makefile
                  nexus/GNUmakefile
                  nexus/tools/Makefile
+                 parcelkeeper/Makefile
                  sha1/GNUmakefile
-                 tools/Makefile
-                 vulpes/Makefile])
+                 tools/Makefile])
 AC_OUTPUT

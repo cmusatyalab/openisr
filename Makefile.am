@@ -1,5 +1,5 @@
 if WANT_CLIENT
-CLIENTDIRS = client vulpes conf tools
+CLIENTDIRS = client parcelkeeper conf tools
 endif
 
 if WANT_LIBVDISK
