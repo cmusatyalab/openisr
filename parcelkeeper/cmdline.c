@@ -9,6 +9,12 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include "config.h"
+#include "defs.h"
+
 /* pk_getopt() requires this to be a bitmask */
 enum mode_type {
 	MODE_RUN      = 0x01,
@@ -218,4 +224,61 @@ static unsigned long parseul(char *arg, int base)
 	if (*arg == 0 || *endptr != 0)
 		PARSE_ERROR("invalid integer value: %s", arg);
 	return val;
+}
+
+void parse_cmdline(int argc, char **argv)
+{
+	struct pk_mode *helpmode=NULL;
+	enum option opt;
+
+	progname=argv[0];
+	if (argc < 2)
+		usage(NULL);
+	curmode=parse_mode(argv[1]);
+	if (curmode == NULL)
+		PARSE_ERROR("unknown mode %s", argv[1]);
+
+	while ((opt=pk_getopt(argc, argv, pk_options)) != -1) {
+		switch (opt) {
+		case OPT_CACHE:
+			config.cache_dir=optparams[0];
+			break;
+		case OPT_LAST:
+			config.last_dir=optparams[0];
+			break;
+		case OPT_MASTER:
+			config.master=optparams[0];
+			break;
+		case OPT_DESTDIR:
+			config.destdir=optparams[0];
+			break;
+		case OPT_HOARD:
+			config.hoard_dir=optparams[0];
+			break;
+		case OPT_LOG:
+			config.log_file=optparams[0];
+			config.log_info_str=optparams[1];
+			config.log_file_mask=parseul(optparams[2], 0);
+			config.log_stdout_mask=parseul(optparams[3], 0);
+			break;
+		case OPT_FOREGROUND:
+			config.foreground=1;
+			break;
+		case OPT_MODE:
+			helpmode=parse_mode(optparams[0]);
+			if (helpmode == NULL)
+				PARSE_ERROR("unknown mode %s; try \"%s help\"",
+							optparams[0],
+							progname);
+			break;
+		}
+	}
+
+	if (curmode->type == MODE_HELP) {
+		usage(helpmode);
+	} else if (curmode->type == MODE_VERSION) {
+		printf("OpenISR " PACKAGE_VERSION ", Parcelkeeper revision "
+					"%s\n", rcs_revision);
+		exit(0);
+	}
 }

@@ -14,7 +14,28 @@
 
 #include <stdint.h>
 
+struct pk_config {
+	char *cache_dir;
+	char *last_dir;
+	char *master;
+	char *destdir;
+	char *hoard_dir;
+
+	char *log_file;
+	char *log_info_str;
+	unsigned log_file_mask;
+	unsigned log_stdout_mask;
+
+	int foreground;
+};
+
+struct pk_state {
+
+};
+
 extern const char *rcs_revision;
+extern struct pk_config config;
+extern struct pk_state state;
 
 typedef enum pk_err {
 	PK_SUCCESS=0,
@@ -54,6 +75,9 @@ struct ca_entry {
 	uint32_t length;
 	uint8_t flags;  /* XXX not packed */
 };
+
+/* cmdline.c */
+void parse_cmdline(int argc, char **argv);
 
 /* util.c */
 #define min(a,b) ((a) < (b) ? (a) : (b))

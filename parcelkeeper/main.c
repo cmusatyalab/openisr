@@ -1,0 +1,21 @@
+/*
+ * Parcelkeeper - support daemon for the OpenISR (TM) system virtual disk
+ *
+ * Copyright (C) 2006-2007 Carnegie Mellon University
+ *
+ * This software is distributed under the terms of the Eclipse Public License,
+ * Version 1.0 which can be found in the file named LICENSE.Eclipse.  ANY USE,
+ * REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES RECIPIENT'S
+ * ACCEPTANCE OF THIS AGREEMENT
+ */
+
+#include "defs.h"
+
+struct pk_config config;
+struct pk_state state;
+
+int main(int argc, char **argv)
+{
+	parse_cmdline(argc, argv);
+	return 0;
+}
