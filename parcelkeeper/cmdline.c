@@ -58,15 +58,12 @@ struct pk_option {
 
 enum option {
 	OPT_CACHE,
+	OPT_LAST,
 	OPT_MASTER,
-	OPT_KEYRING,
-	OPT_PREV_KEYRING,
-	OPT_LKA,
-	OPT_LOG,
-	OPT_PROXY,
 	OPT_DESTDIR,
+	OPT_HOARD,
+	OPT_LOG,
 	OPT_FOREGROUND,
-	OPT_LOCKDIR,
 	OPT_MODE,
 };
 
@@ -75,14 +72,11 @@ enum option {
 #define UPDATING_MODES (MODE_RUN|MODE_UPLOAD|MODE_VALIDATE)
 static struct pk_option pk_options[] = {
 	{"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
-	{"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
-	{"keyring",        OPT_KEYRING,        REQUIRED, NONTRIVIAL_MODES               , {"hex_keyring_file", "binary_keyring_file"}},
-	{"prev-keyring",   OPT_PREV_KEYRING,   REQUIRED, POSTPROCESS_MODES              , {"old_hex_keyring_file", "old_bin_keyring_file"}},
+	{"last",           OPT_LAST,           REQUIRED, POSTPROCESS_MODES              , {"last_cache_dir"}},
+	{"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"master_url"}},
 	{"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
-	{"lockdir",        OPT_LOCKDIR,        REQUIRED, UPDATING_MODES                 , {"lock_dir"},                                            "Directory for lock and pid files"},
-	{"lka",            OPT_LKA,            ANY,      MODE_RUN                       , {"lkatype", "lkadir"},                                   "lkatype must be hfs-sha-1"},
+	{"hoard",          OPT_HOARD,          OPTIONAL, MODE_RUN                       , {"hoard_dir"}},
 	{"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES               , {"logfile", "info_str", "filemask", "stdoutmask"}},
-	{"proxy",          OPT_PROXY,          OPTIONAL, MODE_RUN                       , {"proxy_server", "port_number"},                         "proxy_server is the ip address or the hostname of the proxy"},
 	{"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
 	{"mode",           OPT_MODE,           OPTIONAL, MODE_HELP                      , {"mode"},                                                "Print detailed usage message about the given mode"},
 	{0}
