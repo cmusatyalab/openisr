@@ -9,6 +9,26 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <errno.h>
+#include "defs.h"
+
+int at_eof(int fd)
+{
+	off_t cur=lseek(fd, 0, SEEK_CUR);
+	if (lseek(fd, 0, SEEK_END) != cur) {
+		lseek(fd, cur, SEEK_SET);
+		return 0;
+	}
+	return 1;
+}
+
 pk_err_t read_file(const char *path, char *buf, int *bufsize)
 {
 	int fd;
@@ -87,7 +107,7 @@ char *pk_strerror(pk_err_t err)
 
 int set_signal_handler(int sig, void (*handler)(int sig))
 {
-	struct sigaction sa = {0};
+	struct sigaction sa = {};
 	sa.sa_handler=handler;
 	sa.sa_flags=SA_RESTART;
 	return sigaction(sig, &sa, NULL);
@@ -96,7 +116,7 @@ int set_signal_handler(int sig, void (*handler)(int sig))
 void print_progress(unsigned chunks, unsigned maxchunks)
 {
 	unsigned percent;
-	unsigned chunks_per_mb=(1 << 20)/state.chunksize_bytes;
+	unsigned chunks_per_mb=(1 << 20)/state.chunksize;
 
 	if (maxchunks)
 		percent=chunks*100/maxchunks;
@@ -125,7 +145,7 @@ pk_err_t acquire_lock(void)
 
 	fd=open(config.lockfile, O_CREAT|O_WRONLY, 0666);
 	if (fd == -1) {
-		pk_log(LOG_ERRORS, "Couldn't open lock file %s",
+		pk_log(LOG_ERROR, "Couldn't open lock file %s",
 					config.lockfile);
 		return PK_IOERR;
 	}
@@ -152,7 +172,7 @@ pk_err_t create_pidfile(void)
 
 	fp=fopen(config.pidfile, "w");
 	if (fp == NULL) {
-		pk_log(LOG_ERRORS, "Couldn't open pid file %s", config.pidfile);
+		pk_log(LOG_ERROR, "Couldn't open pid file %s", config.pidfile);
 		return PK_IOERR;
 	}
 	fprintf(fp, "%d\n", getpid());
@@ -178,17 +198,17 @@ pk_err_t fork_and_wait(int *status_fd)
 
 	/* Make sure the child isn't killed if the parent dies */
 	if (set_signal_handler(SIGPIPE, SIG_IGN)) {
-		pk_log(LOG_ERRORS, "Couldn't block SIGPIPE");
+		pk_log(LOG_ERROR, "Couldn't block SIGPIPE");
 		return PK_CALLFAIL;
 	}
 	if (pipe(fds)) {
-		pk_log(LOG_ERRORS, "Can't create pipe");
+		pk_log(LOG_ERROR, "Can't create pipe");
 		return PK_CALLFAIL;
 	}
 
 	pid=fork();
 	if (pid == -1) {
-		pk_log(LOG_ERRORS, "fork() failed");
+		pk_log(LOG_ERROR, "fork() failed");
 		return PK_CALLFAIL;
 	} else if (pid) {
 		/* Parent */

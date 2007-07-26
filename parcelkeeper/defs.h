@@ -49,6 +49,9 @@ struct pk_config {
 
 struct pk_state {
 	FILE *log_fp;
+	int lock_fd;
+
+	unsigned chunksize;  /* XXX */
 };
 
 extern const char *rcs_revision;
