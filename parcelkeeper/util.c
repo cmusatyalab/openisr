@@ -9,32 +9,32 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
-#define LOCKFILE_NAME "vulpes.lock"
-#define PIDFILE_NAME "vulpes.pid"
+#define LOCKFILE_NAME "parcelkeeper.lock"
+#define PIDFILE_NAME "parcelkeeper.pid"
 
-vulpes_err_t read_file(const char *path, char *buf, int *bufsize)
+pk_err_t read_file(const char *path, char *buf, int *bufsize)
 {
 	int fd;
 	int count;
-	vulpes_err_t ret=VULPES_SUCCESS;
+	pk_err_t ret=PK_SUCCESS;
 
 	fd=open(path, O_RDONLY);
 	if (fd == -1) {
 		switch (errno) {
 		case ENOTDIR:
 		case ENOENT:
-			return VULPES_NOTFOUND;
+			return PK_NOTFOUND;
 		case ENOMEM:
-			return VULPES_NOMEM;
+			return PK_NOMEM;
 		default:
-			return VULPES_IOERR;
+			return PK_IOERR;
 		}
 	}
 	count=read(fd, buf, *bufsize);
 	if (count == -1)
-		ret=VULPES_IOERR;
+		ret=PK_IOERR;
 	else if (count == *bufsize && !at_eof(fd))
-		ret=VULPES_OVERFLOW;
+		ret=PK_OVERFLOW;
 	else
 		*bufsize=count;
 	close(fd);
@@ -43,46 +43,46 @@ vulpes_err_t read_file(const char *path, char *buf, int *bufsize)
 
 /* Read a file consisting of a newline-terminated string, and return the string
    without the newline */
-vulpes_err_t read_sysfs_file(const char *path, char *buf, int bufsize)
+pk_err_t read_sysfs_file(const char *path, char *buf, int bufsize)
 {
-	vulpes_err_t ret=read_file(path, buf, &bufsize);
+	pk_err_t ret=read_file(path, buf, &bufsize);
 	if (ret)
 		return ret;
 	while (--bufsize >= 0 && buf[bufsize] != '\n');
 	if (bufsize < 0)
-		return VULPES_BADFORMAT;
+		return PK_BADFORMAT;
 	buf[bufsize]=0;
-	return VULPES_SUCCESS;
+	return PK_SUCCESS;
 }
 
-char *vulpes_strerror(vulpes_err_t err)
+char *pk_strerror(pk_err_t err)
 {
 	switch (err) {
-	case VULPES_SUCCESS:
+	case PK_SUCCESS:
 		return "Success";
-	case VULPES_OVERFLOW:
+	case PK_OVERFLOW:
 		return "Buffer too small for data";
-	case VULPES_IOERR:
+	case PK_IOERR:
 		return "I/O error";
-	case VULPES_NOTFOUND:
+	case PK_NOTFOUND:
 		return "Object not found";
-	case VULPES_INVALID:
+	case PK_INVALID:
 		return "Invalid parameter";
-	case VULPES_NOMEM:
+	case PK_NOMEM:
 		return "Out of memory";
-	case VULPES_NOKEY:
+	case PK_NOKEY:
 		return "No such key in keyring";
-	case VULPES_TAGFAIL:
+	case PK_TAGFAIL:
 		return "Tag did not match data";
-	case VULPES_BADFORMAT:
+	case PK_BADFORMAT:
 		return "Invalid format";
-	case VULPES_CALLFAIL:
+	case PK_CALLFAIL:
 		return "Call failed";
-	case VULPES_PROTOFAIL:
+	case PK_PROTOFAIL:
 		return "Driver protocol error";
-	case VULPES_NETFAIL:
+	case PK_NETFAIL:
 		return "Network failure";
-	case VULPES_BUSY:
+	case PK_BUSY:
 		return "Object busy";
 	}
 	return "(Unknown)";
@@ -112,13 +112,12 @@ void print_progress(unsigned chunks, unsigned maxchunks)
 	printf("\x1b[A");
 }
 
-vulpes_err_t form_lockdir_file_name(char *buf, int len,
-	const char *suffix)
+pk_err_t form_lockdir_file_name(char *buf, int len, const char *suffix)
 {
 	int ret=snprintf(buf, len, "%s/%s", config.lockdir_name, suffix);
 	if (ret == -1 || ret >= len)
-		return VULPES_OVERFLOW;
-	return VULPES_SUCCESS;
+		return PK_OVERFLOW;
+	return PK_SUCCESS;
 }
 
 /* Create lock file.  flock locks don't work over NFS; byterange locks don't
@@ -126,7 +125,7 @@ vulpes_err_t form_lockdir_file_name(char *buf, int len,
    we use a whole-file fcntl lock.  The lock shouldn't become stale because the
    kernel checks that for us; however, over NFS file systems without a lock
    manager, locking will fail.  For safety, we treat that as an error. */
-vulpes_err_t acquire_lock(void)
+pk_err_t acquire_lock(void)
 {
 	char name[MAX_PATH_LENGTH];
 	int fd;
@@ -138,21 +137,21 @@ vulpes_err_t acquire_lock(void)
 	};
 
 	if (form_lockdir_file_name(name, sizeof(name), LOCKFILE_NAME))
-		return VULPES_OVERFLOW;
+		return PK_OVERFLOW;
 	fd=open(name, O_CREAT|O_WRONLY, 0666);
 	if (fd == -1) {
-		vulpes_log(LOG_ERRORS, "Couldn't open lock file %s", name);
-		return VULPES_IOERR;
+		pk_log(LOG_ERRORS, "Couldn't open lock file %s", name);
+		return PK_IOERR;
 	}
 	if (fcntl(fd, F_SETLK, &lock)) {
 		close(fd);
 		if (errno == EACCES || errno == EAGAIN)
-			return VULPES_BUSY;
+			return PK_BUSY;
 		else
-			return VULPES_CALLFAIL;
+			return PK_CALLFAIL;
 	}
 	state.lock_fd=fd;
-	return VULPES_SUCCESS;
+	return PK_SUCCESS;
 }
 
 void release_lock(void)
@@ -165,21 +164,21 @@ void release_lock(void)
 	close(state.lock_fd);
 }
 
-vulpes_err_t create_pidfile(void)
+pk_err_t create_pidfile(void)
 {
 	char name[MAX_PATH_LENGTH];
 	FILE *fp;
 
 	if (form_lockdir_file_name(name, sizeof(name), PIDFILE_NAME))
-		return VULPES_OVERFLOW;
+		return PK_OVERFLOW;
 	fp=fopen(name, "w");
 	if (fp == NULL) {
-		vulpes_log(LOG_ERRORS, "Couldn't open pid file %s", name);
-		return VULPES_IOERR;
+		pk_log(LOG_ERRORS, "Couldn't open pid file %s", name);
+		return PK_IOERR;
 	}
 	fprintf(fp, "%d\n", getpid());
 	fclose(fp);
-	return VULPES_SUCCESS;
+	return PK_SUCCESS;
 }
 
 void remove_pidfile(void)
@@ -196,7 +195,7 @@ void remove_pidfile(void)
    returns success and sets *status_fd.  If the child writes a byte to the fd,
    the parent will exit with that byte as its exit status.  If the child closes
    the fd without writing anything, the parent will exit(0). */
-vulpes_err_t fork_and_wait(int *status_fd)
+pk_err_t fork_and_wait(int *status_fd)
 {
 	int fds[2];
 	pid_t pid;
@@ -204,18 +203,18 @@ vulpes_err_t fork_and_wait(int *status_fd)
 
 	/* Make sure the child isn't killed if the parent dies */
 	if (set_signal_handler(SIGPIPE, SIG_IGN)) {
-		vulpes_log(LOG_ERRORS, "Couldn't block SIGPIPE");
-		return VULPES_CALLFAIL;
+		pk_log(LOG_ERRORS, "Couldn't block SIGPIPE");
+		return PK_CALLFAIL;
 	}
 	if (pipe(fds)) {
-		vulpes_log(LOG_ERRORS, "Can't create pipe");
-		return VULPES_CALLFAIL;
+		pk_log(LOG_ERRORS, "Can't create pipe");
+		return PK_CALLFAIL;
 	}
 
 	pid=fork();
 	if (pid == -1) {
-		vulpes_log(LOG_ERRORS, "fork() failed");
-		return VULPES_CALLFAIL;
+		pk_log(LOG_ERRORS, "fork() failed");
+		return PK_CALLFAIL;
 	} else if (pid) {
 		/* Parent */
 		close(fds[1]);
@@ -228,5 +227,5 @@ vulpes_err_t fork_and_wait(int *status_fd)
 		close(fds[0]);
 		*status_fd=fds[1];
 	}
-	return VULPES_SUCCESS;
+	return PK_SUCCESS;
 }

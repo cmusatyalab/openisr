@@ -9,7 +9,7 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
-/* vulpes_getopt() requires this to be a bitmask */
+/* pk_getopt() requires this to be a bitmask */
 enum mode_type {
 	MODE_RUN      = 0x01,
 	MODE_UPLOAD   = 0x02,
@@ -19,13 +19,13 @@ enum mode_type {
 	MODE_VERSION  = 0x20,
 };
 
-struct vulpes_mode {
+struct pk_mode {
 	char *name;
 	enum mode_type type;
 	char *desc;
 };
 
-static struct vulpes_mode vulpes_modes[] = {
+static struct pk_mode pk_modes[] = {
 	{"run",       MODE_RUN,     "Bind and service a virtual disk"},
 	{"upload",    MODE_UPLOAD,  "Split a cache file into individual chunks for upload"},
 	{"examine",   MODE_EXAMINE, "Print cache statistics"},
@@ -44,16 +44,16 @@ enum arg_type {
 #define MAXPARAMS 4
 static char *optparams[MAXPARAMS];
 static char *progname;
-static struct vulpes_mode *curmode;
+static struct pk_mode *curmode;
 
-struct vulpes_option {
+struct pk_option {
 	char *name;
 	unsigned retval;
 	enum arg_type type;
 	unsigned mask;
 	char *args[MAXPARAMS];
 	char *comment;
-	unsigned _seen;  /* internal use by vulpes_getopt() */
+	unsigned _seen;  /* internal use by pk_getopt() */
 };
 
 enum option {
@@ -73,7 +73,7 @@ enum option {
 #define POSTPROCESS_MODES (MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
 #define NONTRIVIAL_MODES (MODE_RUN|POSTPROCESS_MODES)
 #define UPDATING_MODES (MODE_RUN|MODE_UPLOAD|MODE_VALIDATE)
-static struct vulpes_option vulpes_options[] = {
+static struct pk_option pk_options[] = {
 	{"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
 	{"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"transfertype", "master_disk_location/url"},            "transfertype is one of: local http"},
 	{"keyring",        OPT_KEYRING,        REQUIRED, NONTRIVIAL_MODES               , {"hex_keyring_file", "binary_keyring_file"}},
@@ -88,11 +88,11 @@ static struct vulpes_option vulpes_options[] = {
 	{0}
 };
 
-static void usage(struct vulpes_mode *mode) __attribute__ ((noreturn));
-static void usage(struct vulpes_mode *mode)
+static void usage(struct pk_mode *mode) __attribute__ ((noreturn));
+static void usage(struct pk_mode *mode)
 {
-	struct vulpes_mode *mtmp;
-	struct vulpes_option *otmp;
+	struct pk_mode *mtmp;
+	struct pk_option *otmp;
 	char *str_start=NULL;
 	char *str_end=NULL;
 	int i;
@@ -101,13 +101,13 @@ static void usage(struct vulpes_mode *mode)
 	if (mode == NULL) {
 		printf("Usage: %s <mode> <options>\n", progname);
 		printf("Available modes:\n");
-		for (mtmp=vulpes_modes; mtmp->name != NULL; mtmp++) {
+		for (mtmp=pk_modes; mtmp->name != NULL; mtmp++) {
 			printf("     %-11s %s\n", mtmp->name, mtmp->desc);
 		}
 		printf("Run \"%s help --mode <mode>\" for more information.\n",
 					progname);
 	} else {
-		for (otmp=vulpes_options; otmp->name != NULL; otmp++) {
+		for (otmp=pk_options; otmp->name != NULL; otmp++) {
 			if ((otmp->mask & mode->type) != mode->type)
 				continue;
 			if (!have_options) {
@@ -157,7 +157,7 @@ static void usage(struct vulpes_mode *mode)
    - Checking for required or once-only options
    - Different permissible parameters depending on circumstances (mode)
 */
-static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts)
+static int pk_getopt(int argc, char *argv[], struct pk_option *opts)
 {
 	static int optind=2;  /* ignore argv[0] and argv[1] */
 	char *arg;
@@ -205,11 +205,11 @@ static int vulpes_getopt(int argc, char *argv[], struct vulpes_option *opts)
 	PARSE_ERROR("unknown option --%s", arg);
 }
 
-static struct vulpes_mode *parse_mode(char *name)
+static struct pk_mode *parse_mode(char *name)
 {
-	struct vulpes_mode *cur;
+	struct pk_mode *cur;
 
-	for (cur=vulpes_modes; cur->name != NULL; cur++) {
+	for (cur=pk_modes; cur->name != NULL; cur++) {
 		if (!strcmp(name, cur->name))
 			return cur;
 	}

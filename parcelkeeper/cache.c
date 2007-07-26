@@ -9,7 +9,7 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
-static vulpes_err_t write_cache_header(int fd)
+static pk_err_t write_cache_header(int fd)
 {
 	struct chunk_data *cdp;
 	struct ca_header hdr;
@@ -17,8 +17,8 @@ static vulpes_err_t write_cache_header(int fd)
 	unsigned chunk_num;
 
 	if (lseek(fd, sizeof(hdr), SEEK_SET) != sizeof(hdr)) {
-		vulpes_log(LOG_ERRORS, "Couldn't seek cache file");
-		return VULPES_IOERR;
+		pk_log(LOG_ERRORS, "Couldn't seek cache file");
+		return PK_IOERR;
 	}
 
 	foreach_chunk(chunk_num, cdp) {
@@ -28,15 +28,15 @@ static vulpes_err_t write_cache_header(int fd)
 			entry.length=htonl(cdp->length);
 		}
 		if (write(fd, &entry, sizeof(entry)) != sizeof(entry)) {
-			vulpes_log(LOG_ERRORS, "Couldn't write cache file "
-						"record: %u", chunk_num);
-			return VULPES_IOERR;
+			pk_log(LOG_ERRORS, "Couldn't write cache file record: "
+						"%u", chunk_num);
+			return PK_IOERR;
 		}
 	}
 
 	if (lseek(fd, 0, SEEK_SET)) {
-		vulpes_log(LOG_ERRORS, "Couldn't seek cache file");
-		return VULPES_IOERR;
+		pk_log(LOG_ERRORS, "Couldn't seek cache file");
+		return PK_IOERR;
 	}
 	memset(&hdr, 0, sizeof(hdr));
 	hdr.magic=htonl(CA_MAGIC);
@@ -45,15 +45,15 @@ static vulpes_err_t write_cache_header(int fd)
 	hdr.offset=htonl(state.offset_bytes / 512);
 	hdr.valid_chunks=htonl(state.valid_chunks);
 	if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr) || fsync(fd)) {
-		vulpes_log(LOG_ERRORS, "Couldn't write cache file header");
-		return VULPES_IOERR;
+		pk_log(LOG_ERRORS, "Couldn't write cache file header");
+		return PK_IOERR;
 	}
 
-	vulpes_log(LOG_BASIC, "Wrote cache header");
-	return VULPES_SUCCESS;
+	pk_log(LOG_BASIC, "Wrote cache header");
+	return PK_SUCCESS;
 }
 
-static vulpes_err_t open_cache_file(const char *path)
+static pk_err_t open_cache_file(const char *path)
 {
 	struct chunk_data *cdp;
 	struct ca_header hdr;
@@ -64,16 +64,16 @@ static vulpes_err_t open_cache_file(const char *path)
 
 	page_size=sysconf(_SC_PAGESIZE);
 	if (page_size == -1) {
-		vulpes_log(LOG_ERRORS, "couldn't get system page size");
-		return VULPES_CALLFAIL;
+		pk_log(LOG_ERRORS, "couldn't get system page size");
+		return PK_CALLFAIL;
 	}
 	fd=open(path, O_RDWR);
 	if (fd == -1 && errno == ENOENT) {
-		vulpes_log(LOG_BASIC, "No existing local cache; creating");
+		pk_log(LOG_BASIC, "No existing local cache; creating");
 		fd=open(path, O_CREAT|O_RDWR, 0600);
 		if (fd == -1) {
-			vulpes_log(LOG_ERRORS, "couldn't create cache file");
-			return VULPES_IOERR;
+			pk_log(LOG_ERRORS, "couldn't create cache file");
+			return PK_IOERR;
 		}
 		/* There's a race condition in the way the loop driver
 		   interacts with the memory management system for (at least)
@@ -89,63 +89,62 @@ static vulpes_err_t open_cache_file(const char *path)
 		write_cache_header(fd);
 		if (ftruncate(fd, state.volsize * SECTOR_SIZE +
 						state.offset_bytes)) {
-			vulpes_log(LOG_ERRORS, "couldn't extend cache file");
-			return VULPES_IOERR;
+			pk_log(LOG_ERRORS, "couldn't extend cache file");
+			return PK_IOERR;
 		}
 		state.cachefile_fd=fd;
-		return VULPES_SUCCESS;
+		return PK_SUCCESS;
 	} else if (fd == -1) {
-		vulpes_log(LOG_ERRORS, "couldn't open cache file");
-		return VULPES_IOERR;
+		pk_log(LOG_ERRORS, "couldn't open cache file");
+		return PK_IOERR;
 	}
 
 	if (read(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
-		vulpes_log(LOG_ERRORS, "Couldn't read cache file header");
-		return VULPES_IOERR;
+		pk_log(LOG_ERRORS, "Couldn't read cache file header");
+		return PK_IOERR;
 	}
 	if (ntohl(hdr.magic) != CA_MAGIC) {
-		vulpes_log(LOG_ERRORS, "Invalid magic number reading cache "
-					"file");
-		return VULPES_BADFORMAT;
+		pk_log(LOG_ERRORS, "Invalid magic number reading cache file");
+		return PK_BADFORMAT;
 	}
 	if (hdr.version != CA_VERSION) {
-		vulpes_log(LOG_ERRORS, "Invalid version reading cache file: "
+		pk_log(LOG_ERRORS, "Invalid version reading cache file: "
 					"expected %d, found %d", CA_VERSION,
 					hdr.version);
-		return VULPES_BADFORMAT;
+		return PK_BADFORMAT;
 	}
 	if (ntohl(hdr.entries) != state.numchunks) {
-		vulpes_log(LOG_ERRORS, "Invalid chunk count reading cache "
-					"file: expected %u, found %u",
+		pk_log(LOG_ERRORS, "Invalid chunk count reading cache file: "
+					"expected %u, found %u",
 					state.numchunks, htonl(hdr.entries));
-		return VULPES_BADFORMAT;
+		return PK_BADFORMAT;
 	}
 	state.offset_bytes=ntohl(hdr.offset) * SECTOR_SIZE;
 	if (state.offset_bytes % page_size != 0) {
 		/* This may occur with old cache files, or with cache files
 		   copied from another system with a different page size. */
-		vulpes_log(LOG_ERRORS, "Cache file's header length %u is not "
+		pk_log(LOG_ERRORS, "Cache file's header length %u is not "
 					"a multiple of the page size %u",
 					state.offset_bytes, page_size);
-		vulpes_log(LOG_ERRORS, "Data corruption may occur.  If it "
-					"does, checkin will be disallowed");
+		pk_log(LOG_ERRORS, "Data corruption may occur.  If it does, "
+					"checkin will be disallowed");
 	}
 	/* Don't trust valid_chunks field; it's informational only */
 
 	foreach_chunk(chunk_num, cdp) {
 		if (read(fd, &entry, sizeof(entry)) != sizeof(entry)) {
-			vulpes_log(LOG_ERRORS, "Couldn't read cache file "
-						"record: %u", chunk_num);
-			return VULPES_IOERR;
+			pk_log(LOG_ERRORS, "Couldn't read cache file record: "
+						"%u", chunk_num);
+			return PK_IOERR;
 		}
 		if (entry.flags & CA_VALID) {
 			mark_cdp_present(cdp);
 			cdp->length=ntohl(entry.length);
 		}
 	}
-	vulpes_log(LOG_BASIC, "Read cache header");
+	pk_log(LOG_BASIC, "Read cache header");
 	state.cachefile_fd=fd;
-	return VULPES_SUCCESS;
+	return PK_SUCCESS;
 }
 
 int copy_for_upload(void)
@@ -162,29 +161,28 @@ int copy_for_upload(void)
 	char calc_tag[HASH_LEN];
 	unsigned dirty_count;
 
-	vulpes_log(LOG_BASIC, "Copying chunks to upload directory %s",
+	pk_log(LOG_BASIC, "Copying chunks to upload directory %s",
 				config.dest_dir_name);
 	if (update_modified_flags(&dirty_count)) {
-		vulpes_log(LOG_ERRORS, "Couldn't compare keyrings");
+		pk_log(LOG_ERRORS, "Couldn't compare keyrings");
 		return 1;
 	}
 	buf=malloc(state.chunksize_bytes);
 	if (buf == NULL) {
-		vulpes_log(LOG_ERRORS, "malloc failed");
+		pk_log(LOG_ERRORS, "malloc failed");
 		return 1;
 	}
 	/* check the subdirectories  -- create if needed */
 	for (u = 0; u < state.numdirs; u++) {
 		if (form_dir_name(name, sizeof(name), config.dest_dir_name,
 					u)) {
-			vulpes_log(LOG_ERRORS, "Couldn't form directory name: "
-						"%u", u);
+			pk_log(LOG_ERRORS, "Couldn't form directory name: %u",
+						u);
 			return 1;
 		}
 		if (!is_dir(name)) {
 			if (mkdir(name, 0770)) {
-				vulpes_log(LOG_ERRORS, "unable to mkdir: %s",
-							name);
+				pk_log(LOG_ERRORS, "unable to mkdir: %s", name);
 				return 1;
 			}
 		}
@@ -195,27 +193,26 @@ int copy_for_upload(void)
 			if (!cdp_present(cdp)) {
 				/* XXX damaged cache file; we need to be able
 				   to recover */
-				vulpes_log(LOG_ERRORS, "Chunk modified but "
-							"not present: %u",u);
+				pk_log(LOG_ERRORS, "Chunk modified but not "
+							"present: %u",u);
 				return 1;
 			}
 			if (form_chunk_file_name(name, sizeof(name),
 						config.dest_dir_name, u)) {
-				vulpes_log(LOG_ERRORS, "Couldn't form chunk "
+				pk_log(LOG_ERRORS, "Couldn't form chunk "
 							"filename: %u",u);
 				return 1;
 			}
 			if (pread(state.cachefile_fd, buf, cdp->length,
 					get_image_offset_from_chunk_num(u))
 					!= cdp->length) {
-				vulpes_log(LOG_ERRORS, "Couldn't read chunk "
-							"from local cache: %u",
-							u);
+				pk_log(LOG_ERRORS, "Couldn't read chunk from "
+							"local cache: %u", u);
 				return 1;
 			}
 			digest(buf, cdp->length, calc_tag);
-			if (check_tag(cdp, calc_tag) == VULPES_TAGFAIL) {
-				vulpes_log(LOG_ERRORS, "Chunk %u: tag mismatch."
+			if (check_tag(cdp, calc_tag) == PK_TAGFAIL) {
+				pk_log(LOG_ERRORS, "Chunk %u: tag mismatch."
 						" Data corruption has occurred;"
 						" skipping chunk", u);
 				print_tag_check_error(cdp->tag, calc_tag);
@@ -223,18 +220,18 @@ int copy_for_upload(void)
 			}
 			fd=open(name, O_WRONLY|O_CREAT|O_TRUNC, 0600);
 			if (fd == -1) {
-				vulpes_log(LOG_ERRORS, "Couldn't open chunk "
-							"file: %s", name);
+				pk_log(LOG_ERRORS, "Couldn't open chunk file: "
+							"%s", name);
 				return 1;
 			}
 			if (write(fd, buf, cdp->length) != cdp->length) {
-				vulpes_log(LOG_ERRORS, "Couldn't write chunk "
-							"file: %s", name);
+				pk_log(LOG_ERRORS, "Couldn't write chunk file: "
+							"%s", name);
 				return 1;
 			}
 			if (close(fd) && errno != EINTR) {
-				vulpes_log(LOG_ERRORS, "Couldn't write chunk "
-							"file: %s", name);
+				pk_log(LOG_ERRORS, "Couldn't write chunk file: "
+							"%s", name);
 				return 1;
 			}
 			modified_chunks++;
@@ -247,12 +244,12 @@ int copy_for_upload(void)
 	snprintf(name, sizeof(name), "%s/stats", config.dest_dir_name);
 	fp=fopen(name, "w");
 	if (fp == NULL) {
-		vulpes_log(LOG_ERRORS, "Couldn't open stats file: %s", name);
+		pk_log(LOG_ERRORS, "Couldn't open stats file: %s", name);
 		return 1;
 	}
 	fprintf(fp, "%u\n%llu\n", modified_chunks, modified_bytes);
 	fclose(fp);
-	vulpes_log(LOG_STATS, "Copied %u modified chunks, %llu bytes",
+	pk_log(LOG_STATS, "Copied %u modified chunks, %llu bytes",
 				modified_chunks, modified_bytes);
 	return 0;
 }
@@ -265,11 +262,11 @@ int validate_cache(void)
 	struct chunk_data *cdp;
 	unsigned processed=0;
 
-	vulpes_log(LOG_BASIC, "Checking cache consistency");
+	pk_log(LOG_BASIC, "Checking cache consistency");
 	printf("Checking local cache for internal consistency...\n");
 	buf=malloc(state.chunksize_bytes);
 	if (buf == NULL) {
-		vulpes_log(LOG_ERRORS, "malloc failed");
+		pk_log(LOG_ERRORS, "malloc failed");
 		return 1;
 	}
 	foreach_chunk(chunk_num, cdp) {
@@ -279,13 +276,13 @@ int validate_cache(void)
 		if (pread(state.cachefile_fd, buf, cdp->length,
 				get_image_offset_from_chunk_num(chunk_num))
 				!= cdp->length) {
-			vulpes_log(LOG_ERRORS, "Couldn't read chunk from "
+			pk_log(LOG_ERRORS, "Couldn't read chunk from "
 						"local cache: %u", chunk_num);
 			return 1;
 		}
 		digest(buf, cdp->length, tag);
-		if (check_tag(cdp, tag) == VULPES_TAGFAIL) {
-			vulpes_log(LOG_ERRORS, "Chunk %u: tag check failure",
+		if (check_tag(cdp, tag) == PK_TAGFAIL) {
+			pk_log(LOG_ERRORS, "Chunk %u: tag check failure",
 						chunk_num);
 			print_tag_check_error(cdp->tag, tag);
 		}
@@ -306,7 +303,7 @@ int examine_cache(void)
 	unsigned dirty_pct=0;
 
 	if (update_modified_flags(&dirtychunks)) {
-		vulpes_log(LOG_ERRORS, "Couldn't compare keyrings");
+		pk_log(LOG_ERRORS, "Couldn't compare keyrings");
 		return 1;
 	}
 	max_mb=(((unsigned long long)state.numchunks) *

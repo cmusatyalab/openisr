@@ -12,7 +12,7 @@
 static const int ignored_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGTSTP, 0};
 static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 
-#define DEVFILE_NAME "vulpes.dev"
+#define DEVFILE_NAME "parcelkeeper.dev"
 #define REQUESTS_PER_SYSCALL 64
 #define WRITEBACK_INTERVAL 60
 #define WRITEBACK_IDLE_TIME 5
@@ -24,14 +24,14 @@ static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 static void signal_handler(int sig)
 {
 	char c=sig;
-	VULPES_DEBUG("Caught signal %d\n", sig);
+	PK_DEBUG("Caught signal %d\n", sig);
 	/* Race-free method of catching signals */
 	write(state.signal_fds[1], &c, 1);
 	/* The fd is set nonblocking, so if the pipe is full, the signal will
 	   be lost */
 }
 
-static vulpes_err_t loop_bind(void) {
+static pk_err_t loop_bind(void) {
 	struct loop_info64 info;
 	int i;
 	int fd;
@@ -41,46 +41,46 @@ static vulpes_err_t loop_bind(void) {
 					"/dev/loop%d", i);
 		fd=open(state.loopdev_name, O_RDWR|O_SYNC);
 		if (fd == -1) {
-			vulpes_log(LOG_ERRORS, "Couldn't open loop device");
-			return VULPES_IOERR;
+			pk_log(LOG_ERRORS, "Couldn't open loop device");
+			return PK_IOERR;
 		}
 		if (ioctl(fd, LOOP_GET_STATUS64, &info) && errno == ENXIO) {
 			/* XXX race condition */
 			if (ioctl(fd, LOOP_SET_FD, state.cachefile_fd)) {
-				vulpes_log(LOG_ERRORS, "Couldn't bind to loop "
+				pk_log(LOG_ERRORS, "Couldn't bind to loop "
 							"device");
-				return VULPES_IOERR;
+				return PK_IOERR;
 			}
 			/* This is required in order to properly configure the
 			   (null) transfer function, even though it
 			   shouldn't be */
 			if (ioctl(fd, LOOP_GET_STATUS64, &info)) {
-				vulpes_log(LOG_ERRORS, "Couldn't get status of "
+				pk_log(LOG_ERRORS, "Couldn't get status of "
 							"loop device");
 				ioctl(fd, LOOP_CLR_FD, 0);
-				return VULPES_IOERR;
+				return PK_IOERR;
 			}
 			snprintf((char*)info.lo_file_name, LO_NAME_SIZE, "%s",
 						state.image_name);
 			if (ioctl(fd, LOOP_SET_STATUS64, &info)) {
-				vulpes_log(LOG_ERRORS, "Couldn't configure "
+				pk_log(LOG_ERRORS, "Couldn't configure "
 							"loop device");
 				ioctl(fd, LOOP_CLR_FD, 0);
-				return VULPES_IOERR;
+				return PK_IOERR;
 			}
 			break;
 		}
 		close(fd);
 	}
 	state.loopdev_fd=fd;
-	vulpes_log(LOG_BASIC, "Bound to loop device %s", state.loopdev_name);
-	return VULPES_SUCCESS;
+	pk_log(LOG_BASIC, "Bound to loop device %s", state.loopdev_name);
+	return PK_SUCCESS;
 }
 
-vulpes_err_t driver_init(void)
+pk_err_t driver_init(void)
 {
 	struct nexus_setup setup;
-	vulpes_err_t ret;
+	pk_err_t ret;
 	int i;
 	char revision[64];
 	char protocol[8];
@@ -90,67 +90,67 @@ vulpes_err_t driver_init(void)
 
 	/* Check driver version */
 	if (!is_dir("/sys/class/openisr")) {
-		vulpes_log(LOG_ERRORS, "kernel module not loaded");
-		return VULPES_NOTFOUND;
+		pk_log(LOG_ERRORS, "kernel module not loaded");
+		return PK_NOTFOUND;
 	}
 	if (read_sysfs_file("/sys/class/openisr/version", protocol,
 				sizeof(protocol))) {
-		vulpes_log(LOG_ERRORS, "can't get driver protocol version");
-		return VULPES_PROTOFAIL;
+		pk_log(LOG_ERRORS, "can't get driver protocol version");
+		return PK_PROTOFAIL;
 	}
 	if (sscanf(protocol, "%u", &protocol_i) != 1) {
-		vulpes_log(LOG_ERRORS, "can't parse protocol version");
-		return VULPES_PROTOFAIL;
+		pk_log(LOG_ERRORS, "can't parse protocol version");
+		return PK_PROTOFAIL;
 	}
 	if (protocol_i != MY_INTERFACE_VERSION) {
-		vulpes_log(LOG_ERRORS, "protocol mismatch: expected version "
+		pk_log(LOG_ERRORS, "protocol mismatch: expected version "
 					"%u, got version %u",
 					MY_INTERFACE_VERSION, protocol_i);
-		return VULPES_PROTOFAIL;
+		return PK_PROTOFAIL;
 	}
 	if (read_sysfs_file("/sys/class/openisr/revision", revision,
 				sizeof(revision))) {
-		vulpes_log(LOG_ERRORS, "can't get driver revision");
-		return VULPES_PROTOFAIL;
+		pk_log(LOG_ERRORS, "can't get driver revision");
+		return PK_PROTOFAIL;
 	}
-	vulpes_log(LOG_BASIC,"Driver protocol %u, revision %s", protocol_i,
+	pk_log(LOG_BASIC,"Driver protocol %u, revision %s", protocol_i,
 				revision);
 
 	/* Log kernel version */
 	if (uname(&utsname))
-		vulpes_log(LOG_ERRORS, "Can't get kernel version");
+		pk_log(LOG_ERRORS, "Can't get kernel version");
 	else
-		vulpes_log(LOG_BASIC, "%s %s (%s) on %s", utsname.sysname,
+		pk_log(LOG_BASIC, "%s %s (%s) on %s", utsname.sysname,
 					utsname.release, utsname.version,
 					utsname.machine);
 
 	/* Create signal-passing pipe */
 	if (pipe(state.signal_fds)) {
-		vulpes_log(LOG_ERRORS, "couldn't create pipe");
-		return VULPES_CALLFAIL;
+		pk_log(LOG_ERRORS, "couldn't create pipe");
+		return PK_CALLFAIL;
 	}
 	/* Set it nonblocking */
 	if (fcntl(state.signal_fds[0], F_SETFL, O_NONBLOCK) ||
 				fcntl(state.signal_fds[1], F_SETFL,
 				O_NONBLOCK)) {
-		vulpes_log(LOG_ERRORS, "couldn't set pipe nonblocking");
-		return VULPES_CALLFAIL;
+		pk_log(LOG_ERRORS, "couldn't set pipe nonblocking");
+		return PK_CALLFAIL;
 	}
 	/* Register signal handler */
 	for (i=0; caught_signals[i] != 0; i++) {
 		if (set_signal_handler(caught_signals[i], signal_handler)) {
-			vulpes_log(LOG_ERRORS, "unable to register default "
+			pk_log(LOG_ERRORS, "unable to register default "
 						"signal handler for signal %d",
 						caught_signals[i]);
-			return VULPES_CALLFAIL;
+			return PK_CALLFAIL;
 		}
 	}
 	/* Ignore signals that don't make sense for us */
 	for (i=0; ignored_signals[i] != 0; i++) {
 		if (set_signal_handler(ignored_signals[i], SIG_IGN)) {
-			vulpes_log(LOG_ERRORS, "unable to ignore signal %d",
+			pk_log(LOG_ERRORS, "unable to ignore signal %d",
 						ignored_signals[i]);
-			return VULPES_CALLFAIL;
+			return PK_CALLFAIL;
 		}
 	}
 
@@ -159,13 +159,11 @@ vulpes_err_t driver_init(void)
 	state.chardev_fd = open("/dev/openisrctl", O_RDWR|O_NONBLOCK);
 	if (state.chardev_fd < 0) {
 		if (errno == ENOENT) {
-			vulpes_log(LOG_ERRORS, "/dev/openisrctl does not "
-						"exist");
-			return VULPES_NOTFOUND;
+			pk_log(LOG_ERRORS, "/dev/openisrctl does not exist");
+			return PK_NOTFOUND;
 		} else {
-			vulpes_log(LOG_ERRORS, "unable to open "
-						"/dev/openisrctl");
-			return VULPES_IOERR;
+			pk_log(LOG_ERRORS, "unable to open /dev/openisrctl");
+			return PK_IOERR;
 		}
 	}
 
@@ -173,12 +171,12 @@ vulpes_err_t driver_init(void)
 	   we receive */
 	if (form_lockdir_file_name(state.devfile_name,
 				sizeof(state.devfile_name), DEVFILE_NAME))
-		return VULPES_OVERFLOW;
+		return PK_OVERFLOW;
 	fp=fopen(state.devfile_name, "w");
 	if (fp == NULL) {
-		vulpes_log(LOG_ERRORS, "couldn't open %s for writing",
+		pk_log(LOG_ERRORS, "couldn't open %s for writing",
 					state.devfile_name);
-		return VULPES_IOERR;
+		return PK_IOERR;
 	}
 
 	/* Bind the image file to a loop device */
@@ -202,18 +200,18 @@ vulpes_err_t driver_init(void)
 				(1<<NEXUS_COMPRESS_ZLIB);
 
 	if (ioctl(state.chardev_fd, NEXUS_IOC_REGISTER, &setup)) {
-		vulpes_log(LOG_ERRORS, "unable to register with "
-					"device driver: %s", strerror(errno));
+		pk_log(LOG_ERRORS, "unable to register with device driver: %s",
+					strerror(errno));
 		ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
 		fclose(fp);
 		unlink(state.devfile_name);
-		return VULPES_IOERR;
+		return PK_IOERR;
 	}
 	fprintf(fp, "/dev/openisr%c\n", 'a' + setup.index);
 	fclose(fp);
 	state.bdev_index=setup.index;
-	vulpes_log(LOG_BASIC, "Registered with driver");
-	return VULPES_SUCCESS;
+	pk_log(LOG_BASIC, "Registered with driver");
+	return PK_SUCCESS;
 }
 
 static void log_sysfs_value(char *attr)
@@ -224,9 +222,9 @@ static void log_sysfs_value(char *attr)
 	snprintf(fname, sizeof(fname), "/sys/class/openisr/openisr%c/%s",
 				'a' + state.bdev_index, attr);
 	if (read_sysfs_file(fname, buf, sizeof(buf))) {
-		vulpes_log(LOG_STATS, "%s:unknown", attr);
+		pk_log(LOG_STATS, "%s:unknown", attr);
 	} else {
-		vulpes_log(LOG_STATS, "%s:%s", attr, buf);
+		pk_log(LOG_STATS, "%s:%s", attr, buf);
 	}
 }
 
@@ -247,7 +245,7 @@ void driver_shutdown(void)
 	close(state.chardev_fd);
 	unlink(state.devfile_name);
 	if (ioctl(state.loopdev_fd, LOOP_CLR_FD, 0))
-		vulpes_log(LOG_ERRORS, "Couldn't unbind loop device");
+		pk_log(LOG_ERRORS, "Couldn't unbind loop device");
 	close(state.loopdev_fd);
 	/* We don't trust the loop driver */
 	sync();
@@ -265,7 +263,7 @@ static void process_batch(void)
 
 	in_count=read(state.chardev_fd, &requests, sizeof(requests));
 	if (in_count % sizeof(requests[0]))
-		vulpes_log(LOG_ERRORS, "Short read from device driver: %d",
+		pk_log(LOG_ERRORS, "Short read from device driver: %d",
 					in_count);
 	in_count /= sizeof(requests[0]);
 
@@ -280,7 +278,7 @@ static void process_batch(void)
 	out_count *= sizeof(replies[0]);
 	if (write(state.chardev_fd, replies, out_count) != out_count) {
 		/* XXX */
-		vulpes_log(LOG_ERRORS, "Short write to device driver");
+		pk_log(LOG_ERRORS, "Short write to device driver");
 	}
 }
 
@@ -320,7 +318,7 @@ void driver_run(void)
 				   find out what signal it was */
 				continue;
 			} else {
-				vulpes_log(LOG_ERRORS, "select() failed: %s",
+				pk_log(LOG_ERRORS, "select() failed: %s",
 							strerror(errno));
 				/* XXX now what? */
 			}
@@ -345,13 +343,13 @@ void driver_run(void)
 						sizeof(signal)) > 0) {
 				switch (signal) {
 				case SIGQUIT:
-					vulpes_log(LOG_BASIC, "Caught SIGQUIT;"
+					pk_log(LOG_BASIC, "Caught SIGQUIT;"
 						" shutting down immediately");
-					vulpes_log(LOG_BASIC, "Loop "
+					pk_log(LOG_BASIC, "Loop "
 						"unregistration may fail");
 					return;
 				default:
-					vulpes_log(LOG_BASIC, "Caught signal; "
+					pk_log(LOG_BASIC, "Caught signal; "
 						"shutdown pending");
 					shutdown_pending=1;
 				}

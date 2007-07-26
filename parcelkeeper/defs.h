@@ -9,28 +9,28 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
-#ifndef VULPES_DEFS_H
-#define VULPES_DEFS_H
+#ifndef PK_DEFS_H
+#define PK_DEFS_H
 
 #include <stdint.h>
 
 extern const char *rcs_revision;
 
-typedef enum vulpes_err {
-	VULPES_SUCCESS=0,
-	VULPES_OVERFLOW,
-	VULPES_IOERR,
-	VULPES_NOTFOUND,
-	VULPES_INVALID,
-	VULPES_NOMEM,
-	VULPES_NOKEY,
-	VULPES_TAGFAIL,
-	VULPES_BADFORMAT,
-	VULPES_CALLFAIL,
-	VULPES_PROTOFAIL,
-	VULPES_NETFAIL,  /* Used instead of IOERR if a retry might fix it */
-	VULPES_BUSY,
-} vulpes_err_t;
+typedef enum pk_err {
+	PK_SUCCESS=0,
+	PK_OVERFLOW,
+	PK_IOERR,
+	PK_NOTFOUND,
+	PK_INVALID,
+	PK_NOMEM,
+	PK_NOKEY,
+	PK_TAGFAIL,
+	PK_BADFORMAT,
+	PK_CALLFAIL,
+	PK_PROTOFAIL,
+	PK_NETFAIL,  /* Used instead of IOERR if a retry might fix it */
+	PK_BUSY,
+} pk_err_t;
 
 /*** Cache state ***/
 
@@ -59,16 +59,16 @@ struct ca_entry {
 #define min(a,b) ((a) < (b) ? (a) : (b))
 #define max(a,b) ((a) > (b) ? (a) : (b))
 
-vulpes_err_t read_file(const char *path, char *buf, int *bufsize);
-vulpes_err_t read_sysfs_file(const char *path, char *buf, int bufsize);
-char *vulpes_strerror(vulpes_err_t err);
+pk_err_t read_file(const char *path, char *buf, int *bufsize);
+pk_err_t read_sysfs_file(const char *path, char *buf, int bufsize);
+char *pk_strerror(pk_err_t err);
 int set_signal_handler(int sig, void (*handler)(int sig));
 void print_progress(unsigned chunks, unsigned maxchunks);
-vulpes_err_t fork_and_wait(int *status_fd);
-vulpes_err_t form_lockdir_file_name(char *buf, int len, const char *suffix);
-vulpes_err_t acquire_lock(void);
+pk_err_t fork_and_wait(int *status_fd);
+pk_err_t form_lockdir_file_name(char *buf, int len, const char *suffix);
+pk_err_t acquire_lock(void);
 void release_lock(void);
-vulpes_err_t create_pidfile(void);
+pk_err_t create_pidfile(void);
 void remove_pidfile(void);
 
 #endif
