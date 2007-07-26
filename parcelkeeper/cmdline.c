@@ -81,7 +81,7 @@ static struct pk_option pk_options[] = {
 	{"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"master_url"}},
 	{"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
 	{"hoard",          OPT_HOARD,          OPTIONAL, MODE_RUN                       , {"hoard_dir"}},
-	{"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES               , {"logfile", "info_str", "filemask", "stdoutmask"}},
+	{"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES               , {"logfile", "info_str", "filemask", "stderrmask"}},
 	{"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
 	{"mode",           OPT_MODE,           OPTIONAL, MODE_HELP                      , {"mode"},                                                "Print detailed usage message about the given mode"},
 	{0}
@@ -278,7 +278,7 @@ void parse_cmdline(int argc, char **argv)
 			config.log_file=optparams[0];
 			config.log_info_str=optparams[1];
 			config.log_file_mask=parseul(optparams[2], 0);
-			config.log_stdout_mask=parseul(optparams[3], 0);
+			config.log_stderr_mask=parseul(optparams[3], 0);
 			break;
 		case OPT_FOREGROUND:
 			config.foreground=1;

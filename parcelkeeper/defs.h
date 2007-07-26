@@ -12,6 +12,7 @@
 #ifndef PK_DEFS_H
 #define PK_DEFS_H
 
+#include <stdio.h>
 #include <stdint.h>
 
 struct pk_config {
@@ -38,7 +39,7 @@ struct pk_config {
 	char *log_file;
 	char *log_info_str;
 	unsigned log_file_mask;
-	unsigned log_stdout_mask;
+	unsigned log_stderr_mask;
 
 	/* miscellaneous parameters */
 	char *master;
@@ -47,7 +48,7 @@ struct pk_config {
 };
 
 struct pk_state {
-
+	FILE *log_fp;
 };
 
 extern const char *rcs_revision;
@@ -69,6 +70,11 @@ typedef enum pk_err {
 	PK_NETFAIL,  /* Used instead of IOERR if a retry might fix it */
 	PK_BUSY,
 } pk_err_t;
+
+enum pk_log_type {
+	LOG_INFO,
+	LOG_ERROR
+};
 
 /*** Cache state ***/
 
@@ -95,6 +101,11 @@ struct ca_entry {
 
 /* cmdline.c */
 void parse_cmdline(int argc, char **argv);
+
+/* log.c */
+void log_start(void);
+void log_shutdown(void);
+void pk_log(enum pk_log_type type, char *fmt, ...);
 
 /* util.c */
 #define min(a,b) ((a) < (b) ? (a) : (b))

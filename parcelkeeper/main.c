@@ -11,11 +11,16 @@
 
 #include "defs.h"
 
-struct pk_config config;
+struct pk_config config = {
+	.log_info_str = "",
+	.log_stderr_mask = -1
+};
 struct pk_state state;
 
 int main(int argc, char **argv)
 {
 	parse_cmdline(argc, argv);
+	log_start();
+	log_shutdown();
 	return 0;
 }
