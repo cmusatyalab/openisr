@@ -12,7 +12,6 @@
 static const int ignored_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGTSTP, 0};
 static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 
-#define DEVFILE_NAME "parcelkeeper.dev"
 #define REQUESTS_PER_SYSCALL 64
 #define MY_INTERFACE_VERSION 5
 #if MY_INTERFACE_VERSION != NEXUS_INTERFACE_VERSION
@@ -166,13 +165,10 @@ pk_err_t nexus_init(void)
 
 	/* Open the regular file that will contain the name of the device node
 	   we receive */
-	if (form_lockdir_file_name(state.devfile_name,
-				sizeof(state.devfile_name), DEVFILE_NAME))
-		return PK_OVERFLOW;
-	fp=fopen(state.devfile_name, "w");
+	fp=fopen(config.devfile, "w");
 	if (fp == NULL) {
 		pk_log(LOG_ERRORS, "couldn't open %s for writing",
-					state.devfile_name);
+					config.devfile);
 		return PK_IOERR;
 	}
 
@@ -240,7 +236,7 @@ void nexus_shutdown(void)
 	log_sysfs_value("compression_ratio_pct");
 
 	close(state.chardev_fd);
-	unlink(state.devfile_name);
+	unlink(config.devfile);
 	if (ioctl(state.loopdev_fd, LOOP_CLR_FD, 0))
 		pk_log(LOG_ERRORS, "Couldn't unbind loop device");
 	close(state.loopdev_fd);

@@ -9,9 +9,6 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
-#define LOCKFILE_NAME "parcelkeeper.lock"
-#define PIDFILE_NAME "parcelkeeper.pid"
-
 pk_err_t read_file(const char *path, char *buf, int *bufsize)
 {
 	int fd;
@@ -111,14 +108,6 @@ void print_progress(unsigned chunks, unsigned maxchunks)
 	printf("\x1b[A");
 }
 
-pk_err_t form_lockdir_file_name(char *buf, int len, const char *suffix)
-{
-	int ret=snprintf(buf, len, "%s/%s", config.lockdir_name, suffix);
-	if (ret == -1 || ret >= len)
-		return PK_OVERFLOW;
-	return PK_SUCCESS;
-}
-
 /* Create lock file.  flock locks don't work over NFS; byterange locks don't
    work over AFS; and dotlocks are difficult to check for freshness.  So
    we use a whole-file fcntl lock.  The lock shouldn't become stale because the
@@ -126,7 +115,6 @@ pk_err_t form_lockdir_file_name(char *buf, int len, const char *suffix)
    manager, locking will fail.  For safety, we treat that as an error. */
 pk_err_t acquire_lock(void)
 {
-	char name[MAX_PATH_LENGTH];
 	int fd;
 	struct flock lock = {
 		.l_type   = F_WRLCK,
@@ -135,11 +123,10 @@ pk_err_t acquire_lock(void)
 		.l_len    = 0
 	};
 
-	if (form_lockdir_file_name(name, sizeof(name), LOCKFILE_NAME))
-		return PK_OVERFLOW;
-	fd=open(name, O_CREAT|O_WRONLY, 0666);
+	fd=open(config.lockfile, O_CREAT|O_WRONLY, 0666);
 	if (fd == -1) {
-		pk_log(LOG_ERRORS, "Couldn't open lock file %s", name);
+		pk_log(LOG_ERRORS, "Couldn't open lock file %s",
+					config.lockfile);
 		return PK_IOERR;
 	}
 	if (fcntl(fd, F_SETLK, &lock)) {
@@ -155,24 +142,17 @@ pk_err_t acquire_lock(void)
 
 void release_lock(void)
 {
-	char name[MAX_PATH_LENGTH];
-
-	if (form_lockdir_file_name(name, sizeof(name), LOCKFILE_NAME))
-		return;
-	unlink(name);
+	unlink(config.lockfile);
 	close(state.lock_fd);
 }
 
 pk_err_t create_pidfile(void)
 {
-	char name[MAX_PATH_LENGTH];
 	FILE *fp;
 
-	if (form_lockdir_file_name(name, sizeof(name), PIDFILE_NAME))
-		return PK_OVERFLOW;
-	fp=fopen(name, "w");
+	fp=fopen(config.pidfile, "w");
 	if (fp == NULL) {
-		pk_log(LOG_ERRORS, "Couldn't open pid file %s", name);
+		pk_log(LOG_ERRORS, "Couldn't open pid file %s", config.pidfile);
 		return PK_IOERR;
 	}
 	fprintf(fp, "%d\n", getpid());
@@ -182,11 +162,7 @@ pk_err_t create_pidfile(void)
 
 void remove_pidfile(void)
 {
-	char name[MAX_PATH_LENGTH];
-
-	if (form_lockdir_file_name(name, sizeof(name), PIDFILE_NAME))
-		return;
-	unlink(name);
+	unlink(config.pidfile);
 }
 
 /* Fork, and have the parent wait for the child to indicate that the parent

@@ -75,7 +75,6 @@ enum option {
 
 #define POSTPROCESS_MODES (MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
 #define NONTRIVIAL_MODES (MODE_RUN|POSTPROCESS_MODES)
-#define UPDATING_MODES (MODE_RUN|MODE_UPLOAD|MODE_VALIDATE)
 static struct pk_option pk_options[] = {
 	{"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
 	{"last",           OPT_LAST,           REQUIRED, POSTPROCESS_MODES              , {"last_cache_dir"}},
@@ -226,10 +225,19 @@ static unsigned long parseul(char *arg, int base)
 	return val;
 }
 
+static char *filepath(char *dir, char *file)
+{
+	char *ret;
+	if (asprintf(&ret, "%s/%s", dir, file) == -1)
+		PARSE_ERROR("malloc failure");  /* XXX? */
+	return ret;
+}
+
 void parse_cmdline(int argc, char **argv)
 {
 	struct pk_mode *helpmode=NULL;
 	enum option opt;
+	char *cp;
 
 	progname=argv[0];
 	if (argc < 2)
@@ -242,9 +250,18 @@ void parse_cmdline(int argc, char **argv)
 		switch (opt) {
 		case OPT_CACHE:
 			config.cache_dir=optparams[0];
+			cp=config.cache_dir;
+			config.parcel_cfg=filepath(cp, "parcel.cfg");
+			config.keyring=filepath(cp, "keyring");
+			config.cache_file=filepath(cp, "disk");
+			config.cache_index=filepath(cp, "disk.idx");
+			config.devfile=filepath(cp, "parcelkeeper.dev");
+			config.lockfile=filepath(cp, "parcelkeeper.lock");
+			config.pidfile=filepath(cp, "parcelkeeper.pid");
 			break;
 		case OPT_LAST:
 			config.last_dir=optparams[0];
+			config.last_keyring=filepath(optparams[0], "keyring");
 			break;
 		case OPT_MASTER:
 			config.master=optparams[0];
@@ -254,6 +271,8 @@ void parse_cmdline(int argc, char **argv)
 			break;
 		case OPT_HOARD:
 			config.hoard_dir=optparams[0];
+			config.hoard_file=filepath(optparams[0], "hoard");
+			config.hoard_index=filepath(optparams[0], "hoard.idx");
 			break;
 		case OPT_LOG:
 			config.log_file=optparams[0];

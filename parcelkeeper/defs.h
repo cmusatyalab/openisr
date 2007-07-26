@@ -15,17 +15,34 @@
 #include <stdint.h>
 
 struct pk_config {
+	/* cache directory and its contents */
 	char *cache_dir;
-	char *last_dir;
-	char *master;
-	char *destdir;
-	char *hoard_dir;
+	char *parcel_cfg;
+	char *keyring;
+	char *cache_file;
+	char *cache_index;
+	char *devfile;
+	char *lockfile;
+	char *pidfile;
 
+	/* last directory and its contents */
+	char *last_dir;
+	char *last_keyring;
+
+	/* hoard cache and its contents */
+	char *hoard_dir;
+	char *hoard_file;
+	char *hoard_index;
+
+	/* log parameters */
 	char *log_file;
 	char *log_info_str;
 	unsigned log_file_mask;
 	unsigned log_stdout_mask;
 
+	/* miscellaneous parameters */
+	char *master;
+	char *destdir;
 	int foreground;
 };
 
@@ -89,7 +106,6 @@ char *pk_strerror(pk_err_t err);
 int set_signal_handler(int sig, void (*handler)(int sig));
 void print_progress(unsigned chunks, unsigned maxchunks);
 pk_err_t fork_and_wait(int *status_fd);
-pk_err_t form_lockdir_file_name(char *buf, int len, const char *suffix);
 pk_err_t acquire_lock(void);
 void release_lock(void);
 pk_err_t create_pidfile(void);
