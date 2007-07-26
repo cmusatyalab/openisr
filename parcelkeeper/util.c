@@ -90,8 +90,7 @@ char *pk_strerror(pk_err_t err)
 
 int set_signal_handler(int sig, void (*handler)(int sig))
 {
-	struct sigaction sa;
-	memset(&sa, 0, sizeof(sa));
+	struct sigaction sa = {0};
 	sa.sa_handler=handler;
 	sa.sa_flags=SA_RESTART;
 	return sigaction(sig, &sa, NULL);

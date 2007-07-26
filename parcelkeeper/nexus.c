@@ -18,13 +18,12 @@ static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 #define WRITEBACK_IDLE_TIME 5
 #define MY_INTERFACE_VERSION 5
 #if MY_INTERFACE_VERSION != NEXUS_INTERFACE_VERSION
-#error This code uses a different interface version than the one defined in convergent-user.h
+#error This code uses a different interface version than the one defined in nexus.h
 #endif
 
 static void signal_handler(int sig)
 {
 	char c=sig;
-	PK_DEBUG("Caught signal %d\n", sig);
 	/* Race-free method of catching signals */
 	write(state.signal_fds[1], &c, 1);
 	/* The fd is set nonblocking, so if the pipe is full, the signal will
