@@ -76,7 +76,7 @@ static pk_err_t loop_bind(void) {
 	return PK_SUCCESS;
 }
 
-pk_err_t driver_init(void)
+pk_err_t nexus_init(void)
 {
 	struct nexus_setup setup;
 	pk_err_t ret;
@@ -87,14 +87,14 @@ pk_err_t driver_init(void)
 	struct utsname utsname;
 	FILE *fp;
 
-	/* Check driver version */
+	/* Check Nexus version */
 	if (!is_dir("/sys/class/openisr")) {
 		pk_log(LOG_ERRORS, "kernel module not loaded");
 		return PK_NOTFOUND;
 	}
 	if (read_sysfs_file("/sys/class/openisr/version", protocol,
 				sizeof(protocol))) {
-		pk_log(LOG_ERRORS, "can't get driver protocol version");
+		pk_log(LOG_ERRORS, "can't get Nexus protocol version");
 		return PK_PROTOFAIL;
 	}
 	if (sscanf(protocol, "%u", &protocol_i) != 1) {
@@ -109,7 +109,7 @@ pk_err_t driver_init(void)
 	}
 	if (read_sysfs_file("/sys/class/openisr/revision", revision,
 				sizeof(revision))) {
-		pk_log(LOG_ERRORS, "can't get driver revision");
+		pk_log(LOG_ERRORS, "can't get Nexus revision");
 		return PK_PROTOFAIL;
 	}
 	pk_log(LOG_BASIC,"Driver protocol %u, revision %s", protocol_i,
@@ -199,7 +199,7 @@ pk_err_t driver_init(void)
 				(1<<NEXUS_COMPRESS_ZLIB);
 
 	if (ioctl(state.chardev_fd, NEXUS_IOC_REGISTER, &setup)) {
-		pk_log(LOG_ERRORS, "unable to register with device driver: %s",
+		pk_log(LOG_ERRORS, "unable to register with Nexus: %s",
 					strerror(errno));
 		ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
 		fclose(fp);
@@ -209,7 +209,7 @@ pk_err_t driver_init(void)
 	fprintf(fp, "/dev/openisr%c\n", 'a' + setup.index);
 	fclose(fp);
 	state.bdev_index=setup.index;
-	pk_log(LOG_BASIC, "Registered with driver");
+	pk_log(LOG_BASIC, "Registered with Nexus");
 	return PK_SUCCESS;
 }
 
@@ -227,7 +227,7 @@ static void log_sysfs_value(char *attr)
 	}
 }
 
-void driver_shutdown(void)
+void nexus_shutdown(void)
 {
 	log_sysfs_value("cache_hits");
 	log_sysfs_value("cache_misses");
@@ -262,8 +262,7 @@ static void process_batch(void)
 
 	in_count=read(state.chardev_fd, &requests, sizeof(requests));
 	if (in_count % sizeof(requests[0]))
-		pk_log(LOG_ERRORS, "Short read from device driver: %d",
-					in_count);
+		pk_log(LOG_ERRORS, "Short read from Nexus: %d", in_count);
 	in_count /= sizeof(requests[0]);
 
 	for (i=0; i<in_count; i++) {
@@ -277,11 +276,11 @@ static void process_batch(void)
 	out_count *= sizeof(replies[0]);
 	if (write(state.chardev_fd, replies, out_count) != out_count) {
 		/* XXX */
-		pk_log(LOG_ERRORS, "Short write to device driver");
+		pk_log(LOG_ERRORS, "Short write to Nexus");
 	}
 }
 
-void driver_run(void)
+void nexus_run(void)
 {
 	fd_set readfds;
 	fd_set exceptfds;
