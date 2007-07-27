@@ -178,7 +178,7 @@ struct nexus_dev {
 	
 	struct class_device *class_dev;
 	struct gendisk *gendisk;
-	request_queue_t *queue;
+	struct request_queue *queue;
 	struct block_device *chunk_bdev;
 	struct work_struct cb_add_disk;
 	
@@ -429,7 +429,7 @@ int shutdown_dev(struct nexus_dev *dev, int force);
 int request_start(void);
 void request_shutdown(void);
 void kick_elevator(struct nexus_dev *dev);
-void nexus_request(request_queue_t *q);
+void nexus_request(struct request_queue *q);
 void nexus_run_requests(struct list_head *entry);
 void nexus_process_chunk(struct nexus_io_chunk *chunk,
 			struct scatterlist *chunk_sg);

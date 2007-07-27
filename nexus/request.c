@@ -108,7 +108,7 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 static int __end_that_request(struct request *req, int uptodate, int nr_sectors)
 {
 	int ret;
-	request_queue_t *q=req->q;
+	struct request_queue *q=req->q;
 	
 	BUG_ON(!list_empty(&req->queuelist));
 	ret=end_that_request_first(req, uptodate, nr_sectors);
@@ -451,7 +451,7 @@ out:
  * directly from here.  (Downstream functions still need to check for this
  * case, since the dev may have been shut down with I/O in flight.)
  **/
-void nexus_request(request_queue_t *q)
+void nexus_request(struct request_queue *q)
 {
 	struct nexus_dev *dev=q->queuedata;
 	struct request *req;
