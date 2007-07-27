@@ -61,9 +61,10 @@ typedef kmem_cache_t kmem_cache;
 typedef struct kmem_cache kmem_cache;
 #endif
 
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)
-#define kmem_cache_create(name,size,align,flags,ctor) \
-    kmem_cache_create(name,size,align,flags,ctor,NULL)
+#define kmem_cache_create(name, size, align, flags, ctor) \
+			kmem_cache_create(name, size, align, flags, ctor, NULL)
 #endif
 
 /***** Mutexes ***************************************************************/
