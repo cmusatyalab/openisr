@@ -501,7 +501,7 @@ int __init request_start(void)
 	int ret;
 	
 	io_cache=kmem_cache_create(MODULE_NAME "-io",
-				sizeof(struct nexus_io), 0, 0, NULL, NULL);
+				sizeof(struct nexus_io), 0, 0, NULL);
 	if (io_cache == NULL) {
 		ret=-ENOMEM;
 		goto bad_cache;
