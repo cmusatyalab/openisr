@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# mkrevision.sh - generate revision headers from Subversion metadata
+# mkrevision.sh - generate revision headers from Git metadata
 #
 # Copyright (C) 2006-2007 Carnegie Mellon University
 #
@@ -13,14 +13,8 @@
 set -e
 
 FILETYPE=$1
-SUBDIR=$2
 
-if [ -e .svn ] ; then
-	VER=`svnversion .`
-	BRANCH=`svn info . | egrep "^URL: " | sed -e "s:^.*/svn/openisr/::" \
-				-e "s:/${SUBDIR}$::"`
-	REV="$VER ($BRANCH)"
-elif [ -d `dirname $0`/.git ] ; then
+if [ -d `dirname $0`/.git ] ; then
 	REV=`git-describe`
 	if git-diff-index HEAD | read junk ; then
 		# There are uncommitted changes in the working copy

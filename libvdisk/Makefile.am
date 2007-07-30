@@ -46,5 +46,4 @@ uninstall-local:
 endif
 
 REVISION_TYPE = header
-REVISION_DIR = libvdisk
 include $(top_srcdir)/mkrevision.mk

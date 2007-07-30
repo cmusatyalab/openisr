@@ -10,7 +10,6 @@ KMODS := openisr.ko
 include ../kernel.mk
 
 REVISION_TYPE = object
-REVISION_DIR = nexus
 include ../mkrevision.mk
 
 endif

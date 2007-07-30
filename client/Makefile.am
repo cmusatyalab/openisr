@@ -17,5 +17,4 @@ $(GEN): %: %.in Makefile
 				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" $< > $@
 
 REVISION_TYPE = perl
-REVISION_DIR = client
 include $(top_srcdir)/mkrevision.mk

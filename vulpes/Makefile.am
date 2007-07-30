@@ -11,5 +11,4 @@ vulpes_SOURCES = revision.c main.c driver.c transport.c cache.c crypto.c \
 			state.h util.h vulpes.h
 
 REVISION_TYPE = object
-REVISION_DIR = vulpes
 include $(top_srcdir)/mkrevision.mk
