@@ -38,6 +38,7 @@ Modules.symvers
 .*.d
 
 # Revision headers
+.gitrevision
 revision.h
 revision.c
 IsrRevision.pm
