@@ -14,3 +14,9 @@ SUBDIRS = $(CLIENTDIRS) $(VDISKDIR) nexus sha1
 dist_noinst_SCRIPTS = mkrevision.sh
 EXTRA_DIST  = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL CHANGES kernel.mk
 EXTRA_DIST += .gitrevision
+
+# This is marked PHONY so that it will run unconditionally during "make dist";
+# otherwise, we might distribute an obsolete .gitrevision.
+.PHONY: .gitrevision
+.gitrevision:
+	$(top_srcdir)/mkrevision.sh none
