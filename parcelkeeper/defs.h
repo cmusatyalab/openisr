@@ -13,7 +13,6 @@
 #define PK_DEFS_H
 
 #include <stdio.h>
-#include <stdint.h>
 
 struct pk_config {
 	/* cache directory and its contents */
@@ -50,7 +49,7 @@ struct pk_config {
 struct pk_state {
 	FILE *log_fp;
 	int lock_fd;
-	int cache_fd;  /* XXX not set */
+	int cache_fd;
 	char *loopdev_name;
 	int loopdev_fd;
 	int chardev_fd;
@@ -89,29 +88,6 @@ enum pk_log_type {
 	LOG_INFO,
 	LOG_ERROR,
 	LOG_STATS
-};
-
-/*** Cache state ***/
-
-#define CA_MAGIC 0x51528038
-#define CA_VERSION 0
-
-/* All u32's in network byte order */
-struct ca_header {
-	uint32_t magic;
-	uint32_t entries;
-	uint32_t offset;  /* beginning of data, in 512-byte blocks */
-	uint32_t valid_chunks;
-	uint32_t flags;
-	uint8_t version;
-	uint8_t reserved[491];
-};
-
-#define CA_VALID 0x01
-
-struct ca_entry {
-	uint32_t length;
-	uint8_t flags;  /* XXX not packed */
 };
 
 /* cmdline.c */

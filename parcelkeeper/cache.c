@@ -9,144 +9,124 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
-static pk_err_t write_cache_header(int fd)
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <errno.h>
+#include <arpa/inet.h>
+#include "defs.h"
+
+#define CA_MAGIC 0x51528038
+#define CA_VERSION 1
+
+/* All u32's in network byte order */
+struct ca_header {
+	uint32_t magic;
+	uint32_t entries;
+	uint32_t offset;  /* beginning of data, in 512-byte blocks */
+	uint32_t reserved_1[2];
+	uint8_t version;
+	uint8_t reserved_2[491];
+};
+
+static pk_err_t create_cache_file(long page_size)
 {
-	struct chunk_data *cdp;
-	struct ca_header hdr;
-	struct ca_entry entry;
-	unsigned chunk_num;
+	struct ca_header hdr = {0};
+	int fd;
 
-	if (lseek(fd, sizeof(hdr), SEEK_SET) != sizeof(hdr)) {
-		pk_log(LOG_ERRORS, "Couldn't seek cache file");
+	pk_log(LOG_INFO, "No existing local cache; creating");
+	fd=open(config.cache_file, O_CREAT|O_EXCL|O_RDWR, 0600);
+	if (fd == -1) {
+		pk_log(LOG_ERROR, "couldn't create cache file");
 		return PK_IOERR;
 	}
-
-	foreach_chunk(chunk_num, cdp) {
-		memset(&entry, 0, sizeof(entry));
-		if (cdp_present(cdp)) {
-			entry.flags |= CA_VALID;
-			entry.length=htonl(cdp->length);
-		}
-		if (write(fd, &entry, sizeof(entry)) != sizeof(entry)) {
-			pk_log(LOG_ERRORS, "Couldn't write cache file record: "
-						"%u", chunk_num);
-			return PK_IOERR;
-		}
-	}
-
-	if (lseek(fd, 0, SEEK_SET)) {
-		pk_log(LOG_ERRORS, "Couldn't seek cache file");
-		return PK_IOERR;
-	}
-	memset(&hdr, 0, sizeof(hdr));
+	/* There's a race condition in the way the loop driver
+	   interacts with the memory management system for (at least)
+	   underlying file systems that provide the prepare_write and
+	   commit_write address space operations.  This can cause data
+	   not to be properly written to disk if I/O submitted to the
+	   loop driver spans multiple page-cache pages and is not
+	   aligned on page cache boundaries.  We therefore need to
+	   make sure that our header is a multiple of the page size.
+	   We assume that the page size is at least sizeof(hdr) bytes. */
+	state.offset=page_size;
 	hdr.magic=htonl(CA_MAGIC);
-	hdr.entries=htonl(state.numchunks);
+	hdr.entries=htonl(state.chunks);
+	hdr.offset=htonl(state.offset >> 9);
 	hdr.version=CA_VERSION;
-	hdr.offset=htonl(state.offset_bytes / 512);
-	hdr.valid_chunks=htonl(state.valid_chunks);
-	if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr) || fsync(fd)) {
-		pk_log(LOG_ERRORS, "Couldn't write cache file header");
+	if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
+		pk_log(LOG_ERROR, "Couldn't write cache file header");
+		return PK_IOERR;
+	}
+	if (ftruncate(fd, state.chunks * state.chunksize + state.offset)) {
+		pk_log(LOG_ERROR, "couldn't extend cache file");
 		return PK_IOERR;
 	}
 
-	pk_log(LOG_BASIC, "Wrote cache header");
+	pk_log(LOG_INFO, "Created cache file");
+	state.cache_fd=fd;
 	return PK_SUCCESS;
 }
 
-static pk_err_t open_cache_file(const char *path)
+static pk_err_t open_cache_file(void)
 {
-	struct chunk_data *cdp;
 	struct ca_header hdr;
-	struct ca_entry entry;
-	unsigned chunk_num;
 	int fd;
 	long page_size;
 
 	page_size=sysconf(_SC_PAGESIZE);
 	if (page_size == -1) {
-		pk_log(LOG_ERRORS, "couldn't get system page size");
+		pk_log(LOG_ERROR, "couldn't get system page size");
 		return PK_CALLFAIL;
 	}
-	fd=open(path, O_RDWR);
+
+	fd=open(config.cache_file, O_RDWR);
 	if (fd == -1 && errno == ENOENT) {
-		pk_log(LOG_BASIC, "No existing local cache; creating");
-		fd=open(path, O_CREAT|O_RDWR, 0600);
-		if (fd == -1) {
-			pk_log(LOG_ERRORS, "couldn't create cache file");
-			return PK_IOERR;
-		}
-		/* There's a race condition in the way the loop driver
-		   interacts with the memory management system for (at least)
-		   underlying file systems that provide the prepare_write and
-		   commit_write address space operations.  This can cause data
-		   not to be properly written to disk if I/O submitted to the
-		   loop driver spans multiple page-cache pages and is not
-		   aligned on page cache boundaries.  We therefore need to
-		   make sure that our header is a multiple of the page size. */
-		state.offset_bytes=((sizeof(hdr) + state.numchunks *
-					sizeof(entry)) + page_size - 1) &
-					~(page_size - 1);
-		write_cache_header(fd);
-		if (ftruncate(fd, state.volsize * SECTOR_SIZE +
-						state.offset_bytes)) {
-			pk_log(LOG_ERRORS, "couldn't extend cache file");
-			return PK_IOERR;
-		}
-		state.cachefile_fd=fd;
-		return PK_SUCCESS;
+		return create_cache_file(page_size);
 	} else if (fd == -1) {
-		pk_log(LOG_ERRORS, "couldn't open cache file");
+		pk_log(LOG_ERROR, "couldn't open cache file");
 		return PK_IOERR;
 	}
 
 	if (read(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
-		pk_log(LOG_ERRORS, "Couldn't read cache file header");
+		pk_log(LOG_ERROR, "Couldn't read cache file header");
 		return PK_IOERR;
 	}
 	if (ntohl(hdr.magic) != CA_MAGIC) {
-		pk_log(LOG_ERRORS, "Invalid magic number reading cache file");
+		pk_log(LOG_ERROR, "Invalid magic number reading cache file");
 		return PK_BADFORMAT;
 	}
 	if (hdr.version != CA_VERSION) {
-		pk_log(LOG_ERRORS, "Invalid version reading cache file: "
+		pk_log(LOG_ERROR, "Invalid version reading cache file: "
 					"expected %d, found %d", CA_VERSION,
 					hdr.version);
 		return PK_BADFORMAT;
 	}
-	if (ntohl(hdr.entries) != state.numchunks) {
-		pk_log(LOG_ERRORS, "Invalid chunk count reading cache file: "
+	if (ntohl(hdr.entries) != state.chunks) {
+		pk_log(LOG_ERROR, "Invalid chunk count reading cache file: "
 					"expected %u, found %u",
-					state.numchunks, htonl(hdr.entries));
+					state.chunks, ntohl(hdr.entries));
 		return PK_BADFORMAT;
 	}
-	state.offset_bytes=ntohl(hdr.offset) * SECTOR_SIZE;
-	if (state.offset_bytes % page_size != 0) {
+	state.offset=ntohl(hdr.offset) << 9;
+	if (state.offset % page_size != 0) {
 		/* This may occur with old cache files, or with cache files
 		   copied from another system with a different page size. */
-		pk_log(LOG_ERRORS, "Cache file's header length %u is not "
+		pk_log(LOG_ERROR, "Cache file's header length %u is not "
 					"a multiple of the page size %u",
-					state.offset_bytes, page_size);
-		pk_log(LOG_ERRORS, "Data corruption may occur.  If it does, "
+					state.offset, page_size);
+		pk_log(LOG_ERROR, "Data corruption may occur.  If it does, "
 					"checkin will be disallowed");
 	}
-	/* Don't trust valid_chunks field; it's informational only */
 
-	foreach_chunk(chunk_num, cdp) {
-		if (read(fd, &entry, sizeof(entry)) != sizeof(entry)) {
-			pk_log(LOG_ERRORS, "Couldn't read cache file record: "
-						"%u", chunk_num);
-			return PK_IOERR;
-		}
-		if (entry.flags & CA_VALID) {
-			mark_cdp_present(cdp);
-			cdp->length=ntohl(entry.length);
-		}
-	}
-	pk_log(LOG_BASIC, "Read cache header");
-	state.cachefile_fd=fd;
+	pk_log(LOG_INFO, "Read cache header");
+	state.cache_fd=fd;
 	return PK_SUCCESS;
 }
 
+#if 0
 int copy_for_upload(void)
 {
 	char name[MAX_PATH_LENGTH];
@@ -322,3 +302,4 @@ int examine_cache(void)
 					dirty_mb, valid_mb);
 	return 0;
 }
+#endif
