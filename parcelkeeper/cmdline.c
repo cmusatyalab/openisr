@@ -225,11 +225,19 @@ static unsigned long parseul(char *arg, int base)
 	return val;
 }
 
-static char *filepath(char *dir, char *file)
+static void check_dir(char *dir)
+{
+	if (!is_dir(dir))
+		PARSE_ERROR("%s is not a valid directory", dir);
+}
+
+static char *filepath(char *dir, char *file, int must_exist)
 {
 	char *ret;
 	if (asprintf(&ret, "%s/%s", dir, file) == -1)
 		PARSE_ERROR("malloc failure");  /* XXX? */
+	if (must_exist && !is_file(ret))
+		PARSE_ERROR("%s does not exist", ret);
 	return ret;
 }
 
@@ -250,18 +258,21 @@ void parse_cmdline(int argc, char **argv)
 		switch (opt) {
 		case OPT_CACHE:
 			config.cache_dir=optparams[0];
+			check_dir(config.cache_dir);
 			cp=config.cache_dir;
-			config.parcel_cfg=filepath(cp, "parcel.cfg");
-			config.keyring=filepath(cp, "keyring");
-			config.cache_file=filepath(cp, "disk");
-			config.cache_index=filepath(cp, "disk.idx");
-			config.devfile=filepath(cp, "parcelkeeper.dev");
-			config.lockfile=filepath(cp, "parcelkeeper.lock");
-			config.pidfile=filepath(cp, "parcelkeeper.pid");
+			config.parcel_cfg=filepath(cp, "parcel.cfg", 1);
+			config.keyring=filepath(cp, "keyring", 1);
+			config.cache_file=filepath(cp, "disk", 0);
+			config.cache_index=filepath(cp, "disk.idx", 0);
+			config.devfile=filepath(cp, "parcelkeeper.dev", 0);
+			config.lockfile=filepath(cp, "parcelkeeper.lock", 0);
+			config.pidfile=filepath(cp, "parcelkeeper.pid", 0);
 			break;
 		case OPT_LAST:
 			config.last_dir=optparams[0];
-			config.last_keyring=filepath(optparams[0], "keyring");
+			check_dir(config.last_dir);
+			config.last_keyring=filepath(optparams[0], "keyring",
+						1);
 			break;
 		case OPT_MASTER:
 			config.master=optparams[0];
@@ -271,8 +282,9 @@ void parse_cmdline(int argc, char **argv)
 			break;
 		case OPT_HOARD:
 			config.hoard_dir=optparams[0];
-			config.hoard_file=filepath(optparams[0], "hoard");
-			config.hoard_index=filepath(optparams[0], "hoard.idx");
+			config.hoard_file=filepath(optparams[0], "hoard", 0);
+			config.hoard_index=filepath(optparams[0], "hoard.idx",
+						0);
 			break;
 		case OPT_LOG:
 			config.log_file=optparams[0];

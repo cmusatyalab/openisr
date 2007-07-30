@@ -114,6 +114,8 @@ void pk_log(enum pk_log_type type, char *fmt, ...);
 #define min(a,b) ((a) < (b) ? (a) : (b))
 #define max(a,b) ((a) > (b) ? (a) : (b))
 
+int is_dir(const char *path);
+int is_file(const char *path);
 pk_err_t read_file(const char *path, char *buf, int *bufsize);
 pk_err_t read_sysfs_file(const char *path, char *buf, int bufsize);
 char *pk_strerror(pk_err_t err);
