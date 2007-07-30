@@ -3,7 +3,8 @@ bin_SCRIPTS = isr
 pkgdata_DATA = Isr.pm
 man_MANS = isr.1
 
-dist_pkgdata_DATA = HTTPSSH.pm IsrConfigTie.pm IsrRevision.pm
+dist_pkgdata_DATA = HTTPSSH.pm IsrConfigTie.pm
+pkgdata_DATA += IsrRevision.pm
 
 CLEANFILES = $(GEN)
 EXTRA_DIST = $(GEN:=.in)

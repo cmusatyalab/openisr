@@ -2,7 +2,7 @@ ifneq ($(KERNELRELEASE),)
 
 include $(M)/Files.mk
 obj-m := openisr.o
-openisr-objs := $(NEXUS_OBJS)
+openisr-objs := $(NEXUS_OBJS) revision.o
 
 else
 

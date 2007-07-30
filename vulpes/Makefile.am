@@ -6,9 +6,10 @@ AM_CFLAGS = -Wall -Wstrict-prototypes
 AM_LDFLAGS = -lz -lssl -lcurl
 
 pkglib_PROGRAMS = vulpes
-vulpes_SOURCES = revision.c main.c driver.c transport.c cache.c crypto.c \
+vulpes_SOURCES = main.c driver.c transport.c cache.c crypto.c \
 			log.c util.c lookaside.c crypto.h log.h lookaside.h \
 			state.h util.h vulpes.h
+nodist_vulpes_SOURCES = revision.c
 
 REVISION_TYPE = object
 include $(top_srcdir)/mkrevision.mk
