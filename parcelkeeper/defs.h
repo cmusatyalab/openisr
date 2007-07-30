@@ -50,8 +50,18 @@ struct pk_config {
 struct pk_state {
 	FILE *log_fp;
 	int lock_fd;
+	int cache_fd;  /* XXX not set */
+	char *loopdev_name;
+	int loopdev_fd;
+	int chardev_fd;
+	int signal_fds[2];
+
+	int bdev_index;
 
 	unsigned chunksize;  /* XXX */
+	unsigned offset;  /* XXX */
+
+	unsigned request_count;  /* XXX */
 };
 
 extern const char *rcs_revision;
@@ -76,7 +86,8 @@ typedef enum pk_err {
 
 enum pk_log_type {
 	LOG_INFO,
-	LOG_ERROR
+	LOG_ERROR,
+	LOG_STATS
 };
 
 /*** Cache state ***/
