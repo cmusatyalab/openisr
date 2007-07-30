@@ -267,6 +267,57 @@ void nexus_shutdown(void)
 	sync();
 }
 
+static int request_is_valid(struct nexus_message *req)
+{
+	if (req->chunk >= state.chunks) {
+		pk_log(LOG_ERROR, "Invalid chunk number %llu received "
+					"from Nexus", req->chunk);
+		return 0;
+	}
+
+	switch (req->type) {
+	case NEXUS_MSGTYPE_GET_META:
+		break;
+	case NEXUS_MSGTYPE_UPDATE_META:
+		if (req->length > state.chunksize) {
+			pk_log(LOG_ERROR, "Invalid length %u received from "
+						"Nexus for chunk %llu",
+						req->length, req->chunk);
+			return 0;
+		}
+		break;
+	default:
+		pk_log(LOG_ERROR, "Invalid msgtype %u received from Nexus",
+					req->type);
+		return 0;
+	}
+	return 1;
+}
+
+/* Returns true if @reply is valid */
+static int process_message(struct nexus_message *request,
+			struct nexus_message *reply)
+{
+	if (!request_is_valid(request)) {
+		if (request->type == NEXUS_MSGTYPE_GET_META) {
+			reply->type=NEXUS_MSGTYPE_META_HARDERR;
+			reply->chunk=request->chunk;
+			return 1;
+		}
+		return 0;
+	}
+
+	switch (request->type) {
+	case NEXUS_MSGTYPE_GET_META:
+		/* XXX */
+		return 1;
+	case NEXUS_MSGTYPE_UPDATE_META:
+		/* XXX */
+		break;
+	}
+	return 0;
+}
+
 static void process_batch(void)
 {
 	struct nexus_message requests[REQUESTS_PER_SYSCALL];

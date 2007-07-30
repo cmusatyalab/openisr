@@ -58,6 +58,7 @@ struct pk_state {
 
 	int bdev_index;
 
+	unsigned long long chunks;  /* XXX */
 	unsigned chunksize;  /* XXX */
 	unsigned offset;  /* XXX */
 
