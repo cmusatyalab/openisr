@@ -1,0 +1,11 @@
+unexport KERNELRELEASE
+unexport MAKEFLAGS
+
+all:
+	./configure --disable-client --enable-modules \
+		--with-kernel=$(kernel_source_dir)
+	$(MAKE)
+	cp -a nexus/openisr.ko .
+clean:
+	$(RM) openisr.ko
+	make distclean
