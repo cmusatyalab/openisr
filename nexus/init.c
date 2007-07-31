@@ -722,8 +722,7 @@ static int __init nexus_init(void)
 	return 0;
 
 bad_chrdev:
-	if (unregister_blkdev(blk_major, MODULE_NAME))
-		log(KERN_ERR, "block driver unregistration failed");
+	unregister_blkdev(blk_major, MODULE_NAME);
 bad_blkdev:
 	thread_shutdown();
 bad_thread:
@@ -747,8 +746,7 @@ static void __exit nexus_shutdown(void)
 	
 	chardev_shutdown();
 	
-	if (unregister_blkdev(blk_major, MODULE_NAME))
-		log(KERN_ERR, "block driver unregistration failed");
+	unregister_blkdev(blk_major, MODULE_NAME);
 	
 	thread_shutdown();
 	

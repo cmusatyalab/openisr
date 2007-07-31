@@ -108,7 +108,7 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 static int __end_that_request(struct request *req, int uptodate, int nr_sectors)
 {
 	int ret;
-	request_queue_t *q=req->q;
+	struct request_queue *q=req->q;
 	
 	BUG_ON(!list_empty(&req->queuelist));
 	ret=end_that_request_first(req, uptodate, nr_sectors);
@@ -394,7 +394,7 @@ void nexus_run_requests(struct list_head *entry)
 	/* We don't use the "safe" iterator because the next pointer might
 	   change out from under us between iterations */
 	while (!list_empty(&dev->requests)) {
-		req=list_entry(dev->requests.next, struct request, queuelist);
+		req=list_first_entry(&dev->requests, struct request, queuelist);
 		list_del_init(&req->queuelist);
 		need_put=list_empty(&dev->requests);
 		spin_unlock_bh(&dev->requests_lock);
@@ -451,7 +451,7 @@ out:
  * directly from here.  (Downstream functions still need to check for this
  * case, since the dev may have been shut down with I/O in flight.)
  **/
-void nexus_request(request_queue_t *q)
+void nexus_request(struct request_queue *q)
 {
 	struct nexus_dev *dev=q->queuedata;
 	struct request *req;
@@ -501,7 +501,7 @@ int __init request_start(void)
 	int ret;
 	
 	io_cache=kmem_cache_create(MODULE_NAME "-io",
-				sizeof(struct nexus_io), 0, 0, NULL, NULL);
+				sizeof(struct nexus_io), 0, 0, NULL);
 	if (io_cache == NULL) {
 		ret=-ENOMEM;
 		goto bad_cache;

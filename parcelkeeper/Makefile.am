@@ -6,9 +6,8 @@ AM_CFLAGS = -Wall -Wstrict-prototypes
 AM_LDFLAGS = -lcrypto -lcurl
 
 pkglib_PROGRAMS = parcelkeeper
-parcelkeeper_SOURCES  = revision.c cmdline.c main.c log.c cache.c nexus.c
-parcelkeeper_SOURCES += util.c defs.h
+parcelkeeper_SOURCES  = cmdline.c main.c log.c cache.c nexus.c util.c defs.h
+nodist_parcelkeeper_SOURCES = revision.c
 
 REVISION_TYPE = object
-REVISION_DIR = parcelkeeper
 include $(top_srcdir)/mkrevision.mk

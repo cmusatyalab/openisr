@@ -9,7 +9,7 @@ Release: 	2%{?redhatvers:.%{redhatvers}}
 Group: 		Applications/Internet
 License:	Eclipse Public License	
 BuildRequires: 	curl-devel
-Requires: 	openssh, rsync
+Requires: 	openssh, rsync, pv
 BuildRoot: 	/var/tmp/%{name}-buildroot
 Packager:	Matt Toups <mtoups@cs.cmu.edu>
 

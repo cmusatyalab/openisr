@@ -3,7 +3,8 @@ bin_SCRIPTS = isr
 pkgdata_DATA = Isr.pm
 man_MANS = isr.1
 
-dist_pkgdata_DATA = HTTPSSH.pm IsrConfigTie.pm IsrRevision.pm
+dist_pkgdata_DATA = HTTPSSH.pm IsrConfigTie.pm
+pkgdata_DATA += IsrRevision.pm
 
 CLEANFILES = $(GEN)
 EXTRA_DIST = $(GEN:=.in)
@@ -17,5 +18,4 @@ $(GEN): %: %.in Makefile
 				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" $< > $@
 
 REVISION_TYPE = perl
-REVISION_DIR = client
 include $(top_srcdir)/mkrevision.mk

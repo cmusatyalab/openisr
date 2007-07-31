@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# mkrevision.sh - generate revision headers from Subversion metadata
+# mkrevision.sh - generate revision headers from Git and Autoconf metadata
 #
 # Copyright (C) 2006-2007 Carnegie Mellon University
 #
@@ -13,22 +13,20 @@
 set -e
 
 FILETYPE=$1
-SUBDIR=$2
+BASEDIR=`dirname $0`
 
-if [ -e .svn ] ; then
-	VER=`svnversion .`
-	BRANCH=`svn info . | egrep "^URL: " | sed -e "s:^.*/svn/openisr/::" \
-				-e "s:/${SUBDIR}$::"`
-	REV="$VER ($BRANCH)"
-elif [ -d `dirname $0`/.git ] ; then
+if [ -d $BASEDIR/.git ] ; then
 	REV=`git-describe`
 	if git-diff-index HEAD | read junk ; then
 		# There are uncommitted changes in the working copy
 		REV="$REV-dirty"
 	fi
+	echo $REV > $BASEDIR/.gitrevision
 else
-	exit 0
+	REV=`cat $BASEDIR/.gitrevision`
 fi
+REL=`awk 'BEGIN { FS="\"" } /#define PACKAGE_VERSION/ { print $2 }' \
+			$BASEDIR/config.h` 
 
 # It's better to use a separate object file for the revision data,
 # since "svn update" will then force a relink but not a recompile.
@@ -38,10 +36,12 @@ case $FILETYPE in
 object)
 	FILENAME=revision.c
 	cat > $FILENAME-new <<- EOF
+		const char *isr_release = "$REL";
 		const char *rcs_revision = "$REV";
 		
 		#ifdef __KERNEL__
 		#include <linux/module.h>
+		MODULE_VERSION("$REL");
 		MODULE_INFO(revision, "$REV");
 		#endif
 	EOF
@@ -49,6 +49,7 @@ object)
 header)
 	FILENAME=revision.h
 	cat > $FILENAME-new <<- EOF
+		#define ISR_RELEASE "$REL"
 		#define RCS_REVISION "$REV"
 	EOF
 	;;
@@ -56,12 +57,17 @@ perl)
 	FILENAME=IsrRevision.pm
 	cat > $FILENAME-new <<- EOF
 		package Isr;
+		\$ISR_RELEASE = "$REL";
 		\$RCS_REVISION = "$REV";
 		1;
 	EOF
 	;;
+none)
+	# Just generate .gitrevision
+	exit 0
+	;;
 *)
-	echo "Usage: $0 {object|header|perl} <subdir>" >&2
+	echo "Usage: $0 {object|header|perl|none} <subdir>" >&2
 	exit 1
 	;;
 esac

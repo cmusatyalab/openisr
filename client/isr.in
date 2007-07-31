@@ -72,6 +72,7 @@ sub progress ($$);
 sub build_cache ($$);
 sub hdksize ($$$);
 sub connected ();
+sub check_nexus_version ();
 sub get_dirnum ($$);
 sub get_chunknum ($$);
 sub get_vulpespid ();
@@ -100,9 +101,6 @@ sub exit_handler ($);
 #########################
 # Section 1. Main routine
 #########################
-
-# Version string
-my $isrversion = "OpenISR !!VERSION!!";
 
 # Local variables
 my $isrdir;
@@ -256,7 +254,7 @@ $nameserver = $syscfg{nameserver};
 # 
 # Log the fact that we are starting the client program
 #
-message("START", "$isrversion, revision $Isr::RCS_REVISION");
+message("START", "OpenISR !!VERSION!!, revision $Isr::RCS_REVISION");
 message("ENTER", "@ARGV");
 
 #
@@ -465,7 +463,7 @@ elsif ($command eq "version") {
     # These are the copyrights for the entire OpenISR client codebase, not
     # just the user interface.
     print <<END;
-$isrversion, client revision $Isr::RCS_REVISION
+OpenISR !!VERSION!!, client revision $Isr::RCS_REVISION
 
 Copyright (C) 2000-2007 Carnegie Mellon University and others
 The OpenISR system comes with ABSOLUTELY NO WARRANTY.  Different parts of
@@ -518,6 +516,8 @@ sub checkout ($$$$) {
     my $tmpfile;
     my $cfg_sha1value;
     my $key_sha1value;
+    my $cfg_file;
+    my $key_file;
     my $clientname = hostname();
     my $sigset;
     my %map;
@@ -638,7 +638,7 @@ sub checkout ($$$$) {
     }
     parse_cfgfile($tmpfile, \%map);
     unlink($tmpfile);
-    $cfgsize = int($map{SIZE}/(1<<20));
+    $cfgsize = $map{SIZE};
     $cfg_sha1value = $map{SHA1};
 
     $tmpfile = "/tmp/stat2.$$";
@@ -657,19 +657,19 @@ sub checkout ($$$$) {
     #
     # Look aside to see if the memory image and/or keyring is available 
     #
-    print "Fetching virtual machine memory image ($cfgsize MB)...\n"
+    printf("Fetching virtual machine memory image (%d MB)...\n", int($cfgsize/(1<<20)))
 	if $verbose;
 
     if (-e "$hoarddir/$cfg_sha1value") {
 	print "Found local match for encrypted memory image.\n"
 	    if $verbose;
-	rename("$hoarddir/$cfg_sha1value", "$lastdir/cfg.tgz.enc");
+	$cfg_file = "$hoarddir/$cfg_sha1value";
     }
 
     if (-e "$hoarddir/$key_sha1value") {
 	print "Found local match for encrypted keyring.\n"
 	    if $verbose;
-	rename("$hoarddir/$key_sha1value", "$lastdir/keyring.enc");
+	$key_file = "$hoarddir/$key_sha1value";
     }    
 
     #
@@ -685,60 +685,52 @@ sub checkout ($$$$) {
     $SIG{'INT'} = sub {};
     unblock_sigint($sigset);
     foreach $target ("keyring.enc", "hdk/index.lev1", "cfg.tgz.enc") {
-	if (!-e "$lastdir/$target") {
-	    print "Fetching $target...\n"
-		if ($verbose > 1);
+	next if ($target eq "keyring.enc" && $key_file);
+	next if ($target eq "cfg.tgz.enc" && $cfg_file);
+	
+	print "Fetching $target...\n"
+	    if ($verbose > 1);
 
-	    # Show a progress meter only for the big cfg file
-	    $retval = isr_sget($userid, "last/$target", "$lastdir/tmpfile",
-				($target eq "cfg.tgz.enc"));
-	    if ($retval == $Isr::EINTR) {
-		print "\n";
-		# We now have an inconsistent parcel directory.  Blow it away
-		# and release the server lock.
-		clean($userid, $parcel, $isrdir, $sessionid);
-		errexit("Fetch interrupted by signal");
-	    }
-	    $retval == $Isr::ESUCCESS
-		or errexit("Unable to fetch $target file");
-	    rename("$lastdir/tmpfile", "$lastdir/$target")
-		or unix_errexit("Unable to commit $lastdir/$target");
+	# Show a progress meter only for the big cfg file
+	$retval = isr_sget($userid, "last/$target", "$lastdir/tmpfile",
+			    ($target eq "cfg.tgz.enc"));
+	if ($retval == $Isr::EINTR) {
+	    print "\n";
+	    # We now have an inconsistent parcel directory.  Blow it away
+	    # and release the server lock.
+	    clean($userid, $parcel, $isrdir, $sessionid);
+	    errexit("Fetch interrupted by signal");
 	}
+	$retval == $Isr::ESUCCESS
+	    or errexit("Unable to fetch $target file");
+	rename("$lastdir/tmpfile", "$lastdir/$target")
+	    or unix_errexit("Unable to commit $lastdir/$target");
     }
     $sigset = block_sigint();
     $SIG{'INT'} = \&sigint_handler;
     
     #
-    # Decrypt the virtualization and Vulpes files
+    # Decrypt and unpack the virtualization and Vulpes files
     #
-    print("Decrypting virtual machine memory image...\n")
+    print("Decrypting and uncompressing virtual machine memory image...\n")
 	if $verbose;
-    foreach $target ("keyring", "cfg.tgz") {
-	if (mysystem("openssl enc -d -bf -in $lastdir/${target}.enc -out $lastdir/$target -pass file:$lastdir/keyroot -nosalt") != 0) {
-	    errexit("Did not find a $target.enc file to decrypt");
-	}
-	if (!unlink("$lastdir/$target.enc")) {
+    $key_file = "$lastdir/keyring.enc"
+    	if !$key_file;
+    $cfg_file = "$lastdir/cfg.tgz.enc"
+    	if !$cfg_file;
+    if (mysystem("openssl enc -d -bf -in $key_file -out $lastdir/keyring -pass file:$lastdir/keyroot -nosalt") != 0) {
+	errexit("Could not decrypt keyring.enc");
+    }
+    if (mysystem("pv -peW -s $cfgsize $cfg_file | openssl enc -d -bf -pass file:$lastdir/keyroot -nosalt | tar xz --directory $lastdir") != 0) {
+	errexit("Could not decrypt and unpack cfg.tgz.enc");
+    }
+    # Keyroot no longer needed, get rid of it
+    foreach $target ("keyring.enc", "cfg.tgz.enc", "keyroot") {
+	if (-e "$lastdir/$target" && !unlink("$lastdir/$target")) {
 	    clean($userid, $parcel, $isrdir, 0);
-	    errexit("Unable to remove $target.enc.");
+	    errexit("Unable to remove $target.");
 	}
     }
-
-    #
-    # Keyroot no longer needed, get rid of it
-    #
-    unlink("$lastdir/keyroot")
-	or unix_errexit("Unable to delete $lastdir/keyroot.");
-
-    #
-    # Unpack the memory image and other virtual machine files
-    #
-    print("Uncompressing virtual machine memory image...\n")
-	if $verbose;
-
-    mysystem("tar -xzf $lastdir/cfg.tgz --directory $lastdir") == 0
-	or system_errexit("Unable to unpack $lastdir/$target.");
-    unlink("$lastdir/cfg.tgz")
-	or unix_errexit("Unable to delete compressed files from $lastdir");
 
     # Clean up and return
     sys_sync();
@@ -799,17 +791,19 @@ sub run ($$$$) {
 	errexit("The remote parcel is not available.");
     }
 
-    # Make sure that Vulpes is where we expect it to be, that Fauxide
-    # is loaded, and that /dev/hdk exists.
+    # Make sure that Vulpes is where we expect it to be, that Nexus is
+    # loaded, and that the control device exists.  Also, warn if the Nexus
+    # release is older than our own release.
     if (!-e $vulpescmd or !-x $vulpescmd ) {
 	errexit("Could not find an executable Vulpes binary.");
     }
-    if (mysystem("/sbin/lsmod | grep -q '^openisr'") != 0) {
-        system_errexit("The OpenISR kernel module does not appear to be loaded.");
+    if (!-d "/sys/class/openisr") {
+        errexit("The OpenISR kernel module does not appear to be loaded.");
     }
     if (!-e "/dev/openisrctl") {
-        errexit("Driver control device node does not exist");
+        errexit("Nexus control device does not exist");
     }
+    check_nexus_version();
 
     # If the user wants to run disconnected, they better have all of their
     # disk blocks hoarded in the local or hoard cache
@@ -2000,6 +1994,47 @@ sub connected () {
     }
     else {
 	return 1;
+    }
+}
+
+#
+# check_nexus_version - print a warning if the Nexus release number is older
+#                       than our own
+#
+sub check_nexus_version () {
+    my $nexus_version;
+    my $nexus_major;
+    my $nexus_minor;
+    my $nexus_patch;
+    my $isr_version = "!!VERSION!!";
+    my $isr_major;
+    my $isr_minor;
+    my $isr_patch;
+    my $warn = 0;
+    
+    if (!-e "/sys/class/openisr/release") {
+	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
+	message("INFO", "Nexus is out of date (<=0.8.3 vs. $isr_version)");
+	return;
+    }
+    open(NEX, "/sys/class/openisr/release")
+    	or errexit("Couldn't read Nexus release attribute");
+    $nexus_version = <NEX>;
+    close(NEX);
+    chomp $nexus_version;
+    ($nexus_major, $nexus_minor, $nexus_patch) = split(/\./, $nexus_version);
+    ($isr_major, $isr_minor, $isr_patch) = split(/\./, $isr_version);
+    if ($isr_major >= $nexus_major) {
+	if ($isr_major > $nexus_major) {
+	    $warn = 1;
+	} elsif ($isr_minor >= $nexus_minor) {
+	    $warn = 1
+	        if ($isr_minor > $nexus_minor or $isr_patch > $nexus_patch);
+	}
+    }
+    if ($warn) {
+	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
+	message("INFO", "Nexus is out of date ($nexus_version vs. $isr_version)");
     }
 }
 

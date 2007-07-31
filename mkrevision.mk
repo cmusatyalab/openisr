@@ -6,7 +6,7 @@ top_srcdir ?= ..
 # the rule, and to recalculate its target selection afterward.
 .PHONY: revision.dummy
 revision.dummy:
-	@$(top_srcdir)/mkrevision.sh $(REVISION_TYPE) $(REVISION_DIR)
+	@$(top_srcdir)/mkrevision.sh $(REVISION_TYPE)
 -include revision.dummy
 
 # Because of the way Automake builds its rules, Make >= 3.81 fails to build

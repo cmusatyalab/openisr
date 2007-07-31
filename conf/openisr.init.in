@@ -14,13 +14,17 @@ SCRIPTNAME=/etc/init.d/openisr
 # Don't run if the package is no longer installed
 [ -d $LIBDIR ] || exit 0
 
-get_modname() {
+get_mod_arch() {
 	case `uname -m` in
 		i586|i686)
-			echo "sha1-i586"
+			echo "i586"
 			;;
 		x86_64)
-			echo "sha1-x86_64"
+			echo "x86_64"
+			;;
+		*)
+			echo "none"
+			;;
 	esac
 }
 
@@ -38,21 +42,23 @@ probe_module() {
 }
 
 do_start() {
-	modname=`get_modname`
+	arch=`get_mod_arch`
 	
 	echo -n "Loading OpenISR kernel modules:"
 	probe_module loop insert
 	probe_module openisr insert required
-	[ "$modname" != "none" ] && probe_module $modname insert
+	[ "$arch" != "none" ] && probe_module "aes-$arch" insert
+	[ "$arch" != "none" ] && probe_module "sha1-$arch" insert
 	
 	echo "."
 }
 
 do_stop() {
-	modname=`get_modname`
+	arch=`get_mod_arch`
 	
 	echo -n "Unloading OpenISR kernel modules:"
-	probe_module $modname remove
+	[ "$arch" != "none" ] && probe_module "sha1-$arch" remove
+	[ "$arch" != "none" ] && probe_module "aes-$arch" remove
 	probe_module openisr remove required
 	probe_module loop remove
 	echo "."

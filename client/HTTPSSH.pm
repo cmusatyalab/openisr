@@ -789,7 +789,6 @@ sub isr_priv_upload ($$$) {
     my $dirtyblocks = 0;
     my $virtualbytes;
     my $chunksize;
-    my $sha1value;
     my %lev1idx;
 
     my $parceldir = "$isrdir/$parcel";
@@ -884,26 +883,9 @@ sub isr_priv_upload ($$$) {
     $virtualbytes = $dirtyblocks*$chunksize;
     message("INFO", "upload:hdk:$dirtybytes:$virtualbytes");
 
-    #
-    # Move the cfg.tgz.enc and keyring.enc file into the hoard cache
-    #
-    if (-e $hoarddir) {
-	$sha1value = `openssl sha1 < $tmpdir/cache/cfg.tgz.enc`;
-	chomp($sha1value);
-	copy("$tmpdir/cache/cfg.tgz.enc", "$hoarddir/$sha1value");
-	$sha1value = `openssl sha1 < $tmpdir/cache/keyring.enc`;
-	chomp($sha1value);
-	copy("$tmpdir/cache/keyring.enc", "$hoarddir/$sha1value");
-    }
-
     # We need to do this, so that if the commit doesn't finish
     # rsync doesn't blow everything away
     unlink($cdcache_file);
-
-    #
-    # Clean up the local cache directory 
-    #
-    unlink("$cachedir/cfg.tgz"); 
 
     # Return successful status
     print("Upload completed, all updates have been sent to the server.\n")
@@ -921,10 +903,13 @@ sub copy_dirtychunks ($) {
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
     my $tmpdir = "$parceldir/tmp";
+    my $tarsize = 0;
     
     my $dirtyblocks;
     my $dirtybytes;
     my $target;
+    my $curfile;
+    my $stat;
 
     #
     # Build an empty temporary cache directory structure on the client
@@ -944,21 +929,33 @@ sub copy_dirtychunks ($) {
     close(KEYROOT);
 
     #
+    # Figure out (roughly) how large the cfg tarball will be, so that we can
+    # generate a progress bar
+    #
+    opendir(CFG, "$cachedir/cfg")
+	or unix_errexit("Couldn't read memory image directory $cachedir/cfg");
+    foreach $curfile (readdir(CFG)) {
+	next if ($curfile eq "." || $curfile eq "..");
+	$stat = stat("$cachedir/cfg/$curfile");
+	unix_errexit("Couldn't stat $cachedir/cfg/$curfile")
+	    if !$stat;
+	$tarsize += $stat->size;
+    }
+    closedir(CFG);
+    
+    #
     # Create cfg tarball and encrypt it and the keyring
     #
-    print("Compressing virtual machine memory image...")
+    print("Compressing and encrypting virtual machine memory image...\n")
 	if $main::verbose;
     chdir($cachedir);
-    mysystem("tar czf cfg.tgz cfg") == 0
-	or system_errexit("Unable to create cfg.tgz.");
-    printf("%d MB\n", (stat("$cachedir/cfg.tgz")->size)/(1<<20));
-
-
-    print("Encrypting virtual machine memory image...\n")
-	if $main::verbose;
+    mysystem("tar c cfg | pv -peW -s $tarsize | gzip -c | openssl enc -bf -out $tmpdir/cache/cfg.tgz.enc -pass file:$cachedir/keyroot -nosalt") == 0
+	or system_errexit("Unable to create cfg.tgz.enc.");
+    printf("Compressed size: %d MB\n", (stat("$tmpdir/cache/cfg.tgz.enc")->size)/(1<<20))
+    	if $main::verbose;
+    mysystem("openssl enc -bf -in $cachedir/keyring -out $tmpdir/cache/keyring.enc -pass file:$cachedir/keyroot -nosalt") == 0
+	or system_errexit("Unable to encrypt keyring.");
     foreach $target ("cfg.tgz", "keyring") {
-	mysystem("openssl enc -bf -in $cachedir/$target -out $tmpdir/cache/$target.enc -pass file:$cachedir/keyroot -nosalt") == 0
-	    or system_errexit("Unable to encrypt $target.");
 	message("INFO", 
 		sprintf("upload:$target.enc:%d:", 
 			stat("$tmpdir/cache/$target.enc")->size));
@@ -1098,6 +1095,7 @@ sub isr_priv_clientcommit($$$$) {
     my $tag;
     my $key;
     my $name;
+    my $sha1value;
 
     my $parceldir = "$isrdir/$parcel";
     my $hoarddir = "$isrdir/$parcel-hoard";
@@ -1199,6 +1197,17 @@ sub isr_priv_clientcommit($$$$) {
     message("INFO", "Client side commit - finish moving hoard chunks");
     print "Moved $dirtyblocks dirty blocks to the hoard cache.\n"
 	if $main::verbose > 1;
+
+    #
+    # Move the cfg.tgz.enc and keyring.enc files into the hoard cache
+    #
+    $sha1value = `openssl sha1 < $tmpdir/cache/cfg.tgz.enc`;
+    chomp($sha1value);
+    rename("$tmpdir/cache/cfg.tgz.enc", "$hoarddir/$sha1value");
+    $sha1value = `openssl sha1 < $tmpdir/cache/keyring.enc`;
+    chomp($sha1value);
+    rename("$tmpdir/cache/keyring.enc", "$hoarddir/$sha1value");
+    message("INFO", "Client side commit - moved memory image into hoard cache");
 
     # 
     # Sync because we're paranoid

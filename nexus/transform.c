@@ -32,8 +32,9 @@ static const struct tfm_suite_info suite_desc[] = {
 		.user_name = "blowfish-sha1",
 		.cipher_name = "blowfish",
 		.cipher_mode = CRYPTO_TFM_MODE_CBC,
-		.cipher_spec = "cbc(blowfish)",
+		.cipher_mode_name = "cbc",
 		.cipher_block = 8,
+		.cipher_iv = 8,
 		.key_len = 20,
 		.hash_name = "sha1",
 		.hash_len = 20
@@ -42,14 +43,26 @@ static const struct tfm_suite_info suite_desc[] = {
 		.user_name = "blowfish-sha1-compat",
 		.cipher_name = "blowfish",
 		.cipher_mode = CRYPTO_TFM_MODE_CBC,
-		.cipher_spec = "cbc(blowfish)",
+		.cipher_mode_name = "cbc",
 		.cipher_block = 8,
+		.cipher_iv = 8,
 		.key_len = 16,
 		.hash_name = "sha1",
 		.hash_len = 20
 	},
 	{
 		.user_name = "none-sha1",
+		.hash_name = "sha1",
+		.hash_len = 20
+	},
+	{
+		.user_name = "aes-sha1",
+		.cipher_name = "aes",
+		.cipher_mode = CRYPTO_TFM_MODE_CBC,
+		.cipher_mode_name = "cbc",
+		.cipher_block = 16,
+		.cipher_iv = 16,
+		.key_len = 16,
 		.hash_name = "sha1",
 		.hash_len = 20
 	}
@@ -608,13 +621,14 @@ int crypto_cipher(struct nexus_dev *dev, struct nexus_tfm_state *ts,
 			int dir, int doPad)
 {
 	struct crypto_blkcipher *tfm=ts->cipher[dev->suite];
-	char iv[8]={0}; /* XXX */
+	const struct tfm_suite_info *info=suite_info(dev->suite);
+	char iv[info->cipher_iv];
 	int ret;
-	unsigned key_len=suite_info(dev->suite)->key_len;
 	
+	memset(iv, 0, sizeof(iv));
 	crypto_blkcipher_set_iv(tfm, iv, sizeof(iv));
-	BUG_ON(key_len > suite_info(dev->suite)->hash_len);  /* XXX */
-	ret=crypto_blkcipher_setkey(tfm, key, key_len);
+	BUG_ON(info->key_len > info->hash_len);
+	ret=crypto_blkcipher_setkey(tfm, key, info->key_len);
 	if (ret)
 		return ret;
 	
@@ -664,7 +678,8 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	const struct tfm_suite_info *info;
 	struct crypto_blkcipher *cipher;
 	struct crypto_hash *hash;
-	static int have_warned;
+	static int have_warned_sha;
+	static int have_warned_aes;
 	
 	BUG_ON(ts->cipher[suite] != NULL);
 	
@@ -684,15 +699,23 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	ts->cipher[suite]=cipher;
 	ts->hash[suite]=hash;
 	
-	if (!have_warned && !strcmp("sha1", info->hash_name) &&
+	if (!have_warned_aes && !strcmp("aes", info->cipher_name) &&
+				aes_impl_is_suboptimal(info, cipher)) {
+		/* Actually, the presence of the optimized AES module only
+		   matters when the tfm is first allocated.  Does anyone have
+		   better wording for this? */
+		log(KERN_NOTICE, "Using unoptimized AES; load aes-"
+					AES_ACCEL_ARCH ".ko to improve "
+					"performance");
+		have_warned_aes=1;
+	}
+	if (!have_warned_sha && !strcmp("sha1", info->hash_name) &&
 				sha1_impl_is_suboptimal(hash)) {
-		/* Actually, the presence of the SHA1 accelerator only matters
-		   when the tfm is first allocated.  Does anyone have better
-		   wording for this? */
+		/* Ditto. */
 		log(KERN_NOTICE, "Using unoptimized SHA1; load sha1-"
 					SHA1_ACCEL_ARCH ".ko to improve "
 					"performance");
-		have_warned=1;
+		have_warned_sha=1;
 	}
 	return 0;
 }

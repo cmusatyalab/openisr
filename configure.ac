@@ -52,9 +52,28 @@ if test z$enable_modules = zyes ; then
 	fi
 fi
 
-# Check for old hd_driveid definition that doesn't know about 48-bit LBA
+build_32=no
 if test z$enable_libvdisk = zyes ; then
-	# Die on old headers that don't know about 48-bit LBA
+	# See if we're on an x86_64 system with multilib support.  If so, build
+	# both 32-bit and 64-bit versions of libvdisk.
+	if test z$host_cpu = zx86_64; then
+		CHECK_COMPILER_OPTION_VAR([-m32])
+		if test z$have_option = zyes ; then
+			build_32=yes
+			FIND_DIR([32-bit system libraries],
+						[/usr/lib32 /usr/lib],
+						[LIBVDISK_DIRPATH_32])
+		else
+			AC_MSG_WARN([cannot build 32-bit libvdisk; building only 64-bit version])
+		fi
+		FIND_DIR([64-bit system libraries], [/usr/lib64 /usr/lib],
+					[LIBVDISK_DIRPATH])
+	else
+		FIND_DIR([system libraries], [/usr/lib], [LIBVDISK_DIRPATH])
+	fi
+	
+	# Check for old hd_driveid definition that doesn't know about
+	# 48-bit LBA
 	CHECK_COMPILE([for lba_capacity_2 in hd_driveid],
 				[AC_LANG_PROGRAM([#include <linux/hdreg.h>], 
 				[struct hd_driveid id;
@@ -62,6 +81,7 @@ if test z$enable_libvdisk = zyes ; then
 				HAVE_LBA_CAPACITY_2,
 				[Define if struct hd_driveid in <linux/hdreg.h> contains an lba_capacity_2 member.])
 fi
+AM_CONDITIONAL([LIBVDISK_BUILD_32], [test z$build_32 = zyes])
 
 # Checks for libraries.
 AC_ARG_WITH([kernel], [AS_HELP_STRING([--with-kernel=DIR],
