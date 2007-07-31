@@ -64,6 +64,7 @@ struct pk_state {
 	unsigned request_count;  /* XXX */
 };
 
+extern const char *isr_release;
 extern const char *rcs_revision;
 extern struct pk_config config;
 extern struct pk_state state;

@@ -12,7 +12,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "config.h"
 #include "defs.h"
 
 /* pk_getopt() requires this to be a bitmask */
@@ -308,8 +307,8 @@ void parse_cmdline(int argc, char **argv)
 	if (curmode->type == MODE_HELP) {
 		usage(helpmode);
 	} else if (curmode->type == MODE_VERSION) {
-		printf("OpenISR " PACKAGE_VERSION ", Parcelkeeper revision "
-					"%s\n", rcs_revision);
+		printf("OpenISR %s, Parcelkeeper revision %s\n", isr_release,
+					rcs_revision);
 		exit(0);
 	}
 }
