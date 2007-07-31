@@ -2,9 +2,13 @@
 #
 0	belong 	0x51528038	OpenISR local cache,
 >20	byte	x		version %u,
->12	belong	x		%u of
->4	belong	x		%u valid chunks,
+>20	byte	0
+>>12	belong	x		%u of
+>>4	belong	x		%u valid chunks,
+>20	byte	1
+>>4	belong	x		%u chunks,
 >8	belong	x		header %u sectors
+
 0	belong 	0x51528039	OpenISR binary keyring,
 >8	byte	x		version %u,
 >4	belong	x		%u entries
