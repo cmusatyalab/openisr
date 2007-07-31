@@ -72,6 +72,7 @@ sub progress ($$);
 sub build_cache ($$);
 sub hdksize ($$$);
 sub connected ();
+sub check_nexus_version ();
 sub get_dirnum ($$);
 sub get_chunknum ($$);
 sub get_vulpespid ();
@@ -790,17 +791,19 @@ sub run ($$$$) {
 	errexit("The remote parcel is not available.");
     }
 
-    # Make sure that Vulpes is where we expect it to be, that Fauxide
-    # is loaded, and that /dev/hdk exists.
+    # Make sure that Vulpes is where we expect it to be, that Nexus is
+    # loaded, and that the control device exists.  Also, warn if the Nexus
+    # release is older than our own release.
     if (!-e $vulpescmd or !-x $vulpescmd ) {
 	errexit("Could not find an executable Vulpes binary.");
     }
-    if (mysystem("/sbin/lsmod | grep -q '^openisr'") != 0) {
-        system_errexit("The OpenISR kernel module does not appear to be loaded.");
+    if (!-d "/sys/class/openisr") {
+        errexit("The OpenISR kernel module does not appear to be loaded.");
     }
     if (!-e "/dev/openisrctl") {
-        errexit("Driver control device node does not exist");
+        errexit("Nexus control device does not exist");
     }
+    check_nexus_version();
 
     # If the user wants to run disconnected, they better have all of their
     # disk blocks hoarded in the local or hoard cache
@@ -1991,6 +1994,47 @@ sub connected () {
     }
     else {
 	return 1;
+    }
+}
+
+#
+# check_nexus_version - print a warning if the Nexus release number is older
+#                       than our own
+#
+sub check_nexus_version () {
+    my $nexus_version;
+    my $nexus_major;
+    my $nexus_minor;
+    my $nexus_patch;
+    my $isr_version = "!!VERSION!!";
+    my $isr_major;
+    my $isr_minor;
+    my $isr_patch;
+    my $warn = 0;
+    
+    if (!-e "/sys/class/openisr/release") {
+	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
+	message("INFO", "Nexus is out of date (<=0.8.3 vs. $isr_version)");
+	return;
+    }
+    open(NEX, "/sys/class/openisr/release")
+    	or errexit("Couldn't read Nexus release attribute");
+    $nexus_version = <NEX>;
+    close(NEX);
+    chomp $nexus_version;
+    ($nexus_major, $nexus_minor, $nexus_patch) = split(/\./, $nexus_version);
+    ($isr_major, $isr_minor, $isr_patch) = split(/\./, $isr_version);
+    if ($isr_major >= $nexus_major) {
+	if ($isr_major > $nexus_major) {
+	    $warn = 1;
+	} elsif ($isr_minor >= $nexus_minor) {
+	    $warn = 1
+	        if ($isr_minor > $nexus_minor or $isr_patch > $nexus_patch);
+	}
+    }
+    if ($warn) {
+	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
+	message("INFO", "Nexus is out of date ($nexus_version vs. $isr_version)");
     }
 }
 
