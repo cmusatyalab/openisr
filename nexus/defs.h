@@ -501,6 +501,7 @@ extern struct class_attribute class_attrs[];
 extern struct class_device_attribute class_dev_attrs[];
 
 /* revision.c */
+extern char *isr_release;
 extern char *rcs_revision;
 
 #else  /* __KERNEL__ */
