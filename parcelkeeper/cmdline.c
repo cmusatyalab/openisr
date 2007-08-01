@@ -66,6 +66,7 @@ enum option {
 	OPT_LAST,
 	OPT_MASTER,
 	OPT_DESTDIR,
+	OPT_COMPRESSION,
 	OPT_HOARD,
 	OPT_LOG,
 	OPT_FOREGROUND,
@@ -79,6 +80,7 @@ static struct pk_option pk_options[] = {
 	{"last",           OPT_LAST,           REQUIRED, POSTPROCESS_MODES              , {"last_cache_dir"}},
 	{"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"master_url"}},
 	{"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
+	{"compression",    OPT_COMPRESSION,    OPTIONAL, MODE_RUN                       , {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
 	{"hoard",          OPT_HOARD,          OPTIONAL, MODE_RUN                       , {"hoard_dir"}},
 	{"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES               , {"logfile", "info_str", "filemask", "stderrmask"}},
 	{"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
@@ -269,6 +271,11 @@ void parse_cmdline(int argc, char **argv)
 		case OPT_DESTDIR:
 			config.destdir=optparams[0];
 			break;
+		case OPT_COMPRESSION:
+			config.compress=parse_compress(optparams[0]);
+			if (config.compress == COMP_UNKNOWN)
+				PARSE_ERROR("invalid compression type: %s",
+							optparams[0]);
 		case OPT_HOARD:
 			config.hoard_dir=optparams[0];
 			config.hoard_file=filepath(optparams[0], "hoard", 0);

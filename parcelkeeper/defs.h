@@ -55,6 +55,7 @@ struct pk_config {
 
 	/* miscellaneous parameters */
 	char *master;
+	enum compresstype compress;
 	char *destdir;
 	int foreground;
 };
@@ -71,7 +72,6 @@ struct pk_state {
 	int bdev_index;
 
 	enum cryptotype crypto;
-	enum compresstype default_compress;  /* XXX */
 	unsigned required_compress;
 	unsigned chunks;
 	unsigned chunksize;

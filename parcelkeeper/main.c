@@ -13,7 +13,8 @@
 
 struct pk_config config = {
 	.log_info_str = "",
-	.log_stderr_mask = -1
+	.log_stderr_mask = -1,
+	.compress = COMP_NONE
 };
 struct pk_state state;
 
