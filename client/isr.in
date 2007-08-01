@@ -2023,7 +2023,9 @@ sub check_nexus_version () {
     close(NEX);
     chomp $nexus_version;
     ($nexus_major, $nexus_minor, $nexus_patch) = split(/\./, $nexus_version);
+    $nexus_patch = 0 unless defined($nexus_patch);
     ($isr_major, $isr_minor, $isr_patch) = split(/\./, $isr_version);
+    $isr_patch = 0 unless defined($isr_patch);
     if ($isr_major >= $nexus_major) {
 	if ($isr_major > $nexus_major) {
 	    $warn = 1;
