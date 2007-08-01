@@ -20,7 +20,8 @@
 	optstr(NUMCHUNKS), \
 	optstr(CHUNKSPERDIR), \
 	optstr(CRYPTO), \
-	optstr(COMPRESS)
+	optstr(COMPRESS), \
+	optstr(UUID)
 
 #define optstr(str) PC_ ## str
 enum pc_ident {
@@ -80,6 +81,10 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 	char *tok;
 	char *saveptr;
 	enum compresstype compress;
+	void *ptr;
+	uuid_t *uuid;
+	uuid_rc_t uurc;
+	size_t sz;
 
 	switch (ident) {
 	case PC_VERSION:
@@ -138,6 +143,27 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 						"requested compression type");
 			return PK_INVALID;
 		}
+		break;
+	case PC_UUID:
+		uurc=uuid_create(&uuid);
+		if (uurc) {
+			pk_log(LOG_ERROR, "Can't create UUID object: %s",
+						uuid_error(uurc));
+			return PK_INVALID;
+		}
+		if (uuid_import(uuid, UUID_FMT_STR, value, strlen(value) + 1)) {
+			pk_log(LOG_ERROR, "Invalid UUID");
+			return PK_INVALID;
+		}
+		ptr=&state.uuid;
+		sz=sizeof(state.uuid);
+		uurc=uuid_export(uuid, UUID_FMT_BIN, &ptr, &sz);
+		if (uurc) {
+			pk_log(LOG_ERROR, "Can't format UUID: %s",
+						uuid_error(uurc));
+			return PK_INVALID;
+		}
+		uuid_destroy(uuid);
 		break;
 	case PC_DUPLICATE:
 		return PK_INVALID;

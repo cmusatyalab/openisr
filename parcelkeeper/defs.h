@@ -13,6 +13,7 @@
 #define PK_DEFS_H
 
 #include <stdio.h>
+#include <uuid.h>
 
 typedef enum pk_err {
 	PK_SUCCESS=0,
@@ -99,6 +100,7 @@ struct pk_state {
 	unsigned chunksize;
 	unsigned chunks_per_dir;
 	unsigned offset;  /* XXX */
+	char uuid[UUID_LEN_BIN];
 
 	unsigned request_count;  /* XXX */
 };
