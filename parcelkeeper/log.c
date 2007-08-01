@@ -29,23 +29,27 @@ static void curtime(char *buf, unsigned buflen)
 	strftime(buf, buflen, fmt, &tm);
 }
 
-void pk_log(enum pk_log_type type, char *fmt, ...)
+void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
 {
 	va_list ap;
 	char buf[50];
 
 	if (state.log_fp != NULL && ((1 << type) & config.log_file_mask)) {
 		curtime(buf, sizeof(buf));
-		va_start(ap, fmt);
-		fprintf(state.log_fp, "%s %s", buf, config.log_info_str);
+		va_start(ap, func);
+		fprintf(state.log_fp, "%s %s%s%s", buf, config.log_info_str,
+					type == LOG_ERROR ? func : "",
+					type == LOG_ERROR ? "(): " : "");
 		vfprintf(state.log_fp, fmt, ap);
 		fprintf(state.log_fp, "\n");
 		va_end(ap);
 	}
 
 	if ((1 << type) & config.log_stderr_mask) {
-		va_start(ap, fmt);
-		fprintf(stderr, "%s", config.log_info_str);
+		va_start(ap, func);
+		fprintf(stderr, "%s%s%s", config.log_info_str,
+					type == LOG_ERROR ? func : "",
+					type == LOG_ERROR ? "(): " : "");
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, "\n");
 		va_end(ap);

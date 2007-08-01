@@ -97,7 +97,8 @@ void parse_cmdline(int argc, char **argv);
 /* log.c */
 void log_start(void);
 void log_shutdown(void);
-void pk_log(enum pk_log_type type, char *fmt, ...);
+void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...);
+#define pk_log(type, fmt, args...) _pk_log(type, fmt, __func__, ## args)
 
 /* util.c */
 #define min(a,b) ((a) < (b) ? (a) : (b))
