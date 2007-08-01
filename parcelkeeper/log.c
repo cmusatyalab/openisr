@@ -34,8 +34,8 @@ void pk_log(enum pk_log_type type, char *fmt, ...)
 	va_list ap;
 	char buf[50];
 
-	curtime(buf, sizeof(buf));
 	if (state.log_fp != NULL && ((1 << type) & config.log_file_mask)) {
+		curtime(buf, sizeof(buf));
 		va_start(ap, fmt);
 		fprintf(state.log_fp, "%s %s", buf, config.log_info_str);
 		vfprintf(state.log_fp, fmt, ap);
@@ -45,7 +45,7 @@ void pk_log(enum pk_log_type type, char *fmt, ...)
 
 	if ((1 << type) & config.log_stderr_mask) {
 		va_start(ap, fmt);
-		fprintf(stderr, "%s %s", buf, config.log_info_str);
+		fprintf(stderr, "%s", config.log_info_str);
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, "\n");
 		va_end(ap);
