@@ -41,6 +41,46 @@ static void signal_handler(int sig)
 	   be lost */
 }
 
+static enum nexus_crypto crypto_to_nexus(enum cryptotype type)
+{
+	switch (type) {
+	case CRY_AES_SHA1:
+		return NEXUS_CRYPTO_AES_SHA1;
+	case CRY_BLOWFISH_SHA1:
+		return NEXUS_CRYPTO_BLOWFISH_SHA1;
+	default:
+		return NEXUS_NR_CRYPTO;
+	}
+}
+
+static enum nexus_compress compress_to_nexus(enum compresstype type)
+{
+	switch (type) {
+	case COMP_NONE:
+		return NEXUS_COMPRESS_NONE;
+	case COMP_ZLIB:
+		return NEXUS_COMPRESS_ZLIB;
+	case COMP_LZF:
+		return NEXUS_COMPRESS_LZF;
+	default:
+		return NEXUS_NR_COMPRESS;
+	}
+}
+
+static enum compresstype nexus_to_compress(enum nexus_compress type)
+{
+	switch (type) {
+	case NEXUS_COMPRESS_NONE:
+		return COMP_NONE;
+	case NEXUS_COMPRESS_ZLIB:
+		return COMP_ZLIB;
+	case NEXUS_COMPRESS_LZF:
+		return COMP_LZF;
+	default:
+		return COMP_UNKNOWN;
+	}
+}
+
 static pk_err_t loop_bind(void) {
 	struct loop_info64 info;
 	int i;
@@ -203,11 +243,25 @@ pk_err_t nexus_init(void)
 				state.loopdev_name);
 	setup.offset=state.offset >> 9;
 	setup.chunksize=state.chunksize;
-	setup.cachesize=128;
-	setup.crypto=NEXUS_CRYPTO_BLOWFISH_SHA1_COMPAT;
-	setup.compress_default=NEXUS_COMPRESS_ZLIB;
-	setup.compress_required=(1<<NEXUS_COMPRESS_NONE)|
-				(1<<NEXUS_COMPRESS_ZLIB);
+	/* Always use a 16 MB cache */
+	setup.cachesize=(16 << 20) / state.chunksize;
+	setup.crypto=crypto_to_nexus(state.crypto);
+	setup.compress_default=compress_to_nexus(config.compress);
+	for (i=0; i<8*sizeof(state.required_compress); i++)
+		if (state.required_compress & (1 << i))
+			setup.compress_required |= 1 << compress_to_nexus(i);
+	if (setup.crypto == NEXUS_NR_CRYPTO ||
+				setup.compress_default == NEXUS_NR_COMPRESS ||
+				(setup.compress_required &
+				(1 << NEXUS_NR_COMPRESS))) {
+		/* Shouldn't happen, so we don't need a very good error
+		   message */
+		pk_log(LOG_ERROR, "unknown crypto or compression algorithm");
+		ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
+		fclose(fp);
+		unlink(config.devfile);
+		return PK_IOERR;
+	}
 
 	if (ioctl(state.chardev_fd, NEXUS_IOC_REGISTER, &setup)) {
 		pk_log(LOG_ERROR, "unable to register with Nexus: %s",
