@@ -14,6 +14,28 @@
 
 #include <stdio.h>
 
+typedef enum pk_err {
+	PK_SUCCESS=0,
+	PK_OVERFLOW,
+	PK_IOERR,
+	PK_NOTFOUND,
+	PK_INVALID,
+	PK_NOMEM,
+	PK_NOKEY,
+	PK_TAGFAIL,
+	PK_BADFORMAT,
+	PK_CALLFAIL,
+	PK_PROTOFAIL,
+	PK_NETFAIL,  /* Used instead of IOERR if a retry might fix it */
+	PK_BUSY,
+} pk_err_t;
+
+enum pk_log_type {
+	LOG_INFO,
+	LOG_ERROR,
+	LOG_STATS
+};
+
 enum cryptotype {
 	CRY_UNKNOWN=0,
 	CRY_BLOWFISH_SHA1=1,
@@ -81,32 +103,13 @@ struct pk_state {
 	unsigned request_count;  /* XXX */
 };
 
-extern const char *isr_release;
-extern const char *rcs_revision;
 extern struct pk_config config;
 extern struct pk_state state;
+extern const char *isr_release;
+extern const char *rcs_revision;
 
-typedef enum pk_err {
-	PK_SUCCESS=0,
-	PK_OVERFLOW,
-	PK_IOERR,
-	PK_NOTFOUND,
-	PK_INVALID,
-	PK_NOMEM,
-	PK_NOKEY,
-	PK_TAGFAIL,
-	PK_BADFORMAT,
-	PK_CALLFAIL,
-	PK_PROTOFAIL,
-	PK_NETFAIL,  /* Used instead of IOERR if a retry might fix it */
-	PK_BUSY,
-} pk_err_t;
-
-enum pk_log_type {
-	LOG_INFO,
-	LOG_ERROR,
-	LOG_STATS
-};
+#define min(a,b) ((a) < (b) ? (a) : (b))
+#define max(a,b) ((a) > (b) ? (a) : (b))
 
 /* cmdline.c */
 void parse_cmdline(int argc, char **argv);
@@ -121,9 +124,6 @@ void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...);
 pk_err_t parse_parcel_cfg(void);
 
 /* util.c */
-#define min(a,b) ((a) < (b) ? (a) : (b))
-#define max(a,b) ((a) > (b) ? (a) : (b))
-
 int is_dir(const char *path);
 int is_file(const char *path);
 int at_eof(int fd);
