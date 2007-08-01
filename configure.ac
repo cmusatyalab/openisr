@@ -127,6 +127,8 @@ if test z$enable_client = zyes ; then
 				[$with_zlib /usr/local /usr])
 	
 	PKG_CHECK_MODULES([SQLITE], [sqlite3])
+	PKG_CHECK_MODULES([APR], [apr-1])
+	PKG_CHECK_MODULES([OSSP_UUID], [ossp-uuid])
 fi
 
 if test z$enable_libvdisk = zyes ; then
