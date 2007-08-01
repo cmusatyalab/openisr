@@ -214,16 +214,6 @@ static struct pk_mode *parse_mode(char *name)
 	return NULL;
 }
 
-static unsigned long parseul(char *arg, int base)
-{
-	unsigned long val;
-	char *endptr;
-	val=strtoul(arg, &endptr, base);
-	if (*arg == 0 || *endptr != 0)
-		PARSE_ERROR("invalid integer value: %s", arg);
-	return val;
-}
-
 static void check_dir(char *dir)
 {
 	if (!is_dir(dir))
@@ -288,8 +278,12 @@ void parse_cmdline(int argc, char **argv)
 		case OPT_LOG:
 			config.log_file=optparams[0];
 			config.log_info_str=optparams[1];
-			config.log_file_mask=parseul(optparams[2], 0);
-			config.log_stderr_mask=parseul(optparams[3], 0);
+			if (parseuint(&config.log_file_mask, optparams[2], 0))
+				PARSE_ERROR("invalid integer value: %s",
+							optparams[2]);
+			if (parseuint(&config.log_stderr_mask, optparams[3], 0))
+				PARSE_ERROR("invalid integer value: %s",
+							optparams[3]);
 			break;
 		case OPT_FOREGROUND:
 			config.foreground=1;

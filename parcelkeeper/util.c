@@ -47,6 +47,19 @@ int at_eof(int fd)
 	return 1;
 }
 
+pk_err_t parseuint(unsigned *out, char *in, int base)
+{
+	unsigned long val;
+	char *endptr;
+
+	val=strtoul(in, &endptr, base);
+	if (*in == 0 || *endptr != 0)
+		return PK_INVALID;
+	/* XXX can overflow */
+	*out=(unsigned)val;
+	return PK_SUCCESS;
+}
+
 pk_err_t read_file(const char *path, char *buf, int *bufsize)
 {
 	int fd;
