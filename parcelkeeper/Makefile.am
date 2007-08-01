@@ -6,7 +6,8 @@ AM_CFLAGS = -Wall -Wstrict-prototypes
 AM_LDFLAGS = -lcrypto -lcurl
 
 pkglib_PROGRAMS = parcelkeeper
-parcelkeeper_SOURCES  = cmdline.c main.c log.c cache.c nexus.c util.c defs.h
+parcelkeeper_SOURCES  = cmdline.c main.c log.c cache.c nexus.c util.c
+parcelkeeper_SOURCES += parcelcfg.c defs.h
 nodist_parcelkeeper_SOURCES = revision.c
 
 REVISION_TYPE = object

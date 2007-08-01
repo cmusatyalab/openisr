@@ -21,6 +21,7 @@ int main(int argc, char **argv)
 {
 	parse_cmdline(argc, argv);
 	log_start();
+	parse_parcel_cfg();
 	log_shutdown();
 	return 0;
 }

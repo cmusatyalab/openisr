@@ -14,6 +14,19 @@
 
 #include <stdio.h>
 
+enum cryptotype {
+	CRY_UNKNOWN=0,
+	CRY_BLOWFISH_SHA1=1,
+	CRY_AES_SHA1=2
+};
+
+enum compresstype {
+	COMP_UNKNOWN=0,
+	COMP_NONE=1,
+	COMP_ZLIB=2,
+	COMP_LZF=3
+};
+
 struct pk_config {
 	/* cache directory and its contents */
 	char *cache_dir;
@@ -57,8 +70,12 @@ struct pk_state {
 
 	int bdev_index;
 
-	unsigned long long chunks;  /* XXX */
-	unsigned chunksize;  /* XXX */
+	enum cryptotype crypto;
+	enum compresstype default_compress;  /* XXX */
+	unsigned required_compress;
+	unsigned chunks;
+	unsigned chunksize;
+	unsigned chunks_per_dir;
 	unsigned offset;  /* XXX */
 
 	unsigned request_count;  /* XXX */
@@ -100,6 +117,9 @@ void log_shutdown(void);
 void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...);
 #define pk_log(type, fmt, args...) _pk_log(type, fmt, __func__, ## args)
 
+/* parcelcfg.c */
+pk_err_t parse_parcel_cfg(void);
+
 /* util.c */
 #define min(a,b) ((a) < (b) ? (a) : (b))
 #define max(a,b) ((a) > (b) ? (a) : (b))
@@ -108,7 +128,8 @@ int is_dir(const char *path);
 int is_file(const char *path);
 int at_eof(int fd);
 pk_err_t parseuint(unsigned *out, char *in, int base);
-
+enum cryptotype parse_crypto(char *desc);
+enum compresstype parse_compress(char *desc);
 pk_err_t read_file(const char *path, char *buf, int *bufsize);
 pk_err_t read_sysfs_file(const char *path, char *buf, int bufsize);
 char *pk_strerror(pk_err_t err);

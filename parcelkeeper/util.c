@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
@@ -58,6 +59,26 @@ pk_err_t parseuint(unsigned *out, char *in, int base)
 	/* XXX can overflow */
 	*out=(unsigned)val;
 	return PK_SUCCESS;
+}
+
+enum cryptotype parse_crypto(char *desc)
+{
+	if (!strcmp(desc, "aes-sha1"))
+		return CRY_AES_SHA1;
+	if (!strcmp(desc, "blowfish-sha1"))
+		return CRY_BLOWFISH_SHA1;
+	return CRY_UNKNOWN;
+}
+
+enum compresstype parse_compress(char *desc)
+{
+	if (!strcmp(desc, "none"))
+		return COMP_NONE;
+	if (!strcmp(desc, "zlib"))
+		return COMP_ZLIB;
+	if (!strcmp(desc, "lzf"))
+		return COMP_LZF;
+	return COMP_UNKNOWN;
 }
 
 pk_err_t read_file(const char *path, char *buf, int *bufsize)
