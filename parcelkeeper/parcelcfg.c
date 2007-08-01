@@ -133,6 +133,11 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 			}
 			state.required_compress |= (1 << compress);
 		}
+		if (!(state.required_compress & (1 << config.compress))) {
+			pk_log(LOG_ERROR, "This parcel does not support the "
+						"requested compression type");
+			return PK_INVALID;
+		}
 		break;
 	case PC_DUPLICATE:
 		return PK_INVALID;
