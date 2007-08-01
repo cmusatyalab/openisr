@@ -191,12 +191,12 @@ static int pk_getopt(int argc, char *argv[], struct pk_option *opts)
 			opts->_seen++;
 			for (i=0; i < MAXPARAMS && opts->args[i] != NULL; i++) {
 				if (optind == argc)
-					PARSE_ERROR("wrong number of arguments"
+					PARSE_ERROR("wrong number of arguments "
 								"to --%s", arg);
 				optparams[i]=argv[optind++];
 				if (optparams[i][0] == '-' &&
 							optparams[i][1] == '-')
-					PARSE_ERROR("wrong number of arguments"
+					PARSE_ERROR("wrong number of arguments "
 								"to --%s", arg);
 			}
 			return opts->retval;
