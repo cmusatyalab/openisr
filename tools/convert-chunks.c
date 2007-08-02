@@ -1,11 +1,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <dirent.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include <errno.h>
 #include <openssl/evp.h>
 #include <sqlite3.h>
@@ -14,10 +16,14 @@
 sqlite3 *db;
 sqlite3_stmt *lookup;
 sqlite3_stmt *insert;
+unsigned chunks_complete;
+unsigned total_chunks;
 
 #define SHA_LEN 20
 #define CHUNK_BUF 140000
 #define COMPRESS_THRESH (131072 - 17)  /* depends on cipher block size */
+#define PROFILE
+#define PROFILE_INTERVAL 5
 
 enum compresstype {
 	COMP_UNKNOWN=0,
@@ -43,6 +49,37 @@ static void __attribute__ ((noreturn)) sqlerr(char *prefix)
 	sqlite3_close(db);
 	exit(1);
 }
+
+#ifdef PROFILE
+static void profile(int __attribute__ ((unused)) signum)
+{
+	static unsigned last;
+
+	fprintf(stderr, "%d/%d complete, %d chunks/second\n", chunks_complete,
+				total_chunks, (chunks_complete - last) /
+				PROFILE_INTERVAL);
+	last=chunks_complete;
+}
+
+static void start_profile(void)
+{
+	struct sigaction act;
+	struct itimerval tmr;
+
+	memset(&act, 0, sizeof(act));
+	act.sa_handler=profile;
+	act.sa_flags=SA_RESTART;
+	if (sigaction(SIGALRM, &act, NULL))
+		die("Couldn't set signal handler");
+	memset(&tmr, 0, sizeof(tmr));
+	tmr.it_interval.tv_sec=PROFILE_INTERVAL;
+	tmr.it_value.tv_sec=PROFILE_INTERVAL;
+	if (setitimer(ITIMER_REAL, &tmr, NULL))
+		die("Couldn't configure interval timer");
+}
+#else
+#define start_profile() do {} while (0)
+#endif
 
 static void attachmap(char *path)
 {
@@ -229,6 +266,14 @@ static void convert_chunk(unsigned chunk_num, const char *src, const char *dst)
 	sqlite3_reset(lookup);
 	free(in);
 	free(out);
+	chunks_complete++;
+}
+
+static void count_chunk(unsigned __attribute__ ((unused)) chunk_num,
+			const char __attribute__ ((unused)) *src,
+			const char __attribute__ ((unused)) *dst)
+{
+	total_chunks++;
 }
 
 static int dirent(DIR *parent, const char *parent_src, const char *parent_dst,
@@ -268,7 +313,9 @@ again:
 	return 1;
 }
 
-static void runchunks(char *hdksrc, char *hdkdst, unsigned chunks_per_dir)
+static void for_each_chunk(char *hdksrc, char *hdkdst, unsigned chunks_per_dir,
+			int do_mkdir,
+			void (*action)(unsigned, const char *, const char *))
 {
 	DIR *top;
 	DIR *sub;
@@ -286,11 +333,11 @@ static void runchunks(char *hdksrc, char *hdkdst, unsigned chunks_per_dir)
 		sub=opendir(sub_src);
 		if (sub == NULL)
 			die("Couldn't read %s", sub_src);
-		if (mkdir(sub_dst, 0755))
+		if (do_mkdir && mkdir(sub_dst, 0755))
 			die("Couldn't create %s", sub_dst);
 		while (dirent(sub, sub_src, sub_dst, &chunk_src, &chunk_dst,
 					&chunk_num, 0)) {
-			convert_chunk(sub_num * chunks_per_dir + chunk_num,
+			action(sub_num * chunks_per_dir + chunk_num,
 						chunk_src, chunk_dst);
 			free(chunk_src);
 			free(chunk_dst);
@@ -346,7 +393,9 @@ int main(int argc, char **argv)
 				"(old_tag, new_tag, new_key, new_compress) "
 				"VALUES(?, ?, ?, ?)", -1, &insert, NULL))
 		sqlerr("Preparing INSERT statement");
-	runchunks(hdksrc, hdkdst, chunks_per_dir);
+	for_each_chunk(hdksrc, hdkdst, chunks_per_dir, 0, count_chunk);
+	start_profile();
+	for_each_chunk(hdksrc, hdkdst, chunks_per_dir, 1, convert_chunk);
 	sqlite3_finalize(lookup);
 	sqlite3_finalize(insert);
 
