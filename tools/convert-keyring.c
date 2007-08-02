@@ -18,8 +18,7 @@
 
 enum kr_compress {
 	KR_COMPRESS_NONE = 0,
-	KR_COMPRESS_ZLIB = 1,
-	KR_COMPRESS_LZF  = 2
+	KR_COMPRESS_ZLIB = 1
 };
 
 #define KR_MAGIC 0x51528039
@@ -37,6 +36,13 @@ struct kr_entry {
 	uint8_t compress;
 	uint8_t tag[HASHLEN];
 	uint8_t key[HASHLEN];
+};
+
+enum sql_compresstype {
+	COMP_UNKNOWN=0,
+	COMP_NONE=1,
+	COMP_ZLIB=2,
+	COMP_LZF=3
 };
 
 static FILE *in;
@@ -117,7 +123,7 @@ static int fetch_entry_ascii(int line, char *tag, char *key, int *compress)
 		die("Parse error at line %d", line);
 	hex2bin(buf, tag, HASHLEN);
 	hex2bin(buf + KEY_OFFSET, key, HASHLEN);
-	*compress=KR_COMPRESS_ZLIB;
+	*compress=COMP_ZLIB;
 	return 0;
 }
 
@@ -151,9 +157,16 @@ static int fetch_entry_binary(int line, char *tag, char *key, int *compress)
 
 	if (!fread(&entry, sizeof(entry), 1, in))
 		return -1;
-	if (entry.compress > 2)
+	switch (entry.compress) {
+	case KR_COMPRESS_NONE:
+		*compress=COMP_NONE;
+		break;
+	case KR_COMPRESS_ZLIB:
+		*compress=COMP_ZLIB;
+		break;
+	default:
 		die("Decode error at line %d", line);
-	*compress=entry.compress;
+	}
 	memcpy(tag, entry.tag, HASHLEN);
 	memcpy(key, entry.key, HASHLEN);
 	return 0;
