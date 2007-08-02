@@ -170,7 +170,7 @@ static void convert_chunk(unsigned chunk_num, const char *src, const char *dst)
 	const void *old_tag;
 	const void *old_key;
 	enum compresstype old_compress;
-	char validate_tag[SHA_LEN];
+	char validate[SHA_LEN];
 	char new_tag[SHA_LEN];
 	char new_key[SHA_LEN];
 	enum compresstype new_compress;
@@ -191,12 +191,15 @@ static void convert_chunk(unsigned chunk_num, const char *src, const char *dst)
 	if (in == NULL || out == NULL)
 		die("malloc failure");
 	len=read_file(src, in, CHUNK_BUF);
-	do_hash(in, len, validate_tag);
-	if (memcmp(old_tag, validate_tag, SHA_LEN))
+	do_hash(in, len, validate);
+	if (memcmp(old_tag, validate, SHA_LEN))
 		die("Tag validation failed for chunk %u", chunk_num);
 	len=do_decrypt(in, out, old_key, len, (old_compress == COMP_ZLIB));
-	new_compress = (len > COMPRESS_THRESH) ? COMP_NONE : COMP_ZLIB;
 	swap(&in, &out);
+	new_compress = (len > COMPRESS_THRESH) ? COMP_NONE : COMP_ZLIB;
+	do_hash(in, len, validate);
+	if (memcmp(old_key, validate, SHA_LEN))
+		die("Key validation failed for chunk %u", chunk_num);
 	if (old_compress != new_compress) {
 		if (new_compress == COMP_ZLIB)
 			die("BUG: trying to recompress uncompressed chunk");
@@ -205,8 +208,9 @@ static void convert_chunk(unsigned chunk_num, const char *src, const char *dst)
 	}
 	do_hash(in, len, new_key);
 	len=do_encrypt(in, out, new_key, len, (new_compress == COMP_ZLIB));
-	do_hash(out, len, new_tag);
-	write_file(dst, out, len);
+	swap(&in, &out);
+	do_hash(in, len, new_tag);
+	write_file(dst, in, len);
 
 	if (sqlite3_bind_blob(insert, 1, old_tag, SHA_LEN, SQLITE_STATIC))
 		sqlerr("Binding old tag for INSERT");
