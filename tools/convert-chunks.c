@@ -32,6 +32,15 @@ enum compresstype {
 	COMP_LZF=3
 };
 
+static int sql_shutdown(void)
+{
+	if (lookup != NULL)
+		sqlite3_finalize(lookup);
+	if (insert != NULL)
+		sqlite3_finalize(insert);
+	return sqlite3_close(db);
+}
+
 static void __attribute__ ((noreturn)) die(char *str, ...)
 {
 	va_list ap;
@@ -40,13 +49,14 @@ static void __attribute__ ((noreturn)) die(char *str, ...)
 	vprintf(str, ap);
 	printf("\n");
 	va_end(ap);
+	sql_shutdown();
 	exit(1);
 }
 
 static void __attribute__ ((noreturn)) sqlerr(char *prefix)
 {
 	printf("%s: %s\n", prefix, sqlite3_errmsg(db));
-	sqlite3_close(db);
+	sql_shutdown();
 	exit(1);
 }
 
@@ -396,10 +406,8 @@ int main(int argc, char **argv)
 	for_each_chunk(hdksrc, hdkdst, chunks_per_dir, 0, count_chunk);
 	start_profile();
 	for_each_chunk(hdksrc, hdkdst, chunks_per_dir, 1, convert_chunk);
-	sqlite3_finalize(lookup);
-	sqlite3_finalize(insert);
 
-	if (sqlite3_close(db))
+	if (sql_shutdown())
 		sqlerr("Closing database connection");
 	return 0;
 }
