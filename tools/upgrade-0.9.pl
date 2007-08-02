@@ -64,6 +64,17 @@ sub upgrade_keyring {
 	unlink(glob("$dst/$ver/cfg/keyring.bin*"), "$dst/$ver/keyring.old");
 }
 
+sub update_chunks {
+	my $ver = shift;
+	my $chunks_per_dir = shift;
+
+	print "Updating chunks for $ver...\n";
+	mkdir("$dst/$ver/hdk") or die;
+	system("$bindir/convert-chunks '$dst/mapdb' '$dst/$ver/keyring' " .
+				"'$src/$ver/hdk' '$dst/$ver/hdk' " .
+				"$chunks_per_dir") == 0 or die;
+}
+
 if ($#ARGV + 1 != 4) {
 	print "Usage: $0 src-parcelcfg src-dir dst-parcelcfg dst-dir\n";
 	exit 1;
@@ -73,8 +84,18 @@ opendir(SRC, $src) || die "Can't open directory $src";
 @versions = sort grep {/[0-9]+/} readdir SRC or die;
 closedir(SRC);
 
+my $chunks_per_dir;
+open(IDX, "$src/$versions[0]/hdk/index.lev1") or die;
+while (<IDX>) {
+	$chunks_per_dir = $1 if /^CHUNKSPERDIR= ([0-9]+)$/;
+}
+close(IDX);
+
 init_dest;
 foreach my $ver (@versions) {
 	prepare_version $ver;
 	upgrade_keyring $ver;
+	update_chunks($ver, $chunks_per_dir);
 }
+# XXX should warn if anything is in the cfg directory which isn't on a
+# whitelist
