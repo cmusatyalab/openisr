@@ -11,6 +11,42 @@ our $dstcfg = $ARGV[2];
 our $dst = $ARGV[3];
 our $bindir = ".";
 our @versions;
+our %parcelcfg;
+
+sub process_parcel_cfg {
+	my $file;
+	my $key;
+	my $uuid;
+
+	print "Generating new parcel.cfg...\n";
+	foreach $file ($srccfg, "$src/last/hdk/index.lev1") {
+		open(IF, $file) or die "Couldn't open $file";
+		foreach (<IF>) {
+			/^([A-Z]+)[ =]+(.+)$/ or die;
+			$parcelcfg{$1} = $2;
+		}
+		close IF;
+	}
+	$uuid = `uuidgen`;
+	die if $? or !defined $uuid;
+	chomp $uuid;
+	die "File $dstcfg already exists" if -e $dstcfg;
+	open(OF, ">$dstcfg") or die;
+	print OF <<EOF;
+VERSION = 3
+UUID = $uuid
+VMM = vmware
+CRYPTO = aes-sha1
+COMPRESS = zlib,lzf
+EOF
+	foreach $key ("PROTOCOL", "SERVER", "RPATH", "WPATH", "KEYROOT",
+				"MAXKB", "CHUNKSIZE", "NUMCHUNKS",
+				"CHUNKSPERDIR") {
+		die unless defined $parcelcfg{$key};
+		print OF "$key = $parcelcfg{$key}\n";
+	}
+	close OF;
+}
 
 sub init_dest {
 	print "Initializing destination directory...\n";
@@ -20,13 +56,8 @@ sub init_dest {
 	die if ! -l "$src/last";
 	symlink(readlink("$src/last"), "$dst/last") or die;
 
-	die "$srccfg does not exist" unless -e $srccfg;
 	open(KR, ">$dst/keyroot") or die;
-	open(PC, $srccfg) or die;
-	foreach (<PC>) {
-		print KR "$1\n" if /^KEYROOT=(.*)$/;
-	}
-	close PC;
+	print KR $parcelcfg{"KEYROOT"} . "\n";
 	close KR;
 }
 
@@ -66,13 +97,12 @@ sub upgrade_keyring {
 
 sub update_chunks {
 	my $ver = shift;
-	my $chunks_per_dir = shift;
 
 	print "Updating chunks for $ver...\n";
 	mkdir("$dst/$ver/hdk") or die;
 	system("$bindir/convert-chunks '$dst/mapdb' '$dst/$ver/keyring' " .
 				"'$src/$ver/hdk' '$dst/$ver/hdk' " .
-				"$chunks_per_dir") == 0 or die;
+				$parcelcfg{"CHUNKSPERDIR"}) == 0 or die;
 }
 
 sub rewrite_keyring {
@@ -107,18 +137,12 @@ opendir(SRC, $src) || die "Can't open directory $src";
 @versions = sort grep {/[0-9]+/} readdir SRC or die;
 closedir(SRC);
 
-my $chunks_per_dir;
-open(IDX, "$src/$versions[0]/hdk/index.lev1") or die;
-while (<IDX>) {
-	$chunks_per_dir = $1 if /^CHUNKSPERDIR= ([0-9]+)$/;
-}
-close(IDX);
-
+process_parcel_cfg;
 init_dest;
 foreach my $ver (@versions) {
 	prepare_version $ver;
 	upgrade_keyring $ver;
-	update_chunks($ver, $chunks_per_dir);
+	update_chunks $ver;
 }
 foreach my $ver (@versions) {
 	rewrite_keyring $ver;
