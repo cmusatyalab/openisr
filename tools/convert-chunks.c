@@ -76,8 +76,9 @@ static void profile(void)
 					PROFILE_INTERVAL);
 		last_sample=chunks_complete;
 	} else if (!do_profile) {
-		hashes_needed=(chunks_complete * PROGRESS_HASHES)
-					/ total_chunks;
+		hashes_needed = total_chunks ? ((chunks_complete *
+					PROGRESS_HASHES) / total_chunks) :
+					PROGRESS_HASHES;
 		for (; hashes_printed < hashes_needed; hashes_printed++)
 			printf("#");
 		fflush(stdout);
