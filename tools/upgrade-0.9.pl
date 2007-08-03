@@ -75,6 +75,29 @@ sub update_chunks {
 				"$chunks_per_dir") == 0 or die;
 }
 
+sub rewrite_keyring {
+	my $ver = shift;
+	my $result;
+
+	print "Updating keyring for $ver...\n";
+	# The only way to do cross-table updates in SQLite (without using
+	# temporary tables or INSERT OR REPLACE) is to have multiple
+	# sub-selects in the UPDATE statement, one per column, and those
+	# sub-selects aren't optimized out.  We go the INSERT OR REPLACE route.
+	open(RES, "-|", "$bindir/query", "$dst/$ver/keyring", "-a",
+				"map:$dst/mapdb",
+				"INSERT OR REPLACE INTO keys " .
+				"(chunk, tag, key, compression) " .
+				"SELECT keys.chunk, map.tags.new_tag, " .
+				"map.tags.new_key, map.tags.new_compress " .
+				"FROM keys JOIN map.tags ON " .
+				"keys.tag = map.tags.old_tag") or die;
+	<RES> =~ /([0-9]+) rows updated/ or die;
+	close(RES);
+	die if $? != 0;
+	print "$1\n";
+}
+
 if ($#ARGV + 1 != 4) {
 	print "Usage: $0 src-parcelcfg src-dir dst-parcelcfg dst-dir\n";
 	exit 1;
@@ -96,6 +119,9 @@ foreach my $ver (@versions) {
 	prepare_version $ver;
 	upgrade_keyring $ver;
 	update_chunks($ver, $chunks_per_dir);
+}
+foreach my $ver (@versions) {
+	rewrite_keyring $ver;
 }
 # XXX should warn if anything is in the cfg directory which isn't on a
 # whitelist
