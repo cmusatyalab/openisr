@@ -16,6 +16,7 @@ static unsigned param_length[MAX_PARAMS];  /* zero if not blob */
 static char *attached_names[MAX_ATTACHED];
 static char *attached_files[MAX_ATTACHED];
 static int show_col_names;
+static int no_transaction;
 static int num_params;
 static int used_params;
 static int num_attached;
@@ -241,6 +242,8 @@ static int make_queries(char *str)
 
 static int begin(void)
 {
+	if (no_transaction)
+		return 0;
 	if (sqlite3_exec(db, "BEGIN", NULL, NULL, NULL)) {
 		sqlerr("Beginning transaction");
 		return -1;
@@ -250,6 +253,10 @@ static int begin(void)
 
 static int rollback(void)
 {
+	if (no_transaction) {
+		fprintf(stderr, "Can't roll back: not within a transaction");
+		return -1;
+	}
 	if (sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) {
 		sqlerr("Rolling back transaction");
 		return -1;
@@ -262,6 +269,8 @@ static int commit(void)
 	int ret;
 	int i;
 
+	if (no_transaction)
+		return 0;
 	for (i=0; i<20; i++) {
 		ret=sqlite3_exec(db, "COMMIT", NULL, NULL, NULL);
 		if (ret == SQLITE_BUSY) {
@@ -321,9 +330,10 @@ static void usage(char *argv0)
 {
 	fprintf(stderr, "Usage: %s [flags] database query\n", argv0);
 	fprintf(stderr, "\t-a name:file - attach database\n");
-	fprintf(stderr, "\t-c - print column names\n");
 	fprintf(stderr, "\t-p param - statement parameter\n");
 	fprintf(stderr, "\t-b param - blob parameter in hex\n");
+	fprintf(stderr, "\t-c - print column names\n");
+	fprintf(stderr, "\t-t - don't execute query within a transaction\n");
 	exit(2);
 }
 
@@ -332,7 +342,7 @@ static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
 	int opt;
 	char *cp;
 
-	while ((opt=getopt(argc, argv, "a:b:p:c")) != -1) {
+	while ((opt=getopt(argc, argv, "a:b:p:ct")) != -1) {
 		switch (opt) {
 		case '?':
 			usage(argv[0]);
@@ -362,6 +372,9 @@ static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
 			break;
 		case 'c':
 			show_col_names=1;
+			break;
+		case 't':
+			no_transaction=1;
 			break;
 		}
 	}
