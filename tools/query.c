@@ -15,6 +15,7 @@ static char *params[MAX_PARAMS];
 static unsigned param_length[MAX_PARAMS];  /* zero if not blob */
 static char *attached_names[MAX_ATTACHED];
 static char *attached_files[MAX_ATTACHED];
+static int show_col_names;
 static int num_params;
 static int used_params;
 static int num_attached;
@@ -134,6 +135,20 @@ bad:
 	return -1;
 }
 
+static void handle_col_names(sqlite3_stmt *stmt)
+{
+	int i;
+	int count=sqlite3_column_count(stmt);
+
+	for (i=0; i<count; i++) {
+		if (i)
+			fprintf(tmp, "|");
+		fprintf(tmp, "%s", sqlite3_column_name(stmt, i));
+	}
+	if (count)
+		fprintf(tmp, "\n");
+}
+
 static void handle_row(sqlite3_stmt *stmt)
 {
 	int i;
@@ -170,6 +185,7 @@ static int make_queries(char *str)
 	int ret;
 	int i;
 	int count;
+	int did_cols;
 
 	used_params=0;
 	for (query=str; *query; ) {
@@ -201,8 +217,13 @@ static int make_queries(char *str)
 			}
 			used_params++;
 		}
+		did_cols=0;
 		while ((ret=sqlite3_step(stmt)) != SQLITE_DONE) {
 			if (ret == SQLITE_ROW) {
+				if (show_col_names && !did_cols) {
+					did_cols=1;
+					handle_col_names(stmt);
+				}
 				handle_row(stmt);
 			} else {
 				if (ret != SQLITE_BUSY)
@@ -286,6 +307,7 @@ static void usage(char *argv0)
 {
 	fprintf(stderr, "Usage: %s [flags] database query\n", argv0);
 	fprintf(stderr, "\t-a name:file - attach database\n");
+	fprintf(stderr, "\t-c - print column names\n");
 	fprintf(stderr, "\t-p param - statement parameter\n");
 	fprintf(stderr, "\t-b param - blob parameter in hex\n");
 	exit(2);
@@ -296,7 +318,7 @@ static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
 	int opt;
 	char *cp;
 
-	while ((opt=getopt(argc, argv, "a:b:p:")) != -1) {
+	while ((opt=getopt(argc, argv, "a:b:p:c")) != -1) {
 		switch (opt) {
 		case '?':
 			usage(argv[0]);
@@ -323,6 +345,9 @@ static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
 			attached_names[num_attached]=optarg;
 			attached_files[num_attached]=cp+1;
 			num_attached++;
+			break;
+		case 'c':
+			show_col_names=1;
 			break;
 		}
 	}
