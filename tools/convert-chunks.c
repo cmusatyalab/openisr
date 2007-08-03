@@ -48,8 +48,8 @@ static void __attribute__ ((noreturn)) die(char *str, ...)
 	va_list ap;
 
 	va_start(ap, str);
-	vprintf(str, ap);
-	printf("\n");
+	vfprintf(stderr, str, ap);
+	fprintf(stderr, "\n");
 	va_end(ap);
 	sql_shutdown();
 	exit(1);
@@ -57,7 +57,7 @@ static void __attribute__ ((noreturn)) die(char *str, ...)
 
 static void __attribute__ ((noreturn)) sqlerr(char *prefix)
 {
-	printf("%s: %s\n", prefix, sqlite3_errmsg(db));
+	fprintf(stderr, "%s: %s\n", prefix, sqlite3_errmsg(db));
 	sql_shutdown();
 	exit(1);
 }
@@ -70,7 +70,7 @@ static void profile(void)
 
 	if (got_signal) {
 		got_signal=0;
-		fprintf(stderr, "%d/%d complete, %d chunks/second\n",
+		printf("%d/%d complete, %d chunks/second\n",
 					chunks_complete, total_chunks,
 					(chunks_complete - last_sample) /
 					PROFILE_INTERVAL);
@@ -79,7 +79,8 @@ static void profile(void)
 		hashes_needed=(chunks_complete * PROGRESS_HASHES)
 					/ total_chunks;
 		for (; hashes_printed < hashes_needed; hashes_printed++)
-			fprintf(stderr, "#");
+			printf("#");
+		fflush(stdout);
 	}
 }
 
@@ -323,7 +324,8 @@ again:
 			goto again;
 		if (is_top) {
 			if (strcmp("index.lev1", ent->d_name))
-				printf("Warning: ignoring %s/%s\n", parent_src,
+				fprintf(stderr, "Warning: ignoring %s/%s\n",
+							parent_src,
 							ent->d_name);
 			goto again;
 		} else {
@@ -424,7 +426,7 @@ int main(int argc, char **argv)
 	for_each_chunk(hdksrc, hdkdst, chunks_per_dir, 1, convert_chunk);
 	profile();
 	if (!do_profile)
-		fprintf(stderr, "\n");
+		printf("\n");
 
 	if (sql_shutdown())
 		sqlerr("Closing database connection");
