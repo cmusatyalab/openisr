@@ -18,11 +18,12 @@ sqlite3_stmt *lookup;
 sqlite3_stmt *insert;
 unsigned chunks_complete;
 unsigned total_chunks;
+int do_profile = 1;
+int got_signal;
 
 #define SHA_LEN 20
 #define CHUNK_BUF 140000
 #define COMPRESS_THRESH (131072 - 17)  /* depends on cipher block size */
-#define PROFILE
 #define PROFILE_INTERVAL 5
 
 enum compresstype {
@@ -60,15 +61,23 @@ static void __attribute__ ((noreturn)) sqlerr(char *prefix)
 	exit(1);
 }
 
-#ifdef PROFILE
-static void profile(int __attribute__ ((unused)) signum)
+static void profile(void)
 {
 	static unsigned last;
 
-	fprintf(stderr, "%d/%d complete, %d chunks/second\n", chunks_complete,
-				total_chunks, (chunks_complete - last) /
-				PROFILE_INTERVAL);
-	last=chunks_complete;
+	if (got_signal) {
+		got_signal=0;
+		fprintf(stderr, "%d/%d complete, %d chunks/second\n",
+					chunks_complete, total_chunks,
+					(chunks_complete - last) /
+					PROFILE_INTERVAL);
+		last=chunks_complete;
+	}
+}
+
+static void profile_signal_handler(int __attribute__ ((unused)) signum)
+{
+	got_signal=1;
 }
 
 static void start_profile(void)
@@ -77,7 +86,7 @@ static void start_profile(void)
 	struct itimerval tmr;
 
 	memset(&act, 0, sizeof(act));
-	act.sa_handler=profile;
+	act.sa_handler=profile_signal_handler;
 	act.sa_flags=SA_RESTART;
 	if (sigaction(SIGALRM, &act, NULL))
 		die("Couldn't set signal handler");
@@ -87,9 +96,6 @@ static void start_profile(void)
 	if (setitimer(ITIMER_REAL, &tmr, NULL))
 		die("Couldn't configure interval timer");
 }
-#else
-#define start_profile() do {} while (0)
-#endif
 
 static void attachmap(char *path)
 {
@@ -277,6 +283,7 @@ static void convert_chunk(unsigned chunk_num, const char *src, const char *dst)
 	free(in);
 	free(out);
 	chunks_complete++;
+	profile();
 }
 
 static void count_chunk(unsigned __attribute__ ((unused)) chunk_num,
@@ -404,7 +411,8 @@ int main(int argc, char **argv)
 				"VALUES(?, ?, ?, ?)", -1, &insert, NULL))
 		sqlerr("Preparing INSERT statement");
 	for_each_chunk(hdksrc, hdkdst, chunks_per_dir, 0, count_chunk);
-	start_profile();
+	if (do_profile)
+		start_profile();
 	for_each_chunk(hdksrc, hdkdst, chunks_per_dir, 1, convert_chunk);
 
 	if (sql_shutdown())
