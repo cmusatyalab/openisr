@@ -125,7 +125,8 @@ sub rewrite_keyring {
 	<RES> =~ /([0-9]+) rows updated/ or die;
 	close(RES);
 	die if $? != 0;
-	print "$1\n";
+	die "Updated only $1 keys; expected $parcelcfg{'NUMCHUNKS'}"
+		if $1 != $parcelcfg{"NUMCHUNKS"};
 }
 
 if ($#ARGV + 1 != 4) {
