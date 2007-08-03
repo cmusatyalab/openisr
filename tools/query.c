@@ -232,6 +232,8 @@ static int make_queries(char *str)
 				return (ret == SQLITE_BUSY) ? 1 : -1;
 			}
 		}
+		if (sqlite3_changes(db))
+			fprintf(tmp, "%d rows updated\n", sqlite3_changes(db));
 		sqlite3_finalize(stmt);
 	}
 	return 0;
