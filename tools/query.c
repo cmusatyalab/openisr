@@ -239,6 +239,24 @@ static int make_queries(char *str)
 	return 0;
 }
 
+static int begin(void)
+{
+	if (sqlite3_exec(db, "BEGIN", NULL, NULL, NULL)) {
+		sqlerr("Beginning transaction");
+		return -1;
+	}
+	return 0;
+}
+
+static int rollback(void)
+{
+	if (sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) {
+		sqlerr("Rolling back transaction");
+		return -1;
+	}
+	return 0;
+}
+
 static int commit(void)
 {
 	int ret;
@@ -276,20 +294,14 @@ static int do_transaction(char *sql)
 	int i;
 
 	for (i=0; i<10; i++) {
-		if (sqlite3_exec(db, "BEGIN", NULL, NULL, NULL)) {
-			sqlerr("Beginning transaction");
+		if (begin())
 			return -1;
-		}
 		qres=make_queries(sql);
 		if (qres || commit()) {
 			fflush(tmp);
 			rewind(tmp);
 			ftruncate(fileno(tmp), 0);
-			if (sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) {
-				sqlerr("Rolling back transaction");
-				return -1;
-			}
-			if (qres < 0)
+			if (rollback() || qres < 0)
 				return -1;
 		} else {
 			cat_tmp();
