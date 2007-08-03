@@ -18,13 +18,14 @@ sqlite3_stmt *lookup;
 sqlite3_stmt *insert;
 unsigned chunks_complete;
 unsigned total_chunks;
-int do_profile = 1;
+int do_profile = 0;
 int got_signal;
 
 #define SHA_LEN 20
 #define CHUNK_BUF 140000
 #define COMPRESS_THRESH (131072 - 17)  /* depends on cipher block size */
 #define PROFILE_INTERVAL 5
+#define PROGRESS_HASHES 50
 
 enum compresstype {
 	COMP_UNKNOWN=0,
@@ -63,15 +64,22 @@ static void __attribute__ ((noreturn)) sqlerr(char *prefix)
 
 static void profile(void)
 {
-	static unsigned last;
+	static unsigned last_sample;
+	static int hashes_printed;
+	int hashes_needed;
 
 	if (got_signal) {
 		got_signal=0;
 		fprintf(stderr, "%d/%d complete, %d chunks/second\n",
 					chunks_complete, total_chunks,
-					(chunks_complete - last) /
+					(chunks_complete - last_sample) /
 					PROFILE_INTERVAL);
-		last=chunks_complete;
+		last_sample=chunks_complete;
+	} else if (!do_profile) {
+		hashes_needed=(chunks_complete * PROGRESS_HASHES)
+					/ total_chunks;
+		for (; hashes_printed < hashes_needed; hashes_printed++)
+			fprintf(stderr, "#");
 	}
 }
 
@@ -414,6 +422,9 @@ int main(int argc, char **argv)
 	if (do_profile)
 		start_profile();
 	for_each_chunk(hdksrc, hdkdst, chunks_per_dir, 1, convert_chunk);
+	profile();
+	if (!do_profile)
+		fprintf(stderr, "\n");
 
 	if (sql_shutdown())
 		sqlerr("Closing database connection");
