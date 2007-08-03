@@ -127,6 +127,14 @@ sub rewrite_keyring {
 	die if $? != 0;
 	die "Updated only $1 keys; expected $parcelcfg{'NUMCHUNKS'}"
 		if $1 != $parcelcfg{"NUMCHUNKS"};
+
+	# Vacuum can't occur within a transaction
+	system("$bindir/query -t '$dst/$ver/keyring' VACUUM") == 0 or die;
+	open(CHK, "-|", "$bindir/query", "$dst/$ver/keyring",
+				"PRAGMA integrity_check") or die;
+	<CHK> =~ /^ok\n$/ or die;
+	close(CHK);
+	die if $? != 0;
 }
 
 if ($#ARGV + 1 != 4) {
