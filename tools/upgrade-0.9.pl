@@ -137,6 +137,20 @@ sub rewrite_keyring {
 	die if $? != 0;
 }
 
+sub finish_version {
+	my $ver = shift;
+
+	print "Packing version $ver...\n";
+	system("tar cC '$dst/$ver' cfg | gzip -c9 | openssl enc " .
+				"-aes-128-cbc -out '$dst/$ver/cfg.tgz.enc' " .
+				"-pass 'file:$dst/keyroot'") == 0 or die;
+	system("openssl enc -aes-128-cbc -in '$dst/$ver/keyring' " .
+			"-out '$dst/$ver/keyring.enc' " .
+			"-pass 'file:$dst/keyroot'") == 0 or die;
+	unlink("$dst/$ver/keyring") or die;
+	system("rm -r '$dst/$ver/cfg'") == 0 or die;
+}
+
 if ($#ARGV + 1 != 4) {
 	print "Usage: $0 src-parcelcfg src-dir dst-parcelcfg dst-dir\n";
 	exit 1;
@@ -155,6 +169,10 @@ foreach my $ver (@versions) {
 }
 foreach my $ver (@versions) {
 	rewrite_keyring $ver;
+	finish_version $ver;
 }
+unlink("$dst/mapdb", "$dst/keyroot") == 2 or die;
+print "Upgrade complete\n";
+
 # XXX should warn if anything is in the cfg directory which isn't on a
 # whitelist
