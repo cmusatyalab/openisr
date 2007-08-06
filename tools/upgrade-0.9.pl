@@ -2,6 +2,7 @@
 
 use File::Copy;
 use File::Path;
+use File::stat;
 use strict;
 use warnings;
 
@@ -142,6 +143,7 @@ sub finish_version {
 	my @files;
 	my $pattern;
 	my $file;
+	my $stat;
 
 	print "Packing version $ver...\n";
 	opendir(CFG, "$dst/$ver/cfg") or die;
@@ -163,6 +165,10 @@ sub finish_version {
 			"-pass 'file:$dst/keyroot'") == 0 or die;
 	unlink("$dst/$ver/keyring") or die;
 	system("rm -r '$dst/$ver/cfg'") == 0 or die;
+	$stat = stat("$src/$ver/keyring.enc") or die;
+	# isr_srv_ls.pl uses the keyring mtime as the checkin time, so we
+	# need to carry this over
+	utime(time, $stat->mtime, "$dst/$ver/keyring.enc") or die;
 }
 
 if ($#ARGV + 1 != 4) {
