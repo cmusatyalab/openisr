@@ -139,8 +139,22 @@ sub rewrite_keyring {
 
 sub finish_version {
 	my $ver = shift;
+	my @files;
+	my $pattern;
+	my $file;
 
 	print "Packing version $ver...\n";
+	opendir(CFG, "$dst/$ver/cfg") or die;
+	@files = readdir(CFG);
+	closedir(CFG);
+	foreach $pattern ("\.{1,2}", "nvram", ".*\.vmdk", ".*\.vmem",
+				".*\.vmss", ".*\.vmx", ".*\.vmxf",
+				"vmware[-0-9]*\.log") {
+		eval "\@files = grep(!/^$pattern\$/, \@files)";
+	}
+	foreach $file (@files) {
+		print "Unknown file in $ver/cfg: $file\n";
+	}
 	system("tar cC '$dst/$ver' cfg | gzip -c9 | openssl enc " .
 				"-aes-128-cbc -out '$dst/$ver/cfg.tgz.enc' " .
 				"-pass 'file:$dst/keyroot'") == 0 or die;
@@ -173,6 +187,3 @@ foreach my $ver (@versions) {
 }
 unlink("$dst/mapdb", "$dst/keyroot") == 2 or die;
 print "Upgrade complete\n";
-
-# XXX should warn if anything is in the cfg directory which isn't on a
-# whitelist
