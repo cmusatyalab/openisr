@@ -22,7 +22,9 @@ int main(int argc, char **argv)
 {
 	parse_cmdline(argc, argv);
 	log_start();
+	transport_init();
 	parse_parcel_cfg();
+	transport_shutdown();
 	log_shutdown();
 	return 0;
 }

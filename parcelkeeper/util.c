@@ -276,3 +276,14 @@ pk_err_t fork_and_wait(int *status_fd)
 	}
 	return PK_SUCCESS;
 }
+
+char *form_chunk_path(char *prefix, unsigned chunk)
+{
+	char *ret;
+	unsigned dir = chunk / state.chunks_per_dir;
+	unsigned file = chunk % state.chunks_per_dir;
+
+	if (asprintf(&ret, "%s/%.4u/%.4u", prefix, dir, file) == -1)
+		return NULL;
+	return ret;
+}

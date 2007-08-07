@@ -50,6 +50,8 @@ enum compresstype {
 	COMP_LZF=3
 };
 
+struct pk_connection;
+
 struct pk_config {
 	/* cache directory and its contents */
 	char *cache_dir;
@@ -91,6 +93,7 @@ struct pk_state {
 	int loopdev_fd;
 	int chardev_fd;
 	int signal_fds[2];
+	struct pk_connection *conn;
 
 	int bdev_index;
 
@@ -125,6 +128,11 @@ void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...);
 /* parcelcfg.c */
 pk_err_t parse_parcel_cfg(void);
 
+/* transport.c */
+pk_err_t transport_init(void);
+void transport_shutdown(void);
+pk_err_t transport_get(void *buf, unsigned chunk, size_t *len);
+
 /* util.c */
 int is_dir(const char *path);
 int is_file(const char *path);
@@ -142,5 +150,6 @@ pk_err_t acquire_lock(void);
 void release_lock(void);
 pk_err_t create_pidfile(void);
 void remove_pidfile(void);
+char *form_chunk_path(char *prefix, unsigned chunk);
 
 #endif
