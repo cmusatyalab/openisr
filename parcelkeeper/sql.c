@@ -13,6 +13,13 @@
 #include <sqlite3.h>
 #include "defs.h"
 
+void free_query(sqlite3_stmt *stmt)
+{
+	if (stmt == NULL)
+		return;
+	sqlite3_finalize(stmt);
+}
+
 int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 {
 	sqlite3_stmt *stmt;
@@ -22,12 +29,14 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 
 	ret=sqlite3_prepare(db, query, -1, &stmt, NULL);
 	if (ret) {
-		*result=NULL;
+		if (result != NULL)
+			*result=NULL;
 		return ret;
 	}
-	*result=stmt;
+	if (result != NULL)
+		*result=stmt;
 	va_start(ap, fmt);
-	for (; *fmt; fmt++) {
+	for (; fmt != NULL && *fmt; fmt++) {
 		switch (*fmt) {
 		case 'd':
 			ret=sqlite3_bind_int(stmt, i++, va_arg(ap, int));
@@ -60,12 +69,8 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 			return ret;
 	}
 	va_end(ap);
-	return sqlite3_step(stmt);
-}
-
-void free_query(sqlite3_stmt *stmt)
-{
-	if (stmt == NULL)
-		return;
-	sqlite3_finalize(stmt);
+	ret=sqlite3_step(stmt);
+	if (result == NULL)
+		free_query(stmt);
+	return ret;
 }
