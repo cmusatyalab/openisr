@@ -410,7 +410,7 @@ int main(int argc, char **argv)
 	if (stat(hdkdst, &st) || !S_ISDIR(st.st_mode))
 		die("%s does not exist or is not a directory", hdkdst);
 	if (sqlite3_open(keyring, &db))
-		die("Error opening keyring");
+		sqlerr("Opening keyring");
 	attachmap(mapdb);
 	initmap();
 
