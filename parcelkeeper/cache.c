@@ -20,6 +20,7 @@
 
 #define CA_MAGIC 0x51528038
 #define CA_VERSION 1
+#define CA_INDEX_VERSION 1
 
 /* All u32's in network byte order */
 struct ca_header {
@@ -115,6 +116,60 @@ static pk_err_t open_cache_file(long page_size)
 	return PK_SUCCESS;
 }
 
+static pk_err_t attach_cache_index(void)
+{
+	if (query(NULL, state.db, "ATTACH ? AS cache", "S",
+				config.cache_index) != SQLITE_DONE) {
+		pk_log(LOG_ERROR, "Couldn't attach cache index: %s",
+					sqlite3_errmsg(state.db));
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
+static pk_err_t create_cache_index(void)
+{
+	if (query(NULL, state.db, "CREATE TABLE cache.chunks ("
+				"chunk INTEGER PRIMARY KEY NOT NULL, "
+				"length INTEGER NOT NULL)", NULL)
+				!= SQLITE_DONE) {
+		pk_log(LOG_ERROR, "Couldn't create cache index: %s",
+					sqlite3_errmsg(state.db));
+		return PK_IOERR;
+	}
+	if (query(NULL, state.db, "PRAGMA cache.user_version = "
+				stringify(CA_INDEX_VERSION), NULL)
+				!= SQLITE_DONE) {
+		pk_log(LOG_ERROR, "Couldn't set cache index version: %s",
+					sqlite3_errmsg(state.db));
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
+static pk_err_t verify_cache_index(void)
+{
+	sqlite3_stmt *stmt;
+	int ret;
+
+	ret=query(&stmt, state.db, "PRAGMA cache.user_version", NULL);
+	if (ret != SQLITE_ROW) {
+		free_query(stmt);
+		pk_log(LOG_ERROR, "Couldn't query cache index version: %s",
+					sqlite3_errmsg(state.db));
+		return PK_IOERR;
+	}
+	ret=sqlite3_column_int(stmt, 0);
+	free_query(stmt);
+	if (ret != CA_INDEX_VERSION) {
+		pk_log(LOG_ERROR, "Invalid version reading cache index: "
+					"expected %d, found %d",
+					CA_INDEX_VERSION, ret);
+		return PK_BADFORMAT;
+	}
+	return PK_SUCCESS;
+}
+
 void cache_shutdown(void)
 {
 	if (state.cache_fd)
@@ -141,12 +196,24 @@ pk_err_t cache_init(void)
 		goto bad;
 	}
 	if (is_file(config.cache_file) && is_file(config.cache_index)) {
+		ret=attach_cache_index();
+		if (ret)
+			goto bad;
 		ret=open_cache_file(page_size);
+		if (ret)
+			goto bad;
+		ret=verify_cache_index();
 		if (ret)
 			goto bad;
 	} else if (!is_file(config.cache_file) &&
 				!is_file(config.cache_index)) {
+		ret=attach_cache_index();
+		if (ret)
+			goto bad;
 		ret=create_cache_file(page_size);
+		if (ret)
+			goto bad;
+		ret=create_cache_index();
 		if (ret)
 			goto bad;
 	} else {

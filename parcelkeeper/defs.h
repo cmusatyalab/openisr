@@ -117,6 +117,9 @@ extern const char *rcs_revision;
 
 #define min(a,b) ((a) < (b) ? (a) : (b))
 #define max(a,b) ((a) > (b) ? (a) : (b))
+#define _stringify(str) #str
+/* the first expansion stringifies; the second expands cpp constants */
+#define stringify(str) _stringify(str)
 
 /* cmdline.c */
 void parse_cmdline(int argc, char **argv);
