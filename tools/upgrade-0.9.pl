@@ -155,7 +155,12 @@ sub finish_version {
 		eval "\@files = grep(!/^$pattern\$/, \@files)";
 	}
 	foreach $file (@files) {
-		print "Unknown file in $ver/cfg: $file\n";
+		if ($file =~ /\.WRITELOCK$/) {
+			print "Removing $ver/cfg/$file\n";
+			unlink("$dst/$ver/cfg/$file") or die;
+		} else {
+			print "Unknown file in $ver/cfg: $file\n";
+		}
 	}
 	system("tar cC '$dst/$ver' cfg | gzip -c9 | openssl enc " .
 				"-aes-128-cbc -out '$dst/$ver/cfg.tgz.enc' " .
@@ -164,7 +169,7 @@ sub finish_version {
 			"-out '$dst/$ver/keyring.enc' " .
 			"-pass 'file:$dst/keyroot'") == 0 or die;
 	unlink("$dst/$ver/keyring") or die;
-	system("rm -r '$dst/$ver/cfg'") == 0 or die;
+	system("rm -rf '$dst/$ver/cfg'") == 0 or die;
 	$stat = stat("$src/$ver/keyring.enc") or die;
 	# isr_srv_ls.pl uses the keyring mtime as the checkin time, so we
 	# need to carry this over
