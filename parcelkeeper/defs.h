@@ -104,7 +104,7 @@ struct pk_state {
 	unsigned chunks;
 	unsigned chunksize;
 	unsigned chunks_per_dir;
-	unsigned offset;  /* XXX */
+	unsigned offset;
 	char uuid[UUID_LEN_BIN];
 
 	unsigned request_count;  /* XXX */
@@ -138,6 +138,10 @@ void cache_shutdown(void);
 pk_err_t transport_init(void);
 void transport_shutdown(void);
 pk_err_t transport_get(void *buf, unsigned chunk, size_t *len);
+
+/* sql.c */
+int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...);
+void free_query(sqlite3_stmt *stmt);
 
 /* util.c */
 int is_dir(const char *path);
