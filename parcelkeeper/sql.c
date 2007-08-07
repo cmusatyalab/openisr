@@ -13,6 +13,11 @@
 #include <sqlite3.h>
 #include "defs.h"
 
+static void sqlerr(sqlite3 *db)
+{
+	pk_log(LOG_ERROR, "SQL error: %s", sqlite3_errmsg(db));
+}
+
 void query_free(sqlite3_stmt *stmt)
 {
 	if (stmt == NULL)
@@ -26,12 +31,15 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 	va_list ap;
 	int i=1;
 	int ret;
+	int found_unknown=0;
 
 	if (result != NULL)
 		*result=NULL;
 	ret=sqlite3_prepare(db, query, -1, &stmt, NULL);
-	if (ret)
+	if (ret) {
+		sqlerr(db);
 		return ret;
+	}
 	va_start(ap, fmt);
 	for (; fmt != NULL && *fmt; fmt++) {
 		switch (*fmt) {
@@ -58,7 +66,9 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 		default:
 			pk_log(LOG_ERROR, "Unknown format specifier %c", *fmt);
 			ret=SQLITE_MISUSE;
-			/* XXX sqlite3_errmsg() will return "not an error" */
+			/* Don't call sqlerr(), since we synthesized this
+			   error */
+			found_unknown=1;
 			break;
 		}
 		if (ret)
@@ -71,8 +81,10 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 	   for a gratuitously nonzero error code */
 	if (ret == SQLITE_DONE)
 		ret=SQLITE_OK;
+	if (ret != SQLITE_OK && ret != SQLITE_ROW && !found_unknown)
+		sqlerr(db);
 	if ((ret != SQLITE_OK && ret != SQLITE_ROW) || result == NULL)
-		query_free(stmt);  /* XXX may clobber errstring */
+		query_free(stmt);
 	else
 		*result=stmt;
 	return ret;
@@ -83,7 +95,11 @@ int query_next(sqlite3_stmt *stmt)
 	int ret;
 
 	ret=sqlite3_step(stmt);
-	return (ret == SQLITE_DONE) ? SQLITE_OK : ret;
+	if (ret == SQLITE_DONE)
+		ret=SQLITE_OK;
+	if (ret != SQLITE_OK && ret != SQLITE_ROW)
+		sqlerr(sqlite3_db_handle(stmt));
+	return ret;
 }
 
 void query_row(sqlite3_stmt *stmt, char *fmt, ...)

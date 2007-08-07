@@ -120,8 +120,7 @@ static pk_err_t attach_cache_index(void)
 {
 	if (query(NULL, state.db, "ATTACH ? AS cache", "S",
 				config.cache_index)) {
-		pk_log(LOG_ERROR, "Couldn't attach cache index: %s",
-					sqlite3_errmsg(state.db));
+		pk_log(LOG_ERROR, "Couldn't attach cache index");
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -132,14 +131,12 @@ static pk_err_t create_cache_index(void)
 	if (query(NULL, state.db, "CREATE TABLE cache.chunks ("
 				"chunk INTEGER PRIMARY KEY NOT NULL, "
 				"length INTEGER NOT NULL)", NULL)) {
-		pk_log(LOG_ERROR, "Couldn't create cache index: %s",
-					sqlite3_errmsg(state.db));
+		pk_log(LOG_ERROR, "Couldn't create cache index");
 		return PK_IOERR;
 	}
 	if (query(NULL, state.db, "PRAGMA cache.user_version = "
 				stringify(CA_INDEX_VERSION), NULL)) {
-		pk_log(LOG_ERROR, "Couldn't set cache index version: %s",
-					sqlite3_errmsg(state.db));
+		pk_log(LOG_ERROR, "Couldn't set cache index version");
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -153,8 +150,7 @@ static pk_err_t verify_cache_index(void)
 	if (query(&stmt, state.db, "PRAGMA cache.user_version", NULL) !=
 				SQLITE_ROW) {
 		query_free(stmt);  /* in case the query produced no rows */
-		pk_log(LOG_ERROR, "Couldn't query cache index version: %s",
-					sqlite3_errmsg(state.db));
+		pk_log(LOG_ERROR, "Couldn't query cache index version");
 		return PK_IOERR;
 	}
 	query_row(stmt, "d", &found);
