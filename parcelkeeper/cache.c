@@ -36,7 +36,6 @@ static pk_err_t create_cache_file(long page_size)
 	struct ca_header hdr = {0};
 	int fd;
 
-	pk_log(LOG_INFO, "No existing local cache; creating");
 	fd=open(config.cache_file, O_CREAT|O_EXCL|O_RDWR, 0600);
 	if (fd == -1) {
 		pk_log(LOG_ERROR, "couldn't create cache file");
@@ -70,26 +69,16 @@ static pk_err_t create_cache_file(long page_size)
 	return PK_SUCCESS;
 }
 
-static pk_err_t open_cache_file(void)
+static pk_err_t open_cache_file(long page_size)
 {
 	struct ca_header hdr;
 	int fd;
-	long page_size;
-
-	page_size=sysconf(_SC_PAGESIZE);
-	if (page_size == -1) {
-		pk_log(LOG_ERROR, "couldn't get system page size");
-		return PK_CALLFAIL;
-	}
 
 	fd=open(config.cache_file, O_RDWR);
-	if (fd == -1 && errno == ENOENT) {
-		return create_cache_file(page_size);
-	} else if (fd == -1) {
+	if (fd == -1) {
 		pk_log(LOG_ERROR, "couldn't open cache file");
 		return PK_IOERR;
 	}
-
 	if (read(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
 		pk_log(LOG_ERROR, "Couldn't read cache file header");
 		return PK_IOERR;
@@ -124,6 +113,51 @@ static pk_err_t open_cache_file(void)
 	pk_log(LOG_INFO, "Read cache header");
 	state.cache_fd=fd;
 	return PK_SUCCESS;
+}
+
+void cache_shutdown(void)
+{
+	if (state.cache_fd)
+		close(state.cache_fd);
+	if (state.db && sqlite3_close(state.db))
+		pk_log(LOG_ERROR, "Couldn't close keyring: %s",
+					sqlite3_errmsg(state.db));
+}
+
+pk_err_t cache_init(void)
+{
+	pk_err_t ret=PK_IOERR;
+	long page_size;
+
+	page_size=sysconf(_SC_PAGESIZE);
+	if (page_size == -1) {
+		pk_log(LOG_ERROR, "Couldn't get system page size");
+		return PK_CALLFAIL;
+	}
+	if (sqlite3_open(config.keyring, &state.db)) {
+		pk_log(LOG_ERROR, "Couldn't open keyring %s: %s",
+					config.keyring,
+					sqlite3_errmsg(state.db));
+		goto bad;
+	}
+	if (is_file(config.cache_file) && is_file(config.cache_index)) {
+		ret=open_cache_file(page_size);
+		if (ret)
+			goto bad;
+	} else if (!is_file(config.cache_file) &&
+				!is_file(config.cache_index)) {
+		ret=create_cache_file(page_size);
+		if (ret)
+			goto bad;
+	} else {
+		pk_log(LOG_ERROR, "Cache and index in inconsistent state");
+		goto bad;
+	}
+	return PK_SUCCESS;
+
+bad:
+	cache_shutdown();
+	return ret;
 }
 
 #if 0

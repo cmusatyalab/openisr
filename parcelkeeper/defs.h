@@ -14,6 +14,7 @@
 
 #include <stdio.h>
 #include <uuid.h>
+#include <sqlite3.h>
 
 typedef enum pk_err {
 	PK_SUCCESS=0,
@@ -94,6 +95,7 @@ struct pk_state {
 	int chardev_fd;
 	int signal_fds[2];
 	struct pk_connection *conn;
+	sqlite3 *db;
 
 	int bdev_index;
 
@@ -127,6 +129,10 @@ void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...);
 
 /* parcelcfg.c */
 pk_err_t parse_parcel_cfg(void);
+
+/* cache.c */
+pk_err_t cache_init(void);
+void cache_shutdown(void);
 
 /* transport.c */
 pk_err_t transport_init(void);
