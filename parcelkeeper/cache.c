@@ -157,7 +157,7 @@ static pk_err_t verify_cache_index(void)
 					sqlite3_errmsg(state.db));
 		return PK_IOERR;
 	}
-	found=sqlite3_column_int(stmt, 0);
+	query_row(stmt, "d", &found);
 	query_free(stmt);
 	if (found != CA_INDEX_VERSION) {
 		pk_log(LOG_ERROR, "Invalid version reading cache index: "

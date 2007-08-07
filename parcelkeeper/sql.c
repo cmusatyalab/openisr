@@ -56,8 +56,7 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 						: SQLITE_STATIC);
 			break;
 		default:
-			pk_log(LOG_ERROR, "Unknown format specifier %c",
-						*fmt);
+			pk_log(LOG_ERROR, "Unknown format specifier %c", *fmt);
 			ret=SQLITE_MISUSE;
 			/* XXX sqlite3_errmsg() will return "not an error" */
 			break;
@@ -77,4 +76,47 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 	else
 		*result=stmt;
 	return ret;
+}
+
+int query_next(sqlite3_stmt *stmt)
+{
+	int ret;
+
+	ret=sqlite3_step(stmt);
+	return (ret == SQLITE_DONE) ? SQLITE_OK : ret;
+}
+
+void query_row(sqlite3_stmt *stmt, char *fmt, ...)
+{
+	va_list ap;
+	int i=0;
+
+	va_start(ap, fmt);
+	for (; *fmt; fmt++) {
+		switch (*fmt) {
+		case 'd':
+			*va_arg(ap, int *)=sqlite3_column_int(stmt, i++);
+			break;
+		case 'f':
+			*va_arg(ap, double *)=sqlite3_column_double(stmt, i++);
+			break;
+		case 's':
+		case 'S':
+			*va_arg(ap, const unsigned char **)=
+						sqlite3_column_text(stmt, i);
+			if (*fmt == 'S')
+				*va_arg(ap, int *)=sqlite3_column_bytes(stmt,
+							i);
+			i++;
+			break;
+		case 'b':
+			*va_arg(ap, const void **)=sqlite3_column_blob(stmt, i);
+			*va_arg(ap, int *)=sqlite3_column_bytes(stmt, i++);
+			break;
+		default:
+			pk_log(LOG_ERROR, "Unknown format specifier %c", *fmt);
+			break;
+		}
+	}
+	va_end(ap);
 }

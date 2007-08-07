@@ -144,6 +144,8 @@ pk_err_t transport_get(void *buf, unsigned chunk, size_t *len);
 
 /* sql.c */
 int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...);
+int query_next(sqlite3_stmt *stmt);
+void query_row(sqlite3_stmt *stmt, char *fmt, ...);
 void query_free(sqlite3_stmt *stmt);
 
 /* util.c */
