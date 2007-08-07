@@ -125,6 +125,7 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 			pk_log(LOG_ERROR, "Unknown crypto suite %s", value);
 			return PK_INVALID;
 		}
+		state.hashlen=crypto_hashlen(state.crypto);
 		break;
 	case PC_COMPRESS:
 		state.required_compress=(1 << COMP_NONE);

@@ -81,6 +81,19 @@ enum compresstype parse_compress(char *desc)
 	return COMP_UNKNOWN;
 }
 
+unsigned crypto_hashlen(enum cryptotype type)
+{
+	switch (type) {
+	case CRY_AES_SHA1:
+		return 20;
+	case CRY_BLOWFISH_SHA1:
+		return 20;
+	case CRY_UNKNOWN:
+		break;
+	}
+	return 0;
+}
+
 pk_err_t read_file(const char *path, char *buf, int *bufsize)
 {
 	int fd;

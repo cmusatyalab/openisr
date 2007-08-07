@@ -104,6 +104,7 @@ struct pk_state {
 	unsigned chunks;
 	unsigned chunksize;
 	unsigned chunks_per_dir;
+	unsigned hashlen;
 	unsigned offset;
 	char uuid[UUID_LEN_BIN];
 
@@ -155,6 +156,7 @@ int at_eof(int fd);
 pk_err_t parseuint(unsigned *out, char *in, int base);
 enum cryptotype parse_crypto(char *desc);
 enum compresstype parse_compress(char *desc);
+unsigned crypto_hashlen(enum cryptotype type);
 pk_err_t read_file(const char *path, char *buf, int *bufsize);
 pk_err_t read_sysfs_file(const char *path, char *buf, int bufsize);
 char *pk_strerror(pk_err_t err);
