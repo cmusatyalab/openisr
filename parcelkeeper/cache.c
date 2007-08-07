@@ -119,7 +119,7 @@ static pk_err_t open_cache_file(long page_size)
 static pk_err_t attach_cache_index(void)
 {
 	if (query(NULL, state.db, "ATTACH ? AS cache", "S",
-				config.cache_index) != SQLITE_DONE) {
+				config.cache_index)) {
 		pk_log(LOG_ERROR, "Couldn't attach cache index: %s",
 					sqlite3_errmsg(state.db));
 		return PK_IOERR;
@@ -131,15 +131,13 @@ static pk_err_t create_cache_index(void)
 {
 	if (query(NULL, state.db, "CREATE TABLE cache.chunks ("
 				"chunk INTEGER PRIMARY KEY NOT NULL, "
-				"length INTEGER NOT NULL)", NULL)
-				!= SQLITE_DONE) {
+				"length INTEGER NOT NULL)", NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create cache index: %s",
 					sqlite3_errmsg(state.db));
 		return PK_IOERR;
 	}
 	if (query(NULL, state.db, "PRAGMA cache.user_version = "
-				stringify(CA_INDEX_VERSION), NULL)
-				!= SQLITE_DONE) {
+				stringify(CA_INDEX_VERSION), NULL)) {
 		pk_log(LOG_ERROR, "Couldn't set cache index version: %s",
 					sqlite3_errmsg(state.db));
 		return PK_IOERR;
@@ -150,21 +148,21 @@ static pk_err_t create_cache_index(void)
 static pk_err_t verify_cache_index(void)
 {
 	sqlite3_stmt *stmt;
-	int ret;
+	int found;
 
-	ret=query(&stmt, state.db, "PRAGMA cache.user_version", NULL);
-	if (ret != SQLITE_ROW) {
-		free_query(stmt);
+	if (query(&stmt, state.db, "PRAGMA cache.user_version", NULL) !=
+				SQLITE_ROW) {
+		query_free(stmt);  /* in case the query produced no rows */
 		pk_log(LOG_ERROR, "Couldn't query cache index version: %s",
 					sqlite3_errmsg(state.db));
 		return PK_IOERR;
 	}
-	ret=sqlite3_column_int(stmt, 0);
-	free_query(stmt);
-	if (ret != CA_INDEX_VERSION) {
+	found=sqlite3_column_int(stmt, 0);
+	query_free(stmt);
+	if (found != CA_INDEX_VERSION) {
 		pk_log(LOG_ERROR, "Invalid version reading cache index: "
 					"expected %d, found %d",
-					CA_INDEX_VERSION, ret);
+					CA_INDEX_VERSION, found);
 		return PK_BADFORMAT;
 	}
 	return PK_SUCCESS;

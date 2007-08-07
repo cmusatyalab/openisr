@@ -13,7 +13,7 @@
 #include <sqlite3.h>
 #include "defs.h"
 
-void free_query(sqlite3_stmt *stmt)
+void query_free(sqlite3_stmt *stmt)
 {
 	if (stmt == NULL)
 		return;
@@ -27,14 +27,11 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 	int i=1;
 	int ret;
 
-	ret=sqlite3_prepare(db, query, -1, &stmt, NULL);
-	if (ret) {
-		if (result != NULL)
-			*result=NULL;
-		return ret;
-	}
 	if (result != NULL)
-		*result=stmt;
+		*result=NULL;
+	ret=sqlite3_prepare(db, query, -1, &stmt, NULL);
+	if (ret)
+		return ret;
 	va_start(ap, fmt);
 	for (; fmt != NULL && *fmt; fmt++) {
 		switch (*fmt) {
@@ -66,11 +63,18 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 			break;
 		}
 		if (ret)
-			return ret;
+			break;
 	}
 	va_end(ap);
-	ret=sqlite3_step(stmt);
-	if (result == NULL)
-		free_query(stmt);
+	if (ret == SQLITE_OK)
+		ret=sqlite3_step(stmt);
+	/* Collapse DONE into OK, since we don't want everyone to have to test
+	   for a gratuitously nonzero error code */
+	if (ret == SQLITE_DONE)
+		ret=SQLITE_OK;
+	if ((ret != SQLITE_OK && ret != SQLITE_ROW) || result == NULL)
+		query_free(stmt);  /* XXX may clobber errstring */
+	else
+		*result=stmt;
 	return ret;
 }

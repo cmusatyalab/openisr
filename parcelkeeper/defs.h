@@ -144,7 +144,7 @@ pk_err_t transport_get(void *buf, unsigned chunk, size_t *len);
 
 /* sql.c */
 int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...);
-void free_query(sqlite3_stmt *stmt);
+void query_free(sqlite3_stmt *stmt);
 
 /* util.c */
 int is_dir(const char *path);
