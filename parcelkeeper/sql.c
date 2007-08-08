@@ -32,6 +32,7 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 	int i=1;
 	int ret;
 	int found_unknown=0;
+	void *blob;
 
 	if (result != NULL)
 		*result=NULL;
@@ -58,9 +59,9 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 			break;
 		case 'b':
 		case 'B':
-			ret=sqlite3_bind_blob(stmt, i++, va_arg(ap, void *),
-						va_arg(ap, int), *fmt == 'b'
-						? SQLITE_TRANSIENT
+			blob=va_arg(ap, void *);
+			ret=sqlite3_bind_blob(stmt, i++, blob, va_arg(ap, int),
+						*fmt == 'b' ? SQLITE_TRANSIENT
 						: SQLITE_STATIC);
 			break;
 		default:
