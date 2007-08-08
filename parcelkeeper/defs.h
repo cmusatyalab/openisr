@@ -51,6 +51,16 @@ enum compresstype {
 	COMP_LZF=3
 };
 
+/* pk_getopt() requires this to be a bitmask */
+enum mode {
+	MODE_RUN      = 0x01,
+	MODE_UPLOAD   = 0x02,
+	MODE_EXAMINE  = 0x04,
+	MODE_VALIDATE = 0x08,
+	MODE_HELP     = 0x10,
+	MODE_VERSION  = 0x20,
+};
+
 struct pk_connection;
 
 struct pk_config {
@@ -123,7 +133,7 @@ extern const char *rcs_revision;
 #define stringify(str) _stringify(str)
 
 /* cmdline.c */
-void parse_cmdline(int argc, char **argv);
+enum mode parse_cmdline(int argc, char **argv);
 
 /* log.c */
 void log_start(void);

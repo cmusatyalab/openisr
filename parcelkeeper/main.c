@@ -21,12 +21,13 @@ struct pk_state state;
 /* XXX lockfile */
 int main(int argc, char **argv)
 {
+	enum mode mode;
 	int ret=1;
 	int have_cache=0;
 	int have_transport=0;
 	int have_nexus=0;
 
-	parse_cmdline(argc, argv);
+	mode=parse_cmdline(argc, argv);
 	log_start();
 	if (parse_parcel_cfg())
 		goto shutdown;
@@ -36,18 +37,26 @@ int main(int argc, char **argv)
 	else
 		have_cache=1;
 
-	if (transport_init())
-		goto shutdown;
-	else
-		have_transport=1;
+	if (mode == MODE_RUN) {
+		if (transport_init())
+			goto shutdown;
+		else
+			have_transport=1;
 
-	if (nexus_init())
-		goto shutdown;
-	else
-		have_nexus=1;
+		if (nexus_init())
+			goto shutdown;
+		else
+			have_nexus=1;
+	}
 
 	ret=0;
-	nexus_run();
+	switch (mode) {
+	case MODE_RUN:
+		nexus_run();
+		break;
+	default:
+		printf("eek\n");  /* XXX */
+	}
 
 shutdown:
 	if (have_nexus)

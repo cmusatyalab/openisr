@@ -14,19 +14,9 @@
 #include <stdlib.h>
 #include "defs.h"
 
-/* pk_getopt() requires this to be a bitmask */
-enum mode_type {
-	MODE_RUN      = 0x01,
-	MODE_UPLOAD   = 0x02,
-	MODE_EXAMINE  = 0x04,
-	MODE_VALIDATE = 0x08,
-	MODE_HELP     = 0x10,
-	MODE_VERSION  = 0x20,
-};
-
 struct pk_mode {
 	char *name;
-	enum mode_type type;
+	enum mode type;
 	char *desc;
 };
 
@@ -232,7 +222,7 @@ static char *filepath(char *dir, char *file, int must_exist)
 	return ret;
 }
 
-void parse_cmdline(int argc, char **argv)
+enum mode parse_cmdline(int argc, char **argv)
 {
 	struct pk_mode *helpmode=NULL;
 	enum option opt;
@@ -312,4 +302,5 @@ void parse_cmdline(int argc, char **argv)
 					rcs_revision);
 		exit(0);
 	}
+	return curmode->type;
 }
