@@ -63,7 +63,8 @@ static pk_err_t create_cache_file(long page_size)
 		pk_log(LOG_ERROR, "Couldn't write cache file header");
 		return PK_IOERR;
 	}
-	if (ftruncate(fd, state.chunks * state.chunksize + state.offset)) {
+	if (ftruncate(fd, (off_t)state.chunks * state.chunksize
+				+ state.offset)) {
 		pk_log(LOG_ERROR, "couldn't extend cache file");
 		return PK_IOERR;
 	}
