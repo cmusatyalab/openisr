@@ -278,6 +278,8 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 {
 	sqlite3_stmt *stmt;
 	int ret;
+	void *rowtag;
+	void *rowkey;
 	int taglen;
 	int keylen;
 	pk_err_t err;
@@ -306,15 +308,18 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 		pk_log(LOG_ERROR, "Couldn't query keyring");
 		return PK_IOERR;
 	}
-	query_row(stmt, "bbd", tag, &taglen, key, &keylen, compress);
-	query_free(stmt);
-
+	query_row(stmt, "bbd", &rowtag, &taglen, &rowkey, &keylen, compress);
 	if (taglen != state.hashlen || keylen != state.hashlen) {
+		query_free(stmt);
 		pk_log(LOG_ERROR, "Invalid hash length for chunk %u: "
 					"expected %d, tag %d, key %d",
 					chunk, state.hashlen, taglen, keylen);
 		return PK_INVALID;
 	}
+	memcpy(tag, rowtag, state.hashlen);
+	memcpy(key, rowkey, state.hashlen);
+	query_free(stmt);
+
 	if (*length > state.chunksize) {
 		pk_log(LOG_ERROR, "Invalid chunk length for chunk %u: %u",
 					chunk, *length);

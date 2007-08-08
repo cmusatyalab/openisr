@@ -142,6 +142,11 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 			enum compresstype compress, unsigned length);
 
+/* nexus.c */
+pk_err_t nexus_init(void);
+void nexus_run(void);
+void nexus_shutdown(void);
+
 /* transport.c */
 pk_err_t transport_init(void);
 void transport_shutdown(void);
