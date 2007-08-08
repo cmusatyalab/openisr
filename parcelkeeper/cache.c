@@ -124,16 +124,6 @@ static pk_err_t open_cache_file(long page_size)
 	return PK_SUCCESS;
 }
 
-static pk_err_t attach_cache_index(void)
-{
-	if (query(NULL, state.db, "ATTACH ? AS cache", "S",
-				config.cache_index)) {
-		pk_log(LOG_ERROR, "Couldn't attach cache index");
-		return PK_IOERR;
-	}
-	return PK_SUCCESS;
-}
-
 static pk_err_t create_cache_index(void)
 {
 	if (query(NULL, state.db, "CREATE TABLE cache.chunks ("
@@ -198,7 +188,7 @@ pk_err_t cache_init(void)
 		goto bad;
 	}
 	if (is_file(config.cache_file) && is_file(config.cache_index)) {
-		ret=attach_cache_index();
+		ret=attach(state.db, "cache", config.cache_index);
 		if (ret)
 			goto bad;
 		ret=open_cache_file(page_size);
@@ -209,7 +199,7 @@ pk_err_t cache_init(void)
 			goto bad;
 	} else if (!is_file(config.cache_file) &&
 				!is_file(config.cache_index)) {
-		ret=attach_cache_index();
+		ret=attach(state.db, "cache", config.cache_index);
 		if (ret)
 			goto bad;
 		ret=create_cache_file(page_size);

@@ -167,6 +167,7 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...);
 int query_next(sqlite3_stmt *stmt);
 void query_row(sqlite3_stmt *stmt, char *fmt, ...);
 void query_free(sqlite3_stmt *stmt);
+pk_err_t attach(sqlite3 *db, const char *handle, const char *file);
 
 /* util.c */
 int is_dir(const char *path);

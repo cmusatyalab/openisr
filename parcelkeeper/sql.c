@@ -137,3 +137,12 @@ void query_row(sqlite3_stmt *stmt, char *fmt, ...)
 	}
 	va_end(ap);
 }
+
+pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
+{
+	if (query(NULL, db, "ATTACH ? AS ?", "ss", file, handle)) {
+		pk_log(LOG_ERROR, "Couldn't attach %s", file);
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
