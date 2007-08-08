@@ -161,7 +161,8 @@ static void handle_row(sqlite3_stmt *stmt)
 	for (i=0; i<count; i++) {
 		if (i)
 			fprintf(tmp, "|");
-		if (sqlite3_column_type(stmt, i) == SQLITE_BLOB) {
+		switch (sqlite3_column_type(stmt, i)) {
+		case SQLITE_BLOB:
 			out=sqlite3_column_blob(stmt, i);
 			len=sqlite3_column_bytes(stmt, i);
 			buf=malloc(2 * len + 1);
@@ -170,7 +171,11 @@ static void handle_row(sqlite3_stmt *stmt)
 			bin2hex(out, buf, len);
 			fprintf(tmp, "%s", buf);
 			free(buf);
-		} else {
+			break;
+		case SQLITE_NULL:
+			fprintf(tmp, "<null>");
+			break;
+		default:
 			fprintf(tmp, "%s", sqlite3_column_text(stmt, i));
 		}
 	}
