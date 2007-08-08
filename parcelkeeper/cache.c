@@ -343,9 +343,10 @@ pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 		return PK_IOERR;
 	}
 	/* XXX transient? */
-	if (query(NULL, state.db, "UPDATE keys SET tag = ?, key = ? "
-				"WHERE chunk == ?", "bbd", tag, state.hashlen,
-				key, state.hashlen, chunk)) {
+	if (query(NULL, state.db, "UPDATE keys SET tag = ?, key = ?, "
+				"compression = ? WHERE chunk == ?", "bbdd",
+				tag, state.hashlen, key, state.hashlen,
+				compress, chunk)) {
 		pk_log(LOG_ERROR, "Couldn't update keyring");
 		return PK_IOERR;
 	}
