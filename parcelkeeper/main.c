@@ -21,19 +21,41 @@ struct pk_state state;
 /* XXX lockfile */
 int main(int argc, char **argv)
 {
+	int ret=1;
+	int have_cache=0;
+	int have_transport=0;
+	int have_nexus=0;
+
 	parse_cmdline(argc, argv);
 	log_start();
-	parse_parcel_cfg();
-	if (cache_init() == PK_SUCCESS) {
-		if (transport_init() == PK_SUCCESS) {
-			if (nexus_init() == PK_SUCCESS) {
-				nexus_run();
-				nexus_shutdown();
-			}
-			transport_shutdown();
-		}
+	if (parse_parcel_cfg())
+		goto shutdown;
+
+	if (cache_init())
+		goto shutdown;
+	else
+		have_cache=1;
+
+	if (transport_init())
+		goto shutdown;
+	else
+		have_transport=1;
+
+	if (nexus_init())
+		goto shutdown;
+	else
+		have_nexus=1;
+
+	ret=0;
+	nexus_run();
+
+shutdown:
+	if (have_nexus)
+		nexus_shutdown();
+	if (have_transport)
+		transport_shutdown();
+	if (have_cache)
 		cache_shutdown();
-	}
 	log_shutdown();
-	return 0;
+	return ret;
 }
