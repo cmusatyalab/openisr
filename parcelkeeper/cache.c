@@ -450,46 +450,100 @@ int copy_for_upload(void)
 				modified_chunks, modified_bytes);
 	return 0;
 }
+#endif
 
+/* XXX should also validate keyring: one key for every chunk; valid
+       compression */
 int validate_cache(void)
 {
+	sqlite3_stmt *stmt;
 	void *buf;
-	unsigned chunk_num;
-	char tag[HASH_LEN];
-	struct chunk_data *cdp;
+	void *tag;
+	char calctag[state.hashlen];
+	unsigned chunk;
+	unsigned taglen;
+	unsigned chunklen;
 	unsigned processed=0;
+	unsigned valid;
+	int ret=0;
+	int sret;
 
-	pk_log(LOG_BASIC, "Checking cache consistency");
+	pk_log(LOG_INFO, "Checking cache consistency");
 	printf("Checking local cache for internal consistency...\n");
-	buf=malloc(state.chunksize_bytes);
-	if (buf == NULL) {
-		pk_log(LOG_ERRORS, "malloc failed");
+
+	/* XXX transaction? */
+	if (query(&stmt, state.db, "SELECT count(*) FROM cache.chunks", NULL)
+				!= SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't enumerate valid chunks");
 		return 1;
 	}
-	foreach_chunk(chunk_num, cdp) {
-		if (!cdp_present(cdp)) {
+	query_row(stmt, "d", &valid);
+	query_free(stmt);
+
+	buf=malloc(state.chunksize);
+	if (buf == NULL) {
+		pk_log(LOG_ERROR, "malloc failed");
+		return 1;
+	}
+
+	for (sret=query(&stmt, state.db, "SELECT cache.chunks.chunk, "
+				"cache.chunks.length, keys.tag FROM "
+				"cache.chunks LEFT JOIN keys ON "
+				"cache.chunks.chunk == keys.chunk", NULL);
+				sret == SQLITE_ROW; sret=query_next(stmt)) {
+		query_row(stmt, "ddb", &chunk, &chunklen, &tag, &taglen);
+		print_progress(++processed, valid);
+
+		if (chunk > state.chunks) {
+			pk_log(LOG_ERROR, "Found chunk %u greater than "
+						"parcel size %u", chunk,
+						state.chunks);
+			ret=1;
 			continue;
 		}
-		if (pread(state.cachefile_fd, buf, cdp->length,
-				get_image_offset_from_chunk_num(chunk_num))
-				!= cdp->length) {
-			pk_log(LOG_ERRORS, "Couldn't read chunk from "
-						"local cache: %u", chunk_num);
-			return 1;
+		if (chunklen > state.chunksize) {
+			pk_log(LOG_ERROR, "Chunk %u: absurd size %u",
+						chunk, chunklen);
+			ret=1;
+			continue;
 		}
-		digest(buf, cdp->length, tag);
-		if (check_tag(cdp, tag) == PK_TAGFAIL) {
-			pk_log(LOG_ERRORS, "Chunk %u: tag check failure",
-						chunk_num);
-			print_tag_check_error(cdp->tag, tag);
+		if (tag == NULL) {
+			pk_log(LOG_ERROR, "Found valid chunk %u with no "
+						"keyring entry", chunk);
+			ret=1;
+			continue;
 		}
-		print_progress(++processed, state.valid_chunks);
+		if (taglen != state.hashlen) {
+			pk_log(LOG_ERROR, "Chunk %u: expected tag length "
+						"%u, found %u", chunk,
+						state.hashlen, taglen);
+			ret=1;
+			continue;
+		}
+
+		if (pread(state.cache_fd, buf, chunklen,
+					chunk_to_offset(chunk)) != chunklen) {
+			pk_log(LOG_ERROR, "Chunk %u: couldn't read from "
+						"local cache", chunk);
+			ret=1;
+			continue;
+		}
+		digest(calctag, buf, chunklen);
+		if (memcmp(tag, calctag, taglen)) {
+			pk_log(LOG_ERROR, "Chunk %u: tag check failure",
+						chunk);
+			log_tag_mismatch(tag, calctag);
+		}
 	}
+	if (sret != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Error querying cache index");
+		ret=1;
+	}
+	query_free(stmt);
 	free(buf);
-	printf("\n");
-	return 0;
+	return ret;
 }
-#endif
 
 int examine_cache(void)
 {

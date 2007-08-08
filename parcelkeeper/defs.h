@@ -151,6 +151,7 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 			enum compresstype *compress, unsigned *length);
 pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 			enum compresstype compress, unsigned length);
+int validate_cache(void);
 int examine_cache(void);
 
 /* nexus.c */
@@ -189,5 +190,8 @@ void release_lock(void);
 pk_err_t create_pidfile(void);
 void remove_pidfile(void);
 char *form_chunk_path(char *prefix, unsigned chunk);
+pk_err_t digest(void *out, const void *in, unsigned len);
+char *format_tag(void *tag);
+void log_tag_mismatch(void *expected, void *found);
 
 #endif

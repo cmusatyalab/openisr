@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <openssl/evp.h>
 #include "defs.h"
 
 int is_dir(const char *path)
@@ -187,10 +188,10 @@ void print_progress(unsigned chunks, unsigned maxchunks)
 		percent=chunks*100/maxchunks;
 	else
 		percent=0;
-	printf("  %u%% (%u/%u MB)\n", percent, chunks/chunks_per_mb,
+	/* Note carriage return rather than newline */
+	printf("  %u%% (%u/%u MB)\r", percent, chunks/chunks_per_mb,
 				maxchunks/chunks_per_mb);
-	/* Move cursor to previous line */
-	printf("\x1b[A");
+	fflush(stdout);
 }
 
 /* Create lock file.  flock locks don't work over NFS; byterange locks don't
@@ -299,4 +300,67 @@ char *form_chunk_path(char *prefix, unsigned chunk)
 	if (asprintf(&ret, "%s/%.4u/%.4u", prefix, dir, file) == -1)
 		return NULL;
 	return ret;
+}
+
+pk_err_t digest(void *out, const void *in, unsigned len)
+{
+	EVP_MD_CTX ctx;
+	const EVP_MD *alg;
+
+	switch (state.crypto) {
+	case CRY_BLOWFISH_SHA1:
+	case CRY_AES_SHA1:
+		alg=EVP_sha1();
+		break;
+	case CRY_UNKNOWN:
+		alg=EVP_md_null();
+		break;
+	}
+
+	if (!EVP_DigestInit(&ctx, alg)) {
+		pk_log(LOG_ERROR, "Couldn't initialize digest algorithm");
+		return PK_CALLFAIL;
+	}
+	if (!EVP_DigestUpdate(&ctx, in, len)) {
+		pk_log(LOG_ERROR, "Couldn't run digest algorithm");
+		EVP_MD_CTX_cleanup(&ctx);
+		return PK_CALLFAIL;
+	}
+	if (!EVP_DigestFinal(&ctx, out, NULL)) {
+		pk_log(LOG_ERROR, "Couldn't finalize digest algorithm");
+		return PK_CALLFAIL;
+	}
+	return PK_SUCCESS;
+}
+
+char *format_tag(void *tag)
+{
+	char *buf;
+	unsigned char *tbuf=tag;
+	int i;
+
+	buf=malloc(2 * state.hashlen + 1);
+	if (buf == NULL)
+		return NULL;
+	for (i=0; i<state.hashlen; i++)
+		sprintf(buf + 2 * i, "%.2x", tbuf[i]);
+	return buf;
+}
+
+void log_tag_mismatch(void *expected, void *found)
+{
+	char *fmt_expected;
+	char *fmt_found;
+
+	fmt_expected=format_tag(expected);
+	fmt_found=format_tag(found);
+	if (fmt_expected != NULL && fmt_found != NULL)
+		pk_log(LOG_ERROR, "Expected %s, found %s", fmt_expected,
+					fmt_found);
+	else
+		pk_log(LOG_ERROR, "malloc failure");
+	if (fmt_expected)
+		free(fmt_expected);
+	if (fmt_found)
+		free(fmt_found);
 }
