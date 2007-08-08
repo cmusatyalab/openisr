@@ -22,12 +22,37 @@ struct pk_state state;
 int main(int argc, char **argv)
 {
 	enum mode mode;
-	int ret=1;
+	int completion_fd=-1;
+	char ret=1;
 	int have_cache=0;
 	int have_transport=0;
 	int have_nexus=0;
+	int have_lock=0;
+	pk_err_t err;
 
 	mode=parse_cmdline(argc, argv);
+	/* Trivial modes (usage, version) have already been handled by
+	   parse_cmdline() */
+
+	/* We can't take the lock until we fork (if we're going to do that) */
+	if (mode == MODE_RUN && !config.foreground)
+		if (fork_and_wait(&completion_fd))
+			goto shutdown;
+
+	/* Take the lock early, so that we don't even write to the logfile
+	   without holding it */
+	if (mode != MODE_EXAMINE) {
+		err=acquire_lock();
+		if (err) {
+			pk_log(LOG_ERROR, "Couldn't acquire parcel lock: %s",
+						pk_strerror(err));
+			goto shutdown;
+		} else {
+			have_lock=1;
+		}
+	}
+
+	/* XXX inhibit logging in examine mode? */
 	log_start();
 	if (parse_parcel_cfg())
 		goto shutdown;
@@ -38,6 +63,11 @@ int main(int argc, char **argv)
 		have_cache=1;
 
 	if (mode == MODE_RUN) {
+		/* Now that we have the lock, it's safe to create the pidfile */
+		if (!config.foreground)
+			if (create_pidfile())
+				goto shutdown;
+
 		if (transport_init())
 			goto shutdown;
 		else
@@ -50,6 +80,12 @@ int main(int argc, char **argv)
 	}
 
 	ret=0;
+	/* Release our parent, if we've forked */
+	if (completion_fd != -1) {
+		close(completion_fd);
+		completion_fd=-1;
+	}
+
 	switch (mode) {
 	case MODE_RUN:
 		nexus_run();
@@ -65,6 +101,12 @@ shutdown:
 		transport_shutdown();
 	if (have_cache)
 		cache_shutdown();
-	log_shutdown();
+	log_shutdown();  /* safe to call unconditionally */
+	if (have_lock) {
+		remove_pidfile();  /* safe if lock held */
+		release_lock();
+	}
+	if (completion_fd != -1)
+		write(completion_fd, &ret, 1);
 	return ret;
 }

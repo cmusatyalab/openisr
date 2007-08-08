@@ -29,6 +29,7 @@ static void curtime(char *buf, unsigned buflen)
 	strftime(buf, buflen, fmt, &tm);
 }
 
+/* This must be safe to call before log_start() has been called */
 void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
 {
 	va_list ap;
@@ -70,6 +71,7 @@ void log_start(void)
 	}
 }
 
+/* This may be called even if log_start() hasn't been */
 void log_shutdown(void)
 {
 	if (state.log_fp != NULL) {
