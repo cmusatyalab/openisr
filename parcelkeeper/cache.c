@@ -35,6 +35,11 @@ struct ca_header {
 	uint8_t reserved_2[491];
 };
 
+static off64_t chunk_to_offset(unsigned chunk)
+{
+	return (off64_t)state.chunksize * chunk + state.offset;
+}
+
 static pk_err_t create_cache_file(long page_size)
 {
 	struct ca_header hdr = {0};
@@ -63,8 +68,7 @@ static pk_err_t create_cache_file(long page_size)
 		pk_log(LOG_ERROR, "Couldn't write cache file header");
 		return PK_IOERR;
 	}
-	if (ftruncate(fd, (off_t)state.chunks * state.chunksize
-				+ state.offset)) {
+	if (ftruncate(fd, chunk_to_offset(state.chunks))) {
 		pk_log(LOG_ERROR, "couldn't extend cache file");
 		return PK_IOERR;
 	}
@@ -254,8 +258,7 @@ static pk_err_t fetch_chunk(unsigned chunk, unsigned *length)
 	}
 	/* XXX check tag */
 
-	count=pwrite(state.loopdev_fd, buf, len, chunk * state.chunksize +
-				state.offset);
+	count=pwrite(state.loopdev_fd, buf, len, chunk_to_offset(chunk));
 	free(buf);
 	if (count != len) {
 		pk_log(LOG_ERROR, "Couldn't write chunk %u to backing store",
