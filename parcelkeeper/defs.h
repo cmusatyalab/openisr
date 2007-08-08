@@ -137,6 +137,10 @@ pk_err_t parse_parcel_cfg(void);
 /* cache.c */
 pk_err_t cache_init(void);
 void cache_shutdown(void);
+pk_err_t cache_get(unsigned chunk, void *tag, void *key,
+			enum compresstype *compress, unsigned *length);
+pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
+			enum compresstype compress, unsigned length);
 
 /* transport.c */
 pk_err_t transport_init(void);

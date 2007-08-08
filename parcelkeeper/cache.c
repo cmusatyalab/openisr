@@ -13,11 +13,14 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
 #include <arpa/inet.h>
 #include "defs.h"
 
+#define TRANSPORT_TRIES 5
+#define TRANSPORT_RETRY_DELAY 5
 #define CA_MAGIC 0x51528038
 #define CA_VERSION 1
 #define CA_INDEX_VERSION 1
@@ -219,6 +222,125 @@ pk_err_t cache_init(void)
 bad:
 	cache_shutdown();
 	return ret;
+}
+
+static pk_err_t fetch_chunk(unsigned chunk, unsigned *length)
+{
+	void *buf=malloc(state.chunksize);
+	size_t len;
+	int i;
+	pk_err_t err;
+	ssize_t count;
+
+	if (buf == NULL) {
+		pk_log(LOG_ERROR, "malloc failure");
+		return PK_NOMEM;
+	}
+
+	for (i=0; i<TRANSPORT_TRIES; i++) {
+		err=transport_get(buf, chunk, &len);
+		if (err != PK_NETFAIL)
+			break;
+		pk_log(LOG_ERROR, "Fetching chunk %u failed; retrying in %d "
+					"seconds", chunk,
+					TRANSPORT_RETRY_DELAY);
+		sleep(TRANSPORT_RETRY_DELAY);
+	}
+	if (err != PK_SUCCESS) {
+		pk_log(LOG_ERROR, "Couldn't fetch chunk %u", chunk);
+		free(buf);
+		return err;
+	}
+	/* XXX check tag */
+
+	count=pwrite(state.loopdev_fd, buf, len, chunk * state.chunksize +
+				state.offset);
+	free(buf);
+	if (count != len) {
+		pk_log(LOG_ERROR, "Couldn't write chunk %u to backing store",
+					chunk);
+		return PK_IOERR;
+	}
+
+	if (query(NULL, state.db, "INSERT INTO cache.chunks (chunk, length) "
+				"VALUES(?, ?)", "dd", chunk, (int)len)) {
+		pk_log(LOG_ERROR, "Couldn't insert chunk %u into cache index",
+					chunk);
+		return PK_IOERR;
+	}
+	*length=len;
+	return PK_SUCCESS;
+}
+
+pk_err_t cache_get(unsigned chunk, void *tag, void *key,
+			enum compresstype *compress, unsigned *length)
+{
+	sqlite3_stmt *stmt;
+	int ret;
+	int taglen;
+	int keylen;
+	pk_err_t err;
+
+	/* XXX transaction */
+	ret=query(&stmt, state.db, "SELECT length FROM cache.chunks "
+				"WHERE chunk == ?", "d", chunk);
+	if (ret == SQLITE_OK) {
+		/* Chunk is not in the local cache */
+		query_free(stmt);
+		err=fetch_chunk(chunk, length);
+		if (err)
+			return err;
+	} else if (ret == SQLITE_ROW) {
+		query_row(stmt, "d", length);
+		query_free(stmt);
+	} else {
+		pk_log(LOG_ERROR, "Couldn't query cache index");
+		return PK_IOERR;
+	}
+
+	if (query(&stmt, state.db, "SELECT tag, key, compression FROM keys "
+				"WHERE chunk == ?", "d", chunk)
+				!= SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't query keyring");
+		return PK_IOERR;
+	}
+	query_row(stmt, "bbd", tag, &taglen, key, &keylen, compress);
+	query_free(stmt);
+
+	if (taglen != state.hashlen || keylen != state.hashlen) {
+		pk_log(LOG_ERROR, "Invalid hash length for chunk %u: "
+					"expected %d, tag %d, key %d",
+					chunk, state.hashlen, taglen, keylen);
+		return PK_INVALID;
+	}
+	if (*length > state.chunksize) {
+		pk_log(LOG_ERROR, "Invalid chunk length for chunk %u: %u",
+					chunk, *length);
+		return PK_INVALID;
+	}
+	/* XXX validate compresstype */
+	return PK_SUCCESS;
+}
+
+pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
+			enum compresstype compress, unsigned length)
+{
+	/* XXX transaction */
+	if (query(NULL, state.db, "INSERT OR REPLACE INTO cache.chunks "
+				"(chunk, length) VALUES(?, ?)", "dd",
+				chunk, length)) {
+		pk_log(LOG_ERROR, "Couldn't update cache index");
+		return PK_IOERR;
+	}
+	/* XXX transient? */
+	if (query(NULL, state.db, "UPDATE keys SET tag = ?, key = ? "
+				"WHERE chunk == ?", "bbd", tag, state.hashlen,
+				key, state.hashlen, chunk)) {
+		pk_log(LOG_ERROR, "Couldn't update keyring");
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
 }
 
 #if 0

@@ -18,6 +18,7 @@ struct pk_config config = {
 };
 struct pk_state state;
 
+/* XXX lockfile */
 int main(int argc, char **argv)
 {
 	int ret;

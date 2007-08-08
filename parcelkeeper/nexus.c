@@ -352,6 +352,9 @@ static int request_is_valid(struct nexus_message *req)
 static int process_message(struct nexus_message *request,
 			struct nexus_message *reply)
 {
+	pk_err_t err;
+	enum compresstype compress;
+
 	if (!request_is_valid(request)) {
 		if (request->type == NEXUS_MSGTYPE_GET_META) {
 			reply->type=NEXUS_MSGTYPE_META_HARDERR;
@@ -363,10 +366,20 @@ static int process_message(struct nexus_message *request,
 
 	switch (request->type) {
 	case NEXUS_MSGTYPE_GET_META:
-		/* XXX */
+		reply->chunk=request->chunk;
+		err=cache_get(request->chunk, reply->tag, reply->key,
+					&compress, &reply->length);
+		reply->compression=compress_to_nexus(compress);
+		if (err || reply->compression == NEXUS_NR_COMPRESS)
+			reply->type=NEXUS_MSGTYPE_META_HARDERR;
+		else
+			reply->type=NEXUS_MSGTYPE_SET_META;
 		return 1;
 	case NEXUS_MSGTYPE_UPDATE_META:
-		/* XXX */
+		/* XXX ignores errors */
+		cache_update(request->chunk, request->tag, request->key,
+					nexus_to_compress(request->compression),
+					request->length);
 		break;
 	}
 	return 0;
