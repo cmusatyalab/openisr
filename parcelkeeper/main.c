@@ -86,12 +86,10 @@ int main(int argc, char **argv)
 		completion_fd=-1;
 	}
 
-	switch (mode) {
-	case MODE_RUN:
+	if (mode == MODE_RUN) {
 		nexus_run();
-		break;
-	default:
-		printf("eek\n");  /* XXX */
+	} else if (mode == MODE_EXAMINE) {
+		ret=examine_cache();
 	}
 
 shutdown:

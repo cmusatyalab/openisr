@@ -489,34 +489,50 @@ int validate_cache(void)
 	printf("\n");
 	return 0;
 }
+#endif
 
 int examine_cache(void)
 {
+	sqlite3_stmt *stmt;
+	unsigned validchunks;
 	unsigned dirtychunks;
 	unsigned max_mb;
 	unsigned valid_mb;
 	unsigned dirty_mb;
-	unsigned valid_pct=0;
+	unsigned valid_pct;
 	unsigned dirty_pct=0;
 
-	if (update_modified_flags(&dirtychunks)) {
-		pk_log(LOG_ERRORS, "Couldn't compare keyrings");
+	if (attach(state.db, "last", config.last_keyring))
+		return 1;
+	/* XXX transaction? */
+	if (query(&stmt, state.db, "SELECT count(*) from cache.chunks", NULL)
+				!= SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't query cache index");
 		return 1;
 	}
-	max_mb=(((unsigned long long)state.numchunks) *
-				state.chunksize_bytes) >> 20;
-	valid_mb=(((unsigned long long)state.valid_chunks) *
-				state.chunksize_bytes) >> 20;
-	dirty_mb=(((unsigned long long)dirtychunks) *
-				state.chunksize_bytes) >> 20;
-	if (state.numchunks)
-		valid_pct=(100 * state.valid_chunks) / state.numchunks;
-	if (state.valid_chunks)
-		dirty_pct=(100 * dirtychunks) / state.valid_chunks;
-		printf("Local cache : %u%% populated (%u/%u MB), "
-					"%u%% modified (%u/%u MB)\n",
-					valid_pct, valid_mb, max_mb, dirty_pct,
-					dirty_mb, valid_mb);
+	query_row(stmt, "d", &validchunks);
+	query_free(stmt);
+	if (query(&stmt, state.db, "SELECT count(*) FROM main.keys "
+				"JOIN last.keys ON "
+				"main.keys.chunk == last.keys.chunk WHERE "
+				"main.keys.tag != last.keys.tag", NULL)
+				!= SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't compare keyrings");
+		return 1;
+	}
+	query_row(stmt, "d", &dirtychunks);
+	query_free(stmt);
+
+	max_mb=(((off64_t)state.chunks) * state.chunksize) >> 20;
+	valid_mb=(((off64_t)validchunks) * state.chunksize) >> 20;
+	dirty_mb=(((off64_t)dirtychunks) * state.chunksize) >> 20;
+	valid_pct=(100 * validchunks) / state.chunks;
+	if (validchunks)
+		dirty_pct=(100 * dirtychunks) / validchunks;
+	printf("Local cache : %u%% populated (%u/%u MB), %u%% modified "
+				"(%u/%u MB)\n", valid_pct, valid_mb, max_mb,
+				dirty_pct, dirty_mb, valid_mb);
 	return 0;
 }
-#endif

@@ -151,6 +151,7 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 			enum compresstype *compress, unsigned *length);
 pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 			enum compresstype compress, unsigned length);
+int examine_cache(void);
 
 /* nexus.c */
 pk_err_t nexus_init(void);
