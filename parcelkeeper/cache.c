@@ -595,7 +595,7 @@ int validate_cache(void)
 			ret=1;
 			continue;
 		}
-		if (chunklen > state.chunksize) {
+		if (chunklen > state.chunksize || chunklen == 0) {
 			pk_log(LOG_ERROR, "Chunk %u: absurd size %u",
 						chunk, chunklen);
 			ret=1;

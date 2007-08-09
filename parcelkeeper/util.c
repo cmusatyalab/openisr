@@ -97,6 +97,8 @@ unsigned crypto_hashlen(enum cryptotype type)
 
 int compress_is_valid(enum compresstype type)
 {
+	if (type < 0 || type >= 8 * sizeof(state.required_compress))
+		return 0;
 	return (state.required_compress & (1 << type));
 }
 
