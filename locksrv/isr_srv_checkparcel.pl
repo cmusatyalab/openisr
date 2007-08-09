@@ -64,7 +64,6 @@ my $totalchunks;
 my $chunksperdir;
 
 # Various temporary variables
-my $numpredchunks;
 my $numchunks;
 my $tag;
 my $dirname;
@@ -262,42 +261,23 @@ if (-e $preddir) {
     unlink($currkeyring, $predkeyring);
 
     # 
-    # Check that the number of blocks in the predecessor is the same
-    # as the number of different entries in the keyring
+    # Check that the blocks in the predecessor correspond to the differing
+    # entries in the keyring
     #
-    $numpredchunks = 0;
-    for ($i = 0; $i < $numdirs; $i++) {
-	$dirname = sprintf("%04d", $i);
-	$dirpath = "$preddir/hdk/$dirname"; 
-
-	if (opendir(DIR, $dirpath)) {
-	    @files = grep(!/^[\._]/, readdir(DIR)); # filter out "." and ".."
-	    closedir(DIR);
-	    $numpredchunks += scalar(@files);
+    print "Checking version $predver against its keyring...\n"
+    	if $verbose;
+    for ($i = 0; $i < $totalchunks; $i++) {
+	$dirnum = floor($i / $chunksperdir);
+	$filenum = $i % $chunksperdir;
+	$chunk = sprintf("%04d/%04d", $dirnum, $filenum);
+	$chunkpath = "$preddir/hdk/$chunk";
+	if (-e $chunkpath && !defined($keydiff{$i})) {
+	    print "Error: [$i] file $chunk exists, but entries are the same.\n";
+	    $errors++;
+	} elsif (! -e $chunkpath && defined($keydiff{$i})) {
+	    print "Error: [$i] file $chunk does not exist, but entries differ.\n";
+	    $errors++;
 	}
-    }
-
-    #
-    # Report the results
-    #
-    if ($numpredchunks == keys(%keydiff)) {
-	print "Success: Found $numpredchunks chunks in version $predver and " . keys(%keydiff) . " keyring differences.\n"
-	    if $verbose;
-    } else {
-	# Something is wrong. Identify the specific inconsistent blocks
-	print "Error: Found $numpredchunks chunks in version $predver and " . keys(%keydiff) . " keyring differences.\n";
-	for ($i = 0; $i < $totalchunks; $i++) {
-	    $dirnum = floor($i / $chunksperdir);
-	    $filenum = $i % $chunksperdir;
-	    $chunk = sprintf("%04d/%04d", $dirnum, $filenum);
-	    $chunkpath = "$preddir/hdk/$chunk";
-	    if (-e $chunkpath && !defined($keydiff{$i})) {
-		print "Error: [$i] file $chunk exists, but entries are the same.\n";
-	    } elsif (! -e $chunkpath && defined($keydiff{$i})) {
-		print "Error: [$i] file $chunk does not exist, but entries differ.\n";
-	    }
-	}
-	$errors++;
     }
 }
 
