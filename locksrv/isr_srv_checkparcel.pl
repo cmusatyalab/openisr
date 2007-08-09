@@ -386,7 +386,7 @@ sub usage
         print "Error: $msg\n\n";
     }
 
-    print "Usage: $progname [-hcV] -p <parcel path> -k <key> [-v <version>]\n";
+    print "Usage: $progname [-hcVs] [-u <username>] -p <parcel> -k <key> [-v <version>]\n";
     print "Options:\n";
     print "  -c           Perform content consistency check\n";
     print "  -h           Print this message\n";
