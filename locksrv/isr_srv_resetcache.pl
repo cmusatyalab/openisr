@@ -33,6 +33,8 @@ $| = 1; # Autoflush output on every print statement
 # 
 # Local variables
 #
+my $username;
+my $parcelname;
 my $parceldir;
 my $lastdir;
 my $lastver;
@@ -47,7 +49,7 @@ my @files;
 # Parse the command line args
 #
 no strict 'vars';
-getopts('rhp:');
+getopts('rhu:p:');
 
 if ($opt_h) {
     usage();
@@ -55,7 +57,10 @@ if ($opt_h) {
 if (!$opt_p) {
     usage("Missing parcel path (-p)");
 }
-$parceldir = "$Server::CONTENT_ROOT" . "$opt_p";
+$username = $opt_u;
+$username = $ENV{"USER"} if !$username;
+$parcelname = $opt_p;
+$parceldir = "$Server::CONTENT_ROOT$username/$parcelname";
 $rsync = $opt_r;
 use strict 'vars';
 
@@ -75,7 +80,7 @@ closedir(DIR);
 
 $lastver = int(@files[0]);
 $lastdir = "$parceldir/" . sprintf("%06d", $lastver);
-$numdirs = get_value("$lastdir/hdk/index.lev1", "NUMDIRS");
+$numdirs = get_numdirs(get_parcelcfg_path($username, $parcelname));
 $cachedir = "$parceldir/cache";
 
 # 
@@ -126,12 +131,13 @@ sub usage
     if ($msg) {
         print "$progname: $msg\n\n";
     }
-                                                                                
-    print "Usage: $progname [-hr] -p <parcel path>\n";
+    
+    print "Usage: $progname [-hr] [-u <username>] -p <parcel>\n";
     print "Options:\n";
-    print "  -h    Print this message\n";    
-    print "  -p    Relative parcel path (userid/parcel)\n";    
-    print "  -r    Reset cache for rsync-based client (default is scp)\n";    
+    print "  -h    Print this message\n";
+    print "  -u    User for this parcel (default is $ENV{'USER'})\n";
+    print "  -p    Parcel name\n";    
+    print "  -r    Reset cache for rsync-based client (default is scp)\n";
     print "\n";
     exit 0;
 }
