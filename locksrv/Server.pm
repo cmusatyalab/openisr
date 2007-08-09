@@ -1,5 +1,7 @@
 package Server;
 
+use POSIX;
+
 ############################################################
 # Server.pm - Module for server scripts
 ############################################################
@@ -41,6 +43,8 @@ require Exporter;
 	     get_offset
 	     get_dirnum
 	     get_chunknum
+	     get_parcelcfg_path
+	     get_numdirs
 	     );
 
 #
@@ -168,6 +172,19 @@ sub get_chunknum {
     return $offset % $chunksperdir;
 }
 
+sub get_parcelcfg_path {
+    my $username = shift;
+    my $parcel = shift;
+    my $homedir = (getpwnam($username))[7];
+    return "$homedir/.isr/$parcel/parcel.cfg";
+}
+
+sub get_numdirs {
+    my $parcelcfg = shift;
+    my $numchunks = get_value($parcelcfg, "NUMCHUNKS");
+    my $chunksperdir = get_value($parcelcfg, "CHUNKSPERDIR");
+    return ceil($numchunks / $chunksperdir);
+}
 
 # Every module must end with a 1; 
 1;

@@ -47,7 +47,6 @@ my $keyroot;
 my $currver;
 
 # Important variables
-my $homedir;
 my $parceldir;
 my $lastver;
 my $currdir;
@@ -164,8 +163,7 @@ $errors = 0;
 $currdir = "$parceldir/" . sprintf("%06d", $currver);
 $currkeyring_enc = "$currdir/keyring.enc";
 $currkeyring = "/tmp/keyring-curr.$$";
-$homedir = (getpwnam($username))[7];
-$parcelcfg = "$homedir/.isr/$parcelname/parcel.cfg";
+$parcelcfg = get_parcelcfg_path($username, $parcelname);
 
 # Variables for the predecessor version (if any)
 if ($precommit) {
