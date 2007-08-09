@@ -151,6 +151,7 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 			enum compresstype *compress, unsigned *length);
 pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 			enum compresstype compress, unsigned length);
+int validate_keyring(void);
 int validate_cache(void);
 int examine_cache(void);
 
@@ -179,6 +180,7 @@ pk_err_t parseuint(unsigned *out, char *in, int base);
 enum cryptotype parse_crypto(char *desc);
 enum compresstype parse_compress(char *desc);
 unsigned crypto_hashlen(enum cryptotype type);
+int compress_is_valid(enum compresstype type);
 pk_err_t read_file(const char *path, char *buf, int *bufsize);
 pk_err_t read_sysfs_file(const char *path, char *buf, int bufsize);
 char *pk_strerror(pk_err_t err);

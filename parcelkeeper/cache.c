@@ -318,7 +318,11 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 					chunk, *length);
 		return PK_INVALID;
 	}
-	/* XXX validate compresstype */
+	if (!compress_is_valid(*compress)) {
+		pk_log(LOG_ERROR, "Invalid or unsupported compression type "
+					"for chunk %u: %u", chunk, *compress);
+		return PK_INVALID;
+	}
 	return PK_SUCCESS;
 }
 
@@ -452,8 +456,70 @@ int copy_for_upload(void)
 }
 #endif
 
-/* XXX should also validate keyring: one key for every chunk; valid
-       compression */
+int validate_keyring(void)
+{
+	sqlite3_stmt *stmt;
+	unsigned expected_chunk=0;
+	unsigned chunk;
+	unsigned taglen;
+	unsigned keylen;
+	unsigned compress;
+	int sret;
+	int ret=0;
+
+	pk_log(LOG_INFO, "Validating keyring");
+	printf("Validating keyring...\n");
+	for (sret=query(&stmt, state.db, "SELECT chunk, tag, key, compression "
+				"FROM keys ORDER BY chunk ASC", NULL);
+				sret == SQLITE_ROW; sret=query_next(stmt)) {
+		query_row(stmt, "dnnd", &chunk, &taglen, &keylen, &compress);
+		if (chunk >= state.chunks) {
+			pk_log(LOG_ERROR, "Found keyring entry %u greater than"
+						" parcel size %u", chunk,
+						state.chunks);
+			ret=1;
+			continue;
+		}
+		if (chunk < expected_chunk) {
+			pk_log(LOG_ERROR, "Found unexpected keyring entry for "
+						"chunk %u", chunk);
+			ret=1;
+			continue;
+		}
+		while (expected_chunk < chunk) {
+			pk_log(LOG_ERROR, "Missing keyring entry for chunk %u",
+						expected_chunk);
+			ret=1;
+			expected_chunk++;
+		}
+		expected_chunk++;
+		if (taglen != state.hashlen) {
+			pk_log(LOG_ERROR, "Chunk %u: expected tag length %u, "
+						"found %u", chunk,
+						state.hashlen, taglen);
+			ret=1;
+		}
+		if (keylen != state.hashlen) {
+			pk_log(LOG_ERROR, "Chunk %u: expected key length %u, "
+						"found %u", chunk,
+						state.hashlen, keylen);
+			ret=1;
+		}
+		if (!compress_is_valid(compress)) {
+			pk_log(LOG_ERROR, "Chunk %u: invalid or unsupported "
+						"compression type %u", chunk,
+						compress);
+			ret=1;
+		}
+	}
+	if (sret != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Keyring query failed");
+		ret=1;
+	}
+	query_free(stmt);
+	return ret;
+}
+
 int validate_cache(void)
 {
 	sqlite3_stmt *stmt;

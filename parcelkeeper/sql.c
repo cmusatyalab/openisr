@@ -130,6 +130,9 @@ void query_row(sqlite3_stmt *stmt, char *fmt, ...)
 			*va_arg(ap, const void **)=sqlite3_column_blob(stmt, i);
 			*va_arg(ap, int *)=sqlite3_column_bytes(stmt, i++);
 			break;
+		case 'n':
+			*va_arg(ap, int *)=sqlite3_column_bytes(stmt, i++);
+			break;
 		default:
 			pk_log(LOG_ERROR, "Unknown format specifier %c", *fmt);
 			break;

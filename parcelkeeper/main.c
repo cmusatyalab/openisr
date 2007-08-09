@@ -89,7 +89,9 @@ int main(int argc, char **argv)
 	if (mode == MODE_RUN) {
 		nexus_run();
 	} else if (mode == MODE_VALIDATE) {
-		ret=validate_cache();
+		ret=validate_keyring();
+		if (!ret)
+			ret=validate_cache();
 	} else if (mode == MODE_EXAMINE) {
 		ret=examine_cache();
 	}

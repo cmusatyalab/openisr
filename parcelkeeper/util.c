@@ -95,6 +95,11 @@ unsigned crypto_hashlen(enum cryptotype type)
 	return 0;
 }
 
+int compress_is_valid(enum compresstype type)
+{
+	return (state.required_compress & (1 << type));
+}
+
 pk_err_t read_file(const char *path, char *buf, int *bufsize)
 {
 	int fd;
