@@ -188,16 +188,26 @@ int set_signal_handler(int sig, void (*handler)(int sig))
 
 void print_progress(unsigned chunks, unsigned maxchunks)
 {
+	static unsigned last_percent;
+	static unsigned last_mb;
 	unsigned percent;
+	unsigned mb;
 	unsigned chunks_per_mb=(1 << 20)/state.chunksize;
 
 	if (maxchunks)
 		percent=chunks*100/maxchunks;
 	else
 		percent=0;
+	mb=chunks/chunks_per_mb;
+
+	/* Don't talk if we have nothing new to say */
+	if (last_percent == percent && last_mb == mb)
+		return;
+	last_percent=percent;
+	last_mb=mb;
+
 	/* Note carriage return rather than newline */
-	printf("  %u%% (%u/%u MB)\r", percent, chunks/chunks_per_mb,
-				maxchunks/chunks_per_mb);
+	printf("  %u%% (%u/%u MB)\r", percent, mb, maxchunks/chunks_per_mb);
 	fflush(stdout);
 }
 
