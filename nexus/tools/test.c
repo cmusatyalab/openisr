@@ -122,7 +122,8 @@ enum nexus_crypto suite_to_nexus(unsigned ondisk)
 	case ONDISK_BF:
 		return NEXUS_CRYPTO_BLOWFISH_SHA1;
 	case ONDISK_BF_COMPAT:
-		return NEXUS_CRYPTO_BLOWFISH_SHA1_COMPAT;
+		printf("bf-compat is no longer supported\n");
+		return -1;
 	case ONDISK_AES:
 		return NEXUS_CRYPTO_AES_SHA1;
 	case ONDISK_NOCRYPT:
@@ -142,7 +143,6 @@ int setup(struct params *params, char *storefile)
 	EVP_CIPHER_CTX cipher;
 	EVP_MD_CTX hash;
 	unsigned char iv[16];
-	unsigned keylen;
 	struct chunk chunk;
 	
 	storefd=open(storefile, O_CREAT|O_WRONLY|O_TRUNC, 0600);
@@ -183,19 +183,17 @@ int setup(struct params *params, char *storefile)
 	if (params->suite != ONDISK_NOCRYPT) {
 		EVP_DigestInit(&hash, EVP_sha1());
 		EVP_DigestUpdate(&hash, data, params->chunksize);
-		EVP_DigestFinal(&hash, chunk.key, &keylen);
+		EVP_DigestFinal(&hash, chunk.key, NULL);
 		memset(iv, 0, sizeof(iv));
-		if (params->suite == ONDISK_BF_COMPAT ||
-					params->suite == ONDISK_AES)
-			keylen=16;
 		EVP_CIPHER_CTX_init(&cipher);
-		if (params->suite == ONDISK_AES)
+		if (params->suite == ONDISK_AES) {
 			EVP_EncryptInit_ex(&cipher, EVP_aes_128_cbc(), NULL,
 						NULL, NULL);
-		else
+		} else {
 			EVP_EncryptInit_ex(&cipher, EVP_bf_cbc(), NULL, NULL,
 						NULL);
-		EVP_CIPHER_CTX_set_key_length(&cipher, keylen);
+			EVP_CIPHER_CTX_set_key_length(&cipher, 20);
+		}
 		EVP_CIPHER_CTX_set_padding(&cipher, 0);
 		EVP_EncryptInit_ex(&cipher, NULL, NULL, chunk.key, iv);
 		EVP_EncryptUpdate(&cipher, crypted, (int*)&chunk.length,
@@ -209,7 +207,7 @@ int setup(struct params *params, char *storefile)
 	}
 	EVP_DigestInit(&hash, EVP_sha1());
 	EVP_DigestUpdate(&hash, crypted, params->chunksize);
-	EVP_DigestFinal(&hash, chunk.tag, &keylen);
+	EVP_DigestFinal(&hash, chunk.tag, NULL);
 	
 	chunk.compression=ONDISK_NONE;
 	fprintf(stderr, "Initializing %llu chunks", params->chunks);
@@ -413,7 +411,7 @@ int run(char *storefile, enum nexus_compress compress)
 int usage(void)
 {
 	printf("Usage: %s -s storefile chunkdev chunksize cachesize offset "
-				"{bf|bf-compat|aes|none}\n", progname);
+				"{bf|aes|none}\n", progname);
 	printf("Usage: %s [-v|-q] storefile {none|zlib|lzf}\n", progname);
 	return 1;
 }
@@ -455,8 +453,6 @@ int main(int argc, char **argv)
 		params.offset=atoi(argv[4]);
 		if (!strcmp(argv[5], "bf"))
 			params.suite=ONDISK_BF;
-		else if (!strcmp(argv[5], "bf-compat"))
-			params.suite=ONDISK_BF_COMPAT;
 		else if (!strcmp(argv[5], "aes"))
 			params.suite=ONDISK_AES;
 		else if (!strcmp(argv[5], "none"))

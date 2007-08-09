@@ -32,7 +32,7 @@
 #define NEXUS_IOC_UNREGISTER      _IO(0x1a, 1)
 #define NEXUS_IOC_CONFIG_THREAD   _IO(0x1a, 2)
 
-#define NEXUS_INTERFACE_VERSION 5
+#define NEXUS_INTERFACE_VERSION 6
 
 typedef __u16 compressmask_t;
 typedef __u16 msgtype_t;
@@ -40,9 +40,8 @@ typedef __u16 msgtype_t;
 /* The numeric values of these symbols are not guaranteed to remain constant!
    Don't use them in an on-disk format! */
 enum nexus_crypto {
-	NEXUS_CRYPTO_BLOWFISH_SHA1,
-	NEXUS_CRYPTO_BLOWFISH_SHA1_COMPAT,
 	NEXUS_CRYPTO_NONE_SHA1,
+	NEXUS_CRYPTO_BLOWFISH_SHA1,
 	NEXUS_CRYPTO_AES_SHA1,
 	NEXUS_NR_CRYPTO
 };

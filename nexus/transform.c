@@ -29,6 +29,11 @@
 /* Must be in the same order as the nexus_crypto enum */
 static const struct tfm_suite_info suite_desc[] = {
 	{
+		.user_name = "none-sha1",
+		.hash_name = "sha1",
+		.hash_len = 20
+	},
+	{
 		.user_name = "blowfish-sha1",
 		.cipher_name = "blowfish",
 		.cipher_mode = CRYPTO_TFM_MODE_CBC,
@@ -36,22 +41,6 @@ static const struct tfm_suite_info suite_desc[] = {
 		.cipher_block = 8,
 		.cipher_iv = 8,
 		.key_len = 20,
-		.hash_name = "sha1",
-		.hash_len = 20
-	},
-	{
-		.user_name = "blowfish-sha1-compat",
-		.cipher_name = "blowfish",
-		.cipher_mode = CRYPTO_TFM_MODE_CBC,
-		.cipher_mode_name = "cbc",
-		.cipher_block = 8,
-		.cipher_iv = 8,
-		.key_len = 16,
-		.hash_name = "sha1",
-		.hash_len = 20
-	},
-	{
-		.user_name = "none-sha1",
 		.hash_name = "sha1",
 		.hash_len = 20
 	},

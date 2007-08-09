@@ -27,7 +27,7 @@ static const int ignored_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGTSTP, 0};
 static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 
 #define REQUESTS_PER_SYSCALL 64
-#define MY_INTERFACE_VERSION 5
+#define MY_INTERFACE_VERSION 6
 #if MY_INTERFACE_VERSION != NEXUS_INTERFACE_VERSION
 #error This code uses a different interface version than the one defined in nexus.h
 #endif
