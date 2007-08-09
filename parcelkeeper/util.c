@@ -338,10 +338,10 @@ pk_err_t digest(void *out, const void *in, unsigned len)
 	return PK_SUCCESS;
 }
 
-char *format_tag(void *tag)
+char *format_tag(const void *tag)
 {
 	char *buf;
-	unsigned char *tbuf=tag;
+	const unsigned char *tbuf=tag;
 	int i;
 
 	buf=malloc(2 * state.hashlen + 1);
@@ -352,7 +352,7 @@ char *format_tag(void *tag)
 	return buf;
 }
 
-void log_tag_mismatch(void *expected, void *found)
+void log_tag_mismatch(const void *expected, const void *found)
 {
 	char *fmt_expected;
 	char *fmt_found;

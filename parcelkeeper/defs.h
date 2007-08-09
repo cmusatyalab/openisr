@@ -193,7 +193,7 @@ pk_err_t create_pidfile(void);
 void remove_pidfile(void);
 char *form_chunk_path(char *prefix, unsigned chunk);
 pk_err_t digest(void *out, const void *in, unsigned len);
-char *format_tag(void *tag);
-void log_tag_mismatch(void *expected, void *found);
+char *format_tag(const void *tag);
+void log_tag_mismatch(const void *expected, const void *found);
 
 #endif

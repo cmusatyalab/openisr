@@ -219,9 +219,10 @@ bad:
 	return ret;
 }
 
-static pk_err_t fetch_chunk(unsigned chunk, unsigned *length)
+static pk_err_t fetch_chunk(unsigned chunk, const void *tag, unsigned *length)
 {
 	void *buf=malloc(state.chunksize);
+	char calctag[state.hashlen];
 	size_t len;
 	int i;
 	pk_err_t err;
@@ -246,7 +247,18 @@ static pk_err_t fetch_chunk(unsigned chunk, unsigned *length)
 		free(buf);
 		return err;
 	}
-	/* XXX check tag */
+	err=digest(calctag, buf, len);
+	if (err) {
+		pk_log(LOG_ERROR, "Couldn't calculate chunk hash");
+		free(buf);
+		return err;
+	}
+	if (memcmp(tag, calctag, state.hashlen)) {
+		pk_log(LOG_ERROR, "Invalid tag for retrieved chunk %u", chunk);
+		log_tag_mismatch(tag, calctag);
+		free(buf);
+		return PK_TAGFAIL;
+	}
 
 	count=pwrite(state.loopdev_fd, buf, len, chunk_to_offset(chunk));
 	free(buf);
@@ -278,22 +290,6 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 	pk_err_t err;
 
 	/* XXX transaction */
-	ret=query(&stmt, state.db, "SELECT length FROM cache.chunks "
-				"WHERE chunk == ?", "d", chunk);
-	if (ret == SQLITE_OK) {
-		/* Chunk is not in the local cache */
-		query_free(stmt);
-		err=fetch_chunk(chunk, length);
-		if (err)
-			return err;
-	} else if (ret == SQLITE_ROW) {
-		query_row(stmt, "d", length);
-		query_free(stmt);
-	} else {
-		pk_log(LOG_ERROR, "Couldn't query cache index");
-		return PK_IOERR;
-	}
-
 	if (query(&stmt, state.db, "SELECT tag, key, compression FROM keys "
 				"WHERE chunk == ?", "d", chunk)
 				!= SQLITE_ROW) {
@@ -312,6 +308,22 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 	memcpy(tag, rowtag, state.hashlen);
 	memcpy(key, rowkey, state.hashlen);
 	query_free(stmt);
+
+	ret=query(&stmt, state.db, "SELECT length FROM cache.chunks "
+				"WHERE chunk == ?", "d", chunk);
+	if (ret == SQLITE_OK) {
+		/* Chunk is not in the local cache */
+		query_free(stmt);
+		err=fetch_chunk(chunk, tag, length);
+		if (err)
+			return err;
+	} else if (ret == SQLITE_ROW) {
+		query_row(stmt, "d", length);
+		query_free(stmt);
+	} else {
+		pk_log(LOG_ERROR, "Couldn't query cache index");
+		return PK_IOERR;
+	}
 
 	if (*length > state.chunksize) {
 		pk_log(LOG_ERROR, "Invalid chunk length for chunk %u: %u",
