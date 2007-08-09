@@ -107,11 +107,6 @@ $currver = $opt_v;
 $verbose = $opt_V;
 $keyroot = $opt_k;
 $contentcheck = $opt_c;
-
-# special case -- checking the difference between "last" and "cache"
-# before a commit -- mtoups 2005/08/19
-
-# s is for sanity (since the other good letters were taken)
 $precommit = $opt_s;
 
 use strict 'vars';
@@ -167,37 +162,21 @@ if ($currver == 1 and $currver != $lastver) {
 $errors = 0;
 
 # Variables for the current version
-
-# this is the special cast pre-commit check
-# mtoups 
-
-if ($precommit) {
-    $currdir = "$parceldir/" . sprintf("%06d", $currver);
-#    $currdir = "$parceldir/last";
-    $currkeyring_enc = "$currdir/keyring.enc";
-    $currkeyring = "/tmp/keyring-curr.$$";
-    $currindexlev1 = "$currdir/hdk/index.lev1";
-
-#    $predver = "$parceldir/cache";
-    $preddir = "$parceldir/cache";
-    $predkeyring_enc = "$preddir/keyring.enc";
-    $predkeyring = "/tmp/keyring-pred.$$";
-
-}
-else {
-
 $currdir = "$parceldir/" . sprintf("%06d", $currver);
 $currkeyring_enc = "$currdir/keyring.enc";
 $currkeyring = "/tmp/keyring-curr.$$";
 $currindexlev1 = "$currdir/hdk/index.lev1";
 
 # Variables for the predecessor version (if any)
-$predver = $currver - 1; 
-$preddir = "$parceldir/" . sprintf("%06d", $predver);
+if ($precommit) {
+    $predver = "cache";
+    $preddir = "$parceldir/cache";
+} else {
+    $predver = $currver - 1; 
+    $preddir = "$parceldir/" . sprintf("%06d", $predver);
+}
 $predkeyring_enc = "$preddir/keyring.enc";
 $predkeyring = "/tmp/keyring-pred.$$";
-
-}
 
 #
 # Make sure that the other files we will need are available
@@ -476,6 +455,7 @@ sub usage
     print "  -h         Print this message\n";
     print "  -k <key>   Keyroot for this parcel\n";
     print "  -p <path>  Relative parcel path (userid/parcel)\n";    
+    print "  -s         Run pre-commit check\n";
     print "  -v <ver>   Parcel version to check (default is last)\n";
     print "  -V         Be verbose\n";
     print "\n";
