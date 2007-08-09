@@ -230,7 +230,7 @@ $? == 0
 # There better be a keyring entry for each block
 $totalchunks = get_value($parcelcfg, "NUMCHUNKS");
 if (@tags != $totalchunks) {
-    err("Version $currver keyring has @tags while the disk has $totalchunks chunks.");
+    err("Version $currver keyring has " . scalar(@tags) . " chunks while the disk has $totalchunks.");
     $errors++;
 }
 
