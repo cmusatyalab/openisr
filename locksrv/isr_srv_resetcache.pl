@@ -34,22 +34,14 @@ $| = 1; # Autoflush output on every print statement
 # Local variables
 #
 my $username;
-my $parcelname;
 my $parceldir;
-my $lastdir;
-my $lastver;
-my $numdirs;
-my $rsync;
 my $cachedir;
-my $i;
-
-my @files;
 
 #
 # Parse the command line args
 #
 no strict 'vars';
-getopts('rhu:p:');
+getopts('hu:p:');
 
 if ($opt_h) {
     usage();
@@ -59,9 +51,7 @@ if (!$opt_p) {
 }
 $username = $opt_u;
 $username = $ENV{"USER"} if !$username;
-$parcelname = $opt_p;
-$parceldir = "$Server::CONTENT_ROOT$username/$parcelname";
-$rsync = $opt_r;
+$parceldir = "$Server::CONTENT_ROOT$username/$opt_p";
 use strict 'vars';
 
 #
@@ -73,42 +63,14 @@ use strict 'vars';
 #
 # Initialize some variables that we'll need later
 #
-opendir(DIR, $parceldir)
-    or errexit("Could not open directory $parceldir");
-@files = reverse sort grep(/^\d+$/, readdir(DIR)); 
-closedir(DIR);
-
-$lastver = int(@files[0]);
-$lastdir = "$parceldir/" . sprintf("%06d", $lastver);
-$numdirs = get_numdirs(get_parcelcfg_path($username, $parcelname));
 $cachedir = "$parceldir/cache";
 
 # 
 # Either reset the server-side cache for a client using rsync...
 #
-if ($rsync) {
-    if (!-e "$cachedir/hdk") {
-	system("mkdir --parents $cachedir/hdk") == 0
-	    or system_errexit("Unable to make $cachedir on server");
-    }
-}
-
-#
-# ... or reset the server-side cache for a client using scp
-#
-else {
-    system("rm -rf $cachedir") == 0
-	or system_errexit("Unable to remove $cachedir on server");
-    system("mkdir $cachedir") == 0
+if (!-e "$cachedir/hdk") {
+    system("mkdir --parents $cachedir/hdk") == 0
 	or system_errexit("Unable to make $cachedir on server");
-    system("mkdir $cachedir/hdk") == 0
-	or system_errexit("Unable to make $cachedir/hdk on server");
-
-    for ($i = 0; $i < $numdirs; $i++) {
-	my $dirname = sprintf("%04d", $i);
-	system("mkdir $cachedir/hdk/$dirname") == 0
-	    or system_errexit("Unable to make cachedir/hdk/$dirname on server");
-    }
 }
 
 exit 0;
