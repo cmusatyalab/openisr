@@ -79,7 +79,6 @@ int main(int argc, char **argv)
 			have_nexus=1;
 	}
 
-	ret=0;
 	/* Release our parent, if we've forked */
 	if (completion_fd != -1) {
 		close(completion_fd);
@@ -88,12 +87,17 @@ int main(int argc, char **argv)
 
 	if (mode == MODE_RUN) {
 		nexus_run();
+		ret=0;
+	} else if (mode == MODE_UPLOAD) {
+		ret=copy_for_upload();
 	} else if (mode == MODE_VALIDATE) {
 		ret=validate_keyring();
 		if (!ret)
 			ret=validate_cache();
 	} else if (mode == MODE_EXAMINE) {
 		ret=examine_cache();
+	} else {
+		pk_log(LOG_ERROR, "Unknown mode");
 	}
 
 shutdown:

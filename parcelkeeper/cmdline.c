@@ -259,7 +259,8 @@ enum mode parse_cmdline(int argc, char **argv)
 			config.master=optparams[0];
 			break;
 		case OPT_DESTDIR:
-			config.destdir=optparams[0];
+			config.dest_dir=optparams[0];
+			config.dest_stats=filepath(optparams[0], "stats", 0);
 			break;
 		case OPT_COMPRESSION:
 			config.compress=parse_compress(optparams[0]);

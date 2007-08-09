@@ -359,114 +359,175 @@ pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 	return PK_SUCCESS;
 }
 
-#if 0
-int copy_for_upload(void)
+static pk_err_t make_upload_dirs(void)
 {
-	char name[MAX_PATH_LENGTH];
-	char *buf;
-	unsigned u;
-	struct chunk_data *cdp;
-	int fd;
-	unsigned examined_chunks=0;
-	unsigned modified_chunks=0;
-	unsigned long long modified_bytes=0;
-	FILE *fp;
-	char calc_tag[HASH_LEN];
-	unsigned dirty_count;
+	char *path;
+	unsigned dir;
+	unsigned numdirs;
 
-	pk_log(LOG_BASIC, "Copying chunks to upload directory %s",
-				config.dest_dir_name);
-	if (update_modified_flags(&dirty_count)) {
-		pk_log(LOG_ERRORS, "Couldn't compare keyrings");
-		return 1;
+	if (!is_dir(config.dest_dir) && mkdir(config.dest_dir, 0700)) {
+		pk_log(LOG_ERROR, "Unable to make directory %s",
+					config.dest_dir);
+		return PK_IOERR;
 	}
-	buf=malloc(state.chunksize_bytes);
-	if (buf == NULL) {
-		pk_log(LOG_ERRORS, "malloc failed");
-		return 1;
-	}
-	/* check the subdirectories  -- create if needed */
-	for (u = 0; u < state.numdirs; u++) {
-		if (form_dir_name(name, sizeof(name), config.dest_dir_name,
-					u)) {
-			pk_log(LOG_ERRORS, "Couldn't form directory name: %u",
-						u);
-			return 1;
+	numdirs = (state.chunks + state.chunks_per_dir - 1) /
+				state.chunks_per_dir;
+	for (dir=0; dir < numdirs; dir++) {
+		if (asprintf(&path, "%s/%.4d", config.dest_dir, dir) == -1) {
+			pk_log(LOG_ERROR, "malloc failure");
+			return PK_NOMEM;
 		}
-		if (!is_dir(name)) {
-			if (mkdir(name, 0770)) {
-				pk_log(LOG_ERRORS, "unable to mkdir: %s", name);
-				return 1;
-			}
+		if (!is_dir(path) && mkdir(path, 0700)) {
+			pk_log(LOG_ERROR, "Unable to make directory %s", path);
+			free(path);
+			return PK_IOERR;
 		}
+		free(path);
 	}
-	foreach_chunk(u, cdp) {
-		if (cdp_is_modified(cdp)) {
-			print_progress(++examined_chunks, dirty_count);
-			if (!cdp_present(cdp)) {
-				/* XXX damaged cache file; we need to be able
-				   to recover */
-				pk_log(LOG_ERRORS, "Chunk modified but not "
-							"present: %u",u);
-				return 1;
-			}
-			if (form_chunk_file_name(name, sizeof(name),
-						config.dest_dir_name, u)) {
-				pk_log(LOG_ERRORS, "Couldn't form chunk "
-							"filename: %u",u);
-				return 1;
-			}
-			if (pread(state.cachefile_fd, buf, cdp->length,
-					get_image_offset_from_chunk_num(u))
-					!= cdp->length) {
-				pk_log(LOG_ERRORS, "Couldn't read chunk from "
-							"local cache: %u", u);
-				return 1;
-			}
-			digest(buf, cdp->length, calc_tag);
-			if (check_tag(cdp, calc_tag) == PK_TAGFAIL) {
-				pk_log(LOG_ERRORS, "Chunk %u: tag mismatch."
-						" Data corruption has occurred;"
-						" skipping chunk", u);
-				print_tag_check_error(cdp->tag, calc_tag);
-				return 1;
-			}
-			fd=open(name, O_WRONLY|O_CREAT|O_TRUNC, 0600);
-			if (fd == -1) {
-				pk_log(LOG_ERRORS, "Couldn't open chunk file: "
-							"%s", name);
-				return 1;
-			}
-			if (write(fd, buf, cdp->length) != cdp->length) {
-				pk_log(LOG_ERRORS, "Couldn't write chunk file: "
-							"%s", name);
-				return 1;
-			}
-			if (close(fd) && errno != EINTR) {
-				pk_log(LOG_ERRORS, "Couldn't write chunk file: "
-							"%s", name);
-				return 1;
-			}
-			modified_chunks++;
-			modified_bytes += cdp->length;
-		}
-	}
-	printf("\n");
-	free(buf);
-	/* Write statistics */
-	snprintf(name, sizeof(name), "%s/stats", config.dest_dir_name);
-	fp=fopen(name, "w");
+	return PK_SUCCESS;
+}
+
+static pk_err_t write_upload_stats(unsigned chunks, off64_t bytes)
+{
+	FILE *fp;
+
+	fp=fopen(config.dest_stats, "w");
 	if (fp == NULL) {
-		pk_log(LOG_ERRORS, "Couldn't open stats file: %s", name);
-		return 1;
+		pk_log(LOG_ERROR, "Couldn't open stats file %s",
+					config.dest_stats);
+		return PK_IOERR;
 	}
-	fprintf(fp, "%u\n%llu\n", modified_chunks, modified_bytes);
+	fprintf(fp, "%u\n%llu\n", chunks, bytes);
 	fclose(fp);
 	pk_log(LOG_STATS, "Copied %u modified chunks, %llu bytes",
-				modified_chunks, modified_bytes);
-	return 0;
+				chunks, bytes);
+	return PK_SUCCESS;
 }
-#endif
+
+int copy_for_upload(void)
+{
+	sqlite3_stmt *stmt;
+	char *buf;
+	unsigned chunk;
+	void *tag;
+	unsigned taglen;
+	unsigned length;
+	char calctag[state.hashlen];
+	char *path;
+	int fd;
+	unsigned modified_chunks=0;
+	off64_t modified_bytes=0;
+	unsigned total_modified;
+	int sret;
+	int ret=1;
+
+	pk_log(LOG_INFO, "Copying chunks to upload directory %s",
+				config.dest_dir);
+	if (attach(state.db, "last", config.last_keyring))
+		return 1;
+	if (make_upload_dirs())
+		return 1;
+	/* XXX transaction */
+	if (query(&stmt, state.db, "SELECT count(*) FROM "
+				"main.keys JOIN last.keys "
+				"ON main.keys.chunk == last.keys.chunk "
+				"WHERE main.keys.tag != last.keys.tag", NULL)
+				!= SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Query failed");
+		return 1;
+	}
+	query_row(stmt, "d", &total_modified);
+	query_free(stmt);
+	buf=malloc(state.chunksize);
+	if (buf == NULL) {
+		pk_log(LOG_ERROR, "malloc failed");
+		return 1;
+	}
+	for (sret=query(&stmt, state.db, "SELECT main.keys.chunk, "
+				"main.keys.tag, cache.chunks.length FROM "
+				"main.keys JOIN last.keys ON "
+				"main.keys.chunk == last.keys.chunk "
+				"LEFT JOIN cache.chunks ON "
+				"main.keys.chunk == cache.chunks.chunk WHERE "
+				"main.keys.tag != last.keys.tag", NULL);
+				sret == SQLITE_ROW; sret=query_next(stmt)) {
+		query_row(stmt, "dbd", &chunk, &tag, &taglen, &length);
+		print_progress(modified_chunks, total_modified);
+		if (chunk > state.chunks) {
+			pk_log(LOG_ERROR, "Chunk %u: greater than parcel size "
+						"%u", chunk, state.chunks);
+			goto out;
+		}
+		if (taglen != state.hashlen) {
+			pk_log(LOG_ERROR, "Chunk %u: expected tag length %u, "
+						"found %u", state.hashlen,
+						taglen);
+			goto out;
+		}
+		if (length == 0) {
+			/* No cache index record */
+			pk_log(LOG_ERROR, "Chunk %u: modified but not present",
+						chunk);
+			goto out;
+		}
+		if (length > state.chunksize) {
+			pk_log(LOG_ERROR, "Chunk %u: absurd length %u", chunk,
+						length);
+			goto out;
+		}
+		if (pread(state.cache_fd, buf, length, chunk_to_offset(chunk))
+					!= length) {
+			pk_log(LOG_ERROR, "Couldn't read chunk from "
+						"local cache: %u", chunk);
+			goto out;
+		}
+		digest(calctag, buf, length);
+		if (memcmp(tag, calctag, state.hashlen)) {
+			pk_log(LOG_ERROR, "Chunk %u: tag mismatch.  "
+					"Data corruption has occurred", chunk);
+			log_tag_mismatch(tag, calctag);
+			goto out;
+		}
+		path=form_chunk_path(config.dest_dir, chunk);
+		if (path == NULL) {
+			pk_log(LOG_ERROR, "malloc failure");
+			goto out;
+		}
+		fd=open(path, O_WRONLY|O_CREAT|O_TRUNC, 0600);
+		if (fd == -1) {
+			pk_log(LOG_ERROR, "Couldn't open chunk file %s", path);
+			free(path);
+			goto out;
+		}
+		if (write(fd, buf, length) != length) {
+			pk_log(LOG_ERROR, "Couldn't write chunk file %s",
+						path);
+			free(path);
+			goto out;
+		}
+		if (close(fd) && errno != EINTR) {
+			pk_log(LOG_ERROR, "Couldn't write chunk file %s",
+						path);
+			free(path);
+			goto out;
+		}
+		free(path);
+		modified_chunks++;
+		modified_bytes += length;
+	}
+	if (sret != SQLITE_OK)
+		pk_log(LOG_ERROR, "Database query failed");
+	else
+		ret=0;
+out:
+	free(buf);
+	query_free(stmt);
+	if (ret == 0)
+		if (write_upload_stats(modified_chunks, modified_bytes))
+			ret=1;
+	return ret;
+}
 
 int validate_keyring(void)
 {

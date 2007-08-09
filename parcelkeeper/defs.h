@@ -83,6 +83,10 @@ struct pk_config {
 	char *hoard_file;
 	char *hoard_index;
 
+	/* upload directory and its contents */
+	char *dest_dir;
+	char *dest_stats;
+
 	/* log parameters */
 	char *log_file;
 	char *log_info_str;
@@ -92,7 +96,6 @@ struct pk_config {
 	/* miscellaneous parameters */
 	char *master;
 	enum compresstype compress;
-	char *destdir;
 	int foreground;
 };
 
@@ -151,6 +154,7 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 			enum compresstype *compress, unsigned *length);
 pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 			enum compresstype compress, unsigned length);
+int copy_for_upload(void);
 int validate_keyring(void);
 int validate_cache(void);
 int examine_cache(void);
