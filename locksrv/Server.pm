@@ -123,7 +123,7 @@ sub get_value
 
     while ($line = <INFILE>) {
 	chomp($line);
-	($line_key, $line_value) = split("=", $line);
+	($line_key, $line_value) = split(/[= ]+/, $line);
 	if ($line_key eq $search_key) {
 	    $return_value = int($line_value);
 	    last;

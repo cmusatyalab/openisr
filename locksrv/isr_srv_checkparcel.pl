@@ -22,6 +22,7 @@
 ###################
 use strict;
 use Getopt::Std;
+use POSIX;
 use lib "/usr/local/isr/bin";
 use Server;
 use Cwd;
@@ -40,36 +41,32 @@ my $precommit;
 my $contentcheck;
 my $strong_contentcheck;
 my $verbose;
+my $username;
+my $parcelname;
+my $keyroot;
+my $currver;
 
 # Important variables
+my $homedir;
 my $parceldir;
 my $lastver;
-my $currver;
 my $currdir;
 my $currkeyring;
 my $currkeyring_enc;
-my $currindexlev1;
+my $parcelcfg;
 my $predver;
 my $preddir;
 my $predkeyring;
 my $predkeyring_enc;
-my $keyroot;
-my $num_keyring_entries;
 my $errors;
-
-# Various temporary variables
-my $numdiffs;
-my $line;
-my $line1;
-my $line2;
 my $numdirs;
-my $numpredchunks;
 my $totalchunks;
 my $chunksperdir;
+
+# Various temporary variables
+my $numpredchunks;
 my $numchunks;
-my $index_numchunks;
 my $tag;
-my $key;
 my $dirname;
 my $dirpath;
 my $i;
@@ -85,24 +82,27 @@ my @files;
 
 # Arrays and list
 my @tags;    # array of keyring tags
-my @keys;    # array of keyring keys
-my @keydiff; # keydiff[i] true iff ith keyring entries differ
+my %keydiff; # one hash key for every keyring entry that differs
+
 #
 # Parse the command line args
 #
 no strict 'vars';
-getopts('Vhcsp:v:k:');
+getopts('Vhcsu:p:v:k:');
 
 if ($opt_h) {
     usage();
 }
 if (!$opt_p) {
-    usage("Missing parcel path (-p)");
+    usage("Missing parcel name (-p)");
 }
 if (!$opt_k) {
     usage("Missing keyroot (-k)");
 }
-$parceldir = "$Server::CONTENT_ROOT" . "$opt_p";
+$username = $opt_u;
+$username = $ENV{"USER"} if !$username;
+$parcelname = $opt_p;
+$parceldir = "$Server::CONTENT_ROOT$username/$parcelname";
 $currver = $opt_v;
 $verbose = $opt_V;
 $keyroot = $opt_k;
@@ -165,11 +165,12 @@ $errors = 0;
 $currdir = "$parceldir/" . sprintf("%06d", $currver);
 $currkeyring_enc = "$currdir/keyring.enc";
 $currkeyring = "/tmp/keyring-curr.$$";
-$currindexlev1 = "$currdir/hdk/index.lev1";
+$homedir = (getpwnam($username))[7];
+$parcelcfg = "$homedir/.isr/$parcelname/parcel.cfg";
 
 # Variables for the predecessor version (if any)
 if ($precommit) {
-    $predver = "cache";
+    $predver = "checkin";
     $preddir = "$parceldir/cache";
 } else {
     $predver = $currver - 1; 
@@ -203,79 +204,57 @@ else {
 	if $verbose;
 }
 
-system("openssl enc -d -bf -in $currkeyring_enc -out $currkeyring -pass pass:$keyroot -nosalt") == 0
+system("openssl enc -d -aes-128-cbc -in $currkeyring_enc -out $currkeyring -pass pass:$keyroot") == 0
     or system_errexit("Unable to decode $currkeyring_enc");
 
 if ($currver > 1 or $precommit) {
-    system("openssl enc -d -bf -in $predkeyring_enc -out $predkeyring -pass pass:$keyroot -nosalt") == 0
+    system("openssl enc -d -aes-128-cbc -in $predkeyring_enc -out $predkeyring -pass pass:$keyroot") == 0
 	or system_errexit("Unable to decode $predkeyring_enc");
 }
 
 #
-# Check that current keyring size is consistent with index.lev1
+# Check that current keyring size is consistent with parcel.cfg
 #
-open(INFILE, $currkeyring)
-    or unix_errexit("Unable to open $currkeyring");
+open(TAGS, "-|", "$Server::SRVBIN/query", $currkeyring, "SELECT tag FROM keys ORDER BY chunk ASC")
+    or system_errexit("Unable to read tags from $currkeyring");
 
-$num_keyring_entries = 0;
 @tags = ();
-@keys = ();
-while ($line = <INFILE>) {
-    chomp($line);
-    ($tag, $key) = split(" ", $line);
-    $tags[$num_keyring_entries] = $tag;
-    $keys[$num_keyring_entries] = $key;
-    $num_keyring_entries++;
+while ($tag = <TAGS>) {
+    chomp($tag);
+    push @tags, $tag;
 }
 
-close INFILE
-    or unix_errexit("Unable to close $currkeyring");
+close TAGS;
+$? == 0
+    or unix_errexit("$currkeyring query failed");
 
 # There better be a keyring entry for each block
-$numchunks = get_value($currindexlev1, "NUMCHUNKS");
-if ($num_keyring_entries != $numchunks) {
-    err("Version $currver keyring has $num_keyring_entries while the disk has $numchunks chunks.");
+$totalchunks = get_value($parcelcfg, "NUMCHUNKS");
+if (@tags != $totalchunks) {
+    err("Version $currver keyring has @tags while the disk has $totalchunks chunks.");
     $errors++;
 }
 
-# The number of chunks should equal numdirs*chunks per dir
-$numdirs = get_value("$currindexlev1", "NUMDIRS");
-$chunksperdir = get_value("$currindexlev1", "CHUNKSPERDIR");
-if ($numchunks != $numdirs*$chunksperdir) {
-    err("Version $currver index file reports $numchunks chunks, which is not equal to $numdirs dirs * $chunksperdir chunks/dir.");
-    $errors++;
-}
+$chunksperdir = get_value($parcelcfg, "CHUNKSPERDIR");
+$numdirs = ceil($totalchunks / $chunksperdir);
 
 #
 # Check the current and predecessor keyrings for relative consistency
 #
 if (-e $preddir) {
-    #
-    # Compare the current and pred keyrings line-by-line for differences
-    #
-    $numdiffs = 0;
     print "Comparing keyrings $currver and $predver for differences...\n"
 	if $verbose;
-    open(INFILE1, $currkeyring)
-	or unix_errexit("Unable to open $currkeyring");
-    open(INFILE2, $predkeyring)
-	or unix_errexit("Unable to open $predkeyring");
+    open(DIFFS, "-|", "$Server::SRVBIN/query", $currkeyring, "-a", "pred:$predkeyring", "SELECT main.keys.chunk FROM main.keys JOIN pred.keys ON main.keys.chunk == pred.keys.chunk WHERE main.keys.tag != pred.keys.tag")
+	or system_errexit("Unable to compare $currkeyring and $predkeyring");
 
-    $i = 0;
-    while ($line1 = <INFILE1>) {
-	$line2 = <INFILE2>;
-	$keydiff[$i] = 0;
-	if ($line1 ne $line2) {
-	    $keydiff[$i] = 1;
-	    $numdiffs++;
-	}
-	$i++;
+    while ($chunk = <DIFFS>) {
+	chomp($chunk);
+	$keydiff{$chunk} = 1;
     }
 
-    close INFILE1
-	or unix_errexit("Unable to close $currkeyring");
-    close INFILE2
-	or unix_errexit("Unable to close $predkeyring");
+    close DIFFS;
+    $? == 0
+	or unix_errexit("Keyring comparison failed");
     
     #
     # Get rid of the unencrypted key rings, which are no longer needed
@@ -286,7 +265,6 @@ if (-e $preddir) {
     # Check that the number of blocks in the predecessor is the same
     # as the number of different entries in the keyring
     #
-    $numdirs = get_value("$currindexlev1", "NUMDIRS");
     $numpredchunks = 0;
     for ($i = 0; $i < $numdirs; $i++) {
 	$dirname = sprintf("%04d", $i);
@@ -295,40 +273,28 @@ if (-e $preddir) {
 	if (opendir(DIR, $dirpath)) {
 	    @files = grep(!/^[\._]/, readdir(DIR)); # filter out "." and ".."
 	    closedir(DIR);
-	    $numchunks = scalar(@files);
-	    #print "$dirname: $numchunks\n";
-	    $numpredchunks += $numchunks;
+	    $numpredchunks += scalar(@files);
 	}
     }
 
     #
     # Report the results
     #
-    if ($numpredchunks == $numdiffs) {
-	print "Success: Found $numpredchunks chunks in version $predver and $numdiffs keyring differences.\n"
+    if ($numpredchunks == keys(%keydiff)) {
+	print "Success: Found $numpredchunks chunks in version $predver and " . keys(%keydiff) . " keyring differences.\n"
 	    if $verbose;
-    }
-
-    # Something is wrong. Identify the specific inconsistent blocks
-    else {
-	print "Error: Found $numpredchunks chunks in version $predver and $numdiffs keyring differences.\n";
-	$numdirs = get_value("$currindexlev1", "NUMDIRS");
-	$chunksperdir = get_value("$currindexlev1", "CHUNKSPERDIR");
-	$totalchunks = $numdirs * $chunksperdir;
+    } else {
+	# Something is wrong. Identify the specific inconsistent blocks
+	print "Error: Found $numpredchunks chunks in version $predver and " . keys(%keydiff) . " keyring differences.\n";
 	for ($i = 0; $i < $totalchunks; $i++) {
-	    $dirnum = int($i / $chunksperdir);
+	    $dirnum = floor($i / $chunksperdir);
 	    $filenum = $i % $chunksperdir;
-	    $chunk = sprintf("%04d", $dirnum) . "/" . sprintf("%04d", $filenum);
+	    $chunk = sprintf("%04d/%04d", $dirnum, $filenum);
 	    $chunkpath = "$preddir/hdk/$chunk";
-	    if (-e $chunkpath) {
-		if ($keydiff[$i] == 0) {
-		    print("Error: [$i] file $chunk exists, but entries are the same.\n");
-		}
-	    }
-	    else {
-		if ($keydiff[$i] == 1) {
-		    print("Error: [$i] file $chunk does not exist, but entries differ.\n");
-		}
+	    if (-e $chunkpath && !defined($keydiff{$i})) {
+		print "Error: [$i] file $chunk exists, but entries are the same.\n";
+	    } elsif (! -e $chunkpath && defined($keydiff{$i})) {
+		print "Error: [$i] file $chunk does not exist, but entries differ.\n";
 	    }
 	}
 	$errors++;
@@ -340,9 +306,6 @@ if (-e $preddir) {
 # simple consistency check to ensure that it is fully populated.
 #
 if ($currver == $lastver) {
-    $numdirs = get_value("$currindexlev1", "NUMDIRS");
-    $chunksperdir = get_value("$currindexlev1", "CHUNKSPERDIR");
-    $totalchunks = $numdirs * $chunksperdir;
     print "Scanning $numdirs version $currver dirs ($chunksperdir chunks/dir, $totalchunks chunks) for completeness...\n"
 	if $verbose;
     
@@ -374,10 +337,6 @@ if ($contentcheck) {
     print "Performing content consistency check...\n"
 	if $verbose;
 
-    $numdirs = get_value("$currindexlev1", "NUMDIRS");
-    $chunksperdir = get_value("$currindexlev1", "CHUNKSPERDIR");
-    $totalchunks = $numdirs * $chunksperdir;
-    
     # Iterate through the complete list of possible subdirectories
     for ($i = 0; $i < $numdirs; $i++) {
 	$dirname = sprintf("%04d", $i);
@@ -385,7 +344,6 @@ if ($contentcheck) {
 
 	# If the directory exists, then check its chunks
 	if (opendir(DIR, $dirpath)) {
-
 	    print "$dirname "
 		if $verbose;
 
@@ -393,10 +351,9 @@ if ($contentcheck) {
 	    closedir(DIR);
 
 	    # Check each chunk in the directory
-	    foreach $chunk ( sort @files) {
+	    foreach $chunk (sort @files) {
 		$index = $i*$chunksperdir + $chunk;
-		if ($index <= scalar(@keys)) {
-
+		if ($index <= scalar(@tags)) {
 		    # Check that the keyring entry tag is correct
 		    $tag = `openssl sha1 < $dirpath/$chunk`;
 		    chomp($tag);
@@ -451,13 +408,14 @@ sub usage
 
     print "Usage: $progname [-hcV] -p <parcel path> -k <key> [-v <version>]\n";
     print "Options:\n";
-    print "  -c         Perform content consistency check\n";
-    print "  -h         Print this message\n";
-    print "  -k <key>   Keyroot for this parcel\n";
-    print "  -p <path>  Relative parcel path (userid/parcel)\n";    
-    print "  -s         Run pre-commit check\n";
-    print "  -v <ver>   Parcel version to check (default is last)\n";
-    print "  -V         Be verbose\n";
+    print "  -c           Perform content consistency check\n";
+    print "  -h           Print this message\n";
+    print "  -k <key>     Keyroot for this parcel\n";
+    print "  -u <user>    User for this parcel (default is $ENV{'USER'})\n";
+    print "  -p <parcel>  Parcel name\n";    
+    print "  -s           Run pre-commit check\n";
+    print "  -v <ver>     Parcel version to check (default is last)\n";
+    print "  -V           Be verbose\n";
     print "\n";
     exit 0;
 }
