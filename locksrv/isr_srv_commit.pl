@@ -33,8 +33,9 @@ $| = 1; # Autoflush output on every print statement
 # 
 # Local variables
 #
+my $username;
+my $parcelname;
 my $parceldir;
-my $parcelcom;
 my $lastver;
 my $nextver;
 my $nextverfilename;
@@ -53,16 +54,18 @@ my @files;
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hp:V');
+getopts('hu:p:V');
 
 if ($opt_h) {
     usage();
 }
 if (!$opt_p) {
-    usage("Missing parcel path (-p)");
+    usage("Missing parcel name (-p)");
 }
-$parcelcom = $opt_p;
-$parceldir = "$Server::CONTENT_ROOT" . "$parcelcom";
+$username = $opt_u;
+$username = $ENV{'USER'} if !$username;
+$parcelname = $opt_p;
+$parceldir = "$Server::CONTENT_ROOT$username/$parcelname";
 $verbose = $opt_V;
 use strict 'vars';
 
@@ -229,11 +232,12 @@ sub usage
         print "$progname: $msg\n";
     }
 
-    print "Usage: $progname [-hV] -p <parcel path>\n";
+    print "Usage: $progname [-hV] [-u <username>] -p <parcel>\n";
     print "Options:\n";
     print "  -h    Print this message\n";
-    print "  -V    Be verbose\n";    
-    print "  -p    Relative parcel path (userid/parcel)\n";    
+    print "  -V    Be verbose\n";
+    print "  -u    Username for this parcel (default is $ENV{'USER'})\n";
+    print "  -p    Parcel name\n";
     print "\n";
     exit 0;
 }
