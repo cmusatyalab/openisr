@@ -57,6 +57,7 @@ my $targetkeyring;
 my $lastkeyring;
 my $keyroot;
 my $parcelcfg;
+my $nonce;
 
 # Various temporary variables
 my $version;
@@ -117,8 +118,12 @@ $hostname = hostname();
 # Acquire the lock (if called with -l)
 # 
 if ($lock) {
-    system("$Server::SRVBIN/isr_srv_lock.pl -p $parcelpath -n $hostname -a > $parceldir/acquire_attempt") == 0
-	or system_errexit("Unable to acquire lock. See $parceldir/acquire_attempt for details.");
+    $nonce = `$Server::SRVBIN/isr_srv_lock.pl -p $parcelpath -n $hostname -a`;
+    if ($? != 0) {
+	undef $nonce;
+	errexit("Unable to acquire lock.");
+    }
+    chomp($nonce);
     print("Acquired lock.\n")
 	if $verbose;
 }
@@ -324,14 +329,12 @@ END {
     #
     # Release the lock if we had already acquired it
     #
-    if ($lock and $parcelpath and $hostname) { 
-	if (system("$Server::SRVBIN/isr_srv_lock.pl -p $parcelpath -n $hostname -c > /dev/null") == 0) {
-	    if (system("$Server::SRVBIN/isr_srv_lock.pl -p $parcelpath -n $hostname -R > $parceldir/release_attempt") == 0) {
-		print("Released the lock.\n")
-		    if $verbose;
-	    } else {
-		print ("Unable to release lock. See $parceldir/release_attempt for details.\n");
-	    }
+    if ($nonce) {
+	if (system("$Server::SRVBIN/isr_srv_lock.pl -p $parcelpath -n $hostname -r $nonce") == 0) {
+	    print("Released the lock.\n")
+		if $verbose;
+	} else {
+	    print ("Unable to release lock.\n");
 	}
     }
 }
