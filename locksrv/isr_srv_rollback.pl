@@ -37,6 +37,7 @@ $| = 1; # Autoflush output on every print statement
 #
 # Variables
 #
+my $username;
 my $parcelpath;
 my $hostname;
 my $verbose;
@@ -62,9 +63,6 @@ my $chunk;
 my $chunkdir;
 my $chunkcount;
 my $i;
-my $line;
-my $tag;
-my $key;
 my $reason;
 my $lock;
 
@@ -72,26 +70,29 @@ my $lock;
 my @filelist = ();
 my @chunkdirlist = ();
 my @chunklist = ();
-my @targettags = ();
-my @lasttags = ();
+my %tagdiffs;
 
 #
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hlp:v:Vk:');
+getopts('hlu:p:v:Vk:');
 
 if ($opt_h) {
     usage();
 }
 
 $lock = $opt_l;
-$parcelpath = $opt_p;
+$username = $opt_u;
+$parcel = $opt_p;
 $keyroot = $opt_k;
 $targetver = $opt_v;
 
-if (!$parcelpath) {
-    usage("Missing parcel path (-p)");
+if (!$username) {
+    $username = $ENV{"USER"};
+}
+if (!$parcel) {
+    usage("Missing parcel name (-p)");
 }
 if (!$keyroot) {
     usage("Missing keyroot (-k)");
@@ -99,13 +100,13 @@ if (!$keyroot) {
 if (!$targetver or $targetver < 1) {
     usage("Missing or incorrect target version number (-v)");
 }
+$parcelpath = "$username/$parcel";
 $parceldir = "$Server::CONTENT_ROOT" . "$parcelpath";
 $verbose = $opt_V;
 use strict 'vars';
 
 # Assign a few variables that we will need later
 $hostname = hostname();
-($parcel = $parceldir) =~ s#.*/##s; # extract the parcel name from the parcel path
 
 #
 # Make sure the parcel directory exists
@@ -144,7 +145,7 @@ $lastdir = "$parceldir/" . sprintf("%06d", $lastver);
 #
 # Determine the number of chunks per directory
 #
-$chunksperdir = get_value("$lastdir/hdk/index.lev1", "CHUNKSPERDIR");
+$chunksperdir = get_value(get_parcelcfg_path($username, $parcel), "CHUNKSPERDIR");
 
 # 
 # No need to do anything if target is also last
@@ -164,36 +165,21 @@ $lastkeyring = "$lastdir/keyring";
 
 # Decrypt the keyrings
 unlink($targetkeyring, $lastkeyring);
-system("openssl enc -d -bf -in $targetkeyring.enc -out $targetkeyring -pass pass:$keyroot -nosalt") == 0
+system("openssl enc -d -aes-128-cbc -in $targetkeyring.enc -out $targetkeyring -pass pass:$keyroot") == 0
     or system_errexit("Unable to decode $targetkeyring.enc");
-system("openssl enc -d -bf -in $lastkeyring.enc -out $lastkeyring -pass pass:$keyroot -nosalt") == 0
+system("openssl enc -d -aes-128-cbc -in $lastkeyring.enc -out $lastkeyring -pass pass:$keyroot") == 0
     or system_errexit("Unable to decode $lastkeyring.enc");
 
-# Load the target keyring
-open(INFILE, $targetkeyring)
-    or unix_errexit("Unable to open $targetkeyring");
-$i = 0;
-while ($line = <INFILE>) {
-    chomp($line);
-    ($tag, $key) = split(" ", $line);
-    $targettags[$i] = $tag;
-    $i++;
+# Compare the keyrings
+open(IN, "-|", "$Server::SRVBIN/query", "-a", "last:$lastkeyring", $targetkeyring, "SELECT main.keys.chunk FROM main.keys JOIN last.keys ON main.keys.chunk == last.keys.chunk WHERE main.keys.tag != last.keys.tag")
+    or unix_errexit("Unable to query keyrings");
+while ($chunk = <IN>) {
+    chomp($chunk);
+    $tagdiffs{$chunk} = 1;
 }
-close(INFILE)
-    or unix_errexit("Unable to close $targetkeyring");
-
-# Load the last keyring
-open(INFILE, $lastkeyring)
-    or unix_errexit("Unable to open $lastkeyring");
-$i = 0;
-while ($line = <INFILE>) {
-    chomp($line);
-    ($tag, $key) = split(" ", $line);
-    $lasttags[$i] = $tag;
-    $i++;
-}
-close(INFILE)
-    or unix_errexit("Unable to close $lastkeyring");
+close(IN);
+$? == 0
+    or unix_errexit("Keyring query failed");
 
 #
 # Create the cache directory where we'll be writing our updates
@@ -246,7 +232,7 @@ for ($version = $targetver; $version < $lastver; $version++) {
 	    # last. Condition (1) is necessary for correctness, while
 	    # condition (2) is necessary for space efficiency.
 	    $i = get_offset($chunkdir, $chunk, $chunksperdir);
-	    if (!-e "$cachedir/hdk/$chunkdir/$chunk" and ($targettags[$i] ne $lasttags[$i])) {
+	    if (!-e "$cachedir/hdk/$chunkdir/$chunk" and defined($tagdiffs{$i})) {
 		$chunkcount++;
 		print "Copying $chunkdir/$chunk to cache\n"
 		    if $verbose;
@@ -258,7 +244,7 @@ for ($version = $targetver; $version < $lastver; $version++) {
 		if (-e "$cachedir/hdk/$chunkdir/$chunk") {
 		    $reason = "exists";
 		}
-		if ($targettags[$i] eq $lasttags[$i]) {
+		if (!defined($tagdiffs{$i})) {
 		    $reason = $reason . "nochange";
 		}
 		print "Chunk $chunkdir/$chunk not copied to cache [$reason]\n"
@@ -277,15 +263,13 @@ print "Copying encryption and virtualization files...\n"
     if $verbose;
 system("cp $targetdir/{cfg.tgz.enc,keyring.enc} $cachedir") == 0
     or system_errexit("Unable to copy files from $targetdir to $cachedir.");
-system("cp $targetdir/hdk/index.lev1 $cachedir/hdk") == 0
-    or system_errexit("Unable to copy $targetdir/hdk/index.lev1 to $cachedir/hdk");
 
 #
 # Commit the updates in the cache
 # 
 print "Committing updates...\n"
     if $verbose;
-system("$Server::SRVBIN/isr_srv_commit.pl -p $parcelpath") == 0
+system("$Server::SRVBIN/isr_srv_commit.pl -u $username -p $parcel") == 0
     or system_errexit("Unable to commit version $targetver.");
 
 #
@@ -314,13 +298,14 @@ sub usage
         print "$progname: $msg\n";
     }
 
-    print "Usage: $progname [-hlV] -p <path> -v <ver> -k <key>\n";
+    print "Usage: $progname [-hlV] [-u username] -p <parcel> -v <ver> -k <key>\n";
     print "Options:\n";
     print "  -h        Print this message\n";
     print "  -k <key>  Keyroot for this parcel\n";
     print "  -l        Acquire and release the parcel lock\n";
     print "  -V        Be verbose\n";
-    print "  -p <path> Relative parcel path (userid/parcel)\n";
+    print "  -u <user> Username for this parcel (default is $ENV{'USER'})\n";
+    print "  -p <name> Parcel name\n";
     print "  -v <ver>  Target version to revert to\n";
     print "\n";
 
@@ -342,12 +327,12 @@ END {
     #
     if ($lock and $parcelpath and $hostname) { 
 	if (system("$Server::SRVBIN/isr_srv_lock.pl -p $parcelpath -n $hostname -c > /dev/null") == 0) {
-	    if (system("$Server::SRVBIN/isr_srv_lock.pl -p $parcelpath -n $hostname -R > $parcelpath/release_attempt") == 0) {
+	    if (system("$Server::SRVBIN/isr_srv_lock.pl -p $parcelpath -n $hostname -R > $parceldir/release_attempt") == 0) {
 		print("Released the lock.\n")
 		    if $verbose;
 	    }
 	    else {
-		print ("Unable to release lock. See $parcelpath/release_attempt for details.\n");
+		print ("Unable to release lock. See $parceldir/release_attempt for details.\n");
 	    }
 	}
     }
