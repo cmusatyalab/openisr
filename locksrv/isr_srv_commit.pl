@@ -45,6 +45,7 @@ my $cachedir;
 my $numdirs;
 my $i;
 my $verbose;
+my $file;
 
 my @files;
 
@@ -130,25 +131,29 @@ $numdirs = get_numdirs(get_parcelcfg_path($username, $parcelname));
 #
 # Move the entire last directory to next
 #
-system("mv $lastdir $nextdir") == 0
-    or system_errexit("Couldn't move $lastdir to $nextdir");
+rename($lastdir, $nextdir)
+    or unix_errexit("Couldn't move $lastdir to $nextdir");
 
 # 
 # Move all of the non-chunk files from next back to last where they belong.
 #
-system("mkdir $lastdir") == 0
-    or system_errexit("Couldn't make $lastdir");
-system("mkdir $lastdir/hdk") == 0
-    or system_errexit("Couldn't make $lastdir/hdk");
+mkdir($lastdir)
+    or unix_errexit("Couldn't make $lastdir");
+mkdir("$lastdir/hdk")
+    or unix_errexit("Couldn't make $lastdir/hdk");
 
-system("mv $nextdir/{cfg.tgz.enc,keyring.enc} $lastdir") == 0
-    or system_errexit("Unable to move non-chunk files from $nextdir back to $lastdir");
+foreach $file ("cfg.tgz.enc", "keyring.enc") {
+    rename("$nextdir/$file", "$lastdir/$file")
+	or unix_errexit("Unable to move $file from $nextdir back to $lastdir");
+}
 
 #
-# Copy the new non-chunk files from the cache into next
+# Move the new non-chunk files from the cache into next
 #
-system("cp $cachedir/{cfg.tgz.enc,keyring.enc} $nextdir") == 0
-    or system_errexit("Unable to move non-chunk files from $cachedir to $nextdir");
+foreach $file ("cfg.tgz.enc", "keyring.enc") {
+    rename("$cachedir/$file", "$nextdir/$file")
+	or unix_errexit("Unable to move $file files from $cachedir to $nextdir");
+}
 
 # 
 # For each cache chunk k, move chunk k from next to last, then move chunk k from cache to next
@@ -168,19 +173,19 @@ for ($i = 0; $i < $numdirs; $i++) {
 
 	# Create target subdirectory if there are files to be moved
 	if(@files) {
-	    system("mkdir $lastdir/hdk/$dirname") == 0
-		or system_errexit("Unable to create target last directory $lastdir/hdk/$dirname.");
+	    mkdir("$lastdir/hdk/$dirname")
+		or unix_errexit("Unable to create target last directory $lastdir/hdk/$dirname.");
 	}
 
 	closedir(DIR);
 	foreach $chunk (@files) {
 	    # Move the about-be-overwritten chunk from next to last
-	    system("mv $nextdir/hdk/$dirname/$chunk $lastdir/hdk/$dirname/") == 0
-		or system_errexit("Unable to move $nextdir/hdk/$dirname/$chunk (next) to $lastdir/hdk/$dirname (last).");
+	    rename("$nextdir/hdk/$dirname/$chunk", "$lastdir/hdk/$dirname/$chunk")
+		or unix_errexit("Unable to move $nextdir/hdk/$dirname/$chunk (next) to $lastdir/hdk/$dirname (last).");
 	    
 	    # Move the new chunk from cache to next
-	    system("mv $cachedir/hdk/$dirname/$chunk $nextdir/hdk/$dirname/") == 0
-		or system_errexit("Unable to move $cachedir/hdk/$dirname/$chunk (cache) to $nextdir/hdk/$dirname (next).");
+	    rename("$cachedir/hdk/$dirname/$chunk", "$nextdir/hdk/$dirname/$chunk")
+		or unix_errexit("Unable to move $cachedir/hdk/$dirname/$chunk (cache) to $nextdir/hdk/$dirname (next).");
 	}
     }
 }    
@@ -191,8 +196,8 @@ for ($i = 0; $i < $numdirs; $i++) {
 unlink("$parceldir/last")
     or unix_errexit("Unable to remove link $parceldir/last.");
 $nextverfilename = sprintf("%06d", $nextver);
-system("cd $parceldir; ln -s $nextverfilename last") == 0
-    or system_errexit("Unable to create link $parceldir/last.");
+symlink($nextverfilename, "$parceldir/last")
+    or unix_errexit("Unable to create link $parceldir/last.");
 
 #
 # Clean up and exit
