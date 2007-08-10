@@ -129,23 +129,19 @@ $nextdir = "$parceldir/" . sprintf("%06d", $nextver);
 $numdirs = get_numdirs(get_parcelcfg_path($username, $parcelname));
 
 #
-# Move the entire last directory to next
+# Make the next directory
 #
-rename($lastdir, $nextdir)
-    or unix_errexit("Couldn't move $lastdir to $nextdir");
+mkdir($nextdir)
+    or unix_errexit("Couldn't make $nextdir");
 
-# 
-# Move all of the non-chunk files from next back to last where they belong.
 #
-mkdir($lastdir)
-    or unix_errexit("Couldn't make $lastdir");
+# Move the disk chunks to next, and create a container for the unchanged
+# ones in last
+#
+rename("$lastdir/hdk", "$nextdir/hdk")
+    or unix_errexit("Couldn't move $lastdir/hdk to $nextdir/hdk");
 mkdir("$lastdir/hdk")
     or unix_errexit("Couldn't make $lastdir/hdk");
-
-foreach $file ("cfg.tgz.enc", "keyring.enc") {
-    rename("$nextdir/$file", "$lastdir/$file")
-	or unix_errexit("Unable to move $file from $nextdir back to $lastdir");
-}
 
 #
 # Move the new non-chunk files from the cache into next
