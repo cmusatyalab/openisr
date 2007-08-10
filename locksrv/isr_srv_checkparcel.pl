@@ -43,10 +43,10 @@ my $strong_contentcheck;
 my $verbose;
 my $username;
 my $parcelname;
-my $keyroot;
 my $currver;
 
 # Important variables
+my $keyroot;
 my $parceldir;
 my $lastver;
 my $currdir;
@@ -86,7 +86,7 @@ my %keydiff; # one hash key for every keyring entry that differs
 # Parse the command line args
 #
 no strict 'vars';
-getopts('Vhcsu:p:v:k:');
+getopts('Vhcsu:p:v:');
 
 if ($opt_h) {
     usage();
@@ -94,16 +94,12 @@ if ($opt_h) {
 if (!$opt_p) {
     usage("Missing parcel name (-p)");
 }
-if (!$opt_k) {
-    usage("Missing keyroot (-k)");
-}
 $username = $opt_u;
 $username = $ENV{"USER"} if !$username;
 $parcelname = $opt_p;
 $parceldir = "$Server::CONTENT_ROOT$username/$parcelname";
 $currver = $opt_v;
 $verbose = $opt_V;
-$keyroot = $opt_k;
 $contentcheck = $opt_c;
 $precommit = $opt_s;
 
@@ -200,6 +196,8 @@ else {
     print "Checking version $currver.\n"
 	if $verbose;
 }
+
+$keyroot = get_value($parcelcfg, "KEYROOT");
 
 system("openssl enc -d -aes-128-cbc -in $currkeyring_enc -out $currkeyring -pass pass:$keyroot") == 0
     or system_errexit("Unable to decode $currkeyring_enc");
@@ -384,11 +382,10 @@ sub usage
         print "Error: $msg\n\n";
     }
 
-    print "Usage: $progname [-hcVs] [-u <username>] -p <parcel> -k <key> [-v <version>]\n";
+    print "Usage: $progname [-hcVs] [-u <username>] -p <parcel> [-v <version>]\n";
     print "Options:\n";
     print "  -c           Perform content consistency check\n";
     print "  -h           Print this message\n";
-    print "  -k <key>     Keyroot for this parcel\n";
     print "  -u <user>    User for this parcel (default is $ENV{'USER'})\n";
     print "  -p <parcel>  Parcel name\n";    
     print "  -s           Run pre-commit check\n";

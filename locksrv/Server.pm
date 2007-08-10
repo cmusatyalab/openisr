@@ -129,7 +129,7 @@ sub get_value
 	chomp($line);
 	($line_key, $line_value) = split(/[= ]+/, $line);
 	if ($line_key eq $search_key) {
-	    $return_value = int($line_value);
+	    $return_value = $line_value;
 	    last;
 	}
     }
