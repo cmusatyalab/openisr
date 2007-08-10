@@ -142,17 +142,17 @@ closedir(DIR);
 $lastver = int(@filelist[0]);
 $lastdir = "$parceldir/" . sprintf("%06d", $lastver);
 
-#
-# Determine the number of chunks per directory
-#
-$chunksperdir = get_value(get_parcelcfg_path($username, $parcel), "CHUNKSPERDIR");
-
 # 
 # No need to do anything if target is also last
 #
 if ($targetver == $lastver) {
     exit 0;
 }
+
+#
+# Determine the number of chunks per directory
+#
+$chunksperdir = get_value(get_parcelcfg_path($username, $parcel), "CHUNKSPERDIR");
 
 #
 # Load the keyring content tags from the target version and the last version
@@ -210,7 +210,6 @@ for ($version = $targetver; $version < $lastver; $version++) {
 
     # Iterate over the chunk directories in this parcel version
     foreach $chunkdir (@chunkdirlist) {
-
 	# Enumerate the chunks in this chunk directory
 	opendir(DIR, "$this_hdkdir/$chunkdir")
 	    or errexit("Could not open directory $this_hdkdir/$chunkdir");
@@ -219,7 +218,6 @@ for ($version = $targetver; $version < $lastver; $version++) {
 
 	# Iterate over each chunk in the chunk directory
 	foreach $chunk (@chunklist) {
-
 	    # Create this chunkdir in the cache if it does not exist
 	    if (!-e "$cachedir/hdk/$chunkdir") {
 		system("mkdir $cachedir/hdk/$chunkdir") == 0
@@ -238,8 +236,7 @@ for ($version = $targetver; $version < $lastver; $version++) {
 		    if $verbose;
 		system("cp $this_hdkdir/$chunkdir/$chunk $cachedir/hdk/$chunkdir") == 0
 		    or system_errexit("Unable to copy $this_hdkdir/$chunkdir/$chunk to cache");
-	    }
-	    else {
+	    } else {
 		$reason = "";
 		if (-e "$cachedir/hdk/$chunkdir/$chunk") {
 		    $reason = "exists";
@@ -330,8 +327,7 @@ END {
 	    if (system("$Server::SRVBIN/isr_srv_lock.pl -p $parcelpath -n $hostname -R > $parceldir/release_attempt") == 0) {
 		print("Released the lock.\n")
 		    if $verbose;
-	    }
-	    else {
+	    } else {
 		print ("Unable to release lock. See $parceldir/release_attempt for details.\n");
 	    }
 	}
