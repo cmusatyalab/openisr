@@ -23,6 +23,7 @@
 use strict;
 use Getopt::Std;
 use File::stat;
+use File::Copy;
 use Socket;
 use Sys::Hostname;
 use lib "/usr/local/isr/bin";
@@ -66,6 +67,7 @@ my $chunkcount;
 my $i;
 my $reason;
 my $lock;
+my $file;
 
 # Arrays and list
 my @filelist = ();
@@ -186,10 +188,10 @@ $? == 0
 $cachedir = "$parceldir/cache";
 system("rm -rf $cachedir") == 0
     or system_errexit("Unable to remove $cachedir");
-system("mkdir $cachedir") == 0
-    or system_errexit("Unable to create $cachedir");
-system("mkdir $cachedir/hdk") == 0
-    or system_errexit("Unable to create $cachedir/hdk");
+mkdir($cachedir)
+    or unix_errexit("Unable to create $cachedir");
+mkdir("$cachedir/hdk")
+    or unix_errexit("Unable to create $cachedir/hdk");
 
 #
 # Main rollback loop nest
@@ -219,8 +221,8 @@ for ($version = $targetver; $version < $lastver; $version++) {
 	foreach $chunk (@chunklist) {
 	    # Create this chunkdir in the cache if it does not exist
 	    if (!-e "$cachedir/hdk/$chunkdir") {
-		system("mkdir $cachedir/hdk/$chunkdir") == 0
-		    or system_errexit("Unable to create $cachedir/hdk/$chunkdir");
+		mkdir("$cachedir/hdk/$chunkdir")
+		    or unix_errexit("Unable to create $cachedir/hdk/$chunkdir");
 	    }
 
 	    # This is tricky: Copy chunk c to the cache only if (1) a
@@ -233,8 +235,8 @@ for ($version = $targetver; $version < $lastver; $version++) {
 		$chunkcount++;
 		print "Copying $chunkdir/$chunk to cache\n"
 		    if $verbose;
-		system("cp $this_hdkdir/$chunkdir/$chunk $cachedir/hdk/$chunkdir") == 0
-		    or system_errexit("Unable to copy $this_hdkdir/$chunkdir/$chunk to cache");
+		copy("$this_hdkdir/$chunkdir/$chunk", "$cachedir/hdk/$chunkdir/$chunk")
+		    or unix_errexit("Unable to copy $this_hdkdir/$chunkdir/$chunk to cache");
 	    } else {
 		$reason = "";
 		if (-e "$cachedir/hdk/$chunkdir/$chunk") {
@@ -257,8 +259,10 @@ for ($version = $targetver; $version < $lastver; $version++) {
 #
 print "Copying encryption and virtualization files...\n"
     if $verbose;
-system("cp $targetdir/{cfg.tgz.enc,keyring.enc} $cachedir") == 0
-    or system_errexit("Unable to copy files from $targetdir to $cachedir.");
+foreach $file ("cfg.tgz.enc", "keyring.enc") {
+    copy("$targetdir/$file", "$cachedir/$file")
+	or unix_errexit("Unable to copy $file from $targetdir to $cachedir.");
+}
 
 #
 # Commit the updates in the cache
