@@ -163,7 +163,7 @@ $keyroot = get_value($parcelcfg, "KEYROOT");
 #
 # Load the keyring content tags from the target version and the last version
 #
-print "Decrypting and loading target and last keyrings.\n"
+print "Decrypting and comparing target and last keyrings.\n"
     if $verbose;
 
 $targetkeyring = "$targetdir/keyring";
