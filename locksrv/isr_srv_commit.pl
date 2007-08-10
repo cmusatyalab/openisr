@@ -38,7 +38,6 @@ my $parcelname;
 my $parceldir;
 my $lastver;
 my $nextver;
-my $nextverfilename;
 my $lastdir;
 my $nextdir;
 my $cachedir;
@@ -191,8 +190,7 @@ for ($i = 0; $i < $numdirs; $i++) {
 #
 unlink("$parceldir/last")
     or unix_errexit("Unable to remove link $parceldir/last.");
-$nextverfilename = sprintf("%06d", $nextver);
-symlink($nextverfilename, "$parceldir/last")
+symlink(sprintf("%06d", $nextver), "$parceldir/last")
     or unix_errexit("Unable to create link $parceldir/last.");
 
 #
