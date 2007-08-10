@@ -55,6 +55,7 @@ my $chunksperdir;
 my $targetkeyring;
 my $lastkeyring;
 my $keyroot;
+my $parcelcfg;
 
 # Various temporary variables
 my $version;
@@ -76,7 +77,7 @@ my %tagdiffs;
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hlu:p:v:Vk:');
+getopts('hlu:p:v:V');
 
 if ($opt_h) {
     usage();
@@ -85,7 +86,6 @@ if ($opt_h) {
 $lock = $opt_l;
 $username = $opt_u;
 $parcel = $opt_p;
-$keyroot = $opt_k;
 $targetver = $opt_v;
 
 if (!$username) {
@@ -93,9 +93,6 @@ if (!$username) {
 }
 if (!$parcel) {
     usage("Missing parcel name (-p)");
-}
-if (!$keyroot) {
-    usage("Missing keyroot (-k)");
 }
 if (!$targetver or $targetver < 1) {
     usage("Missing or incorrect target version number (-v)");
@@ -150,9 +147,11 @@ if ($targetver == $lastver) {
 }
 
 #
-# Determine the number of chunks per directory
+# Read config variables from parcel.cfg
 #
-$chunksperdir = get_value(get_parcelcfg_path($username, $parcel), "CHUNKSPERDIR");
+$parcelcfg = get_parcelcfg_path($username, $parcel);
+$chunksperdir = get_value($parcelcfg, "CHUNKSPERDIR");
+$keyroot = get_value($parcelcfg, "KEYROOT");
 
 #
 # Load the keyring content tags from the target version and the last version
@@ -295,10 +294,9 @@ sub usage
         print "$progname: $msg\n";
     }
 
-    print "Usage: $progname [-hlV] [-u username] -p <parcel> -v <ver> -k <key>\n";
+    print "Usage: $progname [-hlV] [-u username] -p <parcel> -v <ver>\n";
     print "Options:\n";
     print "  -h        Print this message\n";
-    print "  -k <key>  Keyroot for this parcel\n";
     print "  -l        Acquire and release the parcel lock\n";
     print "  -V        Be verbose\n";
     print "  -u <user> Username for this parcel (default is $ENV{'USER'})\n";
