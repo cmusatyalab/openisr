@@ -42,8 +42,6 @@ my $nextverfilename;
 my $lastdir;
 my $nextdir;
 my $cachedir;
-my $totalchunks;
-my $chunksperdir;
 my $numdirs;
 my $i;
 my $verbose;
@@ -115,8 +113,6 @@ $nextdir = "$parceldir/" . sprintf("%06d", $nextver);
     or errexit("Missing $cachedir/keyring.enc. No changes were made on the server.");
 (-e "$cachedir/hdk")
     or errexit("Missing $cachedir/hdk directory. No changes were made on the server.");
-(-e "$cachedir/hdk/index.lev1")
-    or errexit("Missing $cachedir/hdk/index.lev1. No changes were made on the server.");
 
 # Check last
 (-e "$lastdir/cfg.tgz.enc")
@@ -125,15 +121,11 @@ $nextdir = "$parceldir/" . sprintf("%06d", $nextver);
     or errexit("Missing $lastdir/keyring.enc. No changes were made on the server.");
 (-e "$lastdir/hdk")
     or errexit("Missing $lastdir/hdk directory. No changes were made on the server.");
-(-e "$lastdir/hdk/index.lev1")
-    or errexit("Missing $lastdir/hdk/index.lev1. No changes were made on the server.");
 
 #
 # Set some hdk parameters
 #
-$numdirs = get_value("$cachedir/hdk/index.lev1", "NUMDIRS");
-$chunksperdir = get_value("$cachedir/hdk/index.lev1", "CHUNKSPERDIR");
-$totalchunks = $numdirs * $chunksperdir;
+$numdirs = get_numdirs(get_parcelcfg_path($username, $parcelname));
 
 #
 # Move the entire last directory to next
@@ -151,21 +143,17 @@ system("mkdir $lastdir/hdk") == 0
 
 system("mv $nextdir/{cfg.tgz.enc,keyring.enc} $lastdir") == 0
     or system_errexit("Unable to move non-chunk files from $nextdir back to $lastdir");
-system("mv $nextdir/hdk/index.lev1 $lastdir/hdk") == 0
-    or system_errexit("Unable to move $nextdir/hdk/index.lev1 back to $lastdir/hdk");
 
 #
 # Copy the new non-chunk files from the cache into next
 #
 system("cp $cachedir/{cfg.tgz.enc,keyring.enc} $nextdir") == 0
     or system_errexit("Unable to move non-chunk files from $cachedir to $nextdir");
-system("cp $cachedir/hdk/index.lev1 $nextdir/hdk") == 0
-    or system_errexit("Unable to move $cachedir/hdk/index.lev1 to $nextdir/hdk");
 
 # 
 # For each cache chunk k, move chunk k from next to last, then move chunk k from cache to next
 #
-print "Scanning $numdirs dirs in $cachedir ($chunksperdir chunks/dir, $totalchunks total chunks)...\n"
+print "Scanning $numdirs dirs in $cachedir...\n"
     if $verbose;
 
 for ($i = 0; $i < $numdirs; $i++) {
@@ -186,7 +174,6 @@ for ($i = 0; $i < $numdirs; $i++) {
 
 	closedir(DIR);
 	foreach $chunk (@files) {
-
 	    # Move the about-be-overwritten chunk from next to last
 	    system("mv $nextdir/hdk/$dirname/$chunk $lastdir/hdk/$dirname/") == 0
 		or system_errexit("Unable to move $nextdir/hdk/$dirname/$chunk (next) to $lastdir/hdk/$dirname (last).");
@@ -194,7 +181,6 @@ for ($i = 0; $i < $numdirs; $i++) {
 	    # Move the new chunk from cache to next
 	    system("mv $cachedir/hdk/$dirname/$chunk $nextdir/hdk/$dirname/") == 0
 		or system_errexit("Unable to move $cachedir/hdk/$dirname/$chunk (cache) to $nextdir/hdk/$dirname (next).");
-
 	}
     }
 }    
