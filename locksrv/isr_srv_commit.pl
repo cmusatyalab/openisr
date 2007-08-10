@@ -46,7 +46,6 @@ my $chunksperdir;
 my $numdirs;
 my $i;
 my $verbose;
-my $rsync;
 
 my @files;
 
@@ -54,7 +53,7 @@ my @files;
 # Parse the command line args
 #
 no strict 'vars';
-getopts('rhp:V');
+getopts('hp:V');
 
 if ($opt_h) {
     usage();
@@ -65,7 +64,6 @@ if (!$opt_p) {
 $parcelcom = $opt_p;
 $parceldir = "$Server::CONTENT_ROOT" . "$parcelcom";
 $verbose = $opt_V;
-$rsync = $opt_r;
 use strict 'vars';
 
 #
@@ -174,11 +172,8 @@ for ($i = 0; $i < $numdirs; $i++) {
     
     # If the directory exists, copy its chunks, otherwise go to next dir
     if (opendir(DIR, "$cachedir/hdk/$dirname")) {
-
-	
 	# Generate a sorted list of the chunks in the current directory
 	@files = sort grep(!/^[\._]/, readdir(DIR)); # filter out "." and ".."
-
 
 	# Create target subdirectory if there are files to be moved
 	if(@files) {
@@ -213,10 +208,6 @@ system("cd $parceldir; ln -s $nextverfilename last") == 0
 #
 # Clean up and exit
 #
-if (!$rsync) { # By default, delete the server-side cache
-    system("rm -rf $cachedir") == 0
-	or system_errexit("Unable to remove directory $cachedir");
-}
 exit 0;
 
 ##################
@@ -243,7 +234,6 @@ sub usage
     print "  -h    Print this message\n";
     print "  -V    Be verbose\n";    
     print "  -p    Relative parcel path (userid/parcel)\n";    
-    print "  -r    Support rsync by not deleting cache when finished\n";    
     print "\n";
     exit 0;
 }
