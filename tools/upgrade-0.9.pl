@@ -14,6 +14,18 @@ our $bindir = ".";
 our @versions;
 our %parcelcfg;
 
+sub gen_keyroot {
+	my $keyroot;
+
+	open(KR, "-|", "openssl rand -rand /dev/urandom -base64 15 2>/dev/null")
+		or die;
+	$keyroot = <KR>;
+	close KR;
+	$? == 0 or die;
+	chomp $keyroot;
+	$parcelcfg{"NEWKEYROOT"} = $keyroot;
+}
+
 sub process_parcel_cfg {
 	my $file;
 	my $key;
@@ -44,7 +56,11 @@ EOF
 				"MAXKB", "CHUNKSIZE", "NUMCHUNKS",
 				"CHUNKSPERDIR") {
 		die unless defined $parcelcfg{$key};
-		print OF "$key = $parcelcfg{$key}\n";
+		if ($key eq "KEYROOT") {
+			print OF "$key = $parcelcfg{'NEWKEYROOT'}\n";
+		} else {
+			print OF "$key = $parcelcfg{$key}\n";
+		}
 	}
 	close OF;
 }
@@ -56,25 +72,22 @@ sub init_dest {
 	copy("$src/lockholder.log", "$dst/lockholder.log") or die;
 	die if ! -l "$src/last";
 	symlink(readlink("$src/last"), "$dst/last") or die;
-
-	open(KR, ">$dst/keyroot") or die;
-	print KR $parcelcfg{"KEYROOT"} . "\n";
-	close KR;
 }
 
 sub prepare_version {
 	my $ver = shift;
+	my $keyroot = $parcelcfg{"KEYROOT"};
 
 	print "Unpacking version $ver...\n";
 	die unless -e "$src/$ver/cfg.tgz.enc" && -e "$src/$ver/keyring.enc";
 	mkpath "$dst/$ver";
 	system("openssl enc -d -bf -in '$src/$ver/cfg.tgz.enc' " .
-				"-pass 'file:$dst/keyroot' -nosalt | " .
+				"-pass 'pass:$keyroot' -nosalt | " .
 				"tar xzC '$dst/$ver'") == 0 or die;
 	if (! -e "$dst/$ver/cfg/keyring.bin") {
 		system("openssl enc -d -bf -in '$src/$ver/keyring.enc' " .
 				"-out '$dst/$ver/keyring.old' " .
-				"-pass 'file:$dst/keyroot' -nosalt") == 0
+				"-pass 'pass:$keyroot' -nosalt") == 0
 				or die;
 	}
 }
@@ -140,6 +153,7 @@ sub rewrite_keyring {
 
 sub finish_version {
 	my $ver = shift;
+	my $keyroot = $parcelcfg{"NEWKEYROOT"};
 	my @files;
 	my $pattern;
 	my $file;
@@ -164,10 +178,10 @@ sub finish_version {
 	}
 	system("tar cC '$dst/$ver' cfg | gzip -c9 | openssl enc " .
 				"-aes-128-cbc -out '$dst/$ver/cfg.tgz.enc' " .
-				"-pass 'file:$dst/keyroot'") == 0 or die;
+				"-pass 'pass:$keyroot'") == 0 or die;
 	system("openssl enc -aes-128-cbc -in '$dst/$ver/keyring' " .
 			"-out '$dst/$ver/keyring.enc' " .
-			"-pass 'file:$dst/keyroot'") == 0 or die;
+			"-pass 'pass:$keyroot'") == 0 or die;
 	unlink("$dst/$ver/keyring") or die;
 	system("rm -rf '$dst/$ver/cfg'") == 0 or die;
 	$stat = stat("$src/$ver/keyring.enc") or die;
@@ -185,6 +199,7 @@ opendir(SRC, $src) || die "Can't open directory $src";
 @versions = sort grep {/[0-9]+/} readdir SRC or die;
 closedir(SRC);
 
+gen_keyroot;
 process_parcel_cfg;
 init_dest;
 foreach my $ver (@versions) {
@@ -196,5 +211,5 @@ foreach my $ver (@versions) {
 	rewrite_keyring $ver;
 	finish_version $ver;
 }
-unlink("$dst/mapdb", "$dst/keyroot") == 2 or die;
+unlink("$dst/mapdb") == 1 or die;
 print "Upgrade complete\n";
