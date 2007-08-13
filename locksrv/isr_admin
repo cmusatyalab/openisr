@@ -23,6 +23,7 @@
 use strict;
 use Getopt::Long;
 use File::stat;
+use File::Basename;
 use Socket;
 use Sys::Hostname;
 use Term::ANSIColor qw(:constants);
@@ -405,11 +406,16 @@ sub addparcel ($$$$) {
     my $srcparcel = shift;   # Source parcel name
 
     my $lastver;
+    my $srckeyroot;
+    my $dstkeyroot;
     my @files;
 
     my $userdir = "$Server::CONTENT_ROOT/$userid";
     my $parceldir = "$userdir/$parcel";
     my $srcpath = "$Server::CONTENT_ROOT/$srcuserid/$srcparcel";
+    my $srcparcelcfg = get_parcelcfg_path($srcuserid, $srcparcel);
+    my $dstparcelcfg = get_parcelcfg_path($userid, $parcel);
+    my $dstparcelcfgdir = dirname($dstparcelcfg);
 
     # Create new content directory for this user if one doesn't already exist
     if (!-d $userdir) {
@@ -444,15 +450,38 @@ sub addparcel ($$$$) {
     system("cd $parceldir; ln -s 000001 last") == 0
 	or errexit("Unable to create last link to $parceldir/000001");
 
+    # Re-encrypt the destination with a new keyroot
+    $srckeyroot = get_value($srcparcelcfg, "KEYROOT");
+    $dstkeyroot = keygen();
+    decrypt($userid, $parcel, 1, $srckeyroot);
+    encrypt($userid, $parcel, 1, $dstkeyroot);
+    
     # Set the appropriate file ownership and permissions
     system("chown -R $userid:$userid $parceldir") == 0
 	or errexit("Unable to set owner of $parceldir");
     system("chmod -R 755 $parceldir") == 0
 	or errexit("Unable to set permissions of $parceldir");
     
+    # Write out the new parcel.cfg
+    mkdir($dstparcelcfgdir)
+	or unix_errexit("Unable to make directory $dstparcelcfgdir.");
+    open(IN, $srcparcelcfg)
+    	or unix_errexit("Couldn't read $srcparcelcfg");
+    open(OUT, ">", $dstparcelcfg)
+    	or unix_errexit("Couldn't write $dstparcelcfg");
+    while (<IN>) {
+	if (/^KEYROOT/) {
+	    print OUT "KEYROOT = $dstkeyroot\n";
+	} else {
+	    print OUT;
+	}
+    }
+    close IN;
+    close OUT;
+    system("chown -R $userid:$userid $dstparcelcfgdir") == 0
+	or errexit("Unable to set owner of $dstparcelcfgdir");
 
     print "Success: Added $userid/$parcel\n";
-
 }
 
 #
