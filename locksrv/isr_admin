@@ -36,7 +36,7 @@ sub decrypt ($$$$);
 sub getkeyroot ($$);
 sub adduser ($);
 sub deluser ($);
-sub addparcel ($$$);
+sub addparcel ($$$$);
 sub prune ($$$);
 sub getusage ();
 sub keygen ();
@@ -56,11 +56,12 @@ my $target;
 my $help;
 my $parceldir;
 my $parcel;
+my $srcparcel;
 my $verbose;
 my $command;
 my $keyroot;
 my $userid;
-my $srcpath;
+my $srcuserid;
 my $retain;
 my $version;
 
@@ -71,9 +72,10 @@ Getopt::Long::Configure("no_ignore_case", "bundling_override");
 $result = GetOptions(
                      "h|help+"         => \$help,
                      "p|parcel=s"      => \$parcel,
+                     "P|srcparcel=s"   => \$srcparcel,
                      "r|retain=i"      => \$retain,
-                     "s|srcpath=s"     => \$srcpath,
                      "u|userid=s"      => \$userid,
+                     "U|srcuserid=s"   => \$srcuserid,
                      "v|version=i"     => \$version,
                      "V|verbose+"      => \$verbose,
                      );
@@ -136,8 +138,10 @@ if ($command eq "addparcel") {
 	if (!$userid);
     usage("Missing parcel name (-p)")
 	if (!$parcel);
-    usage("Missing source path (-s)")
-	if (!$srcpath);
+    usage("Missing source userid (-U)")
+    	if (!$srcuserid);
+    usage("Missing source parcel (-P)")
+	if (!$srcparcel);
 }
 
 if ($command eq "prune") {
@@ -175,7 +179,7 @@ elsif ($command eq "deluser") {
     deluser($userid);
 }
 elsif ($command eq "addparcel") {
-    addparcel($userid, $parcel, $srcpath);
+    addparcel($userid, $parcel, $srcuserid, $srcparcel);
 }
 elsif ($command eq "prune") {
     prune($userid, $parcel, $retain);
@@ -394,17 +398,18 @@ sub deluser ($) {
 #
 # addparcel - Add a new parcel
 #             
-sub addparcel ($$$) {
+sub addparcel ($$$$) {
     my $userid = shift;      # Destination user id
     my $parcel = shift;      # Destination parcel name
-    my $srcpath = shift;     # Absolute path to source parcel
-                             # E.g., $srcpath=/prefix/isradmin/winxpcs
+    my $srcuserid = shift;   # Source user id
+    my $srcparcel = shift;   # Source parcel name
 
     my $lastver;
     my @files;
 
     my $userdir = "$Server::CONTENT_ROOT/$userid";
     my $parceldir = "$userdir/$parcel";
+    my $srcpath = "$Server::CONTENT_ROOT/$srcuserid/$srcparcel";
 
     # Create new content directory for this user if one doesn't already exist
     if (!-d $userdir) {
@@ -555,7 +560,7 @@ sub usage {
     print RED, "Usage: $progname cmd [options...]\n", RESET;
     print BLUE, "Commands: addparcel, adduser, deluser, decrypt, encrypt, getkeyroot,\n          getusage, keygen, prune.\n", RESET;
 
-    print "  addparcel  Add a parcel (-u, -p, -s).\n";
+    print "  addparcel  Add a parcel (-u, -p, -U, -P).\n";
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
@@ -568,9 +573,10 @@ sub usage {
     print "Options:\n";
     print "  -h,--help         Print help message (Try '-hh' for some concrete examples).\n";
     print "  -p,--parcel       Parcel name (e.g., winxp).\n";
+    print "  -P,--srcparcel    Source parcel name.\n";
     print "  -r,--retain       How many of the most recent versions to retain when pruning.\n";
-    print "  -s,--srcpath      Absolute path of source parcel (e.g., /bar/userid/parcel).\n";
     print "  -u,--userid       ISR userid.\n";
+    print "  -U,--srcuserid    Username of source parcel.\n";
     print "  -v,--version      Version number to encrypt or decrypt.\n";
     print "  -V,--verbose      Increment verbosity level.\n";
     if ($help > 1) {
@@ -578,7 +584,7 @@ sub usage {
 	print "Examples:\n"; 
 	print RED, "addparcel - ", RESET, "Create new parcel winxp for existing user bovik in $croot\n";
 	print "using latest version of existing parcel in $croot/gold/goldwinxp\n";
-	print BLUE, "% isr_admin addparcel -u bovik -p winxp -s $croot/gold/goldwinxp\n", RESET;
+	print BLUE, "% isr_admin addparcel -u bovik -p winxp -U gold -Pgoldwinxp\n", RESET;
 	print "\n";
 	print RED, "adduser - ", RESET, "Add user bovik to the system\n";
 	print BLUE, "% isr_admin adduser -u bovik\n", RESET;
