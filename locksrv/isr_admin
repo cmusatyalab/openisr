@@ -311,9 +311,11 @@ sub decrypt ($$$$) {
 # keygen - Generate a keyroot
 #
 sub keygen () {
-    my $passwd = "changeme";
-    my $salt = join '', ('.', '/', 0..9, 'A'..'Z', 'a'..'z')[rand 64, rand 64];
-    return (crypt($passwd, $salt));
+    my $keyroot = `openssl rand -rand /dev/urandom -base64 15 2>/dev/null`;
+    $? == 0
+        or errexit("Couldn't generate keyroot");
+    chomp($keyroot);
+    return $keyroot;
 }
 
 #
