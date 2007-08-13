@@ -408,6 +408,7 @@ sub addparcel ($$$$) {
     my $lastver;
     my $srckeyroot;
     my $dstkeyroot;
+    my $uuid;
     my @files;
 
     my $userdir = "$Server::CONTENT_ROOT/$userid";
@@ -472,6 +473,12 @@ sub addparcel ($$$$) {
     while (<IN>) {
 	if (/^KEYROOT/) {
 	    print OUT "KEYROOT = $dstkeyroot\n";
+	} elsif (/^UUID/) {
+	    $uuid = `uuidgen`;
+	    $? == 0
+	        or errexit("Couldn't generate UUID");
+	    chomp($uuid);
+	    print OUT "UUID = $uuid\n";
 	} else {
 	    print OUT;
 	}
