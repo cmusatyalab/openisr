@@ -41,8 +41,6 @@ require Exporter;
 	     system_errexit
 	     get_value
 	     get_offset
-	     get_dirnum
-	     get_chunknum
 	     get_parcelcfg_path
 	     get_numdirs
 	     );
@@ -152,24 +150,6 @@ sub get_offset {
     my $chunknum = shift;
     my $chunksperdir = shift;
     return ($dirnum * $chunksperdir) + $chunknum;
-}
-
-#
-# get_dirnum - converts a keyring offset to a directory number
-#
-sub get_dirnum {
-    my $offset = shift;
-    my $chunksperdir = shift;
-    return int($offset / $chunksperdir);
-}
-
-#
-# get_chunknum - converts a keyring offset to a chunk number
-#
-sub get_chunknum {
-    my $offset = shift;
-    my $chunksperdir = shift;
-    return $offset % $chunksperdir;
 }
 
 sub get_parcelcfg_path {
