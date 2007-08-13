@@ -543,15 +543,15 @@ sub usage {
     my $msg = shift;
     my $progname;
     my $croot;
-                                                                               
+    
     # Strip any path information from the program name
     ($progname = $0) =~ s#.*/##s;
     ($croot = $Server::CONTENT_ROOT) =~ s:/$::;
-                                                                               
+    
     if ($msg) {
         print "Error: $msg\n";
     }
-                                                                               
+    
     print RED, "Usage: $progname cmd [options...]\n", RESET;
     print BLUE, "Commands: addparcel, adduser, deluser, decrypt, encrypt, getkeyroot,\n          getusage, keygen, prune.\n", RESET;
 
@@ -607,7 +607,7 @@ sub usage {
 
 	print RED, "prune - ", RESET, "Prune all but the last 10 versions of the parcel stored at\n";
 	print "$croot/bovik/winxp.\n";
-	print BLUE, "% isr_admin prune -u bovik -p winxp -r 10.\n", RESET;
+	print BLUE, "% isr_admin prune -u bovik -p winxp -r 10\n", RESET;
     }
     exit 0;
 }
