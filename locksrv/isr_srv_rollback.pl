@@ -163,15 +163,15 @@ $keyroot = get_value($parcelcfg, "KEYROOT");
 print "Decrypting and comparing target and last keyrings.\n"
     if $verbose;
 
-$targetkeyring = "$targetdir/keyring";
-$lastkeyring = "$lastdir/keyring";
+$targetkeyring = "/tmp/keyring-target.$$";
+$lastkeyring = "/tmp/keyring-last.$$";
 
 # Decrypt the keyrings
 unlink($targetkeyring, $lastkeyring);
-system("openssl enc -d -aes-128-cbc -in $targetkeyring.enc -out $targetkeyring -pass pass:$keyroot") == 0
-    or system_errexit("Unable to decode $targetkeyring.enc");
-system("openssl enc -d -aes-128-cbc -in $lastkeyring.enc -out $lastkeyring -pass pass:$keyroot") == 0
-    or system_errexit("Unable to decode $lastkeyring.enc");
+system("openssl enc -d -aes-128-cbc -in $targetdir/keyring.enc -out $targetkeyring -pass pass:$keyroot") == 0
+    or system_errexit("Unable to decode $targetdir/keyring.enc");
+system("openssl enc -d -aes-128-cbc -in $lastdir/keyring.enc -out $lastkeyring -pass pass:$keyroot") == 0
+    or system_errexit("Unable to decode $lastdir/keyring.enc");
 
 # Compare the keyrings
 open(IN, "-|", "$Server::SRVBIN/query", "-a", "last:$lastkeyring", $targetkeyring, "SELECT main.keys.chunk FROM main.keys JOIN last.keys ON main.keys.chunk == last.keys.chunk WHERE main.keys.tag != last.keys.tag")
@@ -183,6 +183,9 @@ while ($chunk = <IN>) {
 close(IN);
 $? == 0
     or unix_errexit("Keyring query failed");
+
+# Remove the decrypted keyrings
+unlink($targetkeyring, $lastkeyring);
 
 #
 # Create the cache directory where we'll be writing our updates
