@@ -344,12 +344,11 @@ sub adduser ($) {
 
     # Create the user's account 
     print "Adding $userid...\n";
-    system("/usr/sbin/useradd -d /home/$userid $userid") == 0
+    system("/usr/sbin/useradd -d /home/$userid -m $userid") == 0
 	or err("Unable to create new account for $userid");
 
-  
     # Change the password
-    system("echo $Server::DEFAULTPWD | passwd --stdin $userid") == 0
+    system("echo \"$userid:$Server::DEFAULTPWD\" | chpasswd -m") == 0
 	or errexit("Unable to change password for $userid");
     if (!-d $isrdir) {
 	mkdir("$isrdir")
@@ -359,6 +358,8 @@ sub adduser ($) {
     # Set the file permissions
     system("chown $userid:$userid $isrdir") == 0
 	or errexit("Unable to chown .isr ownership to $userid");
+    system("chmod 700 /home/$userid") == 0
+    	or errexit("Unable to set /home/$userid permissions to 700");
 
     # Add the public and private ssh keys to the user's account
     if (!-d $sshdir) {
