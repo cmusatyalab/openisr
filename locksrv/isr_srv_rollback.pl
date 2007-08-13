@@ -48,16 +48,14 @@ my $targetdir;
 my $lastver;
 my $lastdir;
 my $cachedir;
-my $hostname;
-my $ipaddress;
 my $parcel;
-my $ipaddr;
 my $chunksperdir;
 my $targetkeyring;
 my $lastkeyring;
 my $keyroot;
 my $parcelcfg;
 my $nonce;
+my $lock;
 
 # Various temporary variables
 my $version;
@@ -67,7 +65,6 @@ my $chunkdir;
 my $chunkcount;
 my $i;
 my $reason;
-my $lock;
 my $file;
 
 # Arrays and list
@@ -101,7 +98,7 @@ if (!$targetver or $targetver < 1) {
     usage("Missing or incorrect target version number (-v)");
 }
 $parcelpath = "$username/$parcel";
-$parceldir = "$Server::CONTENT_ROOT" . "$parcelpath";
+$parceldir = $Server::CONTENT_ROOT . $parcelpath;
 $verbose = $opt_V;
 use strict 'vars';
 
@@ -242,7 +239,7 @@ for ($version = $targetver; $version < $lastver; $version++) {
 		    if $verbose;
 		copy("$this_hdkdir/$chunkdir/$chunk", "$cachedir/hdk/$chunkdir/$chunk")
 		    or unix_errexit("Unable to copy $this_hdkdir/$chunkdir/$chunk to cache");
-	    } else {
+	    } elsif ($verbose) {
 		$reason = "";
 		if (-e "$cachedir/hdk/$chunkdir/$chunk") {
 		    $reason = "exists";
@@ -250,8 +247,7 @@ for ($version = $targetver; $version < $lastver; $version++) {
 		if (!defined($tagdiffs{$i})) {
 		    $reason = $reason . "nochange";
 		}
-		print "Chunk $chunkdir/$chunk not copied to cache [$reason]\n"
-		    if $verbose;
+		print "Chunk $chunkdir/$chunk not copied to cache [$reason]\n";
 	    }
 	}
     }
