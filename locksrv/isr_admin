@@ -69,7 +69,6 @@ Getopt::Long::Configure("no_ignore_case", "bundling_override");
 $result = GetOptions(
                      "c|contentroot=s" => \$contentroot,
                      "h|help+"         => \$help,
-                     "k|keyroot=s"     => \$keyroot,
                      "p|parcel=s"      => \$parcel,
                      "r|retain=i"      => \$retain,
                      "s|srcpath=s"     => \$srcpath,
@@ -80,7 +79,7 @@ $result = GetOptions(
 if ($result == 0 or $help) {
     usage();
 }
-                                                                               
+
 #
 # Extract the command name
 #
@@ -112,8 +111,6 @@ if ($command eq "encrypt" or
 	if (!$contentroot);
     usage("Missing version (-v)")
 	if (!defined($version));
-    usage("Missing keyroot or password (-k)")
-	if (!$keyroot);
     usage("Non-positive version number ($version)")
 	if ($version < 1);
 }
@@ -161,9 +158,11 @@ if ($command eq "prune") {
 # Process the command
 #
 if ($command eq "encrypt") {
+    $keyroot = getkeyroot($userid, $parcel);
     encrypt($userid, $parcel, $contentroot, $version, $keyroot);
 }
 elsif ($command eq "decrypt") {
+    $keyroot = getkeyroot($userid, $parcel);
     decrypt($userid, $parcel, $contentroot, $version, $keyroot);
 }
 elsif ($command eq "keygen") {
@@ -321,7 +320,7 @@ sub keygen () {
 }
 
 #
-# getkeyroot - Fetch keyroot from name server and send to stdout
+# getkeyroot - Return the keyroot for a parcel
 #
 sub getkeyroot ($$) {
     my $userid = shift;
@@ -567,8 +566,8 @@ sub usage
     print "  addparcel  Add a parcel (-u, -p, -c, -s).\n";
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u).\n";
-    print "  decrypt    Decrypt parcel version using keyroot (-u, -p, -v, -c, -k).\n";
-    print "  encrypt    Encrypt parcel version using keyroot (-u, -p, -v, -c, -k).\n";
+    print "  decrypt    Decrypt parcel version (-u, -p, -v, -c).\n";
+    print "  encrypt    Encrypt parcel version (-u, -p, -v, -c).\n";
     print "  getkeyroot Show parcel keyroot (-u, -p).\n";
     print "  getusage   List recent activity for each parcel (no args)\n";
     print "  keygen     Generate a keyroot (no args).\n";
@@ -577,7 +576,6 @@ sub usage
     print "Options:\n";
     print "  -c,--contentroot  Absolute path prefix (parcels are at /contentroot/userid).\n";
     print "  -h,--help         Print help message (Try '-hh' for some concrete examples).\n";
-    print "  -k,--keyroot      Keyroot or input password.\n";
     print "  -p,--parcel       Parcel name (e.g., winxp).\n";
     print "  -r,--retain       How many of the most recent versions to retain when pruning.\n";
     print "  -s,--srcpath      Absolute path of source parcel (e.g., /bar/userid/parcel).\n";
@@ -598,10 +596,10 @@ sub usage
 	print BLUE, "% isr_admin deluser -u bovik\n", RESET;
 	print "\n";
 	print RED, "decrypt - ", RESET, "Decrypt files in /croot/bovik/winxp/00003 using keyroot KEY\n";
-	print BLUE, "% isr_admin decrypt -u bovik -p winxp -v 3 -c /croot -k KEY\n", RESET;
+	print BLUE, "% isr_admin decrypt -u bovik -p winxp -v 3 -c /croot\n", RESET;
 	print "\n";
 	print RED, "encrypt - ", RESET, "Encrypt files in /croot/bovik/winxp/00003 using keyroot KEY\n";
-	print BLUE, "% isr_admin encrypt -u bovik -p winxp -v 3 -c /croot -k KEY\n", RESET;
+	print BLUE, "% isr_admin encrypt -u bovik -p winxp -v 3 -c /croot\n", RESET;
 	print "\n";
 
 	print RED, "getkeyroot - ", RESET, "Show the keyroot for parcel bovik/winxp\n";
