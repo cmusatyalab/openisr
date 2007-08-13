@@ -327,8 +327,7 @@ sub getkeyroot ($$) {
     my $userid = shift;
     my $parcel = shift;
 
-    my %cfg = parse_parcelcfg(get_parcelcfg_path($userid, $parcel));
-    return $cfg{KEYROOT};
+    return get_value(get_parcelcfg_path($userid, $parcel), "KEYROOT");
 }
 
 
@@ -482,8 +481,6 @@ sub getusage {
     
     my @isrusers = ();
 
-    my %cfg = ();
-    
     # Generate the list of isr users
     opendir(HOMEDIR, "/home")
 	or unix_errexit("Couldn't read /home");
@@ -500,8 +497,6 @@ sub getusage {
 	opendir(ISRDIR, "/home/$userid/.isr")
 	    or unix_errexit("Couldn't read $userid's ISR directory");
 	foreach $parcel (sort grep(!/^\./, readdir(ISRDIR))) {
-	    %cfg = parse_parcelcfg(get_parcelcfg_path($userid, $parcel));
-	    
 	    # Extract the date of the last release or acquire of this parcel
 	    $logentry = `tail -n 1 $Server::CONTENT_ROOT/$userid/$parcel/lockholder.log`;
 	    chomp($logentry);
@@ -552,43 +547,6 @@ sub query {
 	chomp($reply);
     }
     return $reply;
-}
-
-#
-# parse_parcelcfg - Read a parcel.cfg file into a hash
-#
-sub parse_parcelcfg {
-    my $infile = shift;
-                                                                               
-    my $line;
-    my $key;
-    my $value;
-                                                                               
-    my %cfg = ();
-                                                                               
-    #
-    # Load the key/value pairs into the hash
-    #
-    open (INFILE, $infile)
-        or unix_errexit("Unable to open $infile.");
-    while ($line = <INFILE>) {
-        chomp($line);
-        $line =~ s/\s+//g; # remove any whitespace
-                                                                               
-        # Skip comment lines
-        if ($line =~ /^\#/) {
-            next;
-        }
-        # Otherwise parse out key and value
-        ($key, $value) = split("=", $line);
-        $cfg{$key} = $value;
-    }
-    unless (close(INFILE)) {
-        unlink($infile);
-        unix_errexit("Unable to close $infile.");
-    }
-                                                                               
-    return %cfg;
 }
 
 sub usage
