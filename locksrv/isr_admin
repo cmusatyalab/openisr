@@ -31,13 +31,16 @@ use Server;
 $| = 1; # Autoflush output on every print statement
 
 # Function prototypes
-sub encryt ($$$$$);
+sub encrypt ($$$$$);
 sub decrypt ($$$$$);
 sub getkeyroot ($$);
 sub adduser ($);
 sub deluser ($);
 sub addparcel ($$$$);
 sub prune ($$$$);
+sub getusage ();
+sub keygen ();
+sub query ($);
 
 #########################
 # Section 1: Main routine
@@ -462,7 +465,7 @@ sub addparcel ($$$$) {
 #
 # getusage - Summarize the recent activity of each user
 #
-sub getusage {
+sub getusage () {
     my $userid;
     my $isrdir;
     my $logentry;
@@ -530,7 +533,7 @@ sub getusage {
 #
 # query - Ask the user a question and return the reply
 #
-sub query {
+sub query ($) {
     my $question = shift;
 
     my $reply;
@@ -548,8 +551,7 @@ sub query {
     return $reply;
 }
 
-sub usage
-{
+sub usage {
     my $msg = shift;
     my $progname;
                                                                                
