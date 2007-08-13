@@ -13,12 +13,6 @@ use POSIX;
 # Absolute path that points to the top level content directory
 $CONTENT_ROOT = "/var/www/html/";
 
-# Name server domain name
-$NAMESRV = "isrserver02.isr.cmu.edu";
-
-# List of all the content servers
-@CONTENTSRVS = ("isrserver03.isr.cmu.edu", "isrserver04.isr.cmu.edu", "isrserver05.isr.cmu.edu", "isrserver06.isr.cmu.edu", "isrserver07.isr.cmu.edu", "isrserver08.isr.cmu.edu", "isrserver09.isr.cmu.edu");
-
 # Server bin directory
 $SRVBIN = "/usr/local/isr/bin";
 

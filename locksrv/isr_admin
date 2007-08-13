@@ -62,9 +62,6 @@ my $contentroot;
 my $retain;
 my $version;
 
-# Global defaults that can be overridden from the command line
-my $namesrv;
-
 #
 # Parse the command line args
 #
@@ -73,7 +70,6 @@ $result = GetOptions(
                      "c|contentroot=s" => \$contentroot,
                      "h|help+"         => \$help,
                      "k|keyroot=s"     => \$keyroot,
-                     "n|namesrv=s"     => \$namesrv,
                      "p|parcel=s"      => \$parcel,
                      "r|retain=i"      => \$retain,
                      "s|srcpath=s"     => \$srcpath,
@@ -85,15 +81,6 @@ if ($result == 0 or $help) {
     usage();
 }
                                                                                
-#
-# Set the global defaults that can be overridden on the command line
-#
-# Name server identity
-if (!$namesrv) {
-    $namesrv = $Server::NAMESRV;
-}
-
-
 #
 # Extract the command name
 #
@@ -340,22 +327,13 @@ sub getkeyroot ($$) {
     my $userid = shift;
     my $parcel = shift;
 
-    my $cfgfile = "/tmp/parcel.cfg.$$";
-    my %cfg;
-
-    system("ssh $namesrv cat /home/$userid/.isr/$parcel/parcel.cfg > $cfgfile") == 0
-	or errexit("Unable to fetch $parcel config file from name server ($namesrv)");
-    %cfg = parse_parcelcfg($cfgfile);
-    system("rm -rf $cfgfile");
+    my %cfg = parse_parcelcfg(get_parcelcfg_path($userid, $parcel));
     return $cfg{KEYROOT};
 }
 
 
 #
-# adduser - Add a new user to the name and content servers
-#           Always run this script on the name server as root:
-#              % ssh -A root@nameserver
-#              % ssh-add
+# adduser - Add a new user
 #
 sub adduser ($) {
     my $userid = shift;
@@ -363,21 +341,8 @@ sub adduser ($) {
     my $sshdir = "/home/$userid/.ssh";
     my $isrdir = "/home/$userid/.isr";
 
-    my $cserver; # content server
-    my $uid;
-
-    my $hostname = hostname();
-    if ($hostname ne fqdn2hostname($namesrv)) {
-	errexit("You are must run this command on the name server ($namesrv)");
-    }
-
-    ###################################
-    # Create account on the name server
-    ###################################
-
-
     # Create the user's account 
-    print "Adding $userid on $namesrv...\n";
+    print "Adding $userid...\n";
     system("/usr/sbin/useradd -d /home/$userid $userid") == 0
 	or err("Unable to create new account for $userid");
 
@@ -408,45 +373,16 @@ sub adduser ($) {
     system("chown $userid:$userid $sshdir/id_rsa $sshdir/id_rsa.pub $sshdir/authorized_keys") == 0
 	or errexit("Unable to chown key files to $userid");
 
-    print "Success: $userid added to name server\n";
-
-    ########################################
-    # Create accounts on the content servers
-    ########################################
-
-    $uid = `id -u $userid`;
-    chomp($uid);
-    foreach $cserver (@Server::CONTENTSRVS) {
-	print "Adding $userid to $cserver...\n";
-	if (system("ssh $cserver /usr/sbin/useradd -u $uid -d /home/$userid $userid") != 0) {
-	    errexit("Unable to add user $userid on $cserver");
-	}
-
-	# Set up the ssh keys by copy authorized_keys file from
-	# name server to content server
-	system("ssh $cserver mkdir $sshdir");
-	system("scp -q $sshdir/authorized_keys $cserver:$sshdir/authorized_keys") == 0
-	    or errexit("Unable to copy authorized_keys from $namesrv to $cserver");
-	# Set the permissions on the .ssh directory
-	system("ssh $cserver chown -R $userid:$userid $sshdir") == 0
-	    or errexit("Unable to chown .ssh ownership to $userid");
-
-    }	    
+    print "Success: $userid added to server\n";
 }
 
 #
-# deluser - Delete all traces of an ISR user from the name and content servers
+# deluser - Delete all traces of an ISR user
 #
 sub deluser ($) {
     my $userid = shift;
 
     my $reply;
-    my $cserver;
-
-    my $hostname = hostname();
-    if ($hostname ne fqdn2hostname($namesrv)) {
-	errexit("You are must run this command on the name server ($namesrv)");
-    }
 
     #
     # Remove a user's account and everything in their home directory
@@ -455,18 +391,9 @@ sub deluser ($) {
     if ($reply eq "y") {
 	$reply = query("Are you really really sure?");
 	if ($reply eq "y") {
-	    
-	    # Remove the user from the name server
-	    print "Removing $userid on $namesrv...\n";
+	    print "Removing $userid...\n";
 	    system("/usr/sbin/userdel -r $userid");
-	    
-	    # Remove the user from all of the content servers
-	    foreach $cserver (@Server::CONTENTSRVS) {
-		print "Removing $userid on $cserver:\n";
-		system("ssh $cserver /usr/sbin/userdel -r $userid");
-	    }
-	}
-	else {
+	} else {
 	    print "Did not delete the account for $userid.\n";
 	}
     }
@@ -474,7 +401,7 @@ sub deluser ($) {
 
 
 #
-# addparcel - Add a new parcel on a content server
+# addparcel - Add a new parcel
 #             
 sub addparcel ($$$$) {
     my $userid = shift;      # Destination user id
@@ -530,7 +457,7 @@ sub addparcel ($$$$) {
 	or errexit("Unable to set permissions of $parceldir");
     
 
-    print "Success: Added $userid/$parcel to content server\n";
+    print "Success: Added $userid/$parcel\n";
 
 }
 
@@ -540,9 +467,6 @@ sub addparcel ($$$$) {
 sub getusage {
     my $userid;
     my $isrdir;
-    my $cfgfile;
-    my $parceldir;
-    my $server;
     my $logentry;
     my $logserver;
     my $logdate;
@@ -556,67 +480,51 @@ sub getusage {
     my $junk;
     my $msg;
     
-    my @users;
-    my @parcels;
     my @isrusers = ();
 
     my %cfg = ();
     
-    # Generate the list of isr users on the nameserver
-    @users = `ssh $namesrv ls /home`;
-    foreach $userid (@users) {
-	chomp($userid);
-	$isrdir = `ssh $namesrv "cd /home/$userid; ls -d .isr"`;
-	chomp($isrdir);
-	if ($isrdir eq ".isr") {
-	    push(@isrusers, $userid);
-	}
+    # Generate the list of isr users
+    opendir(HOMEDIR, "/home")
+	or unix_errexit("Couldn't read /home");
+    foreach $userid (grep(!/^\./, readdir(HOMEDIR))) {
+	push(@isrusers, $userid)
+	    if -d "/home/$userid/.isr";
     }
+    closedir(HOMEDIR);
 
     # For each user and parcel, extract the last last entry in the 
-    # content server's lockholder log
+    # lockholder log
     foreach $userid (sort @isrusers) {
 	print "\n";
-	@parcels = `ssh $namesrv "ls /home/$userid/.isr"`;
-	foreach $parcel (sort @parcels) {
-	    chomp($parcel);
-	    $parceldir = "/home/$userid/.isr/$parcel";
-	    $cfgfile = "/tmp/$userid-$parcel-$$-parcel.cfg";
-	    system("scp -q $namesrv:$parceldir/parcel.cfg $cfgfile > /dev/null 2>&1") == 0
-		or next; # it failed, so just on to the next parcel in the list
-	    %cfg = parse_parcelcfg($cfgfile);
-	    system("rm -rf $cfgfile");
+	opendir(ISRDIR, "/home/$userid/.isr")
+	    or unix_errexit("Couldn't read $userid's ISR directory");
+	foreach $parcel (sort grep(!/^\./, readdir(ISRDIR))) {
+	    %cfg = parse_parcelcfg(get_parcelcfg_path($userid, $parcel));
 	    
-	    # Only consider servers that we actually have access to
-	    foreach $server (@Server::CONTENTSRVS) {
-		if ($server eq $cfg{SERVER}) {
-		    
-		    # Extract the date of the last release or acquire of this parcel
-		    $logentry = `ssh $server tail -n 1 $Server::CONTENT_ROOT/$userid/$parcel/lockholder.log`;
-		    chomp($logentry);
-		    ($logserver, $logdate, $logstatus, $loguserid, $logparcel, $logclient) = 
-			split('\|', $logentry);
-		    
-		    # Extract the date of the last activity of any kind on this parcel
-		    $lastlog = `ssh $server "fgrep BEGIN $Server::CONTENT_ROOT/$userid/$userid.log |fgrep $parcel | tail -n 1"`;
-		    chomp($lastlog);
-		    ($lastdate, $junk, $junk, $junk, $junk, $junk, $junk, $junk, $junk, $lastcmd) 
-			= split('\|', $lastlog);
-		    
-		    # Now print the message
-		    $msg = "$userid/$parcel $logdate [$lastcmd $lastdate]\n";
-		    if ($logstatus eq "released") {
-			print GREEN, $msg, RESET;
-		    }
-		    elsif ($logstatus eq "acquired") {
-			print RED, $msg, RESET;
-		    }
-		    else {
-			print $msg;
-		    }
-		}
+	    # Extract the date of the last release or acquire of this parcel
+	    $logentry = `tail -n 1 $Server::CONTENT_ROOT/$userid/$parcel/lockholder.log`;
+	    chomp($logentry);
+	    ($logserver, $logdate, $logstatus, $loguserid, $logparcel, $logclient) = 
+		split('\|', $logentry);
+	    
+	    # Extract the date of the last activity of any kind on this parcel
+	    $lastlog = `fgrep BEGIN $Server::CONTENT_ROOT/$userid/$userid.log |fgrep $parcel | tail -n 1`;
+	    chomp($lastlog);
+	    ($lastdate, $junk, $junk, $junk, $junk, $junk, $junk, $junk, $junk, $lastcmd) 
+		= split('\|', $lastlog);
+	    
+	    # Now print the message
+	    $msg = "$userid/$parcel $logdate [$lastcmd $lastdate]\n";
+	    if ($logstatus eq "released") {
+		print GREEN, $msg, RESET;
+	    } elsif ($logstatus eq "acquired") {
+		print RED, $msg, RESET;
+	    } else {
+		print $msg;
 	    }
 	}
+	closedir(ISRDIR);
     }
 }
 
@@ -624,19 +532,6 @@ sub getusage {
 #############################
 # Section 3: Helper functions
 #############################
-
-#
-# fqdn2hostname - extract the hostname from a fully qualified domain name
-#
-sub fqdn2hostname {
-    my $fqdn = shift;
-
-    my $hostname;
-
-    $fqdn =~ /^(\w+)\.?/; # at least 1 alphanum char followed by 0 or 1 dots
-    $hostname = $1;
-    return $hostname;
-}
 
 #
 # query - Ask the user a question and return the reply
@@ -711,22 +606,20 @@ sub usage
     print RED, "Usage: $progname cmd [options...]\n", RESET;
     print BLUE, "Commands: addparcel, adduser, deluser, decrypt, encrypt, getkeyroot,\n          getusage, keygen, prune.\n", RESET;
 
-    print "Legend: [cs] run on content server, [ns] run on name server.\n";
-    print "  addparcel  Add a parcel to a content server using [cs] (-u, -p, -c, -s).\n";
-    print "  adduser    Add user to system [ns] (-u).\n";
-    print "  deluser    Delete user from system [ns] (-u).\n";
-    print "  decrypt    Decrypt parcel version using keyroot [cs] (-u, -p, -v, -c, -k).\n";
-    print "  encrypt    Encrypt parcel version using keyroot [cs] (-u, -p, -v, -c, -k).\n";
-    print "  getkeyroot Fetch parcel keyroot from nameserver [ns,cs] (-u, -p).\n";
-    print "  getusage   List recent activity for each parcel [ns,cs] (no args)\n";
-    print "  keygen     Generate a keyroot [ns,cs] (no args).\n";
-    print "  prune      Prune old versions of a parcel [cs] (-u, -p, -c, -r).\n";
+    print "  addparcel  Add a parcel (-u, -p, -c, -s).\n";
+    print "  adduser    Add user to system (-u).\n";
+    print "  deluser    Delete user from system (-u).\n";
+    print "  decrypt    Decrypt parcel version using keyroot (-u, -p, -v, -c, -k).\n";
+    print "  encrypt    Encrypt parcel version using keyroot (-u, -p, -v, -c, -k).\n";
+    print "  getkeyroot Show parcel keyroot (-u, -p).\n";
+    print "  getusage   List recent activity for each parcel (no args)\n";
+    print "  keygen     Generate a keyroot (no args).\n";
+    print "  prune      Prune old versions of a parcel (-u, -p, -c, -r).\n";
 
     print "Options:\n";
     print "  -c,--contentroot  Absolute path prefix (parcels are at /contentroot/userid).\n";
     print "  -h,--help         Print help message (Try '-hh' for some concrete examples).\n";
     print "  -k,--keyroot      Keyroot or input password.\n";
-    print "  -n,--namesrv      Name server domain name.\n";
     print "  -p,--parcel       Parcel name (e.g., winxp).\n";
     print "  -r,--retain       How many of the most recent versions to retain when pruning.\n";
     print "  -s,--srcpath      Absolute path of source parcel (e.g., /bar/userid/parcel).\n";
@@ -736,37 +629,37 @@ sub usage
     if ($help > 1) {
 	print "\n";
 	print "Examples:\n"; 
-	print RED, "addparcel - ", RESET, "[cs] Create new parcel winxp for existing user bovik in /croot\n";
+	print RED, "addparcel - ", RESET, "Create new parcel winxp for existing user bovik in /croot\n";
 	print "using latest version of existing parcel in /croot/gold/goldwinxp\n";
 	print BLUE, "% isr_admin addparcel -u bovik -p winxp -c /croot -s /croot/gold/goldwinxp\n", RESET;
 	print "\n";
-	print RED, "adduser - ", RESET, "[ns] Add user bovik to the system\n";
+	print RED, "adduser - ", RESET, "Add user bovik to the system\n";
 	print BLUE, "% isr_admin adduser -u bovik\n", RESET;
 	print "\n";
-	print RED, "deluser - ", RESET, "[ns] Delete user bovik from the system\n";
+	print RED, "deluser - ", RESET, "Delete user bovik from the system\n";
 	print BLUE, "% isr_admin deluser -u bovik\n", RESET;
 	print "\n";
-	print RED, "decrypt - ", RESET, "[cs] Decrypt files in /croot/bovik/winxp/00003 using keyroot KEY\n";
+	print RED, "decrypt - ", RESET, "Decrypt files in /croot/bovik/winxp/00003 using keyroot KEY\n";
 	print BLUE, "% isr_admin decrypt -u bovik -p winxp -v 3 -c /croot -k KEY\n", RESET;
 	print "\n";
-	print RED, "encrypt - ", RESET, "[cs] Encrypt files in /croot/bovik/winxp/00003 using keyroot KEY\n";
+	print RED, "encrypt - ", RESET, "Encrypt files in /croot/bovik/winxp/00003 using keyroot KEY\n";
 	print BLUE, "% isr_admin encrypt -u bovik -p winxp -v 3 -c /croot -k KEY\n", RESET;
 	print "\n";
 
-	print RED, "getkeyroot - ", RESET, "[cs,ns] Get the keyroot for parcel bovik/winxp\n";
+	print RED, "getkeyroot - ", RESET, "Show the keyroot for parcel bovik/winxp\n";
 	print BLUE, "% isr_admin getkeyroot -u bovik -p winxp\n", RESET;
 	print "\n";
 
-	print RED, "getusage - ", RESET, "[cs,ns] List recent activity for each parcel\n";
+	print RED, "getusage - ", RESET, "List recent activity for each parcel\n";
 	print BLUE, "% isr_admin getusage\n", RESET;
 	print "\n";
 
-	print RED, "keygen - ", RESET, "[cs,ns] Generate a random key root\n";
+	print RED, "keygen - ", RESET, "Generate a random key root\n";
 	print BLUE, "% isr_admin keygen\n", RESET;
 	print "\n";
 
-	print RED, "prune - ", RESET, "[cs] Prune all but the last 10 versions of the parcel\n";
-	print "stored at /croot/bovik/winxp.\n";
+	print RED, "prune - ", RESET, "Prune all but the last 10 versions of the parcel stored at\n";
+	print "/croot/bovik/winxp.\n";
 	print BLUE, "% isr_admin prune -u bovik -p winxp -c /croot -r 10.\n", RESET;
     }
     exit 0;
