@@ -178,10 +178,10 @@ sub finish_version {
 	}
 	system("tar cC '$dst/$ver' cfg | gzip -c9 | openssl enc " .
 				"-aes-128-cbc -out '$dst/$ver/cfg.tgz.enc' " .
-				"-pass 'pass:$keyroot'") == 0 or die;
+				"-pass 'pass:$keyroot' -salt") == 0 or die;
 	system("openssl enc -aes-128-cbc -in '$dst/$ver/keyring' " .
 			"-out '$dst/$ver/keyring.enc' " .
-			"-pass 'pass:$keyroot'") == 0 or die;
+			"-pass 'pass:$keyroot' -salt") == 0 or die;
 	unlink("$dst/$ver/keyring") or die;
 	system("rm -rf '$dst/$ver/cfg'") == 0 or die;
 	$stat = stat("$src/$ver/keyring.enc") or die;

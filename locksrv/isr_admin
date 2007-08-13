@@ -275,7 +275,7 @@ sub encrypt ($$$$) {
 	if (!-e "$parceldir/$target") {
 	    errexit("Missing $parceldir/$target.\n");
 	}
-        if (system("openssl enc -aes-128-cbc -in $parceldir/$target -out $parceldir/$target.enc -pass pass:$keyroot") != 0) {
+        if (system("openssl enc -aes-128-cbc -in $parceldir/$target -out $parceldir/$target.enc -pass pass:$keyroot -salt") != 0) {
             system_errexit("Unable to encrypt $parceldir/$target.");
 	}
 	unlink("$parceldir/$target");
@@ -300,7 +300,7 @@ sub decrypt ($$$$) {
 	if (!-e "$parceldir/$target.enc") {
 	    errexit("Missing $parceldir/$target.enc.\n");
 	}
-	if (system("openssl enc -d -aes-128-cbc -in $parceldir/$target.enc -out $parceldir/$target -pass pass:$keyroot") != 0) {
+	if (system("openssl enc -d -aes-128-cbc -in $parceldir/$target.enc -out $parceldir/$target -pass pass:$keyroot -salt") != 0) {
             system_errexit("Unable to decrypt $parceldir/$target.");
 	}
 	unlink("$parceldir/$target.enc");
