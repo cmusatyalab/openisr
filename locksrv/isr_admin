@@ -31,13 +31,13 @@ use Server;
 $| = 1; # Autoflush output on every print statement
 
 # Function prototypes
-sub encrypt ($$$$$);
-sub decrypt ($$$$$);
+sub encrypt ($$$$);
+sub decrypt ($$$$);
 sub getkeyroot ($$);
 sub adduser ($);
 sub deluser ($);
-sub addparcel ($$$$);
-sub prune ($$$$);
+sub addparcel ($$$);
+sub prune ($$$);
 sub getusage ();
 sub keygen ();
 sub query ($);
@@ -61,7 +61,6 @@ my $command;
 my $keyroot;
 my $userid;
 my $srcpath;
-my $contentroot;
 my $retain;
 my $version;
 
@@ -70,7 +69,6 @@ my $version;
 #
 Getopt::Long::Configure("no_ignore_case", "bundling_override");
 $result = GetOptions(
-                     "c|contentroot=s" => \$contentroot,
                      "h|help+"         => \$help,
                      "p|parcel=s"      => \$parcel,
                      "r|retain=i"      => \$retain,
@@ -110,8 +108,6 @@ if ($command eq "encrypt" or
 	if (!$userid);
     usage("Missing parcel (-p)")
 	if (!$parcel);
-    usage("Missing content root (-c)")
-	if (!$contentroot);
     usage("Missing version (-v)")
 	if (!defined($version));
     usage("Non-positive version number ($version)")
@@ -140,8 +136,6 @@ if ($command eq "addparcel") {
 	if (!$userid);
     usage("Missing parcel name (-p)")
 	if (!$parcel);
-    usage("Missing content root (-c)")
-	if (!$contentroot);
     usage("Missing source path (-s)")
 	if (!$srcpath);
 }
@@ -151,8 +145,6 @@ if ($command eq "prune") {
 	if (!$userid);
     usage("Missing parcel name (-p)")
 	if (!$parcel);
-    usage("Missing content root (-c)")
-	if (!$contentroot);
     usage("Missing number of versions to retain (-r)")
 	if (!defined($retain));
 }
@@ -162,11 +154,11 @@ if ($command eq "prune") {
 #
 if ($command eq "encrypt") {
     $keyroot = getkeyroot($userid, $parcel);
-    encrypt($userid, $parcel, $contentroot, $version, $keyroot);
+    encrypt($userid, $parcel, $version, $keyroot);
 }
 elsif ($command eq "decrypt") {
     $keyroot = getkeyroot($userid, $parcel);
-    decrypt($userid, $parcel, $contentroot, $version, $keyroot);
+    decrypt($userid, $parcel, $version, $keyroot);
 }
 elsif ($command eq "keygen") {
     $result = keygen();
@@ -183,10 +175,10 @@ elsif ($command eq "deluser") {
     deluser($userid);
 }
 elsif ($command eq "addparcel") {
-    addparcel($userid, $parcel, $contentroot, $srcpath);
+    addparcel($userid, $parcel, $srcpath);
 }
 elsif ($command eq "prune") {
-    prune($userid, $parcel, $contentroot, $retain);
+    prune($userid, $parcel, $retain);
 }
 elsif ($command eq "getusage") {
     getusage();
@@ -203,10 +195,9 @@ exit 0;
 #
 # prune - Prune all but the last "retain" versions of a parcel
 #
-sub prune ($$$$) {
+sub prune ($$$) {
     my $userid = shift;
     my $parcel = shift;
-    my $contentroot = shift;
     my $retain = shift; 
 
     my $parceldir;
@@ -219,7 +210,7 @@ sub prune ($$$$) {
     my $dirname;
     my $reply;
 
-    $parceldir = "$contentroot/$userid/$parcel";
+    $parceldir = "$Server::CONTENT_ROOT/$userid/$parcel";
     
     # Not allowed to prune all of the versions!
     if ($retain < 1) {
@@ -264,15 +255,14 @@ sub prune ($$$$) {
 #
 # encrypt - Encrypts an unencrypted parcel
 #
-sub encrypt ($$$$$) {
+sub encrypt ($$$$) {
     my $userid = shift;
     my $parcel = shift;
-    my $contentroot = shift;
     my $version = shift;
     my $keyroot = shift;
 
     my $versionname = sprintf("%06d", $version);
-    my $parceldir = "$contentroot/$userid/$parcel/$versionname";
+    my $parceldir = "$Server::CONTENT_ROOT/$userid/$parcel/$versionname";
 
     foreach $target ("cfg.tgz", "keyring") {
 	print("Encrypting $target.\n")
@@ -290,15 +280,14 @@ sub encrypt ($$$$$) {
 #
 # decrypt - Decrypts an encrypted parcel
 #
-sub decrypt ($$$$$) {
+sub decrypt ($$$$) {
     my $userid = shift;
     my $parcel = shift;
-    my $contentroot = shift;
     my $version = shift;
     my $keyroot = shift;
 
     my $versionname = sprintf("%06d", $version);
-    my $parceldir = "$contentroot/$userid/$parcel/$versionname";
+    my $parceldir = "$Server::CONTENT_ROOT/$userid/$parcel/$versionname";
 
     foreach $target ("cfg.tgz", "keyring") {
 	print("Decrypting $target.enc.\n")
@@ -405,18 +394,16 @@ sub deluser ($) {
 #
 # addparcel - Add a new parcel
 #             
-sub addparcel ($$$$) {
+sub addparcel ($$$) {
     my $userid = shift;      # Destination user id
     my $parcel = shift;      # Destination parcel name
-    my $contentroot = shift; # Root path for parcels. Abs path to dst parcel is
-                             # $contentroot/$userid/$parcel
     my $srcpath = shift;     # Absolute path to source parcel
                              # E.g., $srcpath=/prefix/isradmin/winxpcs
 
     my $lastver;
     my @files;
 
-    my $userdir = "$contentroot/$userid";
+    my $userdir = "$Server::CONTENT_ROOT/$userid";
     my $parceldir = "$userdir/$parcel";
 
     # Create new content directory for this user if one doesn't already exist
@@ -555,9 +542,11 @@ sub query ($) {
 sub usage {
     my $msg = shift;
     my $progname;
+    my $croot;
                                                                                
     # Strip any path information from the program name
     ($progname = $0) =~ s#.*/##s;
+    ($croot = $Server::CONTENT_ROOT) =~ s:/$::;
                                                                                
     if ($msg) {
         print "Error: $msg\n";
@@ -566,18 +555,17 @@ sub usage {
     print RED, "Usage: $progname cmd [options...]\n", RESET;
     print BLUE, "Commands: addparcel, adduser, deluser, decrypt, encrypt, getkeyroot,\n          getusage, keygen, prune.\n", RESET;
 
-    print "  addparcel  Add a parcel (-u, -p, -c, -s).\n";
+    print "  addparcel  Add a parcel (-u, -p, -s).\n";
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u).\n";
-    print "  decrypt    Decrypt parcel version (-u, -p, -v, -c).\n";
-    print "  encrypt    Encrypt parcel version (-u, -p, -v, -c).\n";
+    print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
+    print "  encrypt    Encrypt parcel version (-u, -p, -v).\n";
     print "  getkeyroot Show parcel keyroot (-u, -p).\n";
     print "  getusage   List recent activity for each parcel (no args)\n";
     print "  keygen     Generate a keyroot (no args).\n";
-    print "  prune      Prune old versions of a parcel (-u, -p, -c, -r).\n";
+    print "  prune      Prune old versions of a parcel (-u, -p, -r).\n";
 
     print "Options:\n";
-    print "  -c,--contentroot  Absolute path prefix (parcels are at /contentroot/userid).\n";
     print "  -h,--help         Print help message (Try '-hh' for some concrete examples).\n";
     print "  -p,--parcel       Parcel name (e.g., winxp).\n";
     print "  -r,--retain       How many of the most recent versions to retain when pruning.\n";
@@ -588,9 +576,9 @@ sub usage {
     if ($help > 1) {
 	print "\n";
 	print "Examples:\n"; 
-	print RED, "addparcel - ", RESET, "Create new parcel winxp for existing user bovik in /croot\n";
-	print "using latest version of existing parcel in /croot/gold/goldwinxp\n";
-	print BLUE, "% isr_admin addparcel -u bovik -p winxp -c /croot -s /croot/gold/goldwinxp\n", RESET;
+	print RED, "addparcel - ", RESET, "Create new parcel winxp for existing user bovik in $croot\n";
+	print "using latest version of existing parcel in $croot/gold/goldwinxp\n";
+	print BLUE, "% isr_admin addparcel -u bovik -p winxp -s $croot/gold/goldwinxp\n", RESET;
 	print "\n";
 	print RED, "adduser - ", RESET, "Add user bovik to the system\n";
 	print BLUE, "% isr_admin adduser -u bovik\n", RESET;
@@ -598,11 +586,11 @@ sub usage {
 	print RED, "deluser - ", RESET, "Delete user bovik from the system\n";
 	print BLUE, "% isr_admin deluser -u bovik\n", RESET;
 	print "\n";
-	print RED, "decrypt - ", RESET, "Decrypt files in /croot/bovik/winxp/00003 using keyroot KEY\n";
-	print BLUE, "% isr_admin decrypt -u bovik -p winxp -v 3 -c /croot\n", RESET;
+	print RED, "decrypt - ", RESET, "Decrypt files in $croot/bovik/winxp/00003 using keyroot KEY\n";
+	print BLUE, "% isr_admin decrypt -u bovik -p winxp -v 3\n", RESET;
 	print "\n";
-	print RED, "encrypt - ", RESET, "Encrypt files in /croot/bovik/winxp/00003 using keyroot KEY\n";
-	print BLUE, "% isr_admin encrypt -u bovik -p winxp -v 3 -c /croot\n", RESET;
+	print RED, "encrypt - ", RESET, "Encrypt files in $croot/bovik/winxp/00003 using keyroot KEY\n";
+	print BLUE, "% isr_admin encrypt -u bovik -p winxp -v 3\n", RESET;
 	print "\n";
 
 	print RED, "getkeyroot - ", RESET, "Show the keyroot for parcel bovik/winxp\n";
@@ -618,8 +606,8 @@ sub usage {
 	print "\n";
 
 	print RED, "prune - ", RESET, "Prune all but the last 10 versions of the parcel stored at\n";
-	print "/croot/bovik/winxp.\n";
-	print BLUE, "% isr_admin prune -u bovik -p winxp -c /croot -r 10.\n", RESET;
+	print "$croot/bovik/winxp.\n";
+	print BLUE, "% isr_admin prune -u bovik -p winxp -r 10.\n", RESET;
     }
     exit 0;
 }
