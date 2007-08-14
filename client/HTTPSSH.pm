@@ -250,15 +250,15 @@ sub isr_connected_contentsrv () {
 }
 
 #
-# isr_run_vulpes - Run the Vulpes process. Return the vulpes 
-#                  exit status.
+# isr_run_parcelkeeper - Run the Parcelkeeper process and return its
+#                        exit status.
 #
-sub isr_run_vulpes ($$$) {
+sub isr_run_parcelkeeper ($$$) {
     my $userid = shift;        # ISR user id
     my $parceldir = shift;     # local parcel directory
     my $disconnected = shift;  # Are we running disconnected?
 
-    my $logstring = "|VULPES|" . message_string() ."|";
+    my $logstring = "|PARCELKEEPER|" . message_string() ."|";
     my $cachedir = "$parceldir/cache";
     my $pkcmd = "$Isr::LIBDIR/parcelkeeper";
 
@@ -267,7 +267,7 @@ sub isr_run_vulpes ($$$) {
     
     my $retval;
 
-    # Check for existence of the hoard directory and set the Vulpes hoard flag
+    # Check for existence of the hoard directory and set the PK hoard flag
     if (-d $hoarddir) {
         $hoardopt = "--hoard $hoarddir";
         print("\tUsing hoard $hoarddir.\n")
@@ -275,7 +275,7 @@ sub isr_run_vulpes ($$$) {
     }
 
     #
-    # Crank up Vulpes with all the right arguments
+    # Crank up PK with all the right arguments
     #
     $retval = system("$pkcmd run --cache $cachedir --master $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $syscfg{logmask} $syscfg{console_logmask} $hoardopt");
 
@@ -751,7 +751,7 @@ sub copy_dirtychunks ($) {
 	if $main::verbose;
 	mysystem("$Isr::LIBDIR/parcelkeeper upload --cache $cachedir --last $lastdir --destdir $tmpdir/cache/hdk --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
-    # Hack to get stats from vulpes
+    # Hack to get stats from PK
     open(STATFILE, "$tmpdir/cache/hdk/stats");
     chomp($dirtyblocks = <STATFILE>);
     chomp($dirtybytes = <STATFILE>);

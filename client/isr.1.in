@@ -627,7 +627,7 @@ file override those in
 .IR !!SHAREDIR!!/config " and " !!SYSCONFDIR!!/openisr.conf .
 
 .TP
-.I !!LIBDIR!!/vulpes
+.I !!LIBDIR!!/parcelkeeper
 The user level process that demand pages state from the
 remote store while the parcel is running.
 

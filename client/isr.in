@@ -71,7 +71,7 @@ sub connected ();
 sub check_nexus_version ();
 sub get_dirnum ($$);
 sub get_chunknum ($$);
-sub get_vulpespid ();
+sub get_parcelkeeper_pid ();
 sub block_sigint ();
 sub unblock_sigint ($);
 sub block_sigtstp ();
@@ -128,7 +128,7 @@ my $parcel;         # parcel name
 # State globals, visible in this module only, which track which cleanup actions
 # will be necessary when we exit.
 my $no_shutdown = 0;# Set by forked children so the child won't run END
-my $killvulpes = 0; # Set by run command, tells END handler to kill Vulpes
+my $kill_pk = 0;    # Set by run command, tells END handler to kill Parcelkeeper
 my @locks;          # Names and FDs of open lock files
 
 # Read-only command line arguments that are visible to other modules.
@@ -166,11 +166,11 @@ sub exit_handler ($) {
     
     return if $no_shutdown;
     
-    if ($killvulpes) {
-	$pid = get_vulpespid();
+    if ($kill_pk) {
+	$pid = get_parcelkeeper_pid();
 	if ($pid != 0) {
 	    kill("TERM", $pid);
-	    print("Sent shutdown signal to Vulpes.\n")
+	    print("Sent shutdown signal to Parcelkeeper.\n")
 		if $verbose;
 	}
     }
@@ -702,7 +702,7 @@ sub checkout ($$$$) {
     $SIG{'INT'} = \&sigint_handler;
     
     #
-    # Decrypt and unpack the virtualization and Vulpes files
+    # Decrypt and unpack the virtualization and Parcelkeeper files
     #
     print("Decrypting and uncompressing virtual machine memory image...\n")
 	if $verbose;
@@ -753,7 +753,7 @@ sub run ($$$$) {
     my $iters;
     my $sigset;
     my $vmware_opts;
-    my $vulpespid;
+    my $pk_pid;
     my $devnode;
     
     my $parceldir = "$isrdir/$parcel";
@@ -783,11 +783,11 @@ sub run ($$$$) {
 	errexit("The remote parcel is not available.");
     }
 
-    # Make sure that Vulpes is where we expect it to be, that Nexus is
+    # Make sure that Parcelkeeper is where we expect it to be, that Nexus is
     # loaded, and that the control device exists.  Also, warn if the Nexus
     # release is older than our own release.
     if (!-e $pkcmd or !-x $pkcmd ) {
-	errexit("Could not find an executable Vulpes binary.");
+	errexit("Could not find an executable Parcelkeeper binary.");
     }
     if (!-d "/sys/class/openisr") {
         errexit("The OpenISR kernel module does not appear to be loaded.");
@@ -814,7 +814,7 @@ sub run ($$$$) {
 	    if $verbose;
     }
 
-    # Create a Vulpes cache if one doesn't already exist
+    # Create a Parcelkeeper cache if one doesn't already exist
     # This operation must not be interrupted by the user
     print("Initializing local cache.\n")
 	if $verbose;
@@ -834,12 +834,12 @@ sub run ($$$$) {
     }
     $cfgfile = $files[0];
     
-    # Launch Vulpes. 
-    print("Launching Vulpes...\n")
+    # Launch Parcelkeeper. 
+    print("Launching Parcelkeeper...\n")
 	if $verbose;
-    $killvulpes = 1;  # Tells the SIGINT handler to cleanly terminate Vulpes
-    isr_run_vulpes($userid, $parceldir, $disconnected) == 0
-	or errexit("Unable to launch Vulpes.");	
+    $kill_pk = 1;  # Tells the SIGINT handler to cleanly terminate PK
+    isr_run_parcelkeeper($userid, $parceldir, $disconnected) == 0
+	or errexit("Unable to launch Parcelkeeper.");	
     
     # Find out what device node we'll be using
     open(DEVFILE, "$cachedir/parcelkeeper.dev")
@@ -851,10 +851,10 @@ sub run ($$$$) {
     # Wait for udev to catch up
     $iters = 0;
     while (1) {
-	# Get Vulpes pid and make sure it's still alive
-	$vulpespid = get_vulpespid();
-	if ($vulpespid == 0) {
-	    errexit("Vulpes died unexpectedly");
+	# Get Parcelkeeper pid and make sure it's still alive
+	$pk_pid = get_parcelkeeper_pid();
+	if ($pk_pid == 0) {
+	    errexit("Parcelkeeper died unexpectedly");
 	}
 	last if -e $devnode;
 	# Sleep 100 ms
@@ -879,22 +879,22 @@ sub run ($$$$) {
     print "Shutting down VMware.\n"
 	if $verbose;
     
-    # Signal Vulpes to shut down and wait until it is gone
-    print "Shutting down Vulpes (pid=$vulpespid)"
+    # Signal Parcelkeeper to shut down and wait until it is gone
+    print "Shutting down Parcelkeeper (pid=$pk_pid)"
 	if $verbose;
-    kill("TERM", $vulpespid);
-    $killvulpes = 0;
-    message("INFO", "Sent SIGTERM signal to Vulpes (pid=$vulpespid)");
+    kill("TERM", $pk_pid);
+    $kill_pk = 0;
+    message("INFO", "Sent SIGTERM signal to Parcelkeeper (pid=$pk_pid)");
     $iters = 0;
     while (1) {
 	if (++$iters > 60) {
 	    print "\n";
-	    errexit("Unable to shutdown Vulpes");
+	    errexit("Unable to shutdown Parcelkeeper");
 	}
 	print "."
 	    if $verbose;
 	last
-	    if get_vulpespid() == 0;
+	    if get_parcelkeeper_pid() == 0;
 	sleep(1);
     }
     print "\n"
@@ -986,7 +986,7 @@ sub upload ($$$) {
 }
 
 #
-# discard - Remove the Vulpes cache
+# discard - Remove the Parcelkeeper cache
 #
 sub discard ($$$) {
     my $userid = shift;
@@ -1360,9 +1360,9 @@ sub resetclient () {
     query("Really terminate all running ISR processes?") eq "y"
 	or return;
 
-    print("Terminating any Vulpes processes.\n")
+    print("Terminating any Parcelkeeper processes.\n")
 	if $verbose;
-    system("killall vulpes > /dev/null 2>&1");
+    system("killall parcelkeeper > /dev/null 2>&1");
 
     print("Terminating any VMware processes.\n")
 	if $verbose;
@@ -1725,7 +1725,7 @@ sub parse_parcelcfg ($$$) {
 }
 
 #
-# build_cache - Create a local Vulpes cache if one doesn't exist already
+# build_cache - Create a local Parcelkeeper cache if one doesn't exist already
 #
 sub build_cache ($$) {
     my $cachedir = shift;
@@ -1917,10 +1917,11 @@ sub get_chunknum ($$) {
 }
 
 #
-# get_vulpespid - Returns the PID of the Vulpes background process associated
-#                 with this parcel, or zero if none are running.
+# get_parcelkeeper_pid - Returns the PID of the Parcelkeeper background
+#                        process associated with this parcel, or zero if none
+#                        are running.
 #
-sub get_vulpespid () {
+sub get_parcelkeeper_pid () {
     my $pidfile = "$isrdir/$parcel/cache/parcelkeeper.pid";
     my $pid;
     
