@@ -66,9 +66,6 @@ sub get_parcelcfg ($$$);
 sub get_motd ($$);
 sub parse_cfgfile ($$);
 sub parse_parcelcfg ($$$);
-sub emit_hdk_progressmeter ($$);
-sub reset_cursor ();
-sub progress ($$);
 sub build_cache ($$);
 sub hdksize ($$$);
 sub connected ();
@@ -660,17 +657,18 @@ sub checkout ($$$$) {
     printf("Fetching virtual machine memory image (%d MB)...\n", int($cfgsize/(1<<20)))
 	if $verbose;
 
-    if (-e "$hoarddir/$cfg_sha1value") {
-	print "Found local match for encrypted memory image.\n"
-	    if $verbose;
-	$cfg_file = "$hoarddir/$cfg_sha1value";
-    }
+    # XXX
+#    if (-e "$hoarddir/$cfg_sha1value") {
+#	print "Found local match for encrypted memory image.\n"
+#	    if $verbose;
+#	$cfg_file = "$hoarddir/$cfg_sha1value";
+#    }
 
-    if (-e "$hoarddir/$key_sha1value") {
-	print "Found local match for encrypted keyring.\n"
-	    if $verbose;
-	$key_file = "$hoarddir/$key_sha1value";
-    }    
+#    if (-e "$hoarddir/$key_sha1value") {
+#	print "Found local match for encrypted keyring.\n"
+#	    if $verbose;
+#	$key_file = "$hoarddir/$key_sha1value";
+#    }    
 
     #
     # Fetch the memory and meta files to a temp file and then commit.
@@ -1650,36 +1648,6 @@ sub upgrade_lev1 ($) {
 }
 
 #
-# load_keyring - Build a keyring array in memory
-#                Returns the list [@tags, @keys]
-#
-sub load_keyring {
-    my $keyringfile = shift;
-
-    my $entries;
-    my $tag;
-    my $key;
-    my $line;
-    my $pair;
-
-    my @keyring = ();
-
-    open(INFILE, $keyringfile)
-	or unix_errexit("Unable to open $keyringfile");
-    $entries = 0;
-    while ($line = <INFILE>) {
-	chomp($line);
-	($tag, $key) = split(" ", $line);
-	$keyring[$entries] = [$tag, $key];
-	$entries++;
-    }
-    close INFILE
-	or unix_errexit("Unable to close $keyringfile");
-
-    return (@keyring);
-}
-
-#
 # get_parcelnames - Get the list of a user's parcels
 #
 sub get_parcelnames ($$) {
@@ -1817,50 +1785,6 @@ sub parse_parcelcfg ($$$) {
 
     # Return the hash of key/value pairs to the caller
     return %cfg;
-}
-
-#
-# emit_hdk_progressmeter - Prints a progress meter for an hdk operation
-#
-sub emit_hdk_progressmeter ($$) {
-    my $numbytes  = shift;  # How many bytes are in the cache
-    my $maxbytes = shift;   # The maximum cache size
-
-    my $str = progress($numbytes, $maxbytes);
-
-    if ($verbose > 0) {
-	print $str, "\n";
-	printf("\e[A"); # ANSI escape sequence moves cursor up one row
-    }
-}
-
-#
-# reset_cursor - resets the cursor after the last progress meter output
-#
-sub reset_cursor () {
-    if ($verbose > 0) {
-	print "\n";
-    }
-}
-
-#
-# progress - Build and return an hdk progress string
-#
-sub progress ($$) {
-    my $numbytes = shift;
-    my $maxbytes = shift;
-
-    my $percent;
-    my $num_mbytes = int($numbytes/(1<<20));
-    my $max_mbytes = int($maxbytes/(1<<20));
-
-    if ($max_mbytes) {
-	$percent = sprintf("%d", int(($numbytes/$maxbytes)*100));
-    }
-    else {
-	$percent = 0;
-    }
-    return "  $percent% ($num_mbytes/$max_mbytes MB)";
 }
 
 #

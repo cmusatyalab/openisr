@@ -308,28 +308,10 @@ sub isr_hoard ($$$) {
     my $parcel = shift;
     my $isrdir = shift;
 
-    my $numdirs;
-    my $chunksperdir;
-    my $chunksize;
-    my $dirname;
-    my $chunkname;
-    my $numchunks;
-    my $chunk;
-    my $maxchunks;
-    my $maxbytes;
-    my $key;
-    my $tag;
-    my $computed_tag;
-    my $tmpfile;
-    my $corruptfile;
     my $target;
-    my $retval;
     
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
-    my $hoarddir = "$isrdir/$parcel-hoard";
-    my @keyring;
-    my %lev1idx;
 
     #
     # If we don't have a local keyring on this host, then retrieve
@@ -391,90 +373,24 @@ sub isr_hoard ($$$) {
 	unlink("$lastdir/keyroot");
     }
 
-    #
-    # Initialize things for the hoarding process
-    #
-    @keyring = load_keyring("$lastdir/keyring");
-    parse_cfgfile("$lastdir/hdk/index.lev1", \%lev1idx);
-    $numdirs = $lev1idx{NUMDIRS};
-    $chunksperdir = $lev1idx{CHUNKSPERDIR};
-    $chunksize = $lev1idx{CHUNKSIZE};
-    $numchunks = $numdirs * $chunksperdir;
-    $maxbytes = ($numdirs * $chunksperdir) * $chunksize;
-
-    #
-    # Confirm that hoarddir exists
-    #
-    if(!-d "$hoarddir") {
-	mktree($hoarddir)
-	    or errexit("Unable to create $hoarddir.");
-    }
-    
     # 
     # Fetch any chunks that are missing from the hoard cache from the server
     #
     print("Hoarding any missing disk blocks from the server...\n")
 	if $main::verbose;
+    
+    # XXX
 
-    # Iterate over each of the chunks in the keyring
-    for ($chunk = 0; $chunk < $numchunks; $chunk++) {
-
-	# get the tag of the current chunk
-	$tag = $keyring[$chunk][0];
-	
-	# Check to see if chunk exists in hoard cache. If not fetch it.
-	if (!-e "$hoarddir/$tag") {
-	    $dirname = sprintf("%04d", get_dirnum($chunk, $chunksperdir));
-	    $chunkname = sprintf("%04d", get_chunknum($chunk, $chunksperdir));
-	    $tmpfile = "$hoarddir/tmp-hoard-$tag-$dirname-$chunkname-$$";
-
-	    # Fetch the chunk into a temporary file in the hoard cache. If
-	    # the sget fails after its retries, return an error code to the
-	    # caller so that it can retry the entire hoard operation. 
-	    # IMPORTANT: this higher level retry allows us to run hoard 
-	    # concurrent with checkin operations. During a commit on the
-	    # server from version k to k+1, most chunks are removed from
-	    # version k into k+1. When this happens during an sget, the
-	    # requested chunk no longer exists, so we need to rerun the 
-	    # hoard operation.
-	    $retval = isr_sget($userid, "last/hdk/$dirname/$chunkname",  
-			       "$tmpfile", 0);
-	    if ($retval == $Isr::EINTR) {
-		return $Isr::EINTR;
-	    } elsif ($retval != $Isr::ESUCCESS) {
-		return $Isr::ETIMEDOUT;
-	    }
-
-	    # Verify the tag and commit the temp file if everything checks out
-	    $computed_tag = `openssl sha1 < $tmpfile`;
-	    chomp($computed_tag);
-	    if (uc($computed_tag) eq uc($tag)) {
-		# Commit temp file. If anything goes wrong, return error to
-		# caller and let it decide whether to restart the hoard
-		# operation.
-		if (!rename($tmpfile, "$hoarddir/$tag")) {
-		    unix_err("Unable to move $tmpfile to $tag");
-		    return $Isr::EINVAL;
-		}
-		sys_sync();
-	    }
-
-	    # Actual tag doesn't match expected tag. Save corrupted file 
-	    # later diagnostics and return error to the caller.
-	    else {
-		$corruptfile = "$hoarddir/corrupt-hoard-$computed_tag-$tag-$chunk";
-		err("Downloaded temp file $tmpfile is corrupted. Computed tag=$computed_tag Filename=$corruptfile.");
-		rename($tmpfile, $corruptfile)
-		    or unix_err("Couldn't rename $tmpfile to $corruptfile");
-		return $Isr::EINVAL;
-	    }
-	}
-
-	emit_hdk_progressmeter(($chunk+1)*$chunksize, $maxbytes);
-    }
-    reset_cursor();
-    sys_sync();
-    sys_sync();
+    # Fetch the chunk into a temporary file in the hoard cache. If
+    # the sget fails after its retries, return an error code to the
+    # caller so that it can retry the entire hoard operation. 
+    # IMPORTANT: this higher level retry allows us to run hoard 
+    # concurrent with checkin operations. During a commit on the
+    # server from version k to k+1, most chunks are removed from
+    # version k into k+1. When this happens during an sget, the
+    # requested chunk no longer exists, so we need to rerun the 
+    # hoard operation.
+    
     return $Isr::ESUCCESS;
 }
 
@@ -486,22 +402,11 @@ sub isr_stathoard ($$$) {
     my $parcel = shift;
     my $isrdir = shift;
 
-    my $numchunks;
-    my $chunk;
-    my $maxchunks;
-    my $chunksperdir;
-    my $dirname;
-    my $chunkname;
-    my $tag;
+    my $numchunks = 0;
     
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $hoarddir = "$isrdir/$parcel-hoard";
-
-    my @keyring = load_keyring("$lastdir/keyring");
-    my %hoardchunks;
-    my %lev1idx;
-    $maxchunks = scalar(@keyring);
 
     #
     # Simple case where nothing is hoarded
@@ -510,31 +415,8 @@ sub isr_stathoard ($$$) {
 	return 0;
     }
     
-    # Load metadata and read the hoard directory
-    parse_cfgfile("$lastdir/hdk/index.lev1", \%lev1idx);
-    $chunksperdir = $lev1idx{CHUNKSPERDIR};
-    opendir(HOARDDIR, $hoarddir)
-        or unix_errexit("Couldn't open hoard cache $hoarddir");
-    while ($tag = readdir(HOARDDIR)) {
-	$hoardchunks{$tag} = undef;
-    }
-    closedir(HOARDDIR);
+    # XXX
     
-    # Iterate over each of the keyring tags and count
-    # the chunks that are hoarded
-    $numchunks = 0;
-    for ($chunk = 0; $chunk < $maxchunks; $chunk++) {
-	# Check to see if it exists in hoard cache
-	$tag = $keyring[$chunk][0];
-	if (exists($hoardchunks{$tag})) {
-	    $numchunks++;
-	}
-	elsif ($main::verbose > 2) {
-	    $dirname = sprintf("%04d", get_dirnum($chunk, $chunksperdir));
-	    $chunkname = sprintf("%04d", get_chunknum($chunk, $chunksperdir));
-	    print "Missing chunk $chunk ($dirname/$chunkname):$tag:) in hoard cache\n";
-	}
-    }
     return $numchunks;
 }
 
@@ -637,30 +519,19 @@ sub isr_checkhoard ($$$$$) {
     my $checkstate = shift;
     my $printstats = shift;
 
-    my $numkeys;
     my $chunksize;
     my $trashcnt = 0;
-    my $numfiles;
     my $num_chunks;
-    my $chunkcount;
-    my $tag;
-    my $computed_tag;
     my $size_hoarded;
     my $num_hoarded;
     my $percent_hoarded;
     my $max_mbytes;
     my $max_chunks;
-    my $i;
-
-    my @files = ();
-    my @keyring = ();
-    my %filehash = ();
 
     my $parceldir = "$isrdir/$parcel";
     my $cachedir = "$parceldir/cache";
     my $lastdir = "$parceldir/last";
     my $hoarddir = "$isrdir/$parcel-hoard";
-    
 
     #
     # A nonexistent hoard cache is consistent by default
@@ -669,49 +540,8 @@ sub isr_checkhoard ($$$$$) {
 	return $Isr::SUCCESS;
     }
     
-    # 
-    # Get the most recent keyring
-    #
-    if (-e "$cachedir/keyring") {
-	@keyring = load_keyring("$cachedir/keyring");
-    }
-    elsif (-e "$lastdir/keyring") {
-	@keyring = load_keyring("$lastdir/keyring");
-    }
-    else {
-	errexit("Unable to find keyring in cache or last");
-    }
-    $numkeys = scalar(@keyring);
-
-
-    #
-    # Determine which files in the hoard cache are in the keyring
-    #
-    opendir(DIR, "$hoarddir")
-	or errexit("Unable to open hoard cache ($hoarddir)");
-    @files = grep(!/^[\._]/, readdir(DIR)); # elide . and ..
-    closedir(DIR);
+    # XXX
     
-    # Initially mark each file as being garbage
-    %filehash = ();
-    foreach $tag (@files) {
-	$filehash{$tag} = 1;
-    }
-    
-    # Exempt each file whose tag is in the keyring from being garbage
-    for ($i = 0; $i < $numkeys; $i++) {
-	if ($filehash{$keyring[$i][0]}) { 
-	    $filehash{$keyring[$i][0]} = 0;
-	}
-    }
-    
-    # Count the number of garbage files
-    foreach $tag (keys %filehash) {
-	if ($filehash{$tag}) {
-	    $trashcnt++;
-	}
-    }	
-
     #
     # Display some statistics about the hoard cache
     #
@@ -736,34 +566,8 @@ sub isr_checkhoard ($$$$$) {
     if ($checkstate) {
 	print "Checking hoard cache for internal consistency...\n"
 	    if $main::verbose;
-	$numfiles = scalar(keys %filehash);
-	$chunkcount = 0;
-	foreach $tag (keys %filehash) {
-	    $chunkcount++;
-	    if ($filehash{$tag} == 0) {
-		if (stat("$hoarddir/$tag") == 0) {
-		    system_err("Unable to stat chunk $tag.");
-		}
-		else {
-		    $computed_tag = `openssl sha1 < $hoarddir/$tag`;
-		    chomp($computed_tag);
-		    if ($? != 0) {
-			err("Unable to compute tag ($computed_tag) for chunk $tag");
-		    }
-		    else {
-			if (uc($computed_tag) ne $tag) {
-			    system_err("Encountered a corrupt hoarded file, which we have removed. Try rerunning \"isr disconnect\" or \"isr hoard\". [Computed tag=$computed_tag hoard filename=$tag]");
-			    rename("$hoarddir/$tag", "$hoarddir/corrupt-stat-$computed_tag-$tag-$chunkcount")
-				or unix_err("Couldn't rename corrupt hoarded file $tag");
-			}
-		    }
-		}
-	    }
-	    emit_hdk_progressmeter($chunkcount*$chunksize, 
-				   $numfiles*$chunksize);
-	}
-	reset_cursor();
-    }	
+	# XXX
+    }
 
     #
     # If we get this far, everything is OK
@@ -1080,20 +884,7 @@ sub isr_priv_clientcommit($$$$) {
     my $isrdir = shift;
     my $releasing = shift;
 
-    my $chunksperdir;
-    my $chunksize;
-    my $numdirtybytes;
-    my $dirtyblocks;
-    my $line1;
-    my $line2;
-    my $chunkindex;
-    my $chunkdir;
-    my $chunkfile;
-    my $cachefile;
-    my $hoardfile;
-    my $i;
-    my $tag;
-    my $key;
+    my $dirtyblocks = 0;
     my $name;
     my $sha1value;
 
@@ -1103,10 +894,6 @@ sub isr_priv_clientcommit($$$$) {
     my $cachedir = "$parceldir/cache";
     my $tmpdir = "$parceldir/tmp";
 
-    my @chunkdiffs = ();
-    my @tags = ();
-    my %lev1idx;
-
     #
     # Create a hoard cache if necessary
     #
@@ -1115,30 +902,6 @@ sub isr_priv_clientcommit($$$$) {
 	    or errexit("Unable to create $hoarddir");
     }
     
-    #
-    # Identify the dirty hdk files in the local cache
-    #
-    open(INFILE1, "$cachedir/keyring")
-        or unix_errexit("Unable to open $cachedir/keyring");
-    open(INFILE2, "$lastdir/keyring")
-        or unix_errexit("Unable to open $lastdir/keyring");
-    $i = 0;
-    $dirtyblocks = 0;
-    while ($line1 = <INFILE1>) {
-        $line2 = <INFILE2>;
-        if ($line1 ne $line2) {
-	    chomp $line1;
-	    ($tag, $key) = split(" ", $line1);
-	    $chunkdiffs[$dirtyblocks] = $i;
-	    $tags[$dirtyblocks++] = $tag;
-        }
-        $i++;
-    }
-    close INFILE1
-        or unix_errexit("Unable to close $cachedir/keyring");
-    close INFILE2
-        or unix_errexit("Unable to close $lastdir/keyring");
-
     #
     # Now that we have determined the dirty disk state, we can copy
     # the memory image, keyring, and index.lev1 from cache to last
@@ -1169,31 +932,7 @@ sub isr_priv_clientcommit($$$$) {
     # Move any dirty cache chunks to the hoard cache
     #
     message("INFO", "Client side commit - start moving hoard chunks");
-    parse_cfgfile("$cachedir/hdk/index.lev1", \%lev1idx);
-    $chunksperdir = $lev1idx{CHUNKSPERDIR};
-    $chunksize = $lev1idx{CHUNKSIZE};
-    $numdirtybytes = $chunksize * $dirtyblocks;
-
-    for ($i = 0; $i < $dirtyblocks; $i++) {
-
-	# Determine the location of the cache file
-	$chunkindex = $chunkdiffs[$i];
-	$chunkdir = sprintf("%04d", get_dirnum($chunkindex, $chunksperdir));
-	$chunkfile = sprintf("%04d", get_chunknum($chunkindex, $chunksperdir));
-	$cachefile = "$tmpdir/cache/hdk/$chunkdir/$chunkfile";
-
-	# Determine the location of the hoard file
-	$tag = $tags[$i];
-	$hoardfile = "$hoarddir/$tag";
-
-	# Now move the dirty chunk to the hoard cache
-	rename($cachefile, $hoardfile)
-	    or unix_errexit("Unable to move $cachefile to $hoardfile.");
-	print "$i: Moved $chunkdir/$chunkfile to $tag.\n"
-	    if $main::verbose > 1;
-	emit_hdk_progressmeter(($i+1)*$chunksize, $numdirtybytes);
-    }
-    reset_cursor();
+    # XXX
     message("INFO", "Client side commit - finish moving hoard chunks");
     print "Moved $dirtyblocks dirty blocks to the hoard cache.\n"
 	if $main::verbose > 1;
@@ -1203,10 +942,12 @@ sub isr_priv_clientcommit($$$$) {
     #
     $sha1value = `openssl sha1 < $tmpdir/cache/cfg.tgz.enc`;
     chomp($sha1value);
-    rename("$tmpdir/cache/cfg.tgz.enc", "$hoarddir/$sha1value");
+    # XXX
+    # rename("$tmpdir/cache/cfg.tgz.enc", "$hoarddir/$sha1value");
     $sha1value = `openssl sha1 < $tmpdir/cache/keyring.enc`;
     chomp($sha1value);
-    rename("$tmpdir/cache/keyring.enc", "$hoarddir/$sha1value");
+    # XXX
+    # rename("$tmpdir/cache/keyring.enc", "$hoarddir/$sha1value");
     message("INFO", "Client side commit - moved memory image into hoard cache");
 
     # 
@@ -1225,25 +966,12 @@ sub isr_priv_cleanhoard ($$$) {
     my $parcel = shift;
     my $isrdir = shift;
 
-    my $i;
-    my $numchunks;
-    my $chunk;
-    my $maxchunks;
-    my $tag;
-    
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
     my $hoarddir = "$isrdir/$parcel-hoard";
 
     my $deletecnt = 0;
-
-    my %filehash = ();
-    my @files = ();
-
-    my @keyring;
-    my $numkeys;
-
 
     print "Garbage-collecting hoard cache..."
 	if $main::verbose;
@@ -1257,41 +985,10 @@ sub isr_priv_cleanhoard ($$$) {
 	return;
     }
     
-    # Get the keyring from the local cache
-    @keyring = load_keyring("$cachedir/keyring");
-    $numkeys = scalar(@keyring);
-    
-
-    # Get a list of file in the hoard cache
-    if (!opendir(DIR, "$hoarddir")) {
-	err("Unable to open hoard cache ($hoarddir) for garbage collection");
-	return;
-    }
-    @files = grep(!/^[\._]/, readdir(DIR)); # elide . and ..
-    closedir(DIR);
-
-    # Initially mark each file for removal
-    %filehash = ();
-    foreach $tag (@files) {
-	$filehash{$tag} = 1;
-    }
-
-    # Exempt each file whose tag is in the keyring from removal
-    for ($i = 0; $i < $numkeys; $i++) {
-	$filehash{$keyring[$i][0]} = 0;
-    }
-
-    # Remove any files that are not exempted from removal
-    foreach $tag (keys %filehash) {
-	if ($filehash{$tag}) {
-	    unlink("$hoarddir/$tag");
-	    $deletecnt++;
-	}
-    }
+    # XXX
 
     print " (Deleted $deletecnt unused chunks)\n"
 	if $main::verbose;
-
 }
 
 # Every Perl module ends with true;
