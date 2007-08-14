@@ -260,24 +260,24 @@ sub isr_run_vulpes ($$$) {
 
     my $logstring = "|VULPES|" . message_string() ."|";
     my $cachedir = "$parceldir/cache";
-    my $vulpescmd = "$Isr::LIBDIR/vulpes";
+    my $pkcmd = "$Isr::LIBDIR/parcelkeeper";
 
-    my $lkadir = "$parceldir-hoard";
-    my $lkaopt = "";
+    my $hoarddir = "$parceldir-hoard";
+    my $hoardopt = "";
     
     my $retval;
 
-    # Check for existence of the hoard directory and set the Vulpes lka flag
-    if (-d $lkadir) {
-        $lkaopt = "--lka hfs-sha-1 $lkadir";
-        print("\tUsing hoard $lkadir.\n")
+    # Check for existence of the hoard directory and set the Vulpes hoard flag
+    if (-d $hoarddir) {
+        $hoardopt = "--hoard $hoarddir";
+        print("\tUsing hoard $hoarddir.\n")
 	    if $main::verbose > 1;
     }
 
     #
     # Crank up Vulpes with all the right arguments
     #
-    $retval = system("$vulpescmd run --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --lockdir $parceldir $lkaopt --master http $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}");
+    $retval = system("$pkcmd run --cache $cachedir --master $main::cfg{RPATH}/last/hdk --log $cachedir/../../session.log '$logstring' $syscfg{logmask} $syscfg{console_logmask} $hoardopt");
 
     return $retval;
 }
@@ -460,7 +460,7 @@ sub isr_statparcel ($$$$) {
     # Display local cache stats
     #
     if (-e "$cachedir") {
-	mysystem("$Isr::LIBDIR/vulpes examine --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
+	mysystem("$Isr::LIBDIR/parcelkeeper examine --cache $cachedir --last $lastdir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
 	    or errexit("Could not examine cache");
     }
     
@@ -469,7 +469,7 @@ sub isr_statparcel ($$$$) {
     # requested
     #
     if ($checkcache == 1 or $checkcache == 2) {
-	mysystem("$Isr::LIBDIR/vulpes validate --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --lockdir $parceldir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
+	mysystem("$Isr::LIBDIR/parcelkeeper validate --cache $cachedir --last $lastdir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
 	    or errexit("Could not validate cache");
     }
 
@@ -749,7 +749,7 @@ sub copy_dirtychunks ($) {
     #
     print("Collecting modified disk state...\n")
 	if $main::verbose;
-	mysystem("$Isr::LIBDIR/vulpes upload --cache $cachedir/hdk --keyring $cachedir/keyring $cachedir/cfg/keyring.bin --prev-keyring $lastdir/keyring $lastdir/cfg/keyring.bin --destdir $tmpdir/cache/hdk --lockdir $parceldir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
+	mysystem("$Isr::LIBDIR/parcelkeeper upload --cache $cachedir --last $lastdir --destdir $tmpdir/cache/hdk --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
     # Hack to get stats from vulpes
     open(STATFILE, "$tmpdir/cache/hdk/stats");

@@ -759,7 +759,7 @@ sub run ($$$$) {
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
-    my $vulpescmd = "$Isr::LIBDIR/vulpes";
+    my $pkcmd = "$Isr::LIBDIR/parcelkeeper";
     my $cdcache_file = "$parceldir/$Isr::CONSISTENT_DIRTYCACHE_FILE";
 
     # Block receipt of the SIGTSTP (ctrl-z)
@@ -786,7 +786,7 @@ sub run ($$$$) {
     # Make sure that Vulpes is where we expect it to be, that Nexus is
     # loaded, and that the control device exists.  Also, warn if the Nexus
     # release is older than our own release.
-    if (!-e $vulpescmd or !-x $vulpescmd ) {
+    if (!-e $pkcmd or !-x $pkcmd ) {
 	errexit("Could not find an executable Vulpes binary.");
     }
     if (!-d "/sys/class/openisr") {
@@ -842,8 +842,8 @@ sub run ($$$$) {
 	or errexit("Unable to launch Vulpes.");	
     
     # Find out what device node we'll be using
-    open(DEVFILE, "$parceldir/vulpes.dev")
-    	or unix_errexit("Can't open $parceldir/vulpes.dev");
+    open(DEVFILE, "$cachedir/parcelkeeper.dev")
+    	or unix_errexit("Can't open $cachedir/parcelkeeper.dev");
     chomp($devnode = <DEVFILE>);
     close(DEVFILE);
     message("INFO", "Using device node $devnode");
@@ -1921,7 +1921,7 @@ sub get_chunknum ($$) {
 #                 with this parcel, or zero if none are running.
 #
 sub get_vulpespid () {
-    my $pidfile = "$isrdir/$parcel/vulpes.pid";
+    my $pidfile = "$isrdir/$parcel/cache/parcelkeeper.pid";
     my $pid;
     
     -e $pidfile or return 0;
