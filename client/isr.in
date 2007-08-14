@@ -581,8 +581,7 @@ sub checkout ($$$$) {
 	print("Rolling back to version $version.\n")
 	    if $verbose;
 	if (isr_srun($userid, "rollback", 
-		     "-p $userid/$parcel -v $version -k $cfg{KEYROOT}", 
-		     "", 0) != 0) {
+		     "-u $userid -p $parcel -v $version", "", 0) != 0) {
 	    clean($userid, $parcel, $isrdir, 0);
 	    errexit("Unable to roll back to version $version");
 	}
@@ -1314,7 +1313,7 @@ sub checkparcel ($$$$$) {
     }
     isr_srun($userid,
 	     "checkparcel", 
-	     "-p $userid/$parcel -k $main::cfg{KEYROOT} -V $versionflag $checkstateflag",
+	     "-u $userid -p $parcel -V $versionflag $checkstateflag",
 	     "", 0) == 0
 		 or errexit("There is something wrong with parcel $userid/$parcel on the server.");
 

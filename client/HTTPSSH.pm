@@ -640,10 +640,10 @@ sub isr_priv_upload ($$$) {
     mypause("Done with local copy, ready to upload: hit y to continue");
 
     #
-    # Reset the contents of the cache on the server. For rsync version (-r), 
-    # this script simply creates the server-side cache if it doesn't exist
+    # Reset the contents of the cache on the server.
+    # This script simply creates the server-side cache if it doesn't exist
     #
-    isr_srun($userid, "resetcache", "-p $userid/$parcel -r", "", 0) == 0
+    isr_srun($userid, "resetcache", "-u $userid -p $parcel", "", 0) == 0
 	or system_errexit("Unable to reset server-side cache.");
 
     # 
@@ -801,10 +801,8 @@ sub isr_priv_commit ($$$$) {
 
     # If requested, check the current version of the parcel for consistency
     if (!$main::nocheckstate) {
-	isr_srun($userid,"checkparcel", 
-		 "-p $userid/$parcel -k $main::cfg{KEYROOT}",
-		 "", 0) == 0
-		 or errexit("There is something wrong with the remote parcel. Aborting with no change to the remote parcel.");
+	isr_srun($userid,"checkparcel", "-u $userid -p $parcel", "", 0) == 0
+	    or errexit("There is something wrong with the remote parcel. Aborting with no change to the remote parcel.");
     }
 
     #
@@ -813,23 +811,20 @@ sub isr_priv_commit ($$$$) {
     #
     if (-e $cachedir) {
         print("checking uploaded cache dir before committing...\n");
-            isr_srun($userid, "checkparcel", "-s -p $userid/$parcel -k $main::cfg{KEYROOT}", "", 0) == 0
-            or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
+	isr_srun($userid, "checkparcel", "-s -u $userid -p $parcel", "", 0) == 0
+	    or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
 	print("Committing updates on content server...\n")
 	    if $main::verbose;
 	message("INFO", "Begin server side commit");
-	isr_srun($userid, "commit", "-p $userid/$parcel -r", "", 0) == 0
+	isr_srun($userid, "commit", "-u $userid -p $parcel", "", 0) == 0
 	    or errexit("Server-side commit of parcel $userid/$parcel failed.");
 	message("INFO", "End server side commit");
     }
 
     # If requested, check the newly committed version for consistency
     if (!$main::nocheckstate) {
-	isr_srun($userid,
-	     "checkparcel", 
-	     "-p $userid/$parcel -k $main::cfg{KEYROOT}",
-	     "", 0) == 0
-		 or errexit("Something went wrong during commit.  Remote parcel is inconsistent.");
+	isr_srun($userid, "checkparcel", "-u $userid -p $parcel", "", 0) == 0
+	     or errexit("Something went wrong during commit.  Remote parcel is inconsistent.");
     }
 
     #
