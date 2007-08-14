@@ -94,12 +94,11 @@ sub usage
         print "$progname: $msg\n\n";
     }
     
-    print "Usage: $progname [-hr] [-u <username>] -p <parcel>\n";
+    print "Usage: $progname [-h] [-u <username>] -p <parcel>\n";
     print "Options:\n";
     print "  -h    Print this message\n";
     print "  -u    User for this parcel (default is $ENV{'USER'})\n";
     print "  -p    Parcel name\n";    
-    print "  -r    Reset cache for rsync-based client (default is scp)\n";
     print "\n";
     exit 0;
 }
