@@ -1599,7 +1599,7 @@ sub get_parcelcfg ($$$) {
     my $parcel = shift;
     my $outfile = shift; # Put the retrieved file here
 
-    if (mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_getconfig.pl -p $parcel -u $userid > $outfile")) {
+    if (mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_getconfig.pl -p $parcel > $outfile")) {
 	unlink($outfile);
 	system_errexit("Parcel $userid/$parcel does not exist on the name server ($nameserver).");
     }
@@ -1786,8 +1786,8 @@ sub hdksize ($$$) {
 
     # Parse parcel.cfg
     parse_cfgfile("$parceldir/parcel.cfg", \%parcelcfg);
-    $maxchunks = $lev1idx{NUMCHUNKS};
-    $chunksize = $lev1idx{CHUNKSIZE};
+    $maxchunks = $parcelcfg{NUMCHUNKS};
+    $chunksize = $parcelcfg{CHUNKSIZE};
     
     # hdk cache is trivially empty
     if (!-e $cachedir) {

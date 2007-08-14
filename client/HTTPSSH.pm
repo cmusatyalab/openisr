@@ -338,12 +338,11 @@ sub isr_hoard ($$$) {
 	close(KEYROOT);
 
 	# Decrypt the keyring
-	$target = "keyring";
-	if (mysystem("openssl enc -d -aes-128-cbc -in $lastdir/$target.enc -out $lastdir/$target -pass file:$lastdir/keyroot -salt") != 0) {
+	if (mysystem("openssl enc -d -aes-128-cbc -in $lastdir/keyring.enc -out $lastdir/keyring -pass file:$lastdir/keyroot -salt") != 0) {
 	    mysystem("rm -rf $lastdir");
-	    errexit("Unable to decrypt $target.enc");
+	    errexit("Unable to decrypt keyring.enc");
 	}
-	unlink("$lastdir/$target.enc");
+	unlink("$lastdir/keyring.enc");
 
 	# Keyroot no longer needed, get rid of it
 	unlink("$lastdir/keyroot");
