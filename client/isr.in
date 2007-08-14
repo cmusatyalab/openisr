@@ -716,10 +716,10 @@ sub checkout ($$$$) {
     	if !$key_file;
     $cfg_file = "$lastdir/cfg.tgz.enc"
     	if !$cfg_file;
-    if (mysystem("openssl enc -d -bf -in $key_file -out $lastdir/keyring -pass file:$lastdir/keyroot -nosalt") != 0) {
+    if (mysystem("openssl enc -d -aes-128-cbc -in $key_file -out $lastdir/keyring -pass file:$lastdir/keyroot -salt") != 0) {
 	errexit("Could not decrypt keyring.enc");
     }
-    if (mysystem("pv -peW -s $cfgsize $cfg_file | openssl enc -d -bf -pass file:$lastdir/keyroot -nosalt | tar xz --directory $lastdir") != 0) {
+    if (mysystem("pv -peW -s $cfgsize $cfg_file | openssl enc -d -aes-128-cbc -pass file:$lastdir/keyroot -salt | tar xz --directory $lastdir") != 0) {
 	errexit("Could not decrypt and unpack cfg.tgz.enc");
     }
     # Keyroot no longer needed, get rid of it

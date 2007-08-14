@@ -363,7 +363,7 @@ sub isr_hoard ($$$) {
 
 	# Decrypt the keyring
 	$target = "keyring";
-	if (mysystem("openssl enc -d -bf -in $lastdir/$target.enc -out $lastdir/$target -pass file:$lastdir/keyroot -nosalt") != 0) {
+	if (mysystem("openssl enc -d -aes-128-cbc -in $lastdir/$target.enc -out $lastdir/$target -pass file:$lastdir/keyroot -salt") != 0) {
 	    mysystem("rm -rf $lastdir");
 	    errexit("Unable to decrypt $target.enc");
 	}
@@ -753,11 +753,11 @@ sub copy_dirtychunks ($) {
     print("Compressing and encrypting virtual machine memory image...\n")
 	if $main::verbose;
     chdir($cachedir);
-    mysystem("tar c cfg | pv -peW -s $tarsize | gzip -c | openssl enc -bf -out $tmpdir/cache/cfg.tgz.enc -pass file:$cachedir/keyroot -nosalt") == 0
+    mysystem("tar c cfg | pv -peW -s $tarsize | gzip -c | openssl enc -aes-128-cbc -out $tmpdir/cache/cfg.tgz.enc -pass file:$cachedir/keyroot -salt") == 0
 	or system_errexit("Unable to create cfg.tgz.enc.");
     printf("Compressed size: %d MB\n", (stat("$tmpdir/cache/cfg.tgz.enc")->size)/(1<<20))
     	if $main::verbose;
-    mysystem("openssl enc -bf -in $cachedir/keyring -out $tmpdir/cache/keyring.enc -pass file:$cachedir/keyroot -nosalt") == 0
+    mysystem("openssl enc -aes-128-cbc -in $cachedir/keyring -out $tmpdir/cache/keyring.enc -pass file:$cachedir/keyroot -salt") == 0
 	or system_errexit("Unable to encrypt keyring.");
     foreach $target ("cfg.tgz", "keyring") {
 	message("INFO", 
