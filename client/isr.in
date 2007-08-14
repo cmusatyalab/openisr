@@ -60,7 +60,6 @@ sub hoard ($$$);
 sub do_hoard ($$$);
 sub checkparcel ($$$$$);
 sub statparcel ($$$);
-sub upgrade_lev1 ($);
 sub get_parcelnames ($$);
 sub get_parcelcfg ($$$);
 sub get_motd ($$);
@@ -599,10 +598,6 @@ sub checkout ($$$$) {
 	clean($userid, $parcel, $isrdir, 0);
 	errexit("Unable to create last dir $lastdir.");
     }
-    if (!mktree("$lastdir/hdk")) {
-	clean($userid, $parcel, $isrdir, 0);
-	errexit("Unable to create last dir $lastdir/hdk.");
-    }
 
     if (!rename("$isrdir/$parcel-nonce", "$parceldir/nonce")) {
 	clean($userid, $parcel, $isrdir, 0);
@@ -682,7 +677,7 @@ sub checkout ($$$$) {
     unlink("$lastdir/tmpfile");
     $SIG{'INT'} = sub {};
     unblock_sigint($sigset);
-    foreach $target ("keyring.enc", "hdk/index.lev1", "cfg.tgz.enc") {
+    foreach $target ("keyring.enc", "cfg.tgz.enc") {
 	next if ($target eq "keyring.enc" && $key_file);
 	next if ($target eq "cfg.tgz.enc" && $cfg_file);
 	
@@ -840,9 +835,6 @@ sub run ($$$$) {
     }
     $cfgfile = $files[0];
     
-    # Check index.lev1 version number and update if need be
-    upgrade_lev1("$cachedir/hdk");
-
     # Launch Vulpes. 
     print("Launching Vulpes...\n")
 	if $verbose;
@@ -1588,66 +1580,6 @@ sub do_hoard ($$$) {
 }
 
 #
-# upgrade_lev1 - Make sure the index.lev1 version number is current.  If it's
-#                too new, refuse to run, and if it's too old, offer to upgrade.
-#
-
-sub upgrade_lev1 ($) {
-    my $hdkdir = shift;
-    
-    my $indexfile = "$hdkdir/index.lev1";
-    
-    my $cur;
-    my $supported = 2;
-    my $line;
-    my $key;
-    my $value;
-    my %lev1idx;
-    
-    parse_cfgfile($indexfile, \%lev1idx);
-    $cur = $lev1idx{VERSION};
-    $cur =~ s/^ *//;
-    errexit("Parcel too new: expected version $supported, found version $cur")
-	if ($cur > $supported);
-    
-    if ($cur < $supported) {
-	message("INFO", "Parcel upgrade needed: expected version $supported, found $cur");
-	
-	print RED, "This parcel must be upgraded before it can be used with this version of ISR.\n";
-	print "Once upgraded, it will not be usable with older versions.\n", RESET;
-	if (-e "$hdkdir/0000") {
-	    errexit("This parcel has dirty state; run \"isr discard\" and try again");
-	}
-	query("Upgrade parcel?") eq "y"
-	    or errexit("User declined parcel upgrade");
-	
-	open(INFILE, $indexfile)
-	    or unix_errexit("Couldn't open $indexfile for reading");
-	open(OUTFILE, ">$indexfile.new")
-	    or unix_errexit("Couldn't open $indexfile.new for writing");
-	
-	while ($line = <INFILE>) {
-	    ($key, $value) = split("=", $line);
-	    if ($key eq "VERSION") {
-		print OUTFILE "VERSION= $supported\n";
-	    } else {
-		print OUTFILE $line;
-	    }
-	}
-	
-	close(INFILE)
-	    or unix_errexit("Unable to close $indexfile");
-	close(OUTFILE)
-	    or unix_errexit("Unable to close $indexfile.new");
-	
-	rename("$indexfile.new", $indexfile)
-	    or unix_errexit("Couldn't replace $indexfile with new version");
-	
-	message("INFO", "Upgraded parcel to version $supported");
-    }
-}
-
-#
 # get_parcelnames - Get the list of a user's parcels
 #
 sub get_parcelnames ($$) {
@@ -1753,6 +1685,12 @@ sub parse_parcelcfg ($$$) {
 	unlink($infile);
 	errexit("Couldn't parse parcel.cfg for $userid/$parcel");
     }
+    
+    # Check parcel format version
+    unless (exists $cfg{VERSION} and $cfg{VERSION} == 3) {
+	unlink($infile);
+	errexit("Unknown or missing VERSION in parcel.cfg for parcel $userid/$parcel.");
+    }
 
     # Every parcel has a PROTOCOL entry
     unless (exists $cfg{PROTOCOL}) {
@@ -1818,9 +1756,6 @@ sub build_cache ($$) {
 	closedir(DIR);
     }
 
-    # Build the local hdk directory (protocol specific)
-    isr_make_hdk($cachedir, $lastdir);
-
     # Copy the keyring files
     if (!-e "$cachedir/keyring") {
 	copy("$lastdir/keyring", "$cachedir/keyring")
@@ -1843,15 +1778,15 @@ sub hdksize ($$$) {
     my $dirtychunks;
     my $maxchunks;
     my $chunksize;
-    my %lev1idx;
+    my %parcelcfg;
 
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
     my $imagefile = "$cachedir/hdk/image.lev1";
 
-    # Parse index.lev1
-    parse_cfgfile("$lastdir/hdk/index.lev1", \%lev1idx);
+    # Parse parcel.cfg
+    parse_cfgfile("$parceldir/parcel.cfg", \%parcelcfg);
     $maxchunks = $lev1idx{NUMCHUNKS};
     $chunksize = $lev1idx{CHUNKSIZE};
     

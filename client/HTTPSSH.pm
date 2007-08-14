@@ -68,24 +68,6 @@ sub isr_checkcfg ($) {
 }
 
 #
-# isr_make_hdk - Setup the hdk directory in the local cache
-#    
-sub isr_make_hdk ($$) {
-    my $cachedir = shift; # Vulpes cache
-    my $lastdir = shift;  # mirrors keyring and memory image on server
-
-    if (!-e "$cachedir/hdk") {
-	mktree("$cachedir/hdk")
-	    or errexit("Unable to create $cachedir/hdk");
-    }
-    if (!-e "$cachedir/hdk/index.lev1") {
-	copy("$lastdir/hdk/index.lev1", "$cachedir/hdk/index.lev1")
-	    or unix_errexit("Unable to copy $lastdir/hdk/index.lev1");
-    }
-    return $Isr::ESUCCESS;
-}
-
-#
 # isr_sget - Copy a file from remote store to local store.  The client will
 #            ignore SIGINT/SIGQUIT while the transfer is in progress;
 #            $Isr::EINTR will be returned if one of these was received by
@@ -308,8 +290,6 @@ sub isr_hoard ($$$) {
     my $parcel = shift;
     my $isrdir = shift;
 
-    my $target;
-    
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
 
@@ -333,23 +313,19 @@ sub isr_hoard ($$$) {
 	    errexit("Remote parcel $userid/$parcel not found on the server.");
 	}
 
-	# Fetch the encrypted keyring into hdk index files into the last dir
+	# Fetch the encrypted keyring into the last dir
 	print("Fetching keyring from the content server.\n")
 	    if $main::verbose;
-	mktree("$lastdir/hdk")
-	    or errexit("Unable to make $lastdir and $lastdir/hdk");
-	foreach $target ("keyring.enc", "hdk/index.lev1") {
-	    unlink("$lastdir/tmpfile");
-	    print "Fetching $target...\n"
-		if ($main::verbose > 1);
-	    if (isr_sget($userid, "last/$target", "$lastdir/tmpfile", 0) != $Isr::ESUCCESS) {
-		mysystem("rm -rf $lastdir");
-		errexit("Unable to fetch $target file");
-	    }
-	    if (!rename("$lastdir/tmpfile", "$lastdir/$target")) {
-		mysystem("rm -rf $lastdir");
-		unix_errexit("Unable to commit $lastdir/$target");
-	    }
+	mktree($lastdir)
+	    or errexit("Unable to make $lastdir");
+	unlink("$lastdir/tmpfile");
+	if (isr_sget($userid, "last/keyring.enc", "$lastdir/tmpfile", 0) != $Isr::ESUCCESS) {
+	    mysystem("rm -rf $lastdir");
+	    errexit("Unable to fetch keyring.enc");
+	}
+	if (!rename("$lastdir/tmpfile", "$lastdir/keyring.enc")) {
+	    mysystem("rm -rf $lastdir");
+	    unix_errexit("Unable to commit $lastdir/keyring.enc");
 	}
 
 	# Save the keyroot in the parcel directory (otherwise we would
@@ -593,7 +569,7 @@ sub isr_priv_upload ($$$) {
     my $dirtyblocks = 0;
     my $virtualbytes;
     my $chunksize;
-    my %lev1idx;
+    my %parcelcfg;
 
     my $parceldir = "$isrdir/$parcel";
     my $hoarddir = "$isrdir/$parcel-hoard";
@@ -623,17 +599,17 @@ sub isr_priv_upload ($$$) {
     }
 
     #
-    # We expect either all or none of the cache subdirectories
+    # We expect either all or none of the cache files
     #
+    
+    # XXX
     if (-e "$cachedir/keyring" and 
-	-e "$cachedir/cfg" and 
-	-e "$cachedir/hdk") {
+	-e "$cachedir/cfg") {
 	# OK
     }
     else {
 	if (-e "$cachedir/keyring" or 
-	    -e "$cachedir/cfg" or 
-	    -e "$cachedir/hdk") {
+	    -e "$cachedir/cfg") {
 	    errexit("Inconsistent cache directory $cachedir");
 	}
     }
@@ -682,8 +658,8 @@ sub isr_priv_upload ($$$) {
     #
     # Log the number of hdk bytes that were transferred
     #
-    parse_cfgfile("$cachedir/hdk/index.lev1", \%lev1idx);
-    $chunksize = $lev1idx{CHUNKSIZE};
+    parse_cfgfile("$parceldir/parcel.cfg", \%parcelcfg);
+    $chunksize = $parcelcfg{CHUNKSIZE};
     $virtualbytes = $dirtyblocks*$chunksize;
     message("INFO", "upload:hdk:$dirtybytes:$virtualbytes");
 
@@ -767,10 +743,6 @@ sub copy_dirtychunks ($) {
 
     # Get rid of keyroot, no longer needed
     unlink("$cachedir/keyroot"); 
-
-    # Copy the index.lev1 file to the temporary cache directory
-    copy("$cachedir/hdk/index.lev1", "$tmpdir/cache/hdk/index.lev1")
-	or unix_errexit("Unable to copy index.lev1.");
 
     # 
     # Copy any dirty hdk chunks to the temporary cache directory
@@ -873,7 +845,7 @@ sub isr_priv_commit ($$$$) {
 
 #
 # isr_priv_clientcommit - Commit state on the client.  First, copy the
-#     memory image, keyring, and index.lev1 from cache/ to last/, so that the
+#     memory image and keyring from cache/ to last/, so that the
 #     client-side last remains consistent with the server-side last/.
 #     Second, move any dirty hdk chunks from the local cache to the hoard
 #     cache so that the hoard cache stays fully populated.
@@ -904,7 +876,7 @@ sub isr_priv_clientcommit($$$$) {
     
     #
     # Now that we have determined the dirty disk state, we can copy
-    # the memory image, keyring, and index.lev1 from cache to last
+    # the memory image and keyring from cache to last
     #
     if ($releasing) {
 	# There's no point in copying the memory from cache/ to last/ if the
@@ -923,8 +895,6 @@ sub isr_priv_clientcommit($$$$) {
 	closedir(DIR);
 	copy("$cachedir/keyring", "$lastdir/keyring")
 	    or unix_errexit("Unable to copy keyring from $cachedir to $lastdir.");
-	copy("$cachedir/hdk/index.lev1", "$lastdir/hdk/index.lev1")
-	    or unix_errexit("Unable to copy index.lev1 from $cachedir to $lastdir.");
 	message("INFO", "Client side commit - finish copying memory image");
     }
 
