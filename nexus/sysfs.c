@@ -269,6 +269,10 @@ static ssize_t dev_store_action(struct class_device *class_dev,
 		mutex_unlock(&dev->lock);
 		if (ret)
 			return ret;
+	} else if (!strcmp(buf, "sync\n")) {
+		/* This returns -ERESTARTSYS if interrupted by a signal, but,
+		   of course, we can't do anything about it. */
+		nexus_sync(dev);
 	} else {
 		return -EINVAL;
 	}

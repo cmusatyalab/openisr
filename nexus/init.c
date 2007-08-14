@@ -130,6 +130,41 @@ int shutdown_dev(struct nexus_dev *dev, int force)
 }
 
 /**
+ * nexus_sync - block until the Nexus device is idle
+ *
+ * For use by the "action" sysfs attribute.  Blocks until the chunkdata dev
+ * reference is no longer held and the requests queue is empty, which means
+ * that no chunks are in I/O or otherwise queued for processing.  (Of course,
+ * as soon as this function returns, another chunk may be queued for I/O.)
+ * Note that we wait for all pending activity to finish -- both reads and
+ * writes.
+ * 
+ * Returns -ERESTARTSYS if a signal is received while waiting.
+ **/
+int nexus_sync(struct nexus_dev *dev)
+{
+	DEFINE_WAIT(wait);
+	int do_sched;
+	
+	spin_lock_bh(&dev->requests_lock);
+	while (test_bit(__DEV_HAVE_CD_REF, &dev->flags) ||
+				!list_empty(&dev->requests)) {
+		prepare_to_wait(&dev->waiting_idle, &wait, TASK_INTERRUPTIBLE);
+		do_sched = test_bit(__DEV_HAVE_CD_REF, &dev->flags) ||
+					!list_empty(&dev->requests);
+		spin_unlock_bh(&dev->requests_lock);
+		if (do_sched)
+			schedule();
+		finish_wait(&dev->waiting_idle, &wait);
+		if (signal_pending(current))
+			return -ERESTARTSYS;
+		spin_lock_bh(&dev->requests_lock);
+	}
+	spin_unlock_bh(&dev->requests_lock);
+	return 0;
+}
+
+/**
  * class_populate - add standard attributes to our class
  * 
  * On failure, the class may be semi-populated, but that will be cleaned up
@@ -452,6 +487,7 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	setup_timer(&dev->requests_oom_timer, oom_timer_fn, (unsigned long)dev);
 	INIT_LIST_HEAD(&dev->lh_run_requests);
 	init_waitqueue_head(&dev->waiting_users);
+	init_waitqueue_head(&dev->waiting_idle);
 	dev->devnum=devnum;
 	dev->owner=current->uid;
 	

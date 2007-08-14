@@ -1242,8 +1242,10 @@ void run_chunk(struct list_head *entry)
 	__run_chunk(cd);
 	table->pending_updates--;
 	if (table->busy_count == 0 && table->pending_updates == 0) {
-		if (test_and_clear_bit(__DEV_HAVE_CD_REF, &dev->flags))
+		if (test_and_clear_bit(__DEV_HAVE_CD_REF, &dev->flags)) {
+			wake_up_interruptible_all(&dev->waiting_idle);
 			need_release=1;
+		}
 	}
 	mutex_unlock(&dev->lock);
 	if (need_release)
