@@ -34,9 +34,6 @@ $| = 1; # Autoflush output on every print statement
 # begin main routine
 ####################
 
-# Constant
-my $DEF_VERSIONS = 8; # default number of versions to display
-
 # Variables
 my $userdir;
 my $username;
@@ -49,7 +46,6 @@ my $client;
 my $date;
 my $user;
 my $state;
-my $longflag;
 my $longvers;
 my $version;
 my $size;
@@ -62,7 +58,7 @@ my @versions;
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hu:p:L:l');
+getopts('hu:p:L:');
 
 if ($opt_h) {
     usage();
@@ -73,20 +69,11 @@ if (!$opt_u) {
 if (!$opt_p) {
     usage("Missing parcel name (-p)");
 }
-$longflag = $opt_l;     # Use long format using default number of versions
 $longvers = $opt_L;  # Use long format using specific number of versions
 $username = $opt_u;
 $parcel = $opt_p;
 $userdir = "$Server::CONTENT_ROOT" . "/$username";
 use strict 'vars';
-
-#
-# The -l option is subsumed by the -L option, but is kept here
-# for backward compatibility. 
-#
-if ($longflag) {
-    $longvers = $DEF_VERSIONS;
-}
 
 #
 # Determine the last time this parcel was acquired or released
@@ -197,10 +184,9 @@ sub usage
         print "$progname: $msg\n\n";
     }
     
-    print "Usage: $progname [-hl] [-L <n>] -u <username> -p <parcel>\n";
+    print "Usage: $progname [-h] [-L <n>] -u <username> -p <parcel>\n";
     print "Options:\n";
     print "  -h              Print this message\n";
-    print "  -l              List available versions\n";  
     print "  -L <n>          List the <n> most recent versions\n";  
     print "  -p <parcel>     Parcel name\n";  
     print "  -u <username>   User name\n";  
