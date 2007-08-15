@@ -112,7 +112,6 @@ my $command;
 my $disconnected;    # Run disconnected
 my $longflag;        # Print default number of versions for ls long format
 my $longvers;        # Print specific number of versions for ls long format
-my $server;          # Server domain name
 my $version;         # Rollback version
 my $checkstate = 0;  # Optionally check content consistency in some cmds
 my $noautoflag;      # Don't automatically start/stop VMware at launch time
@@ -135,6 +134,7 @@ my @locks;          # Names and FDs of open lock files
 our $verbose = 1;   # Verbosity level; by default, we print a few messages
 our $nocheckstate;  # Skip state  consistency check in ci, sync, disconnect
 our $bwlimit;       # Bandwidth limit (KBytes/sec) in ci and sync
+our $server;        # Server domain name
 
 #
 # Read/write global variable: At any point in time, this hash contains

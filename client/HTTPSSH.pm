@@ -212,10 +212,10 @@ sub isr_srun ($$$$$) {
 
     # Perform the operation on remote storage
     if ($outfile) {
-	$retval = mysystem("ssh -l $userid $main::cfg{SERVER} $Isr::ISRSERVERBIN/$command $args > $outfile $redirect");
+	$retval = mysystem("ssh -l $userid $main::server $Isr::ISRSERVERBIN/$command $args > $outfile $redirect");
     }
     else {
-	$retval = mysystem("ssh -l $userid $main::cfg{SERVER} $Isr::ISRSERVERBIN/$command $args");
+	$retval = mysystem("ssh -l $userid $main::server $Isr::ISRSERVERBIN/$command $args");
     }
     return $retval;
 }
@@ -238,7 +238,7 @@ sub isr_connected_parcel ($$) {
 #
 sub isr_connected_http () {
 
-    if (IO::Socket::INET->new(PeerAddr => "$main::cfg{SERVER}",
+    if (IO::Socket::INET->new(PeerAddr => "$main::server",
 			      PeerPort => "80",
 			      Proto    => "tcp",
 			      Type     => SOCK_STREAM)) {
