@@ -1133,23 +1133,9 @@ sub listparcels ($$$$$) {
 	    unlink($tmpfile);
 
 	    # Run the remote ls program on the server
-	    $tmpfile = "/tmp/ls.$$";
 	    if (isr_srun($userid, "ls", 
-		     "-u $userid -p $parcel $lsargs", $tmpfile, 0) != 0) {
-		unlink($tmpfile);
+		     "-u $userid -p $parcel $lsargs", "", 0) != 0) {
 		err("Unable to list $parcel");
-	    }
-	    else {
-		open(TMP, $tmpfile) or next;
-		while ($line = <TMP>) {
-		    # In the output for ls, replace [server] with
-		    # [server:protocol].  The server name is any combination
-		    # of letters, numbers, _ and -
-		    $line =~ s/\[([\w-]+)\]/\[$1:$cfg{PROTOCOL}\]/; 
-		    print "$line";
-		}
-		close(TMP);
-		unlink($tmpfile);
 	    }
 	}
     }

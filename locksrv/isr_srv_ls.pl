@@ -56,8 +56,6 @@ my $size;
 my $line;
 my $count;
 
-my $hostname = hostname();
-
 my @versions;
 
 #
@@ -89,12 +87,6 @@ use strict 'vars';
 if ($longflag) {
     $longvers = $DEF_VERSIONS;
 }
-
-#
-# Use only the hostname portion of this host's FQDN
-#
-$hostname =~ /^([^\.\s]+)\.?/; # at least 1 alphanum char followed by 0 or 1 dots
-$hostname = $1;                # (i wanted '-' to match also so i changed the regexp -mtoups)
 
 #
 # Determine the last time this parcel was acquired or released
@@ -142,18 +134,16 @@ $client = $1;                # (i wanted '-' to match also so i changed the rege
 #
 if ($logentry and $unlocked) {
     print GREEN;
-    printf("%s [%s] %s by %s on %s\n", $parcel, $hostname, 
-	   $state, $client, $date);
+    printf("%s %s by %s on %s\n", $parcel, $state, $client, $date);
     print RESET;
 }
 elsif ($logentry and !$unlocked) {
     print RED;
-    printf("%s [%s] %s by %s on %s\n", $parcel, $hostname, 
-	   $state, $client, $date);
+    printf("%s %s by %s on %s\n", $parcel, $state, $client, $date);
     print RESET;
 }
 else {
-    print("$parcel [$hostname] has never been checked out.\n");
+    print("$parcel has never been checked out.\n");
 }
 
 # 
