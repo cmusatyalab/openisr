@@ -52,6 +52,7 @@ struct pk_option {
 };
 
 enum option {
+	OPT_PARCELDIR,
 	OPT_CACHE,
 	OPT_LAST,
 	OPT_MASTER,
@@ -66,6 +67,7 @@ enum option {
 #define POSTPROCESS_MODES (MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
 #define NONTRIVIAL_MODES (MODE_RUN|POSTPROCESS_MODES)
 static struct pk_option pk_options[] = {
+	{"parcel",         OPT_PARCELDIR,      REQUIRED, NONTRIVIAL_MODES               , {"parcel_dir"}},
 	{"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
 	{"last",           OPT_LAST,           REQUIRED, POSTPROCESS_MODES              , {"last_cache_dir"}},
 	{"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"master_url"}},
@@ -237,11 +239,16 @@ enum mode parse_cmdline(int argc, char **argv)
 
 	while ((opt=pk_getopt(argc, argv, pk_options)) != -1) {
 		switch (opt) {
+		case OPT_PARCELDIR:
+			config.parcel_dir=optparams[0];
+			check_dir(config.parcel_dir);
+			config.parcel_cfg=filepath(optparams[0], "parcel.cfg",
+						1);
+			break;
 		case OPT_CACHE:
 			config.cache_dir=optparams[0];
 			check_dir(config.cache_dir);
 			cp=config.cache_dir;
-			config.parcel_cfg=filepath(cp, "parcel.cfg", 1);
 			config.keyring=filepath(cp, "keyring", 1);
 			config.cache_file=filepath(cp, "disk", 0);
 			config.cache_index=filepath(cp, "disk.idx", 0);

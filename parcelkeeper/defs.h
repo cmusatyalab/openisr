@@ -64,9 +64,12 @@ enum mode {
 struct pk_connection;
 
 struct pk_config {
+	/* top-level parcel directory and its contents */
+	char *parcel_dir;
+	char *parcel_cfg;
+
 	/* cache directory and its contents */
 	char *cache_dir;
-	char *parcel_cfg;
 	char *keyring;
 	char *cache_file;
 	char *cache_index;
