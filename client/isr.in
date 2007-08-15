@@ -1571,9 +1571,9 @@ sub get_parcelnames ($$) {
     my $userid = shift;
     my $outfile = shift;
 
-    if (mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_nsrv_listparcels.pl -u $userid > $outfile")) {
+    if (mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_srv_listparcels.pl -u $userid > $outfile")) {
 	unlink($outfile);
-	system_errexit("Unable to run isr_nsrv_listparcels.pl on the server ($server)");
+	system_errexit("Unable to run isr_srv_listparcels.pl on the server ($server)");
     }
 }
 
@@ -1585,7 +1585,7 @@ sub get_parcelcfg ($$$) {
     my $parcel = shift;
     my $outfile = shift; # Put the retrieved file here
 
-    if (mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_nsrv_getconfig.pl -p $parcel > $outfile")) {
+    if (mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_srv_getconfig.pl -p $parcel > $outfile")) {
 	unlink($outfile);
 	system_errexit("Parcel $userid/$parcel does not exist on the server ($server).");
     }
@@ -1598,7 +1598,7 @@ sub get_motd ($$) {
     my $userid = shift;
     my $parcel = shift;
 
-    mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_nsrv_motd.pl -p $parcel -u $userid") == 0
+    mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_srv_motd.pl -p $parcel -u $userid") == 0
 	or system_err("Couldn't read message of the day from the server ($server).");
 }
 

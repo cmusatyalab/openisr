@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 ###################################################################
-# isr_nsrv_getconfig.pl - Fetch the parcel.cfg file from name server
+# isr_srv_listparcels.pl - List the parcels available to a user
 ###################################################################
 
 #
@@ -31,45 +31,54 @@ $| = 1; # Autoflush output on every print statement
 ####################
 # Begin main routine
 ####################
-my $parcelpath;
+my $homedir;
 my $verbose;
-my $parceldir;
-my $parcelname;
 my $username;
-my $configfile;
+my $file;
+my $isrdir;
+my @files;
+my @dirs;
 
 #
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hVp:');
+getopts('hVu:');
 
 if ($opt_h) {
     usage();
 }
-
-if (!$opt_p) {
-    usage("Missing parcel name (-p)");
+if (!$opt_u) {
+    usage("Missing user name (-u)");
 }
-$parcelname = $opt_p;
+$username = $opt_u;
 $verbose = $opt_V;
 use strict 'vars';
 
 #
 # Set some variables that we'll need later
 #
-$configfile = get_parcelcfg_path($ENV{"USER"}, $parcelname);
+$homedir = $ENV{HOME};
+if ($username ne basename($homedir)) {
+    errexit("The user name on the command line ($username) is inconsistent with the home directory ($homedir).");
+}
+$isrdir = "$homedir/.isr/";
 
 #
-# Return the config file to the caller via stdout
+# Return the list of parcel directories via stdout
 #
-open(INFILE, $configfile) 
-    or unix_errexit("Unable to open $configfile.");
-while (<INFILE>) {
-    print $_;
+opendir(DIR, $isrdir)
+    or unix_errexit("Could not open directory $isrdir");
+@files = sort grep(!/^[\.]/, readdir(DIR));  # filter out any dot files
+closedir(DIR);
+
+@dirs = ();
+foreach $file (@files) {
+    # A parcel dir is a directory that contains a parcel.cfg file
+    if (-d "$isrdir/$file" and -e "$isrdir/$file/parcel.cfg") {
+	print "$file\n";
+    }
 }
-close (INFILE) 
-    or unix_errexit("Unable to close $configfile.");
 
 exit 0;
 
@@ -92,11 +101,10 @@ sub usage
         print "$progname: $msg\n";
     }
 
-    print "Usage: $progname [-hV] -p <parcel>\n";
+    print "Usage: $progname [-h] -u <user>\n";
     print "Options:\n";
     print "  -h    Print this message\n";
-    print "  -p    Parcel name\n";    
-    print "  -V    Be verbose\n";
+    print "  -u    User name\n";    
     print "\n";
     exit 0;
 }
