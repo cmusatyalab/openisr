@@ -1606,12 +1606,26 @@ sub parse_parcelcfg ($$$) {
 	errexit("Missing MAXKB entry in parcel.cfg for parcel $userid/$parcel.");
     }
 
-    # Do a protocol-specific check of the remaining values
-    if (isr_checkcfg(\%cfg) != $Isr::ESUCCESS) {
+    unless (exists $cfg{RPATH}) {
 	unlink($infile);
-	exit $Isr::EINVAL;
+	errexit("Missing RPATH entry in parcel.cfg for parcel $userid/$parcel.");
     }
-
+    
+    unless (exists $cfg{WPATH}) {
+	unlink($infile);
+	errexit("Missing WPATH entry in parcel.cfg for parcel $userid/$parcel.");
+    }
+    
+    unless (exists $cfg{KEYROOT}) {
+	unlink($infile);
+	errexit("Missing KEYROOT entry in parcel.cfg for parcel $userid/$parcel.");
+    }
+    
+    unless (exists $cfg{SERVER}) {
+	unlink($infile);
+	errexit("Missing SERVER entry in parcel.cfg for parcel $userid/$parcel.");
+    }
+    
     # Every read and write path gets appended with the userid and parcel
     $cfg{RPATH} .= "/$userid/$parcel";
     $cfg{WPATH} .= "/$userid/$parcel";

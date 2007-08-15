@@ -25,47 +25,9 @@ use warnings;
 use Term::ANSIColor qw(:constants);
 use vars qw(%syscfg);
 
-##############################
-# Section 1: Private variables
-##############################
-
-# For sanity checks, set to PROTOCOL name in parcel.cfg
-my $PROTOCOL = "HTTPSSH";
-
 #############################
-# Section 2: Public functions
+# Section 1: Public functions
 #############################
-
-#
-# isr_checkcfg - Check key/value pairs in parcel.cfg hash
-#
-sub isr_checkcfg ($) {
-    my $cfgref = shift;
-
-    unless ($cfgref->{PROTOCOL} eq $PROTOCOL) {
-	err("Inconsistent protocol ($cfgref->{PROTOCOL} != $PROTOCOL) in parcel.cfg.");
-	return $Isr::EINVAL;
-    }
-    unless (exists $cfgref->{RPATH}) {
-	err("Missing RPATH entry in parcel.cfg.");
-	return $Isr::EINVAL;
-    }
-    unless (exists $cfgref->{WPATH}) {
-	err("Missing WPATH entry in parcel.cfg.");
-	return $Isr::EINVAL;
-    }
-    unless (exists $cfgref->{KEYROOT}) {
-	err("Missing KEYROOT entry in parcel.cfg.");
-	return $Isr::EINVAL;
-    }
-    unless (exists $cfgref->{SERVER}) {
-	err("Missing SERVER entry in parcel.cfg.");
-	return $Isr::EINVAL;
-    }
-
-    # Success
-    return $Isr::ESUCCESS;
-}
 
 #
 # isr_sget - Copy a file from remote store to local store.  The client will
@@ -551,7 +513,7 @@ sub isr_checkhoard ($$$$$) {
 }
 
 #####################################
-# Section 3: Private helper functions
+# Section 2: Private helper functions
 #####################################
 
 #
