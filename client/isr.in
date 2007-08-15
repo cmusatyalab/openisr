@@ -219,7 +219,7 @@ parse_cfgfile("$Isr::SHAREDIR/config", \%syscfg)
     or errexit("Can't read defaults file $Isr::SHAREDIR/config");
 # These may not exist, but can override the earlier ones
 parse_cfgfile("$Isr::SYSCONFDIR/openisr.conf", \%syscfg);
-parse_cfgfile("$ENV{HOME}/.openisr.conf", \%syscfg);
+parse_cfgfile("$ENV{HOME}/.openisrrc", \%syscfg);
 
 #
 # Source HTTPSSH.pm
