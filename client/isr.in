@@ -105,7 +105,6 @@ my $result;
 my $progname; 
 my $unused;
 my $prot;
-my $prot_loaded = 0;
 
 # Command line arguments that are private to this module
 my $command;        
@@ -142,6 +141,7 @@ our $server;        # Server domain name
 # each command except listparcels, %cfg is initialized exactly once, 
 # and only by calls to parse_parcelcfg.  This variable is tied such that
 # accesses to nonexistent keys will result in a call to errexit().
+# XXX false!
 #
 our %cfg = ();
 
@@ -221,6 +221,12 @@ parse_cfgfile("$Isr::SHAREDIR/config", \%syscfg)
 # These may not exist, but can override the earlier ones
 parse_cfgfile("$Isr::SYSCONFDIR/openisr.conf", \%syscfg);
 parse_cfgfile("$ENV{HOME}/.openisr.conf", \%syscfg);
+
+#
+# Source HTTPSSH.pm
+#
+do "$Isr::SHAREDIR/HTTPSSH.pm"
+    or errexit("Unable to load module HTTPSSH.pm");
 
 #####
 # Various defaults
@@ -530,8 +536,7 @@ sub checkout ($$$$) {
     	if $verbose;
     get_motd($userid, $parcel);
 
-    # Fetch and parse the config file from the server and 
-    # load protocol specific storage module
+    # Fetch and parse the config file from the server
     print "Fetching configuration data for $userid/$parcel from server.\n"
 	if $verbose;
     get_parcelcfg($userid, $parcel, "$isrdir/$parcel-parcel.cfg");
@@ -769,8 +774,7 @@ sub run ($$$$) {
     # cache directory is about to become inconsistent with the local cache.
     unlink($cdcache_file);
 
-    # Parse the parcel config file that we got from the server during
-    # checkout and load the protocol-specific module
+    # Parse the parcel config file that we got from the server during checkout
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
 
     # If the user wants to run connected, then before going any further, 
@@ -911,8 +915,7 @@ sub checkin ($$$) {
 
     my $parceldir = "$isrdir/$parcel";
 
-    # Parse config file that was retrieved during checkout and
-    # load the protocol-specific module
+    # Parse config file that was retrieved during checkout
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
 
     # Sync the dirty blocks on the server
@@ -937,7 +940,6 @@ sub sync ($$$$) {
     my $relstring = "";
 
     # Parse config file that was retrieved during checkout
-    # and load the protocol specific module
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
 
     # Now call the protocol-specific sync function
@@ -976,7 +978,6 @@ sub upload ($$$) {
     my $parceldir = "$isrdir/$parcel";
 
     # Parse config file that was retrieved during checkout
-    # and load the protocol specific module
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
 
     # Now call the protocol-specific sync function
@@ -1042,8 +1043,7 @@ sub disconnect ($$$$) {
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
     
-    # Parse config file that was retrieved during checkout and load
-    # protocol specific storage module
+    # Parse config file that was retrieved during checkout
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
 
     print "Preparing client host to run parcel $userid/$parcel disconnected...\n";
@@ -1122,15 +1122,6 @@ sub listparcels ($$$$$) {
     foreach $parcel (@parcels) {
 	if (!$parcelname or (($parcelname and ($parcel eq $parcelname)))) {
 	    $found = 1;
-
-	    # Get the parcel.cfg file from the server and then parse it
-	    # and load the protocol specific module
-	    print("Fetching configuration data for $userid/$parcel from server.\n")
-		if $verbose > 1;
-	    $tmpfile = "/tmp/parcel.cfg.$$";
-	    get_parcelcfg($userid, $parcel, $tmpfile);
-	    %cfg = parse_parcelcfg($tmpfile, $userid, $parcel);
-	    unlink($tmpfile);
 
 	    # Run the remote ls program on the server
 	    if (isr_srun($userid, "ls", 
@@ -1232,7 +1223,7 @@ sub hoard ($$$) {
 	get_parcelcfg($userid, $parcel, $parcelcfgfile);
     } 
 
-    # Parse the config file and load the protocol-specific storage module
+    # Parse the config file
     %cfg = parse_parcelcfg($parcelcfgfile, $userid, $parcel);
 
     # Delete the temporary parcel.cfg file if necessary
@@ -1258,32 +1249,10 @@ sub checkparcel ($$$$$) {
     my $version = shift;
     my $checkstate = shift;
 
-    my $parcelcfgfile; 
     my $versionflag;
     my $checkstateflag;
     
     my $parceldir = "$isrdir/$parcel";
-
-    #
-    # If the parcel is not currently checked out, then fetch a
-    # temporary copy of parcel.cfg from the server. Otherwise use
-    # the parcel.cfg file that was fetched during checkout
-    #
-    $parcelcfgfile = "$parceldir/parcel.cfg";
-    if (!-e $parceldir) {
-	$parcelcfgfile = "$isrdir/$parcel-parcel.cfg.$$";
-	print "Fetching configuration data for $userid/$parcel from server.\n"
-	    if $verbose;
-	get_parcelcfg($userid, $parcel, $parcelcfgfile);
-    } 
-
-    # Parse the config file and load the protocol-specific storage module
-    %cfg = parse_parcelcfg($parcelcfgfile, $userid, $parcel);
-
-    # Delete the temporary parcel.cfg file if necessary
-    if (!-e $parceldir) {
-	unlink($parcelcfgfile);
-    }    
 
     #
     # Ask the server the to check the consistency of the parcel
@@ -1318,8 +1287,7 @@ sub statparcel ($$$) {
 
     my $parceldir = "$isrdir/$parcel";
 
-    # Parse config file that was retrieved during checkout and load
-    # protocol specific storage module
+    # Parse config file that was retrieved during checkout
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
 
     isr_statparcel($userid, $parcel, $isrdir, $checkstate);
@@ -1498,19 +1466,11 @@ sub clean ($$$$) {
     # Make sure the current working directory exists
     chdir($isrdir);
     
-    # Get a fresh parcel.cfg file from the server in case the
-    # user has accidently erased his local copy
-    my $tmpfile = "/tmp/parcel.cfg.$$";
-    get_parcelcfg($userid, $parcel, $tmpfile);
-    %cfg = parse_parcelcfg($tmpfile, $userid, $parcel);
-    unlink($tmpfile);
-
     # Now remove all traces of the parcel on the client and unlock it
     if (mysystem("rm -rf $parceldir") != 0) {
 	err("Unable to remove $parcel.");
 	$errors++;
     }
-
 
     # If the caller supplied a nonce, then request a soft release
     if ($nonce) {
@@ -1687,13 +1647,6 @@ sub parse_parcelcfg ($$$) {
     unless (exists $cfg{MAXKB}) {
 	unlink($infile);
 	errexit("Missing MAXKB entry in parcel.cfg for parcel $userid/$parcel.");
-    }
-
-    # Load the protocol-specific module
-    unless ($prot_loaded) {
-	do "$Isr::SHAREDIR/$cfg{PROTOCOL}.pm"
-	    or errexit("Unable to load module $cfg{PROTOCOL}.pm in parse_parcelcfg for parcel $userid/$parcel");
-	$prot_loaded = 1;
     }
 
     # Do a protocol-specific check of the remaining values
