@@ -34,25 +34,14 @@ $| = 1; # Autoflush output on every print statement
 # begin main routine
 ####################
 
-# Variables
-my $userdir;
-my $username;
-my $parcel;
-my $unlocked;
-my $logentry;
-my $unused;
-my $action;
-my $client;
-my $date;
-my $user;
-my $state;
-my $longvers;
-my $version;
-my $size;
-my $line;
-my $count;
+# Globals
+our $userdir;
+our $username;
+our $longvers;
 
-my @versions;
+# Variables
+my $parcel;
+my $isrdir;
 
 #
 # Parse the command line args
@@ -66,107 +55,148 @@ if ($opt_h) {
 if (!$opt_u) {
     usage("Missing user name (-u)");
 }
-if (!$opt_p) {
-    usage("Missing parcel name (-p)");
-}
 $longvers = $opt_L;  # Use long format using specific number of versions
 $username = $opt_u;
 $parcel = $opt_p;
 $userdir = "$Server::CONTENT_ROOT" . "/$username";
 use strict 'vars';
 
-#
-# Determine the last time this parcel was acquired or released
-#
-system("rm -f $userdir/entry");
-$unlocked = system("$Server::SRVBIN/isr_srv_lock.pl -p $username/$parcel -n foo -Vc > $userdir/entry");
-$logentry = `cat $userdir/entry`;
-chomp($logentry);
-system("rm -f $userdir/entry");
+$isrdir = (getpwnam($username))[7] . "/.isr/";
 
-#
-# Determine it's present state
-# 
-if ($unlocked) {
-    $state = "released";
-}
-else {
-    $state = "acquired";
-}
-
-#
-# Parse the log entry
-#
-($unused, $date, $action, $user, $unused, $client, $unused) = 
-    split('\|', $logentry);
-if ($logentry and 
-    (($unlocked and $action ne "released") or
-    (!$unlocked and $action ne "acquired")) ) {
-    errexit("System error: inconsistent log entry: unlocked=$unlocked action=$action\nlogentry=$logentry");
-}
-
-#
-# We don't need the day of the week on the date
-#
-$date =~ s/^\w+\s//;
-
-#
-# Use only the hostname portion of the client's FQDN
-#
-$client =~ /^([^\.\s]+)\.?/; # at least 1 alphanum char followed by 0 or 1 dots
-$client = $1;                # (i wanted '-' to match also so i changed the regexp -mtoups)
-
-#
-# Print the main output line
-#
-if ($logentry and $unlocked) {
-    print GREEN;
-    printf("%s %s by %s on %s\n", $parcel, $state, $client, $date);
-    print RESET;
-}
-elsif ($logentry and !$unlocked) {
-    print RED;
-    printf("%s %s by %s on %s\n", $parcel, $state, $client, $date);
-    print RESET;
-}
-else {
-    print("$parcel has never been checked out.\n");
-}
-
-# 
-# If the user wants to see the available versions of the parcel, print 
-# those too.
-#
-if ($longvers) {
-    opendir(DIR, "$userdir/$parcel")
-	or unix_errexit("Could not open directory $userdir/$parcel");
-    @versions = reverse sort grep(/^\d+$/, readdir(DIR)); # numbers only
-
-    closedir(DIR);
-
-    $count = 0;
-    foreach $version (@versions) {
-	$count++;
-	if ($count > $longvers) {
-	    last;
-	}
-
-	if (-e "$userdir/$parcel/$version/keyring.enc") {
-	    $date = localtime(stat("$userdir/$parcel/$version/keyring.enc")->mtime);
-	}
-	else {
-	    $date = "[not available]";
-	}
-
-	$line = `du -h -s $userdir/$parcel/$version`;
-	($size, $unused) = split(" ", $line);
-	printf("  %s %6s  %s\n", $version, $size, $date);
+if ($parcel) {
+    if (-e "$isrdir/$parcel/parcel.cfg") {
+	print_one($parcel);
+    } else {
+	print "Parcel not found.\n";
+	exit 1;
     }
-
-
-    exit 0;
+} else {
+    opendir(DIR, $isrdir)
+	or unix_errexit("Could not open directory $isrdir");
+    # filter out any dot files
+    foreach $parcel (sort grep(!/^[\.]/, readdir(DIR))) {
+	# A parcel dir is a directory that contains a parcel.cfg file
+	if (-d "$isrdir/$parcel" and -e "$isrdir/$parcel/parcel.cfg") {
+	    print_one($parcel);
+	}
+    }
+    closedir(DIR);
 }
 
+exit 0;
+
+
+##################################################
+# print_one - print a status line for one parcel #
+##################################################
+
+sub print_one {
+    my $parcel = shift;
+    
+    my $unlocked;
+    my $logentry;
+    my $unused;
+    my $action;
+    my $client;
+    my $date;
+    my $user;
+    my $state;
+    my $version;
+    my $size;
+    my $line;
+    my $count;
+    
+    my @versions;
+    
+    #
+    # Determine the last time this parcel was acquired or released
+    #
+    system("rm -f $userdir/entry");
+    $unlocked = system("$Server::SRVBIN/isr_srv_lock.pl -p $username/$parcel -n foo -Vc > $userdir/entry");
+    $logentry = `cat $userdir/entry`;
+    chomp($logentry);
+    system("rm -f $userdir/entry");
+    
+    #
+    # Determine it's present state
+    # 
+    if ($unlocked) {
+	$state = "released";
+    }
+    else {
+	$state = "acquired";
+    }
+    
+    #
+    # Parse the log entry
+    #
+    ($unused, $date, $action, $user, $unused, $client, $unused) = 
+	split('\|', $logentry);
+    if ($logentry and 
+	(($unlocked and $action ne "released") or
+	(!$unlocked and $action ne "acquired")) ) {
+	errexit("System error: inconsistent log entry: unlocked=$unlocked action=$action\nlogentry=$logentry");
+    }
+    
+    #
+    # We don't need the day of the week on the date
+    #
+    $date =~ s/^\w+\s//;
+    
+    #
+    # Use only the hostname portion of the client's FQDN
+    #
+    $client =~ /^([^\.\s]+)\.?/; # at least 1 alphanum char followed by 0 or 1 dots
+    $client = $1;                # (i wanted '-' to match also so i changed the regexp -mtoups)
+    
+    #
+    # Print the main output line
+    #
+    if ($logentry and $unlocked) {
+	print GREEN;
+	printf("%s %s by %s on %s\n", $parcel, $state, $client, $date);
+	print RESET;
+    }
+    elsif ($logentry and !$unlocked) {
+	print RED;
+	printf("%s %s by %s on %s\n", $parcel, $state, $client, $date);
+	print RESET;
+    }
+    else {
+	print("$parcel has never been checked out.\n");
+    }
+    
+    # 
+    # If the user wants to see the available versions of the parcel, print 
+    # those too.
+    #
+    if ($longvers) {
+	opendir(DIR, "$userdir/$parcel")
+	    or unix_errexit("Could not open directory $userdir/$parcel");
+	@versions = reverse sort grep(/^\d+$/, readdir(DIR)); # numbers only
+    
+	closedir(DIR);
+    
+	$count = 0;
+	foreach $version (@versions) {
+	    $count++;
+	    if ($count > $longvers) {
+		last;
+	    }
+    
+	    if (-e "$userdir/$parcel/$version/keyring.enc") {
+		$date = localtime(stat("$userdir/$parcel/$version/keyring.enc")->mtime);
+	    }
+	    else {
+		$date = "[not available]";
+	    }
+    
+	    $line = `du -h -s $userdir/$parcel/$version`;
+	    ($size, $unused) = split(" ", $line);
+	    printf("  %s %6s  %s\n", $version, $size, $date);
+	}
+    }
+}
 
 ############################################
 # usage - print help message and terminate #
@@ -184,7 +214,7 @@ sub usage
         print "$progname: $msg\n\n";
     }
     
-    print "Usage: $progname [-h] [-L <n>] -u <username> -p <parcel>\n";
+    print "Usage: $progname [-h] [-L <n>] -u <username> [-p <parcel>]\n";
     print "Options:\n";
     print "  -h              Print this message\n";
     print "  -L <n>          List the <n> most recent versions\n";  
