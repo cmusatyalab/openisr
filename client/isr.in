@@ -280,7 +280,6 @@ $result = GetOptions(
 		     "d|disconnected" => \$disconnected,
 		     "l|long"         => \$longflag,
 		     "L|longvers=i"   => \$longvers,
-		     "p|parcel"       => sub {},
 		     "q|quiet"        => sub { $verbose = 0 },
 		     "r|rollback=i"   => \$version,
 		     "s|server=s"     => \$server,
@@ -476,9 +475,6 @@ component of the OpenISR system.
 END
     message("INFO", "Printed version info");
     exit 0;
-}
-elsif ($command eq "run") {
-    usage("\"run\" is no longer supported; use \"resume\" instead");
 }
 # Everything else
 else {
@@ -2136,7 +2132,6 @@ sub usage ($) {
     print "  -d,--disconnected  Run disconnected (after hoarding) [resume].\n";
     print "  -l,--long          Long listing with default number of versions [ls].\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls].\n";
-    print "  -p,--parcel        Ignored.\n";
     print "  -q,--quiet         Run silently (except if things go wrong).\n";    
     print "  -r,--rollback      Rollback to or check version [co, checkp].\n";
     print "  -s,--server        Server domain name (optional).\n";
