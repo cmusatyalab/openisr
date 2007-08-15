@@ -1771,18 +1771,14 @@ sub hdksize ($$$) {
     my $parcel = shift;
     my $isrdir = shift;
 
-    my $header;
-    my @headervals;
     my $numchunks;
-    my $dirtychunks;
     my $maxchunks;
     my $chunksize;
     my %parcelcfg;
 
     my $parceldir = "$isrdir/$parcel";
-    my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
-    my $imagefile = "$cachedir/hdk/image.lev1";
+    my $imageindex = "$cachedir/disk.idx";
 
     # Parse parcel.cfg
     parse_cfgfile("$parceldir/parcel.cfg", \%parcelcfg);
@@ -1794,23 +1790,15 @@ sub hdksize ($$$) {
 	return (0, $maxchunks, $chunksize);
     }
 
-    # Read and unpack the cache file header
-    open(INFILE, $imagefile)
-	or unix_errexit("Unable to open $imagefile");
-    if (read(INFILE, $header, 512) != 512) {
-    	errexit("Unable to read header of $imagefile");
-    }
-    close INFILE
-	or unix_errexit("Unable to close $imagefile");
-    @headervals=unpack("N4", $header);
+    # Determine how many chunks are in the local cache
+    # XXX
+    open(IN, "-|", "$Isr::LIBDIR/query", $imageindex, "SELECT count(*) from chunks")
+        or unix_errexit("Unable to read $imageindex");
+    $numchunks = <IN>;
+    close IN && $? == 0
+        or errexit("Unable to query $imageindex");
     
-    # Check for valid magic number
-    errexit("Invalid magic number for cache file")
-    	unless $headervals[0] eq 0x51528038;
-    
-    # Retrieve values
-    $numchunks = $headervals[3];
-    return ($numchunks, $maxchunks, $chunksize);
+    return (int($numchunks), $maxchunks, $chunksize);
 }
 
 #
