@@ -4,8 +4,8 @@
 # will be lost whenever the client is upgraded.  Configuration entries placed
 # in /etc/openisr/openisr.conf or ~/.openisr.conf will override these defaults.
 
-# Default name server domain name (override with -n)
-nameserver = isrserver09.isr.cmu.edu
+# Default server domain name (override with -s)
+server = isrserver09.isr.cmu.edu
 
 # Default userid (override with -u)
 # If this variable is undefined or empty, then it defaults to the Unix

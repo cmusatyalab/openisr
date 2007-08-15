@@ -112,7 +112,7 @@ my $command;
 my $disconnected;    # Run disconnected
 my $longflag;        # Print default number of versions for ls long format
 my $longvers;        # Print specific number of versions for ls long format
-my $nameserver;      # Name server domain name
+my $server;          # Server domain name
 my $version;         # Rollback version
 my $checkstate = 0;  # Optionally check content consistency in some cmds
 my $noautoflag;      # Don't automatically start/stop VMware at launch time
@@ -138,7 +138,7 @@ our $bwlimit;       # Bandwidth limit (KBytes/sec) in ci and sync
 
 #
 # Read/write global variable: At any point in time, this hash contains
-# the key/value pairs from the name server for the current parcel. For
+# the key/value pairs from the parcel.cfg for the current parcel. For
 # each command except listparcels, %cfg is initialized exactly once, 
 # and only by calls to parse_parcelcfg.  This variable is tied such that
 # accesses to nonexistent keys will result in a call to errexit().
@@ -241,8 +241,8 @@ $userid = $syscfg{userid}
 $userid = $ENV{USER}
     if (!$userid);
 
-# Set the default nameserver; may be overridden from command line
-$nameserver = $syscfg{nameserver};
+# Set the default server; may be overridden from command line
+$server = $syscfg{server};
 
 # Strip off pathname from the program name
 ($progname = $0) =~ s#.*/##s; # Strip off path from program name
@@ -275,10 +275,10 @@ $result = GetOptions(
 		     "d|disconnected" => \$disconnected,
 		     "l|long"         => \$longflag,
 		     "L|longvers=i"   => \$longvers,
-		     "n|nameserver=s" => \$nameserver,
 		     "p|parcel"       => sub {},
 		     "q|quiet"        => sub { $verbose = 0 },
 		     "r|rollback=i"   => \$version,
+		     "s|server=s"     => \$server,
 		     "u|user=s"       => \$userid,
 		     "v|verbose+"     => \$verbose,
 		     "X|noauto"       => \$noautoflag
@@ -525,22 +525,22 @@ sub checkout ($$$$) {
 	return;
     }
     
-    # Fetch and print message-of-the-day from the name server
-    print "Connecting to name server.\n"
+    # Fetch and print message-of-the-day from the server
+    print "Connecting to server.\n"
     	if $verbose;
     get_motd($userid, $parcel);
 
-    # Fetch and parse the config file from the name server and 
+    # Fetch and parse the config file from the server and 
     # load protocol specific storage module
-    print "Fetching configuration data for $userid/$parcel from name server.\n"
+    print "Fetching configuration data for $userid/$parcel from server.\n"
 	if $verbose;
     get_parcelcfg($userid, $parcel, "$isrdir/$parcel-parcel.cfg");
     %cfg = parse_parcelcfg("$isrdir/$parcel-parcel.cfg", $userid, $parcel);
 
     # Before going any further, make sure we have a protocol level
-    # connection to the content server and a consistent parcel.
-    if (!isr_connected_contentsrv()) {
-	errexit("The content server appears to be down.");
+    # connection to the server and a consistent parcel.
+    if (!isr_connected_http()) {
+	errexit("The server appears to be down.");
     }
     if (!isr_connected_parcel($userid, $parcel)) {
 	errexit("The remote parcel is not available.");
@@ -554,8 +554,8 @@ sub checkout ($$$$) {
     # From this point on, the operation should not be interrupted by the user
     $sigset = block_sigint();
 
-    # Grab the lock from the content server
-    print("Acquiring lock from content server.\n")
+    # Grab the lock from the server
+    print("Acquiring lock from server.\n")
 	if $verbose;
 
     if (isr_srun($userid, "lock", 
@@ -617,7 +617,7 @@ sub checkout ($$$$) {
     close(KEYROOT);
 
     #
-    # Fetch the parcel's virtualization files from the content server
+    # Fetch the parcel's virtualization files from the server
     #
     $tmpfile = "/tmp/stat.$$";
     if (isr_srun($userid, "stat", 
@@ -625,7 +625,7 @@ sub checkout ($$$$) {
 		 $tmpfile ,0) != 0) {
 	unlink($tmpfile);
 	clean($userid, $parcel, $isrdir, 0);
-	errexit("Unable to stat cfg.tgz.enc file on content server");
+	errexit("Unable to stat cfg.tgz.enc file on server");
     }
     parse_cfgfile($tmpfile, \%map);
     unlink($tmpfile);
@@ -638,7 +638,7 @@ sub checkout ($$$$) {
 		 $tmpfile ,0) != 0) {
 	unlink($tmpfile);
 	clean($userid, $parcel, $isrdir, 0);
-	errexit("Unable to stat keyring.enc file on content server");
+	errexit("Unable to stat keyring.enc file on server");
     }
     %map = ();
     parse_cfgfile($tmpfile, \%map);
@@ -769,15 +769,15 @@ sub run ($$$$) {
     # cache directory is about to become inconsistent with the local cache.
     unlink($cdcache_file);
 
-    # Parse the parcel config file that we got from the name server during
+    # Parse the parcel config file that we got from the server during
     # checkout and load the protocol-specific module
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
 
     # If the user wants to run connected, then before going any further, 
-    # make sure we have a protocol level connection to the content server
+    # make sure we have a protocol level connection to the server
     # and a consistent parcel.
-    if (!$disconnected and !isr_connected_contentsrv()) {
-	errexit("The content server appears to be down.");
+    if (!$disconnected and !isr_connected_http()) {
+	errexit("The server appears to be down.");
     }
     if (!$disconnected and !isr_connected_parcel($userid, $parcel)) {
 	errexit("The remote parcel is not available.");
@@ -1117,15 +1117,15 @@ sub listparcels ($$$$$) {
     unlink($tmpfile);
 
     # Display information about each parcel
-    print "Parcels for $userid on name server $nameserver:\n";
+    print "Parcels for $userid on server $server:\n";
     $found = 0;
     foreach $parcel (@parcels) {
 	if (!$parcelname or (($parcelname and ($parcel eq $parcelname)))) {
 	    $found = 1;
 
-	    # Get the parcel.cfg file from the name server and then parse it
+	    # Get the parcel.cfg file from the server and then parse it
 	    # and load the protocol specific module
-	    print("Fetching configuration data for $userid/$parcel from nameserver.\n")
+	    print("Fetching configuration data for $userid/$parcel from server.\n")
 		if $verbose > 1;
 	    $tmpfile = "/tmp/parcel.cfg.$$";
 	    get_parcelcfg($userid, $parcel, $tmpfile);
@@ -1165,8 +1165,8 @@ sub listparcels ($$$$$) {
 sub authenticate ($) {
     my $userid = shift;
 
-    mysystem("ssh -A -l $userid $nameserver ssh-add") == 0
-	or system_errexit("Unable to run ssh-add on the name server ($nameserver)");
+    mysystem("ssh -A -l $userid $server ssh-add") == 0
+	or system_errexit("Unable to run ssh-add on the server ($server)");
 
     return 0;
 }
@@ -1235,13 +1235,13 @@ sub hoard ($$$) {
     my $parceldir = "$isrdir/$parcel";
 
     # If the parcel is not currently checked out, then fetch a
-    # temporary copy of parcel.cfg from the nameserver, otherwise use
+    # temporary copy of parcel.cfg from the server, otherwise use
     # the parcel.cfg file hat was fetched during checkout
 
     $parcelcfgfile = "$parceldir/parcel.cfg";
     if (!-e $parceldir) {
 	$parcelcfgfile = "$isrdir/$parcel-parcel.cfg.hoard";
-	print "Fetching configuration data for $userid/$parcel from name server.\n"
+	print "Fetching configuration data for $userid/$parcel from server.\n"
 	    if $verbose;
 	get_parcelcfg($userid, $parcel, $parcelcfgfile);
     } 
@@ -1280,13 +1280,13 @@ sub checkparcel ($$$$$) {
 
     #
     # If the parcel is not currently checked out, then fetch a
-    # temporary copy of parcel.cfg from the nameserver. Otherwise use
-    # the parcel.cfg file hat was fetched during checkout
+    # temporary copy of parcel.cfg from the server. Otherwise use
+    # the parcel.cfg file that was fetched during checkout
     #
     $parcelcfgfile = "$parceldir/parcel.cfg";
     if (!-e $parceldir) {
 	$parcelcfgfile = "$isrdir/$parcel-parcel.cfg.$$";
-	print "Fetching configuration data for $userid/$parcel from name server.\n"
+	print "Fetching configuration data for $userid/$parcel from server.\n"
 	    if $verbose;
 	get_parcelcfg($userid, $parcel, $parcelcfgfile);
     } 
@@ -1340,13 +1340,13 @@ sub statparcel ($$$) {
 }
 
 #
-# passwd - Change the user's ISR passwd on the name server
+# passwd - Change the user's ISR passwd on the server
 #
 sub passwd ($) {
     my $userid = shift;
 
     print "Changing password for ISR userid $userid:\n";
-    mysystem("ssh -l $userid -t $nameserver passwd") == 0
+    mysystem("ssh -l $userid -t $server passwd") == 0
 	or errexit("Unable to change ISR password.");
 }
 
@@ -1451,7 +1451,7 @@ sub need_network () {
      print "Checking network connection...\n"
 	 if $verbose > 1;
      connected() 
-	 or errexit("You do not appear to have a network connection: couldn't contact $nameserver.");
+	 or errexit("You do not appear to have a network connection: couldn't contact $server.");
 }
 
 #####
@@ -1512,7 +1512,7 @@ sub clean ($$$$) {
     # Make sure the current working directory exists
     chdir($isrdir);
     
-    # Get a fresh parcel.cfg file from the name server in case the
+    # Get a fresh parcel.cfg file from the server in case the
     # user has accidently erased his local copy
     my $tmpfile = "/tmp/parcel.cfg.$$";
     get_parcelcfg($userid, $parcel, $tmpfile);
@@ -1585,35 +1585,35 @@ sub get_parcelnames ($$) {
     my $userid = shift;
     my $outfile = shift;
 
-    if (mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_listparcels.pl -u $userid > $outfile")) {
+    if (mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_nsrv_listparcels.pl -u $userid > $outfile")) {
 	unlink($outfile);
-	system_errexit("Unable to run isr_nsrv_listparcels.pl on the name server ($nameserver)");
+	system_errexit("Unable to run isr_nsrv_listparcels.pl on the server ($server)");
     }
 }
 
 #
-# get_parcelcfg - Retrieve parcel configuration file from the name server
+# get_parcelcfg - Retrieve parcel configuration file from the server
 #
 sub get_parcelcfg ($$$) {
     my $userid = shift;
     my $parcel = shift;
     my $outfile = shift; # Put the retrieved file here
 
-    if (mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_getconfig.pl -p $parcel > $outfile")) {
+    if (mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_nsrv_getconfig.pl -p $parcel > $outfile")) {
 	unlink($outfile);
-	system_errexit("Parcel $userid/$parcel does not exist on the name server ($nameserver).");
+	system_errexit("Parcel $userid/$parcel does not exist on the server ($server).");
     }
 }
 
 #
-# get_motd - Read message-of-the-day from the name server and print it out
+# get_motd - Read message-of-the-day from the server and print it out
 #
 sub get_motd ($$) {
     my $userid = shift;
     my $parcel = shift;
 
-    mysystem("ssh -l $userid $nameserver $Isr::ISRSERVERBIN/isr_nsrv_motd.pl -p $parcel -u $userid") == 0
-	or system_err("Couldn't read message of the day from the name server ($nameserver).");
+    mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_nsrv_motd.pl -p $parcel -u $userid") == 0
+	or system_err("Couldn't read message of the day from the server ($server).");
 }
 
 #
@@ -1814,10 +1814,9 @@ sub connected () {
     $pid = fork();
 
     # The child tries to establish a connection with root serve
-    # on the name server 
     if ($pid == 0) {
 	$no_shutdown = 1;
-	my $socket = IO::Socket::INET->new(PeerAddr => $nameserver,
+	my $socket = IO::Socket::INET->new(PeerAddr => $server,
 					   PeerPort => "22",
 					   Proto    => "tcp",
 					   Type     => SOCK_STREAM);
@@ -2138,7 +2137,7 @@ sub message_string {
     no warnings 'uninitialized';
     my $hostname = hostname();
 
-    return "$userid|$$|$sessionid|$hostname|$cfg{PROTOCOL}|$nameserver|$parcel";
+    return "$userid|$$|$sessionid|$hostname|$cfg{PROTOCOL}|$server|$parcel";
 }
 
 #
@@ -2202,7 +2201,7 @@ sub usage ($) {
     print BLUE, "Parcel is required for most commands\n", RESET;
     if (!$msg) {
 	print "Basic commands:\n";
-	print "  auth       Authenticate to the ISR servers (once per X session only).\n";
+	print "  auth       Authenticate to the ISR server (once per X session only).\n";
 	print "  checkin    Sync parcel to server and release lock (-b optional).\n";
 	print "  checkout   Fetch parcel from server and acquire its lock (-r optional).\n";
 	print "  checkp     Check parcel on server for consistency (-r and -c optional).\n";
@@ -2213,7 +2212,7 @@ sub usage ($) {
 	print "  help       Print help message.\n";
 	print "  hoard      Fetch entire virtual disk so you can run disconnected.\n";
 	print "  ls         List info about your parcels (parcel, -l and -L optional).\n";
-	print "  passwd     Change your ISR password on the default nameserver.\n";
+	print "  passwd     Change your ISR password on the server.\n";
  	print "  reset      Reset ISR runtime.\n";
  	print "  resume     Checkout (if necessary) and run a parcel (-r and -d optional).\n";
 	print "  stat       Display information about local ISR state (-c optional).\n";
@@ -2227,10 +2226,10 @@ sub usage ($) {
     print "  -d,--disconnected  Run disconnected (after hoarding) [resume].\n";
     print "  -l,--long          Long listing with default number of versions [ls].\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls].\n";
-    print "  -n,--nameserver    Name server domain name (optional).\n";    
-    print "  -p,--parcel        Ignored.\n";    
+    print "  -p,--parcel        Ignored.\n";
     print "  -q,--quiet         Run silently (except if things go wrong).\n";    
     print "  -r,--rollback      Rollback to or check version [co, checkp].\n";
+    print "  -s,--server        Server domain name (optional).\n";
     print "  -u,--user          Your ISR user name (defaults to your login name).\n";    
     print "  -v,--verbose       Increment verbosity level.\n";
     print "  -x,--nocheckstate  Skip consistency check [ci, sync, disconnect].\n";

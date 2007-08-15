@@ -234,9 +234,9 @@ sub isr_connected_parcel ($$) {
 }
 
 #
-# isr_connected_contentsrv - Return true if client can talk to remote store
+# isr_connected_http - Return true if client can talk to remote store
 #
-sub isr_connected_contentsrv () {
+sub isr_connected_http () {
 
     if (IO::Socket::INET->new(PeerAddr => "$main::cfg{SERVER}",
 			      PeerPort => "80",
@@ -295,7 +295,7 @@ sub isr_hoard ($$$) {
 
     #
     # If we don't have a local keyring on this host, then retrieve
-    # it from the content server into a temporary 'last' directory
+    # it from the server into a temporary 'last' directory
     #
     if (!-e "$lastdir/keyring") {
 
@@ -305,16 +305,16 @@ sub isr_hoard ($$$) {
 	mysystem("rm -rf $isrdir/tmplast-$userid-$parcel*");
 
 	# Before going any further, make sure we have a protocol level
-	# connection to the content server and a valid parcel
-	if (!isr_connected_contentsrv()) {
-	    errexit("The content server appears to be down.");
+	# connection to the server and a valid parcel
+	if (!isr_connected_http()) {
+	    errexit("The server appears to be down.");
 	}
 	if (!isr_connected_parcel($userid, $parcel)) {
 	    errexit("Remote parcel $userid/$parcel not found on the server.");
 	}
 
 	# Fetch the encrypted keyring into the last dir
-	print("Fetching keyring from the content server.\n")
+	print("Fetching keyring from the server.\n")
 	    if $main::verbose;
 	mktree($lastdir)
 	    or errexit("Unable to make $lastdir");
@@ -588,10 +588,10 @@ sub isr_priv_upload ($$$) {
 
     #
     # Before going any further, make sure we have a protocol level 
-    # connection to the content server and a consistent parcel
+    # connection to the server and a consistent parcel
     # 
-    if (!isr_connected_contentsrv()) {
-	errexit("The content server appears to be down.");
+    if (!isr_connected_http()) {
+	errexit("The server appears to be down.");
     }
     if (!isr_connected_parcel($userid, $parcel)) {
 	errexit("The remote parcel $userid/$parcel is not available.");
@@ -648,7 +648,7 @@ sub isr_priv_upload ($$$) {
     # 
     # Transfer the dirty local cache state to the server
     #
-    print("Sending modified disk state to content server...\n")
+    print("Sending modified disk state to server...\n")
 	if $main::verbose;
     isr_sputdir($userid, "$tmpdir/cache", "cache", 1, 1) == 0
 	or errexit("Putdir operation failed. Aborting.");
@@ -789,10 +789,10 @@ sub isr_priv_commit ($$$$) {
 
     #
     # Before going any further, make sure we have a protocol level 
-    # connection to the content server and a consistent parcel.
+    # connection to the server and a consistent parcel.
     # 
-    if (!isr_connected_contentsrv()) {
-	errexit("The content server appears to be down.");
+    if (!isr_connected_http()) {
+	errexit("The server appears to be down.");
     }
     if (!isr_connected_parcel($userid, $parcel)) {
 	errexit("The remote parcel is not available.");
@@ -812,7 +812,7 @@ sub isr_priv_commit ($$$$) {
         print("checking uploaded cache dir before committing...\n");
 	isr_srun($userid, "checkparcel", "-s -u $userid -p $parcel", "", 0) == 0
 	    or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
-	print("Committing updates on content server...\n")
+	print("Committing updates on server...\n")
 	    if $main::verbose;
 	message("INFO", "Begin server side commit");
 	isr_srun($userid, "commit", "-u $userid -p $parcel", "", 0) == 0

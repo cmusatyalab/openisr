@@ -20,12 +20,12 @@ isr \- Internet Suspend/Resume client program
 .I command
 .RI [ parcel ]
 .RB [ \-abcdlqrvxX ]
-.RB [ \-n
-.IR nameserver ]
-.RB [ \-u
-.IR userid ]
 .RB [ \-r
 .IR version ]
+.RB [ \-s
+.IR server ]
+.RB [ \-u
+.IR userid ]
 .RB [ \-L
 .IR count ]
 
@@ -38,12 +38,7 @@ virtual machine
 .I parcels
 in a 
 .I remote store 
-consisting of a collection of 
-.I content servers, 
-a well-known 
-.I nameserver
-that contains location information about each parcel, and a 
-set of 
+(a server), together with a set of 
 .I client hosts,
 each loaded with the 
 .B isr
@@ -57,7 +52,7 @@ Each ISR user has a unique
 .I ISR userid
 and a corresponding 
 .I ISR password
-on the nameserver.
+on the server.
 Distinct ISR userids own disjoint sets of parcels. Parcels are not
 shared across ISR userids. At any point in time, a parcel can be
 checked out on at most one client host. A simple locking mechanism
@@ -106,18 +101,18 @@ command at any time by typing control-c (SIGINT).  Regions of commands
 that should not be interrupted will ignore these SIGINT signals.
 
 On a particular client host, the
-.I default nameserver
+.I default server
 is given by the 
-.I nameserver 
+.I server 
 variable in 
 .IR !!SHAREDIR!!/config ,
 which may be overridden in the system config file in
 .I !!SYSCONFDIR!!/openisr.conf
 or the user config file in
 .IR ~/.openisr.conf .
-If necessary, however, the nameserver can be specified on
+If necessary, however, the server can be specified on
 the command line using the
-.B -n 
+.B -s 
 command line option.
 
 By default, the 
@@ -137,7 +132,7 @@ option on the command line.
 
 .TP
 .BI "isr auth"
-Authenticate to the ISR servers. You will be prompted for your ISR
+Authenticate to the ISR server. You will be prompted for your ISR
 password.  Run this command once, at the beginning of each X session
 to avoid having to keep typing your ISR password.
 
@@ -278,9 +273,8 @@ currently checked out on the client host.
 .BI "isr ls [" parcel "] [-l|-L " "n" "]"
 List information about your parcels. By default, this command displays
 the status of all of the user's parcels that are managed by the
-default nameserver. The display identifies the nameserver, and then for
-each parcel, prints a single line with the name, the location of the
-content server in the remote store, the current lock status
+default server. The display identifies the server, and then for
+each parcel, prints a single line with the name, the current lock status
 .I (acquired 
 or 
 .I released), 
@@ -462,14 +456,6 @@ command, printing information about the
 most recent parcel versions.
 
 .TP
-.BI -n/--nameserver " name"
-Use the nameserver 
-.IR name ,
-overriding the default.
-.I name
-can be a fully qualified domain name or an IP address.
-
-.TP
 .B -q/--quiet
 Run silently (except if things go wrong).
 
@@ -486,6 +472,14 @@ to rollback to. For
 it determines the parcel
 .I version
 to check for consistency.
+
+.TP
+.BI -s/--server " name"
+Use the server 
+.IR name ,
+overriding the default.
+.I name
+can be a fully qualified domain name or an IP address.
 
 .TP
 .BI -u/--user " userid"
@@ -534,7 +528,7 @@ After arriving at work, you login to your ISR client host using the
 Linux login name
 .I isruser
 and then start up X windows. Next, you will need to 
-authenticate to the ISR servers,
+authenticate to the ISR server,
 
 .RS
 \fCisruser> isr auth\fP
@@ -597,7 +591,7 @@ home. So you terminate the ISR session by checking in your parcel:
 .RE
 
 Once home, you login to your home ISR client, authenticate to the ISR
-servers, and then checkout the parcel that you were working on at work:
+server, and then checkout the parcel that you were working on at work:
 
 .RS
 \fCisruser> isr resume winxp\fP
