@@ -1,8 +1,7 @@
-ISR Remote Storage and Name Server Directory
+ISR Server Directory
 
-This directory contains two types of programs: those that run on the
-name server (isr_nsrv_*), and those that implement the basic ISR
-operations on parcels in remote storage (isr_srv_*).
+This directory contains the programs that implement ISR operations on
+parcels in remote storage.
 
 Each program takes a -h command line argument that prints help info.
 
@@ -13,15 +12,6 @@ README
 Server.pm	
 	Perl module imported by each program that exports  
 	configuration variables and common functions.
-
-isr_nsrv_getconfig.pl	
-	Returns the contents of parcel.cfg via stdout. 
-
-isr_nsrv_listparcels.pl	
-	Lists the parcels managed by this name server for a particular user.
-
-isr_nsrv_motd.pl
-	Prints the message of the day, if any.
 
 isr_srv_catlog.pl 
 	Appends a temporary session log to a user's permanent ISR log
@@ -35,11 +25,18 @@ isr_srv_commit.pl
 	general this program is not idempotent. We expect it to run
 	to completion without any errors.
                          
+isr_srv_getconfig.pl	
+	Returns the contents of parcel.cfg via stdout. 
+
 isr_srv_lock.pl
 	Acquires, releases, or checks a parcel lock.
-	
+
 isr_srv_ls.pl
-	Lists information about a particular parcel.
+	Lists information about all of a user's parcels, or about a
+	particular parcel.
+
+isr_srv_motd.pl
+	Prints the message of the day, if any.
 
 isr_srv_resetcache.pl
 	Creates an empty parcel cache in remote storage.
