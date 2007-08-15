@@ -60,7 +60,6 @@ sub hoard ($$$);
 sub do_hoard ($$$);
 sub checkparcel ($$$$$);
 sub statparcel ($$$);
-sub get_parcelnames ($$);
 sub get_parcelcfg ($$$);
 sub get_motd ($$);
 sub parse_cfgfile ($$);
@@ -1088,53 +1087,24 @@ sub listparcels ($$$$$) {
 
     my $line;
     my $item;
-    my $found;
-    my $tmpfile;
     my $lsargs;
     
-    my @parcels = ();
-
-    # Build the argument list for the server-side ls opertion
+    # Build the argument list for the server-side ls operation
     $lsargs = "";
+    if ($parcelname) {
+	$lsargs = "-p $parcelname";
+    }
     if ($longvers) {
-	$lsargs = "-L $longvers";
-    }
-    elsif ($longflag) {
-	$lsargs = "-L $syscfg{ls_versions}";
+	$lsargs .= " -L $longvers";
+    } elsif ($longflag) {
+	$lsargs .= " -L $syscfg{ls_versions}";
     }
 
-
-    # Build the list of parcels for this user
-    $tmpfile = "/tmp/parcels.txt.$$";
-    get_parcelnames($userid, $tmpfile);
-    open(INFILE, $tmpfile)
-	or unix_errexit("Unable to open $tmpfile");
-    while ($line = <INFILE>) {
-	chomp($line);
-	push(@parcels, $line);
-    }
-    close(INFILE);
-    unlink($tmpfile);
-
-    # Display information about each parcel
+    # Run the remote ls program on the server.  Pass through server
+    # errors without further comment.
     print "Parcels for $userid on server $server:\n";
-    $found = 0;
-    foreach $parcel (@parcels) {
-	if (!$parcelname or (($parcelname and ($parcel eq $parcelname)))) {
-	    $found = 1;
-
-	    # Run the remote ls program on the server
-	    if (isr_srun($userid, "ls", 
-		     "-u $userid -p $parcel $lsargs", "", 0) != 0) {
-		err("Unable to list $parcel");
-	    }
-	}
-    }
-    if ($parcel and !$found) {
-	errexit("Parcel not found.");
-    }
+    isr_srun($userid, "ls", "-u $userid $lsargs", "", 0);
 }
-
 
 #
 # authenticate - Perform the SSH magic
@@ -1521,19 +1491,6 @@ sub do_hoard ($$$) {
 	print "Sleeping $syscfg{hoard_sleep} secs before restarting hoard...\n"
 	    if $verbose;
 	sleep($syscfg{hoard_sleep});
-    }
-}
-
-#
-# get_parcelnames - Get the list of a user's parcels
-#
-sub get_parcelnames ($$) {
-    my $userid = shift;
-    my $outfile = shift;
-
-    if (mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_srv_listparcels.pl -u $userid > $outfile")) {
-	unlink($outfile);
-	system_errexit("Unable to run isr_srv_listparcels.pl on the server ($server)");
     }
 }
 
