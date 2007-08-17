@@ -600,13 +600,6 @@ sub isr_priv_upload ($$$) {
 
     mypause("Done with local copy, ready to upload: hit y to continue");
 
-    #
-    # Reset the contents of the cache on the server.
-    # This script simply creates the server-side cache if it doesn't exist
-    #
-    isr_srun($userid, "resetcache", "-u $userid -p $parcel", "", 0) == 0
-	or system_errexit("Unable to reset server-side cache.");
-
     # 
     # Transfer the dirty local cache state to the server
     #
