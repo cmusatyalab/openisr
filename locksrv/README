@@ -38,9 +38,6 @@ isr_srv_ls.pl
 isr_srv_motd.pl
 	Prints the message of the day, if any.
 
-isr_srv_resetcache.pl
-	Creates an empty parcel cache in remote storage.
-
 isr_srv_rollback.pl
 	Creates a new (last) parcel version that is identical to some
 	previous version. For example, if the current version
