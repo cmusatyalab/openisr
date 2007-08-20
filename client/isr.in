@@ -262,7 +262,6 @@ message("ENTER", "@ARGV");
 #
 if (@ARGV == 0) {
     print("$progname: Try '$progname help' for more information.\n");
-    message("INFO", "Help");
     exit 0;
 }
 
@@ -472,7 +471,6 @@ and the GNU Lesser General Public License, version 2.1.  See the README file
 included with this software for details on which license applies to each
 component of the OpenISR system.
 END
-    message("INFO", "Printed version info");
     exit 0;
 }
 # Everything else
@@ -2090,8 +2088,6 @@ sub usage ($) {
     if ($msg) {
         print RED, "Error: $msg\n", RESET;
     }
-
-    message ("INFO", "Usage");
 
     print RED, "Usage: $progname command [parcel] [options...]\n", RESET;
     print BLUE, "Commands: auth, checkin (ci), checkout (co), checkp, clean, deauth, discard,\n", RESET;
