@@ -68,49 +68,6 @@ sub isr_sget ($$$$) {
 }
 
 #
-# isr_sputdir - Copy a directory tree from local store to remote store
-#
-sub isr_sputdir ($$$$$) {
-    my $userid = shift;    # ISR userid
-    my $fromdir = shift;   # Local from directory
-    my $todir = shift;     # Protocol-independent server "to" suffix
-    my $progmeter = shift; # Display a progress meter
-    my $compress = shift;  # Try to compress the data on the wire
-
-    my $vflag;
-    my $cflag;
-    my $bwflag;
-    my $retval;
-    my $i;
-
-    $vflag = "-q";
-    if ($progmeter and $main::verbose) {
-	$vflag = "--progress";
-    }
-	
-    $cflag = "";
-    if ($compress) {
-	$cflag = "-z";
-    }
-
-    $bwflag = "";
-    if ($main::bwlimit) {
-	$bwflag = "--bwlimit=$main::bwlimit";
-    }
-
-    # Retry if the putdir request fails
-    for ($i = 0; $i < $syscfg{retries}; $i++) {
-	$retval =  mysystem("rsync -e ssh --delete --partial --recursive $vflag $cflag $bwflag $fromdir/ $userid\@$main::cfg{WPATH}/$todir");
-	if ($retval == 0) {
-	    return ($retval);
-	}
-	print "[isr] putdir request failed. Retrying...\n"
-	    if $main::verbose;
-    }
-    return ($retval);
-}
-
-#
 # isr_srun - Perform an operation on parcel tree in remote store
 #
 sub isr_srun ($$$$$) {
@@ -488,6 +445,9 @@ sub isr_priv_upload ($$$) {
     my $virtualbytes;
     my $chunksize;
     my %parcelcfg;
+    my $vflag = "-q";
+    my $bwflag = "";
+    my $i;
 
     my $parceldir = "$isrdir/$parcel";
     my $hoarddir = "$isrdir/$parcel-hoard";
@@ -562,8 +522,20 @@ sub isr_priv_upload ($$$) {
     #
     print("Sending modified disk state to server...\n")
 	if $main::verbose;
-    isr_sputdir($userid, "$tmpdir/cache", "cache", 1, 1) == 0
-	or errexit("Putdir operation failed. Aborting.");
+    $vflag = "--progress"
+        if ($main::verbose);
+    $bwflag = "--bwlimit=$main::bwlimit"
+	if ($main::bwlimit);
+
+    # Retry if the upload fails
+    for ($i = 0; $i < $syscfg{retries}; $i++) {
+	last
+	    if mysystem("rsync -e ssh --delete --partial --recursive -z $vflag $bwflag $tmpdir/cache/ $userid\@$main::cfg{WPATH}/cache") == 0;
+	print "[isr] upload failed. Retrying...\n"
+	    if $main::verbose;
+    }
+    errexit("Upload failed. Aborting.")
+        if $i == $syscfg{retries};
     mypause("Done with upload, ready to commit: hit y to continue");
 
     #
