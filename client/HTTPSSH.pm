@@ -438,8 +438,6 @@ sub isr_priv_upload ($$$) {
     my $dirtybytes = 0;
     my $dirtyblocks = 0;
     my $virtualbytes;
-    my $chunksize;
-    my %parcelcfg;
     my $vflag = "-q";
     my $bwflag = "";
     my $i;
@@ -536,9 +534,7 @@ sub isr_priv_upload ($$$) {
     #
     # Log the number of hdk bytes that were transferred
     #
-    parse_cfgfile("$parceldir/parcel.cfg", \%parcelcfg);
-    $chunksize = $parcelcfg{CHUNKSIZE};
-    $virtualbytes = $dirtyblocks*$chunksize;
+    $virtualbytes = $dirtyblocks*$cfg{CHUNKSIZE};
     message("INFO", "upload:hdk:$dirtybytes:$virtualbytes");
 
     # We need to do this, so that if the commit doesn't finish
