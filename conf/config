@@ -33,3 +33,6 @@ retries = 5
 
 # By default, how many of the most recent versions should "ls -l" display
 ls_versions = 5
+
+# Compression algorithm to use for new chunks (none, zlib, lzf)
+compression = zlib
