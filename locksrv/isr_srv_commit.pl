@@ -82,7 +82,7 @@ if (! -e $cachedir) {
 }
 
 # Otherwise, make sure the cache has the right permissions
-system("chmod -R 755 $parceldir/cache");
+system("chmod -R u=rwX,go=rX $parceldir/cache");
 
 #
 # Determine the most recent (last) version number
