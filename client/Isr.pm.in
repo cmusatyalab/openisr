@@ -22,9 +22,6 @@ $LIBDIR = "!!LIBDIR!!";
 $SHAREDIR = "!!SHAREDIR!!";
 $SYSCONFDIR = "!!SYSCONFDIR!!";
 
-# Client session log filename
-$LOGFILE = "session.log";
-
 # Existence of this file is a flag indicating that the temporary
 # dirty cache is consistent with the local cache.
 $CONSISTENT_DIRTYCACHE_FILE = "consistent-dirtycache-flag";

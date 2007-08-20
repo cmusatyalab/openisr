@@ -153,7 +153,7 @@ sub isr_run_parcelkeeper ($$$) {
     #
     # Crank up PK with all the right arguments
     #
-    $retval = system("$pkcmd run --parcel $parceldir --cache $cachedir --master $main::cfg{RPATH}/last/hdk --compression $main::syscfg{compression} --log $cachedir/../../session.log '$logstring' $syscfg{logmask} $syscfg{console_logmask} $hoardopt");
+    $retval = system("$pkcmd run --parcel $parceldir --cache $cachedir --master $main::cfg{RPATH}/last/hdk --compression $main::syscfg{compression} --log $parceldir/../$main::parcel.log '$logstring' $syscfg{logmask} $syscfg{console_logmask} $hoardopt");
 
     return $retval;
 }
