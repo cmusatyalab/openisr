@@ -945,8 +945,8 @@ sub sync ($$$$) {
 
     # Retry if the put operation fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
-	if (mysystem("rsync -e ssh --partial -z $vflag $bwflag $isrdir/$parcel.log $userid\@$main::cfg{WPATH}/../session.log") == 0) {
-	    if (isr_srun($userid, "catlog", "-u $userid -f session.log", "", 0) == 0) {
+	if (mysystem("rsync -e ssh --partial -z $vflag $bwflag $isrdir/$parcel.log $userid\@$main::cfg{WPATH}/session.log.new") == 0) {
+	    if (isr_srun($userid, "catlog", "-u $userid -p $parcel -f session.log.new", "", 0) == 0) {
 		unlink("$isrdir/$parcel.log");
 		last;
 	    }

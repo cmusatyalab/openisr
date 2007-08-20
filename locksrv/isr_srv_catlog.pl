@@ -35,8 +35,8 @@ $| = 1; # Autoflush output on every print statement
 
 # Variables
 my $srcfile;
-my $logfile;
 my $userid;
+my $parcel;
 my $userdir;
 my $line;
 
@@ -44,7 +44,7 @@ my $line;
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hu:f:');
+getopts('hu:p:f:');
 
 if ($opt_h) {
     usage();
@@ -52,22 +52,25 @@ if ($opt_h) {
 if (!$opt_u) {
     usage("Missing userid (-u)");
 }
+if (!$opt_p) {
+    usage("Missing parcel name (-p)");
+}
 if (!$opt_f) {
     usage("Missing source log file (-f)");
 }
 $srcfile = $opt_f;
 $userid = $opt_u;
+$parcel = $opt_p;
 use strict 'vars';
 
 # Set some variable names
-$userdir = "$Server::CONTENT_ROOT/$userid";
-$logfile = "$userid.log";
+$userdir = "$Server::CONTENT_ROOT/$userid/$parcel";
 
 # Cat the session log to the parcel log and delete session log
 open(INFILE, "$userdir/$srcfile") 
     or errexit("Unable to open session log ($srcfile) for reading");
-open(OUTFILE, ">>$userdir/$logfile") 
-    or errexit("Unable to open user log ($logfile) for appending");
+open(OUTFILE, ">>$userdir/session.log") 
+    or errexit("Unable to open user log for appending");
 while ($line = <INFILE>) {
     print OUTFILE $line;
 }
@@ -94,11 +97,12 @@ sub usage
         print "$progname: $msg\n\n";
     }
     
-    print "Usage: $progname [-h] -p <parcel path> -f <file>\n";
+    print "Usage: $progname [-h] -u <userid> -p <parcel> -f <file>\n";
     print "Options:\n";
     print "  -h           Print this message\n";
-    print "  -f <file>    Session log to append to parcel log\n";  
-    print "  -p <parcel>  Parcel path of the form userid/parcel\n";  
+    print "  -f <file>    Session log to append to parcel log\n";
+    print "  -u <userid>  User ID for this parcel\n";
+    print "  -p <parcel>  Parcel name\n";
     print "\n";
     exit 0;
 }
