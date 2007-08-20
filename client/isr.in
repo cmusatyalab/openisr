@@ -133,6 +133,7 @@ my $parcel;         # parcel name
 # will be necessary when we exit.
 my $no_shutdown = 0;# Set by forked children so the child won't run END
 my $killvulpes = 0; # Set by run command, tells END handler to kill Vulpes
+my $do_sync = 0;    # Set when the END handler should call sys_sync()
 my @locks;          # Names and FDs of open lock files
 
 # Read-only command line arguments that are visible to other modules.
@@ -178,8 +179,8 @@ sub exit_handler ($) {
 		if $verbose;
 	}
     }
-    sys_sync();
-    sys_sync();
+    sys_sync()
+        if $do_sync;
     
     # Remove temporary files
     system("rm -f /tmp/*.$$");
@@ -363,6 +364,7 @@ message("BEGIN", $command);
 if ($command eq "checkout") {
     need_parcel();
     need_network();
+    $do_sync = 1;
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
     checkout($userid, $parcel, $isrdir, $version);
 } 
@@ -374,6 +376,7 @@ elsif ($command eq "resume") {
     need_network()
 	if ((!-e "$isrdir/$parcel") or
 	    (-e "$isrdir/$parcel" and !$disconnected));
+    $do_sync = 1;
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
     checkout($userid, $parcel, $isrdir, $version);
     run($userid, $parcel, $isrdir, $disconnected);
@@ -382,6 +385,7 @@ elsif ($command eq "checkin") {
     need_parcel();
     need_checked_out();
     need_network();
+    $do_sync = 1;
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
     checkin($userid, $parcel, $isrdir);
 } 
@@ -389,17 +393,20 @@ elsif ($command eq "sync") {
     need_parcel();
     need_checked_out();
     need_network();
+    $do_sync = 1;
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
     sync($userid, $parcel, $isrdir, 0);
 } 
 elsif ($command eq "discard") {
     need_parcel();
     need_checked_out();
+    $do_sync = 1;
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
     discard($userid, $parcel, $isrdir);
 }
 elsif ($command eq "hoard") {
     need_parcel();
+    $do_sync = 1;
     acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache");
     hoard($userid, $parcel, $isrdir);
 }
@@ -414,6 +421,7 @@ elsif ($command eq "disconnect") {
     need_parcel();
     need_checked_out();
     need_network();
+    $do_sync = 1;
     acquire_lock("$isrdir/$parcel.lock", "Parcel")
 	if (!$nocheckstate);
     acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache");
@@ -733,7 +741,6 @@ sub checkout ($$$$) {
     }
 
     # Clean up and return
-    sys_sync();
     print(GREEN, "Success: Parcel $userid/$parcel now checked out (and lock acquired).\n", RESET)
 	if $verbose;
     unblock_sigint($sigset);

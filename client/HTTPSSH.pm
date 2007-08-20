@@ -456,7 +456,6 @@ sub isr_hoard ($$$) {
 		    unix_err("Unable to move $tmpfile to $tag");
 		    return $Isr::EINVAL;
 		}
-		sys_sync();
 	    }
 
 	    # Actual tag doesn't match expected tag. Save corrupted file 
@@ -473,8 +472,6 @@ sub isr_hoard ($$$) {
 	emit_hdk_progressmeter(($chunk+1)*$chunksize, $maxbytes);
     }
     reset_cursor();
-    sys_sync();
-    sys_sync();
     return $Isr::ESUCCESS;
 }
 
@@ -1209,11 +1206,6 @@ sub isr_priv_clientcommit($$$$) {
     rename("$tmpdir/cache/keyring.enc", "$hoarddir/$sha1value");
     message("INFO", "Client side commit - moved memory image into hoard cache");
 
-    # 
-    # Sync because we're paranoid
-    #
-    sys_sync();
-    sys_sync();
     return $Isr::ESUCCESS;
 }
 
