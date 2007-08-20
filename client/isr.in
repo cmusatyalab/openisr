@@ -803,7 +803,7 @@ sub run ($$$$) {
 	# the hoard cache is fully populated
 	if ($numchunks != $cfg{NUMCHUNKS}) {
 	    if (isr_stathoard($userid, $parcel, $isrdir) != $cfg{NUMCHUNKS}) {
-		errexit("Running disconnected without a fully hoarded parcel.\nPlease run \"isr disconnect -p $parcel\" first.");
+		errexit("Running disconnected without a fully hoarded parcel.\nPlease run \"isr disconnect $parcel\" first.");
 	    }
 	}
 	print("Running disconnected...\n")
