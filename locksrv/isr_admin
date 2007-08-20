@@ -537,9 +537,9 @@ sub getusage () {
 		split('\|', $logentry);
 	    
 	    # Extract the date of the last activity of any kind on this parcel
-	    $lastlog = `fgrep BEGIN $Server::CONTENT_ROOT/$userid/$userid.log |fgrep $parcel | tail -n 1`;
+	    $lastlog = `fgrep BEGIN $Server::CONTENT_ROOT/$userid/$parcel/session.log | tail -n 1`;
 	    chomp($lastlog);
-	    ($lastdate, $junk, $junk, $junk, $junk, $junk, $junk, $junk, $junk, $lastcmd) 
+	    ($lastdate, $junk, $junk, $junk, $junk, $lastcmd) 
 		= split('\|', $lastlog);
 	    
 	    # Now print the message
