@@ -68,49 +68,6 @@ sub isr_sget ($$$$) {
 }
 
 #
-# isr_sput - Copy a file from local store to remote store
-#
-sub isr_sput ($$$$$) {
-    my $userid = shift;    # ISR userid
-    my $frompath = shift;  # Local "from" path
-    my $topath = shift;    # Protocol-independent server "to" suffix
-    my $progmeter = shift; # Display a progress meter
-    my $compress = shift;  # Try to compress the data on the wire
-
-    my $vflag;
-    my $cflag;
-    my $bwflag;
-    my $retval;
-    my $i;
-
-    $vflag = "-q";
-    if ($progmeter and $main::verbose) {
-	$vflag = "--progress";
-    }
-	
-    $cflag = "";
-    if ($compress) {
-	$cflag = "-z";
-    }
-
-    $bwflag = "";
-    if ($main::bwlimit) {
-	$bwflag = "--bwlimit=$main::bwlimit";
-    }
-
-    # Retry if the put operation fails
-    for ($i = 0; $i < $syscfg{retries}; $i++) {
-	$retval =  mysystem("rsync -e ssh --partial $vflag $cflag $bwflag $frompath $userid\@$main::cfg{WPATH}/$topath");
-	if ($retval == 0) {
-	    return ($retval);
-	}
-	print "[isr] put operation failed. Retrying...\n"
-	    if $main::verbose;
-    }
-    return ($retval);
-}
-
-#
 # isr_sputdir - Copy a directory tree from local store to remote store
 #
 sub isr_sputdir ($$$$$) {
