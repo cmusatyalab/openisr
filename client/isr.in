@@ -747,8 +747,6 @@ sub run ($$$$) {
     my $cfgfile;  # VMware configuration file
     my $numfiles;
     my $numchunks;
-    my $maxchunks;
-    my $chunksize;
     my $i;
     my $iters;
     my $sigset;
@@ -799,13 +797,12 @@ sub run ($$$$) {
     # If the user wants to run disconnected, they better have all of their
     # disk blocks hoarded in the local or hoard cache
     if ($disconnected) {
-	($numchunks, $maxchunks, $chunksize) = 
-	    hdksize($userid, $parcel, $isrdir); 
+	$numchunks = hdksize($userid, $parcel, $isrdir); 
 
 	# If the local cache is not fully populated, then make sure
 	# the hoard cache is fully populated
-	if ($numchunks != $maxchunks) {
-	    if (isr_stathoard($userid, $parcel, $isrdir) != $maxchunks) {
+	if ($numchunks != $cfg{NUMCHUNKS}) {
+	    if (isr_stathoard($userid, $parcel, $isrdir) != $cfg{NUMCHUNKS}) {
 		errexit("Running disconnected without a fully hoarded parcel.\nPlease run \"isr disconnect -p $parcel\" first.");
 	    }
 	}
@@ -1043,10 +1040,6 @@ sub disconnect ($$$$) {
     my $isrdir = shift;       # absolute path of local ISR home dir
     my $nocheckstate = shift; # optionally skip consistency check
 
-    my $numchunks;
-    my $maxchunks;
-    my $chunksize;
-
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
@@ -1062,9 +1055,7 @@ sub disconnect ($$$$) {
 
 
     # Hoard the parcel if it's not already hoarded
-    ($numchunks, $maxchunks, $chunksize) = 
-	hdksize($userid, $parcel, $isrdir); 
-    if (isr_stathoard($userid, $parcel, $isrdir) < $maxchunks) {
+    if (isr_stathoard($userid, $parcel, $isrdir) < $cfg{NUMCHUNKS}) {
 	do_hoard($userid, $parcel, $isrdir);
     }
 
@@ -1682,32 +1673,22 @@ sub build_cache ($$) {
 }
 
 #
-# hdksize - Computes information about the local hdk cache
-#           returns the list ($numchunks, $maxchunks, $chunksize (in bytes))
-#         
+# hdksize - Returns the number of chunks present in the local cache
+#
 sub hdksize ($$$) {
     my $userid = shift;
     my $parcel = shift;
     my $isrdir = shift;
 
     my $numchunks;
-    my $maxchunks;
-    my $chunksize;
-    my %parcelcfg;
 
     my $parceldir = "$isrdir/$parcel";
     my $cachedir = "$parceldir/cache";
     my $imageindex = "$cachedir/disk.idx";
 
-    # Parse parcel.cfg
-    parse_cfgfile("$parceldir/parcel.cfg", \%parcelcfg);
-    $maxchunks = $parcelcfg{NUMCHUNKS};
-    $chunksize = $parcelcfg{CHUNKSIZE};
-    
-    # hdk cache is trivially empty
-    if (!-e $cachedir) {
-	return (0, $maxchunks, $chunksize);
-    }
+    # cache is trivially empty
+    return 0
+        if ! -e $imageindex;
 
     # Determine how many chunks are in the local cache
     # XXX
@@ -1717,7 +1698,7 @@ sub hdksize ($$$) {
     close IN && $? == 0
         or errexit("Unable to query $imageindex");
     
-    return (int($numchunks), $maxchunks, $chunksize);
+    return int($numchunks);
 }
 
 #

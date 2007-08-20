@@ -23,7 +23,7 @@ use Isr;
 use strict;
 use warnings;
 use Term::ANSIColor qw(:constants);
-use vars qw(%syscfg);
+use vars qw(%syscfg %cfg);
 
 #############################
 # Section 1: Public functions
@@ -370,14 +370,11 @@ sub isr_checkhoard ($$$$$) {
     my $checkstate = shift;
     my $printstats = shift;
 
-    my $chunksize;
     my $trashcnt = 0;
-    my $num_chunks;
     my $size_hoarded;
     my $num_hoarded;
     my $percent_hoarded;
     my $max_mbytes;
-    my $max_chunks;
 
     my $parceldir = "$isrdir/$parcel";
     my $cachedir = "$parceldir/cache";
@@ -396,16 +393,14 @@ sub isr_checkhoard ($$$$$) {
     #
     # Display some statistics about the hoard cache
     #
-    ($num_chunks, $max_chunks, $chunksize) = 
-	hdksize($userid, $parcel, $isrdir);
-    $max_mbytes = int(($max_chunks*$chunksize)/(1<<20));
+    $max_mbytes = int(($cfg{NUMCHUNKS}*$cfg{CHUNKSIZE})/(1<<20));
     $num_hoarded = isr_stathoard($userid, $parcel, $isrdir);
-    $size_hoarded = int(($num_hoarded*$chunksize)/(1<<20));
+    $size_hoarded = int(($num_hoarded*$cfg{CHUNKSIZE})/(1<<20));
     $percent_hoarded = ($size_hoarded/$max_mbytes)*100;
     if ($printstats) {
 	printf("Hoard cache : %d%% populated (%d/%d MB), %d unused chunks\n",
 	       $percent_hoarded, $size_hoarded, $max_mbytes, $trashcnt);
-	print("$num_hoarded/$max_chunks non-garbage blocks are hoarded.\n")
+	print("$num_hoarded/$cfg{NUMCHUNKS} non-garbage blocks are hoarded.\n")
 	    if $main::verbose > 1;
     }
 
