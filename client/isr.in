@@ -106,7 +106,6 @@ my $unused;
 my $prot;
 
 # Command line arguments that are private to this module
-my $command;        
 my $disconnected;    # Run disconnected
 my $longflag;        # Print default number of versions for ls long format
 my $longvers;        # Print specific number of versions for ls long format
@@ -117,10 +116,12 @@ my $allflag;         # "clean" should delete all state, including hoard cache
 
 # Write once globals that are visible in this module only. These globals are
 # needed to cleanly handle logging.
+my $log_enabled = 0;# Is logging enabled?
 my $pid;            # Pid of child created in mysystem
 my $sessionid = 0;  # Unique session id (nonce from lock operation)
 my $userid;         # ISR userid
 my $parcel;         # parcel name
+my $command;        # isr subcommand
 
 # State globals, visible in this module only, which track which cleanup actions
 # will be necessary when we exit.
@@ -251,12 +252,6 @@ $server = $syscfg{server};
 # Strip off pathname from the program name
 ($progname = $0) =~ s#.*/##s; # Strip off path from program name
 
-# 
-# Log the fact that we are starting the client program
-#
-message("START", "OpenISR !!VERSION!!, revision $Isr::RCS_REVISION");
-message("ENTER", "@ARGV");
-
 #
 # Handle the case where the user calls the program with no arguments
 #
@@ -355,7 +350,6 @@ if ($parcel && -e "$isrdir/$parcel/nonce" && open(NONCE, "$isrdir/$parcel/nonce"
 # Now process the ISR command. Notice that most commands take the same three
 # args (userid, parcel, isrdir), followed by one or more optional args.
 #
-message("BEGIN", $command);
 
 # Basic commands
 if ($command eq "checkout") {
@@ -1347,6 +1341,16 @@ sub cleanclient($$$$) {
 sub need_parcel () {
     usage("Missing parcel name")
 	if !$parcel;
+    
+    # 
+    # Hack: the cases in which we need a parcel name are exactly the cases
+    # in which we want to log.  (If we don't have a parcel name, we don't know
+    # what log file to write to.)  So we start the log as a side-effect.
+    #
+    $log_enabled = 1;
+    message("START", "OpenISR !!VERSION!!, revision $Isr::RCS_REVISION");
+    message("ENTER", "@ARGV");
+    message("BEGIN", $command);
 }
 
 #
@@ -2010,17 +2014,13 @@ sub message($$) {
     my $msg = shift;
 
     my $date = localtime();
-    my $string = message_string();
+    my $string;
     my $isrdir;
 
-    if (defined $userid) {
-	$isrdir = "$ENV{HOME}/.isr/$userid";
-    } else {
-	# Failure very early in the startup process.  The program is likely
-	# exiting anyway, and we don't have a destination to write the log
-	# message into.
-	return;
-    }
+    return
+        if !$log_enabled;
+    $string = message_string();
+    $isrdir = "$ENV{HOME}/.isr/$userid";
     open(LOG, ">>$isrdir/$Isr::LOGFILE")
 	or return;
     print LOG "$date|$event|$string|$msg\n";
