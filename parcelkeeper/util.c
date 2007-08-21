@@ -322,7 +322,7 @@ char *form_chunk_path(char *prefix, unsigned chunk)
 pk_err_t digest(void *out, const void *in, unsigned len)
 {
 	EVP_MD_CTX ctx;
-	const EVP_MD *alg;
+	const EVP_MD *alg=NULL;  /* make compiler happy */
 
 	switch (state.crypto) {
 	case CRY_BLOWFISH_SHA1:
