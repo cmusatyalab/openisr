@@ -62,6 +62,10 @@ int main(int argc, char **argv)
 	else
 		have_cache=1;
 
+	if (config.hoard_index != NULL)
+		if (hoard_init())
+			goto shutdown;
+
 	if (mode == MODE_RUN) {
 		/* Now that we have the lock, it's safe to create the pidfile */
 		if (!config.foreground)

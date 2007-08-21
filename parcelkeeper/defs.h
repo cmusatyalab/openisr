@@ -162,6 +162,9 @@ int validate_keyring(void);
 int validate_cache(void);
 int examine_cache(void);
 
+/* hoard.c */
+pk_err_t hoard_init(void);
+
 /* nexus.c */
 pk_err_t nexus_init(void);
 void nexus_run(void);
