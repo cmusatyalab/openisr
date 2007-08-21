@@ -149,3 +149,30 @@ pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
 	}
 	return PK_SUCCESS;
 }
+
+pk_err_t begin(sqlite3 *db)
+{
+	if (query(NULL, db, "BEGIN TRANSACTION", NULL)) {
+		pk_log(LOG_ERROR, "Couldn't begin transaction");
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
+pk_err_t commit(sqlite3 *db)
+{
+	if (query(NULL, db, "COMMIT", NULL)) {
+		pk_log(LOG_ERROR, "Couldn't commit transaction");
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
+pk_err_t rollback(sqlite3 *db)
+{
+	if (query(NULL, db, "ROLLBACK", NULL)) {
+		pk_log(LOG_ERROR, "Couldn't roll back transaction");
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
