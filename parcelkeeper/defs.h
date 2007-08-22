@@ -115,6 +115,7 @@ struct pk_state {
 	sqlite3 *db;
 
 	int bdev_index;
+	int hoard_ident;
 
 	enum cryptotype crypto;
 	unsigned required_compress;

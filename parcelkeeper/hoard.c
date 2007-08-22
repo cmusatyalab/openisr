@@ -59,6 +59,48 @@ static pk_err_t create_hoard_index(void)
 	return PK_SUCCESS;
 }
 
+/* XXX should use ASCII representation? */
+static pk_err_t get_parcel_ident(void)
+{
+	sqlite3_stmt *stmt;
+	pk_err_t ret;
+	int sret;
+
+	ret=begin(state.db);
+	if (ret)
+		return ret;
+	while ((sret=query(&stmt, state.db, "SELECT parcel FROM hoard.parcels "
+				"WHERE uuid == ?", "B", state.uuid,
+				sizeof(state.uuid))) == SQLITE_OK) {
+		query_free(stmt);
+		if (query(NULL, state.db, "INSERT INTO hoard.parcels "
+					"(uuid, name, user) "
+					"VALUES (?, ?, ?)", "BSS",
+					state.uuid, sizeof(state.uuid),
+					config.parcel, config.user)) {
+			pk_log(LOG_ERROR, "Couldn't insert parcel record");
+			ret=PK_IOERR;
+			goto bad;
+		}
+	}
+	if (sret != SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't query hoard.parcels");
+		ret=PK_IOERR;
+		goto bad;
+	}
+	query_row(stmt, "d", &state.hoard_ident);
+	query_free(stmt);
+	ret=commit(state.db);
+	if (ret)
+		goto bad;
+	return PK_SUCCESS;
+
+bad:
+	rollback(state.db);
+	return ret;
+}
+
 pk_err_t hoard_init(void)
 {
 	sqlite3_stmt *stmt;
@@ -98,7 +140,7 @@ pk_err_t hoard_init(void)
 	ret=commit(state.db);
 	if (ret)
 		goto bad;
-	return PK_SUCCESS;
+	return get_parcel_ident();
 
 bad:
 	rollback(state.db);
