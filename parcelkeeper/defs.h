@@ -97,6 +97,8 @@ struct pk_config {
 	unsigned log_stderr_mask;
 
 	/* miscellaneous parameters */
+	char *user;
+	char *parcel;
 	char *master;
 	enum compresstype compress;
 	int foreground;

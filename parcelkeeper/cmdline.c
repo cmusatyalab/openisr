@@ -52,6 +52,8 @@ struct pk_option {
 };
 
 enum option {
+	OPT_USER,
+	OPT_PARCEL,
 	OPT_PARCELDIR,
 	OPT_CACHE,
 	OPT_LAST,
@@ -67,7 +69,9 @@ enum option {
 #define POSTPROCESS_MODES (MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
 #define NONTRIVIAL_MODES (MODE_RUN|POSTPROCESS_MODES)
 static struct pk_option pk_options[] = {
-	{"parcel",         OPT_PARCELDIR,      REQUIRED, NONTRIVIAL_MODES               , {"parcel_dir"}},
+	{"user",           OPT_USER,           REQUIRED, NONTRIVIAL_MODES               , {"user_name"}},
+	{"parcel",         OPT_PARCEL,         REQUIRED, NONTRIVIAL_MODES               , {"parcel_name"}},
+	{"parceldir",      OPT_PARCELDIR,      REQUIRED, NONTRIVIAL_MODES               , {"parcel_dir"}},
 	{"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
 	{"last",           OPT_LAST,           REQUIRED, POSTPROCESS_MODES              , {"last_cache_dir"}},
 	{"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"master_url"}},
@@ -239,6 +243,12 @@ enum mode parse_cmdline(int argc, char **argv)
 
 	while ((opt=pk_getopt(argc, argv, pk_options)) != -1) {
 		switch (opt) {
+		case OPT_USER:
+			config.user=optparams[0];
+			break;
+		case OPT_PARCEL:
+			config.parcel=optparams[0];
+			break;
 		case OPT_PARCELDIR:
 			config.parcel_dir=optparams[0];
 			check_dir(config.parcel_dir);
