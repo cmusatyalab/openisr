@@ -129,8 +129,9 @@ sub isr_connected_http () {
 # isr_run_parcelkeeper - Run the Parcelkeeper process and return its
 #                        exit status.
 #
-sub isr_run_parcelkeeper ($$$) {
+sub isr_run_parcelkeeper ($$$$) {
     my $userid = shift;        # ISR user id
+    my $parcel = shift;        # parcel name
     my $parceldir = shift;     # local parcel directory
     my $disconnected = shift;  # Are we running disconnected?
 
@@ -153,7 +154,7 @@ sub isr_run_parcelkeeper ($$$) {
     #
     # Crank up PK with all the right arguments
     #
-    $retval = system("$pkcmd run --parcel $parceldir --cache $cachedir --master $main::cfg{RPATH}/last/hdk --compression $main::syscfg{compression} --log $parceldir/../$main::parcel.log '$logstring' $syscfg{logmask} $syscfg{console_logmask} $hoardopt");
+    $retval = system("$pkcmd run --user $userid --parcel $parcel --parceldir $parceldir --cache $cachedir --compression $main::syscfg{compression} --log $parceldir/../$main::parcel.log '$logstring' $syscfg{logmask} $syscfg{console_logmask} $hoardopt");
 
     return $retval;
 }
@@ -335,7 +336,7 @@ sub isr_statparcel ($$$$) {
     # Display local cache stats
     #
     if (-e "$cachedir") {
-	mysystem("$Isr::LIBDIR/parcelkeeper examine --parcel $parceldir --cache $cachedir --last $lastdir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
+	mysystem("$Isr::LIBDIR/parcelkeeper examine --user $userid --parcel $parcel --parceldir $parceldir --cache $cachedir --last $lastdir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
 	    or errexit("Could not examine cache");
     }
     
@@ -344,7 +345,7 @@ sub isr_statparcel ($$$$) {
     # requested
     #
     if ($checkcache == 1 or $checkcache == 2) {
-	mysystem("$Isr::LIBDIR/parcelkeeper validate --parcel $parceldir --cache $cachedir --last $lastdir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
+	mysystem("$Isr::LIBDIR/parcelkeeper validate --user $userid --parcel $parcel --parceldir $parceldir --cache $cachedir --last $lastdir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
 	    or errexit("Could not validate cache");
     }
 
@@ -498,7 +499,7 @@ sub isr_priv_upload ($$$) {
     #
     if (!-e $cdcache_file) {
 	($dirtybytes, $dirtyblocks) = 
-	    copy_dirtychunks($parceldir);
+	    copy_dirtychunks($userid, $parcel, $parceldir);
 	open(FLAG, ">$cdcache_file")
 	    or unix_errexit("Unable to create dirty cache flag ($cdcache_file)");
 	close FLAG;
@@ -551,7 +552,9 @@ sub isr_priv_upload ($$$) {
 #
 # copy_dirtychunks - Build temp cache tree and populate it with dirty state
 #
-sub copy_dirtychunks ($) {
+sub copy_dirtychunks ($$$) {
+    my $userid = shift;
+    my $parcel = shift;
     my $parceldir = shift;
 
     my $lastdir = "$parceldir/last";
@@ -623,7 +626,7 @@ sub copy_dirtychunks ($) {
     #
     print("Collecting modified disk state...\n")
 	if $main::verbose;
-    mysystem("$Isr::LIBDIR/parcelkeeper upload --parcel $parceldir --cache $cachedir --last $lastdir --destdir $tmpdir/cache/hdk --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
+    mysystem("$Isr::LIBDIR/parcelkeeper upload --user $userid --parcel $parcel --parceldir $parceldir --cache $cachedir --last $lastdir --destdir $tmpdir/cache/hdk --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
     # Hack to get stats from PK
     open(STATFILE, "$tmpdir/cache/hdk/stats");
