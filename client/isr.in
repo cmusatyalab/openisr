@@ -120,6 +120,7 @@ my $log_enabled = 0;# Is logging enabled?
 my $pid;            # Pid of child created in mysystem
 my $sessionid = 0;  # Unique session id (nonce from lock operation)
 my $userid;         # ISR userid
+my $parcel;         # parcel name
 my $command;        # isr subcommand
 
 # State globals, visible in this module only, which track which cleanup actions
@@ -133,7 +134,6 @@ our $verbose = 1;   # Verbosity level; by default, we print a few messages
 our $nocheckstate;  # Skip state  consistency check in ci, sync, disconnect
 our $bwlimit;       # Bandwidth limit (KBytes/sec) in ci and sync
 our $server;        # Server domain name
-our $parcel;        # parcel name
 
 #
 # Read/write global variable: At any point in time, this hash contains
