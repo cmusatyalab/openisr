@@ -99,7 +99,6 @@ struct pk_config {
 	/* miscellaneous parameters */
 	char *user;
 	char *parcel;
-	char *master;
 	enum compresstype compress;
 	int foreground;
 };
@@ -125,6 +124,7 @@ struct pk_state {
 	unsigned hashlen;
 	unsigned offset;
 	char uuid[UUID_LEN_BIN];
+	char *master;
 
 	unsigned request_count;  /* XXX */
 };

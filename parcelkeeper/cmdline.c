@@ -57,7 +57,6 @@ enum option {
 	OPT_PARCELDIR,
 	OPT_CACHE,
 	OPT_LAST,
-	OPT_MASTER,
 	OPT_DESTDIR,
 	OPT_COMPRESSION,
 	OPT_HOARD,
@@ -74,7 +73,6 @@ static struct pk_option pk_options[] = {
 	{"parceldir",      OPT_PARCELDIR,      REQUIRED, NONTRIVIAL_MODES               , {"parcel_dir"}},
 	{"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
 	{"last",           OPT_LAST,           REQUIRED, POSTPROCESS_MODES              , {"last_cache_dir"}},
-	{"master",         OPT_MASTER,         REQUIRED, MODE_RUN                       , {"master_url"}},
 	{"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
 	{"compression",    OPT_COMPRESSION,    OPTIONAL, MODE_RUN                       , {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
 	{"hoard",          OPT_HOARD,          OPTIONAL, MODE_RUN                       , {"hoard_dir"}},
@@ -271,9 +269,6 @@ enum mode parse_cmdline(int argc, char **argv)
 			check_dir(config.last_dir);
 			config.last_keyring=filepath(optparams[0], "keyring",
 						1);
-			break;
-		case OPT_MASTER:
-			config.master=optparams[0];
 			break;
 		case OPT_DESTDIR:
 			config.dest_dir=optparams[0];

@@ -21,7 +21,8 @@
 	optstr(CHUNKSPERDIR), \
 	optstr(CRYPTO), \
 	optstr(COMPRESS), \
-	optstr(UUID)
+	optstr(UUID), \
+	optstr(RPATH)
 
 #define optstr(str) PC_ ## str
 enum pc_ident {
@@ -165,6 +166,13 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 			return PK_INVALID;
 		}
 		uuid_destroy(uuid);
+		break;
+	case PC_RPATH:
+		if (asprintf(&state.master, "%s/%s/%s/last/hdk", value,
+					config.user, config.parcel) == -1) {
+			pk_log(LOG_ERROR, "malloc failure");
+			return PK_NOMEM;
+		}
 		break;
 	case PC_DUPLICATE:
 		return PK_INVALID;
