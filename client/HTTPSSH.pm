@@ -129,34 +129,20 @@ sub isr_connected_http () {
 # isr_run_parcelkeeper - Run the Parcelkeeper process and return its
 #                        exit status.
 #
-sub isr_run_parcelkeeper ($$$$) {
+sub isr_run_parcelkeeper ($$$) {
     my $userid = shift;        # ISR user id
     my $parcel = shift;        # parcel name
-    my $parceldir = shift;     # local parcel directory
-    my $disconnected = shift;  # Are we running disconnected?
+    my $isrdir = shift;        # absolute path of user's local ISR home dir
 
     my $logstring = "|PARCELKEEPER|" . message_string() ."|";
+    my $parceldir = "$isrdir/$parcel";
+    my $hoarddir = "$isrdir/hoard";
     my $cachedir = "$parceldir/cache";
-    my $pkcmd = "$Isr::LIBDIR/parcelkeeper";
-
-    my $hoarddir = "$parceldir-hoard";
-    my $hoardopt = "";
-    
-    my $retval;
-
-    # Check for existence of the hoard directory and set the PK hoard flag
-    if (-d $hoarddir) {
-        $hoardopt = "--hoard $hoarddir";
-        print("\tUsing hoard $hoarddir.\n")
-	    if $main::verbose > 1;
-    }
 
     #
     # Crank up PK with all the right arguments
     #
-    $retval = system("$pkcmd run --user $userid --parcel $parcel --parceldir $parceldir --cache $cachedir --compression $main::syscfg{compression} --log $parceldir/../$parcel.log '$logstring' $syscfg{logmask} $syscfg{console_logmask} $hoardopt");
-
-    return $retval;
+    return system("$Isr::LIBDIR/parcelkeeper run --user $userid --parcel $parcel --parceldir $parceldir --cache $cachedir --hoard $hoarddir --compression $main::syscfg{compression} --log $parceldir/../$parcel.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}");
 }
 
 #
@@ -258,15 +244,7 @@ sub isr_stathoard ($$$) {
     
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
-    my $hoarddir = "$isrdir/$parcel-hoard";
 
-    #
-    # Simple case where nothing is hoarded
-    #    
-    if(!-d "$hoarddir") {
-	return 0;
-    }
-    
     # XXX
     
     return $numchunks;
@@ -380,15 +358,7 @@ sub isr_checkhoard ($$$$$) {
     my $parceldir = "$isrdir/$parcel";
     my $cachedir = "$parceldir/cache";
     my $lastdir = "$parceldir/last";
-    my $hoarddir = "$isrdir/$parcel-hoard";
 
-    #
-    # A nonexistent hoard cache is consistent by default
-    #
-    if (!-e $hoarddir) {
-	return $Isr::SUCCESS;
-    }
-    
     # XXX
     
     #
@@ -444,7 +414,6 @@ sub isr_priv_upload ($$$) {
     my $i;
 
     my $parceldir = "$isrdir/$parcel";
-    my $hoarddir = "$isrdir/$parcel-hoard";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
     my $tmpdir = "$parceldir/tmp";
@@ -733,19 +702,10 @@ sub isr_priv_clientcommit($$$$) {
     my $sha1value;
 
     my $parceldir = "$isrdir/$parcel";
-    my $hoarddir = "$isrdir/$parcel-hoard";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
     my $tmpdir = "$parceldir/tmp";
 
-    #
-    # Create a hoard cache if necessary
-    #
-    if (!-e $hoarddir) {
-	mktree($hoarddir)
-	    or errexit("Unable to create $hoarddir");
-    }
-    
     #
     # Now that we have determined the dirty disk state, we can copy
     # the memory image and keyring from cache to last
@@ -811,7 +771,6 @@ sub isr_priv_cleanhoard ($$$) {
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
-    my $hoarddir = "$isrdir/$parcel-hoard";
 
     my $deletecnt = 0;
 
@@ -821,7 +780,7 @@ sub isr_priv_cleanhoard ($$$) {
     #
     # Simple cases where nothing is hoarded or cached
     #    
-    if ((!-e "$cachedir/keyring") || (!-d $hoarddir)) {
+    if (!-e "$cachedir/keyring") {
 	print "\n"
 	    if $main::verbose;
 	return;
