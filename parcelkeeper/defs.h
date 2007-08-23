@@ -106,6 +106,7 @@ struct pk_state {
 	FILE *log_fp;
 	int lock_fd;
 	int cache_fd;
+	int hoard_fd;
 	char *loopdev_name;
 	int loopdev_fd;
 	int chardev_fd;
@@ -167,6 +168,7 @@ int examine_cache(void);
 
 /* hoard.c */
 pk_err_t hoard_init(void);
+void hoard_shutdown(void);
 
 /* nexus.c */
 pk_err_t nexus_init(void);

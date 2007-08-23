@@ -11,6 +11,8 @@
 
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "defs.h"
 
 #define HOARD_INDEX_VERSION 1
@@ -147,9 +149,22 @@ pk_err_t hoard_init(void)
 	ret=commit(state.db);
 	if (ret)
 		goto bad;
-	return get_parcel_ident();
+	ret=get_parcel_ident();
+	if (ret)
+		return ret;
+	state.hoard_fd=open(config.hoard_file, O_RDWR|O_CREAT, 0666);
+	if (state.hoard_fd == -1) {
+		pk_log(LOG_ERROR, "Couldn't open %s", config.hoard_file);
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
 
 bad:
 	rollback(state.db);
 	return ret;
+}
+
+void hoard_shutdown(void)
+{
+	close(state.hoard_fd);
 }

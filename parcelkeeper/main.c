@@ -26,6 +26,7 @@ int main(int argc, char **argv)
 	int completion_fd=-1;
 	char ret=1;
 	int have_cache=0;
+	int have_hoard=0;
 	int have_transport=0;
 	int have_nexus=0;
 	int have_lock=0;
@@ -63,9 +64,12 @@ int main(int argc, char **argv)
 	else
 		have_cache=1;
 
-	if (config.hoard_index != NULL)
+	if (config.hoard_index != NULL) {
 		if (hoard_init())
 			goto shutdown;
+		else
+			have_hoard=1;
+	}
 
 	if (mode == MODE_RUN) {
 		/* Now that we have the lock, it's safe to create the pidfile */
@@ -110,6 +114,8 @@ shutdown:
 		nexus_shutdown();
 	if (have_transport)
 		transport_shutdown();
+	if (have_hoard)
+		hoard_shutdown();
 	if (have_cache)
 		cache_shutdown();
 	log_shutdown();  /* safe to call unconditionally */
