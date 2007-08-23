@@ -124,6 +124,7 @@ struct pk_state {
 	unsigned hashlen;
 	unsigned offset;
 	char *uuid;
+	char *server;
 	char *master;
 
 	unsigned request_count;  /* XXX */

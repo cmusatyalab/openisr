@@ -23,6 +23,7 @@
 	optstr(CRYPTO), \
 	optstr(COMPRESS), \
 	optstr(UUID), \
+	optstr(SERVER), \
 	optstr(RPATH)
 
 #define optstr(str) PC_ ## str
@@ -164,6 +165,9 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 			return PK_INVALID;
 		}
 		uuid_destroy(uuid);
+		break;
+	case PC_SERVER:
+		state.server=strdup(value);
 		break;
 	case PC_RPATH:
 		if (asprintf(&state.master, "%s/%s/%s/last/hdk", value,

@@ -27,8 +27,9 @@ static pk_err_t create_hoard_index(void)
 	if (query(NULL, state.db, "CREATE TABLE hoard.parcels ("
 				"parcel INTEGER PRIMARY KEY NOT NULL, "
 				"uuid TEXT UNIQUE NOT NULL, "
-				"name TEXT NOT NULL, "
-				"user TEXT NOT NULL)", NULL)) {
+				"server TEXT NOT NULL, "
+				"user TEXT NOT NULL, "
+				"name TEXT NOT NULL)", NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create parcel table");
 		return PK_IOERR;
 	}
@@ -75,10 +76,10 @@ static pk_err_t get_parcel_ident(void)
 				== SQLITE_OK) {
 		query_free(stmt);
 		if (query(NULL, state.db, "INSERT INTO hoard.parcels "
-					"(uuid, name, user) "
-					"VALUES (?, ?, ?)", "SSS",
-					state.uuid, config.parcel,
-					config.user)) {
+					"(uuid, server, user, name) "
+					"VALUES (?, ?, ?, ?)", "SSSS",
+					state.uuid, state.server, config.user,
+					config.parcel)) {
 			pk_log(LOG_ERROR, "Couldn't insert parcel record");
 			ret=PK_IOERR;
 			goto bad;
