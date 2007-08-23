@@ -9,6 +9,8 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
+#include <sys/stat.h>
+#include <sys/types.h>
 #include "defs.h"
 
 #define HOARD_INDEX_VERSION 1
@@ -24,7 +26,7 @@ static pk_err_t create_hoard_index(void)
 
 	if (query(NULL, state.db, "CREATE TABLE hoard.parcels ("
 				"parcel INTEGER PRIMARY KEY NOT NULL, "
-				"uuid BLOB UNIQUE NOT NULL, "
+				"uuid TEXT UNIQUE NOT NULL, "
 				"name TEXT NOT NULL, "
 				"user TEXT NOT NULL)", NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create parcel table");
@@ -59,7 +61,6 @@ static pk_err_t create_hoard_index(void)
 	return PK_SUCCESS;
 }
 
-/* XXX should use ASCII representation? */
 static pk_err_t get_parcel_ident(void)
 {
 	sqlite3_stmt *stmt;
@@ -70,14 +71,14 @@ static pk_err_t get_parcel_ident(void)
 	if (ret)
 		return ret;
 	while ((sret=query(&stmt, state.db, "SELECT parcel FROM hoard.parcels "
-				"WHERE uuid == ?", "B", state.uuid,
-				sizeof(state.uuid))) == SQLITE_OK) {
+				"WHERE uuid == ?", "S", state.uuid))
+				== SQLITE_OK) {
 		query_free(stmt);
 		if (query(NULL, state.db, "INSERT INTO hoard.parcels "
 					"(uuid, name, user) "
-					"VALUES (?, ?, ?)", "BSS",
-					state.uuid, sizeof(state.uuid),
-					config.parcel, config.user)) {
+					"VALUES (?, ?, ?)", "SSS",
+					state.uuid, config.parcel,
+					config.user)) {
 			pk_log(LOG_ERROR, "Couldn't insert parcel record");
 			ret=PK_IOERR;
 			goto bad;

@@ -10,6 +10,7 @@
  */
 
 #include <string.h>
+#include <uuid.h>
 #include "defs.h"
 
 #define DATAVER 3
@@ -82,10 +83,8 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 	char *tok;
 	char *saveptr;
 	enum compresstype compress;
-	void *ptr;
 	uuid_t *uuid;
 	uuid_rc_t uurc;
-	size_t sz;
 
 	switch (ident) {
 	case PC_VERSION:
@@ -157,9 +156,8 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 			pk_log(LOG_ERROR, "Invalid UUID");
 			return PK_INVALID;
 		}
-		ptr=&state.uuid;
-		sz=sizeof(state.uuid);
-		uurc=uuid_export(uuid, UUID_FMT_BIN, &ptr, &sz);
+		uurc=uuid_export(uuid, UUID_FMT_STR, (void *)&state.uuid,
+					NULL);
 		if (uurc) {
 			pk_log(LOG_ERROR, "Can't format UUID: %s",
 						uuid_error(uurc));

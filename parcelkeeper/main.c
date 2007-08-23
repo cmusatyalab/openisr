@@ -9,6 +9,7 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
+#include <unistd.h>
 #include "defs.h"
 
 struct pk_config config = {

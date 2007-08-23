@@ -13,7 +13,6 @@
 #define PK_DEFS_H
 
 #include <stdio.h>
-#include <uuid.h>
 #include <sqlite3.h>
 
 typedef enum pk_err {
@@ -124,7 +123,7 @@ struct pk_state {
 	unsigned chunks_per_dir;
 	unsigned hashlen;
 	unsigned offset;
-	char uuid[UUID_LEN_BIN];
+	char *uuid;
 	char *master;
 
 	unsigned request_count;  /* XXX */

@@ -9,6 +9,7 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
+#include <string.h>
 #include <stdlib.h>
 #include <curl/curl.h>
 #include "defs.h"
