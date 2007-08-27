@@ -12,10 +12,15 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
+#include <string.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <sys/time.h>
+#include <time.h>
 #include "defs.h"
 
 #define HOARD_INDEX_VERSION 1
+#define EXPAND_CHUNKS 64
 
 static pk_err_t create_hoard_index(void)
 {
@@ -37,15 +42,16 @@ static pk_err_t create_hoard_index(void)
 	}
 
 	if (query(NULL, state.db, "CREATE TABLE hoard.chunks ("
-				"tag BLOB PRIMARY KEY, "
+				"tag BLOB UNIQUE, "
+				/* 512-byte sectors */
 				"offset INTEGER UNIQUE NOT NULL, "
 				"length INTEGER,"
-				"last_accessed INTEGER)", NULL)) {
+				"last_access INTEGER)", NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create chunk table");
 		return PK_IOERR;
 	}
 	if (query(NULL, state.db, "CREATE INDEX hoard.chunks_lru ON "
-				"chunks (last_accessed)", NULL)) {
+				"chunks (last_access)", NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create chunk LRU index");
 		return PK_IOERR;
 	}
@@ -62,6 +68,200 @@ static pk_err_t create_hoard_index(void)
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
+}
+
+/* XXX cache chunks of different sizes */
+/* must be within transaction */
+static pk_err_t expand_cache(void)
+{
+	sqlite3_stmt *stmt;
+	int count;
+	int start;
+	int i;
+	int step = state.chunksize >> 9;
+
+	if (query(&stmt, state.db, "SELECT count(*), max(offset) "
+				"FROM hoard.chunks", NULL) != SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't find maximum hoard cache offset");
+		return PK_IOERR;
+	}
+	query_row(stmt, "dd", &count, &start);
+	query_free(stmt);
+	if (count)
+		start += step;
+	for (i=0; i<EXPAND_CHUNKS; i++) {
+		if (query(NULL, state.db, "INSERT INTO hoard.chunks (offset) "
+					"VALUES (?)", "d", start + i * step)) {
+			pk_log(LOG_ERROR, "Couldn't expand hoard cache to "
+						"offset %d", start + i * step);
+			return PK_IOERR;
+		}
+	}
+	return PK_SUCCESS;
+}
+
+static void deallocate_chunk_offset(int offset)
+{
+	if (query(NULL, state.db, "UPDATE hoard.chunks SET tag = NULL, "
+				"length = NULL, last_access = NULL "
+				"WHERE offset = ?", "d", offset)) {
+		pk_log(LOG_ERROR, "Couldn't deallocate hoard chunk at "
+					"offset %d", offset);
+	}
+}
+
+pk_err_t hoard_get_chunk(void *tag, void *buf, unsigned *len)
+{
+	sqlite3_stmt *stmt;
+	struct timeval tv;
+	int offset;
+	int clen;
+	pk_err_t ret;
+	int sret;
+
+	ret=begin(state.db);
+	if (ret)
+		return ret;
+
+	sret=query(&stmt, state.db, "SELECT offset, length FROM hoard.chunks "
+				"WHERE tag == ?", "b", tag, state.hashlen);
+	if (sret == SQLITE_OK) {
+		query_free(stmt);
+		ret=commit(state.db);
+		if (ret)
+			goto bad;
+		return PK_NOTFOUND;
+	} else if (sret != SQLITE_ROW) {
+		pk_log(LOG_ERROR, "Couldn't query hoard chunk index");
+		ret=PK_IOERR;
+		goto bad;
+	}
+	query_row(stmt, "dd", &offset, &clen);
+	query_free(stmt);
+
+	gettimeofday(&tv, NULL);
+	if (query(NULL, state.db, "UPDATE hoard.chunks SET last_access = ? "
+				"WHERE tag == ?", "db", tv.tv_sec, tag,
+				state.hashlen)) {
+		/* Not fatal */
+		pk_log(LOG_ERROR, "Couldn't update chunk timestamp");
+	}
+
+	ret=commit(state.db);
+	if (ret)
+		goto bad;
+
+	/* XXX what if the reference is released right now?  we could read in
+	   bad chunk data.  do we need to hold a read lock the whole time? */
+
+	if (clen <= 0 || clen > state.chunksize)
+		/* XXX */;
+
+	if (pread(state.hoard_fd, buf, clen, ((off_t)offset) << 9) != clen) {
+		pk_log(LOG_ERROR, "Couldn't read chunk at offset %d", offset);
+		/* XXX */
+	}
+
+#if 0
+	XXX
+	if chunk does not match hash {
+		warn;
+		delete from references where tag == hash;
+		update chunks (tag, length) set to (null, null) where
+			tag == hash;
+		fail;
+	}
+#endif
+
+	*len=clen;
+	return PK_SUCCESS;
+
+bad:
+	rollback(state.db);
+	return ret;
+}
+
+pk_err_t hoard_put_chunk(void *tag, void *buf, unsigned len)
+{
+	sqlite3_stmt *stmt;
+	struct timeval tv;
+	pk_err_t ret;
+	int offset;
+	int sret;
+
+	ret=begin(state.db);
+	if (ret)
+		return ret;
+
+	sret=query(NULL, state.db, "SELECT tag FROM hoard.chunks WHERE "
+				"tag == ?", "b", tag, state.hashlen);
+	if (sret == SQLITE_ROW) {
+		ret=commit(state.db);
+		if (ret)
+			goto bad;
+		return PK_SUCCESS;
+	} else if (sret != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't look up tag in hoard cache index");
+		goto bad;
+	}
+
+	while ((sret=query(&stmt, state.db, "SELECT offset FROM hoard.chunks "
+				"WHERE length ISNULL LIMIT 1", NULL))
+				== SQLITE_OK) {
+		query_free(stmt);
+		ret=expand_cache();
+		if (ret)
+			goto bad;
+	}
+	if (sret != SQLITE_ROW) {
+		pk_log(LOG_ERROR, "Error finding unused hoard cache offset");
+		goto bad;
+	}
+	query_row(stmt, "d", &offset);
+	query_free(stmt);
+
+	gettimeofday(&tv, NULL);
+	if (query(NULL, state.db, "UPDATE hoard.chunks SET length = ?, "
+				"last_access = ? WHERE offset == ?", "ddd",
+				len, tv.tv_sec, offset)) {
+		pk_log(LOG_ERROR, "Couldn't allocate hoard cache chunk");
+		ret=PK_IOERR;
+		goto bad;
+	}
+
+	ret=commit(state.db);
+	if (ret)
+		goto bad;
+
+	/* XXX how do we guarantee no floating unused chunks?  look for very
+	   old last-access time? */
+
+	if (pwrite(state.hoard_fd, buf, len, ((off_t)offset) << 9) != len) {
+		pk_log(LOG_ERROR, "Couldn't write hoard cache: offset %d, "
+					"length %d", offset, len);
+		deallocate_chunk_offset(offset);
+		return PK_IOERR;
+	}
+
+	sret=query(NULL, state.db, "UPDATE hoard.chunks SET tag = ? "
+				"WHERE offset = ?", "bd",
+				tag, state.hashlen, offset);
+	if (sret) {
+		deallocate_chunk_offset(offset);
+		if (sret == SQLITE_CONSTRAINT) {
+			/* Someone else has already written this tag */
+			return PK_SUCCESS;
+		} else {
+			pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
+			return PK_IOERR;
+		}
+	}
+	return PK_SUCCESS;
+
+bad:
+	rollback(state.db);
+	return ret;
 }
 
 static pk_err_t get_parcel_ident(void)
@@ -105,9 +305,84 @@ bad:
 	return ret;
 }
 
+/* XXX should select some number of rows at once.  we don't want to do too many
+   selects, but we don't want to download again if e.g. multiple parcels are
+   hoarding at once. */
+/* XXX should not require --cache cmdline option */
+/* XXX SIGINT */
 int hoard(void)
 {
-	return 0;
+	sqlite3_stmt *stmt;
+	void *buf;
+	size_t chunklen;
+	int chunk;
+	void *tagp;
+	char tag[state.hashlen];
+	char calctag[state.hashlen];
+	int taglen;
+	int num_hoarded=0;
+	int to_hoard;
+	int ret=1;
+	int sret;
+
+	if (attach(state.db, "last", config.last_keyring))
+		return 1;
+	buf=malloc(state.chunksize);
+	if (buf == NULL) {
+		pk_log(LOG_ERROR, "malloc failure");
+		return 1;
+	}
+
+	if (query(&stmt, state.db, "SELECT count(DISTINCT tag) FROM last.keys "
+				"WHERE tag NOT IN "
+				"(SELECT tag FROM hoard.chunks)",
+				NULL) != SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't count unhoarded chunks");
+		goto out;
+	}
+	query_row(stmt, "d", &to_hoard);
+	query_free(stmt);
+
+	while ((sret=query(&stmt, state.db, "SELECT chunk, tag FROM last.keys "
+				"WHERE tag NOT IN "
+				"(SELECT tag FROM hoard.chunks) LIMIT 1", NULL))
+				== SQLITE_ROW) {
+		query_row(stmt, "db", &chunk, &tagp, &taglen);
+		if (taglen != state.hashlen) {
+			query_free(stmt);
+			pk_log(LOG_ERROR, "Invalid tag length for chunk %d",
+						chunk);
+			goto out;
+		}
+		memcpy(tag, tagp, state.hashlen);
+		query_free(stmt);
+		/* XXX retries */
+		if (transport_get(buf, chunk, &chunklen)) {
+			pk_log(LOG_ERROR, "Failed to fetch chunk %d", chunk);
+			goto out;
+		}
+		if (digest(calctag, buf, chunklen))
+			goto out;
+		if (memcmp(tag, calctag, state.hashlen)) {
+			/* XXX */
+			pk_log(LOG_ERROR, "Tag mismatch on chunk %d", chunk);
+			log_tag_mismatch(tag, calctag);
+			goto out;
+		}
+		/* XXX len is unsigned */
+		if (hoard_put_chunk(tag, buf, chunklen))
+			goto out;
+		print_progress(++num_hoarded, to_hoard);
+	}
+	if (sret != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Querying hoard index failed");
+		goto out;
+	}
+	ret=0;
+out:
+	free(buf);
+	return ret;
 }
 
 pk_err_t hoard_init(void)
