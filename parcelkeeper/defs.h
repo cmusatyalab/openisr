@@ -58,6 +58,7 @@ enum mode {
 	MODE_VALIDATE = 0x08,
 	MODE_HELP     = 0x10,
 	MODE_VERSION  = 0x20,
+	MODE_HOARD    = 0x40,
 };
 
 struct pk_connection;
@@ -169,6 +170,7 @@ int examine_cache(void);
 /* hoard.c */
 pk_err_t hoard_init(void);
 void hoard_shutdown(void);
+int hoard(void);
 
 /* nexus.c */
 pk_err_t nexus_init(void);

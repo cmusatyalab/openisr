@@ -105,6 +105,11 @@ bad:
 	return ret;
 }
 
+int hoard(void)
+{
+	return 0;
+}
+
 pk_err_t hoard_init(void)
 {
 	sqlite3_stmt *stmt;

@@ -71,17 +71,20 @@ int main(int argc, char **argv)
 			have_hoard=1;
 	}
 
-	if (mode == MODE_RUN) {
+	if (mode == MODE_RUN && !config.foreground) {
 		/* Now that we have the lock, it's safe to create the pidfile */
-		if (!config.foreground)
-			if (create_pidfile())
-				goto shutdown;
+		if (create_pidfile())
+			goto shutdown;
+	}
 
+	if (mode == MODE_RUN || mode == MODE_HOARD) {
 		if (transport_init())
 			goto shutdown;
 		else
 			have_transport=1;
+	}
 
+	if (mode == MODE_RUN) {
 		if (nexus_init())
 			goto shutdown;
 		else
@@ -99,6 +102,8 @@ int main(int argc, char **argv)
 		ret=0;
 	} else if (mode == MODE_UPLOAD) {
 		ret=copy_for_upload();
+	} else if (mode == MODE_HOARD) {
+		ret=hoard();
 	} else if (mode == MODE_VALIDATE) {
 		ret=validate_keyring();
 		if (!ret)

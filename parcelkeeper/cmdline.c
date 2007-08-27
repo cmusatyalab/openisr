@@ -23,6 +23,7 @@ struct pk_mode {
 static struct pk_mode pk_modes[] = {
 	{"run",       MODE_RUN,     "Bind and service a virtual disk"},
 	{"upload",    MODE_UPLOAD,  "Split a cache file into individual chunks for upload"},
+	{"hoard",     MODE_HOARD,   "Download all chunks into hoard cache"},
 	{"examine",   MODE_EXAMINE, "Print cache statistics"},
 	{"validate",  MODE_VALIDATE,"Validate cache against keyring"},
 	{"help",      MODE_HELP,    "Show usage summary"},
@@ -65,14 +66,16 @@ enum option {
 	OPT_MODE,
 };
 
+/* XXX hoard is not optional in hoard mode! */
 #define POSTPROCESS_MODES (MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
-#define NONTRIVIAL_MODES (MODE_RUN|POSTPROCESS_MODES)
+#define NONRUN_MODES (POSTPROCESS_MODES|MODE_HOARD)
+#define NONTRIVIAL_MODES (MODE_RUN|NONRUN_MODES)
 static struct pk_option pk_options[] = {
 	{"user",           OPT_USER,           REQUIRED, NONTRIVIAL_MODES               , {"user_name"}},
 	{"parcel",         OPT_PARCEL,         REQUIRED, NONTRIVIAL_MODES               , {"parcel_name"}},
 	{"parceldir",      OPT_PARCELDIR,      REQUIRED, NONTRIVIAL_MODES               , {"parcel_dir"}},
 	{"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
-	{"last",           OPT_LAST,           REQUIRED, POSTPROCESS_MODES              , {"last_cache_dir"}},
+	{"last",           OPT_LAST,           REQUIRED, NONRUN_MODES                   , {"last_cache_dir"}},
 	{"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
 	{"compression",    OPT_COMPRESSION,    OPTIONAL, MODE_RUN                       , {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
 	{"hoard",          OPT_HOARD,          OPTIONAL, NONTRIVIAL_MODES               , {"hoard_dir"}},
