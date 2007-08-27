@@ -322,7 +322,6 @@ int hoard(void)
 	int chunk;
 	void *tagp;
 	char tag[state.hashlen];
-	char calctag[state.hashlen];
 	int taglen;
 	int num_hoarded=0;
 	int to_hoard;
@@ -361,21 +360,7 @@ int hoard(void)
 		}
 		memcpy(tag, tagp, state.hashlen);
 		query_free(stmt);
-		/* XXX retries */
-		if (transport_get(buf, chunk, &chunklen)) {
-			pk_log(LOG_ERROR, "Failed to fetch chunk %d", chunk);
-			goto out;
-		}
-		if (digest(calctag, buf, chunklen))
-			goto out;
-		if (memcmp(tag, calctag, state.hashlen)) {
-			/* XXX */
-			pk_log(LOG_ERROR, "Tag mismatch on chunk %d", chunk);
-			log_tag_mismatch(tag, calctag);
-			goto out;
-		}
-		/* XXX len is unsigned */
-		if (hoard_put_chunk(tag, buf, chunklen))
+		if (transport_fetch_chunk(buf, chunk, tag, &chunklen))
 			goto out;
 		print_progress(++num_hoarded, to_hoard);
 	}

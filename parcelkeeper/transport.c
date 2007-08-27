@@ -11,8 +11,12 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <curl/curl.h>
 #include "defs.h"
+
+#define TRANSPORT_TRIES 5
+#define TRANSPORT_RETRY_DELAY 5
 
 struct pk_connection {
 	CURL *curl;
@@ -107,7 +111,7 @@ void transport_shutdown(void)
 	transport_cleanup_conn(state.conn);
 }
 
-pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
+static pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
 {
 	struct pk_connection *conn=state.conn;
 	char *url;
@@ -151,4 +155,40 @@ pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
 	}
 	free(url);
 	return ret;
+}
+
+pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
+			unsigned *length)
+{
+	char calctag[state.hashlen];
+	size_t len;
+	int i;
+	pk_err_t ret;
+
+	for (i=0; i<TRANSPORT_TRIES; i++) {
+		ret=transport_get(buf, chunk, &len);
+		if (ret != PK_NETFAIL)
+			break;
+		pk_log(LOG_ERROR, "Fetching chunk %u failed; retrying in %d "
+					"seconds", chunk,
+					TRANSPORT_RETRY_DELAY);
+		sleep(TRANSPORT_RETRY_DELAY);
+	}
+	if (ret != PK_SUCCESS) {
+		pk_log(LOG_ERROR, "Couldn't fetch chunk %u", chunk);
+		return ret;
+	}
+	ret=digest(calctag, buf, len);
+	if (ret) {
+		pk_log(LOG_ERROR, "Couldn't calculate chunk hash");
+		return ret;
+	}
+	if (memcmp(tag, calctag, state.hashlen)) {
+		pk_log(LOG_ERROR, "Invalid tag for retrieved chunk %u", chunk);
+		log_tag_mismatch(tag, calctag);
+		return PK_TAGFAIL;
+	}
+	hoard_put_chunk(tag, buf, len);
+	*length=len;
+	return PK_SUCCESS;
 }

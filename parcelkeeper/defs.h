@@ -182,7 +182,8 @@ void nexus_shutdown(void);
 /* transport.c */
 pk_err_t transport_init(void);
 void transport_shutdown(void);
-pk_err_t transport_get(void *buf, unsigned chunk, size_t *len);
+pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
+			unsigned *length);
 
 /* sql.c */
 int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...);
