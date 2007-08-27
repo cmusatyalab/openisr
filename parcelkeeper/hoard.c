@@ -328,8 +328,6 @@ int hoard(void)
 	int ret=1;
 	int sret;
 
-	if (attach(state.db, "last", config.last_keyring))
-		return 1;
 	buf=malloc(state.chunksize);
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failure");

@@ -186,6 +186,7 @@ pk_err_t cache_init(void)
 					sqlite3_errmsg(state.db));
 		goto bad;
 	}
+
 	if (is_file(config.cache_file) && is_file(config.cache_index)) {
 		ret=attach(state.db, "cache", config.cache_index);
 		if (ret)
@@ -210,6 +211,12 @@ pk_err_t cache_init(void)
 	} else {
 		pk_log(LOG_ERROR, "Cache and index in inconsistent state");
 		goto bad;
+	}
+
+	if (config.last_keyring != NULL) {
+		ret=attach(state.db, "last", config.last_keyring);
+		if (ret)
+			goto bad;
 	}
 	return PK_SUCCESS;
 
@@ -405,8 +412,6 @@ int copy_for_upload(void)
 
 	pk_log(LOG_INFO, "Copying chunks to upload directory %s",
 				config.dest_dir);
-	if (attach(state.db, "last", config.last_keyring))
-		return 1;
 	if (make_upload_dirs())
 		return 1;
 	/* XXX transaction */
@@ -692,8 +697,6 @@ int examine_cache(void)
 	unsigned valid_pct;
 	unsigned dirty_pct=0;
 
-	if (attach(state.db, "last", config.last_keyring))
-		return 1;
 	/* XXX transaction? */
 	if (query(&stmt, state.db, "SELECT count(*) from cache.chunks", NULL)
 				!= SQLITE_ROW) {
