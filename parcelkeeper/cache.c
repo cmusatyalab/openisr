@@ -500,6 +500,7 @@ int copy_for_upload(void)
 			goto out;
 		}
 		free(path);
+		hoard_put_chunk(tag, buf, length);
 		modified_chunks++;
 		modified_bytes += length;
 	}
