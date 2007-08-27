@@ -186,9 +186,12 @@ int query_next(sqlite3_stmt *stmt);
 void query_row(sqlite3_stmt *stmt, char *fmt, ...);
 void query_free(sqlite3_stmt *stmt);
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file);
-pk_err_t begin(sqlite3 *db);
-pk_err_t commit(sqlite3 *db);
-pk_err_t rollback(sqlite3 *db);
+pk_err_t _begin(sqlite3 *db, const char *caller);
+#define begin(db) _begin(db, __func__)
+pk_err_t _commit(sqlite3 *db, const char *caller);
+#define commit(db) _commit(db, __func__)
+pk_err_t _rollback(sqlite3 *db, const char *caller);
+#define rollback(db) _rollback(db, __func__)
 
 /* util.c */
 int is_dir(const char *path);

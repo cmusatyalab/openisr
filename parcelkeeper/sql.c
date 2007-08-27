@@ -150,28 +150,31 @@ pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
 	return PK_SUCCESS;
 }
 
-pk_err_t begin(sqlite3 *db)
+pk_err_t _begin(sqlite3 *db, const char *caller)
 {
 	if (query(NULL, db, "BEGIN TRANSACTION", NULL)) {
-		pk_log(LOG_ERROR, "Couldn't begin transaction");
+		pk_log(LOG_ERROR, "Couldn't begin transaction "
+					"on behalf of %s()", caller);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
 }
 
-pk_err_t commit(sqlite3 *db)
+pk_err_t _commit(sqlite3 *db, const char *caller)
 {
 	if (query(NULL, db, "COMMIT", NULL)) {
-		pk_log(LOG_ERROR, "Couldn't commit transaction");
+		pk_log(LOG_ERROR, "Couldn't commit transaction "
+					"on behalf of %s()", caller);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
 }
 
-pk_err_t rollback(sqlite3 *db)
+pk_err_t _rollback(sqlite3 *db, const char *caller)
 {
 	if (query(NULL, db, "ROLLBACK", NULL)) {
-		pk_log(LOG_ERROR, "Couldn't roll back transaction");
+		pk_log(LOG_ERROR, "Couldn't roll back transaction "
+					"on behalf of %s()", caller);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
