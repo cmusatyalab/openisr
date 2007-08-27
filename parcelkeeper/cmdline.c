@@ -288,6 +288,7 @@ enum mode parse_cmdline(int argc, char **argv)
 			if (config.compress == COMP_UNKNOWN)
 				PARSE_ERROR("invalid compression type: %s",
 							optparams[0]);
+			break;
 		case OPT_HOARD:
 			config.hoard_dir=optparams[0];
 			config.hoard_file=filepath(optparams[0], "hoard", 0);
