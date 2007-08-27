@@ -66,7 +66,6 @@ enum option {
 	OPT_MODE,
 };
 
-/* XXX hoard is not optional in hoard mode! */
 #define POSTPROCESS_MODES (MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
 #define NONRUN_MODES (POSTPROCESS_MODES|MODE_HOARD)
 #define NONTRIVIAL_MODES (MODE_RUN|NONRUN_MODES)
@@ -77,8 +76,9 @@ static struct pk_option pk_options[] = {
 	{"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
 	{"last",           OPT_LAST,           REQUIRED, NONRUN_MODES                   , {"last_cache_dir"}},
 	{"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
+	{"hoard",          OPT_HOARD,          REQUIRED, MODE_HOARD                     , {"hoard_dir"}},
+	{"hoard",          OPT_HOARD,          OPTIONAL, POSTPROCESS_MODES|MODE_RUN     , {"hoard_dir"}},
 	{"compression",    OPT_COMPRESSION,    OPTIONAL, MODE_RUN                       , {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
-	{"hoard",          OPT_HOARD,          OPTIONAL, NONTRIVIAL_MODES               , {"hoard_dir"}},
 	{"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES               , {"logfile", "info_str", "filemask", "stderrmask"}},
 	{"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
 	{"mode",           OPT_MODE,           OPTIONAL, MODE_HELP                      , {"mode"},                                                "Print detailed usage message about the given mode"},
@@ -157,6 +157,7 @@ static void usage(struct pk_mode *mode)
 static int pk_getopt(int argc, char *argv[], struct pk_option *opts)
 {
 	static int optind=2;  /* ignore argv[0] and argv[1] */
+	struct pk_option *orig_opts=opts;
 	char *arg;
 	int i;
 
@@ -179,26 +180,31 @@ static int pk_getopt(int argc, char *argv[], struct pk_option *opts)
 	arg += 2;
 
 	for (; opts->name != NULL; opts++) {
-		if (!strcmp(opts->name, arg)) {
-			if ((opts->mask & curmode->type) != curmode->type)
-				PARSE_ERROR("--%s not valid in this mode", arg);
-			if (opts->type != ANY && opts->_seen)
-				PARSE_ERROR("--%s may only be specified once",
+		if ((opts->mask & curmode->type) != curmode->type)
+			continue;
+		if (strcmp(opts->name, arg))
+			continue;
+		if (opts->type != ANY && opts->_seen)
+			PARSE_ERROR("--%s may only be specified once", arg);
+		opts->_seen++;
+		for (i=0; i < MAXPARAMS && opts->args[i] != NULL; i++) {
+			if (optind == argc)
+				PARSE_ERROR("wrong number of arguments to --%s",
 							arg);
-			opts->_seen++;
-			for (i=0; i < MAXPARAMS && opts->args[i] != NULL; i++) {
-				if (optind == argc)
-					PARSE_ERROR("wrong number of arguments "
-								"to --%s", arg);
-				optparams[i]=argv[optind++];
-				if (optparams[i][0] == '-' &&
-							optparams[i][1] == '-')
-					PARSE_ERROR("wrong number of arguments "
-								"to --%s", arg);
-			}
-			return opts->retval;
+			optparams[i]=argv[optind++];
+			if (optparams[i][0] == '-' &&
+						optparams[i][1] == '-')
+				PARSE_ERROR("wrong number of arguments to --%s",
+							arg);
 		}
+		return opts->retval;
 	}
+
+	/* This option is invalid.  See if it would have been valid for a
+	   different mode. */
+	for (opts=orig_opts; opts->name != NULL; opts++)
+		if (!strcmp(opts->name, arg))
+			PARSE_ERROR("--%s not valid in this mode", arg);
 	PARSE_ERROR("unknown option --%s", arg);
 }
 
