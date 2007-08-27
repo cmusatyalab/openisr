@@ -251,6 +251,7 @@ static pk_err_t fetch_chunk(void *buf, unsigned chunk, const void *tag,
 		log_tag_mismatch(tag, calctag);
 		return PK_TAGFAIL;
 	}
+	hoard_put_chunk(tag, buf, len);
 	*length=len;
 	return PK_SUCCESS;
 }
