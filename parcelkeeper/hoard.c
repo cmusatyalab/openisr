@@ -111,7 +111,7 @@ static void deallocate_chunk_offset(int offset)
 	}
 }
 
-pk_err_t hoard_get_chunk(void *tag, void *buf, unsigned *len)
+pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 {
 	sqlite3_stmt *stmt;
 	struct timeval tv;
@@ -120,6 +120,8 @@ pk_err_t hoard_get_chunk(void *tag, void *buf, unsigned *len)
 	pk_err_t ret;
 	int sret;
 
+	if (config.hoard_dir == NULL)
+		return PK_NOTFOUND;
 	ret=begin(state.db);
 	if (ret)
 		return ret;
@@ -182,7 +184,7 @@ bad:
 	return ret;
 }
 
-pk_err_t hoard_put_chunk(void *tag, void *buf, unsigned len)
+pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 {
 	sqlite3_stmt *stmt;
 	struct timeval tv;
@@ -190,6 +192,8 @@ pk_err_t hoard_put_chunk(void *tag, void *buf, unsigned len)
 	int offset;
 	int sret;
 
+	if (config.hoard_dir == NULL)
+		return PK_SUCCESS;
 	ret=begin(state.db);
 	if (ret)
 		return ret;
@@ -391,7 +395,7 @@ pk_err_t hoard_init(void)
 	int ver;
 	pk_err_t ret;
 
-	if (config.hoard_index == NULL)
+	if (config.hoard_dir == NULL)
 		return PK_INVALID;
 	if (!is_dir(config.hoard_dir) && mkdir(config.hoard_dir, 0777)) {
 		pk_log(LOG_ERROR, "Couldn't create hoard directory %s",

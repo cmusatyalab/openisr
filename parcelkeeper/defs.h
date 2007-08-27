@@ -170,6 +170,8 @@ int examine_cache(void);
 /* hoard.c */
 pk_err_t hoard_init(void);
 void hoard_shutdown(void);
+pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len);
+pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len);
 int hoard(void);
 
 /* nexus.c */

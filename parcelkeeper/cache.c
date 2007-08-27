@@ -220,47 +220,65 @@ bad:
 	return ret;
 }
 
-static pk_err_t fetch_chunk(unsigned chunk, const void *tag, unsigned *length)
+static pk_err_t fetch_chunk(void *buf, unsigned chunk, const void *tag,
+			unsigned *length)
 {
-	void *buf=malloc(state.chunksize);
 	char calctag[state.hashlen];
 	size_t len;
 	int i;
-	pk_err_t err;
-	ssize_t count;
-
-	if (buf == NULL) {
-		pk_log(LOG_ERROR, "malloc failure");
-		return PK_NOMEM;
-	}
+	pk_err_t ret;
 
 	for (i=0; i<TRANSPORT_TRIES; i++) {
-		err=transport_get(buf, chunk, &len);
-		if (err != PK_NETFAIL)
+		ret=transport_get(buf, chunk, &len);
+		if (ret != PK_NETFAIL)
 			break;
 		pk_log(LOG_ERROR, "Fetching chunk %u failed; retrying in %d "
 					"seconds", chunk,
 					TRANSPORT_RETRY_DELAY);
 		sleep(TRANSPORT_RETRY_DELAY);
 	}
-	if (err != PK_SUCCESS) {
+	if (ret != PK_SUCCESS) {
 		pk_log(LOG_ERROR, "Couldn't fetch chunk %u", chunk);
-		free(buf);
-		return err;
+		return ret;
 	}
-	err=digest(calctag, buf, len);
-	if (err) {
+	ret=digest(calctag, buf, len);
+	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't calculate chunk hash");
-		free(buf);
-		return err;
+		return ret;
 	}
 	if (memcmp(tag, calctag, state.hashlen)) {
 		pk_log(LOG_ERROR, "Invalid tag for retrieved chunk %u", chunk);
 		log_tag_mismatch(tag, calctag);
-		free(buf);
 		return PK_TAGFAIL;
 	}
+	*length=len;
+	return PK_SUCCESS;
+}
 
+static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
+{
+	void *buf=malloc(state.chunksize);
+	char *ftag;
+	unsigned len;
+	pk_err_t ret;
+	ssize_t count;
+
+	if (buf == NULL) {
+		pk_log(LOG_ERROR, "malloc failure");
+		return PK_NOMEM;
+	}
+	if (hoard_get_chunk(tag, buf, &len)) {
+		ftag=format_tag(tag);
+		pk_log(LOG_INFO, "Tag %s not in hoard cache", ftag);
+		free(ftag);
+		ret=fetch_chunk(buf, chunk, tag, &len);
+		if (ret) {
+			free(buf);
+			return ret;
+		}
+	} else {
+		pk_log(LOG_INFO, "Fetched chunk %u from hoard cache", chunk);
+	}
 	count=pwrite(state.loopdev_fd, buf, len, chunk_to_offset(chunk));
 	free(buf);
 	if (count != len) {
@@ -315,7 +333,7 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 	if (ret == SQLITE_OK) {
 		/* Chunk is not in the local cache */
 		query_free(stmt);
-		err=fetch_chunk(chunk, tag, length);
+		err=obtain_chunk(chunk, tag, length);
 		if (err)
 			return err;
 	} else if (ret == SQLITE_ROW) {
