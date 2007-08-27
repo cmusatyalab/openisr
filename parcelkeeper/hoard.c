@@ -201,6 +201,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	sret=query(NULL, state.db, "SELECT tag FROM hoard.chunks WHERE "
 				"tag == ?", "b", tag, state.hashlen);
 	if (sret == SQLITE_ROW) {
+		/* XXX should we add a parcel reference? */
 		ret=commit(state.db);
 		if (ret)
 			goto bad;
@@ -248,18 +249,37 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 		return PK_IOERR;
 	}
 
+	ret=begin(state.db);
+	if (ret) {
+		deallocate_chunk_offset(offset);
+		return ret;
+	}
 	sret=query(NULL, state.db, "UPDATE hoard.chunks SET tag = ? "
 				"WHERE offset = ?", "bd",
 				tag, state.hashlen, offset);
-	if (sret) {
+	if (sret == SQLITE_CONSTRAINT) {
+		/* Someone else has already written this tag */
 		deallocate_chunk_offset(offset);
-		if (sret == SQLITE_CONSTRAINT) {
-			/* Someone else has already written this tag */
-			return PK_SUCCESS;
-		} else {
-			pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
-			return PK_IOERR;
-		}
+	} else if (sret != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
+		rollback(state.db);
+		deallocate_chunk_offset(offset);
+		return PK_IOERR;
+	}
+	if (query(NULL, state.db, "INSERT OR IGNORE INTO hoard.refs "
+				"(parcel, tag) VALUES (?, ?)", "db",
+				state.hoard_ident, tag, state.hashlen)
+				!= SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't add chunk reference");
+		/* Non-fatal */
+		/* XXX sqlite spill bug */
+	}
+	ret=commit(state.db);
+	if (ret) {
+		pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
+		rollback(state.db);
+		deallocate_chunk_offset(offset);
+		return ret;
 	}
 	return PK_SUCCESS;
 
