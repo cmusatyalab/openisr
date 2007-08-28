@@ -109,6 +109,8 @@ int main(int argc, char **argv)
 			ret=validate_cache();
 	} else if (mode == MODE_EXAMINE) {
 		ret=examine_cache();
+		if (!ret)
+			ret=examine_hoard();
 	} else {
 		pk_log(LOG_ERROR, "Unknown mode");
 	}

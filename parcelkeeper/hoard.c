@@ -455,6 +455,58 @@ out:
 	return ret;
 }
 
+int examine_hoard(void)
+{
+	sqlite3_stmt *stmt;
+	unsigned validchunks;
+	unsigned maxchunks;
+	unsigned valid_mb;
+	unsigned max_mb;
+	unsigned valid_pct;
+
+	if (config.hoard_dir == NULL)
+		return 0;
+
+	if (hoard_sync_refs(0)) {
+		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
+		return 1;
+	}
+
+	if (begin(state.db))
+		return 1;
+	if (query(&stmt, state.db, "SELECT count(DISTINCT tag) FROM last.keys",
+				NULL) != SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't query last keyring");
+		goto bad;
+	}
+	query_row(stmt, "d", &maxchunks);
+	query_free(stmt);
+	if (query(&stmt, state.db, "SELECT count(DISTINCT hoard.chunks.tag) "
+				"FROM last.keys JOIN hoard.chunks "
+				"ON last.keys.tag == hoard.chunks.tag", NULL)
+				!= SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't query hoard cache");
+		goto bad;
+	}
+	query_row(stmt, "d", &validchunks);
+	query_free(stmt);
+	if (commit(state.db))
+		goto bad;
+
+	max_mb=(((off64_t)maxchunks) * state.chunksize) >> 20;
+	valid_mb=(((off64_t)validchunks) * state.chunksize) >> 20;
+	valid_pct=(100 * validchunks) / maxchunks;
+	printf("Hoard cache : %u%% populated (%u/%u MB)\n", valid_pct,
+				valid_mb, max_mb);
+	return 0;
+
+bad:
+	rollback(state.db);
+	return 1;
+}
+
 pk_err_t hoard_init(void)
 {
 	sqlite3_stmt *stmt;
