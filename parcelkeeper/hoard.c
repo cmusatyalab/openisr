@@ -299,6 +299,54 @@ bad:
 	return ret;
 }
 
+pk_err_t hoard_sync_refs(int from_cache)
+{
+	pk_err_t ret;
+	int sret;
+
+	ret=begin(state.db);
+	if (ret)
+		return ret;
+	if (from_cache)
+		sret=query(NULL, state.db, "CREATE TEMP VIEW newrefs AS "
+					"SELECT DISTINCT tag FROM keys", NULL);
+	else
+		sret=query(NULL, state.db, "CREATE TEMP VIEW newrefs AS "
+					"SELECT DISTINCT tag FROM last.keys",
+					NULL);
+	if (sret) {
+		pk_log(LOG_ERROR, "Couldn't generate tag list");
+		ret=PK_IOERR;
+		goto bad;
+	}
+	if (query(NULL, state.db, "DELETE FROM hoard.refs WHERE parcel == ? "
+				"AND tag NOT IN (SELECT tag FROM temp.newrefs)",
+				"d", state.hoard_ident)) {
+		pk_log(LOG_ERROR, "Couldn't garbage-collect hoard refs");
+		/* Non-fatal */
+	}
+	if (query(NULL, state.db, "INSERT OR IGNORE INTO hoard.refs "
+				"(parcel, tag) SELECT ?, tag FROM temp.newrefs "
+				"WHERE tag IN (SELECT tag FROM hoard.chunks)",
+				"d", state.hoard_ident)) {
+		pk_log(LOG_ERROR, "Couldn't insert new hoard refs");
+		/* XXX? */
+	}
+	if (query(NULL, state.db, "DROP VIEW temp.newrefs", NULL)) {
+		pk_log(LOG_ERROR, "Couldn't drop temporary view");
+		ret=PK_IOERR;
+		goto bad;
+	}
+	ret=commit(state.db);
+	if (ret)
+		goto bad;
+	return PK_SUCCESS;
+
+bad:
+	rollback(state.db);
+	return ret;
+}
+
 static pk_err_t get_parcel_ident(void)
 {
 	sqlite3_stmt *stmt;
@@ -362,6 +410,11 @@ int hoard(void)
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failure");
 		return 1;
+	}
+
+	if (hoard_sync_refs(0)) {
+		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
+		goto out;
 	}
 
 	if (query(&stmt, state.db, "SELECT count(DISTINCT tag) FROM last.keys "

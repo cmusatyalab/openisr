@@ -172,6 +172,7 @@ pk_err_t hoard_init(void);
 void hoard_shutdown(void);
 pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len);
 pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len);
+pk_err_t hoard_sync_refs(int from_cache);
 int hoard(void);
 
 /* nexus.c */

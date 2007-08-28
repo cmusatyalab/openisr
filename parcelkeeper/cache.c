@@ -433,6 +433,8 @@ int copy_for_upload(void)
 				config.dest_dir);
 	if (make_upload_dirs())
 		return 1;
+	if (hoard_sync_refs(1))
+		return 1;
 	/* XXX transaction */
 	if (query(&stmt, state.db, "SELECT count(*) FROM "
 				"main.keys JOIN last.keys "
