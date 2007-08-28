@@ -111,6 +111,23 @@ static void deallocate_chunk_offset(int offset)
 	}
 }
 
+static void add_chunk_reference(const void *tag)
+{
+	char *ftag;
+
+	if (query(NULL, state.db, "INSERT OR IGNORE INTO hoard.refs "
+				"(parcel, tag) VALUES (?, ?)", "db",
+				state.hoard_ident, tag, state.hashlen)
+				!= SQLITE_OK) {
+		ftag=format_tag(tag);
+		pk_log(LOG_ERROR, "Couldn't add chunk reference for tag %s",
+					ftag);
+		free(ftag);
+		/* Non-fatal */
+		/* XXX sqlite spill bug */
+	}
+}
+
 pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 {
 	sqlite3_stmt *stmt;
@@ -149,6 +166,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 		/* Not fatal */
 		pk_log(LOG_ERROR, "Couldn't update chunk timestamp");
 	}
+	add_chunk_reference(tag);
 
 	ret=commit(state.db);
 	if (ret)
@@ -201,7 +219,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	sret=query(NULL, state.db, "SELECT tag FROM hoard.chunks WHERE "
 				"tag == ?", "b", tag, state.hashlen);
 	if (sret == SQLITE_ROW) {
-		/* XXX should we add a parcel reference? */
+		add_chunk_reference(tag);
 		ret=commit(state.db);
 		if (ret)
 			goto bad;
@@ -266,14 +284,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 		deallocate_chunk_offset(offset);
 		return PK_IOERR;
 	}
-	if (query(NULL, state.db, "INSERT OR IGNORE INTO hoard.refs "
-				"(parcel, tag) VALUES (?, ?)", "db",
-				state.hoard_ident, tag, state.hashlen)
-				!= SQLITE_OK) {
-		pk_log(LOG_ERROR, "Couldn't add chunk reference");
-		/* Non-fatal */
-		/* XXX sqlite spill bug */
-	}
+	add_chunk_reference(tag);
 	ret=commit(state.db);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
