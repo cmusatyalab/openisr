@@ -332,7 +332,6 @@ bad:
 /* XXX should select some number of rows at once.  we don't want to do too many
    selects, but we don't want to download again if e.g. multiple parcels are
    hoarding at once. */
-/* XXX should not require --cache cmdline option */
 /* XXX SIGINT */
 int hoard(void)
 {

@@ -73,7 +73,7 @@ static struct pk_option pk_options[] = {
 	{"user",           OPT_USER,           REQUIRED, NONTRIVIAL_MODES               , {"user_name"}},
 	{"parcel",         OPT_PARCEL,         REQUIRED, NONTRIVIAL_MODES               , {"parcel_name"}},
 	{"parceldir",      OPT_PARCELDIR,      REQUIRED, NONTRIVIAL_MODES               , {"parcel_dir"}},
-	{"cache",          OPT_CACHE,          REQUIRED, NONTRIVIAL_MODES               , {"local_cache_dir"}},
+	{"cache",          OPT_CACHE,          REQUIRED, POSTPROCESS_MODES|MODE_RUN     , {"local_cache_dir"}},
 	{"last",           OPT_LAST,           REQUIRED, NONRUN_MODES                   , {"last_cache_dir"}},
 	{"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
 	{"hoard",          OPT_HOARD,          REQUIRED, MODE_HOARD                     , {"hoard_dir"}},

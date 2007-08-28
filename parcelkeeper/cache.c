@@ -170,9 +170,47 @@ void cache_shutdown(void)
 					sqlite3_errmsg(state.db));
 }
 
+static pk_err_t open_cachedir(long page_size)
+{
+	pk_err_t ret;
+
+	if (sqlite3_open(config.keyring, &state.db)) {
+		pk_log(LOG_ERROR, "Couldn't open keyring %s: %s",
+					config.keyring,
+					sqlite3_errmsg(state.db));
+		return PK_IOERR;
+	}
+	if (is_file(config.cache_file) && is_file(config.cache_index)) {
+		ret=attach(state.db, "cache", config.cache_index);
+		if (ret)
+			return ret;
+		ret=open_cache_file(page_size);
+		if (ret)
+			return ret;
+		ret=verify_cache_index();
+		if (ret)
+			return ret;
+	} else if (!is_file(config.cache_file) &&
+				!is_file(config.cache_index)) {
+		ret=attach(state.db, "cache", config.cache_index);
+		if (ret)
+			return ret;
+		ret=create_cache_file(page_size);
+		if (ret)
+			return ret;
+		ret=create_cache_index();
+		if (ret)
+			return ret;
+	} else {
+		pk_log(LOG_ERROR, "Cache and index in inconsistent state");
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
 pk_err_t cache_init(void)
 {
-	pk_err_t ret=PK_IOERR;
+	pk_err_t ret;
 	long page_size;
 
 	page_size=sysconf(_SC_PAGESIZE);
@@ -180,40 +218,21 @@ pk_err_t cache_init(void)
 		pk_log(LOG_ERROR, "Couldn't get system page size");
 		return PK_CALLFAIL;
 	}
-	if (sqlite3_open(config.keyring, &state.db)) {
-		pk_log(LOG_ERROR, "Couldn't open keyring %s: %s",
-					config.keyring,
-					sqlite3_errmsg(state.db));
-		goto bad;
-	}
 
-	if (is_file(config.cache_file) && is_file(config.cache_index)) {
-		ret=attach(state.db, "cache", config.cache_index);
-		if (ret)
-			goto bad;
-		ret=open_cache_file(page_size);
-		if (ret)
-			goto bad;
-		ret=verify_cache_index();
-		if (ret)
-			goto bad;
-	} else if (!is_file(config.cache_file) &&
-				!is_file(config.cache_index)) {
-		ret=attach(state.db, "cache", config.cache_index);
-		if (ret)
-			goto bad;
-		ret=create_cache_file(page_size);
-		if (ret)
-			goto bad;
-		ret=create_cache_index();
+	if (config.cache_dir != NULL) {
+		ret=open_cachedir(page_size);
 		if (ret)
 			goto bad;
 	} else {
-		pk_log(LOG_ERROR, "Cache and index in inconsistent state");
-		goto bad;
+		if (sqlite3_open(":memory:", &state.db)) {
+			pk_log(LOG_ERROR, "Couldn't open database handle: %s",
+						sqlite3_errmsg(state.db));
+			ret=PK_IOERR;
+			goto bad;
+		}
 	}
 
-	if (config.last_keyring != NULL) {
+	if (config.last_dir != NULL) {
 		ret=attach(state.db, "last", config.last_keyring);
 		if (ret)
 			goto bad;
