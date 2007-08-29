@@ -132,10 +132,41 @@ mode(VALIDATE) = {
 	{END_OPTS}
 };
 
+mode(LISTHOARD) = {
+	{OPT_HOARD,         REQUIRED},
+	{OPT_LOG,           OPTIONAL},
+	{END_OPTS}
+};
+
 mode(CHECKHOARD) = {
 	{OPT_USER,          REQUIRED},
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_HOARD,         REQUIRED},
+	{OPT_LOG,           OPTIONAL},
+	{END_OPTS}
+};
+
+mode(RMHOARD) = {
+	{OPT_USER,          REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
+	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_HOARD,         REQUIRED},
+	{OPT_LOG,           OPTIONAL},
+	{END_OPTS}
+};
+
+mode(REFRESH) = {
+	{OPT_USER,          REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
+	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_LAST,          REQUIRED},
+	{OPT_HOARD,         REQUIRED},
+	{OPT_LOG,           OPTIONAL},
+	{END_OPTS}
+};
+
+mode(GC) = {
 	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
@@ -159,7 +190,11 @@ static struct pk_mode pk_modes[] = {
 	{"hoard",       sym(HOARD),      "Download all chunks into hoard cache"},
 	{"examine",     sym(EXAMINE),    "Print cache statistics"},
 	{"validate",    sym(VALIDATE),   "Validate local cache against keyring"},
+	{"listhoard",   sym(LISTHOARD),  "List parcels in hoard cache"},
 	{"checkhoard",  sym(CHECKHOARD), "Validate hoard cache"},
+	{"rmhoard",     sym(RMHOARD),    "Remove parcel from hoard cache"},
+	{"refresh",     sym(REFRESH),    "Update hoard cache reference list"},
+	{"gc",          sym(GC),         "Garbage-collect hoard cache"},
 	{"help",        sym(HELP),       "Show usage summary"},
 	{"version",     sym(VERSION),    "Show version information"},
 	{0}

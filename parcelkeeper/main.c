@@ -55,8 +55,9 @@ int main(int argc, char **argv)
 
 	/* XXX inhibit logging in examine/hoard/checkhoard modes? */
 	log_start();
-	if (parse_parcel_cfg())
-		goto shutdown;
+	if (config.parcel_dir != NULL)
+		if (parse_parcel_cfg())
+			goto shutdown;
 
 	if (cache_init())
 		goto shutdown;
