@@ -2509,7 +2509,7 @@ sub isr_checkhoard ($$$$$) {
     #
     # If we get this far, everything is OK
     #
-    return $Isr::SUCCESS;
+    return $Isr::ESUCCESS;
 }
 
 #####################################
