@@ -68,8 +68,6 @@ sub build_cache ();
 sub hdksize ();
 sub connected ();
 sub check_nexus_version ();
-sub get_dirnum ($$);
-sub get_chunknum ($$);
 sub get_parcelkeeper_pid ();
 sub block_sigint ();
 sub unblock_sigint ($);
@@ -1696,26 +1694,6 @@ sub check_nexus_version () {
 	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
 	message("INFO", "Nexus is out of date ($nexus_version vs. $isr_version)");
     }
-}
-
-#
-# get_dirnum - converts a keyring offset to a directory number
-#
-sub get_dirnum ($$) {
-    my $offset = shift;
-    my $chunksperdir = shift;
-
-    return int($offset / $chunksperdir);
-}
-
-#
-# get_chunknum - converts a keyring offset to a chunk number
-#
-sub get_chunknum ($$) {
-    my $offset = shift;
-    my $chunksperdir = shift;
-
-    return $offset % $chunksperdir;
 }
 
 #
