@@ -99,7 +99,6 @@ sub isr_connected_http ();
 sub isr_run_parcelkeeper ($$);
 sub isr_hoard ();
 sub isr_stathoard ();
-sub isr_sync ($);
 sub isr_checkhoard ();
 sub isr_priv_upload ();
 sub copy_dirtychunks ();
@@ -924,10 +923,23 @@ sub sync ($) {
     my $bwflag = "";
     my $i;
 
-    # Now call the protocol-specific sync function
-    isr_sync($releasing) == $Isr::ESUCCESS
-	or errexit("Sync of parcel $userid/$parcel failed.");
-    
+    # Garbage collect the hoard cache
+    isr_priv_cleanhoard();
+
+    # Upload the dirty blocks in a cache directory on the server
+    isr_priv_upload() == $Isr::ESUCCESS
+	or errexit("Upload of parcel $userid/$parcel failed.");
+
+    # Operations from this point on should not be interrupted by the user
+    block_sigint();
+
+    # Commit the dirty blocks to a new version
+    isr_priv_commit($releasing) == $Isr::ESUCCESS
+	or errexit("Commit of parcel $userid/$parcel failed.");
+
+    # If $releasing == 1, it is not safe to unblock SIGINT until the parceldir
+    # is removed by our caller, since the last/ dir is not up-to-date.
+
     # Append the session log to the persistent log in remote storage
     # and if successful delete the session log. 
     message("INFO", "Uploading session log");
@@ -2262,32 +2274,6 @@ sub isr_stathoard () {
     # XXX
     
     return $numchunks;
-}
-
-#
-# isr_sync - Make local state clean
-#
-sub isr_sync ($) {
-    my $releasing = shift;  # whether we're releasing the lock afterward
-
-    # Garbage collect the hoard cache
-    isr_priv_cleanhoard();
-
-    # Upload the dirty blocks in a cache directory on the server
-    isr_priv_upload() == $Isr::ESUCCESS
-	or errexit("Upload of parcel $userid/$parcel failed.");
-
-    # Operations from this point on should not be interrupted by the user
-    block_sigint();
-
-    # Commit the dirty blocks to a new version
-    isr_priv_commit($releasing) == $Isr::ESUCCESS
-	or errexit("Commit of parcel $userid/$parcel failed.");
-
-    # If $releasing == 1, it is not safe to unblock SIGINT until the parceldir
-    # is removed by our caller, since the last/ dir is not up-to-date.
-
-    return $Isr::ESUCCESS;
 }
 
 #
