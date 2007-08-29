@@ -343,6 +343,13 @@ if ($parcel) {
 $hoarddir = "$isrdir/hoard";
 
 #
+# Read parcel.cfg if we have it.
+#
+if ($parcel and -e "$parceldir/parcel.cfg") {
+    parse_parcelcfg("$parceldir/parcel.cfg");
+}
+
+#
 #
 # Assign aliases
 #
@@ -543,7 +550,7 @@ sub checkout () {
     print "Fetching configuration data for $userid/$parcel from server.\n"
 	if $verbose;
     get_parcelcfg("$isrdir/$parcel-parcel.cfg");
-    %cfg = parse_parcelcfg("$isrdir/$parcel-parcel.cfg");
+    parse_parcelcfg("$isrdir/$parcel-parcel.cfg");
 
     # Before going any further, make sure we have a protocol level
     # connection to the server and a consistent parcel.
@@ -766,9 +773,6 @@ sub run () {
     # cache directory is about to become inconsistent with the local cache.
     unlink($cdcache_file);
 
-    # Parse the parcel config file that we got from the server during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
-
     # If the user wants to run connected, then before going any further, 
     # make sure we have a protocol level connection to the server
     # and a consistent parcel.
@@ -900,9 +904,6 @@ sub run () {
 # checkin - Sync and then release parcel
 #
 sub checkin () {
-    # Parse config file that was retrieved during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
-
     # Sync the dirty blocks on the server
     sync(1) == $Isr::ESUCCESS
 	or errexit("Sync of parcel $userid/$parcel failed.");
@@ -922,9 +923,6 @@ sub sync ($) {
     my $vflag = "-q";
     my $bwflag = "";
     my $i;
-
-    # Parse config file that was retrieved during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
     # Now call the protocol-specific sync function
     isr_sync($releasing) == $Isr::ESUCCESS
@@ -969,9 +967,6 @@ sub upload ($$$) {
     my $parcel = shift;     # parcel name
     my $isrdir = shift;     # absolute path of local ISR home dir
 
-    # Parse config file that was retrieved during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
-
     # Now call the protocol-specific sync function
     isr_priv_upload();
     
@@ -1015,9 +1010,6 @@ sub discard () {
 # disconnect - Prepare the host to disconnect from a parcel
 #
 sub disconnect () {
-    # Parse config file that was retrieved during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
-
     print "Preparing client host to run parcel $userid/$parcel disconnected...\n";
     
     if (!$nocheckstate) {
@@ -1130,26 +1122,20 @@ sub release () {
 # hoard - Copy all server disk blocks to the local client cache
 #
 sub hoard () {
-    my $parcelcfgfile; 
-
+    my $parcelcfg_temp = "$isrdir/$parcel-parcel.cfg.hoard";
+    
     # If the parcel is not currently checked out, then fetch a
-    # temporary copy of parcel.cfg from the server, otherwise use
-    # the parcel.cfg file hat was fetched during checkout
-
-    $parcelcfgfile = "$parceldir/parcel.cfg";
+    # temporary copy of parcel.cfg from the server and parse it
     if (!-e $parceldir) {
-	$parcelcfgfile = "$isrdir/$parcel-parcel.cfg.hoard";
 	print "Fetching configuration data for $userid/$parcel from server.\n"
 	    if $verbose;
-	get_parcelcfg($parcelcfgfile);
+	get_parcelcfg($parcelcfg_temp);
+	parse_parcelcfg($parcelcfg_temp);
     } 
-
-    # Parse the config file
-    %cfg = parse_parcelcfg($parcelcfgfile);
 
     # Delete the temporary parcel.cfg file if necessary
     if (!-e $parceldir) {
-	unlink($parcelcfgfile);
+	unlink($parcelcfg_temp);
     }
 
     # Run the actual hoard process
@@ -1198,9 +1184,6 @@ sub statparcel () {
     my $cachestr = "";
 
     my @files = ();
-
-    # Parse config file that was retrieved during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
     #
     # Display the size of the memory image (if it exists)
@@ -1537,65 +1520,52 @@ sub parse_cfgfile ($$) {
 }
 
 #
-# parse_parcelcfg - Read a local parcel.cfg file and return a hash containing 
-#                   its key/value pairs. Delete the file if there are any
-#                   problems.
+# parse_parcelcfg - Read a local parcel.cfg file and populate %cfg with its
+#                   key/value pairs.
 #
 sub parse_parcelcfg ($) {
     my $infile = shift;
 
-    my %cfg;
-
     # Load the key/value pairs into the hash
+    %cfg = ();
     if (!parse_cfgfile($infile, \%cfg)) {
-	unlink($infile);
 	errexit("Couldn't parse parcel.cfg for $userid/$parcel");
     }
     
     # Check parcel format version
     unless (exists $cfg{VERSION} and $cfg{VERSION} == 3) {
-	unlink($infile);
 	errexit("Unknown or missing VERSION in parcel.cfg for parcel $userid/$parcel.");
     }
 
     # Every parcel has a PROTOCOL entry
     unless (exists $cfg{PROTOCOL}) {
-	unlink($infile);
 	errexit("Missing PROTOCOL entry in parcel.cfg for parcel $userid/$parcel.");
     }
 
     # Every parcel has a MAXKB entry
     unless (exists $cfg{MAXKB}) {
-	unlink($infile);
 	errexit("Missing MAXKB entry in parcel.cfg for parcel $userid/$parcel.");
     }
 
     unless (exists $cfg{RPATH}) {
-	unlink($infile);
 	errexit("Missing RPATH entry in parcel.cfg for parcel $userid/$parcel.");
     }
     
     unless (exists $cfg{WPATH}) {
-	unlink($infile);
 	errexit("Missing WPATH entry in parcel.cfg for parcel $userid/$parcel.");
     }
     
     unless (exists $cfg{KEYROOT}) {
-	unlink($infile);
 	errexit("Missing KEYROOT entry in parcel.cfg for parcel $userid/$parcel.");
     }
     
     unless (exists $cfg{SERVER}) {
-	unlink($infile);
 	errexit("Missing SERVER entry in parcel.cfg for parcel $userid/$parcel.");
     }
     
     # Every read and write path gets appended with the userid and parcel
     $cfg{RPATH} .= "/$userid/$parcel";
     $cfg{WPATH} .= "/$userid/$parcel";
-
-    # Return the hash of key/value pairs to the caller
-    return %cfg;
 }
 
 #
