@@ -47,6 +47,7 @@ struct pk_option {
 struct pk_option_record {
 	enum option opt;
 	enum arg_type type;
+	char *comment;
 	unsigned _seen;  /* internal use by pk_getopt() */
 };
 
@@ -95,7 +96,7 @@ mode(UPLOAD) = {
 	{OPT_CACHE,         REQUIRED},
 	{OPT_LAST,          REQUIRED},
 	{OPT_DESTDIR,       REQUIRED},
-	{OPT_HOARD,         OPTIONAL},
+	{OPT_HOARD,         OPTIONAL, "Also update the specified hoard cache"},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
 };
@@ -115,8 +116,8 @@ mode(EXAMINE) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_PARCELDIR,     REQUIRED},
 	{OPT_LAST,          REQUIRED},
-	{OPT_CACHE,         OPTIONAL},
-	{OPT_HOARD,         OPTIONAL},
+	{OPT_CACHE,         OPTIONAL, "Print statistics on the specified local cache"},
+	{OPT_HOARD,         OPTIONAL, "Print statistics on the specified hoard cache"},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
 };
@@ -223,6 +224,8 @@ static void usage(struct pk_mode *mode)
 			printf("%s\n", str_end);
 			if (otmp->comment != NULL)
 				printf("          %s\n", otmp->comment);
+			if (rtmp->comment != NULL)
+				printf("          %s\n", rtmp->comment);
 		}
 		if (!have_options)
 			printf("Usage: %s %s\n", progname, mode->name);
