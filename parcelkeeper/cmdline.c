@@ -23,7 +23,7 @@ enum arg_type {
 };
 
 enum option {
-	OPT_PARCELDIR,
+	OPT_PARCEL,
 	OPT_CACHE,
 	OPT_LAST,
 	OPT_HOARD,
@@ -57,7 +57,7 @@ struct pk_mode {
 };
 
 static struct pk_option pk_options[] = {
-	{"parceldir",      OPT_PARCELDIR,      {"parcel_dir"}},
+	{"parcel",         OPT_PARCEL,         {"parcel_dir"}},
 	{"cache",          OPT_CACHE,          {"local_cache_dir"}},
 	{"last",           OPT_LAST,           {"last_cache_dir"}},
 	{"hoard",          OPT_HOARD,          {"hoard_dir"}},
@@ -72,7 +72,7 @@ static struct pk_option pk_options[] = {
 #define mode(sym) static struct pk_option_record sym ## _opts[]
 
 mode(RUN) = {
-	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
 	{OPT_CACHE,         REQUIRED},
 	{OPT_HOARD,         OPTIONAL},
 	{OPT_COMPRESSION,   OPTIONAL},
@@ -82,7 +82,7 @@ mode(RUN) = {
 };
 
 mode(UPLOAD) = {
-	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
 	{OPT_CACHE,         REQUIRED},
 	{OPT_LAST,          REQUIRED},
 	{OPT_DESTDIR,       REQUIRED},
@@ -92,7 +92,7 @@ mode(UPLOAD) = {
 };
 
 mode(HOARD) = {
-	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
 	{OPT_LAST,          REQUIRED},
 	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
@@ -100,7 +100,7 @@ mode(HOARD) = {
 };
 
 mode(EXAMINE) = {
-	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
 	{OPT_LAST,          REQUIRED},
 	{OPT_CACHE,         OPTIONAL, "Print statistics on the specified local cache"},
 	{OPT_HOARD,         OPTIONAL, "Print statistics on the specified hoard cache"},
@@ -109,7 +109,7 @@ mode(EXAMINE) = {
 };
 
 mode(VALIDATE) = {
-	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
 	{OPT_CACHE,         REQUIRED},
 	{OPT_LAST,          REQUIRED},
 	{OPT_LOG,           OPTIONAL},
@@ -123,21 +123,21 @@ mode(LISTHOARD) = {
 };
 
 mode(CHECKHOARD) = {
-	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
 };
 
 mode(RMHOARD) = {
-	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
 };
 
 mode(REFRESH) = {
-	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
 	{OPT_LAST,          REQUIRED},
 	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
@@ -360,7 +360,7 @@ enum mode parse_cmdline(int argc, char **argv)
 
 	while ((opt=pk_getopt(argc, argv)) != END_OPTS) {
 		switch (opt) {
-		case OPT_PARCELDIR:
+		case OPT_PARCEL:
 			config.parcel_dir=optparams[0];
 			check_dir(config.parcel_dir);
 			config.parcel_cfg=filepath(optparams[0], "parcel.cfg",
