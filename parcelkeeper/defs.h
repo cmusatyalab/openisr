@@ -50,15 +50,14 @@ enum compresstype {
 	COMP_LZF=3
 };
 
-/* pk_getopt() requires this to be a bitmask */
 enum mode {
-	MODE_RUN      = 0x01,
-	MODE_UPLOAD   = 0x02,
-	MODE_EXAMINE  = 0x04,
-	MODE_VALIDATE = 0x08,
-	MODE_HELP     = 0x10,
-	MODE_VERSION  = 0x20,
-	MODE_HOARD    = 0x40,
+	MODE_RUN,
+	MODE_UPLOAD,
+	MODE_HOARD,
+	MODE_EXAMINE,
+	MODE_VALIDATE,
+	MODE_HELP,
+	MODE_VERSION,
 };
 
 struct pk_connection;
