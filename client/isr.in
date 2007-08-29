@@ -151,6 +151,7 @@ my $cachedir;
 my $lastdir;
 my $tmpdir;
 my $hoarddir;
+my $cdcache_file;
 
 #
 # Read/write global variable: At any point in time, this hash contains
@@ -335,6 +336,9 @@ if ($parcel) {
     $cachedir = "$parceldir/cache";
     $lastdir = "$parceldir/last";
     $tmpdir = "$parceldir/tmp";
+    # Existence of this file is a flag indicating that the temporary
+    # dirty cache is consistent with the local cache.
+    $cdcache_file = "$parceldir/consistent-dirtycache-flag";
 }
 $hoarddir = "$isrdir/hoard";
 
@@ -754,7 +758,6 @@ sub run () {
     my $devnode;
     
     my $pkcmd = "$Isr::LIBDIR/parcelkeeper";
-    my $cdcache_file = "$parceldir/$Isr::CONSISTENT_DIRTYCACHE_FILE";
 
     # Block receipt of the SIGTSTP (ctrl-z)
     block_sigtstp();
@@ -980,7 +983,6 @@ sub upload ($$$) {
 #
 sub discard () {
     my $reply;
-    my $cdcache_file = "$parceldir/$Isr::CONSISTENT_DIRTYCACHE_FILE";
 
     # Give users a chance to change their minds.
     if ($verbose) {
@@ -2363,8 +2365,6 @@ sub isr_priv_upload () {
     my $vflag = "-q";
     my $bwflag = "";
     my $i;
-
-    my $cdcache_file = "$parceldir/$Isr::CONSISTENT_DIRTYCACHE_FILE";
 
     #
     # Check to see if there is anything to upload

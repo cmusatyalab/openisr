@@ -22,10 +22,6 @@ $LIBDIR = "!!LIBDIR!!";
 $SHAREDIR = "!!SHAREDIR!!";
 $SYSCONFDIR = "!!SYSCONFDIR!!";
 
-# Existence of this file is a flag indicating that the temporary
-# dirty cache is consistent with the local cache.
-$CONSISTENT_DIRTYCACHE_FILE = "consistent-dirtycache-flag";
-
 # Return codes for storage module functions
 $ESUCCESS  = 0;  # Success
 $ENOSPACE  = 1;  # Not enough space
