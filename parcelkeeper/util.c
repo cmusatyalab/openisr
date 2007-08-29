@@ -97,9 +97,9 @@ unsigned crypto_hashlen(enum cryptotype type)
 
 int compress_is_valid(enum compresstype type)
 {
-	if (type < 0 || type >= 8 * sizeof(state.required_compress))
+	if (type < 0 || type >= 8 * sizeof(parcel.required_compress))
 		return 0;
-	return (state.required_compress & (1 << type));
+	return (parcel.required_compress & (1 << type));
 }
 
 pk_err_t read_file(const char *path, char *buf, int *bufsize)
@@ -192,7 +192,7 @@ void print_progress(unsigned chunks, unsigned maxchunks)
 	static unsigned last_mb;
 	unsigned percent;
 	unsigned mb;
-	unsigned chunks_per_mb=(1 << 20)/state.chunksize;
+	unsigned chunks_per_mb=(1 << 20)/parcel.chunksize;
 
 	if (maxchunks)
 		percent=chunks*100/maxchunks;
@@ -311,8 +311,8 @@ pk_err_t fork_and_wait(int *status_fd)
 char *form_chunk_path(char *prefix, unsigned chunk)
 {
 	char *ret;
-	unsigned dir = chunk / state.chunks_per_dir;
-	unsigned file = chunk % state.chunks_per_dir;
+	unsigned dir = chunk / parcel.chunks_per_dir;
+	unsigned file = chunk % parcel.chunks_per_dir;
 
 	if (asprintf(&ret, "%s/%.4u/%.4u", prefix, dir, file) == -1)
 		return NULL;
@@ -324,7 +324,7 @@ pk_err_t digest(void *out, const void *in, unsigned len)
 	EVP_MD_CTX ctx;
 	const EVP_MD *alg=NULL;  /* make compiler happy */
 
-	switch (state.crypto) {
+	switch (parcel.crypto) {
 	case CRY_BLOWFISH_SHA1:
 	case CRY_AES_SHA1:
 		alg=EVP_sha1();
@@ -356,10 +356,10 @@ char *format_tag(const void *tag)
 	const unsigned char *tbuf=tag;
 	int i;
 
-	buf=malloc(2 * state.hashlen + 1);
+	buf=malloc(2 * parcel.hashlen + 1);
 	if (buf == NULL)
 		return NULL;
-	for (i=0; i<state.hashlen; i++)
+	for (i=0; i<parcel.hashlen; i++)
 		sprintf(buf + 2 * i, "%.2x", tbuf[i]);
 	return buf;
 }

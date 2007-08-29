@@ -242,13 +242,13 @@ pk_err_t nexus_init(void)
 	snprintf((char*)setup.chunk_device, NEXUS_MAX_DEVICE_LEN, "%s",
 				state.loopdev_name);
 	setup.offset=state.offset >> 9;
-	setup.chunksize=state.chunksize;
+	setup.chunksize=parcel.chunksize;
 	/* Always use a 16 MB cache */
-	setup.cachesize=(16 << 20) / state.chunksize;
-	setup.crypto=crypto_to_nexus(state.crypto);
+	setup.cachesize=(16 << 20) / parcel.chunksize;
+	setup.crypto=crypto_to_nexus(parcel.crypto);
 	setup.compress_default=compress_to_nexus(config.compress);
-	for (i=0; i<8*sizeof(state.required_compress); i++)
-		if (state.required_compress & (1 << i))
+	for (i=0; i<8*sizeof(parcel.required_compress); i++)
+		if (parcel.required_compress & (1 << i))
 			setup.compress_required |= 1 << compress_to_nexus(i);
 	if (setup.crypto == NEXUS_NR_CRYPTO ||
 				setup.compress_default == NEXUS_NR_COMPRESS ||
@@ -323,7 +323,7 @@ void nexus_shutdown(void)
 
 static int request_is_valid(struct nexus_message *req)
 {
-	if (req->chunk >= state.chunks) {
+	if (req->chunk >= parcel.chunks) {
 		pk_log(LOG_ERROR, "Invalid chunk number %llu received "
 					"from Nexus", req->chunk);
 		return 0;
@@ -333,7 +333,7 @@ static int request_is_valid(struct nexus_message *req)
 	case NEXUS_MSGTYPE_GET_META:
 		break;
 	case NEXUS_MSGTYPE_UPDATE_META:
-		if (req->length > state.chunksize) {
+		if (req->length > parcel.chunksize) {
 			pk_log(LOG_ERROR, "Invalid length %u received from "
 						"Nexus for chunk %llu",
 						req->length, req->chunk);

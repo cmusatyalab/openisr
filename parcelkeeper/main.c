@@ -17,6 +17,7 @@ struct pk_config config = {
 	.log_stderr_mask = -1,
 	.compress = COMP_NONE
 };
+struct pk_parcel parcel;
 struct pk_state state;
 
 int main(int argc, char **argv)

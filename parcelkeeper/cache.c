@@ -36,7 +36,7 @@ struct ca_header {
 
 static off64_t chunk_to_offset(unsigned chunk)
 {
-	return (off64_t)state.chunksize * chunk + state.offset;
+	return (off64_t)parcel.chunksize * chunk + state.offset;
 }
 
 static pk_err_t create_cache_file(long page_size)
@@ -60,14 +60,14 @@ static pk_err_t create_cache_file(long page_size)
 	   We assume that the page size is at least sizeof(hdr) bytes. */
 	state.offset=page_size;
 	hdr.magic=htonl(CA_MAGIC);
-	hdr.entries=htonl(state.chunks);
+	hdr.entries=htonl(parcel.chunks);
 	hdr.offset=htonl(state.offset >> 9);
 	hdr.version=CA_VERSION;
 	if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
 		pk_log(LOG_ERROR, "Couldn't write cache file header");
 		return PK_IOERR;
 	}
-	if (ftruncate(fd, chunk_to_offset(state.chunks))) {
+	if (ftruncate(fd, chunk_to_offset(parcel.chunks))) {
 		pk_log(LOG_ERROR, "couldn't extend cache file");
 		return PK_IOERR;
 	}
@@ -101,10 +101,10 @@ static pk_err_t open_cache_file(long page_size)
 					hdr.version);
 		return PK_BADFORMAT;
 	}
-	if (ntohl(hdr.entries) != state.chunks) {
+	if (ntohl(hdr.entries) != parcel.chunks) {
 		pk_log(LOG_ERROR, "Invalid chunk count reading cache file: "
 					"expected %u, found %u",
-					state.chunks, ntohl(hdr.entries));
+					parcel.chunks, ntohl(hdr.entries));
 		return PK_BADFORMAT;
 	}
 	state.offset=ntohl(hdr.offset) << 9;
@@ -246,7 +246,7 @@ bad:
 
 static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 {
-	void *buf=malloc(state.chunksize);
+	void *buf=malloc(parcel.chunksize);
 	char *ftag;
 	unsigned len;
 	pk_err_t ret;
@@ -306,15 +306,15 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 		return PK_IOERR;
 	}
 	query_row(stmt, "bbd", &rowtag, &taglen, &rowkey, &keylen, compress);
-	if (taglen != state.hashlen || keylen != state.hashlen) {
+	if (taglen != parcel.hashlen || keylen != parcel.hashlen) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Invalid hash length for chunk %u: "
 					"expected %d, tag %d, key %d",
-					chunk, state.hashlen, taglen, keylen);
+					chunk, parcel.hashlen, taglen, keylen);
 		return PK_INVALID;
 	}
-	memcpy(tag, rowtag, state.hashlen);
-	memcpy(key, rowkey, state.hashlen);
+	memcpy(tag, rowtag, parcel.hashlen);
+	memcpy(key, rowkey, parcel.hashlen);
 	query_free(stmt);
 
 	ret=query(&stmt, state.db, "SELECT length FROM cache.chunks "
@@ -333,7 +333,7 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 		return PK_IOERR;
 	}
 
-	if (*length > state.chunksize) {
+	if (*length > parcel.chunksize) {
 		pk_log(LOG_ERROR, "Invalid chunk length for chunk %u: %u",
 					chunk, *length);
 		return PK_INVALID;
@@ -359,7 +359,7 @@ pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 	/* XXX transient? */
 	if (query(NULL, state.db, "UPDATE keys SET tag = ?, key = ?, "
 				"compression = ? WHERE chunk == ?", "bbdd",
-				tag, state.hashlen, key, state.hashlen,
+				tag, parcel.hashlen, key, parcel.hashlen,
 				compress, chunk)) {
 		pk_log(LOG_ERROR, "Couldn't update keyring");
 		return PK_IOERR;
@@ -378,8 +378,8 @@ static pk_err_t make_upload_dirs(void)
 					config.dest_dir);
 		return PK_IOERR;
 	}
-	numdirs = (state.chunks + state.chunks_per_dir - 1) /
-				state.chunks_per_dir;
+	numdirs = (parcel.chunks + parcel.chunks_per_dir - 1) /
+				parcel.chunks_per_dir;
 	for (dir=0; dir < numdirs; dir++) {
 		if (asprintf(&path, "%s/%.4d", config.dest_dir, dir) == -1) {
 			pk_log(LOG_ERROR, "malloc failure");
@@ -420,7 +420,7 @@ int copy_for_upload(void)
 	void *tag;
 	unsigned taglen;
 	unsigned length;
-	char calctag[state.hashlen];
+	char calctag[parcel.hashlen];
 	char *path;
 	int fd;
 	unsigned modified_chunks=0;
@@ -447,7 +447,7 @@ int copy_for_upload(void)
 	}
 	query_row(stmt, "d", &total_modified);
 	query_free(stmt);
-	buf=malloc(state.chunksize);
+	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failed");
 		return 1;
@@ -462,14 +462,14 @@ int copy_for_upload(void)
 				sret == SQLITE_ROW; sret=query_next(stmt)) {
 		query_row(stmt, "dbd", &chunk, &tag, &taglen, &length);
 		print_progress(modified_chunks, total_modified);
-		if (chunk > state.chunks) {
+		if (chunk > parcel.chunks) {
 			pk_log(LOG_ERROR, "Chunk %u: greater than parcel size "
-						"%u", chunk, state.chunks);
+						"%u", chunk, parcel.chunks);
 			goto out;
 		}
-		if (taglen != state.hashlen) {
+		if (taglen != parcel.hashlen) {
 			pk_log(LOG_ERROR, "Chunk %u: expected tag length %u, "
-						"found %u", state.hashlen,
+						"found %u", parcel.hashlen,
 						taglen);
 			goto out;
 		}
@@ -479,7 +479,7 @@ int copy_for_upload(void)
 						chunk);
 			goto out;
 		}
-		if (length > state.chunksize) {
+		if (length > parcel.chunksize) {
 			pk_log(LOG_ERROR, "Chunk %u: absurd length %u", chunk,
 						length);
 			goto out;
@@ -491,7 +491,7 @@ int copy_for_upload(void)
 			goto out;
 		}
 		digest(calctag, buf, length);
-		if (memcmp(tag, calctag, state.hashlen)) {
+		if (memcmp(tag, calctag, parcel.hashlen)) {
 			pk_log(LOG_ERROR, "Chunk %u: tag mismatch.  "
 					"Data corruption has occurred", chunk);
 			log_tag_mismatch(tag, calctag);
@@ -569,10 +569,10 @@ int validate_keyring(void)
 				"FROM keys ORDER BY chunk ASC", NULL);
 				sret == SQLITE_ROW; sret=query_next(stmt)) {
 		query_row(stmt, "dnnd", &chunk, &taglen, &keylen, &compress);
-		if (chunk >= state.chunks) {
+		if (chunk >= parcel.chunks) {
 			pk_log(LOG_ERROR, "Found keyring entry %u greater than"
 						" parcel size %u", chunk,
-						state.chunks);
+						parcel.chunks);
 			ret=1;
 			continue;
 		}
@@ -589,16 +589,16 @@ int validate_keyring(void)
 			expected_chunk++;
 		}
 		expected_chunk++;
-		if (taglen != state.hashlen) {
+		if (taglen != parcel.hashlen) {
 			pk_log(LOG_ERROR, "Chunk %u: expected tag length %u, "
 						"found %u", chunk,
-						state.hashlen, taglen);
+						parcel.hashlen, taglen);
 			ret=1;
 		}
-		if (keylen != state.hashlen) {
+		if (keylen != parcel.hashlen) {
 			pk_log(LOG_ERROR, "Chunk %u: expected key length %u, "
 						"found %u", chunk,
-						state.hashlen, keylen);
+						parcel.hashlen, keylen);
 			ret=1;
 		}
 		if (!compress_is_valid(compress)) {
@@ -621,7 +621,7 @@ int validate_cache(void)
 	sqlite3_stmt *stmt;
 	void *buf;
 	void *tag;
-	char calctag[state.hashlen];
+	char calctag[parcel.hashlen];
 	unsigned chunk;
 	unsigned taglen;
 	unsigned chunklen;
@@ -644,7 +644,7 @@ int validate_cache(void)
 	query_row(stmt, "d", &valid);
 	query_free(stmt);
 
-	buf=malloc(state.chunksize);
+	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failed");
 		return 1;
@@ -658,14 +658,14 @@ int validate_cache(void)
 		query_row(stmt, "ddb", &chunk, &chunklen, &tag, &taglen);
 		print_progress(++processed, valid);
 
-		if (chunk > state.chunks) {
+		if (chunk > parcel.chunks) {
 			pk_log(LOG_ERROR, "Found chunk %u greater than "
 						"parcel size %u", chunk,
-						state.chunks);
+						parcel.chunks);
 			ret=1;
 			continue;
 		}
-		if (chunklen > state.chunksize || chunklen == 0) {
+		if (chunklen > parcel.chunksize || chunklen == 0) {
 			pk_log(LOG_ERROR, "Chunk %u: absurd size %u",
 						chunk, chunklen);
 			ret=1;
@@ -677,10 +677,10 @@ int validate_cache(void)
 			ret=1;
 			continue;
 		}
-		if (taglen != state.hashlen) {
+		if (taglen != parcel.hashlen) {
 			pk_log(LOG_ERROR, "Chunk %u: expected tag length "
 						"%u, found %u", chunk,
-						state.hashlen, taglen);
+						parcel.hashlen, taglen);
 			ret=1;
 			continue;
 		}
@@ -740,10 +740,10 @@ int examine_cache(void)
 	query_row(stmt, "d", &dirtychunks);
 	query_free(stmt);
 
-	max_mb=(((off64_t)state.chunks) * state.chunksize) >> 20;
-	valid_mb=(((off64_t)validchunks) * state.chunksize) >> 20;
-	dirty_mb=(((off64_t)dirtychunks) * state.chunksize) >> 20;
-	valid_pct=(100 * validchunks) / state.chunks;
+	max_mb=(((off64_t)parcel.chunks) * parcel.chunksize) >> 20;
+	valid_mb=(((off64_t)validchunks) * parcel.chunksize) >> 20;
+	dirty_mb=(((off64_t)dirtychunks) * parcel.chunksize) >> 20;
+	valid_pct=(100 * validchunks) / parcel.chunks;
 	if (validchunks)
 		dirty_pct=(100 * dirtychunks) / validchunks;
 	printf("Local cache : %u%% populated (%u/%u MB), %u%% modified "

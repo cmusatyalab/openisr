@@ -29,7 +29,7 @@ static size_t curl_callback(void *data, size_t size, size_t nmemb,
 			void *private)
 {
 	struct pk_connection *conn=private;
-	size_t count = min(size * nmemb, state.chunksize - conn->offset);
+	size_t count = min(size * nmemb, parcel.chunksize - conn->offset);
 
 	memcpy(conn->buf + conn->offset, data, count);
 	conn->offset += count;
@@ -84,7 +84,7 @@ static pk_err_t transport_init_conn(struct pk_connection **result)
 		goto bad;
 	}
 	if (curl_easy_setopt(conn->curl, CURLOPT_MAXFILESIZE,
-				state.chunksize)) {
+				parcel.chunksize)) {
 		pk_log(LOG_ERROR, "Couldn't set maximum transfer size");
 		goto bad;
 	}
@@ -118,7 +118,7 @@ static pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
 	pk_err_t ret;
 	CURLcode err;
 
-	url=form_chunk_path(state.master, chunk);
+	url=form_chunk_path(parcel.master, chunk);
 	if (url == NULL) {
 		pk_log(LOG_ERROR, "malloc failure");
 		return PK_NOMEM;
@@ -160,7 +160,7 @@ static pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
 pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 			unsigned *length)
 {
-	char calctag[state.hashlen];
+	char calctag[parcel.hashlen];
 	size_t len;
 	int i;
 	pk_err_t ret;
@@ -183,7 +183,7 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 		pk_log(LOG_ERROR, "Couldn't calculate chunk hash");
 		return ret;
 	}
-	if (memcmp(tag, calctag, state.hashlen)) {
+	if (memcmp(tag, calctag, parcel.hashlen)) {
 		pk_log(LOG_ERROR, "Invalid tag for retrieved chunk %u", chunk);
 		log_tag_mismatch(tag, calctag);
 		return PK_TAGFAIL;

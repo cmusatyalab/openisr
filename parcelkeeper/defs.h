@@ -107,6 +107,18 @@ struct pk_config {
 	int foreground;
 };
 
+struct pk_parcel {
+	enum cryptotype crypto;
+	unsigned required_compress;
+	unsigned chunks;
+	unsigned chunksize;
+	unsigned chunks_per_dir;
+	unsigned hashlen;
+	char *uuid;
+	char *server;
+	char *master;
+};
+
 struct pk_state {
 	FILE *log_fp;
 	int lock_fd;
@@ -122,21 +134,13 @@ struct pk_state {
 	int bdev_index;
 	int hoard_ident;
 
-	enum cryptotype crypto;
-	unsigned required_compress;
-	unsigned chunks;
-	unsigned chunksize;
-	unsigned chunks_per_dir;
-	unsigned hashlen;
 	unsigned offset;
-	char *uuid;
-	char *server;
-	char *master;
 
 	unsigned request_count;  /* XXX */
 };
 
 extern struct pk_config config;
+extern struct pk_parcel parcel;
 extern struct pk_state state;
 extern const char *isr_release;
 extern const char *rcs_revision;

@@ -102,34 +102,34 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 		}
 		break;
 	case PC_CHUNKSIZE:
-		if (parseuint(&state.chunksize, value, 10)) {
+		if (parseuint(&parcel.chunksize, value, 10)) {
 			pk_log(LOG_ERROR, "Invalid chunksize %s", value);
 			return PK_INVALID;
 		}
 		break;
 	case PC_NUMCHUNKS:
-		if (parseuint(&state.chunks, value, 10)) {
+		if (parseuint(&parcel.chunks, value, 10)) {
 			pk_log(LOG_ERROR, "Invalid chunk count %s", value);
 			return PK_INVALID;
 		}
 		break;
 	case PC_CHUNKSPERDIR:
-		if (parseuint(&state.chunks_per_dir, value, 10)) {
+		if (parseuint(&parcel.chunks_per_dir, value, 10)) {
 			pk_log(LOG_ERROR, "Invalid CHUNKSPERDIR value %s",
 						value);
 			return PK_INVALID;
 		}
 		break;
 	case PC_CRYPTO:
-		state.crypto=parse_crypto(value);
-		if (state.crypto == CRY_UNKNOWN) {
+		parcel.crypto=parse_crypto(value);
+		if (parcel.crypto == CRY_UNKNOWN) {
 			pk_log(LOG_ERROR, "Unknown crypto suite %s", value);
 			return PK_INVALID;
 		}
-		state.hashlen=crypto_hashlen(state.crypto);
+		parcel.hashlen=crypto_hashlen(parcel.crypto);
 		break;
 	case PC_COMPRESS:
-		state.required_compress=(1 << COMP_NONE);
+		parcel.required_compress=(1 << COMP_NONE);
 		while ((tok=strtok_r(value, ",", &saveptr)) != NULL) {
 			value=NULL;
 			compress=parse_compress(tok);
@@ -138,7 +138,7 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 							" %s", tok);
 				return PK_INVALID;
 			}
-			state.required_compress |= (1 << compress);
+			parcel.required_compress |= (1 << compress);
 		}
 		if (!compress_is_valid(config.compress)) {
 			pk_log(LOG_ERROR, "This parcel does not support the "
@@ -157,7 +157,7 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 			pk_log(LOG_ERROR, "Invalid UUID");
 			return PK_INVALID;
 		}
-		uurc=uuid_export(uuid, UUID_FMT_STR, (void *)&state.uuid,
+		uurc=uuid_export(uuid, UUID_FMT_STR, (void *)&parcel.uuid,
 					NULL);
 		if (uurc) {
 			pk_log(LOG_ERROR, "Can't format UUID: %s",
@@ -167,10 +167,10 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 		uuid_destroy(uuid);
 		break;
 	case PC_SERVER:
-		state.server=strdup(value);
+		parcel.server=strdup(value);
 		break;
 	case PC_RPATH:
-		if (asprintf(&state.master, "%s/%s/%s/last/hdk", value,
+		if (asprintf(&parcel.master, "%s/%s/%s/last/hdk", value,
 					config.user, config.parcel) == -1) {
 			pk_log(LOG_ERROR, "malloc failure");
 			return PK_NOMEM;

@@ -78,7 +78,7 @@ static pk_err_t expand_cache(void)
 	int count;
 	int start;
 	int i;
-	int step = state.chunksize >> 9;
+	int step = parcel.chunksize >> 9;
 
 	if (query(&stmt, state.db, "SELECT count(*), max(offset) "
 				"FROM hoard.chunks", NULL) != SQLITE_ROW) {
@@ -117,7 +117,7 @@ static void add_chunk_reference(const void *tag)
 
 	if (query(NULL, state.db, "INSERT OR IGNORE INTO hoard.refs "
 				"(parcel, tag) VALUES (?, ?)", "db",
-				state.hoard_ident, tag, state.hashlen)
+				state.hoard_ident, tag, parcel.hashlen)
 				!= SQLITE_OK) {
 		ftag=format_tag(tag);
 		pk_log(LOG_ERROR, "Couldn't add chunk reference for tag %s",
@@ -144,7 +144,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 		return ret;
 
 	sret=query(&stmt, state.db, "SELECT offset, length FROM hoard.chunks "
-				"WHERE tag == ?", "b", tag, state.hashlen);
+				"WHERE tag == ?", "b", tag, parcel.hashlen);
 	if (sret == SQLITE_OK) {
 		query_free(stmt);
 		ret=commit(state.db);
@@ -162,7 +162,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	gettimeofday(&tv, NULL);
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET last_access = ? "
 				"WHERE tag == ?", "db", tv.tv_sec, tag,
-				state.hashlen)) {
+				parcel.hashlen)) {
 		/* Not fatal */
 		pk_log(LOG_ERROR, "Couldn't update chunk timestamp");
 	}
@@ -175,7 +175,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	/* XXX what if the reference is released right now?  we could read in
 	   bad chunk data.  do we need to hold a read lock the whole time? */
 
-	if (clen <= 0 || clen > state.chunksize)
+	if (clen <= 0 || clen > parcel.chunksize)
 		/* XXX */;
 
 	if (pread(state.hoard_fd, buf, clen, ((off_t)offset) << 9) != clen) {
@@ -217,7 +217,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 		return ret;
 
 	sret=query(NULL, state.db, "SELECT tag FROM hoard.chunks WHERE "
-				"tag == ?", "b", tag, state.hashlen);
+				"tag == ?", "b", tag, parcel.hashlen);
 	if (sret == SQLITE_ROW) {
 		add_chunk_reference(tag);
 		ret=commit(state.db);
@@ -274,7 +274,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	}
 	sret=query(NULL, state.db, "UPDATE hoard.chunks SET tag = ? "
 				"WHERE offset = ?", "bd",
-				tag, state.hashlen, offset);
+				tag, parcel.hashlen, offset);
 	if (sret == SQLITE_CONSTRAINT) {
 		/* Someone else has already written this tag */
 		deallocate_chunk_offset(offset);
@@ -357,14 +357,14 @@ static pk_err_t get_parcel_ident(void)
 	if (ret)
 		return ret;
 	while ((sret=query(&stmt, state.db, "SELECT parcel FROM hoard.parcels "
-				"WHERE uuid == ?", "S", state.uuid))
+				"WHERE uuid == ?", "S", parcel.uuid))
 				== SQLITE_OK) {
 		query_free(stmt);
 		if (query(NULL, state.db, "INSERT INTO hoard.parcels "
 					"(uuid, server, user, name) "
 					"VALUES (?, ?, ?, ?)", "SSSS",
-					state.uuid, state.server, config.user,
-					config.parcel)) {
+					parcel.uuid, parcel.server,
+					config.user, config.parcel)) {
 			pk_log(LOG_ERROR, "Couldn't insert parcel record");
 			ret=PK_IOERR;
 			goto bad;
@@ -399,14 +399,14 @@ int hoard(void)
 	size_t chunklen;
 	int chunk;
 	void *tagp;
-	char tag[state.hashlen];
+	char tag[parcel.hashlen];
 	int taglen;
 	int num_hoarded=0;
 	int to_hoard;
 	int ret=1;
 	int sret;
 
-	buf=malloc(state.chunksize);
+	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failure");
 		return 1;
@@ -433,13 +433,13 @@ int hoard(void)
 				"(SELECT tag FROM hoard.chunks) LIMIT 1", NULL))
 				== SQLITE_ROW) {
 		query_row(stmt, "db", &chunk, &tagp, &taglen);
-		if (taglen != state.hashlen) {
+		if (taglen != parcel.hashlen) {
 			query_free(stmt);
 			pk_log(LOG_ERROR, "Invalid tag length for chunk %d",
 						chunk);
 			goto out;
 		}
-		memcpy(tag, tagp, state.hashlen);
+		memcpy(tag, tagp, parcel.hashlen);
 		query_free(stmt);
 		if (transport_fetch_chunk(buf, chunk, tag, &chunklen))
 			goto out;
@@ -492,8 +492,8 @@ int examine_hoard(void)
 	if (commit(state.db))
 		goto bad;
 
-	max_mb=(((off64_t)maxchunks) * state.chunksize) >> 20;
-	valid_mb=(((off64_t)validchunks) * state.chunksize) >> 20;
+	max_mb=(((off64_t)maxchunks) * parcel.chunksize) >> 20;
+	valid_mb=(((off64_t)validchunks) * parcel.chunksize) >> 20;
 	valid_pct=(100 * validchunks) / maxchunks;
 	printf("Hoard cache : %u%% populated (%u/%u MB)\n", valid_pct,
 				valid_mb, max_mb);
