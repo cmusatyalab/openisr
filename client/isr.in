@@ -42,30 +42,30 @@ $| = 1; # Autoflush output on every print statement
 
 
 # Function prototypes
-sub checkout ($$$$);
-sub run ($$$$);
-sub checkin ($$$);
-sub sync ($$$$);
-sub discard ($$$);
-sub disconnect ($$$$);
-sub listparcels ($$$$$);
-sub authenticate ($);
+sub checkout ();
+sub run ();
+sub checkin ();
+sub sync ($);
+sub discard ();
+sub disconnect ();
+sub listparcels ();
+sub authenticate ();
 sub deauthenticate ();
-sub passwd ($);
-sub release ($$$);
-sub clean ($$$$);
+sub passwd ();
+sub release ();
+sub clean ($);
 sub resetclient ();
-sub cleanclient ($$$$);
-sub hoard ($$$);
-sub do_hoard ($$$);
-sub checkparcel ($$$$$);
-sub statparcel ($$$);
-sub get_parcelcfg ($$$);
-sub get_motd ($$);
+sub cleanclient ();
+sub hoard ();
+sub do_hoard ();
+sub checkparcel ();
+sub statparcel ();
+sub get_parcelcfg ($);
+sub get_motd ();
 sub parse_cfgfile ($$);
-sub parse_parcelcfg ($$$);
+sub parse_parcelcfg ($);
 sub build_cache ($$);
-sub hdksize ($$$);
+sub hdksize ();
 sub connected ();
 sub check_nexus_version ();
 sub get_dirnum ($$);
@@ -96,19 +96,19 @@ sub exit_handler ($);
 # Old HTTPSSH prototypes
 sub isr_sget ($$$$);
 sub isr_srun ($$$$$);
-sub isr_connected_parcel ($$);
+sub isr_connected_parcel ();
 sub isr_connected_http ();
-sub isr_run_parcelkeeper ($$$);
-sub isr_hoard ($$$);
-sub isr_stathoard ($$$);
-sub isr_sync ($$$$);
-sub isr_statparcel ($$$$);
-sub isr_checkhoard ($$$$$);
-sub isr_priv_upload ($$$);
-sub copy_dirtychunks ($$$);
-sub isr_priv_commit ($$$$);
-sub isr_priv_clientcommit($$$$);
-sub isr_priv_cleanhoard ($$$);
+sub isr_run_parcelkeeper ();
+sub isr_hoard ();
+sub isr_stathoard ();
+sub isr_sync ($);
+sub isr_statparcel ();
+sub isr_checkhoard ($$);
+sub isr_priv_upload ();
+sub copy_dirtychunks ($);
+sub isr_priv_commit ($);
+sub isr_priv_clientcommit($);
+sub isr_priv_cleanhoard ();
 
 #########################
 # Section 1. Main routine
@@ -356,8 +356,7 @@ if ($parcel && -e "$isrdir/$parcel/nonce" && open(NONCE, "$isrdir/$parcel/nonce"
 }
 
 #
-# Now process the ISR command. Notice that most commands take the same three
-# args (userid, parcel, isrdir), followed by one or more optional args.
+# Now process the ISR command.
 #
 
 # Basic commands
@@ -365,7 +364,7 @@ if ($command eq "checkout") {
     need_parcel();
     need_network();
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
-    checkout($userid, $parcel, $isrdir, $version);
+    checkout();
 } 
 elsif ($command eq "resume") {
     need_parcel();
@@ -376,40 +375,40 @@ elsif ($command eq "resume") {
 	if ((!-e "$isrdir/$parcel") or
 	    (-e "$isrdir/$parcel" and !$disconnected));
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
-    checkout($userid, $parcel, $isrdir, $version);
-    run($userid, $parcel, $isrdir, $disconnected);
+    checkout();
+    run();
 } 
 elsif ($command eq "checkin") {
     need_parcel();
     need_checked_out();
     need_network();
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
-    checkin($userid, $parcel, $isrdir);
+    checkin();
 } 
 elsif ($command eq "sync") {
     need_parcel();
     need_checked_out();
     need_network();
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
-    sync($userid, $parcel, $isrdir, 0);
+    sync(0);
 } 
 elsif ($command eq "discard") {
     need_parcel();
     need_checked_out();
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
-    discard($userid, $parcel, $isrdir);
+    discard();
 }
 elsif ($command eq "hoard") {
     need_parcel();
     acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache");
-    hoard($userid, $parcel, $isrdir);
+    hoard();
 }
 elsif ($command eq "stat") {
     need_parcel();
     need_checked_out();
     acquire_lock("$isrdir/$parcel.lock", "Parcel")
 	if $checkstate;
-    statparcel($userid, $parcel, $isrdir);
+    statparcel();
 }
 elsif ($command eq "disconnect") {
     need_parcel();
@@ -418,22 +417,22 @@ elsif ($command eq "disconnect") {
     acquire_lock("$isrdir/$parcel.lock", "Parcel")
 	if (!$nocheckstate);
     acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache");
-    disconnect($userid, $parcel, $isrdir, $nocheckstate);
+    disconnect();
 }
 elsif ($command eq "checkparcel") {
     need_parcel();
     need_network();
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
-    checkparcel($userid, $parcel, $isrdir, $version, $checkstate);
+    checkparcel();
 }
 elsif ($command eq "ls") {
     need_network();
-    listparcels($userid, $parcel, $isrdir, $longflag, $longvers);
+    listparcels();
 }
 elsif ($command eq "auth") {
     need_not_parcel();
     need_network();
-    authenticate($userid);
+    authenticate();
 }
 elsif ($command eq "deauth") {
     need_not_parcel();
@@ -442,7 +441,7 @@ elsif ($command eq "deauth") {
 elsif ($command eq "passwd") {
     need_not_parcel();
     need_network();
-    passwd($userid);
+    passwd();
 }
 elsif ($command eq "reset") {
     need_not_parcel();
@@ -453,7 +452,7 @@ elsif ($command eq "clean") {
     acquire_lock("$isrdir/$parcel.lock", "Parcel");
     acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache")
 	if $allflag;
-    cleanclient($userid, $parcel, $isrdir, $allflag);
+    cleanclient();
 }
 elsif ($command eq "help") {
     need_not_parcel();
@@ -495,12 +494,7 @@ exit 0;
 #
 # checkout - Lock a parcel and copy it from the server to the client
 #
-sub checkout ($$$$) {
-    my $userid = shift;     # login name
-    my $parcel = shift;     # parcel name
-    my $isrdir = shift;     # absolute path of local ISR home dir
-    my $version = shift;    # rollback version (optional)
-
+sub checkout () {
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $diskinfo = `df -P -k $isrhome | tail -n 1`;
@@ -528,20 +522,20 @@ sub checkout ($$$$) {
     # Fetch and print message-of-the-day from the server
     print "Connecting to server.\n"
     	if $verbose;
-    get_motd($userid, $parcel);
+    get_motd();
 
     # Fetch and parse the config file from the server
     print "Fetching configuration data for $userid/$parcel from server.\n"
 	if $verbose;
-    get_parcelcfg($userid, $parcel, "$isrdir/$parcel-parcel.cfg");
-    %cfg = parse_parcelcfg("$isrdir/$parcel-parcel.cfg", $userid, $parcel);
+    get_parcelcfg("$isrdir/$parcel-parcel.cfg");
+    %cfg = parse_parcelcfg("$isrdir/$parcel-parcel.cfg");
 
     # Before going any further, make sure we have a protocol level
     # connection to the server and a consistent parcel.
     if (!isr_connected_http()) {
 	errexit("The server appears to be down.");
     }
-    if (!isr_connected_parcel($userid, $parcel)) {
+    if (!isr_connected_parcel()) {
 	errexit("The remote parcel is not available.");
     }
 
@@ -574,14 +568,14 @@ sub checkout ($$$$) {
     # If requested, roll back to a previous version on the server
     if ($version) {
 	if ($version < 1) {
-	    clean($userid, $parcel, $isrdir, 0);
+	    clean(0);
 	    errexit("Version numbers must be greater than zero.");
 	}
 	print("Rolling back to version $version.\n")
 	    if $verbose;
 	if (isr_srun($userid, "rollback", 
 		     "-u $userid -p $parcel -v $version", "", 0) != 0) {
-	    clean($userid, $parcel, $isrdir, 0);
+	    clean(0);
 	    errexit("Unable to roll back to version $version");
 	}
     }
@@ -589,20 +583,20 @@ sub checkout ($$$$) {
     # Set up the client's parcel directory. If anything goes wrong erase 
     # all traces of the parcel on the client and release its lock.
     if (!mktree($parceldir)) {
-	clean($userid, $parcel, $isrdir, 0);
+	clean(0);
 	errexit("Unable to create parcel dir $parceldir.");
     }
     if (!mktree($lastdir)) {
-	clean($userid, $parcel, $isrdir, 0);
+	clean(0);
 	errexit("Unable to create last dir $lastdir.");
     }
 
     if (!rename("$isrdir/$parcel-nonce", "$parceldir/nonce")) {
-	clean($userid, $parcel, $isrdir, 0);
+	clean(0);
 	errexit("Unable to move $isrdir/$parcel-nonce to $parceldir");
     }
     if (!rename("$isrdir/$parcel-parcel.cfg", "$parceldir/parcel.cfg") != 0) {
-	clean($userid, $parcel, $isrdir, 0);
+	clean(0);
 	errexit("Unable to move $isrdir/$parcel-parcel.cfg to $parceldir");
     }
 
@@ -623,7 +617,7 @@ sub checkout ($$$$) {
 		 "-f $userid/$parcel/last/cfg.tgz.enc",
 		 $tmpfile ,0) != 0) {
 	unlink($tmpfile);
-	clean($userid, $parcel, $isrdir, 0);
+	clean(0);
 	errexit("Unable to stat cfg.tgz.enc file on server");
     }
     parse_cfgfile($tmpfile, \%map);
@@ -636,7 +630,7 @@ sub checkout ($$$$) {
 		 "-f $userid/$parcel/last/keyring.enc",
 		 $tmpfile ,0) != 0) {
 	unlink($tmpfile);
-	clean($userid, $parcel, $isrdir, 0);
+	clean(0);
 	errexit("Unable to stat keyring.enc file on server");
     }
     %map = ();
@@ -689,7 +683,7 @@ sub checkout ($$$$) {
 	    print "\n";
 	    # We now have an inconsistent parcel directory.  Blow it away
 	    # and release the server lock.
-	    clean($userid, $parcel, $isrdir, $sessionid);
+	    clean($sessionid);
 	    errexit("Fetch interrupted by signal");
 	}
 	$retval == $Isr::ESUCCESS
@@ -718,7 +712,7 @@ sub checkout ($$$$) {
     # Keyroot no longer needed, get rid of it
     foreach $target ("keyring.enc", "cfg.tgz.enc", "keyroot") {
 	if (-e "$lastdir/$target" && !unlink("$lastdir/$target")) {
-	    clean($userid, $parcel, $isrdir, 0);
+	    clean(0);
 	    errexit("Unable to remove $target.");
 	}
     }
@@ -734,12 +728,7 @@ sub checkout ($$$$) {
 #
 # run - Execute a parcel on the client
 #
-sub run ($$$$) {
-    my $userid = shift;       # login name
-    my $parcel = shift;       # parcel name
-    my $isrdir = shift;       # absolute path of user's local ISR home dir
-    my $disconnected = shift; # true if we want to run disconnected 
-
+sub run () {
     my $target;
     my @files;
     my $dirname;
@@ -767,7 +756,7 @@ sub run ($$$$) {
     unlink($cdcache_file);
 
     # Parse the parcel config file that we got from the server during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
     # If the user wants to run connected, then before going any further, 
     # make sure we have a protocol level connection to the server
@@ -775,7 +764,7 @@ sub run ($$$$) {
     if (!$disconnected and !isr_connected_http()) {
 	errexit("The server appears to be down.");
     }
-    if (!$disconnected and !isr_connected_parcel($userid, $parcel)) {
+    if (!$disconnected and !isr_connected_parcel()) {
 	errexit("The remote parcel is not available.");
     }
 
@@ -796,12 +785,12 @@ sub run ($$$$) {
     # If the user wants to run disconnected, they better have all of their
     # disk blocks hoarded in the local or hoard cache
     if ($disconnected) {
-	$numchunks = hdksize($userid, $parcel, $isrdir); 
+	$numchunks = hdksize(); 
 
 	# If the local cache is not fully populated, then make sure
 	# the hoard cache is fully populated
 	if ($numchunks != $cfg{NUMCHUNKS}) {
-	    if (isr_stathoard($userid, $parcel, $isrdir) != $cfg{NUMCHUNKS}) {
+	    if (isr_stathoard() != $cfg{NUMCHUNKS}) {
 		errexit("Running disconnected without a fully hoarded parcel.\nPlease run \"isr disconnect $parcel\" first.");
 	    }
 	}
@@ -833,7 +822,7 @@ sub run ($$$$) {
     print("Launching Parcelkeeper...\n")
 	if $verbose;
     $kill_pk = 1;  # Tells the SIGINT handler to cleanly terminate PK
-    isr_run_parcelkeeper($userid, $parcel, $isrdir) == 0
+    isr_run_parcelkeeper() == 0
 	or errexit("Unable to launch Parcelkeeper.");	
     
     # Find out what device node we'll be using
@@ -899,32 +888,25 @@ sub run ($$$$) {
 #
 # checkin - Sync and then release parcel
 #
-sub checkin ($$$) {
-    my $userid = shift;     # login name
-    my $parcel = shift;     # parcel name
-    my $isrdir = shift;     # absolute path of local ISR home dir
-
+sub checkin () {
     my $parceldir = "$isrdir/$parcel";
 
     # Parse config file that was retrieved during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
     # Sync the dirty blocks on the server
-    sync($userid, $parcel, $isrdir, 1) == $Isr::ESUCCESS
+    sync(1) == $Isr::ESUCCESS
 	or errexit("Sync of parcel $userid/$parcel failed.");
 
     # Release the lock on the parcel
-    release($userid, $parcel, $isrdir) == $Isr::ESUCCESS
+    release() == $Isr::ESUCCESS
 	or errexit("Release of parcel $userid/$parcel failed.");
 }
 
 #
 # sync - Make local state clean
 #
-sub sync ($$$$) {
-    my $userid = shift;     # login name
-    my $parcel = shift;     # parcel name
-    my $isrdir = shift;     # absolute path of local ISR home dir
+sub sync ($) {
     my $releasing = shift;  # whether we're releasing the lock afterward
 
     my $parceldir = "$isrdir/$parcel";
@@ -934,10 +916,10 @@ sub sync ($$$$) {
     my $i;
 
     # Parse config file that was retrieved during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
     # Now call the protocol-specific sync function
-    isr_sync($userid, $parcel, $isrdir, $releasing) == $Isr::ESUCCESS
+    isr_sync($releasing) == $Isr::ESUCCESS
 	or errexit("Sync of parcel $userid/$parcel failed.");
     
     # Append the session log to the persistent log in remote storage
@@ -982,10 +964,10 @@ sub upload ($$$) {
     my $parceldir = "$isrdir/$parcel";
 
     # Parse config file that was retrieved during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
     # Now call the protocol-specific sync function
-    isr_priv_upload($userid, $parcel, $isrdir);
+    isr_priv_upload();
     
     return $Isr::ESUCCESS;
 }
@@ -993,11 +975,7 @@ sub upload ($$$) {
 #
 # discard - Remove the Parcelkeeper cache
 #
-sub discard ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-
+sub discard () {
     my $reply;
     my $parceldir = "$isrdir/$parcel";
     my $cachedir = "$parceldir/cache";
@@ -1033,18 +1011,13 @@ sub discard ($$$) {
 #
 # disconnect - Prepare the host to disconnect from a parcel
 #
-sub disconnect ($$$$) {
-    my $userid = shift;       # login name
-    my $parcel = shift;       # parcel name
-    my $isrdir = shift;       # absolute path of local ISR home dir
-    my $nocheckstate = shift; # optionally skip consistency check
-
+sub disconnect () {
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
     
     # Parse config file that was retrieved during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
     print "Preparing client host to run parcel $userid/$parcel disconnected...\n";
     
@@ -1054,13 +1027,13 @@ sub disconnect ($$$$) {
 
 
     # Hoard the parcel if it's not already hoarded
-    if (isr_stathoard($userid, $parcel, $isrdir) < $cfg{NUMCHUNKS}) {
-	do_hoard($userid, $parcel, $isrdir);
+    if (isr_stathoard() < $cfg{NUMCHUNKS}) {
+	do_hoard();
     }
 
     # Optionally check the hoard cache for consistency
     if (!$nocheckstate) {
-	isr_checkhoard($userid, $parcel, $isrdir, 1, 0);
+	isr_checkhoard(1, 0);
     }
 
     # Print the appropriate success message
@@ -1077,21 +1050,15 @@ sub disconnect ($$$$) {
 #
 # listparcels - list information about a user's parcels
 #
-sub listparcels ($$$$$) {
-    my $userid = shift;      # login name
-    my $parcelname = shift;  # parcel name (all parcels if undefined or "")
-    my $isrdir = shift;      
-    my $longflag = shift;    # use default # of versions for long ls format
-    my $longvers = shift;    # use specific # of versions for long ls format
-
+sub listparcels () {
     my $line;
     my $item;
     my $lsargs;
     
     # Build the argument list for the server-side ls operation
     $lsargs = "";
-    if ($parcelname) {
-	$lsargs = "-p $parcelname";
+    if ($parcel) {
+	$lsargs = "-p $parcel";
     }
     if ($longvers) {
 	$lsargs .= " -L $longvers";
@@ -1108,9 +1075,7 @@ sub listparcels ($$$$$) {
 #
 # authenticate - Perform the SSH magic
 #
-sub authenticate ($) {
-    my $userid = shift;
-
+sub authenticate () {
     mysystem("ssh -A -l $userid $server ssh-add") == 0
 	or system_errexit("Unable to run ssh-add on the server ($server)");
 
@@ -1132,11 +1097,7 @@ sub deauthenticate () {
 # release - Erase all traces of a parcel from the client and do a 
 #           soft release (i.e., with nonce) of its lock.
 #
-sub release ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift; 
-
+sub release () {
     my $nonce;
 
     my $parceldir = "$isrdir/$parcel";
@@ -1160,7 +1121,7 @@ sub release ($$$) {
     # Release the lock on the parcel using the nonce (soft release)
     print "Releasing parcel lock...\n"
 	if $verbose;
-    if (clean($userid, $parcel, $isrdir, $nonce) == 0) {
+    if (clean($nonce) == 0) {
 	print(GREEN, "Success: Parcel $userid/$parcel is now checked in (and lock released).\n", RESET)
 	    if $verbose;
     }
@@ -1171,11 +1132,7 @@ sub release ($$$) {
 #
 # hoard - Copy all server disk blocks to the local client cache
 #
-sub hoard ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-
+sub hoard () {
     my $parcelcfgfile; 
 
     my $parceldir = "$isrdir/$parcel";
@@ -1189,11 +1146,11 @@ sub hoard ($$$) {
 	$parcelcfgfile = "$isrdir/$parcel-parcel.cfg.hoard";
 	print "Fetching configuration data for $userid/$parcel from server.\n"
 	    if $verbose;
-	get_parcelcfg($userid, $parcel, $parcelcfgfile);
+	get_parcelcfg($parcelcfgfile);
     } 
 
     # Parse the config file
-    %cfg = parse_parcelcfg($parcelcfgfile, $userid, $parcel);
+    %cfg = parse_parcelcfg($parcelcfgfile);
 
     # Delete the temporary parcel.cfg file if necessary
     if (!-e $parceldir) {
@@ -1201,7 +1158,7 @@ sub hoard ($$$) {
     }
 
     # Run the actual hoard process
-    do_hoard($userid, $parcel, $isrdir);
+    do_hoard();
 
     # The hoard finished without any errors. Declare success
     print GREEN, "Success: The parcel $userid/$parcel is now fully hoarded on this host.\n", RESET
@@ -1211,13 +1168,7 @@ sub hoard ($$$) {
 #
 # checkparcel - Check a remote parcel for consistency
 #
-sub checkparcel ($$$$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-    my $version = shift;
-    my $checkstate = shift;
-
+sub checkparcel () {
     my $versionflag;
     my $checkstateflag;
     
@@ -1249,25 +1200,19 @@ sub checkparcel ($$$$$) {
 # statparcel - Report general statistics about the cache and if requested, 
 #              run a content consistency check on the chunks
 #
-sub statparcel ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-
+sub statparcel () {
     my $parceldir = "$isrdir/$parcel";
 
     # Parse config file that was retrieved during checkout
-    %cfg = parse_parcelcfg("$parceldir/parcel.cfg", $userid, $parcel);
+    %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
-    isr_statparcel($userid, $parcel, $isrdir, $checkstate);
+    isr_statparcel();
 }
 
 #
 # passwd - Change the user's ISR passwd on the server
 #
-sub passwd ($) {
-    my $userid = shift;
-
+sub passwd () {
     print "Changing password for ISR userid $userid:\n";
     mysystem("ssh -l $userid -t $server passwd") == 0
 	or errexit("Unable to change ISR password.");
@@ -1300,12 +1245,7 @@ sub resetclient () {
 #
 # cleanclient - Remove all traces of a parcel's session state
 #
-sub cleanclient($$$$) {    
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-    my $allflag = shift;
-
+sub cleanclient() {
     my $reply;
 
     # Give users a chance to change their minds.
@@ -1319,7 +1259,7 @@ sub cleanclient($$$$) {
     # Remove the parcel's session state
     print("Removing session state and releasing server lock...\n")
 	if $verbose;
-    if (clean($userid, $parcel, $isrdir, 0) > 0) {
+    if (clean(0) > 0) {
 	return;
     }
 
@@ -1430,10 +1370,7 @@ sub release_locks () {
 # clean - Erase all traces of a parcel from the client and do a soft
 #         (with nonce) or hard (no nonce) release of its lock.
 #
-sub clean ($$$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
+sub clean ($) {
     my $nonce = shift;     # nonce (optional)
 
     my $errors = 0;
@@ -1476,11 +1413,7 @@ sub clean ($$$$) {
 #
 # do_hoard - repeatedly call isr_hoard() protocol method until fully hoarded
 #
-sub do_hoard ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-    
+sub do_hoard () {
     my $retval;
     
     # Ask the system to hoard all hdk blocks into local store. If the
@@ -1490,7 +1423,7 @@ sub do_hoard ($$$) {
     # version on the server while the hoard was underway. In any case,
     # we will restart the hoard operation until it succeeds.
     while (1) {
-	$retval = isr_hoard($userid, $parcel, $isrdir);
+	$retval = isr_hoard();
 	if ($retval == $Isr::ESUCCESS) {
 	    last; 
 	} elsif ($retval == $Isr::EINTR) {
@@ -1505,9 +1438,7 @@ sub do_hoard ($$$) {
 #
 # get_parcelcfg - Retrieve parcel configuration file from the server
 #
-sub get_parcelcfg ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
+sub get_parcelcfg ($) {
     my $outfile = shift; # Put the retrieved file here
 
     if (mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_srv_getconfig.pl -p $parcel > $outfile")) {
@@ -1519,10 +1450,7 @@ sub get_parcelcfg ($$$) {
 #
 # get_motd - Read message-of-the-day from the server and print it out
 #
-sub get_motd ($$) {
-    my $userid = shift;
-    my $parcel = shift;
-
+sub get_motd () {
     mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_srv_motd.pl -p $parcel -u $userid") == 0
 	or system_err("Couldn't read message of the day from the server ($server).");
 }
@@ -1583,10 +1511,8 @@ sub parse_cfgfile ($$) {
 #                   its key/value pairs. Delete the file if there are any
 #                   problems.
 #
-sub parse_parcelcfg ($$$) {
+sub parse_parcelcfg ($) {
     my $infile = shift;
-    my $userid = shift;
-    my $parcel = shift;
 
     my %cfg;
 
@@ -1683,11 +1609,7 @@ sub build_cache ($$) {
 #
 # hdksize - Returns the number of chunks present in the local cache
 #
-sub hdksize ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-
+sub hdksize () {
     my $numchunks;
 
     my $parceldir = "$isrdir/$parcel";
@@ -2217,10 +2139,7 @@ sub isr_srun ($$$$$) {
 #
 # isr_connected_parcel - Return true if parcel exists in remote store
 #
-sub isr_connected_parcel ($$) {
-    my $userid = shift;  
-    my $parcel = shift;
-    
+sub isr_connected_parcel () {
     isr_srun($userid, "ls", 
 	     "-u $userid -p $parcel", "/dev/null", 1) == 0
 		 or return 0;
@@ -2247,11 +2166,7 @@ sub isr_connected_http () {
 # isr_run_parcelkeeper - Run the Parcelkeeper process and return its
 #                        exit status.
 #
-sub isr_run_parcelkeeper ($$$) {
-    my $userid = shift;        # ISR user id
-    my $parcel = shift;        # parcel name
-    my $isrdir = shift;        # absolute path of user's local ISR home dir
-
+sub isr_run_parcelkeeper () {
     my $logstring = "|PARCELKEEPER|" . message_string() ."|";
     my $parceldir = "$isrdir/$parcel";
     my $hoarddir = "$isrdir/hoard";
@@ -2266,11 +2181,7 @@ sub isr_run_parcelkeeper ($$$) {
 #
 # isr_hoard - Block until the parcel is cached locally
 # 
-sub isr_hoard ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-
+sub isr_hoard () {
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
 
@@ -2290,7 +2201,7 @@ sub isr_hoard ($$$) {
 	if (!isr_connected_http()) {
 	    errexit("The server appears to be down.");
 	}
-	if (!isr_connected_parcel($userid, $parcel)) {
+	if (!isr_connected_parcel()) {
 	    errexit("Remote parcel $userid/$parcel not found on the server.");
 	}
 
@@ -2353,11 +2264,7 @@ sub isr_hoard ($$$) {
 #
 # isr_stathoard - Report the number of chunks in the hoard cache
 # 
-sub isr_stathoard ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-
+sub isr_stathoard () {
     my $numchunks = 0;
     
     my $parceldir = "$isrdir/$parcel";
@@ -2371,24 +2278,21 @@ sub isr_stathoard ($$$) {
 #
 # isr_sync - Make local state clean
 #
-sub isr_sync ($$$$) {
-    my $userid = shift;     # login name
-    my $parcel = shift;     # parcel name
-    my $isrdir = shift;     # absolute path of local ISR home dir
+sub isr_sync ($) {
     my $releasing = shift;  # whether we're releasing the lock afterward
 
     # Garbage collect the hoard cache
-    isr_priv_cleanhoard($userid, $parcel, $isrdir);
+    isr_priv_cleanhoard();
 
     # Upload the dirty blocks in a cache directory on the server
-    isr_priv_upload($userid, $parcel, $isrdir) == $Isr::ESUCCESS
+    isr_priv_upload() == $Isr::ESUCCESS
 	or errexit("Upload of parcel $userid/$parcel failed.");
 
     # Operations from this point on should not be interrupted by the user
     block_sigint();
 
     # Commit the dirty blocks to a new version
-    isr_priv_commit($userid, $parcel, $isrdir, $releasing) == $Isr::ESUCCESS
+    isr_priv_commit($releasing) == $Isr::ESUCCESS
 	or errexit("Commit of parcel $userid/$parcel failed.");
 
     # If $releasing == 1, it is not safe to unblock SIGINT until the parceldir
@@ -2400,12 +2304,7 @@ sub isr_sync ($$$$) {
 #
 # isr_statparcel - Report general statistics about a local parcel
 #
-sub isr_statparcel ($$$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-    my $checkcache = shift;  # 1->check all 2->local cache 3->hoard cache
-
+sub isr_statparcel () {
     my $memsize;
 
     my @files = ();
@@ -2440,7 +2339,7 @@ sub isr_statparcel ($$$$) {
     # Verify that each block in local cache has a valid keyring tag, if
     # requested
     #
-    if ($checkcache == 1 or $checkcache == 2) {
+    if ($checkstate == 1 or $checkstate == 2) {
 	mysystem("$Isr::LIBDIR/parcelkeeper validate --user $userid --parcel $parcel --parceldir $parceldir --cache $cachedir --last $lastdir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
 	    or errexit("Could not validate cache");
     }
@@ -2448,11 +2347,11 @@ sub isr_statparcel ($$$$) {
     #
     # Display stats about the hoard cache and check for consistency (optional)
     #
-    if ($checkcache == 1 or $checkcache == 3) {
-	isr_checkhoard($userid, $parcel, $isrdir, 1, 1);
+    if ($checkstate == 1 or $checkstate == 3) {
+	isr_checkhoard(1, 1);
     }
     else {
-	isr_checkhoard($userid, $parcel, $isrdir, 0, 1);
+	isr_checkhoard(0, 1);
     }
 }
 
@@ -2460,10 +2359,7 @@ sub isr_statparcel ($$$$) {
 #
 # isr_checkhoard - Reports on the consistency of the hoard cache
 # 
-sub isr_checkhoard ($$$$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
+sub isr_checkhoard ($$) {
     my $checkstate = shift;
     my $printstats = shift;
 
@@ -2483,7 +2379,7 @@ sub isr_checkhoard ($$$$$) {
     # Display some statistics about the hoard cache
     #
     $max_mbytes = int(($cfg{NUMCHUNKS}*$cfg{CHUNKSIZE})/(1<<20));
-    $num_hoarded = isr_stathoard($userid, $parcel, $isrdir);
+    $num_hoarded = isr_stathoard();
     $size_hoarded = int(($num_hoarded*$cfg{CHUNKSIZE})/(1<<20));
     $percent_hoarded = ($size_hoarded/$max_mbytes)*100;
     if ($printstats) {
@@ -2519,11 +2415,7 @@ sub isr_checkhoard ($$$$$) {
 #          Note: Upload is idempotent. You can run it over and over again 
 #          until it works.
 #
-sub isr_priv_upload ($$$) {
-    my $userid = shift;     # login name
-    my $parcel = shift;     # parcel name
-    my $isrdir = shift;     # absolute path of local ISR home dir
-
+sub isr_priv_upload () {
     my $dirtybytes = 0;
     my $dirtyblocks = 0;
     my $virtualbytes;
@@ -2553,7 +2445,7 @@ sub isr_priv_upload ($$$) {
     if (!isr_connected_http()) {
 	errexit("The server appears to be down.");
     }
-    if (!isr_connected_parcel($userid, $parcel)) {
+    if (!isr_connected_parcel()) {
 	errexit("The remote parcel $userid/$parcel is not available.");
     }
 
@@ -2586,7 +2478,7 @@ sub isr_priv_upload ($$$) {
     #
     if (!-e $cdcache_file) {
 	($dirtybytes, $dirtyblocks) = 
-	    copy_dirtychunks($userid, $parcel, $parceldir);
+	    copy_dirtychunks($parceldir);
 	open(FLAG, ">$cdcache_file")
 	    or unix_errexit("Unable to create dirty cache flag ($cdcache_file)");
 	close FLAG;
@@ -2639,9 +2531,7 @@ sub isr_priv_upload ($$$) {
 #
 # copy_dirtychunks - Build temp cache tree and populate it with dirty state
 #
-sub copy_dirtychunks ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
+sub copy_dirtychunks ($) {
     my $parceldir = shift;
 
     my $lastdir = "$parceldir/last";
@@ -2733,10 +2623,7 @@ sub copy_dirtychunks ($$$) {
 # isr_priv_commit - Commit files that were copied to server-side 
 #                   cache by upload
 #
-sub isr_priv_commit ($$$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
+sub isr_priv_commit ($) {
     my $releasing = shift;
 
     my $parceldir = "$isrdir/$parcel";
@@ -2759,7 +2646,7 @@ sub isr_priv_commit ($$$$) {
     if (!isr_connected_http()) {
 	errexit("The server appears to be down.");
     }
-    if (!isr_connected_parcel($userid, $parcel)) {
+    if (!isr_connected_parcel()) {
 	errexit("The remote parcel is not available.");
     }
 
@@ -2796,7 +2683,7 @@ sub isr_priv_commit ($$$$) {
     # client-side commit. 
     print "Committing updates on client...\n"
 	if $verbose;
-    isr_priv_clientcommit($userid, $parcel, $isrdir, $releasing);
+    isr_priv_clientcommit($releasing);
 
     return $Isr::ESUCCESS;
 
@@ -2809,10 +2696,7 @@ sub isr_priv_commit ($$$$) {
 #     Second, move any dirty hdk chunks from the local cache to the hoard
 #     cache so that the hoard cache stays fully populated.
 #
-sub isr_priv_clientcommit($$$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
+sub isr_priv_clientcommit($) {
     my $releasing = shift;
 
     my $dirtyblocks = 0;
@@ -2881,11 +2765,7 @@ sub isr_priv_clientcommit($$$$) {
 #
 # isr_priv_cleanhoard - perform garbage collection on hoard cache at sync time
 # 
-sub isr_priv_cleanhoard ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $isrdir = shift;
-
+sub isr_priv_cleanhoard () {
     my $parceldir = "$isrdir/$parcel";
     my $lastdir = "$parceldir/last";
     my $cachedir = "$parceldir/cache";
