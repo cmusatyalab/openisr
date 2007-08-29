@@ -464,9 +464,6 @@ int examine_hoard(void)
 	unsigned max_mb;
 	unsigned valid_pct;
 
-	if (config.hoard_dir == NULL)
-		return 0;
-
 	if (hoard_sync_refs(0)) {
 		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
 		return 1;

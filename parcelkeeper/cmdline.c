@@ -70,18 +70,19 @@ enum option {
 #define NONRUN_MODES (POSTPROCESS_MODES|MODE_HOARD)
 #define NONTRIVIAL_MODES (MODE_RUN|NONRUN_MODES)
 static struct pk_option pk_options[] = {
-	{"user",           OPT_USER,           REQUIRED, NONTRIVIAL_MODES               , {"user_name"}},
-	{"parcel",         OPT_PARCEL,         REQUIRED, NONTRIVIAL_MODES               , {"parcel_name"}},
-	{"parceldir",      OPT_PARCELDIR,      REQUIRED, NONTRIVIAL_MODES               , {"parcel_dir"}},
-	{"cache",          OPT_CACHE,          REQUIRED, POSTPROCESS_MODES|MODE_RUN     , {"local_cache_dir"}},
-	{"last",           OPT_LAST,           REQUIRED, NONRUN_MODES                   , {"last_cache_dir"}},
-	{"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                    , {"dir"}},
-	{"hoard",          OPT_HOARD,          REQUIRED, MODE_HOARD                     , {"hoard_dir"}},
-	{"hoard",          OPT_HOARD,          OPTIONAL, POSTPROCESS_MODES|MODE_RUN     , {"hoard_dir"}},
-	{"compression",    OPT_COMPRESSION,    OPTIONAL, MODE_RUN                       , {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
-	{"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES               , {"logfile", "info_str", "filemask", "stderrmask"}},
-	{"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                       , {},                                                      "Don't run in the background"},
-	{"mode",           OPT_MODE,           OPTIONAL, MODE_HELP                      , {"mode"},                                                "Print detailed usage message about the given mode"},
+	{"user",           OPT_USER,           REQUIRED, NONTRIVIAL_MODES                  , {"user_name"}},
+	{"parcel",         OPT_PARCEL,         REQUIRED, NONTRIVIAL_MODES                  , {"parcel_name"}},
+	{"parceldir",      OPT_PARCELDIR,      REQUIRED, NONTRIVIAL_MODES                  , {"parcel_dir"}},
+	{"cache",          OPT_CACHE,          REQUIRED, MODE_UPLOAD|MODE_VALIDATE|MODE_RUN, {"local_cache_dir"}},
+	{"last",           OPT_LAST,           REQUIRED, NONRUN_MODES                      , {"last_cache_dir"}},
+	{"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                       , {"dir"}},
+	{"hoard",          OPT_HOARD,          REQUIRED, MODE_HOARD                        , {"hoard_dir"}},
+	{"cache",          OPT_CACHE,          OPTIONAL, MODE_EXAMINE                      , {"local_cache_dir"}},
+	{"hoard",          OPT_HOARD,          OPTIONAL, POSTPROCESS_MODES|MODE_RUN        , {"hoard_dir"}},
+	{"compression",    OPT_COMPRESSION,    OPTIONAL, MODE_RUN                          , {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
+	{"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES                  , {"logfile", "info_str", "filemask", "stderrmask"}},
+	{"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                          , {},                                                      "Don't run in the background"},
+	{"mode",           OPT_MODE,           OPTIONAL, MODE_HELP                         , {"mode"},                                                "Print detailed usage message about the given mode"},
 	{0}
 };
 
