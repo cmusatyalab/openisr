@@ -14,33 +14,13 @@
 #include <stdlib.h>
 #include "defs.h"
 
-struct pk_mode {
-	char *name;
-	enum mode type;
-	char *desc;
-};
-
-static struct pk_mode pk_modes[] = {
-	{"run",       MODE_RUN,     "Bind and service a virtual disk"},
-	{"upload",    MODE_UPLOAD,  "Split a cache file into individual chunks for upload"},
-	{"hoard",     MODE_HOARD,   "Download all chunks into hoard cache"},
-	{"examine",   MODE_EXAMINE, "Print cache statistics"},
-	{"validate",  MODE_VALIDATE,"Validate cache against keyring"},
-	{"help",      MODE_HELP,    "Show usage summary"},
-	{"version",   MODE_VERSION, "Show version information"},
-	{0}
-};
+#define MAXPARAMS 4
 
 enum arg_type {
 	REQUIRED,
 	OPTIONAL,
 	ANY,  /* any number permitted, including zero */
 };
-
-#define MAXPARAMS 4
-static char *optparams[MAXPARAMS];
-static char *progname;
-static struct pk_mode *curmode;
 
 enum option {
 	OPT_USER,
@@ -54,42 +34,149 @@ enum option {
 	OPT_LOG,
 	OPT_FOREGROUND,
 	OPT_MODE,
+	END_OPTS = -1
 };
 
 struct pk_option {
 	char *name;
 	enum option opt;
-	enum arg_type type;
-	unsigned mask;
 	char *args[MAXPARAMS];
 	char *comment;
+};
+
+struct pk_option_record {
+	enum option opt;
+	enum arg_type type;
 	unsigned _seen;  /* internal use by pk_getopt() */
 };
 
-#define POSTPROCESS_MODES (MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
-#define NONRUN_MODES (POSTPROCESS_MODES|MODE_HOARD)
-#define NONTRIVIAL_MODES (MODE_RUN|NONRUN_MODES)
+struct pk_mode {
+	char *name;
+	enum mode type;
+	struct pk_option_record *opts;
+	char *desc;
+};
+
 static struct pk_option pk_options[] = {
-	{"user",           OPT_USER,           REQUIRED, NONTRIVIAL_MODES                  , {"user_name"}},
-	{"parcel",         OPT_PARCEL,         REQUIRED, NONTRIVIAL_MODES                  , {"parcel_name"}},
-	{"parceldir",      OPT_PARCELDIR,      REQUIRED, NONTRIVIAL_MODES                  , {"parcel_dir"}},
-	{"cache",          OPT_CACHE,          REQUIRED, MODE_UPLOAD|MODE_VALIDATE|MODE_RUN, {"local_cache_dir"}},
-	{"last",           OPT_LAST,           REQUIRED, NONRUN_MODES                      , {"last_cache_dir"}},
-	{"destdir",        OPT_DESTDIR,        REQUIRED, MODE_UPLOAD                       , {"dir"}},
-	{"hoard",          OPT_HOARD,          REQUIRED, MODE_HOARD                        , {"hoard_dir"}},
-	{"cache",          OPT_CACHE,          OPTIONAL, MODE_EXAMINE                      , {"local_cache_dir"}},
-	{"hoard",          OPT_HOARD,          OPTIONAL, POSTPROCESS_MODES|MODE_RUN        , {"hoard_dir"}},
-	{"compression",    OPT_COMPRESSION,    OPTIONAL, MODE_RUN                          , {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
-	{"log",            OPT_LOG,            OPTIONAL, NONTRIVIAL_MODES                  , {"logfile", "info_str", "filemask", "stderrmask"}},
-	{"foreground",     OPT_FOREGROUND,     OPTIONAL, MODE_RUN                          , {},                                                      "Don't run in the background"},
-	{"mode",           OPT_MODE,           OPTIONAL, MODE_HELP                         , {"mode"},                                                "Print detailed usage message about the given mode"},
+	{"user",           OPT_USER,           {"user_name"}},
+	{"parcel",         OPT_PARCEL,         {"parcel_name"}},
+	{"parceldir",      OPT_PARCELDIR,      {"parcel_dir"}},
+	{"cache",          OPT_CACHE,          {"local_cache_dir"}},
+	{"last",           OPT_LAST,           {"last_cache_dir"}},
+	{"destdir",        OPT_DESTDIR,        {"dir"}},
+	{"hoard",          OPT_HOARD,          {"hoard_dir"}},
+	{"cache",          OPT_CACHE,          {"local_cache_dir"}},
+	{"hoard",          OPT_HOARD,          {"hoard_dir"}},
+	{"compression",    OPT_COMPRESSION,    {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
+	{"log",            OPT_LOG,            {"logfile", "info_str", "filemask", "stderrmask"}},
+	{"foreground",     OPT_FOREGROUND,     {},                                                      "Don't run in the background"},
+	{"mode",           OPT_MODE,           {"mode"},                                                "Print detailed usage message about the given mode"},
 	{0}
 };
+
+#define mode(sym) static struct pk_option_record sym ## _opts[]
+
+mode(RUN) = {
+	{OPT_USER,          REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
+	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_CACHE,         REQUIRED},
+	{OPT_HOARD,         OPTIONAL},
+	{OPT_COMPRESSION,   OPTIONAL},
+	{OPT_LOG,           OPTIONAL},
+	{OPT_FOREGROUND,    OPTIONAL},
+	{END_OPTS}
+};
+
+mode(UPLOAD) = {
+	{OPT_USER,          REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
+	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_CACHE,         REQUIRED},
+	{OPT_LAST,          REQUIRED},
+	{OPT_DESTDIR,       REQUIRED},
+	{OPT_HOARD,         OPTIONAL},
+	{OPT_LOG,           OPTIONAL},
+	{END_OPTS}
+};
+
+mode(HOARD) = {
+	{OPT_USER,          REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
+	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_LAST,          REQUIRED},
+	{OPT_HOARD,         REQUIRED},
+	{OPT_LOG,           OPTIONAL},
+	{END_OPTS}
+};
+
+mode(EXAMINE) = {
+	{OPT_USER,          REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
+	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_LAST,          REQUIRED},
+	{OPT_CACHE,         OPTIONAL},
+	{OPT_HOARD,         OPTIONAL},
+	{OPT_LOG,           OPTIONAL},
+	{END_OPTS}
+};
+
+mode(VALIDATE) = {
+	{OPT_USER,          REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
+	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_CACHE,         REQUIRED},
+	{OPT_LAST,          REQUIRED},
+	{OPT_HOARD,         OPTIONAL},
+	{OPT_LOG,           OPTIONAL},
+	{END_OPTS}
+};
+
+mode(HELP) = {
+	{OPT_MODE,          OPTIONAL},
+	{END_OPTS}
+};
+
+mode(VERSION) = {
+	{END_OPTS}
+};
+
+#undef mode
+
+#define sym(str) MODE_ ## str, str ## _opts
+static struct pk_mode pk_modes[] = {
+	{"run",       sym(RUN),     "Bind and service a virtual disk"},
+	{"upload",    sym(UPLOAD),  "Split a cache file into individual chunks for upload"},
+	{"hoard",     sym(HOARD),   "Download all chunks into hoard cache"},
+	{"examine",   sym(EXAMINE), "Print cache statistics"},
+	{"validate",  sym(VALIDATE),"Validate cache against keyring"},
+	{"help",      sym(HELP),    "Show usage summary"},
+	{"version",   sym(VERSION), "Show version information"},
+	{0}
+};
+#undef sym
+
+static char *optparams[MAXPARAMS];
+static char *progname;
+static struct pk_mode *curmode;
+
+static struct pk_option *get_option(enum option opt)
+{
+	struct pk_option *curopt;
+
+	for (curopt=pk_options; curopt->name != NULL; curopt++) {
+		if (curopt->opt == opt)
+			return curopt;
+	}
+	printf("BUG: Unknown option %d\n", opt);
+	return NULL;
+}
 
 static void usage(struct pk_mode *mode) __attribute__ ((noreturn));
 static void usage(struct pk_mode *mode)
 {
 	struct pk_mode *mtmp;
+	struct pk_option_record *rtmp;
 	struct pk_option *otmp;
 	char *str_start=NULL;
 	char *str_end=NULL;
@@ -105,16 +192,15 @@ static void usage(struct pk_mode *mode)
 		printf("Run \"%s help --mode <mode>\" for more information.\n",
 					progname);
 	} else {
-		for (otmp=pk_options; otmp->name != NULL; otmp++) {
-			if ((otmp->mask & mode->type) != mode->type)
-				continue;
+		for (rtmp=mode->opts; rtmp->opt != END_OPTS; rtmp++) {
+			otmp=get_option(rtmp->opt);
 			if (!have_options) {
 				have_options=1;
 				printf("Usage: %s %s <options>\n", progname,
 							mode->name);
 				printf("Available options:\n");
 			}
-			switch (otmp->type) {
+			switch (rtmp->type) {
 			case REQUIRED:
 				str_start=" ";
 				str_end="";
@@ -158,19 +244,18 @@ static void usage(struct pk_mode *mode)
 static enum option pk_getopt(int argc, char *argv[])
 {
 	static int optind=2;  /* ignore argv[0] and argv[1] */
-	struct pk_option *opts;
+	struct pk_option_record *opts;
+	struct pk_option *curopt;
 	char *arg;
 	int i;
 
 	if (optind == argc) {
 		/* We've read the entire command line; make sure all required
 		   arguments have been handled */
-		for (opts=pk_options; opts->name != NULL; opts++) {
-			if ((opts->mask & curmode->type) != curmode->type)
-				continue;
+		for (opts=curmode->opts; opts->opt != END_OPTS; opts++) {
 			if (opts->type == REQUIRED && !opts->_seen)
 				PARSE_ERROR("missing required option --%s",
-							opts->name);
+						get_option(opts->opt)->name);
 		}
 		return -1;
 	}
@@ -180,15 +265,14 @@ static enum option pk_getopt(int argc, char *argv[])
 		PARSE_ERROR("\"%s\" is not an option element", arg);
 	arg += 2;
 
-	for (opts=pk_options; opts->name != NULL; opts++) {
-		if ((opts->mask & curmode->type) != curmode->type)
-			continue;
-		if (strcmp(opts->name, arg))
+	for (opts=curmode->opts; opts->opt != END_OPTS; opts++) {
+		curopt=get_option(opts->opt);
+		if (strcmp(curopt->name, arg))
 			continue;
 		if (opts->type != ANY && opts->_seen)
 			PARSE_ERROR("--%s may only be specified once", arg);
 		opts->_seen++;
-		for (i=0; i < MAXPARAMS && opts->args[i] != NULL; i++) {
+		for (i=0; i < MAXPARAMS && curopt->args[i] != NULL; i++) {
 			if (optind == argc)
 				PARSE_ERROR("wrong number of arguments to --%s",
 							arg);
@@ -203,8 +287,8 @@ static enum option pk_getopt(int argc, char *argv[])
 
 	/* This option is invalid.  See if it would have been valid for a
 	   different mode. */
-	for (opts=pk_options; opts->name != NULL; opts++)
-		if (!strcmp(opts->name, arg))
+	for (curopt=pk_options; curopt->name != NULL; curopt++)
+		if (!strcmp(curopt->name, arg))
 			PARSE_ERROR("--%s not valid in this mode", arg);
 	PARSE_ERROR("unknown option --%s", arg);
 }
@@ -249,7 +333,7 @@ enum mode parse_cmdline(int argc, char **argv)
 	if (curmode == NULL)
 		PARSE_ERROR("unknown mode %s", argv[1]);
 
-	while ((opt=pk_getopt(argc, argv)) != -1) {
+	while ((opt=pk_getopt(argc, argv)) != END_OPTS) {
 		switch (opt) {
 		case OPT_USER:
 			config.user=optparams[0];
@@ -315,6 +399,9 @@ enum mode parse_cmdline(int argc, char **argv)
 				PARSE_ERROR("unknown mode %s; try \"%s help\"",
 							optparams[0],
 							progname);
+			break;
+		case END_OPTS:
+			/* Silence compiler warning */
 			break;
 		}
 	}
