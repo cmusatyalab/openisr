@@ -42,16 +42,6 @@ static char *optparams[MAXPARAMS];
 static char *progname;
 static struct pk_mode *curmode;
 
-struct pk_option {
-	char *name;
-	unsigned retval;
-	enum arg_type type;
-	unsigned mask;
-	char *args[MAXPARAMS];
-	char *comment;
-	unsigned _seen;  /* internal use by pk_getopt() */
-};
-
 enum option {
 	OPT_USER,
 	OPT_PARCEL,
@@ -64,6 +54,16 @@ enum option {
 	OPT_LOG,
 	OPT_FOREGROUND,
 	OPT_MODE,
+};
+
+struct pk_option {
+	char *name;
+	enum option opt;
+	enum arg_type type;
+	unsigned mask;
+	char *args[MAXPARAMS];
+	char *comment;
+	unsigned _seen;  /* internal use by pk_getopt() */
 };
 
 #define POSTPROCESS_MODES (MODE_UPLOAD|MODE_EXAMINE|MODE_VALIDATE)
@@ -155,17 +155,17 @@ static void usage(struct pk_mode *mode)
    - Checking for required or once-only options
    - Different permissible parameters depending on circumstances (mode)
 */
-static int pk_getopt(int argc, char *argv[], struct pk_option *opts)
+static enum option pk_getopt(int argc, char *argv[])
 {
 	static int optind=2;  /* ignore argv[0] and argv[1] */
-	struct pk_option *orig_opts=opts;
+	struct pk_option *opts;
 	char *arg;
 	int i;
 
 	if (optind == argc) {
 		/* We've read the entire command line; make sure all required
 		   arguments have been handled */
-		for (; opts->name != NULL; opts++) {
+		for (opts=pk_options; opts->name != NULL; opts++) {
 			if ((opts->mask & curmode->type) != curmode->type)
 				continue;
 			if (opts->type == REQUIRED && !opts->_seen)
@@ -180,7 +180,7 @@ static int pk_getopt(int argc, char *argv[], struct pk_option *opts)
 		PARSE_ERROR("\"%s\" is not an option element", arg);
 	arg += 2;
 
-	for (; opts->name != NULL; opts++) {
+	for (opts=pk_options; opts->name != NULL; opts++) {
 		if ((opts->mask & curmode->type) != curmode->type)
 			continue;
 		if (strcmp(opts->name, arg))
@@ -198,12 +198,12 @@ static int pk_getopt(int argc, char *argv[], struct pk_option *opts)
 				PARSE_ERROR("wrong number of arguments to --%s",
 							arg);
 		}
-		return opts->retval;
+		return opts->opt;
 	}
 
 	/* This option is invalid.  See if it would have been valid for a
 	   different mode. */
-	for (opts=orig_opts; opts->name != NULL; opts++)
+	for (opts=pk_options; opts->name != NULL; opts++)
 		if (!strcmp(opts->name, arg))
 			PARSE_ERROR("--%s not valid in this mode", arg);
 	PARSE_ERROR("unknown option --%s", arg);
@@ -249,7 +249,7 @@ enum mode parse_cmdline(int argc, char **argv)
 	if (curmode == NULL)
 		PARSE_ERROR("unknown mode %s", argv[1]);
 
-	while ((opt=pk_getopt(argc, argv, pk_options)) != -1) {
+	while ((opt=pk_getopt(argc, argv)) != -1) {
 		switch (opt) {
 		case OPT_USER:
 			config.user=optparams[0];
