@@ -960,20 +960,6 @@ sub sync ($) {
 }
 
 #
-# upload - Upload the contents of the local cache to the server (DEBUG only)
-#
-sub upload ($$$) {
-    my $userid = shift;     # login name
-    my $parcel = shift;     # parcel name
-    my $isrdir = shift;     # absolute path of local ISR home dir
-
-    # Now call the protocol-specific sync function
-    isr_priv_upload();
-    
-    return $Isr::ESUCCESS;
-}
-
-#
 # discard - Remove the Parcelkeeper cache
 #
 sub discard () {
