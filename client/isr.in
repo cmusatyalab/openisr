@@ -54,7 +54,6 @@ sub deauthenticate ();
 sub passwd ();
 sub release ();
 sub clean ($);
-sub resetclient ();
 sub cleanclient ();
 sub hoard ();
 sub do_hoard ();
@@ -465,10 +464,6 @@ elsif ($command eq "passwd") {
     need_not_parcel();
     need_network();
     passwd();
-}
-elsif ($command eq "reset") {
-    need_not_parcel();
-    resetclient();
 }
 elsif ($command eq "clean") {
     need_parcel();
@@ -1232,30 +1227,6 @@ sub passwd () {
 }
 
 #
-# resetclient - Resets the ISR runtime
-#
-sub resetclient () {
-    my $vmname;
-    my $vmopts;
-    
-    query("Really terminate all running ISR processes?") eq "y"
-	or return;
-
-    print("Terminating any Parcelkeeper processes.\n")
-	if $verbose;
-    system("killall parcelkeeper > /dev/null 2>&1");
-
-    print("Terminating any VMware processes.\n")
-	if $verbose;
-    ($vmname, $vmopts) = split(" ", $syscfg{vmcommand});
-    system("killall $vmname > /dev/null 2>&1");
-
-    print("Terminating any ISR processes.\n")
-	if $verbose;
-    system("killall isr > /dev/null 2>&1");
-}
-
-#
 # cleanclient - Remove all traces of a parcel's session state
 #
 sub cleanclient() {
@@ -1992,8 +1963,7 @@ sub usage ($) {
 
     print RED, "Usage: $progname command [parcel] [options...]\n", RESET;
     print BLUE, "Commands: auth, checkin (ci), checkout (co), checkp, clean, deauth, discard,\n", RESET;
-    print BLUE, "          disconnect, help, hoard, ls, passwd, reset, resume, stat, sync,\n", RESET;
-    print BLUE, "          version\n", RESET;
+    print BLUE, "          disconnect, help, hoard, ls, passwd, resume, stat, sync, version\n", RESET;
     print BLUE, "Parcel is required for most commands\n", RESET;
     if (!$msg) {
 	print "Basic commands:\n";
@@ -2009,7 +1979,6 @@ sub usage ($) {
 	print "  hoard      Fetch entire virtual disk so you can run disconnected.\n";
 	print "  ls         List info about your parcels (parcel, -l and -L optional).\n";
 	print "  passwd     Change your ISR password on the server.\n";
- 	print "  reset      Reset ISR runtime.\n";
  	print "  resume     Checkout (if necessary) and run a parcel (-r and -d optional).\n";
 	print "  stat       Display information about local ISR state (-c optional).\n";
 	print "  sync       Make new parcel version on server w/o releasing lock (-b optional).\n";
