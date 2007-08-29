@@ -364,7 +364,7 @@ static pk_err_t get_parcel_ident(void)
 					"(uuid, server, user, name) "
 					"VALUES (?, ?, ?, ?)", "SSSS",
 					parcel.uuid, parcel.server,
-					config.user, config.parcel)) {
+					parcel.user, parcel.parcel)) {
 			pk_log(LOG_ERROR, "Couldn't insert parcel record");
 			ret=PK_IOERR;
 			goto bad;

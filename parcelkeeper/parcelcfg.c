@@ -24,6 +24,8 @@
 	optstr(COMPRESS), \
 	optstr(UUID), \
 	optstr(SERVER), \
+	optstr(USER), \
+	optstr(PARCEL), \
 	optstr(RPATH)
 
 #define optstr(str) PC_ ## str
@@ -44,6 +46,8 @@ static struct pc_option {
 	{NULL}
 };
 #undef optstr
+
+static char *raw_master;
 
 static enum pc_ident pc_find_option(char *key, int line)
 {
@@ -169,12 +173,14 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 	case PC_SERVER:
 		parcel.server=strdup(value);
 		break;
+	case PC_USER:
+		parcel.user=strdup(value);
+		break;
+	case PC_PARCEL:
+		parcel.parcel=strdup(value);
+		break;
 	case PC_RPATH:
-		if (asprintf(&parcel.master, "%s/%s/%s/last/hdk", value,
-					config.user, config.parcel) == -1) {
-			pk_log(LOG_ERROR, "malloc failure");
-			return PK_NOMEM;
-		}
+		raw_master=strdup(value);
 		break;
 	case PC_DUPLICATE:
 		return PK_INVALID;
@@ -214,7 +220,15 @@ pk_err_t parse_parcel_cfg(void)
 			goto bad;
 	}
 	fclose(fp);
-	return pc_have_options() ? PK_SUCCESS : PK_IOERR;
+	if (!pc_have_options())
+		return PK_IOERR;
+	if (asprintf(&parcel.master, "%s/%s/%s/last/hdk", raw_master,
+					parcel.user, parcel.parcel) == -1) {
+		pk_log(LOG_ERROR, "malloc failure");
+		return PK_NOMEM;
+	}
+	free(raw_master);
+	return PK_SUCCESS;
 
 bad:
 	fclose(fp);

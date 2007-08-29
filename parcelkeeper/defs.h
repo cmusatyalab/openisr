@@ -101,8 +101,6 @@ struct pk_config {
 	unsigned log_stderr_mask;
 
 	/* miscellaneous parameters */
-	char *user;
-	char *parcel;
 	enum compresstype compress;
 	int foreground;
 };
@@ -116,6 +114,8 @@ struct pk_parcel {
 	unsigned hashlen;
 	char *uuid;
 	char *server;
+	char *user;
+	char *parcel;
 	char *master;
 };
 
