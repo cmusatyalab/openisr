@@ -42,7 +42,7 @@ int main(int argc, char **argv)
 
 	/* Take the lock early, so that we don't even write to the logfile
 	   without holding it */
-	if (mode != MODE_EXAMINE && mode != MODE_HOARD) {
+	if (config.lockfile != NULL && mode != MODE_EXAMINE) {
 		err=acquire_lock();
 		if (err) {
 			pk_log(LOG_ERROR, "Couldn't acquire parcel lock: %s",
@@ -53,7 +53,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/* XXX inhibit logging in examine/hoard modes? */
+	/* XXX inhibit logging in examine/hoard/checkhoard modes? */
 	log_start();
 	if (parse_parcel_cfg())
 		goto shutdown;

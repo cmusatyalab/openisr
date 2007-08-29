@@ -128,7 +128,15 @@ mode(VALIDATE) = {
 	{OPT_PARCELDIR,     REQUIRED},
 	{OPT_CACHE,         REQUIRED},
 	{OPT_LAST,          REQUIRED},
-	{OPT_HOARD,         OPTIONAL},
+	{OPT_LOG,           OPTIONAL},
+	{END_OPTS}
+};
+
+mode(CHECKHOARD) = {
+	{OPT_USER,          REQUIRED},
+	{OPT_PARCEL,        REQUIRED},
+	{OPT_PARCELDIR,     REQUIRED},
+	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
 };
@@ -146,13 +154,14 @@ mode(VERSION) = {
 
 #define sym(str) MODE_ ## str, str ## _opts
 static struct pk_mode pk_modes[] = {
-	{"run",       sym(RUN),     "Bind and service a virtual disk"},
-	{"upload",    sym(UPLOAD),  "Split a cache file into individual chunks for upload"},
-	{"hoard",     sym(HOARD),   "Download all chunks into hoard cache"},
-	{"examine",   sym(EXAMINE), "Print cache statistics"},
-	{"validate",  sym(VALIDATE),"Validate cache against keyring"},
-	{"help",      sym(HELP),    "Show usage summary"},
-	{"version",   sym(VERSION), "Show version information"},
+	{"run",         sym(RUN),        "Bind and service a virtual disk"},
+	{"upload",      sym(UPLOAD),     "Split a local cache into individual chunks for upload"},
+	{"hoard",       sym(HOARD),      "Download all chunks into hoard cache"},
+	{"examine",     sym(EXAMINE),    "Print cache statistics"},
+	{"validate",    sym(VALIDATE),   "Validate local cache against keyring"},
+	{"checkhoard",  sym(CHECKHOARD), "Validate hoard cache"},
+	{"help",        sym(HELP),       "Show usage summary"},
+	{"version",     sym(VERSION),    "Show version information"},
 	{0}
 };
 #undef sym
