@@ -96,7 +96,7 @@ sub isr_sget ($$$$);
 sub isr_srun ($$$$$);
 sub isr_connected_parcel ();
 sub isr_connected_http ();
-sub isr_run_parcelkeeper ();
+sub isr_run_parcelkeeper ($$);
 sub isr_hoard ();
 sub isr_stathoard ();
 sub isr_sync ($);
@@ -831,7 +831,7 @@ sub run () {
     print("Launching Parcelkeeper...\n")
 	if $verbose;
     $kill_pk = 1;  # Tells the SIGINT handler to cleanly terminate PK
-    isr_run_parcelkeeper() == 0
+    isr_run_parcelkeeper("run", "parcel cache hoard compression log") == 0
 	or errexit("Unable to launch Parcelkeeper.");	
     
     # Find out what device node we'll be using
@@ -2129,13 +2129,50 @@ sub isr_connected_http () {
 # isr_run_parcelkeeper - Run the Parcelkeeper process and return its
 #                        exit status.
 #
-sub isr_run_parcelkeeper () {
+sub isr_run_parcelkeeper ($$) {
+    my $mode = shift;
+    my $args = shift;
+    
     my $logstring = "|PARCELKEEPER|" . message_string() ."|";
+    my $cmd = "$Isr::LIBDIR/parcelkeeper $mode";
+    my $arg;
+    my $do_log = 0;
+    
+    foreach $arg (split(/\s+/, $args)) {
+	if ($arg eq "parcel") {
+	    $cmd .= " --parcel $parceldir";
+	} elsif ($arg eq "cache") {
+	    $cmd .= " --cache $cachedir";
+	} elsif ($arg eq "last") {
+	    $cmd .= " --last $lastdir";
+	} elsif ($arg eq "dest") {
+	    $cmd .= " --destdir $tmpdir/cache/hdk";
+	} elsif ($arg eq "hoard") {
+	    $cmd .= " --hoard $hoarddir";
+	} elsif ($arg eq "compression") {
+	    $cmd .= " --compression $syscfg{compression}";
+	} elsif ($arg eq "log") {
+	    $do_log = 1;
+	} else {
+	    errexit("Unknown parcelkeeper parameter $arg");
+	}
+    }
+    
+    if ($do_log) {
+	$cmd .= " --log $parceldir/../$parcel.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}";
+    } else {
+	$cmd .= " --log /dev/null '' 0x0 $syscfg{console_logmask}";
+    }
 
     #
     # Crank up PK with all the right arguments
     #
-    return system("$Isr::LIBDIR/parcelkeeper run --user $userid --parcel $parcel --parceldir $parceldir --cache $cachedir --hoard $hoarddir --compression $syscfg{compression} --log $parceldir/../$parcel.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}");
+    if ($mode eq "run") {
+	# Don't allow SIGINT
+        return system($cmd);
+    } else {
+	return mysystem($cmd);
+    }
 }
 
 #
@@ -2281,7 +2318,7 @@ sub isr_statparcel () {
     # Display local cache stats
     #
     if (-e "$cachedir") {
-	mysystem("$Isr::LIBDIR/parcelkeeper examine --user $userid --parcel $parcel --parceldir $parceldir --cache $cachedir --last $lastdir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
+	isr_run_parcelkeeper("examine", "parcel cache last") == 0
 	    or errexit("Could not examine cache");
     }
     
@@ -2290,7 +2327,7 @@ sub isr_statparcel () {
     # requested
     #
     if ($checkstate == 1 or $checkstate == 2) {
-	mysystem("$Isr::LIBDIR/parcelkeeper validate --user $userid --parcel $parcel --parceldir $parceldir --cache $cachedir --last $lastdir --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
+	isr_run_parcelkeeper("validate", "parcel cache last") == 0
 	    or errexit("Could not validate cache");
     }
 
@@ -2539,7 +2576,7 @@ sub copy_dirtychunks () {
     #
     print("Collecting modified disk state...\n")
 	if $verbose;
-    mysystem("$Isr::LIBDIR/parcelkeeper upload --user $userid --parcel $parcel --parceldir $parceldir --cache $cachedir --last $lastdir --destdir $tmpdir/cache/hdk --log /dev/null ':' 0x0 $syscfg{console_logmask}") == 0
+    isr_run_parcelkeeper("upload", "parcel cache last dest hoard") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
     # Hack to get stats from PK
     open(STATFILE, "$tmpdir/cache/hdk/stats");
