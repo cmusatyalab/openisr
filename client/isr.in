@@ -64,7 +64,7 @@ sub get_parcelcfg ($);
 sub get_motd ();
 sub parse_cfgfile ($$);
 sub parse_parcelcfg ($);
-sub build_cache ($$);
+sub build_cache ();
 sub hdksize ();
 sub connected ();
 sub check_nexus_version ();
@@ -105,7 +105,7 @@ sub isr_sync ($);
 sub isr_statparcel ();
 sub isr_checkhoard ($$);
 sub isr_priv_upload ();
-sub copy_dirtychunks ($);
+sub copy_dirtychunks ();
 sub isr_priv_commit ($);
 sub isr_priv_clientcommit($);
 sub isr_priv_cleanhoard ();
@@ -149,6 +149,11 @@ my $verbose = 1;    # Verbosity level; by default, we print a few messages
 my $nocheckstate;   # Skip state  consistency check in ci, sync, disconnect
 my $bwlimit;        # Bandwidth limit (KBytes/sec) in ci and sync
 my $server;         # Server domain name
+my $parceldir;
+my $cachedir;
+my $lastdir;
+my $tmpdir;
+my $hoarddir;
 
 #
 # Read/write global variable: At any point in time, this hash contains
@@ -326,6 +331,17 @@ if (!-d $isrdir) {
 }
 
 #
+# Set other directory paths that we'll need.
+#
+if ($parcel) {
+    $parceldir = "$isrdir/$parcel";
+    $cachedir = "$parceldir/cache";
+    $lastdir = "$parceldir/last";
+    $tmpdir = "$parceldir/tmp";
+}
+$hoarddir = "$isrdir/hoard";
+
+#
 #
 # Assign aliases
 #
@@ -495,8 +511,6 @@ exit 0;
 # checkout - Lock a parcel and copy it from the server to the client
 #
 sub checkout () {
-    my $parceldir = "$isrdir/$parcel";
-    my $lastdir = "$parceldir/last";
     my $diskinfo = `df -P -k $isrhome | tail -n 1`;
     my ($diskpartition, $diskblocks, $diskused, $diskspace, $diskpercent, $diskroot) = split(" ", $diskinfo);
 
@@ -742,9 +756,6 @@ sub run () {
     my $pk_pid;
     my $devnode;
     
-    my $parceldir = "$isrdir/$parcel";
-    my $lastdir = "$parceldir/last";
-    my $cachedir = "$parceldir/cache";
     my $pkcmd = "$Isr::LIBDIR/parcelkeeper";
     my $cdcache_file = "$parceldir/$Isr::CONSISTENT_DIRTYCACHE_FILE";
 
@@ -804,7 +815,7 @@ sub run () {
 	if $verbose;
 
     $sigset = block_sigint();
-    build_cache($cachedir, $lastdir);
+    build_cache();
     unblock_sigint($sigset);
 
     # Make sure there is exactly one VMware config file
@@ -889,8 +900,6 @@ sub run () {
 # checkin - Sync and then release parcel
 #
 sub checkin () {
-    my $parceldir = "$isrdir/$parcel";
-
     # Parse config file that was retrieved during checkout
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
@@ -909,7 +918,6 @@ sub checkin () {
 sub sync ($) {
     my $releasing = shift;  # whether we're releasing the lock afterward
 
-    my $parceldir = "$isrdir/$parcel";
     my $relstring = "";
     my $vflag = "-q";
     my $bwflag = "";
@@ -961,8 +969,6 @@ sub upload ($$$) {
     my $parcel = shift;     # parcel name
     my $isrdir = shift;     # absolute path of local ISR home dir
 
-    my $parceldir = "$isrdir/$parcel";
-
     # Parse config file that was retrieved during checkout
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
@@ -977,8 +983,6 @@ sub upload ($$$) {
 #
 sub discard () {
     my $reply;
-    my $parceldir = "$isrdir/$parcel";
-    my $cachedir = "$parceldir/cache";
     my $cdcache_file = "$parceldir/$Isr::CONSISTENT_DIRTYCACHE_FILE";
 
     # Give users a chance to change their minds.
@@ -1012,10 +1016,6 @@ sub discard () {
 # disconnect - Prepare the host to disconnect from a parcel
 #
 sub disconnect () {
-    my $parceldir = "$isrdir/$parcel";
-    my $lastdir = "$parceldir/last";
-    my $cachedir = "$parceldir/cache";
-    
     # Parse config file that was retrieved during checkout
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
@@ -1100,8 +1100,6 @@ sub deauthenticate () {
 sub release () {
     my $nonce;
 
-    my $parceldir = "$isrdir/$parcel";
-
     # This operation should not be interrupted by the user
     block_sigint();
 
@@ -1134,8 +1132,6 @@ sub release () {
 #
 sub hoard () {
     my $parcelcfgfile; 
-
-    my $parceldir = "$isrdir/$parcel";
 
     # If the parcel is not currently checked out, then fetch a
     # temporary copy of parcel.cfg from the server, otherwise use
@@ -1172,8 +1168,6 @@ sub checkparcel () {
     my $versionflag;
     my $checkstateflag;
     
-    my $parceldir = "$isrdir/$parcel";
-
     #
     # Ask the server the to check the consistency of the parcel
     #
@@ -1201,8 +1195,6 @@ sub checkparcel () {
 #              run a content consistency check on the chunks
 #
 sub statparcel () {
-    my $parceldir = "$isrdir/$parcel";
-
     # Parse config file that was retrieved during checkout
     %cfg = parse_parcelcfg("$parceldir/parcel.cfg");
 
@@ -1375,8 +1367,6 @@ sub clean ($) {
 
     my $errors = 0;
     my $clientname = hostname();
-
-    my $parceldir = "$isrdir/$parcel";
 
     # Make sure the current working directory exists
     chdir($isrdir);
@@ -1571,10 +1561,7 @@ sub parse_parcelcfg ($) {
 #
 # build_cache - Create a local Parcelkeeper cache if one doesn't exist already
 #
-sub build_cache ($$) {
-    my $cachedir = shift;
-    my $lastdir = shift;
-
+sub build_cache () {
     my $name;
 
     if (!-e $cachedir) {
@@ -1612,8 +1599,6 @@ sub build_cache ($$) {
 sub hdksize () {
     my $numchunks;
 
-    my $parceldir = "$isrdir/$parcel";
-    my $cachedir = "$parceldir/cache";
     my $imageindex = "$cachedir/disk.idx";
 
     # cache is trivially empty
@@ -2168,9 +2153,6 @@ sub isr_connected_http () {
 #
 sub isr_run_parcelkeeper () {
     my $logstring = "|PARCELKEEPER|" . message_string() ."|";
-    my $parceldir = "$isrdir/$parcel";
-    my $hoarddir = "$isrdir/hoard";
-    my $cachedir = "$parceldir/cache";
 
     #
     # Crank up PK with all the right arguments
@@ -2182,9 +2164,6 @@ sub isr_run_parcelkeeper () {
 # isr_hoard - Block until the parcel is cached locally
 # 
 sub isr_hoard () {
-    my $parceldir = "$isrdir/$parcel";
-    my $lastdir = "$parceldir/last";
-
     #
     # If we don't have a local keyring on this host, then retrieve
     # it from the server into a temporary 'last' directory
@@ -2267,9 +2246,6 @@ sub isr_hoard () {
 sub isr_stathoard () {
     my $numchunks = 0;
     
-    my $parceldir = "$isrdir/$parcel";
-    my $lastdir = "$parceldir/last";
-
     # XXX
     
     return $numchunks;
@@ -2309,10 +2285,6 @@ sub isr_statparcel () {
 
     my @files = ();
 
-    my $parceldir = "$isrdir/$parcel";
-    my $cachedir = "$parceldir/cache";
-    my $lastdir = "$parceldir/last";
-    
     #
     # Display the size of the memory image (if it exists)
     #
@@ -2369,10 +2341,6 @@ sub isr_checkhoard ($$) {
     my $percent_hoarded;
     my $max_mbytes;
 
-    my $parceldir = "$isrdir/$parcel";
-    my $cachedir = "$parceldir/cache";
-    my $lastdir = "$parceldir/last";
-
     # XXX
     
     #
@@ -2423,10 +2391,6 @@ sub isr_priv_upload () {
     my $bwflag = "";
     my $i;
 
-    my $parceldir = "$isrdir/$parcel";
-    my $lastdir = "$parceldir/last";
-    my $cachedir = "$parceldir/cache";
-    my $tmpdir = "$parceldir/tmp";
     my $cdcache_file = "$parceldir/$Isr::CONSISTENT_DIRTYCACHE_FILE";
 
     #
@@ -2477,8 +2441,7 @@ sub isr_priv_upload () {
     # (mainly because tar is not idempotent).
     #
     if (!-e $cdcache_file) {
-	($dirtybytes, $dirtyblocks) = 
-	    copy_dirtychunks($parceldir);
+	($dirtybytes, $dirtyblocks) = copy_dirtychunks();
 	open(FLAG, ">$cdcache_file")
 	    or unix_errexit("Unable to create dirty cache flag ($cdcache_file)");
 	close FLAG;
@@ -2531,12 +2494,7 @@ sub isr_priv_upload () {
 #
 # copy_dirtychunks - Build temp cache tree and populate it with dirty state
 #
-sub copy_dirtychunks ($) {
-    my $parceldir = shift;
-
-    my $lastdir = "$parceldir/last";
-    my $cachedir = "$parceldir/cache";
-    my $tmpdir = "$parceldir/tmp";
+sub copy_dirtychunks () {
     my $tarsize = 0;
     
     my $dirtyblocks;
@@ -2626,10 +2584,6 @@ sub copy_dirtychunks ($) {
 sub isr_priv_commit ($) {
     my $releasing = shift;
 
-    my $parceldir = "$isrdir/$parcel";
-    my $lastdir = "$parceldir/last";
-    my $cachedir = "$parceldir/cache";
-
     #
     # Check to see if there is anything to upload
     #
@@ -2703,11 +2657,6 @@ sub isr_priv_clientcommit($) {
     my $name;
     my $sha1value;
 
-    my $parceldir = "$isrdir/$parcel";
-    my $lastdir = "$parceldir/last";
-    my $cachedir = "$parceldir/cache";
-    my $tmpdir = "$parceldir/tmp";
-
     #
     # Now that we have determined the dirty disk state, we can copy
     # the memory image and keyring from cache to last
@@ -2766,10 +2715,6 @@ sub isr_priv_clientcommit($) {
 # isr_priv_cleanhoard - perform garbage collection on hoard cache at sync time
 # 
 sub isr_priv_cleanhoard () {
-    my $parceldir = "$isrdir/$parcel";
-    my $lastdir = "$parceldir/last";
-    my $cachedir = "$parceldir/cache";
-
     my $deletecnt = 0;
 
     print "Garbage-collecting hoard cache..."
