@@ -68,6 +68,7 @@ sub hdksize ();
 sub connected ();
 sub check_nexus_version ();
 sub get_parcelkeeper_pid ();
+sub checkout_fetch_file ($$$$$);
 sub block_sigint ();
 sub unblock_sigint ($);
 sub block_sigtstp ();
@@ -516,12 +517,7 @@ sub checkout () {
     my $diskinfo = `df -P -k $isrhome | tail -n 1`;
     my ($diskpartition, $diskblocks, $diskused, $diskspace, $diskpercent, $diskroot) = split(" ", $diskinfo);
 
-    my $retval;
-    my $target;
     my $cfgsize;
-    my $tmpfile;
-    my $cfg_sha1value;
-    my $key_sha1value;
     my $cfg_file;
     my $key_file;
     my $clientname = hostname();
@@ -606,6 +602,10 @@ sub checkout () {
 	clean(0);
 	errexit("Unable to create last dir $lastdir.");
     }
+    if (!mktree("$hoarddir/img")) {
+	clean(0);
+	errexit("Unable to create hoard dir $hoarddir/img.");
+    }
 
     if (!rename("$isrdir/$parcel-nonce", "$parceldir/nonce")) {
 	clean(0);
@@ -620,117 +620,40 @@ sub checkout () {
     # Save the keyroot in the parcel directory (otherwise we would
     # need to include the actual keyroot on the command line)
     #
-    open(KEYROOT, ">$lastdir/keyroot") 
-	or errexit("Unable to open $lastdir/keyroot for writing");
+    if (!open(KEYROOT, ">$lastdir/keyroot")) {
+	clean(0);
+	errexit("Unable to open $lastdir/keyroot for writing");
+    }
     print KEYROOT "$cfg{KEYROOT}";
     close(KEYROOT);
 
     #
     # Fetch the parcel's virtualization files from the server
     #
-    $tmpfile = "/tmp/stat.$$";
-    if (isr_srun($userid, "stat", 
-		 "-f $userid/$parcel/last/cfg.tgz.enc",
-		 $tmpfile ,0) != 0) {
-	unlink($tmpfile);
-	clean(0);
-	errexit("Unable to stat cfg.tgz.enc file on server");
-    }
-    parse_cfgfile($tmpfile, \%map);
-    unlink($tmpfile);
-    $cfgsize = $map{SIZE};
-    $cfg_sha1value = $map{SHA1};
-
-    $tmpfile = "/tmp/stat2.$$";
-    if (isr_srun($userid, "stat", 
-		 "-f $userid/$parcel/last/keyring.enc",
-		 $tmpfile ,0) != 0) {
-	unlink($tmpfile);
-	clean(0);
-	errexit("Unable to stat keyring.enc file on server");
-    }
-    %map = ();
-    parse_cfgfile($tmpfile, \%map);
-    unlink($tmpfile);
-    $key_sha1value = $map{SHA1};
-
-    #
-    # Look aside to see if the memory image and/or keyring is available 
-    #
-    printf("Fetching virtual machine memory image (%d MB)...\n", int($cfgsize/(1<<20)))
-	if $verbose;
-
-    # XXX
-#    if (-e "$hoarddir/$cfg_sha1value") {
-#	print "Found local match for encrypted memory image.\n"
-#	    if $verbose;
-#	$cfg_file = "$hoarddir/$cfg_sha1value";
-#    }
-
-#    if (-e "$hoarddir/$key_sha1value") {
-#	print "Found local match for encrypted keyring.\n"
-#	    if $verbose;
-#	$key_file = "$hoarddir/$key_sha1value";
-#    }    
-
-    #
-    # Fetch the memory and meta files to a temp file and then commit.
-    # isr_sget() will block SIGINT while curl runs, but will return
-    # $Isr::EINTR if curl itself dies on a signal.  In order to let
-    # this work, we unblock SIGINT and install a dummy signal handler
-    # for the duration of this loop so that curl doesn't end up
-    # blocking or ignoring SIGINT as well.  This means we lose SIGINTs
-    # which are pending from before this loop.
-    #
-    unlink("$lastdir/tmpfile");
-    $SIG{'INT'} = sub {};
-    unblock_sigint($sigset);
-    foreach $target ("keyring.enc", "cfg.tgz.enc") {
-	next if ($target eq "keyring.enc" && $key_file);
-	next if ($target eq "cfg.tgz.enc" && $cfg_file);
-	
-	print "Fetching $target...\n"
-	    if ($verbose > 1);
-
-	# Show a progress meter only for the big cfg file
-	$retval = isr_sget($userid, "last/$target", "$lastdir/tmpfile",
-			    ($target eq "cfg.tgz.enc"));
-	if ($retval == $Isr::EINTR) {
-	    print "\n";
-	    # We now have an inconsistent parcel directory.  Blow it away
-	    # and release the server lock.
-	    clean($sessionid);
-	    errexit("Fetch interrupted by signal");
-	}
-	$retval == $Isr::ESUCCESS
-	    or errexit("Unable to fetch $target file");
-	rename("$lastdir/tmpfile", "$lastdir/$target")
-	    or unix_errexit("Unable to commit $lastdir/$target");
-    }
-    $sigset = block_sigint();
-    $SIG{'INT'} = \&sigint_handler;
+    $cfg_file = "$hoarddir/img/$cfg{UUID}.cfg";
+    $key_file = "$hoarddir/img/$cfg{UUID}.key";
+    checkout_fetch_file(\$sigset, "keyring.enc", $key_file, 0, "keyring");
+    $cfgsize = checkout_fetch_file(\$sigset, "cfg.tgz.enc", $cfg_file, 1,
+	        "memory image");
     
     #
     # Decrypt and unpack the virtualization and Parcelkeeper files
     #
     print("Decrypting and uncompressing virtual machine memory image...\n")
 	if $verbose;
-    $key_file = "$lastdir/keyring.enc"
-    	if !$key_file;
-    $cfg_file = "$lastdir/cfg.tgz.enc"
-    	if !$cfg_file;
     if (mysystem("openssl enc -d -aes-128-cbc -in $key_file -out $lastdir/keyring -pass file:$lastdir/keyroot -salt") != 0) {
+	clean(0);
 	errexit("Could not decrypt keyring.enc");
     }
     if (mysystem("pv -peW -s $cfgsize $cfg_file | openssl enc -d -aes-128-cbc -pass file:$lastdir/keyroot -salt | tar xz --directory $lastdir") != 0) {
+	clean(0);
 	errexit("Could not decrypt and unpack cfg.tgz.enc");
     }
+    
     # Keyroot no longer needed, get rid of it
-    foreach $target ("keyring.enc", "cfg.tgz.enc", "keyroot") {
-	if (-e "$lastdir/$target" && !unlink("$lastdir/$target")) {
-	    clean(0);
-	    errexit("Unable to remove $target.");
-	}
+    if (!unlink("$lastdir/keyroot")) {
+	clean(0);
+	errexit("Unable to remove keyroot.");
     }
 
     # Clean up and return
@@ -1677,6 +1600,84 @@ sub check_nexus_version () {
     }
 }
 
+sub checkout_fetch_file ($$$$$) {
+    my $sigset = shift;
+    my $remote_name = shift;
+    my $local_path = shift;
+    my $show_progress = shift;
+    my $desc = shift;
+    
+    my $retval;
+    my $tmpfile;
+    my $remote_size;
+    my $remote_hash;
+    my $local_hash = "";
+    my %map;
+    
+    $tmpfile = "/tmp/stat.$$";
+    if (isr_srun($userid, "stat", "-f $userid/$parcel/last/$remote_name",
+		 $tmpfile, 0) != 0) {
+	unlink($tmpfile);
+	clean($sessionid);
+	errexit("Unable to stat $remote_name file on server");
+    }
+    parse_cfgfile($tmpfile, \%map);
+    unlink($tmpfile);
+    $remote_size = $map{SIZE};
+    $remote_hash = $map{SHA1};
+
+    #
+    # Look aside to see if the file is available 
+    #
+    if (-e $local_path) {
+	$local_hash = `openssl sha1 < $local_path`;
+	chomp $local_hash;
+    }
+    
+    if ($remote_hash eq $local_hash) {
+	print "Found local match for encrypted $desc.\n"
+	    if $verbose;
+    } else {
+	printf("Fetching $desc (%d MB)...\n", int($remote_size/(1<<20)))
+	    if $verbose;
+
+	#
+	# Fetch the file to a temp file and then commit.
+	# isr_sget() will block SIGINT while curl runs, but will return
+	# $Isr::EINTR if curl itself dies on a signal.  In order to let
+	# this work, we unblock SIGINT and install a dummy signal handler
+	# so that curl doesn't end up blocking or ignoring SIGINT as well.
+	# This means we lose SIGINTs which are pending from before we
+	# unblock.
+	#
+	$tmpfile = "$lastdir/tmpfile";
+	unlink($tmpfile);
+	$SIG{'INT'} = sub {};
+	unblock_sigint($$sigset);
+	$retval = isr_sget($userid, "last/$remote_name", $tmpfile,
+	            $show_progress);
+	$$sigset = block_sigint();
+	$SIG{'INT'} = \&sigint_handler;
+	if ($retval) {
+	    print "\n";
+	    # We now have an inconsistent parcel directory.  Blow it away
+	    # and release the server lock.
+	    clean($sessionid);
+	    if ($retval == $Isr::EINTR) {
+	        errexit("Fetch interrupted by signal");
+	    } else {
+	        errexit("Unable to fetch $remote_name file");
+	    }
+	}
+	
+	if (!rename($tmpfile, $local_path)) {
+	    clean($sessionid);
+	    errexit("Unable to commit $local_path");
+	}
+    }
+    return $remote_size;
+}
+
 #
 # get_parcelkeeper_pid - Returns the PID of the Parcelkeeper background
 #                        process associated with this parcel, or zero if none
@@ -2539,7 +2540,6 @@ sub isr_priv_clientcommit($) {
 
     my $dirtyblocks = 0;
     my $name;
-    my $sha1value;
 
     #
     # Now that we have determined the dirty disk state, we can copy
@@ -2577,14 +2577,10 @@ sub isr_priv_clientcommit($) {
     #
     # Move the cfg.tgz.enc and keyring.enc files into the hoard cache
     #
-    $sha1value = `openssl sha1 < $tmpdir/cache/cfg.tgz.enc`;
-    chomp($sha1value);
-    # XXX
-    # rename("$tmpdir/cache/cfg.tgz.enc", "$hoarddir/$sha1value");
-    $sha1value = `openssl sha1 < $tmpdir/cache/keyring.enc`;
-    chomp($sha1value);
-    # XXX
-    # rename("$tmpdir/cache/keyring.enc", "$hoarddir/$sha1value");
+    mktree("$hoarddir/img")
+	or errexit("Couldn't make directory $hoarddir/img");
+    rename("$tmpdir/cache/cfg.tgz.enc", "$hoarddir/img/$cfg{UUID}.cfg");
+    rename("$tmpdir/cache/keyring.enc", "$hoarddir/img/$cfg{UUID}.key");
     message("INFO", "Client side commit - moved memory image into hoard cache");
 
     # 
