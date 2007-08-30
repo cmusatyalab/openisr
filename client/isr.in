@@ -1642,7 +1642,6 @@ sub checkout_fetch_file ($$$$$) {
 	    if $verbose;
 
 	#
-	# Fetch the file to a temp file and then commit.
 	# isr_sget() will block SIGINT while curl runs, but will return
 	# $Isr::EINTR if curl itself dies on a signal.  In order to let
 	# this work, we unblock SIGINT and install a dummy signal handler
@@ -1650,11 +1649,9 @@ sub checkout_fetch_file ($$$$$) {
 	# This means we lose SIGINTs which are pending from before we
 	# unblock.
 	#
-	$tmpfile = "$lastdir/tmpfile";
-	unlink($tmpfile);
 	$SIG{'INT'} = sub {};
 	unblock_sigint($$sigset);
-	$retval = isr_sget($userid, "last/$remote_name", $tmpfile,
+	$retval = isr_sget($userid, "last/$remote_name", $local_path,
 	            $show_progress);
 	$$sigset = block_sigint();
 	$SIG{'INT'} = \&sigint_handler;
@@ -1662,17 +1659,13 @@ sub checkout_fetch_file ($$$$$) {
 	    print "\n";
 	    # We now have an inconsistent parcel directory.  Blow it away
 	    # and release the server lock.
+	    unlink($local_path);
 	    clean($sessionid);
 	    if ($retval == $Isr::EINTR) {
 	        errexit("Fetch interrupted by signal");
 	    } else {
 	        errexit("Unable to fetch $remote_name file");
 	    }
-	}
-	
-	if (!rename($tmpfile, $local_path)) {
-	    clean($sessionid);
-	    errexit("Unable to commit $local_path");
 	}
     }
     return $remote_size;
