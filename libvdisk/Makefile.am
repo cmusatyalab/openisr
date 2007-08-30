@@ -13,7 +13,7 @@ sysexeclib32dir = $(LIBVDISK_DIRPATH_32)
 sysexeclib32_LTLIBRARIES = 32/libvdisk.la
 32_libvdisk_la_SOURCES = libvdisk.c
 nodist_32_libvdisk_la_SOURCES = revision.h
-32_libvdisk_la_CFLAGS = -m32
+32_libvdisk_la_CFLAGS = $(AM_CFLAGS) -m32
 endif
 
 # If the user passed --enable-static to configure, it still doesn't make
