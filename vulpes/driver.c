@@ -35,6 +35,7 @@ static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 #define REQUESTS_PER_SYSCALL 64
 #define WRITEBACK_INTERVAL 60
 #define WRITEBACK_IDLE_TIME 5
+#define LOOP_UNREGISTER_TRIES 500
 #define MY_INTERFACE_VERSION 5
 #if MY_INTERFACE_VERSION != NEXUS_INTERFACE_VERSION
 #error This code uses a different interface version than the one defined in convergent-user.h
@@ -247,6 +248,8 @@ static void log_sysfs_value(char *attr)
 
 void driver_shutdown(void)
 {
+  int i;
+  
   log_sysfs_value("cache_hits");
   log_sysfs_value("cache_misses");
   log_sysfs_value("cache_alloc_failures");
@@ -261,8 +264,21 @@ void driver_shutdown(void)
   
   close(state.chardev_fd);
   unlink(state.devfile_name);
-  if (ioctl(state.loopdev_fd, LOOP_CLR_FD, 0))
+  
+  /* XXX Sometimes the loop device doesn't unregister the first time.  For now,
+     we retry (a lot) to try to ensure that the user isn't left with a stale
+     binding.  However, we still print the warning as a debug aid. */
+  for (i=0; i<LOOP_UNREGISTER_TRIES; i++) {
+    if (!ioctl(state.loopdev_fd, LOOP_CLR_FD, 0)) {
+      if (i > 0)
+        vulpes_log(LOG_ERRORS,"Had to try %d times to unbind loop device",i+1);
+      break;
+    }
+    usleep(10000);
+  }
+  if (i == LOOP_UNREGISTER_TRIES)
     vulpes_log(LOG_ERRORS,"Couldn't unbind loop device");
+  
   close(state.loopdev_fd);
   /* We don't trust the loop driver */
   sync();
