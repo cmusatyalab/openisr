@@ -1154,7 +1154,6 @@ sub isr_priv_clientcommit($$$$) {
 	    or system_errexit("Unable to remove old memory image $lastdir/cfg");
 	mysystem("cp -r $cachedir/cfg $lastdir/cfg") == 0
 	    or system_errexit("Unable to copy memory image to $lastdir/cfg");
-	closedir(DIR);
 	copy("$cachedir/keyring", "$lastdir/keyring")
 	    or unix_errexit("Unable to copy keyring from $cachedir to $lastdir.");
 	copy("$cachedir/hdk/index.lev1", "$lastdir/hdk/index.lev1")
