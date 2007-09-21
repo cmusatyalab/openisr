@@ -1147,13 +1147,13 @@ sub isr_priv_clientcommit($$$$) {
 	message("INFO", "Client side commit - skipping copy of memory image");
     } else {
 	message("INFO", "Client side commit - start copying memory image");
-	opendir(DIR, "$cachedir/cfg")
-	    or unix_errexit("Unable to read memory image directory $cachedir");
-	foreach $name (readdir(DIR)) {
-	    next if ($name eq "." || $name eq "..");
-	    copy("$cachedir/cfg/$name", "$lastdir/cfg/$name")
-		or unix_errexit("Unable to copy $name from $cachedir/cfg to $lastdir/cfg.");
-	}
+	# We need to clean the old directory first, since there may be
+	# files in it (e.g. old memory images) which don't exist at all
+	# in the cachedir
+	mysystem("rm -rf $lastdir/cfg") == 0
+	    or system_errexit("Unable to remove old memory image $lastdir/cfg");
+	mysystem("cp -r $cachedir/cfg $lastdir/cfg") == 0
+	    or system_errexit("Unable to copy memory image to $lastdir/cfg");
 	closedir(DIR);
 	copy("$cachedir/keyring", "$lastdir/keyring")
 	    or unix_errexit("Unable to copy keyring from $cachedir to $lastdir.");

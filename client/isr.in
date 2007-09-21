@@ -1888,17 +1888,8 @@ sub build_cache ($$) {
     if (!-e "$cachedir/cfg") {
 	print("Copying virtual machine memory image...\n")
 	    if $verbose;
-	
-	mkdir("$cachedir/cfg")
-	    or unix_errexit("Unable to make $cachedir/cfg");
-	opendir(DIR, "$lastdir/cfg")
-	    or unix_errexit("Unable to read memory image directory $lastdir/cfg");
-	foreach $name (readdir(DIR)) {
-	    next if ($name eq "." || $name eq "..");
-	    copy("$lastdir/cfg/$name", "$cachedir/cfg/$name")
-		or unix_errexit("Unable to copy $name from $lastdir/cfg to $cachedir/cfg.");
-	}
-	closedir(DIR);
+	mysystem("cp -r $lastdir/cfg $cachedir/cfg") == 0
+	    or system_errexit("Unable to populate cache directory $cachedir/cfg");
     }
 
     # Build the local hdk directory (protocol specific)
