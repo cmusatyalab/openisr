@@ -166,6 +166,7 @@ struct nexus_tfm_state {
  * @chunkdata            : chunkdata table pointer
  * @need_user            : "refcount" for userspace process (dev lock)
  * @waiting_users        : wait queue for chardev (r/w)
+ * @waiting_idle         : wait queue for Nexus device to be idle (r/w)
  *
  * Fields must only be manipulated as specified in parentheses.  Fields not
  * labeled should be considered read-only, and should not be manipulated except
@@ -203,6 +204,7 @@ struct nexus_dev {
 	struct chunkdata_table *chunkdata;
 	unsigned need_user;
 	wait_queue_head_t waiting_users;
+	wait_queue_head_t waiting_idle;
 };
 
 /* nexus_dev flags */
@@ -424,6 +426,7 @@ void nexus_dev_put(struct nexus_dev *dev, int unlink);
 void user_get(struct nexus_dev *dev);
 void user_put(struct nexus_dev *dev);
 int shutdown_dev(struct nexus_dev *dev, int force);
+int nexus_sync(struct nexus_dev *dev);
 
 /* request.c */
 int request_start(void);

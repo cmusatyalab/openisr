@@ -432,6 +432,7 @@ void nexus_run_requests(struct list_head *entry)
 		cond_resched();
 		spin_lock_bh(&dev->requests_lock);
 	}
+	wake_up_interruptible_all(&dev->waiting_idle);
 out:
 	spin_unlock_bh(&dev->requests_lock);
 	nexus_dev_put(dev, 0);

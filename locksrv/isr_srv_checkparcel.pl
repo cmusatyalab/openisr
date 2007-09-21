@@ -275,6 +275,11 @@ if (-e $preddir) {
 	    $errors++;
 	}
     }
+} else {
+    #
+    # Get rid of the unencrypted keyring
+    #
+    unlink($currkeyring);
 }
 
 #
