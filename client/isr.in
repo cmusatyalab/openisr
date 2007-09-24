@@ -97,7 +97,6 @@ sub isr_srun ($$$$$);
 sub isr_connected_parcel ();
 sub isr_connected_http ();
 sub isr_run_parcelkeeper ($$);
-sub isr_hoard ();
 sub isr_stathoard ();
 sub isr_checkhoard ();
 sub isr_priv_upload ();
@@ -1353,19 +1352,22 @@ sub clean ($) {
 }
 
 #
-# do_hoard - repeatedly call isr_hoard() protocol method until fully hoarded
+# do_hoard - block until fully hoarded
 #
 sub do_hoard () {
     my $retval;
     
-    # Ask the system to hoard all hdk blocks into local store. If the
-    # hoard operation returns an error code, then either the network
+    # Ask Parcelkeeper to hoard all hdk blocks into local store. If the
+    # hoard operation returns an error, then either the network
     # connection is down, the server is down, a chunk in the hoard
     # somehow got corrupted, or a concurrent checkin created a new
     # version on the server while the hoard was underway. In any case,
     # we will restart the hoard operation until it succeeds.
     while (1) {
-	$retval = isr_hoard();
+	print("Hoarding any missing disk blocks from the server...\n")
+	    if $verbose;
+	
+	$retval = isr_run_parcelkeeper("hoard", "parcel last hoard");
 	if ($retval == 0) {
 	    last; 
 	} elsif (WIFSIGNALED($retval)) {
@@ -2176,29 +2178,6 @@ sub isr_run_parcelkeeper ($$) {
     } else {
 	return mysystem($cmd);
     }
-}
-
-#
-# isr_hoard - Block until the parcel is cached locally
-# 
-sub isr_hoard () {
-    # 
-    # Fetch any chunks that are missing from the hoard cache from the server
-    #
-    print("Hoarding any missing disk blocks from the server...\n")
-	if $verbose;
-    
-    # Hoard the parcel.  If the operation fails, return an error
-    # code to the caller so that it can retry the entire hoard
-    # operation. 
-    # IMPORTANT: this higher level retry allows us to run hoard 
-    # concurrent with checkin operations. During a commit on the
-    # server from version k to k+1, most chunks are removed from
-    # version k into k+1. When this happens during an sget, the
-    # requested chunk no longer exists, so we need to rerun the 
-    # hoard operation.
-    
-    return isr_run_parcelkeeper("hoard", "parcel last hoard");
 }
 
 #
