@@ -1068,7 +1068,7 @@ sub hoard () {
 	    or errexit("Unable to make $lastdir");
 	get_parcelcfg("$parceldir/parcel.cfg");
 	parse_parcelcfg("$parceldir/parcel.cfg");
-	isr_sget($userid, "last/keyring.enc", "$lastdir/keyring.enc", 0) == $Isr::ESUCCESS
+	isr_sget($userid, "last/keyring.enc", "$lastdir/keyring.enc", 0) == 0
 	    or errexit("Unable to fetch keyring.enc");
 
 	# Save the keyroot in the parcel directory (otherwise we would
@@ -1670,11 +1670,10 @@ sub checkout_fetch_file ($$$$$) {
 
 	#
 	# isr_sget() will block SIGINT while curl runs, but will return
-	# $Isr::EINTR if curl itself dies on a signal.  In order to let
-	# this work, we unblock SIGINT and install a dummy signal handler
-	# so that curl doesn't end up blocking or ignoring SIGINT as well.
-	# This means we lose SIGINTs which are pending from before we
-	# unblock.
+	# -1 if curl itself dies on a signal.  In order to let this work, we
+	# unblock SIGINT and install a dummy signal handler so that curl
+	# doesn't end up blocking or ignoring SIGINT as well.  This means we
+	# lose SIGINTs which are pending from before we unblock.
 	#
 	$SIG{'INT'} = sub {};
 	unblock_sigint($$sigset);
@@ -1688,7 +1687,7 @@ sub checkout_fetch_file ($$$$$) {
 	    # and release the server lock.
 	    unlink($local_path);
 	    clean($sessionid);
-	    if ($retval == $Isr::EINTR) {
+	    if ($retval == -1) {
 	        errexit("Fetch interrupted by signal");
 	    } else {
 	        errexit("Unable to fetch $remote_name file");
@@ -2035,8 +2034,9 @@ sub usage ($) {
 #
 # isr_sget - Copy a file from remote store to local store.  The client will
 #            ignore SIGINT/SIGQUIT while the transfer is in progress;
-#            $Isr::EINTR will be returned if one of these was received by
-#            the child process.
+#            -1 will be returned if one of these was received by the child
+#            process.  Otherwise we return the process' exit status (after
+#            our retries expire).
 #
 sub isr_sget ($$$$) {
     my $userid = shift;    # ISR userid
@@ -2057,17 +2057,16 @@ sub isr_sget ($$$$) {
     for ($i = 0; $i < $syscfg{retries}; $i++) {
 	$retval = system("curl --connect-timeout $syscfg{connect_timeout} $flag -f -G $cfg{RPATH}/$frompath > $topath");
 	if ($retval == 0) {
-	    return ($Isr::ESUCCESS);
-	}
-	if (WIFSIGNALED($retval)) {
+	    return 0;
+	} elsif (WIFSIGNALED($retval)) {
 	    # curl process killed by signal.  Don't retry.
-	    return $Isr::EINTR;
+	    return -1;
 	}
 	print "[isr] get operation failed. Retrying...\n"
 	    if $verbose;
 	sleep(1);
     }
-    return ($retval);
+    return WEXITSTATUS($retval);
 }
 
 #
