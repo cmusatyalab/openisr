@@ -13,17 +13,15 @@ our $dst = $ARGV[3];
 our $bindir = ".";
 our @versions;
 our %parcelcfg;
+our $new_keyroot;
 
 sub gen_keyroot {
-	my $keyroot;
-
 	open(KR, "-|", "openssl rand -rand /dev/urandom -base64 15 2>/dev/null")
 		or die;
-	$keyroot = <KR>;
+	$new_keyroot = <KR>;
 	close KR;
 	$? == 0 or die;
-	chomp $keyroot;
-	$parcelcfg{"NEWKEYROOT"} = $keyroot;
+	chomp $new_keyroot;
 }
 
 sub process_parcel_cfg {
@@ -51,17 +49,14 @@ UUID = $uuid
 VMM = vmware
 CRYPTO = aes-sha1
 COMPRESS = zlib,lzf
+KEYROOT = $new_keyroot
 EOF
-	foreach $key ("PROTOCOL", "SERVER", "RPATH", "WPATH", "KEYROOT",
-				"MAXKB", "CHUNKSIZE", "NUMCHUNKS",
-				"CHUNKSPERDIR") {
+	foreach $key ("PROTOCOL", "SERVER", "RPATH", "WPATH", "MAXKB",
+				"CHUNKSIZE", "NUMCHUNKS", "CHUNKSPERDIR") {
 		die unless defined $parcelcfg{$key};
-		if ($key eq "KEYROOT") {
-			print OF "$key = $parcelcfg{'NEWKEYROOT'}\n";
-		} else {
-			print OF "$key = $parcelcfg{$key}\n";
-		}
+		print OF "$key = $parcelcfg{$key}\n";
 	}
+	die unless defined $parcelcfg{"KEYROOT"};
 	close OF;
 }
 
@@ -153,7 +148,6 @@ sub rewrite_keyring {
 
 sub finish_version {
 	my $ver = shift;
-	my $keyroot = $parcelcfg{"NEWKEYROOT"};
 	my @files;
 	my $pattern;
 	my $file;
@@ -178,10 +172,10 @@ sub finish_version {
 	}
 	system("tar cC '$dst/$ver' cfg | gzip -c9 | openssl enc " .
 				"-aes-128-cbc -out '$dst/$ver/cfg.tgz.enc' " .
-				"-pass 'pass:$keyroot' -salt") == 0 or die;
+				"-pass 'pass:$new_keyroot' -salt") == 0 or die;
 	system("openssl enc -aes-128-cbc -in '$dst/$ver/keyring' " .
 			"-out '$dst/$ver/keyring.enc' " .
-			"-pass 'pass:$keyroot' -salt") == 0 or die;
+			"-pass 'pass:$new_keyroot' -salt") == 0 or die;
 	unlink("$dst/$ver/keyring") or die;
 	system("rm -rf '$dst/$ver/cfg'") == 0 or die;
 	$stat = stat("$src/$ver/keyring.enc") or die;
