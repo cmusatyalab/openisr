@@ -838,8 +838,7 @@ sub checkin () {
     sync(1);
 
     # Release the lock on the parcel
-    release() == $Isr::ESUCCESS
-	or errexit("Release of parcel $userid/$parcel failed.");
+    release();
 }
 
 #
@@ -1032,9 +1031,10 @@ sub release () {
     if (clean($nonce) == 0) {
 	print(GREEN, "Success: Parcel $userid/$parcel is now checked in (and lock released).\n", RESET)
 	    if $verbose;
+    } else {
+	print(RED, "Could not release parcel $userid/$parcel\n", RESET)
+	    if $verbose;
     }
-
-    return 0;
 }
 
 #
@@ -1199,7 +1199,7 @@ sub cleanclient() {
     # Remove the parcel's session state
     print("Removing session state and releasing server lock...\n")
 	if $verbose;
-    if (clean(0) > 0) {
+    if (clean(0)) {
 	return;
     }
 
@@ -1313,7 +1313,7 @@ sub release_locks () {
 sub clean ($) {
     my $nonce = shift;     # nonce (optional)
 
-    my $errors = 0;
+    my $ret = 0;
     my $clientname = hostname();
 
     # Make sure the current working directory exists
@@ -1321,31 +1321,29 @@ sub clean ($) {
     
     # Now remove all traces of the parcel on the client and unlock it
     if (mysystem("rm -rf $parceldir") != 0) {
-	err("Unable to remove $parcel.");
-	$errors++;
+	err("Unable to remove $parceldir.");
+	$ret = -1;
     }
 
-    # If the caller supplied a nonce, then request a soft release
     if ($nonce) {
+        # If the caller supplied a nonce, then request a soft release
 	if (isr_srun($userid, 
 		     "lock", 
 		     "-p $userid/$parcel -n $clientname -r $nonce", 
 		     "", 0) != 0) {
 	    err("Unable to release lock for $parcel. Use 'isr clean' to force the release.");
-	    $errors++;
+	    $ret = -1;
 	}
-    }
-
-    # No nonce supplied, request a hard release
-    else {
+    } else {
+        # No nonce supplied, request a hard release
 	if (isr_srun($userid, "lock", 
 		 "-p $userid/$parcel -n $clientname -R", "", 0) != 0) {
-	    errexit("Unable to release lock for $parcel.");
-	    $errors++;
+	    err("Unable to release lock for $parcel.");
+	    $ret = -1;
 	}
     }
-
-    return $errors;
+    
+    return $ret;
 }
 
 #
