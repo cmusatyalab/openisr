@@ -10,6 +10,8 @@ our $srccfg = $ARGV[0];
 our $src = $ARGV[1];
 our $dstcfg = $ARGV[2];
 our $dst = $ARGV[3];
+our $user = $ARGV[4];
+our $parcel = $ARGV[5];
 our $bindir = ".";
 our @versions;
 our %parcelcfg;
@@ -50,6 +52,8 @@ VMM = vmware
 CRYPTO = aes-sha1
 COMPRESS = zlib,lzf
 KEYROOT = $new_keyroot
+USER = $user
+PARCEL = $parcel
 EOF
 	foreach $key ("PROTOCOL", "SERVER", "RPATH", "WPATH", "MAXKB",
 				"CHUNKSIZE", "NUMCHUNKS", "CHUNKSPERDIR") {
@@ -184,8 +188,9 @@ sub finish_version {
 	utime(time, $stat->mtime, "$dst/$ver/keyring.enc") or die;
 }
 
-if ($#ARGV + 1 != 4) {
-	print "Usage: $0 src-parcelcfg src-dir dst-parcelcfg dst-dir\n";
+if ($#ARGV + 1 != 6) {
+	print "Usage: $0 src-parcelcfg src-dir dst-parcelcfg dst-dir userid " .
+				"parcel-name\n";
 	exit 1;
 }
 
