@@ -39,6 +39,7 @@ use constant {
     LIBDIR       => "!!LIBDIR!!",
     SHAREDIR     => "!!SHAREDIR!!",
     SYSCONFDIR   => "!!SYSCONFDIR!!",
+    ISRVERSION   => "!!VERSION!!"
 };
 
 use lib SHAREDIR;
@@ -493,11 +494,10 @@ elsif ($command eq "help") {
 }
 elsif ($command eq "version") {
     need_not_parcel();
+    print "OpenISR " . ISRVERSION . ", client revision $Isr::RCS_REVISION\n\n";
     # These are the copyrights for the entire OpenISR client codebase, not
     # just the user interface.
     print <<END;
-OpenISR !!VERSION!!, client revision $Isr::RCS_REVISION
-
 Copyright (C) 2000-2007 Carnegie Mellon University and others
 The OpenISR system comes with ABSOLUTELY NO WARRANTY.  Different parts of
 this software are distributed under different licenses, including the
@@ -1234,7 +1234,7 @@ sub need_parcel () {
     # what log file to write to.)  So we start the log as a side-effect.
     #
     $log_enabled = 1;
-    message("START", "OpenISR !!VERSION!!, revision $Isr::RCS_REVISION");
+    message("START", "OpenISR " . ISRVERSION . ", revision $Isr::RCS_REVISION");
     message("ENTER", "@ARGV");
     message("BEGIN", $command);
 }
@@ -1592,7 +1592,7 @@ sub check_nexus_version () {
     my $nexus_major;
     my $nexus_minor;
     my $nexus_patch;
-    my $isr_version = "!!VERSION!!";
+    my $isr_version = ISRVERSION;
     my $isr_major;
     my $isr_minor;
     my $isr_patch;
