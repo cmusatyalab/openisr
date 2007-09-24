@@ -42,7 +42,6 @@ use constant {
 };
 
 use lib SHAREDIR;
-use Isr;
 use IsrConfigTie;
 use IsrRevision;
 
