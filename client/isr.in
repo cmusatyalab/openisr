@@ -675,7 +675,6 @@ sub checkout () {
     print(GREEN, "Success: Parcel $userid/$parcel now checked out (and lock acquired).\n", RESET)
 	if $verbose;
     unblock_sigint($sigset);
-    return;
 }
 
 #
@@ -836,8 +835,7 @@ sub run () {
 #
 sub checkin () {
     # Sync the dirty blocks on the server
-    sync(1) == $Isr::ESUCCESS
-	or errexit("Sync of parcel $userid/$parcel failed.");
+    sync(1);
 
     # Release the lock on the parcel
     release() == $Isr::ESUCCESS
@@ -859,15 +857,13 @@ sub sync ($) {
     isr_priv_cleanhoard();
 
     # Upload the dirty blocks in a cache directory on the server
-    isr_priv_upload() == $Isr::ESUCCESS
-	or errexit("Upload of parcel $userid/$parcel failed.");
+    isr_priv_upload();
 
     # Operations from this point on should not be interrupted by the user
     block_sigint();
 
     # Commit the dirty blocks to a new version
-    isr_priv_commit($releasing) == $Isr::ESUCCESS
-	or errexit("Commit of parcel $userid/$parcel failed.");
+    isr_priv_commit($releasing);
 
     # If $releasing == 1, it is not safe to unblock SIGINT until the parceldir
     # is removed by our caller, since the last/ dir is not up-to-date.
@@ -899,8 +895,6 @@ sub sync ($) {
 	if !$releasing;
     print(GREEN, "Success: Sync completed. Parcel checkpointed$relstring.\n", RESET)
 	if $verbose;
-
-    return $Isr::ESUCCESS;
 }
 
 #
@@ -999,19 +993,14 @@ sub listparcels () {
 sub authenticate () {
     mysystem("ssh -A -l $userid $server ssh-add") == 0
 	or system_errexit("Unable to run ssh-add on the server ($server)");
-
-    return 0;
 }
 
 #
 # deauthenticate - Remove all SSH keys
 #
 sub deauthenticate () {
-
     mysystem("ssh-add -D") == 0
 	or system_errexit("Unable to run \"ssh-add -D\" on local machine");
-
-    return 0;
 }
 
 #
@@ -2207,11 +2196,6 @@ sub isr_checkhoard () {
 	if $verbose;
     
     # XXX
-
-    #
-    # If we get this far, everything is OK
-    #
-    return $Isr::ESUCCESS;
 }
 
 #####################################
@@ -2237,7 +2221,7 @@ sub isr_priv_upload () {
     if (!-e $cachedir) {
 	print "Local cache is empty. Nothing to upload.\n"
 	    if $verbose;
-	return $Isr::ESUCCESS;
+	return;
     }
 
     #
@@ -2325,8 +2309,6 @@ sub isr_priv_upload () {
     # Return successful status
     print("Upload completed, all updates have been sent to the server.\n")
 	if $verbose;
-
-    return $Isr::ESUCCESS;
 }
 
 #
@@ -2428,7 +2410,7 @@ sub isr_priv_commit ($) {
     if (!-e $cachedir) {
 	print "Local cache is empty. Nothing to commit.\n"
 	    if $verbose;
-	return $Isr::ESUCCESS;
+	return;
     }
 
     #
@@ -2476,9 +2458,6 @@ sub isr_priv_commit ($) {
     print "Committing updates on client...\n"
 	if $verbose;
     isr_priv_clientcommit($releasing);
-
-    return $Isr::ESUCCESS;
-
 }
 
 #
@@ -2534,8 +2513,6 @@ sub isr_priv_clientcommit($) {
     rename("$tmpdir/cache/cfg.tgz.enc", "$hoarddir/img/$cfg{UUID}.cfg");
     rename("$tmpdir/cache/keyring.enc", "$hoarddir/img/$cfg{UUID}.key");
     message("INFO", "Client side commit - moved memory image into hoard cache");
-
-    return $Isr::ESUCCESS;
 }
 
 #
