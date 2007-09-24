@@ -31,12 +31,20 @@ use Fcntl qw(:DEFAULT :seek);
 use Errno qw(:POSIX);
 use Config;
 require "syscall.ph";
-use lib "!!SHAREDIR!!";
+use strict;
+use warnings;
+
+use constant {
+    ISRSERVERBIN => "/usr/local/isr/bin",
+    LIBDIR       => "!!LIBDIR!!",
+    SHAREDIR     => "!!SHAREDIR!!",
+    SYSCONFDIR   => "!!SYSCONFDIR!!",
+};
+
+use lib SHAREDIR;
 use Isr;
 use IsrConfigTie;
 use IsrRevision;
-use strict;
-use warnings;
 
 $| = 1; # Autoflush output on every print statement
 
@@ -232,10 +240,10 @@ $SIG{"INT"} = \&sigint_handler;
 #
 
 # This file must exist, since it provides our defaults
-parse_cfgfile("$Isr::SHAREDIR/config", \%syscfg)
-    or errexit("Can't read defaults file $Isr::SHAREDIR/config");
+parse_cfgfile(SHAREDIR . "/config", \%syscfg)
+    or errexit("Can't read defaults file " . SHAREDIR . "/config");
 # These may not exist, but can override the earlier ones
-parse_cfgfile("$Isr::SYSCONFDIR/openisr.conf", \%syscfg);
+parse_cfgfile(SYSCONFDIR . "/openisr.conf", \%syscfg);
 parse_cfgfile("$ENV{HOME}/.openisrrc", \%syscfg);
 
 #####
@@ -687,7 +695,7 @@ sub run () {
     my $pk_pid;
     my $devnode;
     
-    my $pkcmd = "$Isr::LIBDIR/parcelkeeper";
+    my $pkcmd = LIBDIR . "/parcelkeeper";
 
     # Block receipt of the SIGTSTP (ctrl-z)
     block_sigtstp();
@@ -1385,7 +1393,7 @@ sub do_hoard () {
 sub get_parcelcfg ($) {
     my $outfile = shift; # Put the retrieved file here
 
-    if (mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_srv_getconfig.pl -p $parcel > $outfile")) {
+    if (mysystem("ssh -l $userid $server " . ISRSERVERBIN . "/isr_srv_getconfig.pl -p $parcel > $outfile")) {
 	unlink($outfile);
 	system_errexit("Parcel $userid/$parcel does not exist on the server ($server).");
     }
@@ -1395,7 +1403,7 @@ sub get_parcelcfg ($) {
 # get_motd - Read message-of-the-day from the server and print it out
 #
 sub get_motd () {
-    mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/isr_srv_motd.pl -p $parcel -u $userid") == 0
+    mysystem("ssh -l $userid $server " . ISRSERVERBIN . "/isr_srv_motd.pl -p $parcel -u $userid") == 0
 	or system_err("Couldn't read message of the day from the server ($server).");
 }
 
@@ -1539,7 +1547,7 @@ sub hdksize () {
 
     # Determine how many chunks are in the local cache
     # XXX
-    open(IN, "-|", "$Isr::LIBDIR/query", $imageindex, "SELECT count(*) from chunks")
+    open(IN, "-|", LIBDIR . "/query", $imageindex, "SELECT count(*) from chunks")
         or unix_errexit("Unable to read $imageindex");
     $numchunks = <IN>;
     close IN && $? == 0
@@ -2096,10 +2104,10 @@ sub isr_srun ($$$$$) {
 
     # Perform the operation on remote storage
     if ($outfile) {
-	$retval = mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/$command $args > $outfile $redirect");
+	$retval = mysystem("ssh -l $userid $server " . ISRSERVERBIN . "/$command $args > $outfile $redirect");
     }
     else {
-	$retval = mysystem("ssh -l $userid $server $Isr::ISRSERVERBIN/$command $args");
+	$retval = mysystem("ssh -l $userid $server " . ISRSERVERBIN . "/$command $args");
     }
     return $retval;
 }
@@ -2139,7 +2147,7 @@ sub isr_run_parcelkeeper ($$) {
     my $args = shift;
     
     my $logstring = "|PARCELKEEPER|" . message_string() ."|";
-    my $cmd = "$Isr::LIBDIR/parcelkeeper $mode";
+    my $cmd = LIBDIR . "/parcelkeeper $mode";
     my $arg;
     my $do_log = 0;
     

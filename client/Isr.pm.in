@@ -16,12 +16,6 @@
 
 package Isr;
 
-# Locations of relevant directories
-$ISRSERVERBIN = "/usr/local/isr/bin";
-$LIBDIR = "!!LIBDIR!!";
-$SHAREDIR = "!!SHAREDIR!!";
-$SYSCONFDIR = "!!SYSCONFDIR!!";
-
 # Return codes for storage module functions
 $ESUCCESS  = 0;  # Success
 $ENOSPACE  = 1;  # Not enough space
