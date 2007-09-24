@@ -197,7 +197,7 @@ sub exit_handler ($) {
     
     # Remove temporary files
     system("rm -f /tmp/*.$$");
-    system("rm -rf $isrdir/tmplast*")
+    system("rm -rf $isrdir/parceltmp-*-$$")
 	if $isrdir;
     
     message("EXIT", $status);
@@ -1336,9 +1336,9 @@ sub do_hoard () {
     # we will restart the hoard operation until it succeeds.
     while (1) {
 	$retval = isr_hoard();
-	if ($retval == $Isr::ESUCCESS) {
+	if ($retval == 0) {
 	    last; 
-	} elsif ($retval == $Isr::EINTR) {
+	} elsif (WIFSIGNALED($retval)) {
 	    errexit("Interrupted");
 	}
 	print "Sleeping $syscfg{hoard_sleep} secs before restarting hoard...\n"
@@ -2157,11 +2157,9 @@ sub isr_hoard () {
     # it from the server into a temporary 'last' directory
     #
     if (!-e "$lastdir/keyring") {
-
-	# Assign a temporary 'last' directory and clean any existing
-	# temp files for this user and parcel
-	$lastdir = "$isrdir/tmplast-$userid-$parcel-$$";
-	mysystem("rm -rf $isrdir/tmplast-$userid-$parcel*");
+	# Assign a temporary parcel directory
+	$parceldir = "$isrdir/parceltmp-$userid-$parcel-$$";
+	$lastdir = "$parceldir/last";
 
 	# Before going any further, make sure we have a protocol level
 	# connection to the server and a valid parcel
@@ -2171,36 +2169,32 @@ sub isr_hoard () {
 	if (!isr_connected_parcel()) {
 	    errexit("Remote parcel $userid/$parcel not found on the server.");
 	}
+	
+	# Fetch the parcel.cfg into the parceldir
+	print("Fetching parcel.cfg from the server.\n")
+	    if $verbose;
+	mktree($parceldir)
+	    or errexit("Unable to make $parceldir");
+	get_parcelcfg("$parceldir/parcel.cfg");
 
 	# Fetch the encrypted keyring into the last dir
 	print("Fetching keyring from the server.\n")
 	    if $verbose;
 	mktree($lastdir)
 	    or errexit("Unable to make $lastdir");
-	unlink("$lastdir/tmpfile");
-	if (isr_sget($userid, "last/keyring.enc", "$lastdir/tmpfile", 0) != $Isr::ESUCCESS) {
-	    mysystem("rm -rf $lastdir");
-	    errexit("Unable to fetch keyring.enc");
-	}
-	if (!rename("$lastdir/tmpfile", "$lastdir/keyring.enc")) {
-	    mysystem("rm -rf $lastdir");
-	    unix_errexit("Unable to commit $lastdir/keyring.enc");
-	}
+	isr_sget($userid, "last/keyring.enc", "$lastdir/keyring.enc", 0) == $Isr::ESUCCESS
+	    or errexit("Unable to fetch keyring.enc");
 
 	# Save the keyroot in the parcel directory (otherwise we would
 	# need to include the actual keyroot on the command line)
-	if (open(KEYROOT, ">$lastdir/keyroot") == 0) { 
-	    mysystem("rm -rf $lastdir");
-	    unix_errexit("Unable to open $lastdir/keyroot for writing");
-	}
+	open(KEYROOT, ">$lastdir/keyroot")
+	    or unix_errexit("Unable to open $lastdir/keyroot for writing");
 	print KEYROOT $cfg{KEYROOT};
 	close(KEYROOT);
 
 	# Decrypt the keyring
-	if (mysystem("openssl enc -d -aes-128-cbc -in $lastdir/keyring.enc -out $lastdir/keyring -pass file:$lastdir/keyroot -salt") != 0) {
-	    mysystem("rm -rf $lastdir");
-	    errexit("Unable to decrypt keyring.enc");
-	}
+	mysystem("openssl enc -d -aes-128-cbc -in $lastdir/keyring.enc -out $lastdir/keyring -pass file:$lastdir/keyroot -salt") == 0
+	    or errexit("Unable to decrypt keyring.enc");
 	unlink("$lastdir/keyring.enc");
 
 	# Keyroot no longer needed, get rid of it
@@ -2213,11 +2207,9 @@ sub isr_hoard () {
     print("Hoarding any missing disk blocks from the server...\n")
 	if $verbose;
     
-    # XXX
-
-    # Fetch the chunk into a temporary file in the hoard cache. If
-    # the sget fails after its retries, return an error code to the
-    # caller so that it can retry the entire hoard operation. 
+    # Hoard the parcel.  If the operation fails, return an error
+    # code to the caller so that it can retry the entire hoard
+    # operation. 
     # IMPORTANT: this higher level retry allows us to run hoard 
     # concurrent with checkin operations. During a commit on the
     # server from version k to k+1, most chunks are removed from
@@ -2225,7 +2217,7 @@ sub isr_hoard () {
     # requested chunk no longer exists, so we need to rerun the 
     # hoard operation.
     
-    return $Isr::ESUCCESS;
+    return isr_run_parcelkeeper("hoard", "parcel last hoard");
 }
 
 #
