@@ -1849,7 +1849,7 @@ sub errexit ($) {
 
     print RED, "[$progname] Error: $msg\n", RESET;
     message("ERROR", "[$progname] Error: $msg");
-    exit $Isr::EINVAL;
+    exit 1;
 }
 
 #
@@ -1865,7 +1865,7 @@ sub unix_errexit ($) {
 
     print RED, "[$progname] Error: $msg ($!)\n", RESET;
     message("ERROR", "[$progname] Error: $msg ($!)");
-    exit $Isr::EINVAL;
+    exit 1;
 }
 
 #
