@@ -26,7 +26,7 @@ if [ "$1" = "update" ] ; then
 	# believe the git index is not up-to-date, which could cause the
 	# "-dirty" flag to be added against a clean repository.  So we
 	# refresh the git index before checking it.
-	git-update-index --refresh > /dev/null 2>&1
+	git-update-index --refresh > /dev/null 2>&1 || true
 	if git-diff-index HEAD | read junk ; then
 		# There are uncommitted changes in the working copy
 		REV="$REV-dirty"
