@@ -124,7 +124,7 @@ sub release_locks ();
 sub exit_handler ($);
 
 # Old HTTPSSH prototypes
-sub isr_sget ($$$$);
+sub isr_sget ($$$);
 sub isr_srun ($$$$$);
 sub isr_connected_parcel ();
 sub isr_connected_http ();
@@ -1092,7 +1092,7 @@ sub hoard () {
 	    or errexit("Unable to make $lastdir");
 	get_parcelcfg("$parceldir/parcel.cfg");
 	parse_parcelcfg("$parceldir/parcel.cfg");
-	isr_sget($userid, "last/keyring.enc", "$lastdir/keyring.enc", 0) == 0
+	isr_sget("last/keyring.enc", "$lastdir/keyring.enc", 0) == 0
 	    or errexit("Unable to fetch keyring.enc");
 
 	# Save the keyroot in the parcel directory (otherwise we would
@@ -1675,8 +1675,7 @@ sub checkout_fetch_file ($$$$$) {
 	#
 	$SIG{'INT'} = sub {};
 	unblock_sigint($$sigset);
-	$retval = isr_sget($userid, "last/$remote_name", $local_path,
-	            $show_progress);
+	$retval = isr_sget("last/$remote_name", $local_path, $show_progress);
 	$$sigset = block_sigint();
 	$SIG{'INT'} = \&sigint_handler;
 	if ($retval) {
@@ -2036,8 +2035,7 @@ sub usage ($) {
 #            process.  Otherwise we return the process' exit status (after
 #            our retries expire).
 #
-sub isr_sget ($$$$) {
-    my $userid = shift;    # ISR userid
+sub isr_sget ($$$) {
     my $frompath = shift;  # protocol-independent server "from" suffix 
     my $topath = shift;    # local "to" path name
     my $progmeter = shift; # print a progress meter
