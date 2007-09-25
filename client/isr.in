@@ -84,7 +84,6 @@ sub listparcels ();
 sub authenticate ();
 sub deauthenticate ();
 sub passwd ();
-sub release ();
 sub clean ($);
 sub cleanclient ();
 sub hoard ();
@@ -862,8 +861,20 @@ sub checkin () {
     # Sync the dirty blocks on the server
     sync(1);
 
-    # Release the lock on the parcel
-    release();
+    # The release operation should not be interrupted by the user
+    block_sigint();
+
+    # Erase the parcel from the client and release its lock using the nonce
+    # (soft release)
+    print "Releasing parcel lock...\n"
+	if $verbose;
+    if (clean($sessionid) == 0) {
+	print(GREEN, "Success: Parcel $userid/$parcel is now checked in (and lock released).\n", RESET)
+	    if $verbose;
+    } else {
+	print(RED, "Could not release parcel $userid/$parcel\n", RESET)
+	    if $verbose;
+    }
 }
 
 #
@@ -1025,41 +1036,6 @@ sub authenticate () {
 sub deauthenticate () {
     mysystem("ssh-add -D") == 0
 	or system_errexit("Unable to run \"ssh-add -D\" on local machine");
-}
-
-#
-# release - Erase all traces of a parcel from the client and do a 
-#           soft release (i.e., with nonce) of its lock.
-#
-sub release () {
-    my $nonce;
-
-    # This operation should not be interrupted by the user
-    block_sigint();
-
-    # Get the nonce
-    if (!-e "$parceldir/nonce") {
-	errexit("$parceldir/nonce does not exist.");
-    }
-    open(NONCE, "$parceldir/nonce")
-        or errexit("Can't read $parceldir/nonce");
-    $nonce = <NONCE>;
-    close(NONCE);
-    chomp($nonce);
-    if (!$nonce) {
-	err("Empty client nonce\n");
-    }
-
-    # Release the lock on the parcel using the nonce (soft release)
-    print "Releasing parcel lock...\n"
-	if $verbose;
-    if (clean($nonce) == 0) {
-	print(GREEN, "Success: Parcel $userid/$parcel is now checked in (and lock released).\n", RESET)
-	    if $verbose;
-    } else {
-	print(RED, "Could not release parcel $userid/$parcel\n", RESET)
-	    if $verbose;
-    }
 }
 
 #
