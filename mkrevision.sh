@@ -21,6 +21,12 @@ if [ "$1" = "update" ] ; then
 	fi
 
 	REV=`git-describe`
+	# Coda-specific workaround: different Coda clients may see different
+	# stat information for the same files, which can cause a client to
+	# believe the git index is not up-to-date, which could cause the
+	# "-dirty" flag to be added against a clean repository.  So we
+	# refresh the git index before checking it.
+	git-update-index --refresh > /dev/null 2>&1
 	if git-diff-index HEAD | read junk ; then
 		# There are uncommitted changes in the working copy
 		REV="$REV-dirty"
