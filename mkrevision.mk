@@ -20,9 +20,6 @@ revision.c: $(REVISION_DEPENDS)
 revision.h: $(REVISION_DEPENDS)
 	$(top_srcdir)/mkrevision.sh header
 
-IsrRevision.pm: $(REVISION_DEPENDS)
-	$(top_srcdir)/mkrevision.sh perl
-
 # Because of the way Automake builds its rules, Make >= 3.81 fails to build
 # revision.o when both: 1. revision.c does not initially exist, and 2.
 # .deps/revision.Po contains no dependency rules (i.e., is just a dummy file).

@@ -64,16 +64,8 @@ header)
 		#define RCS_REVISION "$REV"
 	EOF
 	;;
-perl)
-	cat > IsrRevision.pm <<- EOF
-		package Isr;
-		\$ISR_RELEASE = "$REL";
-		\$RCS_REVISION = "$REV";
-		1;
-	EOF
-	;;
 *)
-	echo "Usage: $0 {update|object|header|perl}" >&2
+	echo "Usage: $0 {update|object|header}" >&2
 	exit 1
 	;;
 esac
