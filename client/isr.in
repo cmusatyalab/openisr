@@ -14,10 +14,37 @@
 # RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
 #
 
+###########################
+# Section 0. Helper classes
+###########################
+
+#
+# ConfigHash - Class that can be tied to a hash, such that lookups for
+#              nonexistent values cause errexit() to be called
+#
+package ConfigHash;
+use strict;
+use warnings;
+use Tie::Hash;
+# Inherit almost everything from the standard hash implementation
+our @ISA = "Tie::StdHash";
+
+sub FETCH ($$) {
+    my $self = shift;
+    my $key = shift;
+    
+    if (exists $self->{$key}) {
+	return $self->{$key};
+    } else {
+	main::errexit("Couldn't find lookup key $key");
+    }
+}
+
 #####################
-# Section 0: Prologue
+# Section 1. Prologue
 #####################
 
+package main;
 use Sys::Hostname;
 use Getopt::Long;
 use IO::Socket;
@@ -42,9 +69,6 @@ use constant {
     ISRVERSION   => "!!VERSION!!",
     RCS_REVISION => "!!REVISION!!"
 };
-
-use lib SHAREDIR;
-use IsrConfigTie;
 
 $| = 1; # Autoflush output on every print statement
 
@@ -114,7 +138,7 @@ sub isr_priv_clientcommit($);
 sub isr_priv_cleanhoard ();
 
 #########################
-# Section 1. Main routine
+# Section 2. Main routine
 #########################
 
 # Local variables
@@ -522,7 +546,7 @@ exit 0;
 
 
 ##########################################
-# Section 2. Definition of client commands
+# Section 3. Definition of client commands
 ##########################################
 
 #
@@ -1215,7 +1239,7 @@ sub cleanclient() {
 }
 
 #############################
-# Section 3. Helper functions
+# Section 4. Helper functions
 #############################
 
 #####
@@ -1398,7 +1422,7 @@ sub get_motd () {
 # parse_cfgfile - Read a file consisting of key=value pairs (and possibly
 #                 comments) and add them to the hash whose ref is provided by
 #                 the caller, overriding existing values with the same keys.
-#                 The hash is also tied to IsrConfigTie if not already tied.
+#                 The hash is also tied to ConfigHash if not already tied.
 #                 Returns 0 on error, 1 otherwise.
 #
 sub parse_cfgfile ($$) {
@@ -1410,7 +1434,7 @@ sub parse_cfgfile ($$) {
     my $value;
 
     # Cause accesses to nonexistent keys to call errexit()
-    tie(%$hashref, "IsrConfigTie")
+    tie(%$hashref, "ConfigHash")
         if (!tied(%$hashref));
     
     # Load the key/value pairs into the hash

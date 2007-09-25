@@ -2,8 +2,6 @@ GEN = isr isr.1
 bin_SCRIPTS = isr
 man_MANS = isr.1
 
-dist_pkgdata_DATA = IsrConfigTie.pm
-
 CLEANFILES = $(GEN)
 EXTRA_DIST = $(GEN:=.in)
 
