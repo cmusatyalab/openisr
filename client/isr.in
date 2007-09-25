@@ -1487,32 +1487,6 @@ sub parse_parcelcfg ($) {
 	errexit("Unknown or missing VERSION in parcel.cfg for parcel $userid/$parcel.");
     }
 
-    # Every parcel has a PROTOCOL entry
-    unless (exists $cfg{PROTOCOL}) {
-	errexit("Missing PROTOCOL entry in parcel.cfg for parcel $userid/$parcel.");
-    }
-
-    # Every parcel has a MAXKB entry
-    unless (exists $cfg{MAXKB}) {
-	errexit("Missing MAXKB entry in parcel.cfg for parcel $userid/$parcel.");
-    }
-
-    unless (exists $cfg{RPATH}) {
-	errexit("Missing RPATH entry in parcel.cfg for parcel $userid/$parcel.");
-    }
-    
-    unless (exists $cfg{WPATH}) {
-	errexit("Missing WPATH entry in parcel.cfg for parcel $userid/$parcel.");
-    }
-    
-    unless (exists $cfg{KEYROOT}) {
-	errexit("Missing KEYROOT entry in parcel.cfg for parcel $userid/$parcel.");
-    }
-    
-    unless (exists $cfg{SERVER}) {
-	errexit("Missing SERVER entry in parcel.cfg for parcel $userid/$parcel.");
-    }
-    
     # Every read and write path gets appended with the userid and parcel
     $cfg{RPATH} .= "/$userid/$parcel";
     $cfg{WPATH} .= "/$userid/$parcel";
