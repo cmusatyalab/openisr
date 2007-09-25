@@ -7,7 +7,7 @@ KERN_RELEASE := $(shell grep -s UTS_RELEASE \
 		$(KERNELDIR)/include/linux/utsrelease.h | cut -f2 -d\")
 
 .PHONY: module
-module: check_config
+module: check_config $(MOD_DEPENDS)
 	@$(MAKE) -C $(KERNELDIR) M=$(CURDIR) modules
 
 .PHONY: clean

@@ -6,10 +6,10 @@ openisr-objs := $(NEXUS_OBJS) revision.o
 
 else
 
+include ../mkrevision.mk
+
+MOD_DEPENDS := revision.c
 KMODS := openisr.ko
 include ../kernel.mk
-
-REVISION_TYPE = object
-include ../mkrevision.mk
 
 endif

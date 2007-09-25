@@ -1,6 +1,9 @@
 AM_CFLAGS=-W -Wall -Wstrict-prototypes -fno-strict-aliasing
 AM_LDFLAGS= -ldl
 
+include $(top_srcdir)/mkrevision.mk
+BUILT_SOURCES = revision.h
+
 # libvdisk will not work if it's not in /lib or /usr/lib, since it needs
 # to be LD_PRELOADed into a setuid root program
 sysexeclibdir = $(LIBVDISK_DIRPATH)
@@ -44,6 +47,3 @@ install-exec-hook:
 uninstall-local:
 	$(call do_uninstall,$(DESTDIR)$(sysexeclibdir))
 endif
-
-REVISION_TYPE = header
-include $(top_srcdir)/mkrevision.mk

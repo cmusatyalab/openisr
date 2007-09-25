@@ -28,4 +28,4 @@ install-data-local: dist-gzip
 # otherwise, we might distribute an obsolete .gitrevision.
 .PHONY: .gitrevision
 .gitrevision:
-	$(top_srcdir)/mkrevision.sh none
+	$(top_srcdir)/mkrevision.sh update

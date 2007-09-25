@@ -16,5 +16,4 @@ $(GEN): %: %.in Makefile
 				-e "s=!!BINDIR!!=$(bindir)=g" \
 				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" $< > $@
 
-REVISION_TYPE = perl
 include $(top_srcdir)/mkrevision.mk

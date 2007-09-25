@@ -10,5 +10,4 @@ parcelkeeper_SOURCES  = cmdline.c main.c log.c cache.c hoard.c nexus.c util.c
 parcelkeeper_SOURCES += parcelcfg.c transport.c sql.c defs.h
 nodist_parcelkeeper_SOURCES = revision.c
 
-REVISION_TYPE = object
 include $(top_srcdir)/mkrevision.mk
