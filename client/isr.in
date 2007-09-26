@@ -48,6 +48,7 @@ package main;
 use Sys::Hostname;
 use Getopt::Long;
 use IO::Socket;
+use File::Basename;
 use File::Path;
 use File::Copy;
 use File::stat;
@@ -97,6 +98,10 @@ sub connected ();
 sub check_nexus_version ();
 sub get_parcelkeeper_pid ();
 sub fetch_parcel_file ($$$$$);
+sub encrypt_keyring ($$$);
+sub decrypt_keyring ($$);
+sub encrypt_cfg ($$$);
+sub decrypt_cfg ($$$);
 sub block_sigint ();
 sub unblock_sigint ($);
 sub block_sigtstp ();
@@ -688,11 +693,11 @@ sub checkout () {
     #
     print("Decrypting and uncompressing virtual machine memory image...\n")
 	if $verbose;
-    if (mysystem("openssl enc -d -aes-128-cbc -in $imgbase.key -out $lastdir/keyring -pass file:$lastdir/keyroot -salt") != 0) {
+    if (decrypt_keyring("$lastdir/keyring", "$lastdir/keyroot") != 0) {
 	clean(0);
 	errexit("Could not decrypt keyring.enc");
     }
-    if (mysystem("pv -peW -s $cfgsize $imgbase.cfg | openssl enc -d -aes-128-cbc -pass file:$lastdir/keyroot -salt | tar xz --directory $lastdir") != 0) {
+    if (decrypt_cfg($lastdir, "$lastdir/keyroot", $cfgsize) != 0) {
 	clean(0);
 	errexit("Could not decrypt and unpack cfg.tgz.enc");
     }
@@ -1094,7 +1099,7 @@ sub hoard () {
     close(KEYROOT);
 
     # Decrypt the keyring
-    mysystem("openssl enc -d -aes-128-cbc -in $imgbase.key -out $lastdir/keyring -pass file:$lastdir/keyroot -salt") == 0
+    decrypt_keyring("$lastdir/keyring", "$lastdir/keyroot") == 0
 	or errexit("Unable to decrypt keyring.enc");
 
     # Keyroot no longer needed, get rid of it
@@ -1701,6 +1706,62 @@ sub fetch_parcel_file ($$$$$) {
     return $remote_size;
 }
 
+sub encrypt_keyring ($$$) {
+    my $src = shift;
+    my $dest = shift;
+    my $keyroot = shift;
+    
+    return mysystem("openssl enc -aes-128-cbc -in $src -out $dest -pass file:$keyroot -salt");
+}
+
+sub decrypt_keyring ($$) {
+    my $dest = shift;
+    my $keyroot = shift;
+    
+    return mysystem("openssl enc -d -aes-128-cbc -in $imgbase.key -out $dest -pass file:$keyroot -salt");
+}
+
+sub encrypt_cfg ($$$) {
+    my $src = shift;
+    my $dest = shift;
+    my $keyroot = shift;
+    
+    my $curfile;
+    my $stat;
+    my $tarsize = 0;
+    my $parent = dirname($src);
+    my $cur = basename($src);
+    my $retval;
+    
+    #
+    # Figure out (roughly) how large the cfg tarball will be, so that we can
+    # generate a progress bar
+    #
+    opendir(CFG, $src)
+	or unix_errexit("Couldn't read memory image directory $src");
+    foreach $curfile (readdir(CFG)) {
+	next if ($curfile eq "." || $curfile eq "..");
+	$stat = stat("$src/$curfile");
+	unix_errexit("Couldn't stat $src/$curfile")
+	    if !$stat;
+	$tarsize += $stat->size;
+    }
+    closedir(CFG);
+    
+    #
+    # Create cfg tarball and encrypt it and the keyring
+    #
+    return mysystem("tar c --directory $parent $cur | pv -peW -s $tarsize | gzip -c | openssl enc -aes-128-cbc -out $dest -pass file:$keyroot -salt");
+}
+
+sub decrypt_cfg ($$$) {
+    my $dest = shift;
+    my $keyroot = shift;
+    my $size = shift;
+    
+    return mysystem("pv -peW -s $size $imgbase.cfg | openssl enc -d -aes-128-cbc -pass file:$keyroot -salt | tar xz --directory $dest");
+}
+
 #
 # get_parcelkeeper_pid - Returns the PID of the Parcelkeeper background
 #                        process associated with this parcel, or zero if none
@@ -2276,13 +2337,9 @@ sub isr_priv_upload () {
 # copy_dirtychunks - Build temp cache tree and populate it with dirty state
 #
 sub copy_dirtychunks () {
-    my $tarsize = 0;
-    
     my $dirtyblocks;
     my $dirtybytes;
     my $target;
-    my $curfile;
-    my $stat;
 
     #
     # Build an empty temporary cache directory structure on the client
@@ -2302,31 +2359,15 @@ sub copy_dirtychunks () {
     close(KEYROOT);
 
     #
-    # Figure out (roughly) how large the cfg tarball will be, so that we can
-    # generate a progress bar
-    #
-    opendir(CFG, "$cachedir/cfg")
-	or unix_errexit("Couldn't read memory image directory $cachedir/cfg");
-    foreach $curfile (readdir(CFG)) {
-	next if ($curfile eq "." || $curfile eq "..");
-	$stat = stat("$cachedir/cfg/$curfile");
-	unix_errexit("Couldn't stat $cachedir/cfg/$curfile")
-	    if !$stat;
-	$tarsize += $stat->size;
-    }
-    closedir(CFG);
-    
-    #
     # Create cfg tarball and encrypt it and the keyring
     #
     print("Compressing and encrypting virtual machine memory image...\n")
 	if $verbose;
-    chdir($cachedir);
-    mysystem("tar c cfg | pv -peW -s $tarsize | gzip -c | openssl enc -aes-128-cbc -out $tmpdir/cache/cfg.tgz.enc -pass file:$cachedir/keyroot -salt") == 0
+    encrypt_cfg("$cachedir/cfg", "$tmpdir/cache/cfg.tgz.enc", "$cachedir/keyroot") == 0
 	or system_errexit("Unable to create cfg.tgz.enc.");
     printf("Compressed size: %d MB\n", (stat("$tmpdir/cache/cfg.tgz.enc")->size)/(1<<20))
     	if $verbose;
-    mysystem("openssl enc -aes-128-cbc -in $cachedir/keyring -out $tmpdir/cache/keyring.enc -pass file:$cachedir/keyroot -salt") == 0
+    encrypt_keyring("$cachedir/keyring", "$tmpdir/cache/keyring.enc", "$cachedir/keyroot") == 0
 	or system_errexit("Unable to encrypt keyring.");
     foreach $target ("cfg.tgz", "keyring") {
 	message("INFO", 
