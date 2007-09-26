@@ -98,10 +98,11 @@ sub connected ();
 sub check_nexus_version ();
 sub get_parcelkeeper_pid ();
 sub fetch_parcel_file ($$$$$);
-sub encrypt_keyring ($$$);
-sub decrypt_keyring ($$);
-sub encrypt_cfg ($$$);
-sub decrypt_cfg ($$$);
+sub keyroot_pipe ();
+sub encrypt_keyring ($$);
+sub decrypt_keyring ($);
+sub encrypt_cfg ($$);
+sub decrypt_cfg ($$);
 sub block_sigint ();
 sub unblock_sigint ($);
 sub block_sigtstp ();
@@ -659,17 +660,6 @@ sub checkout () {
     }
 
     #
-    # Save the keyroot in the parcel directory (otherwise we would
-    # need to include the actual keyroot on the command line)
-    #
-    if (!open(KEYROOT, ">$lastdir/keyroot")) {
-	clean(0);
-	errexit("Unable to open $lastdir/keyroot for writing");
-    }
-    print KEYROOT "$cfg{KEYROOT}";
-    close(KEYROOT);
-
-    #
     # Fetch the parcel's virtualization files from the server
     #
     acquire_lock("$imgbase.lock", "Hoard image", 1);
@@ -693,22 +683,16 @@ sub checkout () {
     #
     print("Decrypting and uncompressing virtual machine memory image...\n")
 	if $verbose;
-    if (decrypt_keyring("$lastdir/keyring", "$lastdir/keyroot") != 0) {
+    if (decrypt_keyring("$lastdir/keyring") != 0) {
 	clean(0);
 	errexit("Could not decrypt keyring.enc");
     }
-    if (decrypt_cfg($lastdir, "$lastdir/keyroot", $cfgsize) != 0) {
+    if (decrypt_cfg($lastdir, $cfgsize) != 0) {
 	clean(0);
 	errexit("Could not decrypt and unpack cfg.tgz.enc");
     }
     release_lock("Hoard image");
     
-    # Keyroot no longer needed, get rid of it
-    if (!unlink("$lastdir/keyroot")) {
-	clean(0);
-	errexit("Unable to remove keyroot.");
-    }
-
     # Clean up and return
     print(GREEN, "Success: Parcel $userid/$parcel now checked out (and lock acquired).\n", RESET)
 	if $verbose;
@@ -1091,19 +1075,9 @@ sub hoard () {
     fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0, undef) > 0
 	or errexit("Unable to fetch keyring.enc");
 
-    # Save the keyroot in the parcel directory (otherwise we would
-    # need to include the actual keyroot on the command line)
-    open(KEYROOT, ">$lastdir/keyroot")
-	or unix_errexit("Unable to open $lastdir/keyroot for writing");
-    print KEYROOT $cfg{KEYROOT};
-    close(KEYROOT);
-
     # Decrypt the keyring
-    decrypt_keyring("$lastdir/keyring", "$lastdir/keyroot") == 0
+    decrypt_keyring("$lastdir/keyring") == 0
 	or errexit("Unable to decrypt keyring.enc");
-
-    # Keyroot no longer needed, get rid of it
-    unlink("$lastdir/keyroot");
     release_lock("Hoard image");
 
     # Ask Parcelkeeper to hoard all hdk blocks into local store. If the
@@ -1706,26 +1680,44 @@ sub fetch_parcel_file ($$$$$) {
     return $remote_size;
 }
 
-sub encrypt_keyring ($$$) {
-    my $src = shift;
-    my $dest = shift;
-    my $keyroot = shift;
+sub keyroot_pipe () {
+    my $rh;
+    my $wh;
+    my $flags;
     
-    return mysystem("openssl enc -aes-128-cbc -in $src -out $dest -pass file:$keyroot -salt");
+    # Each end is automatically closed when it goes out of scope
+    pipe($rh, $wh)
+        or unix_errexit("Couldn't create pipe");
+    # Clear close-on-exec flag for the read end
+    $flags = fcntl($rh, F_GETFD, 0);
+    fcntl($rh, F_SETFD, $flags & ~FD_CLOEXEC);
+    print $wh $cfg{KEYROOT} . "\n";
+    # We can't just return fileno($rh) because $rh would drop out of scope
+    return ($rh, fileno($rh));
 }
 
-sub decrypt_keyring ($$) {
-    my $dest = shift;
-    my $keyroot = shift;
-    
-    return mysystem("openssl enc -d -aes-128-cbc -in $imgbase.key -out $dest -pass file:$keyroot -salt");
-}
-
-sub encrypt_cfg ($$$) {
+sub encrypt_keyring ($$) {
     my $src = shift;
     my $dest = shift;
-    my $keyroot = shift;
     
+    my ($rh, $fd) = keyroot_pipe();
+    
+    return mysystem("openssl enc -aes-128-cbc -in $src -out $dest -pass fd:$fd -salt");
+}
+
+sub decrypt_keyring ($) {
+    my $dest = shift;
+    
+    my ($rh, $fd) = keyroot_pipe();
+    
+    return mysystem("openssl enc -d -aes-128-cbc -in $imgbase.key -out $dest -pass fd:$fd -salt");
+}
+
+sub encrypt_cfg ($$) {
+    my $src = shift;
+    my $dest = shift;
+    
+    my ($rh, $fd) = keyroot_pipe();
     my $curfile;
     my $stat;
     my $tarsize = 0;
@@ -1751,15 +1743,16 @@ sub encrypt_cfg ($$$) {
     #
     # Create cfg tarball and encrypt it and the keyring
     #
-    return mysystem("tar c --directory $parent $cur | pv -peW -s $tarsize | gzip -c | openssl enc -aes-128-cbc -out $dest -pass file:$keyroot -salt");
+    return mysystem("tar c --directory $parent $cur | pv -peW -s $tarsize | gzip -c | openssl enc -aes-128-cbc -out $dest -pass fd:$fd -salt");
 }
 
-sub decrypt_cfg ($$$) {
+sub decrypt_cfg ($$) {
     my $dest = shift;
-    my $keyroot = shift;
     my $size = shift;
     
-    return mysystem("pv -peW -s $size $imgbase.cfg | openssl enc -d -aes-128-cbc -pass file:$keyroot -salt | tar xz --directory $dest");
+    my ($rh, $fd) = keyroot_pipe();
+    
+    return mysystem("pv -peW -s $size $imgbase.cfg | openssl enc -d -aes-128-cbc -pass fd:$fd -salt | tar xz --directory $dest");
 }
 
 #
@@ -2349,34 +2342,21 @@ sub copy_dirtychunks () {
 	or errexit("Unable to make temporary directory $tmpdir/cache/hdk");
 
     #
-    # Save a copy of the keyroot in the cache (otherwise we would
-    # need to include the actual keyroot on the command line, which
-    # would not be secure)
-    #
-    open(KEYROOT, ">$cachedir/keyroot") 
-	or errexit("Unable to open $cachedir/keyroot for writing");
-    print KEYROOT $cfg{KEYROOT};
-    close(KEYROOT);
-
-    #
     # Create cfg tarball and encrypt it and the keyring
     #
     print("Compressing and encrypting virtual machine memory image...\n")
 	if $verbose;
-    encrypt_cfg("$cachedir/cfg", "$tmpdir/cache/cfg.tgz.enc", "$cachedir/keyroot") == 0
+    encrypt_cfg("$cachedir/cfg", "$tmpdir/cache/cfg.tgz.enc") == 0
 	or system_errexit("Unable to create cfg.tgz.enc.");
     printf("Compressed size: %d MB\n", (stat("$tmpdir/cache/cfg.tgz.enc")->size)/(1<<20))
     	if $verbose;
-    encrypt_keyring("$cachedir/keyring", "$tmpdir/cache/keyring.enc", "$cachedir/keyroot") == 0
+    encrypt_keyring("$cachedir/keyring", "$tmpdir/cache/keyring.enc") == 0
 	or system_errexit("Unable to encrypt keyring.");
     foreach $target ("cfg.tgz", "keyring") {
 	message("INFO", 
 		sprintf("upload:$target.enc:%d:", 
 			stat("$tmpdir/cache/$target.enc")->size));
     }
-
-    # Get rid of keyroot, no longer needed
-    unlink("$cachedir/keyroot"); 
 
     # 
     # Copy any dirty hdk chunks to the temporary cache directory
