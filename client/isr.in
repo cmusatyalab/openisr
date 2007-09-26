@@ -121,7 +121,6 @@ sub release_locks ();
 sub exit_handler ($);
 
 # Old HTTPSSH prototypes
-sub isr_sget ($$$);
 sub isr_srun ($$$$);
 sub isr_connected_parcel ();
 sub isr_connected_http ();
@@ -1608,6 +1607,15 @@ sub check_nexus_version () {
     }
 }
 
+#
+# fetch_parcel_file - Copy a file from remote store to the local hoard cache,
+#                     unless the file is already up-to-date in the hoard cache.
+#                     The client will ignore SIGINT/SIGQUIT while the transfer
+#                     is in progress; -1 will be returned if one of these was
+#                     received by the child process, or if any other error
+#                     occurs.  Otherwise we return the length of the retrieved
+#                     file.
+#
 sub fetch_parcel_file ($$$$$) {
     my $remote_name = shift;
     my $local_path = shift;
@@ -1620,6 +1628,8 @@ sub fetch_parcel_file ($$$$$) {
     my $remote_size;
     my $remote_hash;
     my $local_hash = "";
+    my $flag = ($show_progress and $verbose) ? "" : "-sS";
+    my $i;
     my %map;
     
     $tmpfile = "/tmp/stat.$$";
@@ -1651,18 +1661,26 @@ sub fetch_parcel_file ($$$$$) {
 
 	#
 	# If $sigset is not undef, we assume that SIGINT is currently blocked.
-	# isr_sget() will itself block SIGINT while curl runs, but will return
-	# -1 if curl itself dies on a signal.  In order to let this work when
-	# SIGINT is blocked, we unblock SIGINT and install a dummy signal
-	# handler so that curl doesn't end up blocking or ignoring SIGINT
-	# as well.  This means we lose SIGINTs which are pending from before
-	# we unblock.
+	# We will ourselves block SIGINT while curl runs, in order to catch
+	# and clean up when curl dies on a signal.  But if SIGINT is already
+	# blocked, we need to unblock it and install a dummy signal handler so
+	# that curl doesn't end up blocking or ignoring SIGINT as well.  This
+	# means we lose SIGINTs which are pending from before we unblock.
 	#
 	if ($sigset) {
 	    $SIG{'INT'} = sub {};
 	    unblock_sigint($$sigset);
 	}
-	$retval = isr_sget("last/$remote_name", $local_path, $show_progress);
+	
+	# Retry if the get operation fails
+	for ($i = 0; $i < $syscfg{retries}; $i++) {
+	    $retval = system("curl --connect-timeout $syscfg{connect_timeout} $flag -f -G $cfg{RPATH}/last/$remote_name > $local_path");
+	    last if ($retval == 0 or WIFSIGNALED($retval));
+	    print "[isr] get operation failed. Retrying...\n"
+		if $verbose;
+	    sleep(1);
+	}
+	
 	if ($sigset) {
 	    $$sigset = block_sigint();
 	    $SIG{'INT'} = \&sigint_handler;
@@ -1672,7 +1690,7 @@ sub fetch_parcel_file ($$$$$) {
 	    print "\n";
 	    # The $local_path file is now known to be invalid.  Kill it.
 	    unlink($local_path);
-	    if ($retval == -1) {
+	    if (WIFSIGNALED($retval)) {
 	        err("Fetch interrupted by signal");
 	    } else {
 	        err("Unable to fetch $remote_name file");
@@ -2016,43 +2034,6 @@ sub usage ($) {
 #############################
 # Section 1: Public functions
 #############################
-
-#
-# isr_sget - Copy a file from remote store to local store.  The client will
-#            ignore SIGINT/SIGQUIT while the transfer is in progress;
-#            -1 will be returned if one of these was received by the child
-#            process.  Otherwise we return the process' exit status (after
-#            our retries expire).
-#
-sub isr_sget ($$$) {
-    my $frompath = shift;  # protocol-independent server "from" suffix 
-    my $topath = shift;    # local "to" path name
-    my $progmeter = shift; # print a progress meter
-
-    my $i;
-    my $retval;
-    my $flag;
-    
-    $flag = "-sS";    
-    if ($progmeter and $verbose) {
-	$flag = "";
-    }
-	
-    # Retry if the get operation fails
-    for ($i = 0; $i < $syscfg{retries}; $i++) {
-	$retval = system("curl --connect-timeout $syscfg{connect_timeout} $flag -f -G $cfg{RPATH}/$frompath > $topath");
-	if ($retval == 0) {
-	    return 0;
-	} elsif (WIFSIGNALED($retval)) {
-	    # curl process killed by signal.  Don't retry.
-	    return -1;
-	}
-	print "[isr] get operation failed. Retrying...\n"
-	    if $verbose;
-	sleep(1);
-    }
-    return WEXITSTATUS($retval);
-}
 
 #
 # isr_srun - Perform an operation on parcel tree in remote store
