@@ -87,7 +87,6 @@ sub passwd ();
 sub clean ($);
 sub cleanclient ();
 sub hoard ();
-sub do_hoard ();
 sub checkparcel ();
 sub statparcel ();
 sub parse_cfgfile ($$);
@@ -989,7 +988,7 @@ sub disconnect () {
 
     # Hoard the parcel if it's not already hoarded
     if (isr_stathoard() < $cfg{NUMCHUNKS}) {
-	do_hoard();
+	hoard();
     }
 
     # Optionally check the hoard cache for consistency
@@ -1053,6 +1052,8 @@ sub deauthenticate () {
 # hoard - Copy all server disk blocks to the local client cache
 #
 sub hoard () {
+    my $retval;
+    
     #
     # Fetch copies of parcel.cfg and the keyring and put them into a temporary
     # parcel directory.  We don't use the regular last directory for the
@@ -1101,8 +1102,26 @@ sub hoard () {
     unlink("$lastdir/keyroot");
     release_lock("Hoard image");
 
-    # Run the actual hoard process
-    do_hoard();
+    # Ask Parcelkeeper to hoard all hdk blocks into local store. If the
+    # hoard operation returns an error, then either the network
+    # connection is down, the server is down, a chunk in the hoard
+    # somehow got corrupted, or a concurrent checkin created a new
+    # version on the server while the hoard was underway. In any case,
+    # we will restart the hoard operation until it succeeds.
+    while (1) {
+	print("Hoarding any missing disk blocks from the server...\n")
+	    if $verbose;
+	
+	$retval = isr_run_parcelkeeper("hoard", "parcel last hoard");
+	if ($retval == 0) {
+	    last; 
+	} elsif (WIFSIGNALED($retval)) {
+	    errexit("Interrupted");
+	}
+	print "Sleeping $syscfg{hoard_sleep} secs before restarting hoard...\n"
+	    if $verbose;
+	sleep($syscfg{hoard_sleep});
+    }
 
     # The hoard finished without any errors. Declare success
     print GREEN, "Success: The parcel $userid/$parcel is now fully hoarded on this host.\n", RESET
@@ -1377,34 +1396,6 @@ sub clean ($) {
     }
     
     return $ret;
-}
-
-#
-# do_hoard - block until fully hoarded
-#
-sub do_hoard () {
-    my $retval;
-    
-    # Ask Parcelkeeper to hoard all hdk blocks into local store. If the
-    # hoard operation returns an error, then either the network
-    # connection is down, the server is down, a chunk in the hoard
-    # somehow got corrupted, or a concurrent checkin created a new
-    # version on the server while the hoard was underway. In any case,
-    # we will restart the hoard operation until it succeeds.
-    while (1) {
-	print("Hoarding any missing disk blocks from the server...\n")
-	    if $verbose;
-	
-	$retval = isr_run_parcelkeeper("hoard", "parcel last hoard");
-	if ($retval == 0) {
-	    last; 
-	} elsif (WIFSIGNALED($retval)) {
-	    errexit("Interrupted");
-	}
-	print "Sleeping $syscfg{hoard_sleep} secs before restarting hoard...\n"
-	    if $verbose;
-	sleep($syscfg{hoard_sleep});
-    }
 }
 
 #
