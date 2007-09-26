@@ -179,6 +179,7 @@ my $cachedir;
 my $lastdir;
 my $tmpdir;
 my $hoarddir;
+my $imgbase;
 my $cdcache_file;
 
 #
@@ -554,8 +555,6 @@ sub checkout () {
     my ($diskpartition, $diskblocks, $diskused, $diskspace, $diskpercent, $diskroot) = split(" ", $diskinfo);
 
     my $cfgsize;
-    my $cfg_file;
-    my $key_file;
     my $clientname = hostname();
     my $sigset;
     my %map;
@@ -669,17 +668,15 @@ sub checkout () {
     #
     # Fetch the parcel's virtualization files from the server
     #
-    $cfg_file = "$hoarddir/img/$cfg{UUID}.cfg";
-    $key_file = "$hoarddir/img/$cfg{UUID}.key";
-    if (fetch_parcel_file("keyring.enc", $key_file, "keyring", 0, \$sigset)
-                == -1) {
+    if (fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0,
+		\$sigset) == -1) {
         # We now have an incomplete parcel directory.  Blow it away and
         # release the server lock.
         clean(0);
         errexit("Could not fetch keyring");
     }
-    $cfgsize = fetch_parcel_file("cfg.tgz.enc", $cfg_file, "memory image", 1,
-                \$sigset);
+    $cfgsize = fetch_parcel_file("cfg.tgz.enc", "$imgbase.cfg", "memory image",
+		1, \$sigset);
     if ($cfgsize == -1) {
         # Ditto.
         clean(0);
@@ -691,11 +688,11 @@ sub checkout () {
     #
     print("Decrypting and uncompressing virtual machine memory image...\n")
 	if $verbose;
-    if (mysystem("openssl enc -d -aes-128-cbc -in $key_file -out $lastdir/keyring -pass file:$lastdir/keyroot -salt") != 0) {
+    if (mysystem("openssl enc -d -aes-128-cbc -in $imgbase.key -out $lastdir/keyring -pass file:$lastdir/keyroot -salt") != 0) {
 	clean(0);
 	errexit("Could not decrypt keyring.enc");
     }
-    if (mysystem("pv -peW -s $cfgsize $cfg_file | openssl enc -d -aes-128-cbc -pass file:$lastdir/keyroot -salt | tar xz --directory $lastdir") != 0) {
+    if (mysystem("pv -peW -s $cfgsize $imgbase.cfg | openssl enc -d -aes-128-cbc -pass file:$lastdir/keyroot -salt | tar xz --directory $lastdir") != 0) {
 	clean(0);
 	errexit("Could not decrypt and unpack cfg.tgz.enc");
     }
@@ -1083,7 +1080,7 @@ sub hoard () {
 	    errexit("Parcel $userid/$parcel does not exist on the server ($server).");
 	}
 	parse_parcelcfg("$parceldir/parcel.cfg");
-	isr_sget("last/keyring.enc", "$lastdir/keyring.enc", 0) == 0
+	fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0, undef) > 0
 	    or errexit("Unable to fetch keyring.enc");
 
 	# Save the keyroot in the parcel directory (otherwise we would
@@ -1094,9 +1091,8 @@ sub hoard () {
 	close(KEYROOT);
 
 	# Decrypt the keyring
-	mysystem("openssl enc -d -aes-128-cbc -in $lastdir/keyring.enc -out $lastdir/keyring -pass file:$lastdir/keyroot -salt") == 0
+	mysystem("openssl enc -d -aes-128-cbc -in $imgbase.key -out $lastdir/keyring -pass file:$lastdir/keyroot -salt") == 0
 	    or errexit("Unable to decrypt keyring.enc");
-	unlink("$lastdir/keyring.enc");
 
 	# Keyroot no longer needed, get rid of it
 	unlink("$lastdir/keyroot");
@@ -1458,6 +1454,9 @@ sub parse_parcelcfg ($) {
     # Every read and write path gets appended with the userid and parcel
     $cfg{RPATH} .= "/$userid/$parcel";
     $cfg{WPATH} .= "/$userid/$parcel";
+    
+    # Set other globals that are dependent on values from parcel.cfg
+    $imgbase = "$hoarddir/img/$cfg{UUID}";
 }
 
 #
