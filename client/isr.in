@@ -97,7 +97,7 @@ sub hdksize ();
 sub connected ();
 sub check_nexus_version ();
 sub get_parcelkeeper_pid ();
-sub checkout_fetch_file ($$$$$);
+sub fetch_parcel_file ($$$$$);
 sub block_sigint ();
 sub unblock_sigint ($);
 sub block_sigtstp ();
@@ -671,9 +671,20 @@ sub checkout () {
     #
     $cfg_file = "$hoarddir/img/$cfg{UUID}.cfg";
     $key_file = "$hoarddir/img/$cfg{UUID}.key";
-    checkout_fetch_file(\$sigset, "keyring.enc", $key_file, 0, "keyring");
-    $cfgsize = checkout_fetch_file(\$sigset, "cfg.tgz.enc", $cfg_file, 1,
-	        "memory image");
+    if (fetch_parcel_file("keyring.enc", $key_file, "keyring", 0, \$sigset)
+                == -1) {
+        # We now have an incomplete parcel directory.  Blow it away and
+        # release the server lock.
+        clean(0);
+        errexit("Could not fetch keyring");
+    }
+    $cfgsize = fetch_parcel_file("cfg.tgz.enc", $cfg_file, "memory image", 1,
+                \$sigset);
+    if ($cfgsize == -1) {
+        # Ditto.
+        clean(0);
+        errexit("Could not fetch memory image");
+    }
     
     #
     # Decrypt and unpack the virtualization and Parcelkeeper files
@@ -1582,12 +1593,12 @@ sub check_nexus_version () {
     }
 }
 
-sub checkout_fetch_file ($$$$$) {
-    my $sigset = shift;
+sub fetch_parcel_file ($$$$$) {
     my $remote_name = shift;
     my $local_path = shift;
-    my $show_progress = shift;
     my $desc = shift;
+    my $show_progress = shift;
+    my $sigset = shift;
     
     my $retval;
     my $tmpfile;
@@ -1624,28 +1635,34 @@ sub checkout_fetch_file ($$$$$) {
 	    if $verbose;
 
 	#
-	# isr_sget() will block SIGINT while curl runs, but will return
-	# -1 if curl itself dies on a signal.  In order to let this work, we
-	# unblock SIGINT and install a dummy signal handler so that curl
-	# doesn't end up blocking or ignoring SIGINT as well.  This means we
-	# lose SIGINTs which are pending from before we unblock.
+	# If $sigset is not undef, we assume that SIGINT is currently blocked.
+	# isr_sget() will itself block SIGINT while curl runs, but will return
+	# -1 if curl itself dies on a signal.  In order to let this work when
+	# SIGINT is blocked, we unblock SIGINT and install a dummy signal
+	# handler so that curl doesn't end up blocking or ignoring SIGINT
+	# as well.  This means we lose SIGINTs which are pending from before
+	# we unblock.
 	#
-	$SIG{'INT'} = sub {};
-	unblock_sigint($$sigset);
+	if ($sigset) {
+	    $SIG{'INT'} = sub {};
+	    unblock_sigint($$sigset);
+	}
 	$retval = isr_sget("last/$remote_name", $local_path, $show_progress);
-	$$sigset = block_sigint();
-	$SIG{'INT'} = \&sigint_handler;
+	if ($sigset) {
+	    $$sigset = block_sigint();
+	    $SIG{'INT'} = \&sigint_handler;
+	}
+	
 	if ($retval) {
 	    print "\n";
-	    # We now have an inconsistent parcel directory.  Blow it away
-	    # and release the server lock.
+	    # The $local_path file is now known to be invalid.  Kill it.
 	    unlink($local_path);
-	    clean($sessionid);
 	    if ($retval == -1) {
-	        errexit("Fetch interrupted by signal");
+	        err("Fetch interrupted by signal");
 	    } else {
-	        errexit("Unable to fetch $remote_name file");
+	        err("Unable to fetch $remote_name file");
 	    }
+	    return -1;
 	}
     }
     return $remote_size;
