@@ -116,7 +116,8 @@ sub need_parcel ();
 sub need_not_parcel ();
 sub need_checked_out ();
 sub need_network ();
-sub acquire_lock ($$);
+sub acquire_lock ($$$);
+sub release_lock ($);
 sub release_locks ();
 sub exit_handler ($);
 
@@ -417,7 +418,7 @@ if ($command eq "checkout") {
     need_parcel();
     need_network();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
     checkout();
 } 
 elsif ($command eq "resume") {
@@ -429,7 +430,7 @@ elsif ($command eq "resume") {
 	if ((!-e "$isrdir/$parcel") or
 	    (-e "$isrdir/$parcel" and !$disconnected));
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
     checkout();
     run();
 } 
@@ -438,7 +439,7 @@ elsif ($command eq "checkin") {
     need_checked_out();
     need_network();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
     checkin();
 } 
 elsif ($command eq "sync") {
@@ -446,26 +447,26 @@ elsif ($command eq "sync") {
     need_checked_out();
     need_network();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
     sync(0);
 } 
 elsif ($command eq "discard") {
     need_parcel();
     need_checked_out();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
     discard();
 }
 elsif ($command eq "hoard") {
     need_parcel();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache");
+    acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache", 0);
     hoard();
 }
 elsif ($command eq "stat") {
     need_parcel();
     need_checked_out();
-    acquire_lock("$isrdir/$parcel.lock", "Parcel")
+    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0)
 	if $checkstate;
     statparcel();
 }
@@ -474,15 +475,15 @@ elsif ($command eq "disconnect") {
     need_checked_out();
     need_network();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel")
+    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0)
 	if (!$nocheckstate);
-    acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache");
+    acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache", 0);
     disconnect();
 }
 elsif ($command eq "checkparcel") {
     need_parcel();
     need_network();
-    acquire_lock("$isrdir/$parcel.lock", "Parcel");
+    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
     checkparcel();
 }
 elsif ($command eq "ls") {
@@ -505,8 +506,8 @@ elsif ($command eq "passwd") {
 }
 elsif ($command eq "clean") {
     need_parcel();
-    acquire_lock("$isrdir/$parcel.lock", "Parcel");
-    acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache")
+    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
+    acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache", 0)
 	if $allflag;
     cleanclient();
 }
@@ -668,6 +669,7 @@ sub checkout () {
     #
     # Fetch the parcel's virtualization files from the server
     #
+    acquire_lock("$imgbase.lock", "Hoard image", 1);
     if (fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0,
 		\$sigset) == -1) {
         # We now have an incomplete parcel directory.  Blow it away and
@@ -696,6 +698,7 @@ sub checkout () {
 	clean(0);
 	errexit("Could not decrypt and unpack cfg.tgz.enc");
     }
+    release_lock("Hoard image");
     
     # Keyroot no longer needed, get rid of it
     if (!unlink("$lastdir/keyroot")) {
@@ -1080,6 +1083,7 @@ sub hoard () {
 	    errexit("Parcel $userid/$parcel does not exist on the server ($server).");
 	}
 	parse_parcelcfg("$parceldir/parcel.cfg");
+	acquire_lock("$imgbase.lock", "Hoard image", 1);
 	fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0, undef) > 0
 	    or errexit("Unable to fetch keyring.enc");
 
@@ -1096,6 +1100,7 @@ sub hoard () {
 
 	# Keyroot no longer needed, get rid of it
 	unlink("$lastdir/keyroot");
+	release_lock("Hoard image");
     }
 
     # Run the actual hoard process
@@ -1280,12 +1285,14 @@ sub need_network () {
 # Misc helper functions
 # 
 
-sub acquire_lock ($$) {
+sub acquire_lock ($$$) {
     my $file = shift;
     my $desc = shift;
+    my $wait = shift;
     
     my $lockstruct;
     my $fh;
+    my $op;
     
     # This is black magic.  We don't want to make assumptions about whether
     # we're using off_t or off64_t, or whether we're on a 64-bit architecture,
@@ -1299,12 +1306,32 @@ sub acquire_lock ($$) {
     $lockstruct = pack("s!s!lllll", F_WRLCK, SEEK_SET);
     open($fh, ">", $file)
 	or unix_errexit("Can't open $file for writing");
-    if (!fcntl($fh, F_SETLK, $lockstruct)) {
+    $op = $wait ? F_SETLKW : F_SETLK;
+    while (1) {
+	last if fcntl($fh, $op, $lockstruct);
+	next if $! == EINTR;
 	errexit("$desc locked by another process")
 	    if ($! == EACCES or $! == EAGAIN);
 	unix_errexit("Can't acquire lock");
     }
-    push(@locks, {"NAME" => $file, "FH" => $fh});
+    push(@locks, {"DESC" => $desc, "NAME" => $file, "FH" => $fh});
+}
+
+sub release_lock ($) {
+    my $desc = shift;
+    
+    my $record;
+    my @newlocks;
+    
+    foreach $record (@locks) {
+	if ($record->{"DESC"} eq $desc) {
+	    unlink($record->{"NAME"});
+	    close($record->{"FH"});
+	} else {
+	    push @newlocks, $record;
+	}
+    }
+    @locks = @newlocks;
 }
 
 sub release_locks () {
