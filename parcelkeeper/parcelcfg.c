@@ -9,6 +9,7 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
+#include <stdlib.h>
 #include <string.h>
 #include <uuid.h>
 #include "defs.h"
