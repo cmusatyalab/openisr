@@ -52,6 +52,7 @@ struct pk_option_record {
 struct pk_mode {
 	char *name;
 	enum mode type;
+	unsigned flags;
 	struct pk_option_record *opts;
 	char *desc;
 };
@@ -161,7 +162,20 @@ mode(VERSION) = {
 
 #undef mode
 
-#define sym(str) MODE_ ## str, str ## _opts
+#define RUN_flags		WANT_LOCK|WANT_CACHE
+#define UPLOAD_flags		WANT_LOCK|WANT_CACHE|WANT_PREV
+#define HOARD_flags		WANT_PREV
+#define EXAMINE_flags		WANT_CACHE|WANT_PREV
+#define VALIDATE_flags		WANT_LOCK|WANT_CACHE|WANT_PREV
+#define LISTHOARD_flags		0
+#define CHECKHOARD_flags	0
+#define RMHOARD_flags		0
+#define REFRESH_flags		0
+#define GC_flags		0
+#define HELP_flags		0
+#define VERSION_flags		0
+
+#define sym(str) MODE_ ## str, str ## _flags, str ## _opts
 static struct pk_mode pk_modes[] = {
 	{"run",         sym(RUN),        "Bind and service a virtual disk"},
 	{"upload",      sym(UPLOAD),     "Split a local cache into individual chunks for upload"},
@@ -357,6 +371,7 @@ enum mode parse_cmdline(int argc, char **argv)
 	curmode=parse_mode(argv[1]);
 	if (curmode == NULL)
 		PARSE_ERROR("unknown mode %s", argv[1]);
+	config.flags=curmode->flags;
 
 	while ((opt=pk_getopt(argc, argv)) != END_OPTS) {
 		switch (opt) {

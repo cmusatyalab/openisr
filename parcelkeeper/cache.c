@@ -219,7 +219,7 @@ pk_err_t cache_init(void)
 		return PK_CALLFAIL;
 	}
 
-	if (config.cache_dir != NULL) {
+	if (config.flags & WANT_CACHE) {
 		ret=open_cachedir(page_size);
 		if (ret)
 			goto bad;
@@ -232,7 +232,7 @@ pk_err_t cache_init(void)
 		}
 	}
 
-	if (config.last_dir != NULL) {
+	if (config.flags & WANT_PREV) {
 		ret=attach(state.db, "last", config.last_keyring);
 		if (ret)
 			goto bad;

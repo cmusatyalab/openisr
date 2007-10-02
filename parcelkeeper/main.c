@@ -43,7 +43,7 @@ int main(int argc, char **argv)
 
 	/* Take the lock early, so that we don't even write to the logfile
 	   without holding it */
-	if (config.lockfile != NULL && mode != MODE_EXAMINE) {
+	if (config.flags & WANT_LOCK) {
 		err=acquire_lock();
 		if (err) {
 			pk_log(LOG_ERROR, "Couldn't acquire parcel lock: %s",

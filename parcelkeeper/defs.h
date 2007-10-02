@@ -65,9 +65,18 @@ enum mode {
 	MODE_VERSION,
 };
 
+enum mode_flags {
+	WANT_LOCK	= 0x0001,
+	WANT_CACHE	= 0x0002,
+	WANT_PREV	= 0x0004,
+};
+
 struct pk_connection;
 
 struct pk_config {
+	/* mode flags */
+	unsigned flags;
+
 	/* top-level parcel directory and its contents */
 	char *parcel_dir;
 	char *parcel_cfg;
