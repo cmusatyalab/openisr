@@ -233,7 +233,7 @@ pk_err_t cache_init(void)
 	}
 
 	if (config.flags & WANT_PREV) {
-		ret=attach(state.db, "last", config.last_keyring);
+		ret=attach(state.db, "last", config.prev_keyring);
 		if (ret)
 			goto bad;
 	}

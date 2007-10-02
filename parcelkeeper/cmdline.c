@@ -24,8 +24,6 @@ enum arg_type {
 
 enum option {
 	OPT_PARCEL,
-	OPT_CACHE,
-	OPT_LAST,
 	OPT_HOARD,
 	OPT_DESTDIR,
 	OPT_COMPRESSION,
@@ -59,8 +57,6 @@ struct pk_mode {
 
 static struct pk_option pk_options[] = {
 	{"parcel",         OPT_PARCEL,         {"parcel_dir"}},
-	{"cache",          OPT_CACHE,          {"local_cache_dir"}},
-	{"last",           OPT_LAST,           {"last_cache_dir"}},
 	{"hoard",          OPT_HOARD,          {"hoard_dir"}},
 	{"destdir",        OPT_DESTDIR,        {"dir"}},
 	{"compression",    OPT_COMPRESSION,    {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
@@ -74,7 +70,6 @@ static struct pk_option pk_options[] = {
 
 mode(RUN) = {
 	{OPT_PARCEL,        REQUIRED},
-	{OPT_CACHE,         REQUIRED},
 	{OPT_HOARD,         OPTIONAL},
 	{OPT_COMPRESSION,   OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
@@ -84,8 +79,6 @@ mode(RUN) = {
 
 mode(UPLOAD) = {
 	{OPT_PARCEL,        REQUIRED},
-	{OPT_CACHE,         REQUIRED},
-	{OPT_LAST,          REQUIRED},
 	{OPT_DESTDIR,       REQUIRED},
 	{OPT_HOARD,         OPTIONAL, "Also update the specified hoard cache"},
 	{OPT_LOG,           OPTIONAL},
@@ -94,7 +87,6 @@ mode(UPLOAD) = {
 
 mode(HOARD) = {
 	{OPT_PARCEL,        REQUIRED},
-	{OPT_LAST,          REQUIRED},
 	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
@@ -102,8 +94,6 @@ mode(HOARD) = {
 
 mode(EXAMINE) = {
 	{OPT_PARCEL,        REQUIRED},
-	{OPT_LAST,          REQUIRED},
-	{OPT_CACHE,         OPTIONAL, "Print statistics on the specified local cache"},
 	{OPT_HOARD,         OPTIONAL, "Print statistics on the specified hoard cache"},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
@@ -111,8 +101,6 @@ mode(EXAMINE) = {
 
 mode(VALIDATE) = {
 	{OPT_PARCEL,        REQUIRED},
-	{OPT_CACHE,         REQUIRED},
-	{OPT_LAST,          REQUIRED},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
 };
@@ -139,7 +127,6 @@ mode(RMHOARD) = {
 
 mode(REFRESH) = {
 	{OPT_PARCEL,        REQUIRED},
-	{OPT_LAST,          REQUIRED},
 	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
@@ -378,25 +365,17 @@ enum mode parse_cmdline(int argc, char **argv)
 		case OPT_PARCEL:
 			config.parcel_dir=optparams[0];
 			check_dir(config.parcel_dir);
-			config.parcel_cfg=filepath(optparams[0], "parcel.cfg",
-						1);
-			break;
-		case OPT_CACHE:
-			config.cache_dir=optparams[0];
-			check_dir(config.cache_dir);
-			cp=config.cache_dir;
-			config.keyring=filepath(cp, "keyring", 1);
+			cp=config.parcel_dir;
+			config.parcel_cfg=filepath(cp, "parcel.cfg", 1);
+			config.keyring=filepath(cp, "keyring",
+						config.flags & WANT_CACHE);
+			config.prev_keyring=filepath(cp, "prev-keyring",
+						config.flags & WANT_PREV);
 			config.cache_file=filepath(cp, "disk", 0);
 			config.cache_index=filepath(cp, "disk.idx", 0);
 			config.devfile=filepath(cp, "parcelkeeper.dev", 0);
 			config.lockfile=filepath(cp, "parcelkeeper.lock", 0);
 			config.pidfile=filepath(cp, "parcelkeeper.pid", 0);
-			break;
-		case OPT_LAST:
-			config.last_dir=optparams[0];
-			check_dir(config.last_dir);
-			config.last_keyring=filepath(optparams[0], "keyring",
-						1);
 			break;
 		case OPT_DESTDIR:
 			config.dest_dir=optparams[0];

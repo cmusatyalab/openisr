@@ -110,17 +110,9 @@ int main(int argc, char **argv)
 		if (!ret)
 			ret=validate_cache();
 	} else if (mode == MODE_EXAMINE) {
-		if (config.cache_dir || config.hoard_dir) {
-			ret=0;
-			if (config.cache_dir)
-				ret=examine_cache();
-			if (config.hoard_dir && !ret)
-				ret=examine_hoard();
-		} else {
-			pk_log(LOG_ERROR, "At least one of --cache and --hoard "
-						"must be specified "
-						"in examine mode");
-		}
+		ret=examine_cache();
+		if (config.hoard_dir && !ret)
+			ret=examine_hoard();
 	} else {
 		pk_log(LOG_ERROR, "Unknown mode");
 	}

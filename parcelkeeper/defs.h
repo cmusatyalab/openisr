@@ -81,19 +81,13 @@ struct pk_config {
 	/* top-level parcel directory and its contents */
 	char *parcel_dir;
 	char *parcel_cfg;
-
-	/* cache directory and its contents */
-	char *cache_dir;
 	char *keyring;
+	char *prev_keyring;
 	char *cache_file;
 	char *cache_index;
 	char *devfile;
 	char *lockfile;
 	char *pidfile;
-
-	/* last directory and its contents */
-	char *last_dir;
-	char *last_keyring;
 
 	/* hoard cache and its contents */
 	char *hoard_dir;
