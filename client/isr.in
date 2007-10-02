@@ -180,11 +180,10 @@ my $nocheckstate;   # Skip state  consistency check in ci, sync, disconnect
 my $bwlimit;        # Bandwidth limit (KBytes/sec) in ci and sync
 my $server;         # Server domain name
 my $parceldir;
-my $cachedir;
-my $lastdir;
 my $tmpdir;
 my $hoarddir;
 my $imgbase;
+my $cleancache_file;
 my $cdcache_file;
 
 #
@@ -367,9 +366,10 @@ if (!-d $isrdir) {
 #
 if ($parcel) {
     $parceldir = "$isrdir/$parcel";
-    $cachedir = "$parceldir/cache";
-    $lastdir = "$parceldir/last";
     $tmpdir = "$parceldir/tmp";
+    # Existence of this file is a flag indicating that the local cache
+    # is identical to the most recent checkin.
+    $cleancache_file = "$parceldir/clean-cache-flag";
     # Existence of this file is a flag indicating that the temporary
     # dirty cache is consistent with the local cache.
     $cdcache_file = "$parceldir/consistent-dirtycache-flag";
@@ -640,10 +640,6 @@ sub checkout () {
 	clean(0);
 	errexit("Unable to create parcel dir $parceldir.");
     }
-    if (!mktree($lastdir)) {
-	clean(0);
-	errexit("Unable to create last dir $lastdir.");
-    }
     if (!mktree("$hoarddir/img")) {
 	clean(0);
 	errexit("Unable to create hoard dir $hoarddir/img.");
@@ -679,15 +675,13 @@ sub checkout () {
     #
     # Decrypt and unpack the virtualization and Parcelkeeper files
     #
-    print("Decrypting and uncompressing virtual machine memory image...\n")
-	if $verbose;
-    if (decrypt_keyring("$lastdir/keyring") != 0) {
+    if (decrypt_keyring("$parceldir/prev-keyring")) {
 	clean(0);
 	errexit("Could not decrypt keyring.enc");
     }
-    if (decrypt_cfg($lastdir) != 0) {
+    if (build_cache()) {
 	clean(0);
-	errexit("Could not decrypt and unpack cfg.tgz.enc");
+	errexit("Could not create local cache");
     }
     release_lock("Hoard image");
     
@@ -718,6 +712,9 @@ sub run () {
 
     # Block receipt of the SIGTSTP (ctrl-z)
     block_sigtstp();
+    
+    # Reset the clean-cache flag, since we're about to make the cache dirty.
+    unlink($cleancache_file);
 
     # Reset the consistent dirty cache flag, since any temporary dirty
     # cache directory is about to become inconsistent with the local cache.
@@ -763,18 +760,9 @@ sub run () {
 	    if $verbose;
     }
 
-    # Create a Parcelkeeper cache if one doesn't already exist
-    # This operation must not be interrupted by the user
-    print("Initializing local cache.\n")
-	if $verbose;
-
-    $sigset = block_sigint();
-    build_cache();
-    unblock_sigint($sigset);
-
     # Make sure there is exactly one VMware config file
-    opendir(DIR, "$cachedir/cfg")
-	or unix_errexit("Unable to open $cachedir/cfg");
+    opendir(DIR, "$parceldir/cfg")
+	or unix_errexit("Unable to open $parceldir/cfg");
     @files = grep(/\.vmx$/, readdir(DIR));
     closedir(DIR);
     $numfiles = @files;
@@ -787,12 +775,12 @@ sub run () {
     print("Launching Parcelkeeper...\n")
 	if $verbose;
     $kill_pk = 1;  # Tells the SIGINT handler to cleanly terminate PK
-    isr_run_parcelkeeper("run", "parcel cache hoard compression log") == 0
+    isr_run_parcelkeeper("run", "parcel hoard compression log") == 0
 	or errexit("Unable to launch Parcelkeeper.");	
     
     # Find out what device node we'll be using
-    open(DEVFILE, "$cachedir/parcelkeeper.dev")
-    	or unix_errexit("Can't open $cachedir/parcelkeeper.dev");
+    open(DEVFILE, "$parceldir/parcelkeeper.dev")
+    	or unix_errexit("Can't open $parceldir/parcelkeeper.dev");
     chomp($devnode = <DEVFILE>);
     close(DEVFILE);
     message("INFO", "Using device node $devnode");
@@ -821,7 +809,7 @@ sub run () {
     } else {
         $vmware_opts = "";
     }
-    mysystem("LD_PRELOAD=libvdisk.so.0 VDISK_DEVICE=$devnode $syscfg{vmcommand} $vmware_opts $cachedir/cfg/$cfgfile") == 0
+    mysystem("LD_PRELOAD=libvdisk.so.0 VDISK_DEVICE=$devnode $syscfg{vmcommand} $vmware_opts $parceldir/cfg/$cfgfile") == 0
 	or system_errexit("VMware terminated abnormally.");
 
     # Wait here until the user suspends VMware
@@ -945,20 +933,20 @@ sub discard () {
     # This operation should not be interrupted by the user
     block_sigint();
 
-    # Delete the local cache
-    if (-e $cachedir) {
-	mysystem("rm -rf $cachedir");
-    }
+    # Delete the dirty keyring and cfg directory
+    mysystem("rm -rf $parceldir/cfg");
+    unlink("$parceldir/keyring");
 
-    #
     # Reset the consistent dirty cache flag, since any temporary dirty
     # cache directory can no longer be consistent with an empty local cache.
-    #
     unlink($cdcache_file);
+    
+    # Recreate the keyring and cfg directory
+    build_cache() == 0
+	or errexit("Parcel in inconsistent state.  Try discarding again.");
 
     print(GREEN, "Success: Local changes to parcel $userid/$parcel discarded.\n", RESET)
 	if $verbose;
-
 }
 
 #
@@ -1052,7 +1040,6 @@ sub hoard () {
     
     # Assign a temporary parcel directory
     $parceldir = "$isrdir/parceltmp-$userid-$parcel-$$";
-    $lastdir = "$parceldir/last";
 
     # Before going any further, make sure we have a protocol level
     # connection to the server and a valid parcel
@@ -1064,8 +1051,8 @@ sub hoard () {
     }
     
     # Fetch metadata from the server
-    mktree($lastdir)
-	or errexit("Unable to make $lastdir");
+    mktree($parceldir)
+	or errexit("Unable to make $parceldir");
     isr_srun("getconfig", "-p $parcel", "$parceldir/parcel.cfg", 0) == 0
 	or errexit("Parcel $userid/$parcel does not exist on the server ($server).");
     parse_parcelcfg("$parceldir/parcel.cfg");
@@ -1074,7 +1061,7 @@ sub hoard () {
 	or errexit("Unable to fetch keyring.enc");
 
     # Decrypt the keyring
-    decrypt_keyring("$lastdir/keyring") == 0
+    decrypt_keyring("$parceldir/prev-keyring") == 0
 	or errexit("Unable to decrypt keyring.enc");
     release_lock("Hoard image");
 
@@ -1088,7 +1075,7 @@ sub hoard () {
 	print("Hoarding any missing disk blocks from the server...\n")
 	    if $verbose;
 	
-	$retval = isr_run_parcelkeeper("hoard", "parcel last hoard");
+	$retval = isr_run_parcelkeeper("hoard", "parcel hoard");
 	if ($retval == 0) {
 	    last; 
 	} elsif (WIFSIGNALED($retval)) {
@@ -1138,20 +1125,19 @@ sub checkparcel () {
 #
 sub statparcel () {
     my $memsize;
-    my $cachestr = "";
 
     my @files = ();
 
     #
     # Display the size of the memory image (if it exists)
     #
-    if (-e "$cachedir/cfg") {
-	opendir(DIR, "$cachedir/cfg") 
-	    or unix_errexit("Unable to open $cachedir/cfg.");
+    if (-e "$parceldir/cfg") {
+	opendir(DIR, "$parceldir/cfg") 
+	    or unix_errexit("Unable to open $parceldir/cfg.");
 	@files = grep(/\.vmem$/, readdir(DIR));
 	closedir(DIR);
 	if (@files > 0) {
-	    $memsize = (stat("$cachedir/cfg/$files[0]")->size)/(1<<20);
+	    $memsize = (stat("$parceldir/cfg/$files[0]")->size)/(1<<20);
 	    printf("Memory image: %d MB (uncompressed)\n", $memsize);
 	}
     }
@@ -1159,9 +1145,7 @@ sub statparcel () {
     #
     # Display cache stats
     #
-    $cachestr = "cache"
-	if (-e $cachedir);
-    isr_run_parcelkeeper("examine", "parcel last $cachestr hoard") == 0
+    isr_run_parcelkeeper("examine", "parcel hoard") == 0
 	or errexit("Could not examine cache");
     
     #
@@ -1169,7 +1153,7 @@ sub statparcel () {
     # requested
     #
     if ($checkstate == 1 or $checkstate == 2) {
-	isr_run_parcelkeeper("validate", "parcel cache last") == 0
+	isr_run_parcelkeeper("validate", "parcel") == 0
 	    or errexit("Could not validate cache");
     }
 
@@ -1452,29 +1436,41 @@ sub parse_parcelcfg ($) {
 }
 
 #
-# build_cache - Create a local Parcelkeeper cache if one doesn't exist already
+# build_cache - Create a local Parcelkeeper cache
 #
 sub build_cache () {
     my $name;
 
-    if (!-e $cachedir) {
-	mktree($cachedir)
-    	    or errexit("Unable to make $cachedir");
+    # Unpack the virtualization files
+    print("Decrypting and uncompressing virtual machine memory image...\n")
+	if $verbose;
+    if (-e "$parceldir/cfg") {
+	err("$parceldir/cfg already exists");
+	return -1;
     }
-
-    # Copy the virtualization files from lastdir to cachedir
-    if (!-e "$cachedir/cfg") {
-	print("Copying virtual machine memory image...\n")
-	    if $verbose;
-	mysystem("cp -r $lastdir/cfg $cachedir/cfg") == 0
-	    or system_errexit("Unable to populate cache directory $cachedir/cfg");
+    if (decrypt_cfg($parceldir)) {
+	err("Could not decrypt and unpack cfg.tgz.enc");
+	return -1;
     }
 
     # Copy the keyring files
-    if (!-e "$cachedir/keyring") {
-	copy("$lastdir/keyring", "$cachedir/keyring")
-	    or unix_errexit("Unable to copy $lastdir/keyring");
+    if (-e "$parceldir/keyring") {
+	err("$parceldir/keyring already exists");
+	return -1;
     }
+    if (!copy("$parceldir/prev-keyring", "$parceldir/keyring")) {
+	unix_err("Unable to copy $parceldir/prev-keyring");
+	return -1;
+    }
+    
+    # Create the clean-cache flag
+    if (!open(FLAG, ">$cleancache_file")) {
+	unix_err("Unable to create $cleancache_file");
+	return -1;
+    }
+    close(FLAG);
+    
+    return 0;
 }
 
 #
@@ -1483,7 +1479,7 @@ sub build_cache () {
 sub hdksize () {
     my $numchunks;
 
-    my $imageindex = "$cachedir/disk.idx";
+    my $imageindex = "$parceldir/disk.idx";
 
     # cache is trivially empty
     return 0
@@ -1765,7 +1761,7 @@ sub decrypt_cfg ($) {
 #                        are running.
 #
 sub get_parcelkeeper_pid () {
-    my $pidfile = "$isrdir/$parcel/cache/parcelkeeper.pid";
+    my $pidfile = "$isrdir/$parcel/parcelkeeper.pid";
     my $pid;
     
     -e $pidfile or return 0;
@@ -2162,10 +2158,6 @@ sub isr_run_parcelkeeper ($$) {
     foreach $arg (split(/\s+/, $args)) {
 	if ($arg eq "parcel") {
 	    $cmd .= " --parcel $parceldir";
-	} elsif ($arg eq "cache") {
-	    $cmd .= " --cache $cachedir";
-	} elsif ($arg eq "last") {
-	    $cmd .= " --last $lastdir";
 	} elsif ($arg eq "dest") {
 	    $cmd .= " --destdir $tmpdir/cache/hdk";
 	} elsif ($arg eq "hoard") {
@@ -2237,8 +2229,8 @@ sub isr_priv_upload () {
     #
     # Check to see if there is anything to upload
     #
-    if (!-e $cachedir) {
-	print "Local cache is empty. Nothing to upload.\n"
+    if (-e $cleancache_file) {
+	print "Local cache is clean. Nothing to upload.\n"
 	    if $verbose;
 	return;
     }
@@ -2254,21 +2246,8 @@ sub isr_priv_upload () {
 	errexit("The remote parcel $userid/$parcel is not available.");
     }
 
-    #
-    # We expect either all or none of the cache files
-    #
-    
-    # XXX
-    if (-e "$cachedir/keyring" and 
-	-e "$cachedir/cfg") {
-	# OK
-    }
-    else {
-	if (-e "$cachedir/keyring" or 
-	    -e "$cachedir/cfg") {
-	    errexit("Inconsistent cache directory $cachedir");
-	}
-    }
+    errexit("Inconsistent parcel directory $parceldir")
+        if (!-e "$parceldir/keyring" or !-d "$parceldir/cfg");
 
     #
     # Copy the dirty parcel state to a temporary dirty cache
@@ -2350,11 +2329,11 @@ sub copy_dirtychunks () {
     #
     print("Compressing and encrypting virtual machine memory image...\n")
 	if $verbose;
-    encrypt_cfg("$cachedir/cfg", "$tmpdir/cache/cfg.tgz.enc") == 0
+    encrypt_cfg("$parceldir/cfg", "$tmpdir/cache/cfg.tgz.enc") == 0
 	or system_errexit("Unable to create cfg.tgz.enc.");
     printf("Compressed size: %d MB\n", (stat("$tmpdir/cache/cfg.tgz.enc")->size)/(1<<20))
     	if $verbose;
-    encrypt_keyring("$cachedir/keyring", "$tmpdir/cache/keyring.enc") == 0
+    encrypt_keyring("$parceldir/keyring", "$tmpdir/cache/keyring.enc") == 0
 	or system_errexit("Unable to encrypt keyring.");
     foreach $target ("cfg.tgz", "keyring") {
 	message("INFO", 
@@ -2367,7 +2346,7 @@ sub copy_dirtychunks () {
     #
     print("Collecting modified disk state...\n")
 	if $verbose;
-    isr_run_parcelkeeper("upload", "parcel cache last dest hoard") == 0
+    isr_run_parcelkeeper("upload", "parcel dest hoard") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
     # Hack to get stats from PK
     open(STATFILE, "$tmpdir/cache/hdk/stats");
@@ -2393,8 +2372,8 @@ sub isr_priv_commit ($) {
     #
     # Check to see if there is anything to upload
     #
-    if (!-e $cachedir) {
-	print "Local cache is empty. Nothing to commit.\n"
+    if (-e $cleancache_file) {
+	print "Local cache is clean. Nothing to commit.\n"
 	    if $verbose;
 	return;
     }
@@ -2445,10 +2424,9 @@ sub isr_priv_commit ($) {
 
 #
 # isr_priv_clientcommit - Commit state on the client.  First, copy the
-#     memory image and keyring from cache/ to last/, so that the
-#     client-side last remains consistent with the server-side last/.
-#     Second, move any dirty hdk chunks from the local cache to the hoard
-#     cache so that the hoard cache stays fully populated.
+#     keyring to prev-keyring.  Second, move the encrypted memory image and
+#     keyring into the hoard cache.  These actions ensure that the client
+#     remains consistent with the server-side last/.
 #
 sub isr_priv_clientcommit($) {
     my $releasing = shift;
@@ -2457,26 +2435,19 @@ sub isr_priv_clientcommit($) {
     my $name;
 
     #
-    # Now that we have determined the dirty disk state, we can copy
-    # the memory image and keyring from cache to last
+    # Now that we have committed a new version, we can update the cached copy
+    # of the pristine keyring and memory image to match the server
     #
     if ($releasing) {
-	# There's no point in copying the memory from cache/ to last/ if the
+	# There's no point in copying the keyring to prev-keyring if the
 	# whole directory tree is going to be removed.  SIGINT is blocked, and
 	# must remain blocked until the lock is released.
-	message("INFO", "Client side commit - skipping copy of memory image");
+	message("INFO", "Client side commit - skipping copy of keyring");
     } else {
-	message("INFO", "Client side commit - start copying memory image");
-	# We need to clean the old directory first, since there may be
-	# files in it (e.g. old memory images) which don't exist at all
-	# in the cachedir
-	mysystem("rm -rf $lastdir/cfg") == 0
-	    or system_errexit("Unable to remove old memory image $lastdir/cfg");
-	mysystem("cp -r $cachedir/cfg $lastdir/cfg") == 0
-	    or system_errexit("Unable to copy memory image to $lastdir/cfg");
-	copy("$cachedir/keyring", "$lastdir/keyring")
-	    or unix_errexit("Unable to copy keyring from $cachedir to $lastdir.");
-	message("INFO", "Client side commit - finish copying memory image");
+	message("INFO", "Client side commit - start copying keyring");
+	copy("$parceldir/keyring", "$parceldir/prev-keyring")
+	    or unix_errexit("Unable to copy keyring to $parceldir/prev-keyring.");
+	message("INFO", "Client side commit - finish copying keyring");
     }
 
     #
@@ -2507,15 +2478,6 @@ sub isr_priv_cleanhoard () {
     print "Garbage-collecting hoard cache..."
 	if $verbose;
 
-    #
-    # Simple cases where nothing is hoarded or cached
-    #    
-    if (!-e "$cachedir/keyring") {
-	print "\n"
-	    if $verbose;
-	return;
-    }
-    
     # XXX
 
     print " (Deleted $deletecnt unused chunks)\n"
