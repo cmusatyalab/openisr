@@ -721,16 +721,6 @@ sub run () {
     # cache directory is about to become inconsistent with the local cache.
     unlink($cdcache_file);
 
-    # If the user wants to run connected, then before going any further, 
-    # make sure we have a protocol level connection to the server
-    # and a consistent parcel.
-    if (!$disconnected and !isr_connected_http()) {
-	errexit("The server appears to be down.");
-    }
-    if (!$disconnected and !isr_connected_parcel()) {
-	errexit("The remote parcel is not available.");
-    }
-
     # Make sure that Parcelkeeper is where we expect it to be, that Nexus is
     # loaded, and that the control device exists.  Also, warn if the Nexus
     # release is older than our own release.
@@ -745,9 +735,9 @@ sub run () {
     }
     check_nexus_version();
 
-    # If the user wants to run disconnected, they better have all of their
-    # disk blocks hoarded in the local or hoard cache
     if ($disconnected) {
+	# If the user wants to run disconnected, they better have all of their
+	# disk blocks hoarded in the local or hoard cache
 	$numchunks = hdksize(); 
 
 	# If the local cache is not fully populated, then make sure
@@ -759,6 +749,13 @@ sub run () {
 	}
 	print("Running disconnected...\n")
 	    if $verbose;
+    } else {
+	# If the user wants to run connected, then make sure we have a
+	# protocol level connection to the server and a consistent parcel.
+	isr_connected_http()
+	    or errexit("The server appears to be down.");
+	isr_connected_parcel()
+	    or errexit("The remote parcel is not available.");
     }
 
     # Make sure there is exactly one VMware config file
