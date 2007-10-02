@@ -2456,6 +2456,13 @@ sub isr_priv_clientcommit($) {
     rename("$uploaddir/cfg.tgz.enc", "$hoarddir/img/$cfg{UUID}.cfg");
     rename("$uploaddir/keyring.enc", "$hoarddir/img/$cfg{UUID}.key");
     message("INFO", "Client side commit - moved memory image into hoard cache");
+    
+    #
+    # Remove the upload directory
+    #
+    message("INFO", "Client side commit - start removing upload directory");
+    system("rm -rf $uploaddir");
+    message("INFO", "Client side commit - finish removing upload directory");
 }
 
 #
