@@ -445,6 +445,7 @@ int hoard(void)
 			goto out;
 		print_progress(++num_hoarded, to_hoard);
 	}
+	query_free(stmt);
 	if (sret != SQLITE_OK) {
 		pk_log(LOG_ERROR, "Querying hoard index failed");
 		goto out;
