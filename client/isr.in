@@ -2413,20 +2413,17 @@ sub isr_priv_commit ($) {
     }
 
     #
-    # Trigger the server-side commit. For rsync version, do not delete
-    # the server-side cache directory after the commit finishes.
+    # Trigger the server-side commit.
     #
-    if (-e $cachedir) {
-        print("checking uploaded cache dir before committing...\n");
-	isr_srun("checkparcel", "-s -u $userid -p $parcel", "", 0) == 0
-	    or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
-	print("Committing updates on server...\n")
-	    if $verbose;
-	message("INFO", "Begin server side commit");
-	isr_srun("commit", "-u $userid -p $parcel", "", 0) == 0
-	    or errexit("Server-side commit of parcel $userid/$parcel failed.");
-	message("INFO", "End server side commit");
-    }
+    print("checking uploaded cache dir before committing...\n");
+    isr_srun("checkparcel", "-s -u $userid -p $parcel", "", 0) == 0
+	or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
+    print("Committing updates on server...\n")
+	if $verbose;
+    message("INFO", "Begin server side commit");
+    isr_srun("commit", "-u $userid -p $parcel", "", 0) == 0
+	or errexit("Server-side commit of parcel $userid/$parcel failed.");
+    message("INFO", "End server side commit");
 
     # If requested, check the newly committed version for consistency
     if (!$nocheckstate) {
