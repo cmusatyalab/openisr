@@ -886,7 +886,7 @@ sub sync ($) {
     isr_priv_commit($releasing);
 
     # If $releasing == 1, it is not safe to unblock SIGINT until the parceldir
-    # is removed by our caller, since the last/ dir is not up-to-date.
+    # is removed by our caller, since the prev-keyring is not up-to-date.
 
     # Append the session log to the persistent log in remote storage
     # and if successful delete the session log. 
