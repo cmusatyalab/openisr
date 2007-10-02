@@ -1612,8 +1612,8 @@ sub fetch_parcel_file ($$$$$) {
     if (isr_srun("stat", "-f $userid/$parcel/last/$remote_name",
 		 $tmpfile, 0) != 0) {
 	unlink($tmpfile);
-	clean($sessionid);
-	errexit("Unable to stat $remote_name file on server");
+	err("Unable to stat $remote_name file on server");
+	return -1;
     }
     parse_cfgfile($tmpfile, \%map);
     unlink($tmpfile);
