@@ -109,6 +109,7 @@ sub block_sigtstp ();
 sub mysystem ($);
 sub sys_sync ();
 sub mktree ($);
+sub touch ($);
 sub err ($);
 sub unix_err ($);
 sub errexit ($);
@@ -1462,11 +1463,10 @@ sub build_cache () {
     }
     
     # Create the clean-cache flag
-    if (!open(FLAG, ">$cleancache_file")) {
+    if (!touch($cleancache_file)) {
 	unix_err("Unable to create $cleancache_file");
 	return -1;
     }
-    close(FLAG);
     
     return 0;
 }
@@ -1854,6 +1854,18 @@ sub mktree ($) {
     # mkpath() throws a fatal error on failure, so we have to trap it
     eval {mkpath($tree)};
     return 0 if $@;
+    return 1;
+}
+
+#
+# touch - Create the specified file.  Returns true on success, false on error.
+#
+sub touch ($) {
+    my $file = shift;
+    
+    open(FLAG, ">", $file)
+        or return 0;
+    close(FLAG);
     return 1;
 }
 
@@ -2260,9 +2272,8 @@ sub isr_priv_upload () {
     #
     if (!-e $cdcache_file) {
 	($dirtybytes, $dirtyblocks) = copy_dirtychunks();
-	open(FLAG, ">$cdcache_file")
+	touch($cdcache_file)
 	    or unix_errexit("Unable to create dirty cache flag ($cdcache_file)");
-	close FLAG;
     }
     else {
 	print("Skipping local copy operation.\n")
@@ -2456,6 +2467,12 @@ sub isr_priv_clientcommit($) {
     rename("$uploaddir/cfg.tgz.enc", "$hoarddir/img/$cfg{UUID}.cfg");
     rename("$uploaddir/keyring.enc", "$hoarddir/img/$cfg{UUID}.key");
     message("INFO", "Client side commit - moved memory image into hoard cache");
+    
+    #
+    # Note that the local cache is consistent with the server
+    #
+    touch($cleancache_file)
+        or unix_errexit("Unable to create $cleancache_file");
     
     #
     # Remove the upload directory
