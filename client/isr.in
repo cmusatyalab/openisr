@@ -180,7 +180,7 @@ my $nocheckstate;   # Skip state  consistency check in ci, sync, disconnect
 my $bwlimit;        # Bandwidth limit (KBytes/sec) in ci and sync
 my $server;         # Server domain name
 my $parceldir;
-my $tmpdir;
+my $uploaddir;
 my $hoarddir;
 my $imgbase;
 my $cleancache_file;
@@ -366,7 +366,7 @@ if (!-d $isrdir) {
 #
 if ($parcel) {
     $parceldir = "$isrdir/$parcel";
-    $tmpdir = "$parceldir/tmp";
+    $uploaddir = "$parceldir/upload";
     # Existence of this file is a flag indicating that the local cache
     # is identical to the most recent checkin.
     $cleancache_file = "$parceldir/clean-cache-flag";
@@ -2157,7 +2157,7 @@ sub isr_run_parcelkeeper ($$) {
 	if ($arg eq "parcel") {
 	    $cmd .= " --parcel $parceldir";
 	} elsif ($arg eq "dest") {
-	    $cmd .= " --destdir $tmpdir/cache/hdk";
+	    $cmd .= " --destdir $uploaddir/hdk";
 	} elsif ($arg eq "hoard") {
 	    $cmd .= " --hoard $hoarddir";
 	} elsif ($arg eq "compression") {
@@ -2284,7 +2284,7 @@ sub isr_priv_upload () {
     # Retry if the upload fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
 	last
-	    if mysystem("rsync -e ssh --delete --partial --recursive -z $vflag $bwflag $tmpdir/cache/ $userid\@$cfg{WPATH}/cache") == 0;
+	    if mysystem("rsync -e ssh --delete --partial --recursive -z $vflag $bwflag $uploaddir/ $userid\@$cfg{WPATH}/cache") == 0;
 	print "[isr] upload failed. Retrying...\n"
 	    if $verbose;
     }
@@ -2318,25 +2318,25 @@ sub copy_dirtychunks () {
     #
     # Build an empty temporary cache directory structure on the client
     #
-    mysystem("rm -rf $tmpdir");
-    mktree("$tmpdir/cache/hdk")
-	or errexit("Unable to make temporary directory $tmpdir/cache/hdk");
+    mysystem("rm -rf $uploaddir");
+    mktree("$uploaddir/hdk")
+	or errexit("Unable to make temporary directory $uploaddir/hdk");
 
     #
     # Create cfg tarball and encrypt it and the keyring
     #
     print("Compressing and encrypting virtual machine memory image...\n")
 	if $verbose;
-    encrypt_cfg("$parceldir/cfg", "$tmpdir/cache/cfg.tgz.enc") == 0
+    encrypt_cfg("$parceldir/cfg", "$uploaddir/cfg.tgz.enc") == 0
 	or system_errexit("Unable to create cfg.tgz.enc.");
-    printf("Compressed size: %d MB\n", (stat("$tmpdir/cache/cfg.tgz.enc")->size)/(1<<20))
+    printf("Compressed size: %d MB\n", (stat("$uploaddir/cfg.tgz.enc")->size)/(1<<20))
     	if $verbose;
-    encrypt_keyring("$parceldir/keyring", "$tmpdir/cache/keyring.enc") == 0
+    encrypt_keyring("$parceldir/keyring", "$uploaddir/keyring.enc") == 0
 	or system_errexit("Unable to encrypt keyring.");
     foreach $target ("cfg.tgz", "keyring") {
 	message("INFO", 
 		sprintf("upload:$target.enc:%d:", 
-			stat("$tmpdir/cache/$target.enc")->size));
+			stat("$uploaddir/$target.enc")->size));
     }
 
     # 
@@ -2347,11 +2347,11 @@ sub copy_dirtychunks () {
     isr_run_parcelkeeper("upload", "parcel dest hoard") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
     # Hack to get stats from PK
-    open(STATFILE, "$tmpdir/cache/hdk/stats");
+    open(STATFILE, "$uploaddir/hdk/stats");
     chomp($dirtyblocks = <STATFILE>);
     chomp($dirtybytes = <STATFILE>);
     close STATFILE;
-    unlink("$tmpdir/cache/hdk/stats");
+    unlink("$uploaddir/hdk/stats");
 
     #
     # For record keeping, the caller needs to know how many total hdk bytes
@@ -2453,8 +2453,8 @@ sub isr_priv_clientcommit($) {
     #
     mktree("$hoarddir/img")
 	or errexit("Couldn't make directory $hoarddir/img");
-    rename("$tmpdir/cache/cfg.tgz.enc", "$hoarddir/img/$cfg{UUID}.cfg");
-    rename("$tmpdir/cache/keyring.enc", "$hoarddir/img/$cfg{UUID}.key");
+    rename("$uploaddir/cfg.tgz.enc", "$hoarddir/img/$cfg{UUID}.cfg");
+    rename("$uploaddir/keyring.enc", "$hoarddir/img/$cfg{UUID}.key");
     message("INFO", "Client side commit - moved memory image into hoard cache");
 }
 
