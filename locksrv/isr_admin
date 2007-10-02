@@ -630,10 +630,10 @@ sub usage {
 	print RED, "deluser - ", RESET, "Delete user bovik from the system\n";
 	print BLUE, "% isr_admin deluser -u bovik\n", RESET;
 	print "\n";
-	print RED, "decrypt - ", RESET, "Decrypt files in $croot/bovik/winxp/00003 using keyroot KEY\n";
+	print RED, "decrypt - ", RESET, "Decrypt files in $croot/bovik/winxp/00003\n";
 	print BLUE, "% isr_admin decrypt -u bovik -p winxp -v 3\n", RESET;
 	print "\n";
-	print RED, "encrypt - ", RESET, "Encrypt files in $croot/bovik/winxp/00003 using keyroot KEY\n";
+	print RED, "encrypt - ", RESET, "Encrypt files in $croot/bovik/winxp/00003\n";
 	print BLUE, "% isr_admin encrypt -u bovik -p winxp -v 3\n", RESET;
 	print "\n";
 
