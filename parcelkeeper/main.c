@@ -37,7 +37,7 @@ int main(int argc, char **argv)
 	   parse_cmdline() */
 
 	/* We can't take the lock until we fork (if we're going to do that) */
-	if (mode == MODE_RUN && !config.foreground)
+	if (config.flags & WANT_BACKGROUND)
 		if (fork_and_wait(&completion_fd))
 			goto shutdown;
 
@@ -72,7 +72,7 @@ int main(int argc, char **argv)
 			have_hoard=1;
 	}
 
-	if (mode == MODE_RUN && !config.foreground) {
+	if (config.flags & WANT_BACKGROUND) {
 		/* Now that we have the lock, it's safe to create the pidfile */
 		if (create_pidfile())
 			goto shutdown;

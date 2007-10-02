@@ -69,6 +69,7 @@ enum mode_flags {
 	WANT_LOCK	= 0x0001,
 	WANT_CACHE	= 0x0002,
 	WANT_PREV	= 0x0004,
+	WANT_BACKGROUND = 0x0008,
 };
 
 struct pk_connection;
@@ -111,7 +112,6 @@ struct pk_config {
 
 	/* miscellaneous parameters */
 	enum compresstype compress;
-	int foreground;
 };
 
 struct pk_parcel {

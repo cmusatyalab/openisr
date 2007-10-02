@@ -162,7 +162,7 @@ mode(VERSION) = {
 
 #undef mode
 
-#define RUN_flags		WANT_LOCK|WANT_CACHE
+#define RUN_flags		WANT_LOCK|WANT_CACHE|WANT_BACKGROUND
 #define UPLOAD_flags		WANT_LOCK|WANT_CACHE|WANT_PREV
 #define HOARD_flags		WANT_PREV
 #define EXAMINE_flags		WANT_CACHE|WANT_PREV
@@ -425,7 +425,7 @@ enum mode parse_cmdline(int argc, char **argv)
 							optparams[3]);
 			break;
 		case OPT_FOREGROUND:
-			config.foreground=1;
+			config.flags &= ~WANT_BACKGROUND;
 			break;
 		case OPT_MODE:
 			helpmode=parse_mode(optparams[0]);
