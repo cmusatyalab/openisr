@@ -21,6 +21,7 @@ use Getopt::Std;
 use constant {
     LIBDIR => "!!LIBDIR!!",
     SHAREDIR => "!!SHAREDIR!!",
+    RCS_REVISION => "!!REVISION!!",
 };
 use lib SHAREDIR;
 use Server;
@@ -46,6 +47,10 @@ errexit("Couldn't read subcommand \"$cmd\": $!");
 
 
 sub usage {
+    my $progname = $0;
+    
+    $progname =~ s|.*/||;
+    print STDERR "$progname revision " . RCS_REVISION . "\n";
     print STDERR "Usage: $0 <subcommand> <args>\n";
     print STDERR "Available subcommands:\n";
     opendir(DIR, SHAREDIR)

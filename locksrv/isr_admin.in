@@ -31,6 +31,8 @@ use lib "!!SHAREDIR!!";
 use Server;
 $| = 1; # Autoflush output on every print statement
 
+use constant RCS_REVISION => "!!REVISION!!";
+
 # Function prototypes
 sub encrypt ($$$$);
 sub decrypt ($$$$);
@@ -610,6 +612,7 @@ sub usage {
         print "Error: $msg\n";
     }
     
+    print "$progname revision " . RCS_REVISION . "\n";
     print RED, "Usage: $progname cmd [options...]\n", RESET;
     print BLUE, "Commands: addparcel, adduser, deluser, decrypt, encrypt, getkeyroot,\n          getusage, keygen, prune.\n", RESET;
 
