@@ -420,6 +420,7 @@ sub addparcel ($$$$) {
     my $srckeyroot;
     my $dstkeyroot;
     my $uuid;
+    my $umask;
     my @files;
 
     my $userdir = "$Server::CONTENT_ROOT/$userid";
@@ -475,6 +476,7 @@ sub addparcel ($$$$) {
 	or errexit("Unable to set permissions of $parceldir");
     
     # Write out the new parcel.cfg
+    $umask = umask(0077);
     mkdir($dstparcelcfgdir)
 	or unix_errexit("Unable to make directory $dstparcelcfgdir.");
     open(IN, $srcparcelcfg)
@@ -496,6 +498,7 @@ sub addparcel ($$$$) {
     }
     close IN;
     close OUT;
+    umask($umask);
     system("chown -R $userid:$userid $dstparcelcfgdir") == 0
 	or errexit("Unable to set owner of $dstparcelcfgdir");
 
