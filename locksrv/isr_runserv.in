@@ -33,4 +33,6 @@ errexit("No such subcommand \"$subcommand\"")
     if ! -e $cmdpath;
 $0 .= " $subcommand";
 do $cmdpath;
-errexit("Couldn't run subcommand \"$subcommand\"");
+errexit("Couldn't run subcommand \"$subcommand\": $@")
+    if $@;
+errexit("Couldn't read subcommand \"$subcommand\": $!");
