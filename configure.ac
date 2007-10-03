@@ -37,6 +37,8 @@ AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--enable-libvdisk],
 AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules],
 			[build kernel modules [$client]])],,
 			[enable_modules=${enable_client}])
+AC_ARG_ENABLE([server], [AS_HELP_STRING([--enable-server],
+			[build server code [no]])],, [enable_server=no])
 
 PROCESS_ENABLE_VAR([$enable_client], [WANT_CLIENT],
 			[whether we should build the client])
@@ -44,6 +46,8 @@ PROCESS_ENABLE_VAR([$enable_libvdisk], [WANT_LIBVDISK],
 			[whether we should build libvdisk])
 PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
 			[whether we should build the kernel modules])
+PROCESS_ENABLE_VAR([$enable_server], [WANT_SERVER],
+			[whether we should build the server])
 
 if test z$enable_modules = zyes ; then
 	if test z$srcdir != z. ; then
@@ -142,6 +146,7 @@ AC_CONFIG_FILES([Makefile
                  conf/Makefile
                  client/Makefile
                  libvdisk/Makefile
+                 locksrv/Makefile
                  nexus/GNUmakefile
                  nexus/tools/Makefile
                  parcelkeeper/Makefile

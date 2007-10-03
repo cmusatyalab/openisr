@@ -16,7 +16,7 @@
 # RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
 #
 
-use constant SRVBIN => "/usr/local/isr/bin";
+use constant SRVBIN => "!!SHAREDIR!!";
 use lib SRVBIN;
 use Server;
 

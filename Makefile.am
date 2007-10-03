@@ -2,6 +2,10 @@ if WANT_CLIENT
 CLIENTDIRS = client parcelkeeper conf tools
 endif
 
+if WANT_SERVER
+SERVERDIRS = locksrv
+endif
+
 if WANT_LIBVDISK
 VDISKDIR = libvdisk
 endif
@@ -10,7 +14,7 @@ endif
 # GNUmakefiles there would still need to condition their calls into Kbuild
 # on WANT_MODULES or else distclean would break for VPATH builds.  Also, Nexus
 # has tools it may want to build even if !WANT_MODULES.
-SUBDIRS = $(CLIENTDIRS) $(VDISKDIR) nexus sha1
+SUBDIRS = $(CLIENTDIRS) $(SERVERDIRS) $(VDISKDIR) nexus sha1
 dist_noinst_SCRIPTS = mkrevision.sh autogen.sh
 EXTRA_DIST  = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL CHANGES kernel.mk
 EXTRA_DIST += .gitrevision

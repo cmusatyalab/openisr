@@ -27,7 +27,7 @@ use File::Basename;
 use Socket;
 use Sys::Hostname;
 use Term::ANSIColor qw(:constants);
-use lib "/usr/local/isr/bin";
+use lib "!!SHAREDIR!!";
 use Server;
 $| = 1; # Autoflush output on every print statement
 
