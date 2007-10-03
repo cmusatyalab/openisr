@@ -1,4 +1,4 @@
-# Makefile fragment to autogenerate revision.[ch]/IsrRevision.pm
+# Makefile fragment to autogenerate revision.[ch]
 
 top_srcdir ?= ..
 top_builddir ?= $(top_srcdir)
