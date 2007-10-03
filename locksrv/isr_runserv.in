@@ -26,13 +26,32 @@ use lib SHAREDIR;
 use Server;
 $| = 1; # Autoflush output on every print statement
 
-my $subcommand = shift;
-my $cmdpath = SHAREDIR . "/srv_$subcommand.pm";
+my $cmd = shift;
+my $cmdpath = SHAREDIR . "/srv_$cmd.pm";
 
-errexit("No such subcommand \"$subcommand\"")
-    if ! -e $cmdpath;
-$0 .= " $subcommand";
+usage()
+    if $cmd eq "";
+if (!-e $cmdpath) {
+    print STDERR "No such subcommand \"$cmd\"\n";
+    usage();
+}
+
+$0 .= " $cmd";
 do $cmdpath;
-errexit("Couldn't run subcommand \"$subcommand\": $@")
+errexit("Couldn't run subcommand \"$cmd\": $@")
     if $@;
-errexit("Couldn't read subcommand \"$subcommand\": $!");
+errexit("Couldn't read subcommand \"$cmd\": $!");
+
+
+sub usage {
+    print STDERR "Usage: $0 <subcommand> <args>\n";
+    print STDERR "Available subcommands:\n";
+    opendir(DIR, SHAREDIR)
+        or unix_errexit("Couldn't read " . SHAREDIR);
+    foreach $cmd (sort(readdir(DIR))) {
+	next if $cmd !~ /^srv_([a-z]+)\.pm$/; 
+	print STDERR "\t$1\n";
+    }
+    closedir(DIR);
+    exit 1;
+}
