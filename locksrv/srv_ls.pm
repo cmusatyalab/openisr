@@ -32,6 +32,7 @@ use Sys::Hostname;
 our $userdir;
 our $username;
 our $longvers;
+our %config = get_config();
 
 # Variables
 my $parcel;
@@ -52,7 +53,7 @@ if (!$opt_u) {
 $longvers = $opt_L;  # Use long format using specific number of versions
 $username = $opt_u;
 $parcel = $opt_p;
-$userdir = "$Server::CONTENT_ROOT" . "/$username";
+$userdir = "$config{content_root}/$username";
 use strict 'vars';
 
 $isrdir = (getpwnam($username))[7] . "/.isr/";

@@ -10,9 +10,6 @@ use POSIX;
 # Configuration variables
 #########################
 
-# Absolute path that points to the top level content directory
-$CONTENT_ROOT = "/var/www/html/";
-
 # Maximum nonce value
 $MAXNONCE = 1000000000;
 
@@ -31,6 +28,7 @@ require Exporter;
 	     unix_errexit
 	     system_errexit
 	     get_value
+	     get_config
 	     get_offset
 	     get_parcelcfg_path
 	     get_numdirs
@@ -132,6 +130,31 @@ sub get_value
     }
 
     return $return_value;
+}
+
+sub get_config {
+    my %conf = (
+	# Absolute path that points to the top level content directory
+	content_root => "/var/www/html",
+	
+	# Default password
+	default_pass => 'ch@ng3m3',
+    );
+    
+    if (-r "/etc/openisr/locksrv.conf") {
+	open(FD, "</etc/openisr/locksrv.conf")
+	    or errexit("Couldn't load /etc/openisr/locksrv.conf");
+	while (<FD>) {
+	    next if /^\s*#/;
+	    next if !/^\s*([a-z_]+) *= *(.*)$/;
+	    if (exists $conf{$1}) {
+		$conf{$1} = $2;
+	    }
+	}
+	close(FD);
+    }
+    
+    return %conf;
 }
 
 #

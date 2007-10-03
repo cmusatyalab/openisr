@@ -69,6 +69,7 @@ my @filelist = ();
 my @chunkdirlist = ();
 my @chunklist = ();
 my %tagdiffs;
+my %config = get_config();
 
 #
 # Parse the command line args
@@ -95,7 +96,7 @@ if (!$targetver or $targetver < 1) {
     usage("Missing or incorrect target version number (-v)");
 }
 $parcelpath = "$username/$parcel";
-$parceldir = "$Server::CONTENT_ROOT/$parcelpath";
+$parceldir = "$config{content_root}/$parcelpath";
 $verbose = $opt_V;
 use strict 'vars';
 

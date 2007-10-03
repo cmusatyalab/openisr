@@ -35,6 +35,7 @@ my $filepath;
 my $verbose;
 my $item;
 my $metadata;
+my %config = get_config();
 
 #
 # Parse the command line args
@@ -48,7 +49,7 @@ if ($opt_h) {
 if (!$opt_f) {
     usage("Missing file path (-f)");
 }
-$filepath = "$Server::CONTENT_ROOT/$opt_f";
+$filepath = "$config{content_root}/$opt_f";
 $verbose = $opt_V;
 use strict 'vars';
 
@@ -105,7 +106,7 @@ sub usage {
     print "Usage: $progname [-hV] -f <path>\n";
     print "Options:\n";
     print "  -h        Print this message\n";
-    print "  -f <path> File path (relative to $Server::CONTENT_ROOT)\n";
+    print "  -f <path> File path (relative to $config{content_root})\n";
     print "  -V        Be verbose\n";
     print "\n";
     exit 0;

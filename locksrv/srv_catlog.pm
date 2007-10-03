@@ -33,6 +33,7 @@ my $userid;
 my $parcel;
 my $userdir;
 my $line;
+my %config = get_config();
 
 #
 # Parse the command line args
@@ -58,7 +59,7 @@ $parcel = $opt_p;
 use strict 'vars';
 
 # Set some variable names
-$userdir = "$Server::CONTENT_ROOT/$userid/$parcel";
+$userdir = "$config{content_root}/$userid/$parcel";
 
 # Cat the session log to the parcel log and delete session log
 open(INFILE, "$userdir/$srcfile") 

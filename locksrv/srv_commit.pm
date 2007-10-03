@@ -41,6 +41,7 @@ my $verbose;
 my $file;
 
 my @files;
+my %config = get_config();
 
 #
 # Parse the command line args
@@ -57,7 +58,7 @@ if (!$opt_p) {
 $username = $opt_u;
 $username = $ENV{'USER'} if !$username;
 $parcelname = $opt_p;
-$parceldir = "$Server::CONTENT_ROOT/$username/$parcelname";
+$parceldir = "$config{content_root}/$username/$parcelname";
 $verbose = $opt_V;
 use strict 'vars';
 

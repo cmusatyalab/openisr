@@ -47,6 +47,7 @@ my $check;
 my $line;
 my $action;
 my $unused;
+my %config = get_config();
 
 #
 # Parse the command line args
@@ -78,7 +79,7 @@ use strict 'vars';
 #
 # Make sure the parcel directory exists
 #
-$parceldir = "$Server::CONTENT_ROOT/$parcelpath";
+$parceldir = "$config{content_root}/$parcelpath";
 (-e $parceldir)
     or errexit("Parcel $parceldir does not exist");
 

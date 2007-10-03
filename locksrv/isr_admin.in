@@ -66,6 +66,9 @@ my $srcuserid;
 my $retain;
 my $version;
 
+# Server configuration
+my %config = get_config();
+
 #
 # Parse the command line args
 #
@@ -215,7 +218,7 @@ sub prune ($$$) {
     my $dirname;
     my $reply;
 
-    $parceldir = "$Server::CONTENT_ROOT/$userid/$parcel";
+    $parceldir = "$config{content_root}/$userid/$parcel";
     
     # Not allowed to prune all of the versions!
     if ($retain < 1) {
@@ -267,7 +270,7 @@ sub encrypt ($$$$) {
     my $keyroot = shift;
 
     my $versionname = sprintf("%06d", $version);
-    my $parceldir = "$Server::CONTENT_ROOT/$userid/$parcel/$versionname";
+    my $parceldir = "$config{content_root}/$userid/$parcel/$versionname";
     my $rh;
     my $fd;
 
@@ -295,7 +298,7 @@ sub decrypt ($$$$) {
     my $keyroot = shift;
 
     my $versionname = sprintf("%06d", $version);
-    my $parceldir = "$Server::CONTENT_ROOT/$userid/$parcel/$versionname";
+    my $parceldir = "$config{content_root}/$userid/$parcel/$versionname";
     my $rh;
     my $fd;
     my $umask;
@@ -423,9 +426,9 @@ sub addparcel ($$$$) {
     my $umask;
     my @files;
 
-    my $userdir = "$Server::CONTENT_ROOT/$userid";
+    my $userdir = "$config{content_root}/$userid";
     my $parceldir = "$userdir/$parcel";
-    my $srcpath = "$Server::CONTENT_ROOT/$srcuserid/$srcparcel";
+    my $srcpath = "$config{content_root}/$srcuserid/$srcparcel";
     my $srcparcelcfg = get_parcelcfg_path($srcuserid, $srcparcel);
     my $dstparcelcfg = get_parcelcfg_path($userid, $parcel);
     my $dstparcelcfgdir = dirname($dstparcelcfg);
@@ -543,13 +546,13 @@ sub getusage () {
 	    or unix_errexit("Couldn't read $userid's ISR directory");
 	foreach $parcel (sort grep(!/^\./, readdir(ISRDIR))) {
 	    # Extract the date of the last release or acquire of this parcel
-	    $logentry = `tail -n 1 $Server::CONTENT_ROOT/$userid/$parcel/lockholder.log`;
+	    $logentry = `tail -n 1 $config{content_root}/$userid/$parcel/lockholder.log`;
 	    chomp($logentry);
 	    ($logserver, $logdate, $logstatus, $loguserid, $logparcel, $logclient) = 
 		split('\|', $logentry);
 	    
 	    # Extract the date of the last activity of any kind on this parcel
-	    $lastlog = `fgrep BEGIN $Server::CONTENT_ROOT/$userid/$parcel/session.log | tail -n 1`;
+	    $lastlog = `fgrep BEGIN $config{content_root}/$userid/$parcel/session.log | tail -n 1`;
 	    chomp($lastlog);
 	    ($lastdate, $junk, $junk, $junk, $junk, $lastcmd) 
 		= split('\|', $lastlog);
@@ -601,7 +604,7 @@ sub usage {
     
     # Strip any path information from the program name
     ($progname = $0) =~ s#.*/##s;
-    ($croot = $Server::CONTENT_ROOT) =~ s:/$::;
+    ($croot = $config{content_root}) =~ s:/$::;
     
     if ($msg) {
         print "Error: $msg\n";
