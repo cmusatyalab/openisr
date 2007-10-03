@@ -48,6 +48,7 @@ PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
 			[whether we should build the kernel modules])
 PROCESS_ENABLE_VAR([$enable_server], [WANT_SERVER],
 			[whether we should build the server])
+AM_CONDITIONAL([WANT_TOOLS], [test z$enable_client = zyes -o z$enable_server = zyes])
 
 if test z$enable_modules = zyes ; then
 	if test z$srcdir != z. ; then
@@ -130,9 +131,12 @@ if test z$enable_client = zyes ; then
 	FIND_LIBRARY([zlib], [z], [inflate], [zlib.h],
 				[$with_zlib /usr/local /usr])
 	
-	PKG_CHECK_MODULES([SQLITE], [sqlite3])
 	PKG_CHECK_MODULES([APR], [apr-1])
 	PKG_CHECK_MODULES([OSSP_UUID], [ossp-uuid])
+fi
+
+if test z$enable_client = zyes -o z$enable_server = zyes ; then
+	PKG_CHECK_MODULES([SQLITE], [sqlite3])
 fi
 
 if test z$enable_libvdisk = zyes ; then
