@@ -16,9 +16,12 @@
 # RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
 #
 
+use strict;
+use Getopt::Std;
 use constant SRVBIN => "!!SHAREDIR!!";
 use lib SRVBIN;
 use Server;
+$| = 1; # Autoflush output on every print statement
 
 my $subcommand = shift;
 my $cmdpath = SRVBIN . "/srv_$subcommand.pm";

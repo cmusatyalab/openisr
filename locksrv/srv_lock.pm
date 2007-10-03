@@ -19,11 +19,7 @@
 # Standard prologue
 ###################
 use strict;
-use Getopt::Std;
 use Sys::Hostname;
-use lib "/usr/local/isr/bin";
-use Server;
-$| = 1; # Autoflush output on every print statement
 
 ####################
 # Begin main routine

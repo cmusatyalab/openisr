@@ -19,12 +19,8 @@
 # standard prologue
 ###################
 use strict;
-use Getopt::Std;
 use POSIX;
-use lib "/usr/local/isr/bin";
-use Server;
 use Cwd;
-$| = 1; # Autoflush output on every print statement
 
 ####################
 # begin main routine

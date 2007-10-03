@@ -19,14 +19,10 @@
 # Prologue
 ##########
 use strict;
-use Getopt::Std;
 use File::stat;
 use Term::ANSIColor qw(:constants);
 use Socket;
 use Sys::Hostname;
-use lib "/usr/local/isr/bin";
-use Server;
-$| = 1; # Autoflush output on every print statement
 
 ####################
 # begin main routine
