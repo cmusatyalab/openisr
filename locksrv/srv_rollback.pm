@@ -95,7 +95,7 @@ if (!$targetver or $targetver < 1) {
     usage("Missing or incorrect target version number (-v)");
 }
 $parcelpath = "$username/$parcel";
-$parceldir = $Server::CONTENT_ROOT . $parcelpath;
+$parceldir = "$Server::CONTENT_ROOT/$parcelpath";
 $verbose = $opt_V;
 use strict 'vars';
 

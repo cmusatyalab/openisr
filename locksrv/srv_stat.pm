@@ -48,7 +48,7 @@ if ($opt_h) {
 if (!$opt_f) {
     usage("Missing file path (-f)");
 }
-$filepath = "$Server::CONTENT_ROOT" . $opt_f;
+$filepath = "$Server::CONTENT_ROOT/$opt_f";
 $verbose = $opt_V;
 use strict 'vars';
 

@@ -93,7 +93,7 @@ if (!$opt_p) {
 $username = $opt_u;
 $username = $ENV{"USER"} if !$username;
 $parcelname = $opt_p;
-$parceldir = "$Server::CONTENT_ROOT$username/$parcelname";
+$parceldir = "$Server::CONTENT_ROOT/$username/$parcelname";
 $currver = $opt_v;
 $verbose = $opt_V;
 $contentcheck = $opt_c;

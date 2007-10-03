@@ -78,7 +78,7 @@ use strict 'vars';
 #
 # Make sure the parcel directory exists
 #
-$parceldir = "$Server::CONTENT_ROOT" . "$parcelpath";
+$parceldir = "$Server::CONTENT_ROOT/$parcelpath";
 (-e $parceldir)
     or errexit("Parcel $parceldir does not exist");
 
