@@ -37,6 +37,7 @@ require Exporter;
 	     get_offset
 	     get_parcelcfg_path
 	     get_numdirs
+	     keyroot_pipe
 	     );
 
 #
@@ -158,6 +159,28 @@ sub get_numdirs {
     my $numchunks = get_value($parcelcfg, "NUMCHUNKS");
     my $chunksperdir = get_value($parcelcfg, "CHUNKSPERDIR");
     return ceil($numchunks / $chunksperdir);
+}
+
+#
+# keyroot_pipe - return a handle to a pipe, and its corresponding fd, from
+#                which can be read the specified string
+#
+sub keyroot_pipe {
+    my $keyroot = shift;
+    
+    my $rh;
+    my $wh;
+    my $flags;
+    
+    # Each end is automatically closed when it goes out of scope
+    pipe($rh, $wh)
+        or unix_errexit("Couldn't create pipe");
+    # Clear close-on-exec flag for the read end
+    $flags = fcntl($rh, F_GETFD, 0);
+    fcntl($rh, F_SETFD, $flags & ~FD_CLOEXEC);
+    print $wh "$keyroot\n";
+    # We can't just return fileno($rh) because $rh would drop out of scope
+    return ($rh, fileno($rh));
 }
 
 # Every module must end with a 1; 

@@ -75,6 +75,8 @@ my $dirnum;
 my $filenum;
 my $dir;
 my $filename;
+my $rh;
+my $fd;
 
 my @files;
 
@@ -199,11 +201,13 @@ else {
 
 $keyroot = get_value($parcelcfg, "KEYROOT");
 
-system("openssl enc -d -aes-128-cbc -in $currkeyring_enc -out $currkeyring -pass pass:$keyroot -salt") == 0
+($rh, $fd) = keyroot_pipe($keyroot);
+system("openssl enc -d -aes-128-cbc -in $currkeyring_enc -out $currkeyring -pass fd:$fd -salt") == 0
     or system_errexit("Unable to decode $currkeyring_enc");
 
 if ($currver > 1 or $precommit) {
-    system("openssl enc -d -aes-128-cbc -in $predkeyring_enc -out $predkeyring -pass pass:$keyroot -salt") == 0
+    ($rh, $fd) = keyroot_pipe($keyroot);
+    system("openssl enc -d -aes-128-cbc -in $predkeyring_enc -out $predkeyring -pass fd:$fd -salt") == 0
 	or system_errexit("Unable to decode $predkeyring_enc");
 }
 

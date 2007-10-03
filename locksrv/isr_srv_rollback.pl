@@ -66,6 +66,8 @@ my $chunkcount;
 my $i;
 my $reason;
 my $file;
+my $rh;
+my $fd;
 
 # Arrays and list
 my @filelist = ();
@@ -168,9 +170,11 @@ $lastkeyring = "/tmp/keyring-last.$$";
 
 # Decrypt the keyrings
 unlink($targetkeyring, $lastkeyring);
-system("openssl enc -d -aes-128-cbc -in $targetdir/keyring.enc -out $targetkeyring -pass pass:$keyroot -salt") == 0
+($rh, $fd) = keyroot_pipe($keyroot);
+system("openssl enc -d -aes-128-cbc -in $targetdir/keyring.enc -out $targetkeyring -pass fd:$fd -salt") == 0
     or system_errexit("Unable to decode $targetdir/keyring.enc");
-system("openssl enc -d -aes-128-cbc -in $lastdir/keyring.enc -out $lastkeyring -pass pass:$keyroot -salt") == 0
+($rh, $fd) = keyroot_pipe($keyroot);
+system("openssl enc -d -aes-128-cbc -in $lastdir/keyring.enc -out $lastkeyring -pass fd:$fd -salt") == 0
     or system_errexit("Unable to decode $lastdir/keyring.enc");
 
 # Compare the keyrings

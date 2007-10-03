@@ -268,6 +268,8 @@ sub encrypt ($$$$) {
 
     my $versionname = sprintf("%06d", $version);
     my $parceldir = "$Server::CONTENT_ROOT/$userid/$parcel/$versionname";
+    my $rh;
+    my $fd;
 
     foreach $target ("cfg.tgz", "keyring") {
 	print("Encrypting $target.\n")
@@ -275,7 +277,8 @@ sub encrypt ($$$$) {
 	if (!-e "$parceldir/$target") {
 	    errexit("Missing $parceldir/$target.\n");
 	}
-        if (system("openssl enc -aes-128-cbc -in $parceldir/$target -out $parceldir/$target.enc -pass pass:$keyroot -salt") != 0) {
+	($rh, $fd) = keyroot_pipe($keyroot);
+        if (system("openssl enc -aes-128-cbc -in $parceldir/$target -out $parceldir/$target.enc -pass fd:$fd -salt") != 0) {
             system_errexit("Unable to encrypt $parceldir/$target.");
 	}
 	unlink("$parceldir/$target");
@@ -293,6 +296,8 @@ sub decrypt ($$$$) {
 
     my $versionname = sprintf("%06d", $version);
     my $parceldir = "$Server::CONTENT_ROOT/$userid/$parcel/$versionname";
+    my $rh;
+    my $fd;
 
     foreach $target ("cfg.tgz", "keyring") {
 	print("Decrypting $target.enc.\n")
@@ -300,7 +305,8 @@ sub decrypt ($$$$) {
 	if (!-e "$parceldir/$target.enc") {
 	    errexit("Missing $parceldir/$target.enc.\n");
 	}
-	if (system("openssl enc -d -aes-128-cbc -in $parceldir/$target.enc -out $parceldir/$target -pass pass:$keyroot -salt") != 0) {
+	($rh, $fd) = keyroot_pipe($keyroot);
+	if (system("openssl enc -d -aes-128-cbc -in $parceldir/$target.enc -out $parceldir/$target -pass fd:$fd -salt") != 0) {
             system_errexit("Unable to decrypt $parceldir/$target.");
 	}
 	unlink("$parceldir/$target.enc");
