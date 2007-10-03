@@ -27,6 +27,8 @@ use Server;
 $| = 1; # Autoflush output on every print statement
 
 my $cmd = shift;
+# Sanitize the specified subcommand: we only allow letters
+$cmd =~ tr/a-zA-Z//cd;
 my $cmdpath = SHAREDIR . "/srv_$cmd.pm";
 
 usage()
