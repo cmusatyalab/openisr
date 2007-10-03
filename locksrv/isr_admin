@@ -298,7 +298,9 @@ sub decrypt ($$$$) {
     my $parceldir = "$Server::CONTENT_ROOT/$userid/$parcel/$versionname";
     my $rh;
     my $fd;
+    my $umask;
 
+    $umask = umask(0077);
     foreach $target ("cfg.tgz", "keyring") {
 	print("Decrypting $target.enc.\n")
 	    if $verbose;
@@ -311,6 +313,7 @@ sub decrypt ($$$$) {
 	}
 	unlink("$parceldir/$target.enc");
     }
+    umask($umask);
 }
 
 #

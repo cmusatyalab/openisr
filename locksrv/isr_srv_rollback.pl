@@ -68,6 +68,7 @@ my $reason;
 my $file;
 my $rh;
 my $fd;
+my $umask;
 
 # Arrays and list
 my @filelist = ();
@@ -170,12 +171,14 @@ $lastkeyring = "/tmp/keyring-last.$$";
 
 # Decrypt the keyrings
 unlink($targetkeyring, $lastkeyring);
+$umask = umask(0077);
 ($rh, $fd) = keyroot_pipe($keyroot);
 system("openssl enc -d -aes-128-cbc -in $targetdir/keyring.enc -out $targetkeyring -pass fd:$fd -salt") == 0
     or system_errexit("Unable to decode $targetdir/keyring.enc");
 ($rh, $fd) = keyroot_pipe($keyroot);
 system("openssl enc -d -aes-128-cbc -in $lastdir/keyring.enc -out $lastkeyring -pass fd:$fd -salt") == 0
     or system_errexit("Unable to decode $lastdir/keyring.enc");
+umask($umask);
 
 # Compare the keyrings
 open(IN, "-|", "$Server::SRVBIN/query", "-a", "last:$lastkeyring", $targetkeyring, "SELECT main.keys.chunk FROM main.keys JOIN last.keys ON main.keys.chunk == last.keys.chunk WHERE main.keys.tag != last.keys.tag")

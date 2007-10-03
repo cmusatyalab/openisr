@@ -201,6 +201,9 @@ else {
 
 $keyroot = get_value($parcelcfg, "KEYROOT");
 
+# Make sure the decrypted files in /tmp are not world-readable
+umask(0077);
+
 ($rh, $fd) = keyroot_pipe($keyroot);
 system("openssl enc -d -aes-128-cbc -in $currkeyring_enc -out $currkeyring -pass fd:$fd -salt") == 0
     or system_errexit("Unable to decode $currkeyring_enc");
