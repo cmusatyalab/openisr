@@ -112,7 +112,7 @@ $hostname = hostname();
 # Acquire the lock (if called with -l)
 # 
 if ($lock) {
-    $nonce = `$Server::SRVBIN/isr_srv_lock.pl -p $parcelpath -n $hostname -a`;
+    $nonce = `isr_runserv lock -p $parcelpath -n $hostname -a`;
     if ($? != 0) {
 	undef $nonce;
 	errexit("Unable to acquire lock.");
@@ -175,7 +175,7 @@ system("openssl enc -d -aes-128-cbc -in $lastdir/keyring.enc -out $lastkeyring -
 umask($umask);
 
 # Compare the keyrings
-open(IN, "-|", "$Server::SRVBIN/query", "-a", "last:$lastkeyring", $targetkeyring, "SELECT main.keys.chunk FROM main.keys JOIN last.keys ON main.keys.chunk == last.keys.chunk WHERE main.keys.tag != last.keys.tag")
+open(IN, "-|", LIBDIR . "/query", "-a", "last:$lastkeyring", $targetkeyring, "SELECT main.keys.chunk FROM main.keys JOIN last.keys ON main.keys.chunk == last.keys.chunk WHERE main.keys.tag != last.keys.tag")
     or unix_errexit("Unable to query keyrings");
 while ($chunk = <IN>) {
     chomp($chunk);
@@ -274,7 +274,7 @@ foreach $file ("cfg.tgz.enc", "keyring.enc") {
 # 
 print "Committing updates...\n"
     if $verbose;
-system("$Server::SRVBIN/isr_srv_commit.pl -u $username -p $parcel") == 0
+system("isr_runserv commit -u $username -p $parcel") == 0
     or system_errexit("Unable to commit version $targetver.");
 
 #
@@ -330,7 +330,7 @@ END {
     # Release the lock if we had already acquired it
     #
     if ($nonce) {
-	if (system("$Server::SRVBIN/isr_srv_lock.pl -p $parcelpath -n $hostname -r $nonce") == 0) {
+	if (system("isr_runserv lock -p $parcelpath -n $hostname -r $nonce") == 0) {
 	    print("Released the lock.\n")
 		if $verbose;
 	} else {

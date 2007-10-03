@@ -18,13 +18,16 @@
 
 use strict;
 use Getopt::Std;
-use constant SRVBIN => "!!SHAREDIR!!";
-use lib SRVBIN;
+use constant {
+    LIBDIR => "!!LIBDIR!!",
+    SHAREDIR => "!!SHAREDIR!!",
+};
+use lib SHAREDIR;
 use Server;
 $| = 1; # Autoflush output on every print statement
 
 my $subcommand = shift;
-my $cmdpath = SRVBIN . "/srv_$subcommand.pm";
+my $cmdpath = SHAREDIR . "/srv_$subcommand.pm";
 
 errexit("No such subcommand \"$subcommand\"")
     if ! -e $cmdpath;

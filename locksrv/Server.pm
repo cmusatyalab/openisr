@@ -13,9 +13,6 @@ use POSIX;
 # Absolute path that points to the top level content directory
 $CONTENT_ROOT = "/var/www/html/";
 
-# Server bin directory
-$SRVBIN = "/usr/local/isr/bin";
-
 # Maximum nonce value
 $MAXNONCE = 1000000000;
 

@@ -211,7 +211,7 @@ if ($currver > 1 or $precommit) {
 #
 # Check that current keyring size is consistent with parcel.cfg
 #
-open(TAGS, "-|", "$Server::SRVBIN/query", $currkeyring, "SELECT tag FROM keys ORDER BY chunk ASC")
+open(TAGS, "-|", LIBDIR . "/query", $currkeyring, "SELECT tag FROM keys ORDER BY chunk ASC")
     or system_errexit("Unable to read tags from $currkeyring");
 
 @tags = ();
@@ -240,7 +240,7 @@ $numdirs = ceil($totalchunks / $chunksperdir);
 if (-e $preddir) {
     print "Comparing keyrings $currver and $predver for differences...\n"
 	if $verbose;
-    open(DIFFS, "-|", "$Server::SRVBIN/query", $currkeyring, "-a", "pred:$predkeyring", "SELECT main.keys.chunk FROM main.keys JOIN pred.keys ON main.keys.chunk == pred.keys.chunk WHERE main.keys.tag != pred.keys.tag")
+    open(DIFFS, "-|", LIBDIR . "/query", $currkeyring, "-a", "pred:$predkeyring", "SELECT main.keys.chunk FROM main.keys JOIN pred.keys ON main.keys.chunk == pred.keys.chunk WHERE main.keys.tag != pred.keys.tag")
 	or system_errexit("Unable to compare $currkeyring and $predkeyring");
 
     while ($chunk = <DIFFS>) {
