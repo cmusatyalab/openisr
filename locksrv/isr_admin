@@ -472,7 +472,7 @@ sub addparcel ($$$$) {
     # Set the appropriate file ownership and permissions
     system("chown -R $userid:$userid $parceldir") == 0
 	or errexit("Unable to set owner of $parceldir");
-    system("chmod -R 755 $parceldir") == 0
+    system("chmod -R u=rwX,go=rX $parceldir") == 0
 	or errexit("Unable to set permissions of $parceldir");
     
     # Write out the new parcel.cfg
