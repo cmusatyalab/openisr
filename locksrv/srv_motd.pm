@@ -32,6 +32,7 @@ my $parcelname;
 my $username;
 my $homedir;
 my $motdfile;
+my %config = get_config();
 
 #
 # Parse the command line args
@@ -61,7 +62,7 @@ $homedir = $ENV{HOME};
 if ($username ne basename($homedir)) {
     errexit("The user name on the command line ($username) is inconsistent with the home directory ($homedir).");
 }
-$motdfile = "/usr/local/isr/motd.txt";
+$motdfile = "$config{content_root}/motd.txt";
 
 #
 # Return the config file to the caller via stdout
