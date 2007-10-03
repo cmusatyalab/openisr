@@ -1,20 +1,12 @@
-package Server;
-
-use POSIX;
-
 ############################################################
 # Server.pm - Module for server scripts
 ############################################################
 
-#########################
-# Configuration variables
-#########################
+package Server;
+use POSIX;
 
 # Maximum nonce value
-$MAXNONCE = 1000000000;
-
-# Default password
-$DEFAULTPWD = 'ch@ng3m3';
+use constant MAXNONCE => 1000000000;
 
 ###########
 # Functions

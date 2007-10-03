@@ -125,7 +125,7 @@ if ($acquire) {
 
     # Create a nonce [1..MAXNONCE] that can be used to validate releases
     srand();  # Generate a different seed each time
-    $server_nonce = int(rand($Server::MAXNONCE)) + 1;
+    $server_nonce = int(rand(Server::MAXNONCE)) + 1;
 
     # Save the nonce
     open(NONCEFILE, ">$noncefile")
