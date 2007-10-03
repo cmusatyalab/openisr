@@ -1,0 +1,30 @@
+#!/usr/bin/perl
+
+######################################################
+# isr_runserv - Wrapper script for ISR server commands
+######################################################
+
+#
+#                       Internet Suspend/Resume
+#           A system for capture and transport of PC state
+#
+#            Copyright (c) 2007, Carnegie Mellon University
+#
+# This software is distributed under the terms of the Eclipse Public
+# License, Version 1.0 which can be found in the file named LICENSE.Eclipse.
+# ANY USE, REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES
+# RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
+#
+
+use constant SRVBIN => "/usr/local/isr/bin";
+use lib SRVBIN;
+use Server;
+
+my $subcommand = shift;
+my $cmdpath = SRVBIN . "/isr_srv_$subcommand.pl";
+
+errexit("No such subcommand \"$subcommand\"")
+    if ! -e $cmdpath;
+$0 .= " $subcommand";
+do $cmdpath;
+errexit("Couldn't run subcommand \"$subcommand\"");
