@@ -63,7 +63,6 @@ use strict;
 use warnings;
 
 use constant {
-    ISRSERVERBIN => "/usr/local/isr/bin",
     LIBDIR       => "!!LIBDIR!!",
     SHAREDIR     => "!!SHAREDIR!!",
     SYSCONFDIR   => "!!SYSCONFDIR!!",
@@ -2117,7 +2116,6 @@ sub isr_srun ($$$$) {
     my $stderr = shift;   # if true, redirect stderr to outfile (optional)
     
     my $retval;
-    my $command = "isr_srv_" . $operation . ".pl"; 
     my $redirect = "";
 
     # Redirect stderr to outfile if requested
@@ -2127,10 +2125,10 @@ sub isr_srun ($$$$) {
 
     # Perform the operation on remote storage
     if ($outfile) {
-	$retval = mysystem("ssh -l $userid $server " . ISRSERVERBIN . "/$command $args > $outfile $redirect");
+	$retval = mysystem("ssh -l $userid $server isr_runserv $operation $args > $outfile $redirect");
     }
     else {
-	$retval = mysystem("ssh -l $userid $server " . ISRSERVERBIN . "/$command $args");
+	$retval = mysystem("ssh -l $userid $server isr_runserv $operation $args");
     }
     return $retval;
 }
