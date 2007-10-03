@@ -1,7 +1,5 @@
-#!/usr/bin/perl
-
 ######################################################################
-# isr_srv_commit.pl - Commits a locally cached parcel on the server
+# srv_commit.pm - Commits a locally cached parcel on the server
 ######################################################################
 
 #

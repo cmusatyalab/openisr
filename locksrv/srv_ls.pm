@@ -1,7 +1,5 @@
-#!/usr/bin/perl
-
 #################################################################
-# isr_srv_ls.pl - List information about a user's parcels
+# srv_ls.pm - List information about a user's parcels
 #################################################################
 
 #

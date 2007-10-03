@@ -1,7 +1,5 @@
-#!/usr/bin/perl
-
 #################################################################
-# isr_srv_stat.pl - Return file metadata (from stat)
+# srv_stat.pm - Return file metadata (from stat)
 #################################################################
 
 #

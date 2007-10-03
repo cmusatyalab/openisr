@@ -1,7 +1,5 @@
-#!/usr/bin/perl
-
 ###################################################################
-# isr_srv_lock.pl - Acquires, releases, or checks a parcel lock
+# srv_lock.pm - Acquires, releases, or checks a parcel lock
 ###################################################################
 
 #

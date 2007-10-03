@@ -1,5 +1,5 @@
 SRVCMDS = catlog checkparcel commit getconfig lock ls motd rollback stat
-SRVSCRIPTS = $(patsubst %, isr_srv_%.pl, $(SRVCMDS))
+SRVSCRIPTS = $(patsubst %, srv_%.pm, $(SRVCMDS))
 
 bin_SCRIPTS = isr_runserv
 sbin_SCRIPTS = isr_admin

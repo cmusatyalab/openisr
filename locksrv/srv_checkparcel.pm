@@ -1,7 +1,5 @@
-#!/usr/bin/perl
-
 ###################################################################
-# isr_srv_checkparcel.pl - check a parcel for consistency
+# srv_checkparcel.pm - check a parcel for consistency
 ###################################################################
 
 #

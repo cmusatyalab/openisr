@@ -21,7 +21,7 @@ use lib SRVBIN;
 use Server;
 
 my $subcommand = shift;
-my $cmdpath = SRVBIN . "/isr_srv_$subcommand.pl";
+my $cmdpath = SRVBIN . "/srv_$subcommand.pm";
 
 errexit("No such subcommand \"$subcommand\"")
     if ! -e $cmdpath;

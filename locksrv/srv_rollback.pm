@@ -1,7 +1,5 @@
-#!/usr/bin/perl
-
 #################################################################
-# isr_srv_rollback.pl - Revert back to a previous version
+# srv_rollback.pm - Revert back to a previous version
 #################################################################
 
 #
