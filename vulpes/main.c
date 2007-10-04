@@ -403,6 +403,10 @@ int main(int argc, char *argv[])
       goto vulpes_exit;
     }
     
+    /* Now that we know the device name, create the shared memory segment.
+       Ignore errors. */
+    cache_shminit();
+    
     /* Okay, now we're running.  Notify the parent, if any. */
     vulpes_log(LOG_BASIC,"Initialization complete");
     if (ret_fd != -1) {

@@ -81,6 +81,7 @@ extern struct vulpes_state {
   char image_name[MAX_PATH_LENGTH];
   char loopdev_name[MAX_PATH_LENGTH];
   char devfile_name[MAX_PATH_LENGTH];
+  char memseg_name[MAX_PATH_LENGTH];
   unsigned version;
   unsigned chunksize_bytes;
   unsigned chunksperdir;
@@ -101,6 +102,8 @@ extern struct vulpes_state {
   unsigned long long request_count;
   struct curl_connection *curl_conn;
   int bdev_index;
+  unsigned char *memseg_base;
+  unsigned memseg_len;
 } state;
 
 struct nexus_message;
@@ -117,6 +120,7 @@ int copy_for_upload(void);
 int validate_cache(void);
 int examine_cache(void);
 vulpes_err_t cache_init(void);
+vulpes_err_t cache_shminit(void);
 vulpes_err_t cache_get(const struct nexus_message *req,
 		       struct nexus_message *reply);
 void cache_update(const struct nexus_message *req);

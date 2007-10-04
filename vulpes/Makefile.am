@@ -3,7 +3,7 @@
 AM_CPPFLAGS = -I$(top_srcdir)/nexus -I$(KERNELDIR)/include
 AM_CPPFLAGS += -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
 AM_CFLAGS = -Wall -Wstrict-prototypes
-AM_LDFLAGS = -lz -lssl -lcurl
+AM_LDFLAGS = -lz -lssl -lcurl -lrt
 
 pkglib_PROGRAMS = vulpes
 vulpes_SOURCES = main.c driver.c transport.c cache.c crypto.c \

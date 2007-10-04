@@ -10,6 +10,8 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
+#include <sys/types.h>
+#include <sys/mman.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +37,13 @@ const unsigned CHUNK_STATUS_PRESENT = 0x8000;	/* This chunk is present in the lo
 const char *index_name = "index.lev1";
 const char *image_name = "image.lev1";
 
+enum shm_chunk_status {
+  SHM_NOT_PRESENT,
+  SHM_PRESENT,
+  SHM_ACCESSED,
+  SHM_DIRTY
+};
+
 /* LOCALS */
 struct chunk_data {
   unsigned length;
@@ -53,6 +62,30 @@ static unsigned writes_before_read = 0;
 static unsigned chunks_stripped = 0;
 
 /* AUXILLIARY FUNCTIONS */
+static void shm_set(struct chunk_data *cdp, enum shm_chunk_status status)
+{
+  unsigned chunk_num;
+  int offset;
+  int shift;
+  unsigned char curbyte;
+  unsigned char curbits;
+  unsigned char newbits;
+  
+  if (state.memseg_base == NULL)
+    return;
+  chunk_num = cdp - state.cd;
+  offset = chunk_num / 4;
+  shift = 2 * (3 - (chunk_num % 4));
+  curbyte = state.memseg_base[offset];
+  curbits = (curbyte >> shift) & 0x3;
+  newbits = status & 0x3;
+  if (curbits < newbits) {
+    curbyte &= ~(0x3 << shift);
+    curbyte |= newbits << shift;
+    state.memseg_base[offset]=curbyte;
+  }
+}
+
 static inline int cdp_is_accessed(struct chunk_data * cdp)
 {
   return ((cdp->status & CHUNK_STATUS_ACCESSED) ==
@@ -80,6 +113,7 @@ static inline int cdp_is_compressed(struct chunk_data * cdp)
 static inline void mark_cdp_accessed(struct chunk_data * cdp)
 {
   cdp->status |= CHUNK_STATUS_ACCESSED;
+  shm_set(cdp, SHM_ACCESSED);
 }
 
 static inline void mark_cdp_modified(struct chunk_data * cdp)
@@ -90,6 +124,7 @@ static inline void mark_cdp_modified(struct chunk_data * cdp)
 static inline void mark_cdp_modified_session(struct chunk_data * cdp)
 {
   cdp->status |= CHUNK_STATUS_MODIFIED | CHUNK_STATUS_MODIFIED_SESSION;
+  shm_set(cdp, SHM_DIRTY);
 }
 
 /* For use when the chunk tag is found to be equal to the tag on the previous
@@ -159,6 +194,7 @@ static inline void mark_cdp_present(struct chunk_data * cdp)
   if (!cdp_present(cdp))
     state.valid_chunks++;
   cdp->status |= CHUNK_STATUS_PRESENT;
+  shm_set(cdp, SHM_PRESENT);
 }
 
 static vulpes_err_t form_index_name(const char *dirname)
@@ -917,6 +953,12 @@ vulpes_err_t cache_shutdown(int do_writeout)
     state.pcd = NULL;
   }
   
+  /* Remove shared memory segment */
+  if (state.memseg_base != NULL) {
+    munmap(state.memseg_base, state.memseg_len);
+    shm_unlink(state.memseg_name);
+  }
+  
   /* Print close stats if any chunks have been accessed.  In run mode this
      will always be true because the kernel tries to read the partition table
      of the device.  In other modes it will never be true. */
@@ -991,6 +1033,45 @@ void cache_update(const struct nexus_message *req)
   cdp->length=req->length;
 
   vulpes_log(LOG_CHUNKS,"update: %llu (size %u)",req->chunk,cdp->length);
+}
+
+vulpes_err_t cache_shminit(void)
+{
+  int fd;
+  unsigned chunk_num;
+  struct chunk_data *cdp;
+  
+  state.memseg_len = (state.numchunks + 3) / 4;
+  snprintf(state.memseg_name, MAX_PATH_LENGTH, "/chunk-map-openisr%c",
+           'a' + state.bdev_index);
+  fd=shm_open(state.memseg_name, O_RDWR|O_CREAT|O_EXCL, 0600);
+  if (fd == -1) {
+    vulpes_log(LOG_ERRORS,"Couldn't create shared memory segment: %s",strerror(errno));
+    return VULPES_IOERR;
+  }
+  if (ftruncate(fd, state.memseg_len)) {
+    vulpes_log(LOG_ERRORS,"Couldn't set shared memory segment to %u bytes",state.memseg_len);
+    close(fd);
+    shm_unlink(state.memseg_name);
+    return VULPES_IOERR;
+  }
+  state.memseg_base=mmap(NULL, state.memseg_len, PROT_READ|PROT_WRITE,
+                         MAP_SHARED, fd, 0);
+  close(fd);
+  if (state.memseg_base == MAP_FAILED) {
+    vulpes_log(LOG_ERRORS,"Couldn't map shared memory segment");
+    state.memseg_base=NULL;
+    shm_unlink(state.memseg_name);
+    return VULPES_CALLFAIL;
+  }
+  
+  /* The present bit has already been set during cache_init(), so we need
+     to go back and copy it into the shm segment */
+  foreach_chunk(chunk_num, cdp) {
+    if (cdp_present(cdp))
+      shm_set(cdp, SHM_PRESENT);
+  }
+  return VULPES_SUCCESS;
 }
 
 vulpes_err_t cache_init(void)
