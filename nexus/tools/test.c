@@ -213,6 +213,10 @@ int setup(struct params *params, char *storefile)
 	
 	chunk.compression=ONDISK_NONE;
 	fprintf(stderr, "Initializing %llu chunks", params->chunks);
+	if (lseek(chunkfd, params->offset * 512, SEEK_SET) == (off_t)-1) {
+		perror("Seeking chunk device");
+		return 1;
+	}
 	for (tmp=0; tmp<params->chunks; tmp++) {
 		if (!(tmp % (params->chunks / 20)))
 			fprintf(stderr, ".");
