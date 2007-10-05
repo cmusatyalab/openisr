@@ -280,6 +280,7 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 	unsigned chunk_num;
 	struct chunk_data *cdp;
 	int fd;
+	FILE *fp;
 	char buf[HASH_LEN_HEX];
 	char tmp_path[strlen(userPath) + 8];
 	
@@ -290,19 +291,26 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 		vulpes_log(LOG_ERRORS,"couldn't open temporary hex keyring for writeback: %s",tmp_path);
 		return VULPES_IOERR;
 	}
+	fp=fdopen(fd, "w");
+	if (fp == NULL) {
+		vulpes_log(LOG_ERRORS,"couldn't fdopen temporary hex keyring: %s",tmp_path);
+		close(fd);
+		unlink(tmp_path);
+		return VULPES_IOERR;
+	}
 	foreach_chunk(chunk_num, cdp) {
 		binToHex(cdp->tag, buf, HASH_LEN);
 		buf[HASH_LEN_HEX - 1]=' ';
-		if (write(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
+		if (fwrite(buf, 1, HASH_LEN_HEX, fp) != HASH_LEN_HEX)
 			goto short_write;
 		binToHex(cdp->key, buf, HASH_LEN);
 		buf[HASH_LEN_HEX - 1]='\n';
-		if (write(fd, buf, HASH_LEN_HEX) != HASH_LEN_HEX)
+		if (fwrite(buf, 1, HASH_LEN_HEX, fp) != HASH_LEN_HEX)
 			goto short_write;
 	}
-	if (fsync(fd))
+	if (fflush(fp) || fsync(fd))
 		goto short_write;
-	if (close(fd)) {
+	if (fclose(fp)) {
 		vulpes_log(LOG_ERRORS,"failure closing keyring file: %s",tmp_path);
 		unlink(tmp_path);
 		return VULPES_IOERR;
@@ -317,7 +325,7 @@ static vulpes_err_t write_hex_keyring(char *userPath)
 	
 short_write:
 	vulpes_log(LOG_ERRORS,"failure writing keyring file: %s",tmp_path);
-	close(fd);
+	fclose(fp);
 	unlink(tmp_path);
 	return VULPES_IOERR;
 }
@@ -386,6 +394,7 @@ static vulpes_err_t write_bin_keyring(char *path)
   struct kr_header hdr;
   struct kr_entry entry;
   int fd;
+  FILE *fp;
   unsigned chunk_num;
   char tmp_path[strlen(path) + 8];
   
@@ -396,12 +405,19 @@ static vulpes_err_t write_bin_keyring(char *path)
     vulpes_log(LOG_ERRORS,"couldn't open temporary binary keyring for writeback: %s",tmp_path);
     return VULPES_IOERR;
   }
+  fp=fdopen(fd, "w");
+  if (fp == NULL) {
+    vulpes_log(LOG_ERRORS,"couldn't fdopen binary keyring: %s",tmp_path);
+    close(fd);
+    unlink(tmp_path);
+    return VULPES_IOERR;
+  }
   
   memset(&hdr, 0, sizeof(hdr));
   hdr.magic=htonl(KR_MAGIC);
   hdr.entries=htonl(state.numchunks);
   hdr.version=KR_VERSION;
-  if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr))
+  if (fwrite(&hdr, 1, sizeof(hdr), fp) != sizeof(hdr))
     goto short_write;
   
   memset(&entry, 0, sizeof(entry));
@@ -409,12 +425,12 @@ static vulpes_err_t write_bin_keyring(char *path)
     memcpy(entry.key, cdp->key, HASH_LEN);
     memcpy(entry.tag, cdp->tag, HASH_LEN);
     entry.compress=cdp_is_compressed(cdp) ? KR_COMPRESS_ZLIB : KR_COMPRESS_NONE;
-    if (write(fd, &entry, sizeof(entry)) != sizeof(entry))
+    if (fwrite(&entry, 1, sizeof(entry), fp) != sizeof(entry))
       goto short_write;
   }
-  if (fsync(fd))
+  if (fflush(fp) || fsync(fd))
     goto short_write;
-  if (close(fd)) {
+  if (fclose(fp)) {
     vulpes_log(LOG_ERRORS,"failure closing keyring file: %s",tmp_path);
     unlink(tmp_path);
     return VULPES_IOERR;
@@ -429,7 +445,7 @@ static vulpes_err_t write_bin_keyring(char *path)
   
 short_write:
   vulpes_log(LOG_ERRORS, "Couldn't write %s", tmp_path);
-  close(fd);
+  fclose(fp);
   unlink(tmp_path);
   return VULPES_IOERR;
 }
