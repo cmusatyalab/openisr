@@ -234,6 +234,10 @@ static vulpes_err_t form_chunk_file_name(char *buffer, int bufsize,
 
 /* reads the hex keyring file into memory */
 /* hex file format: "<tag> <key>\n" (82 bytes/line including newline) */
+/* NOTE: this function has not been converted to use buffered I/O, so it
+   makes a lot of syscalls, which hurts performance.  But it's only called
+   when encountering an old parcel for the first time, so it seemed better
+   to leave well enough alone. */
 vulpes_err_t read_hex_keyring(char *userPath, int prev)
 {
 	unsigned chunk_num;
@@ -336,16 +340,16 @@ static vulpes_err_t read_bin_keyring(char *path, int prev)
   struct prev_chunk_data *pcdp;
   struct kr_header hdr;
   struct kr_entry entry;
-  int fd;
+  FILE *fp;
   unsigned chunk_num;
   
-  fd=open(path, O_RDONLY);
-  if (fd == -1 && errno == ENOENT)
+  fp=fopen(path, "r");
+  if (fp == NULL && errno == ENOENT)
     return VULPES_NOTFOUND;
-  else if (fd == -1)
+  else if (fp == NULL)
     return VULPES_IOERR;
   
-  if (read(fd, &hdr, sizeof(hdr)) != sizeof(hdr))
+  if (fread(&hdr, 1, sizeof(hdr), fp) != sizeof(hdr))
     goto short_read;
   if (ntohl(hdr.magic) != KR_MAGIC) {
     vulpes_log(LOG_ERRORS, "Invalid magic number reading %s", path);
@@ -361,7 +365,7 @@ static vulpes_err_t read_bin_keyring(char *path, int prev)
   }
   
   foreach_chunk_prev(chunk_num, cdp, pcdp) {
-    if (read(fd, &entry, sizeof(entry)) != sizeof(entry))
+    if (fread(&entry, 1, sizeof(entry), fp) != sizeof(entry))
       goto short_read;
     if (prev) {
       memcpy(pcdp->tag, entry.tag, HASH_LEN);
@@ -374,17 +378,17 @@ static vulpes_err_t read_bin_keyring(char *path, int prev)
 	mark_cdp_compressed(cdp);
     }
   }
-  if (!at_eof(fd)) {
+  if (fread(&entry, 1, sizeof(entry), fp) != 0 || !feof(fp)) {
     vulpes_log(LOG_ERRORS, "Extra data at end of file: %s", path);
     return VULPES_IOERR;
   }
-  close(fd);
+  fclose(fp);
   vulpes_log(LOG_BASIC, "read bin keyring %s: %d keys", path, state.numchunks);
   return VULPES_SUCCESS;
   
 short_read:
   vulpes_log(LOG_ERRORS, "Couldn't read %s", path);
-  close(fd);
+  fclose(fp);
   return VULPES_IOERR;
 }
 
