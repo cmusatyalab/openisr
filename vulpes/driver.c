@@ -85,7 +85,7 @@ static vulpes_err_t loop_bind(void) {
     }
     if (ioctl(fd, LOOP_GET_STATUS64, &info) && errno == ENXIO) {
       /* XXX race condition */
-      if (ioctl(fd, LOOP_SET_FD, state.cachefile_fd)) {
+      if (ioctl(fd, LOOP_SET_FD, fileno(state.cachefile_fp))) {
 	vulpes_log(LOG_ERRORS,"Couldn't bind to loop device");
 	return VULPES_IOERR;
       }

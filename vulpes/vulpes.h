@@ -89,7 +89,7 @@ extern struct vulpes_state {
   unsigned long long volsize;	/* sectors */
   unsigned chunksize;		/* sectors */
   unsigned valid_chunks;
-  int cachefile_fd;
+  FILE *cachefile_fp;
   int chardev_fd;
   int loopdev_fd;
   int signal_fds[2];
