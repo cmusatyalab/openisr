@@ -406,6 +406,12 @@ static inline int try_to_freeze(void) {
 #include <linux/freezer.h>
 #endif
 
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)
+/* Kernel threads are freezable by default */
+#define set_freezable() do {} while (0)
+#endif
+
 /***** cryptoapi *************************************************************/
 
 #include <linux/crypto.h>

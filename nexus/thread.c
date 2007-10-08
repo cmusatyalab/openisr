@@ -123,6 +123,7 @@ static int nexus_thread(void *data)
 	struct list_head *entry;
 	DEFINE_WAIT(wait);
 	
+	set_freezable();
 	while (!kthread_should_stop()) {
 		spin_lock_irq(&queues.lock);
 		for (type=0; type<NR_CALLBACKS; type++) {
@@ -200,6 +201,7 @@ static int nexus_io_thread(void *ignored)
 	struct bio *bio;
 	DEFINE_WAIT(wait);
 	
+	set_freezable();
 	while (!kthread_should_stop()) {
 		spin_lock(&pending_io.lock);
 		bio=pending_io.head;
@@ -280,6 +282,7 @@ static int nexus_request_thread(void *ignored)
 	struct list_head *entry;
 	DEFINE_WAIT(wait);
 	
+	set_freezable();
 	while (!kthread_should_stop()) {
 		spin_lock_irq(&pending_requests.lock);
 		if (!list_empty(&pending_requests.list)) {
