@@ -62,7 +62,7 @@ $homedir = $ENV{HOME};
 if ($username ne basename($homedir)) {
     errexit("The user name on the command line ($username) is inconsistent with the home directory ($homedir).");
 }
-$motdfile = "$config{content_root}/motd.txt";
+$motdfile = "/etc/openisr/motd";
 
 #
 # Return the config file to the caller via stdout
