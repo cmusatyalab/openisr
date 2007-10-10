@@ -293,8 +293,6 @@ static struct chunkdata *chunkdata_find(struct chunkdata_table *table,
 	struct chunkdata *cd;
 	
 	BUG_ON(!mutex_is_locked(&table->dev->lock));
-	
-	/* See if the chunk is in the table already */
 	list_for_each_entry(cd, &table->hash[hash(table, cid)], lh_bucket) {
 		if (cd->cid == cid) {
 			chunkdata_hit(cd);
@@ -312,8 +310,8 @@ static struct chunkdata *chunkdata_find(struct chunkdata_table *table,
  * it. If this is not possible (not an infrequent occurrence!) it
  * returns NULL.
  *
- * Caller has to make sure there is not an existing struct chunkdata for
- * cid by first checking with chunkdata_find.
+ * Caller has to make sure there is not an existing &struct chunkdata for
+ * @cid by first checking with chunkdata_find().
  **/
 static struct chunkdata *chunkdata_reclaim(struct chunkdata_table *table,
 			chunk_t cid)
@@ -323,10 +321,6 @@ static struct chunkdata *chunkdata_reclaim(struct chunkdata_table *table,
 	
 	BUG_ON(!mutex_is_locked(&table->dev->lock));
 
-	/* See if the chunk is in the table already */
-	/* BUG_ON(chunkdata_find(table, cid) != NULL); */
-
-	/* Steal the LRU chunk */
 	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
 		if (!list_empty(&cd->pending) || !is_idle_state(cd->state))
 			continue;
@@ -1319,6 +1313,7 @@ int reserve_chunks(struct nexus_io *io)
 	int i;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
+	/* First pin down any chunkdata entry that's already in the cache */
 	for (i=0; i<io_chunks(io); i++) {
 		cd=chunkdata_find(dev->chunkdata, io->first_cid + i);
 		if (cd == NULL)
@@ -1326,6 +1321,7 @@ int reserve_chunks(struct nexus_io *io)
 		list_add_tail(&io->chunks[i].lh_pending, &cd->pending);
 		user_get(dev);
 	}
+	/* Now allocate new entries */
 	for (i=0; i<io_chunks(io); i++) {
 		if (!list_empty(&io->chunks[i].lh_pending))
 			continue;
