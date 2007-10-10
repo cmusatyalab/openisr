@@ -4,7 +4,7 @@ udevrulesdir = ${udevdir}/rules.d
 
 dist_pkgdata_DATA = config
 dist_udev_DATA = openisr.rules
-dist_initexec_SCRIPTS = openisr.init
+initexec_SCRIPTS = openisr.init
 
 # Dummy variables to cause directories to be created
 dist_pkgsysconf_DATA = 
