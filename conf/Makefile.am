@@ -20,6 +20,7 @@ $(GEN): %: %.in Makefile
 	@sed -e "s=!!LIBDIR!!=$(pkglibdir)=g" \
 				-e "s=!!SHAREDIR!!=$(pkgdatadir)=g" \
 				-e "s=!!SYSCONFDIR!!=$(pkgsysconfdir)=g" \
+				-e "s=!!INITDIR!!=$(initexecdir)=g" \
 				-e "s=!!BINDIR!!=$(bindir)=g" \
 				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" $< > $@
 
