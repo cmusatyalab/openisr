@@ -191,15 +191,6 @@ static inline int is_idle_state(enum cd_state state)
 }
 
 /**
- * chunkdata_hit - move @cd to the MRU side of the chunkdata LRU list
- **/
-static void chunkdata_hit(struct chunkdata *cd)
-{
-	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
-	list_move_tail(&cd->lh_lru, &cd->table->lru);
-}
-
-/**
  * __transition - internals of state machine transition code
  *
  * Don't call this; call transition() or transition_error().
@@ -295,7 +286,7 @@ static struct chunkdata *chunkdata_find(struct chunkdata_table *table,
 	BUG_ON(!mutex_is_locked(&table->dev->lock));
 	list_for_each_entry(cd, &table->hash[hash(table, cid)], lh_bucket) {
 		if (cd->cid == cid) {
-			chunkdata_hit(cd);
+			list_move_tail(&cd->lh_lru, &table->lru);
 			return cd;
 		}
 	}
@@ -329,7 +320,7 @@ static struct chunkdata *chunkdata_reclaim(struct chunkdata_table *table,
 			table->dev->stats.encrypted_discards++;
 		list_del_init(&cd->lh_bucket);
 		list_add(&cd->lh_bucket, &table->hash[hash(table, cid)]);
-		chunkdata_hit(cd);
+		list_move_tail(&cd->lh_lru, &table->lru);
 		cd->cid=cid;
 		cd->flags=0;
 		transition(cd, ST_INVALID);
