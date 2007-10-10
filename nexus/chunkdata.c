@@ -349,6 +349,27 @@ static struct chunkdata *chunkdata_reclaim(struct chunkdata_table *table,
 }
 
 /**
+ * chunkdata_invalidate_all - debug function to invalidate all idle &chunkdata
+ *
+ * Walk the &struct chunkdata LRU list and invalidate every &chunkdata which
+ * is idle and has no work queued against it.  Invalidated chunks are moved
+ * to the head of the LRU list.
+ **/
+void chunkdata_invalidate_all(struct nexus_dev *dev)
+{
+	struct chunkdata_table *table=dev->chunkdata;
+	struct chunkdata *cd;
+	struct chunkdata *next;
+
+	BUG_ON(!mutex_is_locked(&dev->lock));
+
+	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
+		if (__chunkdata_invalidate(cd))
+			list_move(&cd->lh_lru, &table->lru);
+	}
+}
+
+/**
  * alloc_scatterlist - create a scatterlist capable of holding @nbytes bytes
  *
  * alloc_scatterlist() creates and returns a scatterlist capable of holding
