@@ -37,6 +37,12 @@ probe_module() {
 	if modprobe $flags "$name" 2>/dev/null ; then
 		echo -n " $name"
 	elif [ "$required" = "required" ] ; then
+		if [ "$direction" = "remove" ] ; then
+			# We might be here because modprobe has never heard
+			# of this module, even though it isn't loaded.  Call
+			# this success.
+			lsmod | grep -q "^$name " || return 0
+		fi
 		echo -n " failed"
 		return 1
 	fi
