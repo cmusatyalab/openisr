@@ -48,9 +48,9 @@ do_start() {
 	ret=0
 	
 	echo -n "Loading OpenISR kernel modules:"
-	probe_module loop insert
 	if probe_module openisr insert required
 	then
+		probe_module loop insert
 		[ "$arch" != "none" ] && probe_module "aes-$arch" insert
 		[ "$arch" != "none" ] && probe_module "sha1-$arch" insert
 	else
@@ -65,11 +65,11 @@ do_stop() {
 	ret=0
 	
 	echo -n "Unloading OpenISR kernel modules:"
-	[ "$arch" != "none" ] && probe_module "sha1-$arch" remove
-	[ "$arch" != "none" ] && probe_module "aes-$arch" remove
 	if probe_module openisr remove required
 	then
 		probe_module loop remove
+		[ "$arch" != "none" ] && probe_module "aes-$arch" remove
+		[ "$arch" != "none" ] && probe_module "sha1-$arch" remove
 	else
 		ret=1
 	fi
