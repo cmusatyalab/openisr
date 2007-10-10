@@ -43,12 +43,15 @@ my $topdir;
 my @files;
 my $subdir;
 
+status "Building kernel modules for OpenISR " . VERSION . ".";
+print "\n";
 fail "You must be root." if $> != 0;
 
 status "Unloading kernel modules...";
 system(INITSCRIPT . " stop") == 0
 	or fail "Couldn't unload kernel modules.\nPlease suspend any " .
 				"running parcels and try again.";
+
 status "Unpacking kernel module source...";
 $topdir= tempdir("openisr-config-XXXXXXXX", TMPDIR => 1, CLEANUP => 1)
 	or fail "Couldn't create temporary directory";
@@ -67,19 +70,25 @@ $1 eq VERSION
 	or warning "Expected module version " . VERSION . ", found $1";
 chdir($subdir)
 	or fail "Couldn't chdir";
+
 status "Configuring kernel module source...";
 system("./configure --disable-client --enable-modules") == 0
 	or fail "Couldn't configure kernel source";
+
 status "Building kernel modules...";
 system("make") == 0
 	or fail "Couldn't build kernel source";
+
 status "Installing kernel modules...";
 system("make install") == 0
 	or fail "Couldn't install kernel modules";
 system("depmod") == 0
 	or fail "Couldn't run depmod";
+
 status "Loading kernel modules...";
 system(INITSCRIPT . " start") == 0
 	or fail "Couldn't load kernel modules";
-status "Success";
+
+print "\n";
+status "Success!";
 exit 0;
