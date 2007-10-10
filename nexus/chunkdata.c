@@ -294,6 +294,28 @@ static struct chunkdata *chunkdata_find(struct chunkdata_table *table,
 }
 
 /**
+ * __chunkdata_invalidate - mark the specified @cd invalid
+ *
+ * This function marks the specified &struct chunkdata as invalid and ready 
+ * for reuse by another chunk.  Returns 1 on success, or 0 if the
+ * given &chunkdata cannot be invalidated because it is not idle or has
+ * pending work against it.  Does not update the LRU list.
+ **/
+static int __chunkdata_invalidate(struct chunkdata *cd)
+{
+	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
+
+	if (!list_empty(&cd->pending) || !is_idle_state(cd->state))
+		return 0;
+	if (cd->state == ST_ENCRYPTED)
+		cd->table->dev->stats.encrypted_discards++;
+	list_del_init(&cd->lh_bucket);
+	cd->flags=0;
+	transition(cd, ST_INVALID);
+	return 1;
+}
+
+/**
  * chunkdata_reclaim - get a &struct chunkdata for the specified @cid
  *
  * chunkdata_reclaim() will allocate a new &struct chunkdata for @cid by
@@ -308,22 +330,15 @@ static struct chunkdata *chunkdata_reclaim(struct chunkdata_table *table,
 			chunk_t cid)
 {
 	struct chunkdata *cd;
-	struct chunkdata *next;
 	
 	BUG_ON(!mutex_is_locked(&table->dev->lock));
 
-	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
-		if (!list_empty(&cd->pending) || !is_idle_state(cd->state))
+	list_for_each_entry(cd, &table->lru, lh_lru) {
+		if (!__chunkdata_invalidate(cd))
 			continue;
-		
-		if (cd->state == ST_ENCRYPTED)
-			table->dev->stats.encrypted_discards++;
-		list_del_init(&cd->lh_bucket);
 		list_add(&cd->lh_bucket, &table->hash[hash(table, cid)]);
 		list_move_tail(&cd->lh_lru, &table->lru);
 		cd->cid=cid;
-		cd->flags=0;
-		transition(cd, ST_INVALID);
 		return cd;
 	}
 	
