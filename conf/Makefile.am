@@ -5,12 +5,13 @@ udevrulesdir = ${udevdir}/rules.d
 dist_pkgdata_DATA = config
 dist_udev_DATA = openisr.rules
 initexec_SCRIPTS = openisr.init
+sbin_SCRIPTS = openisr-config
 
 # Dummy variables to cause directories to be created
 dist_pkgsysconf_DATA = 
 dist_udevrules_DATA = 
 
-GEN = openisr.init
+GEN = openisr.init openisr-config
 CLEANFILES = $(GEN)
 EXTRA_DIST = $(GEN:=.in) magic
 

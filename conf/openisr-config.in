@@ -1,0 +1,77 @@
+#!/usr/bin/perl
+#
+# openisr-config - script to build and install the kernel modules for the
+#                  OpenISR (TM) system
+#
+# Copyright (C) 2007 Carnegie Mellon University
+#
+# This software is distributed under the terms of the Eclipse Public License,
+# Version 1.0 which can be found in the file named LICENSE.Eclipse.  ANY USE,
+# REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES RECIPIENT'S
+# ACCEPTANCE OF THIS AGREEMENT
+
+use strict;
+use warnings;
+use File::Temp qw/tempdir/;
+use Term::ANSIColor;
+use constant {
+	SRC => "!!SHAREDIR!!/openisr.tar.gz",
+	VERSION => "!!VERSION!!"
+};
+
+sub fail ($) {
+	my $msg = shift;
+
+	print colored("Failed: $msg", "red") . "\n";
+	exit 1;
+}
+
+sub warning ($) {
+	my $msg = shift;
+	
+	print colored("Warning: $msg", "yellow") . "\n";
+}
+
+sub status ($) {
+	my $msg = shift;
+	
+	print colored($msg, "green") . "\n";
+}
+
+my $topdir;
+my @files;
+my $subdir;
+
+fail "You must be root." if $> != 0;
+
+status "Unpacking kernel module source...";
+$topdir= tempdir("openisr-config-XXXXXXXX", TMPDIR => 1, CLEANUP => 1)
+	or fail "Couldn't create temporary directory";
+system("tar xzf " . SRC . " -C $topdir") == 0
+	or fail "Couldn't unpack kernel sources";
+opendir(DIR, $topdir)
+	or fail "Couldn't read temporary directory";
+@files = grep(/^openisr-/, readdir(DIR));
+closedir(DIR);
+@files == 1
+	or fail "Problem unpacking temporary directory";
+$subdir = "$topdir/$files[0]";
+$subdir =~ /openisr-([0-9.]+)$/
+	or fail "Couldn't parse source directory name";
+$1 eq VERSION
+	or warning "Expected module version " . VERSION . ", found $1";
+chdir($subdir)
+	or fail "Couldn't chdir";
+status "Configuring kernel module source...";
+system("./configure --disable-client --enable-modules") == 0
+	or fail "Couldn't configure kernel source";
+status "Building kernel modules...";
+system("make") == 0
+	or fail "Couldn't build kernel source";
+status "Installing kernel modules...";
+system("make install") == 0
+	or fail "Couldn't install kernel modules";
+system("depmod") == 0
+	or fail "Couldn't run depmod";
+status "Success";
+exit 0;
