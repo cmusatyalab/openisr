@@ -31,7 +31,7 @@
 #endif
 
 /* We (optimistically) don't check for kernel releases that are too new; the
-   module will either build or it won't.  We are known to support <= 2.6.22. */
+   module will either build or it won't.  We are known to support <= 2.6.23. */
 
 /***** Memory allocation *****************************************************/
 

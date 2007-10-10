@@ -5,7 +5,7 @@ the OpenISR system and Internet Suspend/Resume (R), please visit our website at
 REQUIREMENTS
 ------------
 
-- Linux kernel (versions 2.6.8 through 2.6.22 supported)
+- Linux kernel (versions 2.6.8 through 2.6.23 supported)
 - curl >= 7.12.3
 - Perl
 - udev
