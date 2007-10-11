@@ -11,10 +11,12 @@
 
 static sqlite3 *db;
 static FILE *tmp;
-static char *params[MAX_PARAMS];
+static char *params[MAX_PARAMS];  /* null if loop counter */
 static unsigned param_length[MAX_PARAMS];  /* zero if not blob */
 static char *attached_names[MAX_ATTACHED];
 static char *attached_files[MAX_ATTACHED];
+static int loop_min=1;
+static int loop_max=1;
 static int show_col_names;
 static int no_transaction;
 static int num_params;
@@ -190,8 +192,11 @@ static int make_queries(char *str)
 	sqlite3_stmt *stmt;
 	int ret;
 	int i;
+	int ctr;
 	int count;
 	int did_cols;
+	unsigned changes=0;
+	int param;
 
 	used_params=0;
 	for (query=str; *query; ) {
@@ -200,46 +205,54 @@ static int make_queries(char *str)
 			return -1;
 		}
 		count=sqlite3_bind_parameter_count(stmt);
-		for (i=1; i <= count; i++) {
-			if (used_params == num_params) {
-				fprintf(stderr, "Not enough parameters "
-						"for query\n");
-				sqlite3_finalize(stmt);
-				return -1;
-			}
-			if (param_length[used_params])
-				ret=sqlite3_bind_blob(stmt, i,
-						params[used_params],
-						param_length[used_params],
-						SQLITE_STATIC);
-			else
-				ret=sqlite3_bind_text(stmt, i,
-						params[used_params], -1,
-						SQLITE_STATIC);
-			if (ret) {
-				sqlerr("Binding parameter");
-				sqlite3_finalize(stmt);
-				return (ret == SQLITE_NOMEM) ? 1 : -1;
-			}
-			used_params++;
-		}
-		did_cols=0;
-		while ((ret=sqlite3_step(stmt)) != SQLITE_DONE) {
-			if (ret == SQLITE_ROW) {
-				if (show_col_names && !did_cols) {
-					did_cols=1;
-					handle_col_names(stmt);
+		for (ctr=loop_min; ctr <= loop_max; ctr++) {
+			param=used_params;
+			for (i=1; i <= count; i++) {
+				if (param == num_params) {
+					fprintf(stderr, "Not enough parameters"
+							" for query\n");
+					sqlite3_finalize(stmt);
+					return -1;
 				}
-				handle_row(stmt);
-			} else {
-				if (ret != SQLITE_BUSY)
-					sqlerr("Executing query");
-				sqlite3_finalize(stmt);
-				return (ret == SQLITE_BUSY) ? 1 : -1;
+				if (param_length[param])
+					ret=sqlite3_bind_blob(stmt, i,
+						params[param],
+						param_length[param],
+						SQLITE_STATIC);
+				else if (params[param])
+					ret=sqlite3_bind_text(stmt, i,
+						params[param], -1,
+						SQLITE_STATIC);
+				else
+					ret=sqlite3_bind_int(stmt, i, ctr);
+				if (ret) {
+					sqlerr("Binding parameter");
+					sqlite3_finalize(stmt);
+					return (ret == SQLITE_NOMEM) ? 1 : -1;
+				}
+				param++;
 			}
+			did_cols=0;
+			while ((ret=sqlite3_step(stmt)) != SQLITE_DONE) {
+				if (ret == SQLITE_ROW) {
+					if (show_col_names && !did_cols) {
+						did_cols=1;
+						handle_col_names(stmt);
+					}
+					handle_row(stmt);
+				} else {
+					if (ret != SQLITE_BUSY)
+						sqlerr("Executing query");
+					sqlite3_finalize(stmt);
+					return (ret == SQLITE_BUSY) ? 1 : -1;
+				}
+			}
+			changes += sqlite3_changes(db);
+			sqlite3_reset(stmt);
 		}
-		if (sqlite3_changes(db))
-			fprintf(tmp, "%d rows updated\n", sqlite3_changes(db));
+		used_params=param;
+		if (changes)
+			fprintf(tmp, "%d rows updated\n", changes);
 		sqlite3_finalize(stmt);
 	}
 	return 0;
@@ -335,11 +348,24 @@ static void usage(char *argv0)
 {
 	fprintf(stderr, "Usage: %s [flags] database query\n", argv0);
 	fprintf(stderr, "\t-a name:file - attach database\n");
+	fprintf(stderr, "\t-r min:max - iterate each statement over counter range\n");
 	fprintf(stderr, "\t-p param - statement parameter\n");
 	fprintf(stderr, "\t-b param - blob parameter in hex\n");
+	fprintf(stderr, "\t-i - use loop counter as statement parameter\n");
 	fprintf(stderr, "\t-c - print column names\n");
 	fprintf(stderr, "\t-t - don't execute query within a transaction\n");
 	exit(2);
+}
+
+static int parseInt(char *argv0, char *str)
+{
+	char *endptr;
+	int ret;
+
+	ret=strtol(str, &endptr, 10);
+	if (*str == 0 || *endptr != 0)
+		usage(argv0);
+	return ret;
 }
 
 static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
@@ -347,19 +373,20 @@ static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
 	int opt;
 	char *cp;
 
-	while ((opt=getopt(argc, argv, "a:b:p:ct")) != -1) {
+	while ((opt=getopt(argc, argv, "a:r:b:p:ict")) != -1) {
 		switch (opt) {
 		case '?':
 			usage(argv[0]);
 			break;
 		case 'b':
 		case 'p':
+		case 'i':
 			if (num_params == MAX_PARAMS)
 				die("Too many parameters");
 			if (opt == 'b') {
 				params[num_params]=mkbin(optarg,
 						&param_length[num_params]);
-			} else {
+			} else if (opt == 'p') {
 				params[num_params]=optarg;
 			}
 			num_params++;
@@ -374,6 +401,16 @@ static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
 			attached_names[num_attached]=optarg;
 			attached_files[num_attached]=cp+1;
 			num_attached++;
+			break;
+		case 'r':
+			cp=strchr(optarg, ':');
+			if (cp == NULL)
+				usage(argv[0]);
+			*cp=0;
+			loop_min=parseInt(argv[0], optarg);
+			loop_max=parseInt(argv[0], cp+1);
+			if (loop_min > loop_max)
+				die("min cannot be greater than max for -r");
 			break;
 		case 'c':
 			show_col_names=1;
