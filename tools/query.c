@@ -230,7 +230,7 @@ static ret_t make_queries(char *str)
 	int ctr;
 	int did_cols;
 	unsigned changes=0;
-	int params;
+	int params=0;  /* Silence compiler warning */
 
 	used_params=0;
 	for (query=str; *query; ) {
