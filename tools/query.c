@@ -25,6 +25,12 @@ static int num_attached;
 extern char *optarg;
 extern int optind;
 
+typedef enum {
+	OK = 0,
+	FAIL_TEMP = -1,  /* temporary error */
+	FAIL = -2        /* fatal error */
+} ret_t;
+
 static void sqlerr(char *prefix)
 {
 	fprintf(stderr, "%s: %s\n", prefix, sqlite3_errmsg(db));
@@ -88,7 +94,7 @@ static char *mkbin(char *hex, unsigned *length)
 	return buf;
 }
 
-static int attach_dbs(void)
+static ret_t attach_dbs(void)
 {
 	sqlite3_stmt *stmt;
 	int i;
@@ -102,7 +108,7 @@ static int attach_dbs(void)
 		   have to redo this every iteration */
 		if (sqlite3_prepare(db, "ATTACH ?1 as ?2", -1, &stmt, NULL)) {
 			sqlerr("Preparing ATTACH statement");
-			return -1;
+			return FAIL;
 		}
 		if (sqlite3_bind_text(stmt, 1, attached_files[i], -1,
 					SQLITE_STATIC)) {
@@ -131,15 +137,14 @@ static int attach_dbs(void)
 		}
 		sqlite3_finalize(stmt);
 	}
-	return 0;
+	return OK;
 
 bad:
 	sqlite3_finalize(stmt);
-	return -1;
+	return FAIL;
 }
 
-/* Returns the number of parameters used in this binding, -1 on temporary
-   error, or -2 on fatal error */
+/* Returns the number of parameters used in this binding or an error code */
 static int bind_parameters(sqlite3_stmt *stmt, int loop_ctr)
 {
 	int i;
@@ -150,7 +155,7 @@ static int bind_parameters(sqlite3_stmt *stmt, int loop_ctr)
 	for (i=1; i <= count; i++) {
 		if (param == num_params) {
 			fprintf(stderr, "Not enough parameters for query\n");
-			return -2;
+			return FAIL;
 		}
 		if (param_length[param])
 			ret=sqlite3_bind_blob(stmt, i, params[param],
@@ -163,7 +168,7 @@ static int bind_parameters(sqlite3_stmt *stmt, int loop_ctr)
 			ret=sqlite3_bind_int(stmt, i, loop_ctr);
 		if (ret) {
 			sqlerr("Binding parameter");
-			return (ret == SQLITE_NOMEM) ? -1 : -2;
+			return (ret == SQLITE_NOMEM) ? FAIL_TEMP : FAIL;
 		}
 		param++;
 	}
@@ -217,8 +222,7 @@ static void handle_row(sqlite3_stmt *stmt)
 		fprintf(tmp, "\n");
 }
 
-/* Returns 0 on success, 1 on temporary error, -1 on fatal error */
-static int make_queries(char *str)
+static ret_t make_queries(char *str)
 {
 	const char *query;
 	sqlite3_stmt *stmt;
@@ -233,13 +237,13 @@ static int make_queries(char *str)
 		did_cols=0;
 		if (sqlite3_prepare(db, query, -1, &stmt, &query)) {
 			sqlerr("Preparing query");
-			return -1;
+			return FAIL;
 		}
 		for (ctr=loop_min; ctr <= loop_max; ctr++) {
 			params=bind_parameters(stmt, ctr);
 			if (params < 0) {
 				sqlite3_finalize(stmt);
-				return params == -2 ? -1 : 1;
+				return params;
 			}
 			while ((ret=sqlite3_step(stmt)) != SQLITE_DONE) {
 				if (ret == SQLITE_ROW) {
@@ -252,7 +256,8 @@ static int make_queries(char *str)
 					if (ret != SQLITE_BUSY)
 						sqlerr("Executing query");
 					sqlite3_finalize(stmt);
-					return (ret == SQLITE_BUSY) ? 1 : -1;
+					return (ret == SQLITE_BUSY) ? FAIL_TEMP
+								: FAIL;
 				}
 			}
 			changes += sqlite3_changes(db);
@@ -263,52 +268,52 @@ static int make_queries(char *str)
 			fprintf(tmp, "%d rows updated\n", changes);
 		sqlite3_finalize(stmt);
 	}
-	return 0;
+	return OK;
 }
 
-static int begin(void)
+static ret_t begin(void)
 {
 	if (no_transaction)
-		return 0;
+		return OK;
 	if (sqlite3_exec(db, "BEGIN", NULL, NULL, NULL)) {
 		sqlerr("Beginning transaction");
-		return -1;
+		return FAIL;
 	}
-	return 0;
+	return OK;
 }
 
-static int rollback(void)
+static ret_t rollback(void)
 {
 	if (no_transaction) {
 		fprintf(stderr, "Can't roll back: not within a transaction");
-		return -1;
+		return FAIL;
 	}
 	if (sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) {
 		sqlerr("Rolling back transaction");
-		return -1;
+		return FAIL;
 	}
-	return 0;
+	return OK;
 }
 
-static int commit(void)
+static ret_t commit(void)
 {
 	int ret;
 	int i;
 
 	if (no_transaction)
-		return 0;
+		return OK;
 	for (i=0; i<20; i++) {
 		ret=sqlite3_exec(db, "COMMIT", NULL, NULL, NULL);
 		if (ret == SQLITE_BUSY) {
 			usleep(RETRY_USECS);
 		} else if (ret) {
 			sqlerr("Committing transaction");
-			return -1;
+			return FAIL;
 		} else {
-			return 0;
+			return OK;
 		}
 	}
-	return -1;
+	return FAIL;
 }
 
 static void cat_tmp(void)
@@ -323,21 +328,21 @@ static void cat_tmp(void)
 	}
 }
 
-static int do_transaction(char *sql)
+static ret_t do_transaction(char *sql)
 {
-	int qres;
+	ret_t qres;
 	int i;
 
 	for (i=0; i<10; i++) {
 		if (begin())
-			return -1;
+			return FAIL;
 		qres=make_queries(sql);
-		if (qres || commit()) {
+		if (qres != OK || commit()) {
 			fflush(tmp);
 			rewind(tmp);
 			ftruncate(fileno(tmp), 0);
-			if (rollback() || qres < 0)
-				return -1;
+			if (rollback() || qres != FAIL_TEMP)
+				return FAIL;
 		} else {
 			cat_tmp();
 			if (used_params < num_params)
@@ -345,11 +350,11 @@ static int do_transaction(char *sql)
 							"but only %d used\n",
 							num_params,
 							used_params);
-			return 0;
+			return OK;
 		}
 	}
 	fprintf(stderr, "Retries exceeded\n");
-	return -1;
+	return FAIL;
 }
 
 static void usage(char *argv0)
