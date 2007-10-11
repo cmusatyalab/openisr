@@ -230,6 +230,7 @@ static int make_queries(char *str)
 
 	used_params=0;
 	for (query=str; *query; ) {
+		did_cols=0;
 		if (sqlite3_prepare(db, query, -1, &stmt, &query)) {
 			sqlerr("Preparing query");
 			return -1;
@@ -240,7 +241,6 @@ static int make_queries(char *str)
 				sqlite3_finalize(stmt);
 				return params == -2 ? -1 : 1;
 			}
-			did_cols=0;
 			while ((ret=sqlite3_step(stmt)) != SQLITE_DONE) {
 				if (ret == SQLITE_ROW) {
 					if (show_col_names && !did_cols) {
