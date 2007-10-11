@@ -138,6 +138,38 @@ bad:
 	return -1;
 }
 
+/* Returns the number of parameters used in this binding, -1 on temporary
+   error, or -2 on fatal error */
+static int bind_parameters(sqlite3_stmt *stmt, int loop_ctr)
+{
+	int i;
+	int count=sqlite3_bind_parameter_count(stmt);
+	int param=used_params;
+	int ret;
+
+	for (i=1; i <= count; i++) {
+		if (param == num_params) {
+			fprintf(stderr, "Not enough parameters for query\n");
+			return -2;
+		}
+		if (param_length[param])
+			ret=sqlite3_bind_blob(stmt, i, params[param],
+						param_length[param],
+						SQLITE_STATIC);
+		else if (params[param])
+			ret=sqlite3_bind_text(stmt, i, params[param], -1,
+						SQLITE_STATIC);
+		else
+			ret=sqlite3_bind_int(stmt, i, loop_ctr);
+		if (ret) {
+			sqlerr("Binding parameter");
+			return (ret == SQLITE_NOMEM) ? -1 : -2;
+		}
+		param++;
+	}
+	return count;
+}
+
 static void handle_col_names(sqlite3_stmt *stmt)
 {
 	int i;
@@ -191,12 +223,10 @@ static int make_queries(char *str)
 	const char *query;
 	sqlite3_stmt *stmt;
 	int ret;
-	int i;
 	int ctr;
-	int count;
 	int did_cols;
 	unsigned changes=0;
-	int param;
+	int params;
 
 	used_params=0;
 	for (query=str; *query; ) {
@@ -204,33 +234,11 @@ static int make_queries(char *str)
 			sqlerr("Preparing query");
 			return -1;
 		}
-		count=sqlite3_bind_parameter_count(stmt);
 		for (ctr=loop_min; ctr <= loop_max; ctr++) {
-			param=used_params;
-			for (i=1; i <= count; i++) {
-				if (param == num_params) {
-					fprintf(stderr, "Not enough parameters"
-							" for query\n");
-					sqlite3_finalize(stmt);
-					return -1;
-				}
-				if (param_length[param])
-					ret=sqlite3_bind_blob(stmt, i,
-						params[param],
-						param_length[param],
-						SQLITE_STATIC);
-				else if (params[param])
-					ret=sqlite3_bind_text(stmt, i,
-						params[param], -1,
-						SQLITE_STATIC);
-				else
-					ret=sqlite3_bind_int(stmt, i, ctr);
-				if (ret) {
-					sqlerr("Binding parameter");
-					sqlite3_finalize(stmt);
-					return (ret == SQLITE_NOMEM) ? 1 : -1;
-				}
-				param++;
+			params=bind_parameters(stmt, ctr);
+			if (params < 0) {
+				sqlite3_finalize(stmt);
+				return params == -2 ? -1 : 1;
 			}
 			did_cols=0;
 			while ((ret=sqlite3_step(stmt)) != SQLITE_DONE) {
@@ -250,7 +258,7 @@ static int make_queries(char *str)
 			changes += sqlite3_changes(db);
 			sqlite3_reset(stmt);
 		}
-		used_params=param;
+		used_params += params;
 		if (changes)
 			fprintf(tmp, "%d rows updated\n", changes);
 		sqlite3_finalize(stmt);
