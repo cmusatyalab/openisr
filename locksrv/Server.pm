@@ -17,6 +17,7 @@
 
 package Server;
 use POSIX;
+use Sys::Hostname;
 
 # Maximum nonce value
 use constant MAXNONCE => 1000000000;
@@ -144,6 +145,9 @@ sub get_config {
 	
 	# Default password
 	default_pass => 'ch@ng3m3',
+	
+	# Fully-qualified server hostname
+	hostname => (gethostbyname(hostname()))[0],
     );
     
     if (-r "/etc/openisr/locksrv.conf") {

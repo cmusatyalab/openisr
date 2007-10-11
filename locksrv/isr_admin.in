@@ -31,7 +31,12 @@ use lib "!!SHAREDIR!!";
 use Server;
 $| = 1; # Autoflush output on every print statement
 
-use constant RCS_REVISION => "!!REVISION!!";
+use constant {
+	RCS_REVISION => "!!REVISION!!",
+	LIBDIR => "!!LIBDIR!!",
+	CHUNKSIZE => 131072,
+	CHUNKSPERDIR => 512,
+};
 
 # Function prototypes
 sub encrypt ($$$$);
@@ -40,6 +45,7 @@ sub getkeyroot ($$);
 sub adduser ($);
 sub deluser ($);
 sub addparcel ($$$$);
+sub makeparcel ($$$);
 sub prune ($$$);
 sub getusage ();
 sub keygen ();
@@ -67,6 +73,7 @@ my $userid;
 my $srcuserid;
 my $retain;
 my $version;
+my $size;
 
 # Server configuration
 my %config = get_config();
@@ -80,6 +87,7 @@ $result = GetOptions(
                      "p|parcel=s"      => \$parcel,
                      "P|srcparcel=s"   => \$srcparcel,
                      "r|retain=i"      => \$retain,
+                     "s|size=s"        => \$size,
                      "u|userid=s"      => \$userid,
                      "U|srcuserid=s"   => \$srcuserid,
                      "v|version=i"     => \$version,
@@ -150,6 +158,15 @@ if ($command eq "addparcel") {
 	if (!$srcparcel);
 }
 
+if ($command eq "makeparcel") {
+    usage("Missing userid (-u)")
+        if (!$userid);
+    usage("Missing parcel name (-p)")
+	if (!$parcel);
+    usage("Missing parcel size (-s)")
+        if (!$size);
+}
+
 if ($command eq "prune") {
     usage("Missing userid (-u)")
 	if (!$userid);
@@ -186,6 +203,9 @@ elsif ($command eq "deluser") {
 }
 elsif ($command eq "addparcel") {
     addparcel($userid, $parcel, $srcuserid, $srcparcel);
+}
+elsif ($command eq "makeparcel") {
+    makeparcel($userid, $parcel, $size);
 }
 elsif ($command eq "prune") {
     prune($userid, $parcel, $retain);
@@ -511,6 +531,187 @@ sub addparcel ($$$$) {
 }
 
 #
+# makeparcel - Create a new, empty parcel
+#
+sub makeparcel ($$$) {
+    my $userid = shift;      # Destination user id
+    my $parcel = shift;      # Destination parcel name
+    my $size = shift;        # Parcel size
+
+    my $keyroot;
+    my $uuid;
+    my $umask;
+    my $shift;
+    my $numchunks;
+    my $numdirs;
+    my $maxkb;
+    my $data;
+    my $key;
+    my $tag;
+    my $i;
+    my $j;
+    my $ifmt;
+    my $jfmt;
+
+    my $chunksize = CHUNKSIZE;
+    my $chunksperdir = CHUNKSPERDIR;
+    my $userdir = "$config{content_root}/$userid";
+    my $parceldir = "$userdir/$parcel";
+    my $parcelverdir = "$parceldir/000001";
+    my $parcelcfg = get_parcelcfg_path($userid, $parcel);
+    my $parcelcfgdir = dirname($parcelcfg);
+
+    # Create new content directory for this user if one doesn't already exist
+    if (!-d $userdir) {
+	mkdir($userdir)
+	    or errexit("Unable to create user directory ($userdir)");
+	system("chown $userid:$userid $userdir") == 0
+	    or errexit("Unable to set owner of $userdir");
+	system("chmod 755 $userdir" ) == 0
+	    or errexit("Unable to set permissions on $userdir");
+    }	
+
+    # Create an empty directory for the parcel
+    if (-d "$parceldir") {
+	errexit("Parcel $userid/$parcel exists.");
+    }
+    mkdir($parceldir)
+	or errexit("Unable to make directory $parceldir.");
+
+    # Calculate parcel size
+    unless ($size =~ /^([0-9]+)([KMG])$/) {
+	errexit("Can't parse specified parcel size '$size'");
+    }
+    if ($2 eq "K") {
+	$shift = 10;
+    } elsif ($2 eq "M") {
+	$shift = 20;
+    } elsif ($2 eq "G") {
+	$shift = 30;
+    }
+    $numchunks = ($1 << $shift) / $chunksize;
+    $numdirs = int(($numchunks + $chunksperdir - 1) / $chunksperdir);
+    $maxkb = ($chunksize >> 10) * $numchunks * 2;
+    
+    # Generate a single, zeroed chunk
+    print "Generating chunk directories...\n";
+    system("dd if=/dev/zero bs=$chunksize count=1 2> /dev/null| " .
+	            LIBDIR . "/zlib > /tmp/chunk.$$") == 0
+        or errexit("Unable to generate zeroed chunk");
+    $key = `openssl sha1 < /tmp/chunk.$$`
+        or errexit("Unable to generate key");
+    chomp $key;
+    system("openssl enc -aes-128-cbc -in /tmp/chunk.$$ -out /tmp/chunk2.$$ " .
+	            "-nosalt -iv 0 -K $key") == 0
+        or errexit("Unable to encrypt chunk");
+    $tag = `openssl sha1 < /tmp/chunk2.$$`
+        or errexit("Unable to generate tag");
+    chomp $tag;
+    open(FD, "/tmp/chunk2.$$")
+        or errexit("Unable to read encrypted chunk");
+    read(FD, $data, $chunksize)
+        or errexit("Unable to read encrypted chunk data");
+    close(FD);
+    unlink("/tmp/chunk.$$", "/tmp/chunk2.$$");
+    
+    # Generate the chunk tree
+    mkdir($parcelverdir)
+        or errexit("Can't make parcel version directory");
+    mkdir("$parcelverdir/hdk")
+        or errexit("Can't make hdk directory");
+    for ($i = 0; $i < $numdirs; $i++) {
+	$ifmt = sprintf("%04d", $i);
+	mkdir("$parcelverdir/hdk/$ifmt")
+	    or errexit("Can't make $ifmt directory");
+	for ($j = 0; $j < $chunksperdir; $j++) {
+	    last if $i * $chunksperdir + $j >= $numchunks;
+	    $jfmt = sprintf("%04d", $j);
+	    open(FD, ">", "$parcelverdir/hdk/$ifmt/$jfmt")
+	        or errexit("Can't write $ifmt/$jfmt");
+	    print FD $data;
+	    close(FD);
+	}
+    }
+    
+    # Generate the keyring
+    print "Generating keyring and memory image...\n";
+    system(LIBDIR . "/query $parcelverdir/keyring " .
+	            "'PRAGMA auto_vacuum = 0; " .
+	            "PRAGMA legacy_file_format = ON; " .
+		    "PRAGMA user_version = 1; " .
+		    "CREATE TABLE keys (" . 
+		    "chunk INTEGER PRIMARY KEY NOT NULL, " .
+		    "tag BLOB NOT NULL, " .
+		    "key BLOB NOT NULL, " .
+		    "compression INTEGER NOT NULL); " .
+		    "CREATE INDEX keys_tags ON keys (tag)'") == 0
+        or errexit("Couldn't create keyring");
+    # zlib is compresstype 2
+    system(LIBDIR . "/query $parcelverdir/keyring " .
+	            "'INSERT INTO keys (chunk, tag, key, compression) " .
+		    "VALUES (?, ?, ?, 2)' -i -b $tag -b $key " .
+		    "-r 0:" . ($numchunks - 1) . " > /dev/null") == 0
+        or errexit("Couldn't populate keyring");
+    
+    # Generate an empty cfg tarball
+    mkdir("$parcelverdir/cfg")
+        or errexit("Couldn't create cfg directory");
+    system("tar czf $parcelverdir/cfg.tgz -C $parcelverdir cfg") == 0
+        or errexit("Couldn't generate cfg tarball");
+    rmdir("$parcelverdir/cfg")
+	or errexit("Couldn't remove cfg directory");
+    
+    # Encrypt the parcel with a new keyroot
+    print "Encrypting metadata...\n";
+    $keyroot = keygen();
+    encrypt($userid, $parcel, 1, $keyroot);
+    
+    # Set the appropriate file ownership and permissions
+    print "Finishing...\n";
+    symlink("000001", "$parceldir/last")
+        or errexit("Unable to create last symlink");
+    system("chown -R $userid:$userid $parceldir") == 0
+	or errexit("Unable to set owner of $parceldir");
+    system("chmod -R u=rwX,go=rX $parceldir") == 0
+	or errexit("Unable to set permissions of $parceldir");
+    
+    # Write out the new parcel.cfg
+    $uuid = `uuidgen`;
+    $? == 0
+	or errexit("Couldn't generate UUID");
+    chomp($uuid);
+    $umask = umask(0077);
+    mkdir($parcelcfgdir)
+	or unix_errexit("Unable to make directory $parcelcfgdir.");
+    open(OUT, ">", $parcelcfg)
+    	or unix_errexit("Couldn't write $parcelcfg");
+    print OUT <<EOF;
+VERSION = 3
+UUID = $uuid
+VMM = vmware
+CRYPTO = aes-sha1
+COMPRESS = zlib,lzf
+KEYROOT = $keyroot
+USER = $userid
+PARCEL = $parcel
+PROTOCOL = HTTPSSH
+SERVER = $config{hostname}
+RPATH = http://$config{hostname}
+WPATH = $config{hostname}:$config{content_root}
+MAXKB = $maxkb
+CHUNKSIZE = $chunksize
+NUMCHUNKS = $numchunks
+CHUNKSPERDIR = $chunksperdir
+EOF
+    close OUT;
+    umask($umask);
+    system("chown -R $userid:$userid $parcelcfgdir") == 0
+	or errexit("Unable to set owner of $parcelcfgdir");
+
+    print "Success: Added $userid/$parcel\n";
+}
+
+#
 # getusage - Summarize the recent activity of each user
 #
 sub getusage () {
@@ -614,9 +815,10 @@ sub usage {
     
     print "$progname revision " . RCS_REVISION . "\n";
     print RED, "Usage: $progname cmd [options...]\n", RESET;
-    print BLUE, "Commands: addparcel, adduser, deluser, decrypt, encrypt, getkeyroot,\n          getusage, keygen, prune.\n", RESET;
+    print BLUE, "Commands: addparcel, adduser, deluser, decrypt, encrypt, getkeyroot,\n          getusage, keygen, makeparcel, prune.\n", RESET;
 
     print "  addparcel  Add a parcel (-u, -p, -U, -P).\n";
+    print "  makeparcel Create a parcel (-u, -p, -s).\n";
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
@@ -631,6 +833,7 @@ sub usage {
     print "  -p,--parcel       Parcel name (e.g., winxp).\n";
     print "  -P,--srcparcel    Source parcel name.\n";
     print "  -r,--retain       How many of the most recent versions to retain when pruning.\n";
+    print "  -s,--size         Size of the parcel's virtual disk (e.g. '256M', '8G')\n";
     print "  -u,--userid       ISR userid.\n";
     print "  -U,--srcuserid    Username of source parcel.\n";
     print "  -v,--version      Version number to encrypt or decrypt.\n";
@@ -641,6 +844,10 @@ sub usage {
 	print RED, "addparcel - ", RESET, "Create new parcel winxp for existing user bovik in $croot\n";
 	print "using latest version of existing parcel in $croot/gold/goldwinxp\n";
 	print BLUE, "% isr_admin addparcel -u bovik -p winxp -U gold -Pgoldwinxp\n", RESET;
+	print "\n";
+	print RED, "makeparcel - ", RESET, "Create empty 8 GB parcel debian for existing user bovik\n";
+	print "in $croot\n";
+	print BLUE, "% isr_admin makeparcel -u bovik -p debian -s 8G\n";
 	print "\n";
 	print RED, "adduser - ", RESET, "Add user bovik to the system\n";
 	print BLUE, "% isr_admin adduser -u bovik\n", RESET;
