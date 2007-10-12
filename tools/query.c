@@ -1,3 +1,14 @@
+/*
+ * query - SQLite command-line query tool
+ *
+ * Copyright (C) 2007 Carnegie Mellon University
+ *
+ * This software is distributed under the terms of the Eclipse Public License,
+ * Version 1.0 which can be found in the file named LICENSE.Eclipse.  ANY USE,
+ * REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES RECIPIENT'S
+ * ACCEPTANCE OF THIS AGREEMENT
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>

@@ -1,4 +1,14 @@
 #!/usr/bin/perl
+#
+# upgrade-0.9 - Tool to generate an OpenISR 0.9 parcel from an 0.8 parcel
+#
+# Copyright (C) 2007 Carnegie Mellon University
+#
+# This software is distributed under the terms of the Eclipse Public
+# License, Version 1.0 which can be found in the file named LICENSE.Eclipse.
+# ANY USE, REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES
+# RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
+#
 
 use File::Copy;
 use File::Path;

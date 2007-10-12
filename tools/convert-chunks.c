@@ -1,3 +1,14 @@
+/*
+ * convert-chunks - tool to translate an OpenISR 0.8 chunk store to 0.9 format
+ *
+ * Copyright (C) 2007 Carnegie Mellon University
+ *
+ * This software is distributed under the terms of the Eclipse Public License,
+ * Version 1.0 which can be found in the file named LICENSE.Eclipse.  ANY USE,
+ * REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES RECIPIENT'S
+ * ACCEPTANCE OF THIS AGREEMENT
+ */
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
