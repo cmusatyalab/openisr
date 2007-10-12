@@ -44,6 +44,9 @@ sub decrypt ($$$$);
 sub getkeyroot ($$);
 sub adduser ($);
 sub deluser ($);
+sub init_parceldir ($$);
+sub finalize_parceldir ($$);
+sub gen_uuid ();
 sub copyparcel ($$$$);
 sub makeparcel ($$$);
 sub prune ($$$);
@@ -431,6 +434,78 @@ sub deluser ($) {
     }
 }
 
+#
+# init_parceldir - Helper to create a new parcel directory
+#
+sub init_parceldir ($$) {
+    my $userid = shift;
+    my $parcel = shift;
+    
+    my $umask;
+    
+    my $userdir = "$config{content_root}/$userid";
+    my $parceldir = "$userdir/$parcel";
+    my $parcelcfg = get_parcelcfg_path($userid, $parcel);
+    my $parcelcfgdir = dirname($parcelcfg);
+    
+    errexit("Parcel $userid/$parcel exists.")
+        if -d $parceldir;
+    
+    # Create new content directory for this user if one doesn't already exist
+    if (!-d $userdir) {
+	mkdir($userdir)
+	    or unix_errexit("Unable to create user directory ($userdir)");
+	system("chown $userid:$userid $userdir") == 0
+	    or errexit("Unable to set owner of $userdir");
+	system("chmod 755 $userdir" ) == 0
+	    or errexit("Unable to set permissions on $userdir");
+    }	
+
+    # Create empty directories for the parcel
+    mkdir($parceldir)
+	or unix_errexit("Unable to make directory $parceldir.");
+    $umask = umask(0077);
+    mkdir($parcelcfgdir)
+	or unix_errexit("Unable to make directory $parcelcfgdir.");
+    umask($umask);
+    
+    return ($parceldir, $parcelcfg);
+}
+
+#
+# finalize_parceldir - Helper to finish setting up a newly-created parcel dir
+#
+sub finalize_parceldir ($$) {
+    my $userid = shift;
+    my $parcel = shift;
+    
+    my $parceldir = "$config{content_root}/$userid/$parcel";
+    my $parcelcfgdir = dirname(get_parcelcfg_path($userid, $parcel));
+    
+    # Set the appropriate ownership and permissions for the parceldir,
+    # and create the last symlink
+    symlink("000001", "$parceldir/last")
+        or errexit("Unable to create last symlink");
+    system("chown -R $userid:$userid $parceldir") == 0
+	or errexit("Unable to set owner of $parceldir");
+    system("chmod -R u=rwX,go=rX $parceldir") == 0
+	or errexit("Unable to set permissions of $parceldir");
+    
+    # Set ownership for the parcel.cfg directory
+    system("chown -R $userid:$userid $parcelcfgdir") == 0
+	or errexit("Unable to set owner of $parcelcfgdir");
+}
+
+#
+# gen_uuid - Generate a new UUID
+#
+sub gen_uuid () {
+    my $uuid = `uuidgen`;
+    $? == 0
+	or errexit("Couldn't generate UUID");
+    chomp($uuid);
+    return $uuid;
+}
 
 #
 # copyparcel - Create a new parcel based on an existing one
@@ -441,6 +516,8 @@ sub copyparcel ($$$$) {
     my $srcuserid = shift;   # Source user id
     my $srcparcel = shift;   # Source parcel name
 
+    my $dstparcelcfg;
+    my $parceldir;
     my $lastver;
     my $srckeyroot;
     my $dstkeyroot;
@@ -448,29 +525,11 @@ sub copyparcel ($$$$) {
     my $umask;
     my @files;
 
-    my $userdir = "$config{content_root}/$userid";
-    my $parceldir = "$userdir/$parcel";
     my $srcpath = "$config{content_root}/$srcuserid/$srcparcel";
     my $srcparcelcfg = get_parcelcfg_path($srcuserid, $srcparcel);
-    my $dstparcelcfg = get_parcelcfg_path($userid, $parcel);
-    my $dstparcelcfgdir = dirname($dstparcelcfg);
 
-    # Create new content directory for this user if one doesn't already exist
-    if (!-d $userdir) {
-	system("mkdir $userdir") == 0
-	    or errexit("Unable to create user directory ($userdir");
-	system("chown $userid:$userid $userdir") == 0
-	    or errexit("Unable to set owner of $userdir");
-	system("chmod 755 $userdir" ) == 0
-	    or errexit("Unable to set permissions on $userdir");
-    }	
-
-    # Create an empty directory for the parcel
-    if (-d "$parceldir") {
-	errexit("Parcel $userid/$parcel exists.");
-    }
-    system("mkdir $parceldir") == 0
-	or errexit("Unable to make directory $parceldir.");
+    # Create new content directory for this user and parcel
+    ($parceldir, $dstparcelcfg) = init_parceldir($userid, $parcel);
 
     # Determine the last version that was checked in (note that
     # we can't use the last link because it might not be the
@@ -485,8 +544,6 @@ sub copyparcel ($$$$) {
     print "Copying $srcpath/$lastver to $parceldir/000001...\n";
     system("cp -R $srcpath/$lastver $parceldir/000001") == 0
 	or errexit("Unable to copy $srcpath/$lastver to $parceldir/000001");
-    system("cd $parceldir; ln -s 000001 last") == 0
-	or errexit("Unable to create last link to $parceldir/000001");
 
     # Re-encrypt the destination with a new keyroot
     $srckeyroot = get_value($srcparcelcfg, "KEYROOT");
@@ -494,16 +551,9 @@ sub copyparcel ($$$$) {
     decrypt($userid, $parcel, 1, $srckeyroot);
     encrypt($userid, $parcel, 1, $dstkeyroot);
     
-    # Set the appropriate file ownership and permissions
-    system("chown -R $userid:$userid $parceldir") == 0
-	or errexit("Unable to set owner of $parceldir");
-    system("chmod -R u=rwX,go=rX $parceldir") == 0
-	or errexit("Unable to set permissions of $parceldir");
-    
     # Write out the new parcel.cfg
+    $uuid = gen_uuid();
     $umask = umask(0077);
-    mkdir($dstparcelcfgdir)
-	or unix_errexit("Unable to make directory $dstparcelcfgdir.");
     open(IN, $srcparcelcfg)
     	or unix_errexit("Couldn't read $srcparcelcfg");
     open(OUT, ">", $dstparcelcfg)
@@ -512,10 +562,6 @@ sub copyparcel ($$$$) {
 	if (/^KEYROOT/) {
 	    print OUT "KEYROOT = $dstkeyroot\n";
 	} elsif (/^UUID/) {
-	    $uuid = `uuidgen`;
-	    $? == 0
-	        or errexit("Couldn't generate UUID");
-	    chomp($uuid);
 	    print OUT "UUID = $uuid\n";
 	} else {
 	    print OUT;
@@ -524,8 +570,9 @@ sub copyparcel ($$$$) {
     close IN;
     close OUT;
     umask($umask);
-    system("chown -R $userid:$userid $dstparcelcfgdir") == 0
-	or errexit("Unable to set owner of $dstparcelcfgdir");
+    
+    # Set ownership and permissions, add last symlink, etc.
+    finalize_parceldir($userid, $parcel);
 
     print "Success: Added $userid/$parcel\n";
 }
@@ -538,6 +585,9 @@ sub makeparcel ($$$) {
     my $parcel = shift;      # Destination parcel name
     my $size = shift;        # Parcel size
 
+    my $parcelcfg;
+    my $parceldir;
+    my $parcelverdir;
     my $keyroot;
     my $uuid;
     my $umask;
@@ -555,28 +605,10 @@ sub makeparcel ($$$) {
 
     my $chunksize = CHUNKSIZE;
     my $chunksperdir = CHUNKSPERDIR;
-    my $userdir = "$config{content_root}/$userid";
-    my $parceldir = "$userdir/$parcel";
-    my $parcelverdir = "$parceldir/000001";
-    my $parcelcfg = get_parcelcfg_path($userid, $parcel);
-    my $parcelcfgdir = dirname($parcelcfg);
 
-    # Create new content directory for this user if one doesn't already exist
-    if (!-d $userdir) {
-	mkdir($userdir)
-	    or errexit("Unable to create user directory ($userdir)");
-	system("chown $userid:$userid $userdir") == 0
-	    or errexit("Unable to set owner of $userdir");
-	system("chmod 755 $userdir" ) == 0
-	    or errexit("Unable to set permissions on $userdir");
-    }	
-
-    # Create an empty directory for the parcel
-    if (-d "$parceldir") {
-	errexit("Parcel $userid/$parcel exists.");
-    }
-    mkdir($parceldir)
-	or errexit("Unable to make directory $parceldir.");
+    # Create new content directory for this user and parcel
+    ($parceldir, $parcelcfg) = init_parceldir($userid, $parcel);
+    $parcelverdir = "$parceldir/000001";
 
     # Calculate parcel size
     unless ($size =~ /^([0-9]+)([KMG])$/) {
@@ -670,23 +702,10 @@ sub makeparcel ($$$) {
     $keyroot = keygen();
     encrypt($userid, $parcel, 1, $keyroot);
     
-    # Set the appropriate file ownership and permissions
-    print "Finishing...\n";
-    symlink("000001", "$parceldir/last")
-        or errexit("Unable to create last symlink");
-    system("chown -R $userid:$userid $parceldir") == 0
-	or errexit("Unable to set owner of $parceldir");
-    system("chmod -R u=rwX,go=rX $parceldir") == 0
-	or errexit("Unable to set permissions of $parceldir");
-    
     # Write out the new parcel.cfg
-    $uuid = `uuidgen`;
-    $? == 0
-	or errexit("Couldn't generate UUID");
-    chomp($uuid);
+    print "Finishing...\n";
+    $uuid = gen_uuid();
     $umask = umask(0077);
-    mkdir($parcelcfgdir)
-	or unix_errexit("Unable to make directory $parcelcfgdir.");
     open(OUT, ">", $parcelcfg)
     	or unix_errexit("Couldn't write $parcelcfg");
     print OUT <<EOF;
@@ -709,9 +728,10 @@ CHUNKSPERDIR = $chunksperdir
 EOF
     close OUT;
     umask($umask);
-    system("chown -R $userid:$userid $parcelcfgdir") == 0
-	or errexit("Unable to set owner of $parcelcfgdir");
 
+    # Set ownership and permissions, add last symlink, etc.
+    finalize_parceldir($userid, $parcel);
+    
     print "Success: Added $userid/$parcel\n";
 }
 
