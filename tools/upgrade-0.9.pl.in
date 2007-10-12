@@ -12,7 +12,7 @@ our $dstcfg = $ARGV[2];
 our $dst = $ARGV[3];
 our $user = $ARGV[4];
 our $parcel = $ARGV[5];
-our $bindir = ".";
+our $bindir = "!!LIBDIR!!";
 our @versions;
 our %parcelcfg;
 our $new_keyroot;

@@ -2,12 +2,19 @@ AM_CPPFLAGS = -D_GNU_SOURCE
 AM_CFLAGS = -W -Wall -Wstrict-prototypes -I..
 AM_LDFLAGS = $(SQLITE_LIBS)
 
+GEN = upgrade-0.9.pl
+
 if WANT_SERVER
-ZLIB_PROGRAM = zlib
+SERVER_PROGS = zlib convert-chunks convert-keyring
+pkgdata_SCRIPTS = upgrade-0.9.pl
 endif
 
-pkglib_PROGRAMS = query $(ZLIB_PROGRAM)
-EXTRA_PROGRAMS = convert-keyring convert-chunks
-CLEANFILES = $(EXTRA_PROGRAMS) zlib
+pkglib_PROGRAMS = query $(SERVER_PROGS)
+CLEANFILES = $(SERVER_PROGS) $(GEN)
+EXTRA_DIST = $(GEN:=.in)
+
 convert_chunks_LDFLAGS = $(AM_LDFLAGS) -lcrypto -lz
 zlib_LDFLAGS = -lz
+
+include $(top_srcdir)/mkrevision.mk
+include $(top_srcdir)/subst.mk
