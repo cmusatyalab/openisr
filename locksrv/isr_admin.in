@@ -44,7 +44,7 @@ sub decrypt ($$$$);
 sub getkeyroot ($$);
 sub adduser ($);
 sub deluser ($);
-sub addparcel ($$$$);
+sub copyparcel ($$$$);
 sub makeparcel ($$$);
 sub prune ($$$);
 sub getusage ();
@@ -147,7 +147,7 @@ if ($command eq "deluser") {
 	if (!$userid);
 }
 
-if ($command eq "addparcel") {
+if ($command eq "copyparcel") {
     usage("Missing userid (-u)")
 	if (!$userid);
     usage("Missing parcel name (-p)")
@@ -201,8 +201,8 @@ elsif ($command eq "adduser") {
 elsif ($command eq "deluser") {
     deluser($userid);
 }
-elsif ($command eq "addparcel") {
-    addparcel($userid, $parcel, $srcuserid, $srcparcel);
+elsif ($command eq "copyparcel") {
+    copyparcel($userid, $parcel, $srcuserid, $srcparcel);
 }
 elsif ($command eq "makeparcel") {
     makeparcel($userid, $parcel, $size);
@@ -433,9 +433,9 @@ sub deluser ($) {
 
 
 #
-# addparcel - Add a new parcel
+# copyparcel - Create a new parcel based on an existing one
 #             
-sub addparcel ($$$$) {
+sub copyparcel ($$$$) {
     my $userid = shift;      # Destination user id
     my $parcel = shift;      # Destination parcel name
     my $srcuserid = shift;   # Source user id
@@ -819,12 +819,12 @@ sub usage {
     
     print "$progname revision " . RCS_REVISION . "\n";
     print RED, "Usage: $progname cmd [options...]\n", RESET;
-    print BLUE, "Commands: addparcel, adduser, deluser, decrypt, encrypt, getkeyroot,\n          getusage, keygen, makeparcel, prune.\n", RESET;
+    print BLUE, "Commands: adduser, copyparcel, decrypt, deluser, encrypt, getkeyroot,\n          getusage, keygen, makeparcel, prune.\n", RESET;
 
-    print "  addparcel  Add a parcel (-u, -p, -U, -P).\n";
-    print "  makeparcel Create a parcel (-u, -p, -s).\n";
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u).\n";
+    print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P).\n";
+    print "  makeparcel Create an empty parcel from scratch (-u, -p, -s).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
     print "  encrypt    Encrypt parcel version (-u, -p, -v).\n";
     print "  getkeyroot Show parcel keyroot (-u, -p).\n";
@@ -845,19 +845,19 @@ sub usage {
     if ($help > 1) {
 	print "\n";
 	print "Examples:\n"; 
-	print RED, "addparcel - ", RESET, "Create new parcel winxp for existing user bovik in $croot\n";
+	print RED, "adduser - ", RESET, "Add user bovik to the system\n";
+	print BLUE, "% isr_admin adduser -u bovik\n", RESET;
+	print "\n";
+	print RED, "deluser - ", RESET, "Delete user bovik from the system\n";
+	print BLUE, "% isr_admin deluser -u bovik\n", RESET;
+	print "\n";
+	print RED, "copyparcel - ", RESET, "Create new parcel winxp for existing user bovik in $croot\n";
 	print "using latest version of existing parcel in $croot/gold/goldwinxp\n";
 	print BLUE, "% isr_admin addparcel -u bovik -p winxp -U gold -Pgoldwinxp\n", RESET;
 	print "\n";
 	print RED, "makeparcel - ", RESET, "Create empty 8 GB parcel debian for existing user bovik\n";
 	print "in $croot\n";
 	print BLUE, "% isr_admin makeparcel -u bovik -p debian -s 8G\n";
-	print "\n";
-	print RED, "adduser - ", RESET, "Add user bovik to the system\n";
-	print BLUE, "% isr_admin adduser -u bovik\n", RESET;
-	print "\n";
-	print RED, "deluser - ", RESET, "Delete user bovik from the system\n";
-	print BLUE, "% isr_admin deluser -u bovik\n", RESET;
 	print "\n";
 	print RED, "decrypt - ", RESET, "Decrypt files in $croot/bovik/winxp/00003\n";
 	print BLUE, "% isr_admin decrypt -u bovik -p winxp -v 3\n", RESET;
