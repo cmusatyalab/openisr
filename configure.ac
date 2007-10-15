@@ -48,7 +48,8 @@ PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
 			[whether we should build the kernel modules])
 PROCESS_ENABLE_VAR([$enable_server], [WANT_SERVER],
 			[whether we should build the server])
-AM_CONDITIONAL([WANT_TOOLS], [test z$enable_client = zyes -o z$enable_server = zyes])
+AM_CONDITIONAL([WANT_COMMON],
+			[test z$enable_client = zyes -o z$enable_server = zyes])
 
 if test z$enable_modules = zyes ; then
 	if test z$srcdir != z. ; then
