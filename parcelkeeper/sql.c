@@ -36,7 +36,7 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 
 	if (result != NULL)
 		*result=NULL;
-	ret=sqlite3_prepare(db, query, -1, &stmt, NULL);
+	ret=sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
 	if (ret) {
 		sqlerr(db);
 		return ret;

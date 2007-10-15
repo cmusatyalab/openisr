@@ -124,7 +124,6 @@ static void add_chunk_reference(const void *tag)
 					ftag);
 		free(ftag);
 		/* Non-fatal */
-		/* XXX sqlite spill bug */
 	}
 }
 

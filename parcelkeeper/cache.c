@@ -552,7 +552,7 @@ int validate_keyring(void)
 
 	pk_log(LOG_INFO, "Validating keyring");
 	printf("Validating keyring...\n");
-	if (query(&stmt, state.db, "PRAGMA integrity_check", NULL) !=
+	if (query(&stmt, state.db, "PRAGMA integrity_check(1)", NULL) !=
 				SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't run SQLite integrity check");
