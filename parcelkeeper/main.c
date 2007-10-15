@@ -106,7 +106,9 @@ int main(int argc, char **argv)
 	} else if (mode == MODE_HOARD) {
 		ret=hoard();
 	} else if (mode == MODE_VALIDATE) {
-		ret=validate_keyring();
+		ret=validate_dbs();
+		if (!ret)
+			ret=validate_keyring();
 		if (!ret)
 			ret=validate_cache();
 	} else if (mode == MODE_EXAMINE) {

@@ -174,6 +174,7 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 			enum compresstype compress, unsigned length);
 int copy_for_upload(void);
+int validate_dbs(void);
 int validate_keyring(void);
 int validate_cache(void);
 int examine_cache(void);

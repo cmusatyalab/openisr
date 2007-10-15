@@ -538,10 +538,34 @@ out:
 	return ret;
 }
 
+int validate_dbs(void)
+{
+	sqlite3_stmt *stmt;
+	const char *str;
+	int result;
+
+	pk_log(LOG_INFO, "Validating databases");
+	printf("Validating databases...\n");
+	/* This validates both the primary and attached databases */
+	if (query(&stmt, state.db, "PRAGMA integrity_check(1)", NULL) !=
+				SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't run SQLite integrity check");
+		return 1;
+	}
+	query_row(stmt, "s", &str);
+	result=strcmp(str, "ok");
+	query_free(stmt);
+	if (result) {
+		pk_log(LOG_ERROR, "SQLite integrity check failed");
+		return 1;
+	}
+	return 0;
+}
+
 int validate_keyring(void)
 {
 	sqlite3_stmt *stmt;
-	const char *result;
 	unsigned expected_chunk=0;
 	unsigned chunk;
 	unsigned taglen;
@@ -552,19 +576,6 @@ int validate_keyring(void)
 
 	pk_log(LOG_INFO, "Validating keyring");
 	printf("Validating keyring...\n");
-	if (query(&stmt, state.db, "PRAGMA integrity_check(1)", NULL) !=
-				SQLITE_ROW) {
-		query_free(stmt);
-		pk_log(LOG_ERROR, "Couldn't run SQLite integrity check");
-		return 1;
-	}
-	query_row(stmt, "s", &result);
-	sret=strcmp(result, "ok");
-	query_free(stmt);
-	if (sret) {
-		pk_log(LOG_ERROR, "SQLite integrity check failed");
-		return 1;
-	}
 	for (sret=query(&stmt, state.db, "SELECT chunk, tag, key, compression "
 				"FROM keys ORDER BY chunk ASC", NULL);
 				sret == SQLITE_ROW; sret=query_next(stmt)) {
@@ -633,7 +644,6 @@ int validate_cache(void)
 	pk_log(LOG_INFO, "Checking cache consistency");
 	printf("Checking local cache for internal consistency...\n");
 
-	/* XXX PRAGMA integrity_check on attached database? */
 	/* XXX transaction? */
 	if (query(&stmt, state.db, "SELECT count(*) FROM cache.chunks", NULL)
 				!= SQLITE_ROW) {
