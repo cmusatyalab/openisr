@@ -311,7 +311,7 @@ pk_err_t hoard_sync_refs(int from_cache)
 					"SELECT DISTINCT tag FROM keys", NULL);
 	else
 		sret=query(NULL, state.db, "CREATE TEMP VIEW newrefs AS "
-					"SELECT DISTINCT tag FROM last.keys",
+					"SELECT DISTINCT tag FROM prev.keys",
 					NULL);
 	if (sret) {
 		pk_log(LOG_ERROR, "Couldn't generate tag list");
@@ -416,7 +416,7 @@ int hoard(void)
 		goto out;
 	}
 
-	if (query(&stmt, state.db, "SELECT count(DISTINCT tag) FROM last.keys "
+	if (query(&stmt, state.db, "SELECT count(DISTINCT tag) FROM prev.keys "
 				"WHERE tag NOT IN "
 				"(SELECT tag FROM hoard.chunks)",
 				NULL) != SQLITE_ROW) {
@@ -427,7 +427,7 @@ int hoard(void)
 	query_row(stmt, "d", &to_hoard);
 	query_free(stmt);
 
-	while ((sret=query(&stmt, state.db, "SELECT chunk, tag FROM last.keys "
+	while ((sret=query(&stmt, state.db, "SELECT chunk, tag FROM prev.keys "
 				"WHERE tag NOT IN "
 				"(SELECT tag FROM hoard.chunks) LIMIT 1", NULL))
 				== SQLITE_ROW) {
@@ -471,17 +471,17 @@ int examine_hoard(void)
 
 	if (begin(state.db))
 		return 1;
-	if (query(&stmt, state.db, "SELECT count(DISTINCT tag) FROM last.keys",
+	if (query(&stmt, state.db, "SELECT count(DISTINCT tag) FROM prev.keys",
 				NULL) != SQLITE_ROW) {
 		query_free(stmt);
-		pk_log(LOG_ERROR, "Couldn't query last keyring");
+		pk_log(LOG_ERROR, "Couldn't query previous keyring");
 		goto bad;
 	}
 	query_row(stmt, "d", &maxchunks);
 	query_free(stmt);
 	if (query(&stmt, state.db, "SELECT count(DISTINCT hoard.chunks.tag) "
-				"FROM last.keys JOIN hoard.chunks "
-				"ON last.keys.tag == hoard.chunks.tag", NULL)
+				"FROM prev.keys JOIN hoard.chunks "
+				"ON prev.keys.tag == hoard.chunks.tag", NULL)
 				!= SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't query hoard cache");

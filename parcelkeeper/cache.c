@@ -233,7 +233,7 @@ pk_err_t cache_init(void)
 	}
 
 	if (config.flags & WANT_PREV) {
-		ret=attach(state.db, "last", config.prev_keyring);
+		ret=attach(state.db, "prev", config.prev_keyring);
 		if (ret)
 			goto bad;
 	}
@@ -437,9 +437,9 @@ int copy_for_upload(void)
 		return 1;
 	/* XXX transaction */
 	if (query(&stmt, state.db, "SELECT count(*) FROM "
-				"main.keys JOIN last.keys "
-				"ON main.keys.chunk == last.keys.chunk "
-				"WHERE main.keys.tag != last.keys.tag", NULL)
+				"main.keys JOIN prev.keys "
+				"ON main.keys.chunk == prev.keys.chunk "
+				"WHERE main.keys.tag != prev.keys.tag", NULL)
 				!= SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Query failed");
@@ -454,11 +454,11 @@ int copy_for_upload(void)
 	}
 	for (sret=query(&stmt, state.db, "SELECT main.keys.chunk, "
 				"main.keys.tag, cache.chunks.length FROM "
-				"main.keys JOIN last.keys ON "
-				"main.keys.chunk == last.keys.chunk "
+				"main.keys JOIN prev.keys ON "
+				"main.keys.chunk == prev.keys.chunk "
 				"LEFT JOIN cache.chunks ON "
 				"main.keys.chunk == cache.chunks.chunk WHERE "
-				"main.keys.tag != last.keys.tag", NULL);
+				"main.keys.tag != prev.keys.tag", NULL);
 				sret == SQLITE_ROW; sret=query_next(stmt)) {
 		query_row(stmt, "dbd", &chunk, &tag, &taglen, &length);
 		print_progress(modified_chunks, total_modified);
@@ -739,9 +739,9 @@ int examine_cache(void)
 	query_row(stmt, "d", &validchunks);
 	query_free(stmt);
 	if (query(&stmt, state.db, "SELECT count(*) FROM main.keys "
-				"JOIN last.keys ON "
-				"main.keys.chunk == last.keys.chunk WHERE "
-				"main.keys.tag != last.keys.tag", NULL)
+				"JOIN prev.keys ON "
+				"main.keys.chunk == prev.keys.chunk WHERE "
+				"main.keys.tag != prev.keys.tag", NULL)
 				!= SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't compare keyrings");
