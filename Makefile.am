@@ -11,7 +11,7 @@ VDISKDIR = libvdisk
 endif
 
 if WANT_TOOLS
-TOOLDIR = tools
+TOOLDIR = sqlite tools
 endif
 
 # Unconditionally descend into kernel directories: even if we didn't, the

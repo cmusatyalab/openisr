@@ -135,10 +135,6 @@ if test z$enable_client = zyes ; then
 	PKG_CHECK_MODULES([OSSP_UUID], [ossp-uuid])
 fi
 
-if test z$enable_client = zyes -o z$enable_server = zyes ; then
-	PKG_CHECK_MODULES([SQLITE], [sqlite3])
-fi
-
 if test z$enable_libvdisk = zyes ; then
 	# We don't provide a --with-dl=DIR option because this is supposed
 	# to be a system function.
@@ -154,6 +150,7 @@ AC_CONFIG_FILES([Makefile
                  nexus/GNUmakefile
                  nexus/tools/Makefile
                  parcelkeeper/Makefile
+                 sqlite/Makefile
                  sha1/GNUmakefile
                  tools/Makefile])
 AC_OUTPUT

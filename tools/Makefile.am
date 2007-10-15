@@ -1,6 +1,6 @@
-AM_CPPFLAGS = -D_GNU_SOURCE
+AM_CPPFLAGS = -I$(top_srcdir)/sqlite -D_GNU_SOURCE
 AM_CFLAGS = -W -Wall -Wstrict-prototypes -I..
-AM_LDFLAGS = $(SQLITE_LIBS)
+AM_LDFLAGS = -L$(top_srcdir)/sqlite -lsqlite
 
 GEN = upgrade-0.9.pl
 
