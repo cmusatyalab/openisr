@@ -10,6 +10,7 @@
  */
 
 #include <stdarg.h>
+#include <unistd.h>
 #include <sqlite3.h>
 #include "defs.h"
 
@@ -176,6 +177,31 @@ pk_err_t _rollback(sqlite3 *db, const char *caller)
 		pk_log(LOG_ERROR, "Couldn't roll back transaction "
 					"on behalf of %s()", caller);
 		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
+static int busy_handler(void *db, int count)
+{
+	int ms;
+
+	if (count == 0)
+		ms=1;
+	else if (count <= 2)
+		ms=2;
+	else if (count <= 5)
+		ms=5;
+	else
+		ms=10;
+	usleep(ms * 1000);
+	return 1;
+}
+
+pk_err_t set_busy_handler(sqlite3 *db)
+{
+	if (sqlite3_busy_handler(db, busy_handler, db)) {
+		pk_log(LOG_ERROR, "Couldn't set busy handler for database");
+		return PK_CALLFAIL;
 	}
 	return PK_SUCCESS;
 }

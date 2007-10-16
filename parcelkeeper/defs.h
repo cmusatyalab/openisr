@@ -211,6 +211,7 @@ pk_err_t _commit(sqlite3 *db, const char *caller);
 #define commit(db) _commit(db, __func__)
 pk_err_t _rollback(sqlite3 *db, const char *caller);
 #define rollback(db) _rollback(db, __func__)
+pk_err_t set_busy_handler(sqlite3 *db);
 
 /* util.c */
 int is_dir(const char *path);
