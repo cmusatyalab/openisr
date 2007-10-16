@@ -941,9 +941,15 @@ sub discard () {
     # This operation should not be interrupted by the user
     block_sigint();
 
-    # Delete the dirty keyring and cfg directory
+    # Delete the dirty keyring and cfg directory.  If this fails, we'll
+    # notice it in build_cache().
     mysystem("rm -rf $parceldir/cfg");
     unlink("$parceldir/keyring");
+    
+    # Delete the local cache (which may not exist) and complain if we can't.
+    unlink("$parceldir/disk", "$parceldir/disk.idx");
+    errexit("Can't remove disk image")
+        if -e "$parceldir/disk" or -e "$parceldir/disk.idx";
 
     # Reset the consistent dirty cache flag, since any temporary dirty
     # cache directory can no longer be consistent with an empty local cache.
