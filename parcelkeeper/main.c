@@ -103,8 +103,6 @@ int main(int argc, char **argv)
 		ret=0;
 	} else if (mode == MODE_UPLOAD) {
 		ret=copy_for_upload();
-	} else if (mode == MODE_HOARD) {
-		ret=hoard();
 	} else if (mode == MODE_VALIDATE) {
 		ret=validate_dbs();
 		if (!ret)
@@ -115,6 +113,10 @@ int main(int argc, char **argv)
 		ret=examine_cache();
 		if (config.hoard_dir && !ret)
 			ret=examine_hoard();
+	} else if (mode == MODE_HOARD) {
+		ret=hoard();
+	} else if (mode == MODE_LISTHOARD) {
+		ret=list_hoard();
 	} else {
 		pk_log(LOG_ERROR, "Unknown mode");
 	}

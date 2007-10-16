@@ -504,6 +504,97 @@ bad:
 	return 1;
 }
 
+int list_hoard(void)
+{
+	sqlite3_stmt *p_stmt;
+	sqlite3_stmt *t_stmt;
+	int sret;
+	int ret=1;
+	int parcel;
+	const char *uuid;
+	const char *server;
+	const char *user;
+	const char *name;
+	int p_total;
+	int p_unique;
+	int shared;
+	int referenced;
+	int total;
+	int orphan;
+
+	if (begin(state.db))
+		return 1;
+	if (query(&t_stmt, state.db, "SELECT count(tag) FROM hoard.chunks",
+				NULL) != SQLITE_ROW) {
+		query_free(t_stmt);
+		pk_log(LOG_ERROR, "Couldn't count chunks in hoard index");
+		goto out;
+	}
+	query_row(t_stmt, "d", &total);
+	query_free(t_stmt);
+	if (query(&t_stmt, state.db, "SELECT count(DISTINCT tag) FROM "
+				"hoard.refs", NULL) != SQLITE_ROW) {
+		query_free(t_stmt);
+		pk_log(LOG_ERROR, "Couldn't count references in hoard index");
+		goto out;
+	}
+	query_row(t_stmt, "d", &referenced);
+	query_free(t_stmt);
+	if (query(&t_stmt, state.db, "SELECT count(length) FROM hoard.chunks "
+				"WHERE tag ISNULL", NULL) != SQLITE_ROW) {
+		query_free(t_stmt);
+		pk_log(LOG_ERROR, "Couldn't count orphan chunks in "
+					"hoard index");
+		goto out;
+	}
+	query_row(t_stmt, "d", &orphan);
+	query_free(t_stmt);
+	shared=referenced;
+	for (sret=query(&p_stmt, state.db, "SELECT parcel, uuid, server, "
+				"user, name FROM hoard.parcels", NULL);
+				sret == SQLITE_ROW; sret=query_next(p_stmt)) {
+		query_row(p_stmt, "dssss", &parcel, &uuid, &server, &user,
+					&name);
+		if (query(&t_stmt, state.db, "SELECT count(*) FROM hoard.refs "
+					"WHERE parcel == ?", "d", parcel)
+					!= SQLITE_ROW) {
+			query_free(t_stmt);
+			pk_log(LOG_ERROR, "Couldn't query hoard index for "
+						"parcel %s", name);
+			break;
+		}
+		query_row(t_stmt, "d", &p_total);
+		query_free(t_stmt);
+		if (query(&t_stmt, state.db, "SELECT count(*) FROM hoard.refs "
+					"WHERE parcel == ? AND tag NOT IN "
+					"(SELECT tag FROM hoard.refs WHERE "
+					"parcel != ?)", "dd", parcel, parcel)
+					!= SQLITE_ROW) {
+			query_free(t_stmt);
+			pk_log(LOG_ERROR, "Couldn't query hoard index for "
+						"parcel %s", name);
+			break;
+		}
+		query_row(t_stmt, "d", &p_unique);
+		query_free(t_stmt);
+		printf("%s %s %s %s %d %d\n", uuid, server, user, name, p_total,
+					p_unique);
+		shared -= p_unique;
+	}
+	query_free(p_stmt);
+	if (sret == SQLITE_OK) {
+		printf("shared %d\n", shared);
+		printf("garbage %d\n", total - referenced);
+		printf("orphan %d\n", orphan);
+		ret=0;
+	} else {
+		pk_log(LOG_ERROR, "Couldn't list parcels in hoard cache");
+	}
+out:
+	rollback(state.db);
+	return ret;
+}
+
 pk_err_t hoard_init(void)
 {
 	sqlite3_stmt *stmt;
@@ -548,9 +639,11 @@ pk_err_t hoard_init(void)
 	ret=commit(state.db);
 	if (ret)
 		goto bad;
-	ret=get_parcel_ident();
-	if (ret)
-		return ret;
+	if (config.parcel_dir != NULL) {
+		ret=get_parcel_ident();
+		if (ret)
+			return ret;
+	}
 	state.hoard_fd=open(config.hoard_file, O_RDWR|O_CREAT, 0666);
 	if (state.hoard_fd == -1) {
 		pk_log(LOG_ERROR, "Couldn't open %s", config.hoard_file);
