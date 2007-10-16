@@ -26,6 +26,7 @@ enum option {
 	OPT_PARCEL,
 	OPT_HOARD,
 	OPT_DESTDIR,
+	OPT_MINSIZE,
 	OPT_COMPRESSION,
 	OPT_LOG,
 	OPT_FOREGROUND,
@@ -59,6 +60,7 @@ static struct pk_option pk_options[] = {
 	{"parcel",         OPT_PARCEL,         {"parcel_dir"}},
 	{"hoard",          OPT_HOARD,          {"hoard_dir"}},
 	{"destdir",        OPT_DESTDIR,        {"dir"}},
+	{"minsize",        OPT_MINSIZE,        {"MB"},                                                  "Don't garbage-collect hoard cache below this size"},
 	{"compression",    OPT_COMPRESSION,    {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
 	{"log",            OPT_LOG,            {"logfile", "info_str", "filemask", "stderrmask"}},
 	{"foreground",     OPT_FOREGROUND,     {},                                                      "Don't run in the background"},
@@ -134,6 +136,7 @@ mode(REFRESH) = {
 
 mode(GC) = {
 	{OPT_HOARD,         REQUIRED},
+	{OPT_MINSIZE,       OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
 };
@@ -380,6 +383,11 @@ enum mode parse_cmdline(int argc, char **argv)
 		case OPT_DESTDIR:
 			config.dest_dir=optparams[0];
 			config.dest_stats=filepath(optparams[0], "stats", 0);
+			break;
+		case OPT_MINSIZE:
+			if (parseuint(&config.minsize, optparams[0], 10))
+				PARSE_ERROR("invalid integer value: %s",
+							optparams[0]);
 			break;
 		case OPT_COMPRESSION:
 			config.compress=parse_compress(optparams[0]);

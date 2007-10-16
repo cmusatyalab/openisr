@@ -106,6 +106,7 @@ struct pk_config {
 
 	/* miscellaneous parameters */
 	enum compresstype compress;
+	unsigned minsize;  /* MB */
 };
 
 struct pk_parcel {
@@ -188,6 +189,7 @@ pk_err_t hoard_sync_refs(int from_cache);
 int hoard(void);
 int examine_hoard(void);
 int list_hoard(void);
+int gc_hoard(void);
 
 /* nexus.c */
 pk_err_t nexus_init(void);
