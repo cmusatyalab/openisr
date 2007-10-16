@@ -125,18 +125,31 @@ static pk_err_t open_cache_file(long page_size)
 
 static pk_err_t create_cache_index(void)
 {
+	pk_err_t ret;
+
+	ret=begin(state.db);
+	if (ret)
+		return ret;
+	ret=PK_IOERR;
 	if (query(NULL, state.db, "CREATE TABLE cache.chunks ("
 				"chunk INTEGER PRIMARY KEY NOT NULL, "
 				"length INTEGER NOT NULL)", NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create cache index");
-		return PK_IOERR;
+		goto bad;
 	}
 	if (query(NULL, state.db, "PRAGMA cache.user_version = "
 				stringify(CA_INDEX_VERSION), NULL)) {
 		pk_log(LOG_ERROR, "Couldn't set cache index version");
-		return PK_IOERR;
+		goto bad;
 	}
+	ret=commit(state.db);
+	if (ret)
+		goto bad;
 	return PK_SUCCESS;
+
+bad:
+	rollback(state.db);
+	return ret;
 }
 
 static pk_err_t verify_cache_index(void)
@@ -297,7 +310,8 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 	int keylen;
 	pk_err_t err;
 
-	/* XXX transaction */
+	/* XXX does not use transaction.  do we need to?  might introduce
+	   conflicts in obtain_chunk() */
 	if (query(&stmt, state.db, "SELECT tag, key, compression FROM keys "
 				"WHERE chunk == ?", "d", chunk)
 				!= SQLITE_ROW) {
@@ -349,22 +363,33 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 			enum compresstype compress, unsigned length)
 {
-	/* XXX transaction */
+	pk_err_t ret;
+
+	ret=begin(state.db);
+	if (ret)
+		return ret;
+	ret=PK_IOERR;
 	if (query(NULL, state.db, "INSERT OR REPLACE INTO cache.chunks "
 				"(chunk, length) VALUES(?, ?)", "dd",
 				chunk, length)) {
 		pk_log(LOG_ERROR, "Couldn't update cache index");
-		return PK_IOERR;
+		goto bad;
 	}
-	/* XXX transient? */
 	if (query(NULL, state.db, "UPDATE keys SET tag = ?, key = ?, "
 				"compression = ? WHERE chunk == ?", "bbdd",
 				tag, parcel.hashlen, key, parcel.hashlen,
 				compress, chunk)) {
 		pk_log(LOG_ERROR, "Couldn't update keyring");
-		return PK_IOERR;
+		goto bad;
 	}
+	ret=commit(state.db);
+	if (ret)
+		goto bad;
 	return PK_SUCCESS;
+
+bad:
+	rollback(state.db);
+	return ret;
 }
 
 static pk_err_t make_upload_dirs(void)
@@ -435,7 +460,8 @@ int copy_for_upload(void)
 		return 1;
 	if (hoard_sync_refs(1))
 		return 1;
-	/* XXX transaction */
+	if (begin(state.db))
+		return 1;
 	if (query(&stmt, state.db, "SELECT count(*) FROM "
 				"main.keys JOIN prev.keys "
 				"ON main.keys.chunk == prev.keys.chunk "
@@ -443,6 +469,7 @@ int copy_for_upload(void)
 				!= SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Query failed");
+		rollback(state.db);
 		return 1;
 	}
 	query_row(stmt, "d", &total_modified);
@@ -450,6 +477,7 @@ int copy_for_upload(void)
 	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failed");
+		rollback(state.db);
 		return 1;
 	}
 	for (sret=query(&stmt, state.db, "SELECT main.keys.chunk, "
@@ -532,6 +560,8 @@ int copy_for_upload(void)
 out:
 	free(buf);
 	query_free(stmt);
+	/* We didn't make any changes; we just need to release the locks */
+	rollback(state.db);
 	if (ret == 0)
 		if (write_upload_stats(modified_chunks, modified_bytes))
 			ret=1;
@@ -644,11 +674,13 @@ int validate_cache(void)
 	pk_log(LOG_INFO, "Checking cache consistency");
 	printf("Checking local cache for internal consistency...\n");
 
-	/* XXX transaction? */
+	if (begin(state.db))
+		return 1;
 	if (query(&stmt, state.db, "SELECT count(*) FROM cache.chunks", NULL)
 				!= SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't enumerate valid chunks");
+		rollback(state.db);
 		return 1;
 	}
 	query_row(stmt, "d", &valid);
@@ -657,6 +689,7 @@ int validate_cache(void)
 	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failed");
+		rollback(state.db);
 		return 1;
 	}
 
@@ -715,6 +748,8 @@ int validate_cache(void)
 	}
 	query_free(stmt);
 	free(buf);
+	/* We didn't make any changes; we just need to release the locks */
+	rollback(state.db);
 	return ret;
 }
 
@@ -729,11 +764,13 @@ int examine_cache(void)
 	unsigned valid_pct;
 	unsigned dirty_pct=0;
 
-	/* XXX transaction? */
+	if (begin(state.db))
+		return 1;
 	if (query(&stmt, state.db, "SELECT count(*) from cache.chunks", NULL)
 				!= SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't query cache index");
+		rollback(state.db);
 		return 1;
 	}
 	query_row(stmt, "d", &validchunks);
@@ -745,10 +782,13 @@ int examine_cache(void)
 				!= SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't compare keyrings");
+		rollback(state.db);
 		return 1;
 	}
 	query_row(stmt, "d", &dirtychunks);
 	query_free(stmt);
+	/* We didn't make any changes; we just need to release the locks */
+	rollback(state.db);
 
 	max_mb=(((off64_t)parcel.chunks) * parcel.chunksize) >> 20;
 	valid_mb=(((off64_t)validchunks) * parcel.chunksize) >> 20;
