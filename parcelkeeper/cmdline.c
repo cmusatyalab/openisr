@@ -25,6 +25,7 @@ enum arg_type {
 enum option {
 	OPT_PARCEL,
 	OPT_HOARD,
+	OPT_UUID,
 	OPT_DESTDIR,
 	OPT_MINSIZE,
 	OPT_COMPRESSION,
@@ -59,6 +60,7 @@ struct pk_mode {
 static struct pk_option pk_options[] = {
 	{"parcel",         OPT_PARCEL,         {"parcel_dir"}},
 	{"hoard",          OPT_HOARD,          {"hoard_dir"}},
+	{"uuid",           OPT_UUID,           {"uuid"}},
 	{"destdir",        OPT_DESTDIR,        {"dir"}},
 	{"minsize",        OPT_MINSIZE,        {"MB"},                                                  "Don't garbage-collect hoard cache below this size"},
 	{"compression",    OPT_COMPRESSION,    {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
@@ -121,8 +123,8 @@ mode(CHECKHOARD) = {
 };
 
 mode(RMHOARD) = {
-	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         REQUIRED},
+	{OPT_UUID,          REQUIRED, "UUID of parcel to remove from hoard cache"},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
 };
@@ -379,6 +381,10 @@ enum mode parse_cmdline(int argc, char **argv)
 			config.devfile=filepath(cp, "parcelkeeper.dev", 0);
 			config.lockfile=filepath(cp, "parcelkeeper.lock", 0);
 			config.pidfile=filepath(cp, "parcelkeeper.pid", 0);
+			break;
+		case OPT_UUID:
+			if (canonicalize_uuid(optparams[0], &config.uuid))
+				PARSE_ERROR("invalid uuid: %s", optparams[0]);
 			break;
 		case OPT_DESTDIR:
 			config.dest_dir=optparams[0];

@@ -595,6 +595,68 @@ out:
 	return ret;
 }
 
+int rmhoard(void)
+{
+	sqlite3_stmt *stmt;
+	const char *server;
+	const char *user;
+	const char *name;
+	char *desc;
+	int parcel;
+	int removed;
+
+	if (begin(state.db))
+		return 1;
+	if (query(&stmt, state.db, "SELECT parcel, server, user, name "
+				"FROM hoard.parcels WHERE uuid == ?", "S",
+				config.uuid) != SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't find parcel with UUID %s",
+					config.uuid);
+		goto bad;
+	}
+	query_row(stmt, "dsss", &parcel, &server, &user, &name);
+	/* server, user, and name expire when we free the query */
+	if (asprintf(&desc, "%s/%s/%s", server, user, name) == -1) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "malloc failure");
+		goto bad;
+	}
+	query_free(stmt);
+
+	if (query(&stmt, state.db, "SELECT count(*) FROM hoard.refs WHERE "
+				"parcel == ? AND tag NOT IN (SELECT tag "
+				"FROM hoard.refs WHERE parcel != ?)", "dd",
+				parcel, parcel) != SQLITE_ROW) {
+		query_free(stmt);
+		free(desc);
+		pk_log(LOG_ERROR, "Couldn't enumerate unique parcel chunks");
+		goto bad;
+	}
+	query_row(stmt, "d", &removed);
+	query_free(stmt);
+
+	pk_log(LOG_INFO, "Removing parcel %s from hoard cache...", desc);
+	free(desc);
+	if (query(NULL, state.db, "DELETE FROM hoard.refs WHERE parcel == ?",
+				"d", parcel) != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't remove parcel from hoard cache");
+		goto bad;
+	}
+
+	/* We can't remove the parcel from the parcels table unless we know
+	   that no other Parcelkeeper process is running against that parcel */
+
+	if (commit(state.db))
+		goto bad;
+	pk_log(LOG_INFO, "Deallocated %d chunks", removed);
+	return 0;
+
+bad:
+	rollback(state.db);
+	return 1;
+}
+
 int gc_hoard(void)
 {
 	sqlite3_stmt *stmt;
