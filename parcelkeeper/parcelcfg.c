@@ -11,7 +11,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <uuid.h>
 #include "defs.h"
 
 #define DATAVER 3
@@ -89,8 +88,6 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 	char *tok;
 	char *saveptr;
 	enum compresstype compress;
-	uuid_t *uuid;
-	uuid_rc_t uurc;
 
 	switch (ident) {
 	case PC_VERSION:
@@ -152,24 +149,8 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 		}
 		break;
 	case PC_UUID:
-		uurc=uuid_create(&uuid);
-		if (uurc) {
-			pk_log(LOG_ERROR, "Can't create UUID object: %s",
-						uuid_error(uurc));
+		if (canonicalize_uuid(value, &parcel.uuid))
 			return PK_INVALID;
-		}
-		if (uuid_import(uuid, UUID_FMT_STR, value, strlen(value) + 1)) {
-			pk_log(LOG_ERROR, "Invalid UUID");
-			return PK_INVALID;
-		}
-		uurc=uuid_export(uuid, UUID_FMT_STR, (void *)&parcel.uuid,
-					NULL);
-		if (uurc) {
-			pk_log(LOG_ERROR, "Can't format UUID: %s",
-						uuid_error(uurc));
-			return PK_INVALID;
-		}
-		uuid_destroy(uuid);
 		break;
 	case PC_SERVER:
 		parcel.server=strdup(value);
