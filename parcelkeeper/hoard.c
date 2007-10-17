@@ -517,7 +517,6 @@ int list_hoard(void)
 	int shared;
 	int referenced;
 	int total;
-	int orphan;
 
 	if (begin(state.db))
 		return 1;
@@ -536,15 +535,6 @@ int list_hoard(void)
 		goto out;
 	}
 	query_row(t_stmt, "d", &referenced);
-	query_free(t_stmt);
-	if (query(&t_stmt, state.db, "SELECT count(length) FROM hoard.chunks "
-				"WHERE tag ISNULL", NULL) != SQLITE_ROW) {
-		query_free(t_stmt);
-		pk_log(LOG_ERROR, "Couldn't count orphan chunks in "
-					"hoard index");
-		goto out;
-	}
-	query_row(t_stmt, "d", &orphan);
 	query_free(t_stmt);
 	shared=referenced;
 	for (sret=query(&p_stmt, state.db, "SELECT parcel, uuid, server, "
@@ -582,7 +572,6 @@ int list_hoard(void)
 	if (sret == SQLITE_OK) {
 		printf("shared %d\n", shared);
 		printf("garbage %d\n", total - referenced);
-		printf("orphan %d\n", orphan);
 		ret=0;
 	} else {
 		pk_log(LOG_ERROR, "Couldn't list parcels in hoard cache");
