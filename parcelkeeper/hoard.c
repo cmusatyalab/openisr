@@ -648,7 +648,7 @@ int gc_hoard(void)
 	sqlite3_stmt *stmt;
 	int total;
 	int goal;
-	int newtotal;
+	int changes=0;
 
 	if (begin(state.db))
 		return 1;
@@ -676,20 +676,12 @@ int gc_hoard(void)
 						"hoard cache");
 			goto bad;
 		}
+		changes=sqlite3_changes(state.db);
 	}
-
-	if (query(&stmt, state.db, "SELECT count(tag) FROM hoard.chunks", NULL)
-				!= SQLITE_ROW) {
-		query_free(stmt);
-		pk_log(LOG_ERROR, "Couldn't count chunks in hoard cache");
-		goto bad;
-	}
-	query_row(stmt, "d", &newtotal);
-	query_free(stmt);
-	pk_log(LOG_INFO, "Garbage-collected %d chunks", total - newtotal);
 
 	if (commit(state.db))
 		goto bad;
+	pk_log(LOG_INFO, "Garbage-collected %d chunks", changes);
 	return 0;
 bad:
 	rollback(state.db);
