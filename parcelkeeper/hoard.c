@@ -256,9 +256,6 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	if (ret)
 		goto bad;
 
-	/* XXX how do we guarantee no floating unused chunks?  look for very
-	   old last-access time? */
-
 	if (pwrite(state.hoard_fd, buf, len, ((off_t)offset) << 9) != len) {
 		pk_log(LOG_ERROR, "Couldn't write hoard cache: offset %d, "
 					"length %d", offset, len);
@@ -710,6 +707,51 @@ bad:
 	return 1;
 }
 
+/* Releases the hoard_fd lock before returning, including on error */
+static pk_err_t hoard_try_cleanup(void)
+{
+	int count;
+	pk_err_t ret;
+
+	ret=get_file_lock(state.hoard_fd, FILE_LOCK_WRITE);
+	if (ret == PK_BUSY) {
+		pk_log(LOG_INFO, "Hoard cache in use; skipping cleanup");
+		ret=PK_SUCCESS;
+		goto out;
+	} else if (ret) {
+		goto out;
+	}
+
+	pk_log(LOG_INFO, "Cleaning up hoard cache...");
+
+	ret=PK_IOERR;
+	if (query(NULL, state.db, "UPDATE hoard.chunks SET length = NULL "
+				"WHERE tag ISNULL AND length NOTNULL", NULL)
+				!= SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't delete orphaned cache slots");
+		goto out;
+	}
+	count=sqlite3_changes(state.db);
+	if (count > 0)
+		pk_log(LOG_INFO, "Deleted %d orphaned hoard cache slots",
+					count);
+
+	if (query(NULL, state.db, "DELETE FROM hoard.parcels WHERE parcel "
+				"NOT IN (SELECT parcel FROM hoard.refs)", NULL)
+				!= SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't delete dangling parcel records");
+		goto out;
+	}
+	count=sqlite3_changes(state.db);
+	if (count > 0)
+		pk_log(LOG_INFO, "Deleted %d dangling parcel records", count);
+
+	ret=PK_SUCCESS;
+out:
+	put_file_lock(state.hoard_fd);
+	return ret;
+}
+
 pk_err_t hoard_init(void)
 {
 	sqlite3_stmt *stmt;
@@ -723,18 +765,31 @@ pk_err_t hoard_init(void)
 					config.hoard_dir);
 		return PK_CALLFAIL;
 	}
+
+	state.hoard_fd=open(config.hoard_file, O_RDWR|O_CREAT, 0666);
+	if (state.hoard_fd == -1) {
+		pk_log(LOG_ERROR, "Couldn't open %s", config.hoard_file);
+		return PK_IOERR;
+	}
+	ret=get_file_lock(state.hoard_fd, FILE_LOCK_READ|FILE_LOCK_WAIT);
+	if (ret) {
+		pk_log(LOG_ERROR, "Couldn't get read lock on %s",
+					config.hoard_file);
+		goto bad;
+	}
+
 	ret=attach(state.db, "hoard", config.hoard_index);
 	if (ret)
-		return ret;
+		goto bad;
 	ret=begin(state.db);
 	if (ret)
-		return ret;
+		goto bad;
 	if (query(&stmt, state.db, "PRAGMA hoard.user_version", NULL) !=
 				SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't get hoard cache index version");
 		ret=PK_IOERR;
-		goto bad;
+		goto bad_rollback;
 	}
 	query_row(stmt, "d", &ver);
 	query_free(stmt);
@@ -742,36 +797,35 @@ pk_err_t hoard_init(void)
 	case 0:
 		ret=create_hoard_index();
 		if (ret)
-			goto bad;
+			goto bad_rollback;
 		break;
 	case HOARD_INDEX_VERSION:
 		break;
 	default:
 		pk_log(LOG_ERROR, "Unknown hoard cache version %d", ver);
 		ret=PK_BADFORMAT;
-		goto bad;
+		goto bad_rollback;
 	}
 	ret=commit(state.db);
 	if (ret)
-		goto bad;
+		goto bad_rollback;
+
 	if (config.parcel_dir != NULL) {
 		ret=get_parcel_ident();
 		if (ret)
-			return ret;
-	}
-	state.hoard_fd=open(config.hoard_file, O_RDWR|O_CREAT, 0666);
-	if (state.hoard_fd == -1) {
-		pk_log(LOG_ERROR, "Couldn't open %s", config.hoard_file);
-		return PK_IOERR;
+			goto bad;
 	}
 	return PK_SUCCESS;
 
-bad:
+bad_rollback:
 	rollback(state.db);
+bad:
+	close(state.hoard_fd);
 	return ret;
 }
 
 void hoard_shutdown(void)
 {
+	hoard_try_cleanup();
 	close(state.hoard_fd);
 }
