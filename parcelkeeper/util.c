@@ -212,20 +212,44 @@ void print_progress(unsigned chunks, unsigned maxchunks)
 	fflush(stdout);
 }
 
+static pk_err_t file_lock(int fd, int op, short locktype)
+{
+	struct flock lock = {
+		.l_type   = locktype,
+		.l_whence = SEEK_SET,
+		.l_start  = 0,
+		.l_len    = 0
+	};
+
+	while (fcntl(fd, op, &lock) == -1) {
+		if (errno == EACCES || errno == EAGAIN)
+			return PK_BUSY;
+		else if (errno != EINTR)
+			return PK_CALLFAIL;
+	}
+	return PK_SUCCESS;
+}
+
+pk_err_t get_file_lock(int fd, int flags)
+{
+	return file_lock(fd, (flags & FILE_LOCK_WAIT) ? F_SETLKW : F_SETLK,
+				(flags & FILE_LOCK_WRITE) ? F_WRLCK : F_RDLCK);
+}
+
+pk_err_t put_file_lock(int fd)
+{
+	return file_lock(fd, F_SETLK, F_UNLCK);
+}
+
 /* Create lock file.  flock locks don't work over NFS; byterange locks don't
    work over AFS; and dotlocks are difficult to check for freshness.  So
    we use a whole-file fcntl lock.  The lock shouldn't become stale because the
    kernel checks that for us; however, over NFS file systems without a lock
    manager, locking will fail.  For safety, we treat that as an error. */
-pk_err_t acquire_lock(void)
+pk_err_t acquire_lockfile(void)
 {
 	int fd;
-	struct flock lock = {
-		.l_type   = F_WRLCK,
-		.l_whence = SEEK_SET,
-		.l_start  = 0,
-		.l_len    = 0
-	};
+	pk_err_t ret;
 
 	fd=open(config.lockfile, O_CREAT|O_WRONLY, 0666);
 	if (fd == -1) {
@@ -233,18 +257,16 @@ pk_err_t acquire_lock(void)
 					config.lockfile);
 		return PK_IOERR;
 	}
-	if (fcntl(fd, F_SETLK, &lock)) {
+	ret=get_file_lock(fd, FILE_LOCK_WRITE);
+	if (ret) {
 		close(fd);
-		if (errno == EACCES || errno == EAGAIN)
-			return PK_BUSY;
-		else
-			return PK_CALLFAIL;
+		return ret;
 	}
 	state.lock_fd=fd;
 	return PK_SUCCESS;
 }
 
-void release_lock(void)
+void release_lockfile(void)
 {
 	unlink(config.lockfile);
 	close(state.lock_fd);

@@ -219,6 +219,9 @@ pk_err_t _rollback(sqlite3 *db, const char *caller);
 pk_err_t set_busy_handler(sqlite3 *db);
 
 /* util.c */
+#define FILE_LOCK_READ     0
+#define FILE_LOCK_WRITE 0x01
+#define FILE_LOCK_WAIT  0x02
 int is_dir(const char *path);
 int is_file(const char *path);
 int at_eof(int fd);
@@ -233,8 +236,10 @@ char *pk_strerror(pk_err_t err);
 int set_signal_handler(int sig, void (*handler)(int sig));
 void print_progress(unsigned chunks, unsigned maxchunks);
 pk_err_t fork_and_wait(int *status_fd);
-pk_err_t acquire_lock(void);
-void release_lock(void);
+pk_err_t get_file_lock(int fd, int flags);
+pk_err_t put_file_lock(int fd);
+pk_err_t acquire_lockfile(void);
+void release_lockfile(void);
 pk_err_t create_pidfile(void);
 void remove_pidfile(void);
 char *form_chunk_path(char *prefix, unsigned chunk);

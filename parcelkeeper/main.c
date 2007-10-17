@@ -44,7 +44,7 @@ int main(int argc, char **argv)
 	/* Take the lock early, so that we don't even write to the logfile
 	   without holding it */
 	if (config.flags & WANT_LOCK) {
-		err=acquire_lock();
+		err=acquire_lockfile();
 		if (err) {
 			pk_log(LOG_ERROR, "Couldn't acquire parcel lock: %s",
 						pk_strerror(err));
@@ -137,7 +137,7 @@ shutdown:
 	log_shutdown();  /* safe to call unconditionally */
 	if (have_lock) {
 		remove_pidfile();  /* safe if lock held */
-		release_lock();
+		release_lockfile();
 	}
 	if (completion_fd != -1)
 		write(completion_fd, &ret, 1);
