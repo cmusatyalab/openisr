@@ -409,22 +409,27 @@ pk_err_t canonicalize_uuid(const char *in, char **out)
 {
 	uuid_t *uuid;
 	uuid_rc_t uurc;
-	pk_err_t ret=PK_INVALID;
+	pk_err_t ret;
 
 	uurc=uuid_create(&uuid);
 	if (uurc) {
 		pk_log(LOG_ERROR, "Can't create UUID object: %s",
 					uuid_error(uurc));
-		return PK_INVALID;
+		return PK_NOMEM;
 	}
 	if (uuid_import(uuid, UUID_FMT_STR, in, strlen(in) + 1)) {
 		pk_log(LOG_ERROR, "Invalid UUID");
+		ret=PK_INVALID;
 		goto out;
 	}
-	uurc=uuid_export(uuid, UUID_FMT_STR, (void *)out, NULL);
-	if (uurc) {
-		pk_log(LOG_ERROR, "Can't format UUID: %s", uuid_error(uurc));
-		goto out;
+	if (out != NULL) {
+		uurc=uuid_export(uuid, UUID_FMT_STR, (void *)out, NULL);
+		if (uurc) {
+			pk_log(LOG_ERROR, "Can't format UUID: %s",
+						uuid_error(uurc));
+			ret=PK_NOMEM;
+			goto out;
+		}
 	}
 	ret=PK_SUCCESS;
 out:
