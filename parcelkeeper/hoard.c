@@ -688,10 +688,23 @@ bad:
 	return 1;
 }
 
+static pk_err_t cleanup_action(sqlite3 *db, char *sql, char *desc)
+{
+	int changes;
+
+	if (query(NULL, state.db, sql, NULL) != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't remove %s", desc);
+		return PK_IOERR;
+	}
+	changes=sqlite3_changes(db);
+	if (changes > 0)
+		pk_log(LOG_INFO, "Removed %d %s", changes, desc);
+	return PK_SUCCESS;
+}
+
 /* Releases the hoard_fd lock before returning, including on error */
 static pk_err_t hoard_try_cleanup(void)
 {
-	int count;
 	pk_err_t ret;
 
 	ret=get_file_lock(state.hoard_fd, FILE_LOCK_WRITE);
@@ -704,30 +717,14 @@ static pk_err_t hoard_try_cleanup(void)
 	}
 
 	pk_log(LOG_INFO, "Cleaning up hoard cache...");
-
-	ret=PK_IOERR;
-	if (query(NULL, state.db, "UPDATE hoard.chunks SET length = NULL "
-				"WHERE tag ISNULL AND length NOTNULL", NULL)
-				!= SQLITE_OK) {
-		pk_log(LOG_ERROR, "Couldn't delete orphaned cache slots");
+	ret=cleanup_action(state.db, "UPDATE hoard.chunks SET length = NULL "
+				"WHERE tag ISNULL AND length NOTNULL",
+				"orphaned cache slots");
+	if (ret)
 		goto out;
-	}
-	count=sqlite3_changes(state.db);
-	if (count > 0)
-		pk_log(LOG_INFO, "Deleted %d orphaned hoard cache slots",
-					count);
-
-	if (query(NULL, state.db, "DELETE FROM hoard.parcels WHERE parcel "
-				"NOT IN (SELECT parcel FROM hoard.refs)", NULL)
-				!= SQLITE_OK) {
-		pk_log(LOG_ERROR, "Couldn't delete dangling parcel records");
-		goto out;
-	}
-	count=sqlite3_changes(state.db);
-	if (count > 0)
-		pk_log(LOG_INFO, "Deleted %d dangling parcel records", count);
-
-	ret=PK_SUCCESS;
+	ret=cleanup_action(state.db, "DELETE FROM hoard.parcels WHERE parcel "
+				"NOT IN (SELECT parcel FROM hoard.refs)",
+				"dangling parcel records");
 out:
 	put_file_lock(state.hoard_fd);
 	return ret;
