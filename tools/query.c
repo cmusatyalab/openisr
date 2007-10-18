@@ -368,6 +368,20 @@ static ret_t do_transaction(char *sql)
 	return FAIL;
 }
 
+static int busy_handler(void *unused, int count)
+{
+	(void)unused;  /* silence warning */
+	if (count == 0)
+		usleep(1000);
+	else if (count <= 2)
+		usleep(2500);
+	else if (count <= 5)
+		usleep(5000);
+	else
+		usleep(10000);
+	return 1;
+}
+
 static void usage(char *argv0)
 {
 	fprintf(stderr, "Usage: %s [flags] database query\n", argv0);
@@ -463,6 +477,11 @@ int main(int argc, char **argv)
 		die("Can't create temporary file");
 	if (sqlite3_open(dbfile, &db)) {
 		sqlerr("Opening database");
+		exit(1);
+	}
+	if (sqlite3_busy_handler(db, busy_handler, NULL)) {
+		sqlerr("Setting busy handler");
+		sqlite3_close(db);
 		exit(1);
 	}
 	if (attach_dbs() || do_transaction(sql))
