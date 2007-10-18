@@ -186,6 +186,7 @@ static int busy_handler(void *db, int count)
 {
 	int ms;
 
+	(void)db;  /* silence warning */
 	if (count == 0)
 		ms=1;
 	else if (count <= 2)

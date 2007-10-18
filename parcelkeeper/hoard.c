@@ -174,7 +174,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	/* XXX what if the reference is released right now?  we could read in
 	   bad chunk data.  do we need to hold a read lock the whole time? */
 
-	if (clen <= 0 || clen > parcel.chunksize)
+	if (clen <= 0 || (unsigned)clen > parcel.chunksize)
 		/* XXX */;
 
 	if (pread(state.hoard_fd, buf, clen, ((off_t)offset) << 9) != clen) {
@@ -256,7 +256,8 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	if (ret)
 		goto bad;
 
-	if (pwrite(state.hoard_fd, buf, len, ((off_t)offset) << 9) != len) {
+	if (pwrite(state.hoard_fd, buf, len, ((off_t)offset) << 9) !=
+				(int)len) {
 		pk_log(LOG_ERROR, "Couldn't write hoard cache: offset %d, "
 					"length %d", offset, len);
 		deallocate_chunk_offset(offset);
@@ -396,7 +397,7 @@ int hoard(void)
 	int chunk;
 	void *tagp;
 	char tag[parcel.hashlen];
-	int taglen;
+	unsigned taglen;
 	int num_hoarded=0;
 	int to_hoard;
 	int ret=1;

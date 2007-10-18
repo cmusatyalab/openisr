@@ -136,6 +136,7 @@ pk_err_t nexus_init(void)
 	struct nexus_setup setup;
 	pk_err_t ret;
 	int i;
+	unsigned u;
 	char revision[64];
 	char protocol[8];
 	unsigned protocol_i;
@@ -248,9 +249,9 @@ pk_err_t nexus_init(void)
 	setup.cachesize=(16 << 20) / parcel.chunksize;
 	setup.crypto=crypto_to_nexus(parcel.crypto);
 	setup.compress_default=compress_to_nexus(config.compress);
-	for (i=0; i<8*sizeof(parcel.required_compress); i++)
-		if (parcel.required_compress & (1 << i))
-			setup.compress_required |= 1 << compress_to_nexus(i);
+	for (u=0; u<8*sizeof(parcel.required_compress); u++)
+		if (parcel.required_compress & (1 << u))
+			setup.compress_required |= 1 << compress_to_nexus(u);
 	if (setup.crypto == NEXUS_NR_CRYPTO ||
 				setup.compress_default == NEXUS_NR_COMPRESS ||
 				(setup.compress_required &

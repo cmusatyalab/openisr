@@ -289,7 +289,7 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 	}
 	count=pwrite(state.loopdev_fd, buf, len, chunk_to_offset(chunk));
 	free(buf);
-	if (count != len) {
+	if (count != (int)len) {
 		pk_log(LOG_ERROR, "Couldn't write chunk %u to backing store",
 					chunk);
 		return PK_IOERR;
@@ -312,8 +312,8 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 	int ret;
 	void *rowtag;
 	void *rowkey;
-	int taglen;
-	int keylen;
+	unsigned taglen;
+	unsigned keylen;
 	pk_err_t err;
 
 	/* XXX does not use transaction.  do we need to?  might introduce
@@ -519,7 +519,7 @@ int copy_for_upload(void)
 			goto out;
 		}
 		if (pread(state.cache_fd, buf, length, chunk_to_offset(chunk))
-					!= length) {
+					!= (int)length) {
 			pk_log(LOG_ERROR, "Couldn't read chunk from "
 						"local cache: %u", chunk);
 			goto out;
@@ -542,7 +542,7 @@ int copy_for_upload(void)
 			free(path);
 			goto out;
 		}
-		if (write(fd, buf, length) != length) {
+		if (write(fd, buf, length) != (int)length) {
 			pk_log(LOG_ERROR, "Couldn't write chunk file %s",
 						path);
 			free(path);
@@ -705,7 +705,8 @@ static pk_err_t validate_cachefile(void)
 		}
 
 		if (pread(state.cache_fd, buf, chunklen,
-					chunk_to_offset(chunk)) != chunklen) {
+					chunk_to_offset(chunk)) !=
+					(int)chunklen) {
 			pk_log(LOG_ERROR, "Chunk %u: couldn't read from "
 						"local cache", chunk);
 			ret=PK_IOERR;

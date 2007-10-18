@@ -98,7 +98,8 @@ unsigned crypto_hashlen(enum cryptotype type)
 
 int compress_is_valid(enum compresstype type)
 {
-	if (type < 0 || type >= 8 * sizeof(parcel.required_compress))
+	if (type <= COMP_UNKNOWN ||
+				type >= 8 * sizeof(parcel.required_compress))
 		return 0;
 	return (parcel.required_compress & (1 << type));
 }
@@ -377,13 +378,13 @@ char *format_tag(const void *tag)
 {
 	char *buf;
 	const unsigned char *tbuf=tag;
-	int i;
+	unsigned u;
 
 	buf=malloc(2 * parcel.hashlen + 1);
 	if (buf == NULL)
 		return NULL;
-	for (i=0; i<parcel.hashlen; i++)
-		sprintf(buf + 2 * i, "%.2x", tbuf[i]);
+	for (u=0; u<parcel.hashlen; u++)
+		sprintf(buf + 2 * u, "%.2x", tbuf[u]);
 	return buf;
 }
 

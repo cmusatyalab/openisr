@@ -2,7 +2,8 @@
 # 2.4 version in /usr/include
 AM_CPPFLAGS = -I$(top_srcdir)/nexus -I$(top_srcdir)/sqlite
 AM_CPPFLAGS += -I$(KERNELDIR)/include -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
-AM_CFLAGS = -Wall -Wstrict-prototypes $(APR_CFLAGS) $(OSSP_UUID_CFLAGS)
+AM_CFLAGS = -W -Wall -Wstrict-prototypes -Wno-missing-field-initializers
+AM_CFLAGS += $(APR_CFLAGS) $(OSSP_UUID_CFLAGS)
 AM_LDFLAGS = -L$(top_srcdir)/sqlite -lcrypto -lcurl -lsqlite
 AM_LDFLAGS += $(APR_LIBS) $(OSSP_UUID_LIBS)
 
