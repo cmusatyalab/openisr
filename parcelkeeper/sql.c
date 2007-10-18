@@ -9,6 +9,7 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
+#include <string.h>
 #include <stdarg.h>
 #include <unistd.h>
 #include <sqlite3.h>
