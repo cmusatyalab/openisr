@@ -771,6 +771,13 @@ bad:
 	return 1;
 }
 
+int hoard_refresh(void)
+{
+	if (hoard_sync_refs(0))
+		return 1;
+	return 0;
+}
+
 /* Releases the hoard_fd lock before returning, including on error */
 static pk_err_t hoard_try_cleanup(void)
 {

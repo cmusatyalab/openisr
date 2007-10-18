@@ -119,6 +119,8 @@ int main(int argc, char **argv)
 		ret=gc_hoard();
 	} else if (mode == MODE_CHECKHOARD) {
 		ret=check_hoard();
+	} else if (mode == MODE_REFRESH) {
+		ret=hoard_refresh();
 	} else {
 		pk_log(LOG_ERROR, "Unknown mode");
 	}

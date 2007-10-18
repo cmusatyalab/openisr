@@ -161,7 +161,7 @@ mode(VERSION) = {
 #define LISTHOARD_flags		0
 #define CHECKHOARD_flags	0
 #define RMHOARD_flags		0
-#define REFRESH_flags		0
+#define REFRESH_flags		WANT_PREV
 #define GC_flags		0
 #define HELP_flags		0
 #define VERSION_flags		0
