@@ -176,8 +176,6 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 			enum compresstype compress, unsigned length);
 int copy_for_upload(void);
-int validate_dbs(void);
-int validate_keyring(void);
 int validate_cache(void);
 int examine_cache(void);
 
@@ -218,6 +216,7 @@ pk_err_t _commit(sqlite3 *db, const char *caller);
 pk_err_t _rollback(sqlite3 *db, const char *caller);
 #define rollback(db) _rollback(db, __func__)
 pk_err_t set_busy_handler(sqlite3 *db);
+pk_err_t validate_db(sqlite3 *db);
 
 /* util.c */
 #define FILE_LOCK_READ     0

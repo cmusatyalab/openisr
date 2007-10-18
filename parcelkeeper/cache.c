@@ -574,32 +574,7 @@ out:
 	return ret;
 }
 
-int validate_dbs(void)
-{
-	sqlite3_stmt *stmt;
-	const char *str;
-	int result;
-
-	pk_log(LOG_INFO, "Validating databases");
-	printf("Validating databases...\n");
-	/* This validates both the primary and attached databases */
-	if (query(&stmt, state.db, "PRAGMA integrity_check(1)", NULL) !=
-				SQLITE_ROW) {
-		query_free(stmt);
-		pk_log(LOG_ERROR, "Couldn't run SQLite integrity check");
-		return 1;
-	}
-	query_row(stmt, "s", &str);
-	result=strcmp(str, "ok");
-	query_free(stmt);
-	if (result) {
-		pk_log(LOG_ERROR, "SQLite integrity check failed");
-		return 1;
-	}
-	return 0;
-}
-
-int validate_keyring(void)
+static pk_err_t validate_keyring(void)
 {
 	sqlite3_stmt *stmt;
 	unsigned expected_chunk=0;
@@ -608,10 +583,8 @@ int validate_keyring(void)
 	unsigned keylen;
 	unsigned compress;
 	int sret;
-	int ret=0;
+	pk_err_t ret=PK_SUCCESS;
 
-	pk_log(LOG_INFO, "Validating keyring");
-	printf("Validating keyring...\n");
 	for (sret=query(&stmt, state.db, "SELECT chunk, tag, key, compression "
 				"FROM keys ORDER BY chunk ASC", NULL);
 				sret == SQLITE_ROW; sret=query_next(stmt)) {
@@ -620,19 +593,19 @@ int validate_keyring(void)
 			pk_log(LOG_ERROR, "Found keyring entry %u greater than"
 						" parcel size %u", chunk,
 						parcel.chunks);
-			ret=1;
+			ret=PK_INVALID;
 			continue;
 		}
 		if (chunk < expected_chunk) {
 			pk_log(LOG_ERROR, "Found unexpected keyring entry for "
 						"chunk %u", chunk);
-			ret=1;
+			ret=PK_INVALID;
 			continue;
 		}
 		while (expected_chunk < chunk) {
 			pk_log(LOG_ERROR, "Missing keyring entry for chunk %u",
 						expected_chunk);
-			ret=1;
+			ret=PK_INVALID;
 			expected_chunk++;
 		}
 		expected_chunk++;
@@ -640,30 +613,30 @@ int validate_keyring(void)
 			pk_log(LOG_ERROR, "Chunk %u: expected tag length %u, "
 						"found %u", chunk,
 						parcel.hashlen, taglen);
-			ret=1;
+			ret=PK_INVALID;
 		}
 		if (keylen != parcel.hashlen) {
 			pk_log(LOG_ERROR, "Chunk %u: expected key length %u, "
 						"found %u", chunk,
 						parcel.hashlen, keylen);
-			ret=1;
+			ret=PK_INVALID;
 		}
 		if (!compress_is_valid(compress)) {
 			pk_log(LOG_ERROR, "Chunk %u: invalid or unsupported "
 						"compression type %u", chunk,
 						compress);
-			ret=1;
+			ret=PK_INVALID;
 		}
 	}
 	if (sret != SQLITE_OK) {
 		pk_log(LOG_ERROR, "Keyring query failed");
-		ret=1;
+		ret=PK_IOERR;
 	}
 	query_free(stmt);
 	return ret;
 }
 
-int validate_cache(void)
+static pk_err_t validate_cachefile(void)
 {
 	sqlite3_stmt *stmt;
 	void *buf;
@@ -674,20 +647,17 @@ int validate_cache(void)
 	unsigned chunklen;
 	unsigned processed=0;
 	unsigned valid;
-	int ret=0;
+	pk_err_t ret=PK_SUCCESS;
 	int sret;
 
-	pk_log(LOG_INFO, "Checking cache consistency");
-	printf("Checking local cache for internal consistency...\n");
-
 	if (begin(state.db))
-		return 1;
+		return PK_IOERR;
 	if (query(&stmt, state.db, "SELECT count(*) FROM cache.chunks", NULL)
 				!= SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't enumerate valid chunks");
 		rollback(state.db);
-		return 1;
+		return PK_IOERR;
 	}
 	query_row(stmt, "d", &valid);
 	query_free(stmt);
@@ -696,7 +666,7 @@ int validate_cache(void)
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failed");
 		rollback(state.db);
-		return 1;
+		return PK_NOMEM;
 	}
 
 	for (sret=query(&stmt, state.db, "SELECT cache.chunks.chunk, "
@@ -711,26 +681,26 @@ int validate_cache(void)
 			pk_log(LOG_ERROR, "Found chunk %u greater than "
 						"parcel size %u", chunk,
 						parcel.chunks);
-			ret=1;
+			ret=PK_INVALID;
 			continue;
 		}
 		if (chunklen > parcel.chunksize || chunklen == 0) {
 			pk_log(LOG_ERROR, "Chunk %u: absurd size %u",
 						chunk, chunklen);
-			ret=1;
+			ret=PK_INVALID;
 			continue;
 		}
 		if (tag == NULL) {
 			pk_log(LOG_ERROR, "Found valid chunk %u with no "
 						"keyring entry", chunk);
-			ret=1;
+			ret=PK_INVALID;
 			continue;
 		}
 		if (taglen != parcel.hashlen) {
 			pk_log(LOG_ERROR, "Chunk %u: expected tag length "
 						"%u, found %u", chunk,
 						parcel.hashlen, taglen);
-			ret=1;
+			ret=PK_INVALID;
 			continue;
 		}
 
@@ -738,7 +708,7 @@ int validate_cache(void)
 					chunk_to_offset(chunk)) != chunklen) {
 			pk_log(LOG_ERROR, "Chunk %u: couldn't read from "
 						"local cache", chunk);
-			ret=1;
+			ret=PK_IOERR;
 			continue;
 		}
 		digest(calctag, buf, chunklen);
@@ -746,17 +716,35 @@ int validate_cache(void)
 			pk_log(LOG_ERROR, "Chunk %u: tag check failure",
 						chunk);
 			log_tag_mismatch(tag, calctag);
+			ret=PK_TAGFAIL;
 		}
 	}
 	if (sret != SQLITE_OK) {
 		pk_log(LOG_ERROR, "Error querying cache index");
-		ret=1;
+		ret=PK_IOERR;
 	}
 	query_free(stmt);
 	free(buf);
 	/* We didn't make any changes; we just need to release the locks */
 	rollback(state.db);
 	return ret;
+}
+
+int validate_cache(void)
+{
+	pk_log(LOG_INFO, "Validating databases");
+	printf("Validating databases...\n");
+	if (validate_db(state.db))
+		return 1;
+	pk_log(LOG_INFO, "Validating keyring");
+	printf("Validating keyring...\n");
+	if (validate_keyring())
+		return 1;
+	pk_log(LOG_INFO, "Checking cache consistency");
+	printf("Checking local cache for internal consistency...\n");
+	if (validate_cachefile())
+		return 1;
+	return 0;
 }
 
 int examine_cache(void)

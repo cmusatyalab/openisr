@@ -205,3 +205,25 @@ pk_err_t set_busy_handler(sqlite3 *db)
 	}
 	return PK_SUCCESS;
 }
+
+/* This validates both the primary and attached databases */
+pk_err_t validate_db(sqlite3 *db)
+{
+	sqlite3_stmt *stmt;
+	const char *str;
+	int result;
+
+	if (query(&stmt, db, "PRAGMA integrity_check(1)", NULL) != SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't run SQLite integrity check");
+		return PK_IOERR;
+	}
+	query_row(stmt, "s", &str);
+	result=strcmp(str, "ok");
+	query_free(stmt);
+	if (result) {
+		pk_log(LOG_ERROR, "SQLite integrity check failed");
+		return PK_BADFORMAT;
+	}
+	return PK_SUCCESS;
+}

@@ -104,11 +104,7 @@ int main(int argc, char **argv)
 	} else if (mode == MODE_UPLOAD) {
 		ret=copy_for_upload();
 	} else if (mode == MODE_VALIDATE) {
-		ret=validate_dbs();
-		if (!ret)
-			ret=validate_keyring();
-		if (!ret)
-			ret=validate_cache();
+		ret=validate_cache();
 	} else if (mode == MODE_EXAMINE) {
 		ret=examine_cache();
 		if (config.hoard_dir && !ret)
