@@ -702,6 +702,74 @@ static pk_err_t cleanup_action(sqlite3 *db, char *sql, char *desc)
 	return PK_SUCCESS;
 }
 
+int check_hoard(void)
+{
+	sqlite3_stmt *stmt;
+	const char *uuid;
+	int count;
+	int sret;
+
+	pk_log(LOG_INFO, "Validating hoard cache");
+	printf("Validating hoard cache...\n");
+	/* XXX pragma verify_db */
+	if (begin(state.db))
+		return 1;
+
+	for (sret=query(&stmt, state.db, "SELECT uuid FROM hoard.parcels",
+				NULL), count=0; sret == SQLITE_ROW;
+				sret=query_next(stmt)) {
+		query_row(stmt, "s", &uuid);
+		if (canonicalize_uuid(uuid, NULL) == PK_INVALID) {
+			if (query(NULL, state.db, "DELETE FROM hoard.parcels "
+						"WHERE uuid == ?", "s",
+						uuid) != SQLITE_OK) {
+				pk_log(LOG_ERROR, "Couldn't remove invalid "
+							"parcel record "
+							"from hoard index");
+				goto bad;
+			}
+			count += sqlite3_changes(state.db);
+		}
+	}
+	query_free(stmt);
+	if (count)
+		pk_log(LOG_INFO, "Removed %d invalid parcel records", count);
+	if (sret != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't query parcel list");
+		goto bad;
+	}
+
+	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
+				"last_access = NULL WHERE tag NOTNULL AND "
+				"length ISNULL",
+				"chunks with null length"))
+		goto bad;
+	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
+				"length = NULL, last_access = NULL WHERE "
+				"last_access ISNULL AND tag NOTNULL",
+				"chunks with null access time"))
+		goto bad;
+	if (cleanup_action(state.db, "DELETE FROM hoard.refs WHERE parcel "
+				"NOT IN (SELECT parcel FROM hoard.parcels)",
+				"refs with dangling parcel ID"))
+		goto bad;
+	if (cleanup_action(state.db, "DELETE FROM hoard.refs WHERE tag NOT IN "
+				"(SELECT tag FROM hoard.chunks)",
+				"refs with dangling tag"))
+		goto bad;
+
+	/* XXX validate offsets and offset/length pairs */
+	if (commit(state.db))
+		return 1;
+	/* XXX validate data */
+	/* XXX gc */
+	return 0;
+
+bad:
+	rollback(state.db);
+	return 1;
+}
+
 /* Releases the hoard_fd lock before returning, including on error */
 static pk_err_t hoard_try_cleanup(void)
 {

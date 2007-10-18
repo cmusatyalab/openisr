@@ -116,7 +116,6 @@ mode(LISTHOARD) = {
 };
 
 mode(CHECKHOARD) = {
-	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
