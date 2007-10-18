@@ -78,7 +78,7 @@ int main(int argc, char **argv)
 			goto shutdown;
 	}
 
-	if (mode == MODE_RUN || mode == MODE_HOARD) {
+	if (config.flags & WANT_TRANSPORT) {
 		if (transport_init())
 			goto shutdown;
 		else
