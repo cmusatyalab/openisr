@@ -711,7 +711,8 @@ int check_hoard(void)
 
 	pk_log(LOG_INFO, "Validating hoard cache");
 	printf("Validating hoard cache...\n");
-	/* XXX pragma verify_db */
+	if (validate_db(state.db))
+		return 1;
 	if (begin(state.db))
 		return 1;
 
