@@ -117,7 +117,8 @@ static ret_t attach_dbs(void)
 			break;
 		/* A successful ATTACH invalidates prepared statements, so we
 		   have to redo this every iteration */
-		if (sqlite3_prepare(db, "ATTACH ?1 as ?2", -1, &stmt, NULL)) {
+		if (sqlite3_prepare_v2(db, "ATTACH ?1 as ?2", -1, &stmt,
+					NULL)) {
 			sqlerr("Preparing ATTACH statement");
 			return FAIL;
 		}
@@ -246,7 +247,7 @@ static ret_t make_queries(char *str)
 	used_params=0;
 	for (query=str; *query; ) {
 		did_cols=0;
-		if (sqlite3_prepare(db, query, -1, &stmt, &query)) {
+		if (sqlite3_prepare_v2(db, query, -1, &stmt, &query)) {
 			sqlerr("Preparing query");
 			return FAIL;
 		}
