@@ -16,7 +16,6 @@
 #include <unistd.h>
 #include <sqlite3.h>
 
-#define RETRY_USECS 5000
 #define MAX_PARAMS 256
 #define MAX_ATTACHED 10
 
@@ -109,8 +108,6 @@ static ret_t attach_dbs(void)
 {
 	sqlite3_stmt *stmt;
 	int i;
-	int j;
-	int ret;
 
 	for (i=0; i<MAX_ATTACHED; i++) {
 		if (attached_names[i] == NULL)
@@ -132,20 +129,9 @@ static ret_t attach_dbs(void)
 			sqlerr("Binding database name");
 			goto bad;
 		}
-		for (j=0; ; j++) {
-			if (j >= 10) {
-				fprintf(stderr, "Retries exceeded\n");
-				goto bad;
-			}
-			ret=sqlite3_step(stmt);
-			if (ret == SQLITE_DONE) {
-				break;
-			} else if (ret == SQLITE_BUSY) {
-				usleep(RETRY_USECS);
-			} else {
-				sqlerr("Executing ATTACH statement");
-				goto bad;
-			}
+		if (sqlite3_step(stmt) != SQLITE_DONE) {
+			sqlerr("Executing ATTACH statement");
+			goto bad;
 		}
 		sqlite3_finalize(stmt);
 	}
@@ -309,23 +295,13 @@ static ret_t rollback(void)
 
 static ret_t commit(void)
 {
-	int ret;
-	int i;
-
 	if (no_transaction)
 		return OK;
-	for (i=0; i<20; i++) {
-		ret=sqlite3_exec(db, "COMMIT", NULL, NULL, NULL);
-		if (ret == SQLITE_BUSY) {
-			usleep(RETRY_USECS);
-		} else if (ret) {
-			sqlerr("Committing transaction");
-			return FAIL;
-		} else {
-			return OK;
-		}
+	if (sqlite3_exec(db, "COMMIT", NULL, NULL, NULL)) {
+		sqlerr("Committing transaction");
+		return FAIL;
 	}
-	return FAIL;
+	return OK;
 }
 
 static void cat_tmp(void)
