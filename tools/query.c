@@ -220,19 +220,37 @@ static void handle_row(sqlite3_stmt *stmt)
 		fprintf(tmp, "\n");
 }
 
+static ret_t handle_rows(sqlite3_stmt *stmt, int do_cols)
+{
+	int ret;
+
+	while ((ret=sqlite3_step(stmt)) != SQLITE_DONE) {
+		if (ret == SQLITE_ROW) {
+			if (show_col_names && do_cols) {
+				do_cols=0;
+				handle_col_names(stmt);
+			}
+			handle_row(stmt);
+		} else {
+			if (ret != SQLITE_BUSY)
+				sqlerr("Executing query");
+			return (ret == SQLITE_BUSY) ? FAIL_TEMP : FAIL;
+		}
+	}
+	return OK;
+}
+
 static ret_t make_queries(char *str)
 {
 	const char *query;
 	sqlite3_stmt *stmt;
-	int ret;
+	ret_t ret;
 	int ctr;
-	int did_cols;
 	unsigned changes=0;
 	int params=0;  /* Silence compiler warning */
 
 	used_params=0;
 	for (query=str; *query; ) {
-		did_cols=0;
 		if (sqlite3_prepare_v2(db, query, -1, &stmt, &query)) {
 			sqlerr("Preparing query");
 			return FAIL;
@@ -243,20 +261,10 @@ static ret_t make_queries(char *str)
 				sqlite3_finalize(stmt);
 				return params;
 			}
-			while ((ret=sqlite3_step(stmt)) != SQLITE_DONE) {
-				if (ret == SQLITE_ROW) {
-					if (show_col_names && !did_cols) {
-						did_cols=1;
-						handle_col_names(stmt);
-					}
-					handle_row(stmt);
-				} else {
-					if (ret != SQLITE_BUSY)
-						sqlerr("Executing query");
-					sqlite3_finalize(stmt);
-					return (ret == SQLITE_BUSY) ? FAIL_TEMP
-								: FAIL;
-				}
+			ret=handle_rows(stmt, ctr == loop_min);
+			if (ret) {
+				sqlite3_finalize(stmt);
+				return ret;
 			}
 			changes += sqlite3_changes(db);
 			sqlite3_reset(stmt);
