@@ -33,7 +33,6 @@ use Cwd;
 # These are set by command line arguments
 my $precommit;
 my $contentcheck;
-my $strong_contentcheck;
 my $verbose;
 my $username;
 my $parcelname;
@@ -140,13 +139,6 @@ if ($currver < 1) {
     errexit("Current version must be greater than 0.");
 }
 
-# 
-# Current version of 1 is OK only if it is also the last version
-#
-if ($currver == 1 and $currver != $lastver) {
-    errexit("Version 1 can only be checked if it is also last");
-}
-
 #
 # Set the key variables
 #
@@ -182,6 +174,13 @@ if (-e $preddir) {
 	or errexit("$predkeyring_enc does not exist.");
 }
  
+# 
+# Bail out if there's nothing to do
+#
+if (! -e $preddir && $currver != $lastver && !$contentcheck) {
+    errexit("Version $currver has no predecessors, is not last, and -c was not specified.  Nothing to do.");
+}
+
 #
 # Decrypt the current and predecessor keyrings
 #
@@ -203,7 +202,7 @@ umask(0077);
 system("openssl enc -d -aes-128-cbc -in $currkeyring_enc -out $currkeyring -pass fd:$fd -salt") == 0
     or system_errexit("Unable to decode $currkeyring_enc");
 
-if ($currver > 1 or $precommit) {
+if (-e $preddir) {
     ($rh, $fd) = keyroot_pipe($keyroot);
     system("openssl enc -d -aes-128-cbc -in $predkeyring_enc -out $predkeyring -pass fd:$fd -salt") == 0
 	or system_errexit("Unable to decode $predkeyring_enc");
