@@ -99,6 +99,7 @@ sub build_cache ();
 sub hdksize ();
 sub connected ();
 sub check_nexus_version ();
+sub check_for_old_isrdir ();
 sub get_parcelkeeper_pid ();
 sub fetch_parcel_file ($$$$$);
 sub keyroot_pipe ();
@@ -720,16 +721,10 @@ sub run () {
     # Block receipt of the SIGTSTP (ctrl-z)
     block_sigtstp();
     
-    # Reset the clean-cache flag, since we're about to make the cache dirty.
-    unlink($cleancache_file);
-
-    # Reset the consistent dirty cache flag, since any temporary dirty
-    # cache directory is about to become inconsistent with the local cache.
-    unlink($cdcache_file);
-
     # Make sure that Parcelkeeper is where we expect it to be, that Nexus is
     # loaded, and that the control device exists.  Also, warn if the Nexus
-    # release is older than our own release.
+    # release is older than our own release, and give the user a chance to
+    # clean up old-style hoard caches.
     if (!-e $pkcmd or !-x $pkcmd ) {
 	errexit("Could not find an executable Parcelkeeper binary.");
     }
@@ -740,6 +735,14 @@ sub run () {
         errexit("Nexus control device does not exist");
     }
     check_nexus_version();
+    check_for_old_isrdir();
+
+    # Reset the clean-cache flag, since we're about to make the cache dirty.
+    unlink($cleancache_file);
+
+    # Reset the consistent dirty cache flag, since any temporary dirty
+    # cache directory is about to become inconsistent with the local cache.
+    unlink($cdcache_file);
 
     if ($disconnected) {
 	# If the user wants to run disconnected, they better have all of their
@@ -1696,6 +1699,49 @@ sub check_nexus_version () {
 	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
 	message("INFO", "Nexus is out of date ($nexus_version vs. $isr_version)");
     }
+}
+
+#
+# check_for_old_isrdir - walk $isrdir for old-style checkouts and hoard caches
+#                        and notify the user if any are found
+#
+sub check_for_old_isrdir () {
+    my $ientry;
+    my $uentry;
+    my $hentry;
+    my $size;
+
+    opendir(IDIR, $isrdir)
+        or errexit("Couldn't read $isrdir");
+    while ($ientry = readdir(IDIR)) {
+        next if valid_uuid($ientry) or $ientry eq "hoard";
+        next if ! -d "$isrdir/$ientry" or $ientry =~ /^\.{1,2}$/;
+        opendir(UDIR, "$isrdir/$ientry")
+            or errexit("Couldn't read $isrdir/$ientry");
+        while ($uentry = readdir(UDIR)) {
+            next if ! -d "$isrdir/$ientry/$uentry" or $uentry =~ /^\.{1,2}$/;
+            if ($uentry =~ /^(.+)-hoard$/) {
+                $size = 0;
+                opendir(HDIR, "$isrdir/$ientry/$uentry")
+                    or errexit("Couldn't read $isrdir/$ientry/$uentry");
+                while ($hentry = readdir(HDIR)) {
+                    next if $hentry =~ /^\.{1,2}$/;
+                    $size += stat("$isrdir/$ientry/$uentry/$hentry")->blocks;
+                }
+                closedir(HDIR);
+                $size >>= 11;
+                print YELLOW, "Found old-style hoard cache for $ientry/$1 ($size MB).\n", RESET;
+                if (query("Remove?") eq "y") {
+                    system("rm -rf $isrdir/$ientry/$uentry") == 0
+                        or system_errexit("Couldn't remove $isrdir/$ientry/$uentry");
+                }
+            } else {
+                err("Found old-style checkout ~/.isr/$ientry/$uentry, ignoring");
+            }
+        }
+        closedir(UDIR);
+    }
+    closedir(IDIR);
 }
 
 #
