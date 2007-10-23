@@ -89,6 +89,10 @@ sub cleanclient ();
 sub hoard ();
 sub checkparcel ();
 sub statparcel ();
+sub set_parcel_globals ();
+sub valid_uuid ($);
+sub sync_parcel_uuid_from_name ();
+sub sync_parcel_name_from_uuid ();
 sub parse_cfgfile ($$);
 sub parse_parcelcfg ($);
 sub build_cache ();
@@ -118,6 +122,7 @@ sub system_err ($);
 sub message ($$);
 sub usage ($);
 sub need_parcel ();
+sub need_uuid ();
 sub need_not_parcel ();
 sub need_checked_out ();
 sub need_network ();
@@ -145,7 +150,6 @@ sub isr_priv_cleanhoard ();
 
 # Local variables
 my $isrdir;
-my $isrhome;
 my $result;
 my $progname; 
 
@@ -165,6 +169,7 @@ my $pid;            # Pid of child created in mysystem
 my $sessionid = 0;  # Unique session id (nonce from lock operation)
 my $userid;         # ISR userid
 my $parcel;         # parcel name
+my $uuid;           # parcel UUID
 my $command;        # isr subcommand
 
 # State globals, visible in this module only, which track which cleanup actions
@@ -230,7 +235,7 @@ sub exit_handler ($) {
     
     # Remove temporary files
     system("rm -f /tmp/*.$$");
-    system("rm -rf $isrdir/parceltmp-*-$$")
+    system("rm -rf $isrdir/parceltmp-$$")
 	if $isrdir;
     
     message("EXIT", $status);
@@ -331,28 +336,11 @@ if ($result == 0) {
 }
 
 #
-# Extract the command name
-#
-if (@ARGV == 0) {
-    usage("Missing command");
-}
-if (@ARGV > 2) {
-    usage("Extraneous parameters on command line");
-}
-$command = $ARGV[0];
-$parcel = $ARGV[1];
-
-#
 # Set the the directory where ISR parcels will be stored and if
 # it doesn't yet exist, create an empty one.
 #
-$isrhome = "$ENV{HOME}/.isr";
-$isrdir = "$isrhome/$userid";
+$isrdir = "$ENV{HOME}/.isr";
 
-if (!-e $isrhome) {
-    mkdir($isrhome)
-	or unix_errexit("Unable to make $isrhome");
-}
 if (!-e $isrdir) {
     mkdir($isrdir)
 	or unix_errexit("Unable to make $isrdir");
@@ -362,25 +350,37 @@ if (!-d $isrdir) {
 }
 
 #
-# Set other directory paths that we'll need.
+# Extract the command name
 #
-if ($parcel) {
-    $parceldir = "$isrdir/$parcel";
-    $uploaddir = "$parceldir/upload";
-    # Existence of this file is a flag indicating that the local cache
-    # is identical to the most recent checkin.
-    $cleancache_file = "$parceldir/clean-cache-flag";
-    # Existence of this file is a flag indicating that the temporary
-    # dirty cache is consistent with the local cache.
-    $cdcache_file = "$parceldir/consistent-dirtycache-flag";
+if (@ARGV == 0) {
+    usage("Missing command");
 }
-$hoarddir = "$isrdir/hoard";
+if (@ARGV > 2) {
+    usage("Extraneous parameters on command line");
+}
+$command = $ARGV[0];
 
 #
-# Read parcel.cfg if we have it.
+# Figure out what we know about the specified parcel.
 #
-if ($parcel and -e "$parceldir/parcel.cfg") {
-    parse_parcelcfg("$parceldir/parcel.cfg");
+if (valid_uuid($ARGV[1])) {
+    $uuid = $ARGV[1];
+    sync_parcel_name_from_uuid();
+} elsif ($ARGV[1]) {
+    $parcel = $ARGV[1];
+    sync_parcel_uuid_from_name();
+}
+
+#
+# Set other directory paths that we'll need, and read parcel.cfg if we
+# have it.
+#
+$hoarddir = "$isrdir/hoard";
+if ($uuid) {
+    set_parcel_globals();
+    if (-e "$parceldir/parcel.cfg") {
+        parse_parcelcfg("$parceldir/parcel.cfg");
+    }
 }
 
 #
@@ -407,7 +407,7 @@ if ($command eq "checkp") {
 # checked out, zero otherwise.
 #
 $sessionid = 0;
-if ($parcel && -e "$isrdir/$parcel/nonce" && open(NONCE, "$isrdir/$parcel/nonce")) {
+if ($parceldir && -e "$parceldir/nonce" && open(NONCE, "$parceldir/nonce")) {
     $sessionid = <NONCE>;
     close(NONCE);
     chomp($sessionid);
@@ -422,7 +422,10 @@ if ($command eq "checkout") {
     need_parcel();
     need_network();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
+    # If the parcel isn't checked out, we don't know the UUID, so we take
+    # a "checkout lock" by parcel name.  This means that two different
+    # parcels with the same name can't be in "checkout" at the same time.
+    acquire_lock("$isrdir/checkout-$parcel.lock", "Checkout", 0);
     checkout();
 } 
 elsif ($command eq "resume") {
@@ -434,8 +437,10 @@ elsif ($command eq "resume") {
 	if ((!-e "$isrdir/$parcel") or
 	    (-e "$isrdir/$parcel" and !$disconnected));
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
+    acquire_lock("$isrdir/checkout-$parcel.lock", "Checkout", 0);
     checkout();
+    release_lock("Checkout");
+    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
     run();
 } 
 elsif ($command eq "checkin") {
@@ -443,7 +448,7 @@ elsif ($command eq "checkin") {
     need_checked_out();
     need_network();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
+    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
     checkin();
 } 
 elsif ($command eq "sync") {
@@ -451,26 +456,26 @@ elsif ($command eq "sync") {
     need_checked_out();
     need_network();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
+    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
     sync(0);
 } 
 elsif ($command eq "discard") {
     need_parcel();
     need_checked_out();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
+    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
     discard();
 }
 elsif ($command eq "hoard") {
     need_parcel();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache", 0);
+    # Locking is handled in hoard(), after we know the UUID
     hoard();
 }
 elsif ($command eq "stat") {
     need_parcel();
     need_checked_out();
-    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0)
+    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0)
 	if $checkstate;
     statparcel();
 }
@@ -479,15 +484,14 @@ elsif ($command eq "disconnect") {
     need_checked_out();
     need_network();
     $do_sync = 1;
-    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0)
+    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0)
 	if (!$nocheckstate);
-    acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache", 0);
+    acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
     disconnect();
 }
 elsif ($command eq "checkparcel") {
     need_parcel();
     need_network();
-    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
     checkparcel();
 }
 elsif ($command eq "ls") {
@@ -510,8 +514,9 @@ elsif ($command eq "passwd") {
 }
 elsif ($command eq "clean") {
     need_parcel();
-    acquire_lock("$isrdir/$parcel.lock", "Parcel", 0);
-    acquire_lock("$isrdir/$parcel-hoard.lock", "Hoard cache", 0)
+    # XXX
+    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
+    acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0)
 	if $allflag;
     cleanclient();
 }
@@ -556,7 +561,7 @@ exit 0;
 # checkout - Lock a parcel and copy it from the server to the client
 #
 sub checkout () {
-    my $diskinfo = `df -P -k $isrhome | tail -n 1`;
+    my $diskinfo = `df -P -k $isrdir | tail -n 1`;
     my ($diskpartition, $diskblocks, $diskused, $diskspace, $diskpercent, $diskroot) = split(" ", $diskinfo);
 
     my $clientname = hostname();
@@ -564,7 +569,7 @@ sub checkout () {
     my %map;
 
     # If the parcel is already checked out on this machine, return immediately
-    if (-e $parceldir) {
+    if ($parceldir and -e $parceldir) {
 	print(GREEN, "Success: Parcel $userid/$parcel already checked out on this host. Ready to run.\n", RESET)
 	    if $verbose;
 	return;
@@ -584,6 +589,8 @@ sub checkout () {
 	errexit("Parcel $userid/$parcel does not exist on the server ($server).");
     }
     parse_parcelcfg("$isrdir/$parcel-parcel.cfg");
+    $uuid = $cfg{"UUID"};
+    set_parcel_globals();
 
     # Before going any further, make sure we have a protocol level
     # connection to the server and a consistent parcel.
@@ -908,9 +915,9 @@ sub sync ($) {
 
     # Retry if the put operation fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
-	if (mysystem("rsync -e ssh --partial -z $vflag $bwflag $isrdir/$parcel.log $userid\@$cfg{WPATH}/session.log.new") == 0) {
+	if (mysystem("rsync -e ssh --partial -z $vflag $bwflag $isrdir/$uuid.log $userid\@$cfg{WPATH}/session.log.new") == 0) {
 	    if (isr_srun("catlog", "-u $userid -p $parcel -f session.log.new", "", 0) == 0) {
-		unlink("$isrdir/$parcel.log");
+		unlink("$isrdir/$uuid.log");
 		last;
 	    }
 	}
@@ -1053,7 +1060,9 @@ sub hoard () {
 	if $verbose;
     
     # Assign a temporary parcel directory
-    $parceldir = "$isrdir/parceltmp-$userid-$parcel-$$";
+    $parceldir = "$isrdir/parceltmp-$$";
+    system("rm -rf $parceldir") == 0
+        or errexit("Couldn't remove old temp directory $parceldir");
 
     # Before going any further, make sure we have a protocol level
     # connection to the server and a valid parcel
@@ -1070,6 +1079,10 @@ sub hoard () {
     isr_srun("getconfig", "-p $parcel", "$parceldir/parcel.cfg", 0) == 0
 	or errexit("Parcel $userid/$parcel does not exist on the server ($server).");
     parse_parcelcfg("$parceldir/parcel.cfg");
+    # We couldn't acquire the hoard lock during startup, because we didn't
+    # know the UUID.  Now we can.
+    $uuid = $cfg{"UUID"};
+    acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
     acquire_lock("$imgbase.lock", "Hoard image", 1);
     fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0, undef) == 0
 	or errexit("Unable to fetch keyring.enc");
@@ -1245,11 +1258,24 @@ sub need_parcel () {
 }
 
 #
+# Some commands require a UUID on the command line
+#
+sub need_uuid() {
+    usage("Missing parcel UUID")
+	if !$uuid;
+    
+    $log_enabled = 1;
+    message("START", "OpenISR " . ISRVERSION . ", revision " . RCS_REVISION);
+    message("ENTER", "@ARGV");
+    message("BEGIN", $command);
+}
+
+#
 # Some commands don't work on a particular parcel
 #
 sub need_not_parcel () {
-    usage("\"$command\" does not take a parcel name")
-	if $parcel;
+    usage("\"$command\" does not take a parcel name/UUID")
+	if $parcel or $uuid;
 }
 
 #
@@ -1257,7 +1283,7 @@ sub need_not_parcel () {
 #
 sub need_checked_out () {
     errexit("Parcel $userid/$parcel not checked out. Checkout or resume first.")
-	if (!-e "$isrdir/$parcel");
+	if !defined $uuid or !-e "$isrdir/$uuid";
 }
 
 #
@@ -1368,6 +1394,87 @@ sub clean ($) {
     }
     
     return $ret;
+}
+
+#
+# set_parcel_globals - Set global variables giving paths to parcel pieces.
+#
+sub set_parcel_globals () {
+    return if !$uuid;
+    
+    $parceldir = "$isrdir/$uuid";
+    $uploaddir = "$parceldir/upload";
+    # Existence of this file is a flag indicating that the local cache
+    # is identical to the most recent checkin.
+    $cleancache_file = "$parceldir/clean-cache-flag";
+    # Existence of this file is a flag indicating that the temporary
+    # dirty cache is consistent with the local cache.
+    $cdcache_file = "$parceldir/consistent-dirtycache-flag";
+}
+
+#
+# valid_uuid - Return 1 if the specified UUID is well-formed, 0 otherwise
+#
+sub valid_uuid ($) {
+    my $uuid = shift;
+    
+    return 0
+        if !defined $uuid;
+    return ($uuid =~ /^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-
+	               [[:xdigit:]]{4}-[[:xdigit:]]{12}$/x)
+}
+
+#
+# sync_parcel_uuid_from_name - Set $uuid global given $server, $user, and
+#                              $parcel, if the parcel is checked out.  Return
+#                              1 if successful, 0 otherwise.
+#
+sub sync_parcel_uuid_from_name () {
+    my $dir;
+    my %pcfg;
+    my $ret = 0;
+    
+    opendir(DIR, $isrdir)
+        or errexit("Can't read $isrdir");
+    while ($dir = readdir(DIR)) {
+	next
+	    if ! -d "$isrdir/$dir" or !valid_uuid($dir);
+	if (! -e "$isrdir/$dir/parcel.cfg") {
+	    err("Missing parcel.cfg file in $isrdir/$dir");
+	    next;
+	}
+	if (!parse_cfgfile("$isrdir/$dir/parcel.cfg", \%pcfg)) {
+	    err("Couldn't parse $isrdir/$dir/parcel.cfg");
+	    next;
+	}
+	if ($pcfg{"SERVER"} eq $server and $pcfg{"USER"} eq $userid
+                    and $pcfg{"PARCEL"} eq $parcel) {
+	    $uuid = $dir;
+	    $ret = 1;
+	    last;
+	}
+	undef %pcfg;
+    }
+    closedir(DIR);
+    return $ret;
+}
+
+#
+# sync_parcel_name_from_uuid - Set $server, $user, and $parcel globals from
+#                              $uuid, if the parcel is checked out.  Return
+#                              1 if successful, 0 otherwise.
+#
+sub sync_parcel_name_from_uuid () {
+    my %pcfg;
+    
+    return 0
+        unless -f "$isrdir/$uuid/parcel.cfg";
+    errexit("Couldn't parse $isrdir/$uuid/parcel.cfg")
+	if !parse_cfgfile("$isrdir/$uuid/parcel.cfg", \%pcfg);
+    $server = $pcfg{"SERVER"};
+    $userid = $pcfg{"USER"};
+    $parcel = $pcfg{"PARCEL"};
+    return 1;
 }
 
 #
@@ -1772,7 +1879,7 @@ sub decrypt_cfg ($) {
 #                        are running.
 #
 sub get_parcelkeeper_pid () {
-    my $pidfile = "$isrdir/$parcel/parcelkeeper.pid";
+    my $pidfile = "$parceldir/parcelkeeper.pid";
     my $pid;
     
     -e $pidfile or return 0;
@@ -1989,13 +2096,18 @@ sub message($$) {
 
     my $date = localtime();
     my $string;
-    my $isrdir;
+    my $logfile;
 
     return
         if !$log_enabled;
     $string = message_string();
-    $isrdir = "$ENV{HOME}/.isr/$userid";
-    open(LOG, ">>$isrdir/$parcel.log")
+    # XXX
+    if ($uuid) {
+        $logfile = "$ENV{HOME}/.isr/$uuid.log";
+    } else {
+	$logfile = "$ENV{HOME}/.isr/isr.log";
+    }
+    open(LOG, ">>", $logfile)
 	or return;
     print LOG "$date|$event|$string|$msg\n";
     close(LOG);
@@ -2194,7 +2306,7 @@ sub isr_run_parcelkeeper ($$) {
     }
     
     if ($do_log) {
-	$cmd .= " --log $parceldir/../$parcel.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}";
+	$cmd .= " --log $parceldir/../$uuid.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}";
     } else {
 	$cmd .= " --log /dev/null '' 0x0 $syscfg{console_logmask}";
     }
