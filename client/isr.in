@@ -184,8 +184,7 @@ sub exit_handler ($) {
     
     # Remove temporary files
     system("rm -f /tmp/*.$$");
-    system("rm -rf /tmp/parcel* /tmp/ls.* > /dev/null 2>&1");
-    system("rm -rf $isrdir/tmplast*")
+    system("rm -rf $isrdir/tmplast*-$$")
 	if $isrdir;
     
     message("EXIT", $status);
