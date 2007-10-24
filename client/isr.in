@@ -2341,7 +2341,7 @@ sub isr_parcelkeeper_cmd ($$) {
     }
     
     if ($do_log) {
-	$cmd .= " --log $parceldir/../$uuid.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}";
+	$cmd .= " --log $isrdir/$uuid.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}";
     } else {
 	$cmd .= " --log /dev/null '' 0x0 $syscfg{console_logmask}";
     }
