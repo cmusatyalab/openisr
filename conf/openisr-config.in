@@ -90,5 +90,6 @@ system(INITSCRIPT . " start") == 0
 	or fail "Couldn't load kernel modules";
 
 print "\n";
-status "Success!";
+status "Successfully installed OpenISR kernel modules.  Please ensure that\n" .
+	INITSCRIPT . " is configured to run at boot.";
 exit 0;
