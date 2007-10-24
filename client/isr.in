@@ -136,6 +136,7 @@ sub exit_handler ($);
 sub isr_srun ($$$$);
 sub isr_connected_parcel ();
 sub isr_connected_http ();
+sub isr_parcelkeeper_cmd ($$);
 sub isr_run_parcelkeeper ($$);
 sub isr_stathoard ();
 sub isr_checkhoard ();
@@ -2311,10 +2312,10 @@ sub isr_connected_http () {
 }
 
 #
-# isr_run_parcelkeeper - Run the Parcelkeeper process and return its
-#                        exit status.
+# isr_parcelkeeper_cmd - Return the command string to execute Parcelkeeper
+#                        with the given parameters.
 #
-sub isr_run_parcelkeeper ($$) {
+sub isr_parcelkeeper_cmd ($$) {
     my $mode = shift;
     my $args = shift;
     
@@ -2344,10 +2345,19 @@ sub isr_run_parcelkeeper ($$) {
     } else {
 	$cmd .= " --log /dev/null '' 0x0 $syscfg{console_logmask}";
     }
+    return $cmd;
+}
 
-    #
-    # Crank up PK with all the right arguments
-    #
+#
+# isr_run_parcelkeeper - Run the Parcelkeeper process and return its
+#                        exit status.
+#
+sub isr_run_parcelkeeper ($$) {
+    my $mode = shift;
+    my $args = shift;
+    
+    my $cmd = isr_parcelkeeper_cmd($mode, $args);
+    
     if ($mode eq "run") {
 	# Don't allow SIGINT
         return system($cmd);
