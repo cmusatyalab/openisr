@@ -64,7 +64,7 @@ closedir(DIR);
 @files == 1
 	or fail "Problem unpacking temporary directory";
 $subdir = "$topdir/$files[0]";
-$subdir =~ /openisr-([0-9.]+)$/
+$subdir =~ /openisr-([0-9a-zA-Z.-]+)$/
 	or fail "Couldn't parse source directory name";
 $1 eq VERSION
 	or warning "Expected module version " . VERSION . ", found $1";
