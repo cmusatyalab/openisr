@@ -142,6 +142,11 @@ the /dev/loopN devices
 
 - Run "/etc/init.d/openisr start" to load the kernel modules
 
+If you upgrade your kernel after installing the OpenISR system, you will
+need to rebuild the OpenISR kernel modules.  You can do this by re-running
+"configure", "make", "make install", and "depmod", or you can run
+"openisr-config" as root to do all of this for you.
+
 COMPONENTS AND THEIR LICENSES
 -----------------------------
 
