@@ -637,4 +637,7 @@ Research Pittsburgh; David O'Hallaron, Mahadev (Satya) Satyanarayanan,
 Matt Toups, and Benjamin Gilbert from Carnegie Mellon; and Partho Nath
 from Penn State. 
 
+.SH SEE ALSO
+.BR openisr-config (8)
+
 .\" end of file
