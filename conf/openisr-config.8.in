@@ -1,0 +1,51 @@
+.\" openisr-config - script to build and install the kernel modules for the
+.\"                  OpenISR (TM) system
+.\"
+.\" Copyright (C) 2007 Carnegie Mellon University
+.\"
+.\" This software is distributed under the terms of the Eclipse Public License,
+.\" Version 1.0 which can be found in the file named LICENSE.Eclipse.  ANY USE,
+.\" REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES RECIPIENT'S
+.\" ACCEPTANCE OF THIS AGREEMENT
+.\"
+.TH OPENISR-CONFIG 8 "October 24, 2007" "OpenISR !!VERSION!!" "Administrative Commands"
+
+.SH NAME
+openisr-config - build and install the OpenISR kernel modules
+
+.SH SYNOPSIS
+.B openisr-config
+
+.SH DESCRIPTION
+.B openisr-config
+is a helper program to build and install the kernel modules for the client
+part of the OpenISR\*(Tm system.  Depending on your installation method, you
+may need to run this command to complete the installation of the OpenISR
+client.  In addition, you must run this command after a kernel upgrade
+in order to build modules for your new kernel.
+.BR isr (1)
+will tell you when you need to do this.
+
+After the modules are built and installed,
+.B openisr-config
+will load them into the running kernel.  Therefore, you do not need to reboot
+after running this command.
+
+.B openisr-config
+will unload any previously-loaded OpenISR modules.  If the modules cannot be
+unloaded, perhaps because a parcel is currently resumed on this host, the
+program will abort.
+
+This program must be run as root.
+
+.SH EXIT STATUS
+.B openisr-config
+returns 0 on success and 1 on failure.
+
+.SH BUGS
+There is no way to tell
+.B openisr-config
+to build modules against a kernel other than the one currently running.
+
+.SH SEE ALSO
+.BR isr (1)

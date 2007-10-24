@@ -6,12 +6,13 @@ dist_pkgdata_DATA = config
 dist_udev_DATA = openisr.rules
 initexec_SCRIPTS = openisr.init
 sbin_SCRIPTS = openisr-config
+man_MANS = openisr-config.8
 
 # Dummy variables to cause directories to be created
 dist_pkgsysconf_DATA = 
 dist_udevrules_DATA = 
 
-GEN = openisr.init openisr-config
+GEN = openisr.init openisr-config openisr-config.8
 CLEANFILES = $(GEN)
 EXTRA_DIST = $(GEN:=.in) magic
 
