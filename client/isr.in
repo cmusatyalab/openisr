@@ -72,7 +72,7 @@ sub progress ($$);
 sub build_cache ($$);
 sub hdksize ($$$);
 sub connected ();
-sub check_nexus_version ();
+sub check_for_nexus ();
 sub get_dirnum ($$);
 sub get_chunknum ($$);
 sub get_vulpespid ();
@@ -803,13 +803,7 @@ sub run ($$$$) {
     if (!-e $vulpescmd or !-x $vulpescmd ) {
 	errexit("Could not find an executable Vulpes binary.");
     }
-    if (!-d "/sys/class/openisr") {
-        errexit("The OpenISR kernel module does not appear to be loaded.");
-    }
-    if (!-e "/dev/openisrctl") {
-        errexit("Nexus control device does not exist");
-    }
-    check_nexus_version();
+    check_for_nexus();
 
     # If the user wants to run disconnected, they better have all of their
     # disk blocks hoarded in the local or hoard cache
@@ -1995,10 +1989,10 @@ sub connected () {
 }
 
 #
-# check_nexus_version - print a warning if the Nexus release number is older
-#                       than our own
+# check_for_nexus - Make sure Nexus is loaded and accessible, and print a
+#                   warning if its release number is older than our own
 #
-sub check_nexus_version () {
+sub check_for_nexus () {
     my $nexus_version;
     my $nexus_major;
     my $nexus_minor;
@@ -2009,6 +2003,13 @@ sub check_nexus_version () {
     my $isr_patch;
     my $warn = 0;
     
+    # Check for fatal problems first
+    -d "/sys/class/openisr"
+        or errexit("The OpenISR kernel module does not appear to be loaded.  Please run 'openisr-config' as root.");
+    -e "/dev/openisrctl"
+        or errexit("Nexus control device does not exist; udev misconfiguration?");
+    
+    # Now check the Nexus version
     if (!-e "/sys/class/openisr/release") {
 	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
 	message("INFO", "Nexus is out of date (<=0.8.3 vs. $isr_version)");
