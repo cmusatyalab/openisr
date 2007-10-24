@@ -161,7 +161,6 @@ my $longvers;        # Print specific number of versions for ls long format
 my $version;         # Rollback version
 my $checkstate = 0;  # Optionally check content consistency in some cmds
 my $noautoflag;      # Don't automatically start/stop VMware at launch time
-my $allflag;         # "clean" should delete all state, including hoard cache
 
 # Write once globals that are visible in this module only. These globals are
 # needed to cleanly handle logging.
@@ -317,7 +316,6 @@ if (@ARGV == 0) {
 Getopt::Long::Configure("no_ignore_case", "bundling_override",
 			"no_getopt_compat");
 $result = GetOptions(
-		     "a|allstate"     => \$allflag,
 		     "b|bwlimit=i"    => \$bwlimit,
 		     "c|checkstate+"  => \$checkstate,
 		     "x|nocheckstate" => \$nocheckstate,
@@ -517,8 +515,6 @@ elsif ($command eq "clean") {
     need_parcel();
     # XXX
     acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
-    acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0)
-	if $allflag;
     cleanclient();
 }
 elsif ($command eq "help") {
@@ -1221,13 +1217,6 @@ sub cleanclient() {
 	if $verbose;
     if (clean(0)) {
 	return;
-    }
-
-    # Optionally remove the parcel's hoard cache, too
-    if ($allflag) {
-	print("Deleting hoard cache...\n")
-	    if $verbose;
-        # XXX
     }
 
     print(GREEN, "Success: Parcel $userid/$parcel erased from client and server lock released.\n", RESET)
@@ -2230,7 +2219,7 @@ sub usage ($) {
 	print "  checkin    Sync parcel to server and release lock (-b optional).\n";
 	print "  checkout   Fetch parcel from server and acquire its lock (-r optional).\n";
 	print "  checkp     Check parcel on server for consistency (-r and -c optional).\n";
-	print "  clean      Remove parcel from client and release its lock (-a optional).\n";
+	print "  clean      Remove parcel from client and release its lock.\n";
 	print "  deauth     Remove authentication credentials from your client.\n";
 	print "  discard    Discard all local changes to parcel since last checkout or sync.\n";
 	print "  disconnect Prepare the client to run a parcel disconnected (-x optional).\n";
@@ -2244,7 +2233,6 @@ sub usage ($) {
 	print "  version    Print ISR version.\n";
     }
     print "Options:\n";
-    print "  -a,--allstate      Remove all hoarded state from client [clean].\n";
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [ci, sync].\n";
     print "  -c,--checkstate    Do additional consistency check [checkp, stat].\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [resume].\n";
