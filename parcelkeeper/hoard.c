@@ -19,7 +19,7 @@
 #include <time.h>
 #include "defs.h"
 
-#define HOARD_INDEX_VERSION 2
+#define HOARD_INDEX_VERSION 3
 #define EXPAND_CHUNKS 64
 
 static pk_err_t create_hoard_index(void)
@@ -46,7 +46,7 @@ static pk_err_t create_hoard_index(void)
 				/* 512-byte sectors */
 				"offset INTEGER UNIQUE NOT NULL, "
 				"length INTEGER,"
-				"last_access INTEGER,"
+				"last_access INTEGER NOT NULL DEFAULT 0,"
 				"referenced INTEGER NOT NULL DEFAULT 0)",
 				NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create chunk table");
@@ -114,7 +114,7 @@ static pk_err_t expand_cache(void)
 static void deallocate_chunk_offset(int offset)
 {
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET tag = NULL, "
-				"length = NULL, last_access = NULL, "
+				"length = NULL, last_access = 0, "
 				"referenced = 0 WHERE offset = ?", "d",
 				offset)) {
 		pk_log(LOG_ERROR, "Couldn't deallocate hoard chunk at "
@@ -798,15 +798,9 @@ int check_hoard(void)
 	}
 
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
-				"last_access = NULL, referenced = 0 "
+				"last_access = 0, referenced = 0 "
 				"WHERE tag NOTNULL AND length ISNULL",
 				"chunks with null length"))
-		goto bad;
-	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
-				"length = NULL, last_access = NULL, "
-				"referenced = 0 WHERE last_access ISNULL "
-				"AND tag NOTNULL",
-				"chunks with null access time"))
 		goto bad;
 	if (cleanup_action(state.db, "DELETE FROM hoard.refs WHERE parcel "
 				"NOT IN (SELECT parcel FROM hoard.parcels)",
