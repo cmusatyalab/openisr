@@ -598,9 +598,9 @@ int rmhoard(void)
 				"FROM hoard.parcels WHERE uuid == ?", "S",
 				config.uuid) != SQLITE_ROW) {
 		query_free(stmt);
-		pk_log(LOG_ERROR, "Couldn't find parcel with UUID %s",
-					config.uuid);
-		goto bad;
+		pk_log(LOG_INFO, "rmhoard: %s: No such parcel", config.uuid);
+		rollback(state.db);
+		return 0;
 	}
 	query_row(stmt, "dsss", &parcel, &server, &user, &name);
 	/* server, user, and name expire when we free the query */
