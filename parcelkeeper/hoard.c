@@ -72,6 +72,14 @@ static pk_err_t create_hoard_index(void)
 	return PK_SUCCESS;
 }
 
+static int timestamp(void)
+{
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	return tv.tv_sec;
+}
+
 /* XXX cache chunks of different sizes */
 /* must be within transaction */
 static pk_err_t expand_cache(void)
@@ -142,7 +150,6 @@ static pk_err_t add_chunk_reference(const void *tag)
 pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 {
 	sqlite3_stmt *stmt;
-	struct timeval tv;
 	int offset;
 	int clen;
 	pk_err_t ret;
@@ -170,9 +177,8 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	query_row(stmt, "dd", &offset, &clen);
 	query_free(stmt);
 
-	gettimeofday(&tv, NULL);
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET last_access = ? "
-				"WHERE tag == ?", "db", tv.tv_sec, tag,
+				"WHERE tag == ?", "db", timestamp(), tag,
 				parcel.hashlen)) {
 		/* Not fatal */
 		pk_log(LOG_ERROR, "Couldn't update chunk timestamp");
@@ -218,7 +224,6 @@ bad:
 pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 {
 	sqlite3_stmt *stmt;
-	struct timeval tv;
 	pk_err_t ret;
 	int offset;
 	int sret;
@@ -259,10 +264,9 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	query_row(stmt, "d", &offset);
 	query_free(stmt);
 
-	gettimeofday(&tv, NULL);
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET length = ?, "
 				"last_access = ?, referenced = 1 WHERE "
-				"offset == ?", "ddd", len, tv.tv_sec,
+				"offset == ?", "ddd", len, timestamp(),
 				offset)) {
 		pk_log(LOG_ERROR, "Couldn't allocate hoard cache chunk");
 		ret=PK_IOERR;
