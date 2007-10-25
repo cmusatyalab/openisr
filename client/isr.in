@@ -88,6 +88,7 @@ sub clean ($);
 sub cleanclient ();
 sub hoard ();
 sub listhoard ();
+sub rmhoard ();
 sub checkparcel ();
 sub statparcel ();
 sub set_parcel_globals;
@@ -502,6 +503,10 @@ elsif ($command eq "ls") {
 elsif ($command eq "lshoard") {
     need_not_parcel();
     listhoard();
+}
+elsif ($command eq "rmhoard") {
+    need_uuid();
+    rmhoard();
 }
 elsif ($command eq "auth") {
     need_not_parcel();
@@ -1316,6 +1321,45 @@ sub listhoard () {
 	}
     }
     # XXX shared and garbage chunks
+}
+
+#
+# rmhoard - Remove a parcel from the hoard cache
+#
+sub rmhoard () {
+    my $desc;
+    
+    if ($server and $userid and $parcel) {
+	$desc = "$server/$userid/$parcel";
+    } else {
+	$desc = $uuid;
+    }
+    
+    print "Removing $desc from the hoard cache...\n"
+        if $verbose;
+    isr_run_parcelkeeper("rmhoard", "hoard uuid") == 0
+        or errexit("Couldn't run Parcelkeeper rmhoard");
+    
+    #
+    # Now remove the img files.  We can always remove the keyring, but if
+    # the parcel is checked out we can't remove the memory image because
+    # "isr discard" will break.
+    #
+    acquire_lock("$imgbase.lock", "Hoard image", 1);
+    if (-e "$imgbase.key") {
+	unlink("$imgbase.key")
+	    or errexit("Couldn't unlink $imgbase.key");
+    }
+    if (-e "$imgbase.cfg") {
+	if (-e $parceldir) {
+	    print "Not removing memory image for $desc, since it is checked out\n"
+		if $verbose;
+	    message("INFO", "Skipping unlink of memory image");
+	} else {
+	    unlink("$imgbase.cfg");
+	}
+    }
+    release_lock("Hoard image");
 }
 
 #
@@ -2346,8 +2390,8 @@ sub usage ($) {
 
     print RED, "Usage: $progname command [parcel] [options...]\n", RESET;
     print BLUE, "Commands: auth, checkin (ci), checkout (co), checkp, clean, deauth, discard,\n", RESET;
-    print BLUE, "          disconnect, help, hoard, ls, lshoard, passwd, resume, stat, sync,\n", RESET;
-    print BLUE, "          version\n", RESET;
+    print BLUE, "          disconnect, help, hoard, ls, lshoard, passwd, resume, rmhoard, stat,\n", RESET;
+    print BLUE, "          sync, version\n", RESET;
     print BLUE, "Parcel is required for most commands\n", RESET;
     if (!$msg) {
 	print "Basic commands:\n";
@@ -2365,6 +2409,7 @@ sub usage ($) {
 	print "  lshoard    List info about the hoard cache (-l optional).\n";
 	print "  passwd     Change your ISR password on the server.\n";
  	print "  resume     Checkout (if necessary) and run a parcel (-r and -d optional).\n";
+	print "  rmhoard    Remove a parcel from the hoard cache\n";
 	print "  stat       Display information about local ISR state (-c optional).\n";
 	print "  sync       Make new parcel version on server w/o releasing lock (-b optional).\n";
 	print "  version    Print ISR version.\n";
@@ -2469,6 +2514,8 @@ sub isr_parcelkeeper_cmd ($$) {
 	    $cmd .= " --hoard $hoarddir";
 	} elsif ($arg eq "compression") {
 	    $cmd .= " --compression $syscfg{compression}";
+	} elsif ($arg eq "uuid") {
+	    $cmd .= " --uuid $uuid";
 	} elsif ($arg eq "log") {
 	    $do_log = 1;
 	} else {
