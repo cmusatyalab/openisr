@@ -111,7 +111,7 @@ static void deallocate_chunk_offset(int offset)
 	}
 }
 
-static void add_chunk_reference(const void *tag)
+static pk_err_t add_chunk_reference(const void *tag)
 {
 	char *ftag;
 
@@ -123,8 +123,9 @@ static void add_chunk_reference(const void *tag)
 		pk_log(LOG_ERROR, "Couldn't add chunk reference for tag %s",
 					ftag);
 		free(ftag);
-		/* Non-fatal */
+		return PK_IOERR;
 	}
+	return PK_SUCCESS;
 }
 
 pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
@@ -165,7 +166,9 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 		/* Not fatal */
 		pk_log(LOG_ERROR, "Couldn't update chunk timestamp");
 	}
-	add_chunk_reference(tag);
+	ret=add_chunk_reference(tag);
+	if (ret)
+		goto bad;
 
 	ret=commit(state.db);
 	if (ret)
@@ -218,7 +221,9 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	sret=query(NULL, state.db, "SELECT tag FROM hoard.chunks WHERE "
 				"tag == ?", "b", tag, parcel.hashlen);
 	if (sret == SQLITE_ROW) {
-		add_chunk_reference(tag);
+		ret=add_chunk_reference(tag);
+		if (ret)
+			goto bad;
 		ret=commit(state.db);
 		if (ret)
 			goto bad;
@@ -277,22 +282,25 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 		deallocate_chunk_offset(offset);
 	} else if (sret != SQLITE_OK) {
 		pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
-		rollback(state.db);
-		deallocate_chunk_offset(offset);
-		return PK_IOERR;
+		ret=PK_IOERR;
+		goto bad_dealloc;
 	}
-	add_chunk_reference(tag);
+	ret=add_chunk_reference(tag);
+	if (ret)
+		goto bad_dealloc;
 	ret=commit(state.db);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
-		rollback(state.db);
-		deallocate_chunk_offset(offset);
-		return ret;
+		goto bad_dealloc;
 	}
 	return PK_SUCCESS;
 
 bad:
 	rollback(state.db);
+	return ret;
+bad_dealloc:
+	rollback(state.db);
+	deallocate_chunk_offset(offset);
 	return ret;
 }
 
