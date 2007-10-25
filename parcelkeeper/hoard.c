@@ -19,7 +19,7 @@
 #include <time.h>
 #include "defs.h"
 
-#define HOARD_INDEX_VERSION 1
+#define HOARD_INDEX_VERSION 2
 #define EXPAND_CHUNKS 64
 
 static pk_err_t create_hoard_index(void)
@@ -46,7 +46,9 @@ static pk_err_t create_hoard_index(void)
 				/* 512-byte sectors */
 				"offset INTEGER UNIQUE NOT NULL, "
 				"length INTEGER,"
-				"last_access INTEGER)", NULL)) {
+				"last_access INTEGER,"
+				"referenced INTEGER NOT NULL DEFAULT 0)",
+				NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create chunk table");
 		return PK_IOERR;
 	}
@@ -104,8 +106,9 @@ static pk_err_t expand_cache(void)
 static void deallocate_chunk_offset(int offset)
 {
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET tag = NULL, "
-				"length = NULL, last_access = NULL "
-				"WHERE offset = ?", "d", offset)) {
+				"length = NULL, last_access = NULL, "
+				"referenced = 0 WHERE offset = ?", "d",
+				offset)) {
 		pk_log(LOG_ERROR, "Couldn't deallocate hoard chunk at "
 					"offset %d", offset);
 	}
@@ -121,6 +124,14 @@ static pk_err_t add_chunk_reference(const void *tag)
 				!= SQLITE_OK) {
 		ftag=format_tag(tag);
 		pk_log(LOG_ERROR, "Couldn't add chunk reference for tag %s",
+					ftag);
+		free(ftag);
+		return PK_IOERR;
+	}
+	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 1 "
+				" WHERE tag == ?", "b", tag, parcel.hashlen)) {
+		ftag=format_tag(tag);
+		pk_log(LOG_ERROR, "Couldn't set referenced flag for tag %s",
 					ftag);
 		free(ftag);
 		return PK_IOERR;
@@ -250,8 +261,9 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 
 	gettimeofday(&tv, NULL);
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET length = ?, "
-				"last_access = ? WHERE offset == ?", "ddd",
-				len, tv.tv_sec, offset)) {
+				"last_access = ?, referenced = 1 WHERE "
+				"offset == ?", "ddd", len, tv.tv_sec,
+				offset)) {
 		pk_log(LOG_ERROR, "Couldn't allocate hoard cache chunk");
 		ret=PK_IOERR;
 		goto bad;
@@ -319,27 +331,42 @@ pk_err_t hoard_sync_refs(int from_cache)
 		sret=query(NULL, state.db, "CREATE TEMP VIEW newrefs AS "
 					"SELECT DISTINCT tag FROM prev.keys",
 					NULL);
+	ret=PK_IOERR;
 	if (sret) {
 		pk_log(LOG_ERROR, "Couldn't generate tag list");
-		ret=PK_IOERR;
+		goto bad;
+	}
+	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 0 "
+				"WHERE tag IN "
+				"(SELECT tag FROM hoard.refs WHERE parcel == ? "
+				"AND tag NOT IN (SELECT tag FROM temp.newrefs) "
+				"AND tag NOT IN (SELECT tag FROM hoard.refs "
+				"WHERE parcel != ?))", "dd", state.hoard_ident,
+				state.hoard_ident)) {
+		pk_log(LOG_ERROR, "Couldn't garbage-collect referenced flags");
 		goto bad;
 	}
 	if (query(NULL, state.db, "DELETE FROM hoard.refs WHERE parcel == ? "
 				"AND tag NOT IN (SELECT tag FROM temp.newrefs)",
 				"d", state.hoard_ident)) {
 		pk_log(LOG_ERROR, "Couldn't garbage-collect hoard refs");
-		/* Non-fatal */
+		goto bad;
 	}
 	if (query(NULL, state.db, "INSERT OR IGNORE INTO hoard.refs "
 				"(parcel, tag) SELECT ?, tag FROM temp.newrefs "
 				"WHERE tag IN (SELECT tag FROM hoard.chunks)",
 				"d", state.hoard_ident)) {
 		pk_log(LOG_ERROR, "Couldn't insert new hoard refs");
-		/* XXX? */
+		goto bad;
+	}
+	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 1 "
+				"WHERE tag IN (SELECT tag FROM temp.newrefs)",
+				NULL)) {
+		pk_log(LOG_ERROR, "Couldn't updated referenced flags");
+		goto bad;
 	}
 	if (query(NULL, state.db, "DROP VIEW temp.newrefs", NULL)) {
 		pk_log(LOG_ERROR, "Couldn't drop temporary view");
-		ret=PK_IOERR;
 		goto bad;
 	}
 	ret=commit(state.db);
@@ -633,6 +660,14 @@ int rmhoard(void)
 
 	pk_log(LOG_INFO, "Removing parcel %s from hoard cache...", desc);
 	free(desc);
+	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 0 "
+				"WHERE tag IN (SELECT tag FROM hoard.refs "
+				"WHERE parcel == ? AND tag NOT IN "
+				"(SELECT tag FROM hoard.refs WHERE "
+				"PARCEL != ?))", "dd", parcel, parcel)) {
+		pk_log(LOG_ERROR, "Couldn't update referenced flags");
+		goto bad;
+	}
 	if (query(NULL, state.db, "DELETE FROM hoard.refs WHERE parcel == ?",
 				"d", parcel) != SQLITE_OK) {
 		pk_log(LOG_ERROR, "Couldn't remove parcel from hoard cache");
@@ -674,7 +709,8 @@ int gc_hoard(void)
 	goal=config.minsize * 8;
 	if (goal < total) {
 		if (query(NULL, state.db, "UPDATE hoard.chunks SET "
-					"tag = NULL, length = NULL "
+					"tag = NULL, length = NULL, "
+					"referenced = 0 "
 					"WHERE tag IN "
 					"(SELECT tag FROM hoard.chunks "
 					"WHERE tag NOT IN "
@@ -707,7 +743,7 @@ static pk_err_t cleanup_action(sqlite3 *db, char *sql, char *desc)
 	}
 	changes=sqlite3_changes(db);
 	if (changes > 0)
-		pk_log(LOG_INFO, "Removed %d %s", changes, desc);
+		pk_log(LOG_INFO, "Cleaned %d %s", changes, desc);
 	return PK_SUCCESS;
 }
 
@@ -750,13 +786,14 @@ int check_hoard(void)
 	}
 
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
-				"last_access = NULL WHERE tag NOTNULL AND "
-				"length ISNULL",
+				"last_access = NULL, referenced = 0 "
+				"WHERE tag NOTNULL AND length ISNULL",
 				"chunks with null length"))
 		goto bad;
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
-				"length = NULL, last_access = NULL WHERE "
-				"last_access ISNULL AND tag NOTNULL",
+				"length = NULL, last_access = NULL, "
+				"referenced = 0 WHERE last_access ISNULL "
+				"AND tag NOTNULL",
 				"chunks with null access time"))
 		goto bad;
 	if (cleanup_action(state.db, "DELETE FROM hoard.refs WHERE parcel "
@@ -766,6 +803,16 @@ int check_hoard(void)
 	if (cleanup_action(state.db, "DELETE FROM hoard.refs WHERE tag NOT IN "
 				"(SELECT tag FROM hoard.chunks)",
 				"refs with dangling tag"))
+		goto bad;
+	if (cleanup_action(state.db, "UPDATE hoard.chunks SET referenced = 0 "
+				"WHERE referenced == 1 AND tag NOTNULL AND "
+				"tag NOT IN (SELECT tag FROM hoard.refs)",
+				"chunks with spurious referenced flag"))
+		goto bad;
+	if (cleanup_action(state.db, "UPDATE hoard.chunks SET referenced = 1 "
+				"WHERE referenced == 0 AND tag NOTNULL AND "
+				"tag IN (SELECT tag FROM hoard.refs)",
+				"chunks with missing referenced flag"))
 		goto bad;
 
 	/* XXX validate offsets and offset/length pairs */
