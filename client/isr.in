@@ -90,7 +90,7 @@ sub hoard ();
 sub listhoard ();
 sub checkparcel ();
 sub statparcel ();
-sub set_parcel_globals ();
+sub set_parcel_globals;
 sub valid_uuid ($);
 sub sync_parcel_uuid_from_name ();
 sub sync_parcel_name_from_uuid ();
@@ -1084,9 +1084,10 @@ sub hoard () {
     isr_srun("getconfig", "-p $parcel", "$parceldir/parcel.cfg", 0) == 0
 	or errexit("Parcel $userid/$parcel does not exist on the server ($server).");
     parse_parcelcfg("$parceldir/parcel.cfg");
+    $uuid = $cfg{"UUID"};
+    set_parcel_globals($parceldir);
     # We couldn't acquire the hoard lock during startup, because we didn't
     # know the UUID.  Now we can.
-    $uuid = $cfg{"UUID"};
     acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
     acquire_lock("$imgbase.lock", "Hoard image", 1);
     fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0, undef) == 0
@@ -1518,12 +1519,21 @@ sub clean ($) {
 
 #
 # set_parcel_globals - Set global variables giving paths to parcel pieces.
+#                      If a parameter is provided, set the parcel dir to that
+#                      value rather than the default.
 #
-sub set_parcel_globals () {
+sub set_parcel_globals {
+    my $given_dir = shift;
+    
     return if !$uuid;
     
-    $parceldir = "$isrdir/$uuid";
+    if ($given_dir) {
+	$parceldir = $given_dir;
+    } else {
+	$parceldir = "$isrdir/$uuid";
+    }
     $uploaddir = "$parceldir/upload";
+    $imgbase = "$hoarddir/img/$uuid";
     # Existence of this file is a flag indicating that the local cache
     # is identical to the most recent checkin.
     $cleancache_file = "$parceldir/clean-cache-flag";
@@ -1669,9 +1679,6 @@ sub parse_parcelcfg ($) {
     # Every read and write path gets appended with the userid and parcel
     $cfg{RPATH} .= "/$userid/$parcel";
     $cfg{WPATH} .= "/$userid/$parcel";
-    
-    # Set other globals that are dependent on values from parcel.cfg
-    $imgbase = "$hoarddir/img/$cfg{UUID}";
 }
 
 #
