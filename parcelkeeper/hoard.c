@@ -551,28 +551,35 @@ int list_hoard(void)
 	int p_total;
 	int p_unique;
 	int shared;
-	int referenced;
-	int total;
+	int unreferenced;
+	int unused;
 
 	if (begin(state.db))
 		return 1;
-	if (query(&t_stmt, state.db, "SELECT count(tag) FROM hoard.chunks",
-				NULL) != SQLITE_ROW) {
+	if (query(&t_stmt, state.db, "SELECT count(tag) FROM hoard.chunks "
+				"WHERE referenced == 1", NULL) != SQLITE_ROW) {
 		query_free(t_stmt);
-		pk_log(LOG_ERROR, "Couldn't count chunks in hoard index");
+		pk_log(LOG_ERROR, "Couldn't count referenced chunks");
 		goto out;
 	}
-	query_row(t_stmt, "d", &total);
+	query_row(t_stmt, "d", &shared);
 	query_free(t_stmt);
-	if (query(&t_stmt, state.db, "SELECT count(DISTINCT tag) FROM "
-				"hoard.refs", NULL) != SQLITE_ROW) {
+	if (query(&t_stmt, state.db, "SELECT count(tag) FROM hoard.chunks "
+				"WHERE referenced == 0", NULL) != SQLITE_ROW) {
 		query_free(t_stmt);
-		pk_log(LOG_ERROR, "Couldn't count references in hoard index");
+		pk_log(LOG_ERROR, "Couldn't count unreferenced chunks");
 		goto out;
 	}
-	query_row(t_stmt, "d", &referenced);
+	query_row(t_stmt, "d", &unreferenced);
 	query_free(t_stmt);
-	shared=referenced;
+	if (query(&t_stmt, state.db, "SELECT count(*) FROM hoard.chunks "
+				"WHERE tag ISNULL", NULL) != SQLITE_ROW) {
+		query_free(t_stmt);
+		pk_log(LOG_ERROR, "Couldn't count unused chunk slots");
+		goto out;
+	}
+	query_row(t_stmt, "d", &unused);
+	query_free(t_stmt);
 	for (sret=query(&p_stmt, state.db, "SELECT parcel, uuid, server, "
 				"user, name FROM hoard.parcels", NULL);
 				sret == SQLITE_ROW; sret=query_next(p_stmt)) {
@@ -607,7 +614,8 @@ int list_hoard(void)
 	query_free(p_stmt);
 	if (sret == SQLITE_OK) {
 		printf("shared %d\n", shared);
-		printf("garbage %d\n", total - referenced);
+		printf("unreferenced %d\n", unreferenced);
+		printf("unused %d\n", unused);
 		ret=0;
 	} else {
 		pk_log(LOG_ERROR, "Couldn't list parcels in hoard cache");
