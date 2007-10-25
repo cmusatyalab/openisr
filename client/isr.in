@@ -1208,7 +1208,8 @@ sub listhoard () {
     # Statistics we're collecting
     my %parcels;
     my $shared;
-    my $garbage;
+    my $unreferenced;
+    my $unused;
     
     # Temporary variables
     my %info;
@@ -1241,8 +1242,10 @@ sub listhoard () {
 	    ($key, $value) = @fields;
 	    if ($key eq "shared") {
 		$shared = $value;
-	    } elsif ($key eq "garbage") {
-		$garbage = $value;
+	    } elsif ($key eq "unreferenced") {
+		$unreferenced = $value;
+	    } elsif ($key eq "unused") {
+	        $unused = $value;
 	    } else {
 		errexit("Parse error reading listhoard output");
 	    }
@@ -1320,7 +1323,7 @@ sub listhoard () {
 	    printf("    %36s %38s\n", $uuid, $info{'SERVER'});
 	}
     }
-    # XXX shared and garbage chunks
+    # XXX shared, unreferenced, unused chunks
 }
 
 #
