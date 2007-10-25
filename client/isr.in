@@ -87,6 +87,7 @@ sub passwd ();
 sub clean ($);
 sub cleanclient ();
 sub hoard ();
+sub listhoard ();
 sub checkparcel ();
 sub statparcel ();
 sub set_parcel_globals ();
@@ -497,6 +498,10 @@ elsif ($command eq "checkparcel") {
 elsif ($command eq "ls") {
     need_network();
     listparcels();
+}
+elsif ($command eq "lshoard") {
+    need_not_parcel();
+    listhoard();
 }
 elsif ($command eq "auth") {
     need_not_parcel();
@@ -1188,6 +1193,128 @@ sub statparcel () {
     if ($checkstate == 1 or $checkstate == 3) {
 	isr_checkhoard();
     }
+}
+
+#
+# listhoard - Show the status of the hoard cache
+#
+sub listhoard () {
+    # Statistics we're collecting
+    my %parcels;
+    my $shared;
+    my $garbage;
+    
+    # Temporary variables
+    my %info;
+    my @fields;
+    my $file;
+    my $line;
+    my $key;
+    my $value;
+    my $uuid;
+    my $suffix;
+    my $stat;
+    my $parceldesc;
+    
+    #
+    # See what we know about parcels that hold chunk references
+    #
+    open(FD, "-|", isr_parcelkeeper_cmd("listhoard", "hoard"))
+        or errexit("Couldn't run Parcelkeeper");
+    while ($line = <FD>) {
+	@fields = split(/[ \n]+/, $line);
+	if (valid_uuid($fields[0])) {
+	    $parcels{$fields[0]} = {
+		SERVER => $fields[1],
+		USER   => $fields[2],
+		PARCEL => $fields[3],
+		TOTAL  => $fields[4],
+		UNIQUE => $fields[5]
+	    };
+	} else {
+	    ($key, $value) = @fields;
+	    if ($key eq "shared") {
+		$shared = $value;
+	    } elsif ($key eq "garbage") {
+		$garbage = $value;
+	    } else {
+		errexit("Parse error reading listhoard output");
+	    }
+	}
+    }
+    close(FD) && $? == 0
+        or errexit("Unable to query hoard cache");
+    
+    #
+    # See what we know about image files in the hoard cache
+    #
+    if (-d "$hoarddir/img") {
+	opendir(DIR, "$hoarddir/img")
+	    or errexit("Couldn't read hoard cache image directory");
+	while ($file = readdir(DIR)) {
+	    next if $file =~ /^\.{1,2}$/;
+	    ($uuid, $suffix) = split(/\./, $file)
+	        or next;
+	    if (!defined($parcels{$uuid})) {
+		# If the parcel is checked out, we may be able to recover
+		# its name.
+		if (-e "$isrdir/$uuid/parcel.cfg") {
+		    parse_cfgfile("$isrdir/$uuid/parcel.cfg", \%info);
+		    $parcels{$uuid} = {
+			SERVER => $info{"SERVER"},
+			USER   => $info{"USER"},
+			PARCEL => $info{"PARCEL"}
+		    };
+		} else {
+		    $parcels{$uuid} = {};
+		}
+	    }
+	    $stat = stat("$hoarddir/img/$file")
+	        or errexit("Couldn't stat $hoarddir/img/$file");
+	    if ($suffix eq "cfg") {
+		$parcels{$uuid}->{"MEMORY"} = $stat->size;
+	    } elsif ($suffix eq "key") {
+		$parcels{$uuid}->{"KEYRING"} = $stat->size;
+	    }
+	}
+	closedir(DIR);
+    }
+    
+    printf("%-15s %20s %15s %10s %15s\n", "Parcel", "Non-Shared Chunks",
+	                "Total Chunks", "Keyring", "Memory Image");
+    if ($longflag) {
+	printf("    %-36s %38s\n", "UUID", "Server");
+    }
+    print "-" x 79 . "\n";
+    foreach $uuid (sort keys %parcels) {
+	%info = %{$parcels{$uuid}};
+	if (exists($info{"SERVER"})) {
+	    $parceldesc = sprintf("%s/%s", $info{"USER"}, $info{"PARCEL"});
+	} else {
+	    $parceldesc = "<unknown>";
+	    $info{"SERVER"} = "<unknown>";
+	}
+	foreach $key ("UNIQUE", "TOTAL") {
+	    if (exists($info{$key})) {
+	        $info{$key} = int($info{$key} / 8) . " MB";
+	    } else {
+		$info{$key} = "-";
+	    }
+	}
+	foreach $key("KEYRING", "MEMORY") {
+	    if (exists($info{$key})) {
+		$info{$key} = ($info{$key} >> 20) . " MB";
+	    } else {
+		$info{$key} = "-";
+	    }
+	}
+	printf("%-20s %15s %15s %10s %15s\n", $parceldesc, $info{"UNIQUE"},
+	                $info{"TOTAL"}, $info{"KEYRING"}, $info{"MEMORY"});
+	if ($longflag) {
+	    printf("    %36s %38s\n", $uuid, $info{'SERVER'});
+	}
+    }
+    # XXX shared and garbage chunks
 }
 
 #
@@ -2212,7 +2339,8 @@ sub usage ($) {
 
     print RED, "Usage: $progname command [parcel] [options...]\n", RESET;
     print BLUE, "Commands: auth, checkin (ci), checkout (co), checkp, clean, deauth, discard,\n", RESET;
-    print BLUE, "          disconnect, help, hoard, ls, passwd, resume, stat, sync, version\n", RESET;
+    print BLUE, "          disconnect, help, hoard, ls, lshoard, passwd, resume, stat, sync,\n", RESET;
+    print BLUE, "          version\n", RESET;
     print BLUE, "Parcel is required for most commands\n", RESET;
     if (!$msg) {
 	print "Basic commands:\n";
@@ -2227,6 +2355,7 @@ sub usage ($) {
 	print "  help       Print help message.\n";
 	print "  hoard      Fetch entire virtual disk so you can run disconnected.\n";
 	print "  ls         List info about your parcels (parcel, -l and -L optional).\n";
+	print "  lshoard    List info about the hoard cache (-l optional).\n";
 	print "  passwd     Change your ISR password on the server.\n";
  	print "  resume     Checkout (if necessary) and run a parcel (-r and -d optional).\n";
 	print "  stat       Display information about local ISR state (-c optional).\n";
@@ -2237,7 +2366,7 @@ sub usage ($) {
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [ci, sync].\n";
     print "  -c,--checkstate    Do additional consistency check [checkp, stat].\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [resume].\n";
-    print "  -l,--long          Long listing with default number of versions [ls].\n";
+    print "  -l,--long          Long listing [ls, lshoard].\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls].\n";
     print "  -q,--quiet         Run silently (except if things go wrong).\n";    
     print "  -r,--rollback      Rollback to or check version [co, checkp].\n";
