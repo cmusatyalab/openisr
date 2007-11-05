@@ -19,7 +19,7 @@
 #include <time.h>
 #include "defs.h"
 
-#define HOARD_INDEX_VERSION 3
+#define HOARD_INDEX_VERSION 4
 #define EXPAND_CHUNKS 64
 
 static pk_err_t create_hoard_index(void)
@@ -45,7 +45,7 @@ static pk_err_t create_hoard_index(void)
 				"tag BLOB UNIQUE, "
 				/* 512-byte sectors */
 				"offset INTEGER UNIQUE NOT NULL, "
-				"length INTEGER,"
+				"length INTEGER NOT NULL DEFAULT 0,"
 				"last_access INTEGER NOT NULL DEFAULT 0,"
 				"referenced INTEGER NOT NULL DEFAULT 0)",
 				NULL)) {
@@ -114,9 +114,8 @@ static pk_err_t expand_cache(void)
 static void deallocate_chunk_offset(int offset)
 {
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET tag = NULL, "
-				"length = NULL, last_access = 0, "
-				"referenced = 0 WHERE offset = ?", "d",
-				offset)) {
+				"length = 0, last_access = 0, referenced = 0 "
+				"WHERE offset = ?", "d", offset)) {
 		pk_log(LOG_ERROR, "Couldn't deallocate hoard chunk at "
 					"offset %d", offset);
 	}
@@ -720,7 +719,7 @@ int gc_hoard(void)
 	goal=config.minsize * 8;
 	if (goal < total) {
 		if (query(NULL, state.db, "UPDATE hoard.chunks SET "
-					"tag = NULL, length = NULL, "
+					"tag = NULL, length = 0, "
 					"referenced = 0 "
 					"WHERE tag IN "
 					"(SELECT tag FROM hoard.chunks "
@@ -796,11 +795,6 @@ int check_hoard(void)
 		goto bad;
 	}
 
-	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
-				"last_access = 0, referenced = 0 "
-				"WHERE tag NOTNULL AND length ISNULL",
-				"chunks with null length"))
-		goto bad;
 	if (cleanup_action(state.db, "DELETE FROM hoard.refs WHERE parcel "
 				"NOT IN (SELECT parcel FROM hoard.parcels)",
 				"refs with dangling parcel ID"))
