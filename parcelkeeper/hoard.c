@@ -250,8 +250,8 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	}
 
 	while ((sret=query(&stmt, state.db, "SELECT offset FROM hoard.chunks "
-				"WHERE length ISNULL LIMIT 1", NULL))
-				== SQLITE_OK) {
+				"WHERE tag ISNULL AND referenced == 0 LIMIT 1",
+				NULL)) == SQLITE_OK) {
 		query_free(stmt);
 		ret=expand_cache();
 		if (ret)
@@ -264,10 +264,8 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	query_row(stmt, "d", &offset);
 	query_free(stmt);
 
-	if (query(NULL, state.db, "UPDATE hoard.chunks SET length = ?, "
-				"last_access = ?, referenced = 1 WHERE "
-				"offset == ?", "ddd", len, timestamp(),
-				offset)) {
+	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 1 "
+				"WHERE offset == ?", "d", offset)) {
 		pk_log(LOG_ERROR, "Couldn't allocate hoard cache chunk");
 		ret=PK_IOERR;
 		goto bad;
@@ -290,9 +288,10 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 		deallocate_chunk_offset(offset);
 		return ret;
 	}
-	sret=query(NULL, state.db, "UPDATE hoard.chunks SET tag = ? "
-				"WHERE offset = ?", "bd",
-				tag, parcel.hashlen, offset);
+	sret=query(NULL, state.db, "UPDATE hoard.chunks SET tag = ?, "
+				"length = ?, last_access = ? WHERE offset = ?",
+				"bddd", tag, parcel.hashlen, len, timestamp(),
+				offset);
 	if (sret == SQLITE_CONSTRAINT) {
 		/* Someone else has already written this tag */
 		deallocate_chunk_offset(offset);
@@ -855,8 +854,8 @@ static pk_err_t hoard_try_cleanup(void)
 	}
 
 	pk_log(LOG_INFO, "Cleaning up hoard cache...");
-	ret=cleanup_action(state.db, "UPDATE hoard.chunks SET length = NULL "
-				"WHERE tag ISNULL AND length NOTNULL",
+	ret=cleanup_action(state.db, "UPDATE hoard.chunks SET referenced = 0 "
+				"WHERE referenced == 1 AND tag ISNULL",
 				"orphaned cache slots");
 	if (ret)
 		goto out;
