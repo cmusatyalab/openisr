@@ -111,6 +111,60 @@ static pk_err_t expand_cache(void)
 	return PK_SUCCESS;
 }
 
+/* must be within transaction */
+static pk_err_t allocate_chunk_offset(int *offset)
+{
+	sqlite3_stmt *stmt;
+	pk_err_t ret;
+	int sret;
+
+	while (1) {
+		/* First, try to find an unused hoard cache slot */
+		sret=query(&stmt, state.db, "SELECT offset FROM hoard.chunks "
+					"WHERE tag ISNULL AND referenced == 0 "
+					"LIMIT 1", NULL);
+		if (sret == SQLITE_ROW) {
+			query_row(stmt, "d", offset);
+			query_free(stmt);
+			break;
+		} else if (sret != SQLITE_OK) {
+			pk_log(LOG_ERROR, "Error finding unused hoard cache "
+						"offset");
+			return PK_IOERR;
+		}
+		query_free(stmt);
+
+		/* If that fails, try to reclaim an existing, unreferenced
+		   chunk in LRU order */
+		sret=query(&stmt, state.db, "SELECT offset FROM hoard.chunks "
+					"WHERE tag NOTNULL AND referenced == 0 "
+					"ORDER BY last_access LIMIT 1", NULL);
+		if (sret == SQLITE_ROW) {
+			query_row(stmt, "d", offset);
+			query_free(stmt);
+			break;
+		} else if (sret != SQLITE_OK) {
+			pk_log(LOG_ERROR, "Error finding reclaimable hoard "
+						"cache offset");
+			return PK_IOERR;
+		}
+		query_free(stmt);
+
+		/* Now expand the cache and try again */
+		ret=expand_cache();
+		if (ret)
+			return ret;
+	}
+
+	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 1, "
+				"tag = NULL, length = 0, last_access = 0 "
+				"WHERE offset == ?", "d", *offset)) {
+		pk_log(LOG_ERROR, "Couldn't allocate hoard cache chunk");
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
 static void deallocate_chunk_offset(int offset)
 {
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET tag = NULL, "
@@ -222,7 +276,6 @@ bad:
 
 pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 {
-	sqlite3_stmt *stmt;
 	pk_err_t ret;
 	int offset;
 	int sret;
@@ -248,27 +301,9 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 		goto bad;
 	}
 
-	while ((sret=query(&stmt, state.db, "SELECT offset FROM hoard.chunks "
-				"WHERE tag ISNULL AND referenced == 0 LIMIT 1",
-				NULL)) == SQLITE_OK) {
-		query_free(stmt);
-		ret=expand_cache();
-		if (ret)
-			goto bad;
-	}
-	if (sret != SQLITE_ROW) {
-		pk_log(LOG_ERROR, "Error finding unused hoard cache offset");
+	ret=allocate_chunk_offset(&offset);
+	if (ret)
 		goto bad;
-	}
-	query_row(stmt, "d", &offset);
-	query_free(stmt);
-
-	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 1 "
-				"WHERE offset == ?", "d", offset)) {
-		pk_log(LOG_ERROR, "Couldn't allocate hoard cache chunk");
-		ret=PK_IOERR;
-		goto bad;
-	}
 
 	ret=commit(state.db);
 	if (ret)
