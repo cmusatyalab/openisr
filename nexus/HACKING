@@ -61,15 +61,15 @@ is stored uncompressed instead.  All chunks associated with a given device
 must use the same crypto suite.
 
 Nexus maintains a sysfs directory in /sys/class/openisr.  There are global
-attributes giving the userspace protocol version and Subversion revision
-number of the module, and per-device directories containing a variety of
-statistics and debugging attributes.
+attributes giving the userspace protocol version, Git revision string, and
+OpenISR release of the module, and per-device directories containing a variety
+of statistics and debugging attributes.
 
 Nexus tries to spread crypto processing across all CPUs in the system.
 Cipher, hash, and compression work is processed through a global queue served
 by one kernel thread per CPU.
 
-The Subversion revision of the module can be determined via the message
+The Git revision string of the module can be determined via the message
 printed to the kernel log at load time, the /sys/class/openisr/revision
 file, or the "revision" modinfo property.
 
