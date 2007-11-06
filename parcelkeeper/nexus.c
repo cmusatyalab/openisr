@@ -27,7 +27,7 @@ static const int ignored_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGTSTP, 0};
 static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 
 #define REQUESTS_PER_SYSCALL 64
-#define MY_INTERFACE_VERSION 6
+#define MY_INTERFACE_VERSION 7
 #define LOOP_UNREGISTER_TRIES 500
 #if MY_INTERFACE_VERSION != NEXUS_INTERFACE_VERSION
 #error This code uses a different interface version than the one defined in nexus.h
@@ -241,6 +241,8 @@ pk_err_t nexus_init(void)
 
 	/* Register ourselves with the device */
 	memset(&setup, 0, sizeof(setup));
+	snprintf((char*)setup.ident, NEXUS_MAX_DEVICE_LEN, "%s",
+				parcel.uuid);
 	snprintf((char*)setup.chunk_device, NEXUS_MAX_DEVICE_LEN, "%s",
 				state.loopdev_name);
 	setup.offset=state.offset >> 9;
