@@ -140,8 +140,6 @@ static ssize_t dev_show_state_times(struct class_device *class_dev, char *buf)
 	for (i=0; i<CD_NR_STATES; i++) {
 		time=dev->stats.state_time_us[i];
 		samples=dev->stats.state_time_samples[i];
-		dev->stats.state_time_us[i]=0;
-		dev->stats.state_time_samples[i]=0;
 		count += snprintf(buf+count, PAGE_SIZE-count, "%s%u",
 					i ? " " : "",
 					samples ? time / samples : 0);
@@ -149,6 +147,22 @@ static ssize_t dev_show_state_times(struct class_device *class_dev, char *buf)
 	count += snprintf(buf+count, PAGE_SIZE-count, "\n");
 	mutex_unlock(&dev->lock);
 	return count;
+}
+
+static ssize_t dev_store_state_times(struct class_device *class_dev,
+			const char *buf, size_t len)
+{
+	struct nexus_dev *dev=class_get_devdata(class_dev);
+	int i;
+	
+	/* -ERESTARTSYS doesn't work here */
+	mutex_lock(&dev->lock);
+	for (i=0; i<CD_NR_STATES; i++) {
+		dev->stats.state_time_us[i]=0;
+		dev->stats.state_time_samples[i]=0;
+	}
+	mutex_unlock(&dev->lock);
+	return len;
 }
 
 static ssize_t dev_show_suite(struct class_device *class_dev, char *buf)
@@ -292,7 +306,8 @@ struct class_device_attribute class_dev_attrs[] = {
 	__ATTR(cache_entries, S_IRUGO, dev_show_cachesize, NULL),
 	__ATTR(header_length, S_IRUGO, dev_show_offset, NULL),
 	__ATTR(states, S_IRUGO, dev_show_states, NULL),
-	__ATTR(state_times, S_IRUGO, dev_show_state_times, NULL),
+	__ATTR(state_times, S_IRUGO|S_IWUGO, dev_show_state_times,
+				dev_store_state_times),
 	__ATTR(encryption, S_IRUGO, dev_show_suite, NULL),
 	__ATTR(compression, S_IRUGO, dev_show_compression, NULL),
 	__ATTR(cache_hits, S_IRUGO, dev_show_cache_hits, NULL),
