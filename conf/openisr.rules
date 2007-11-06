@@ -12,3 +12,11 @@ SUBSYSTEM=="block", KERNEL=="openisr[a-z]", \
 SUBSYSTEM=="block", KERNEL=="openisr[a-z][1-9]*", \
 		PROGRAM="/bin/cat /sys/class/openisr/%P/owner", \
 		OWNER="%c", MODE="0600"
+
+# Add persistent symlinks
+SUBSYSTEM=="block", KERNEL=="openisr[a-z]", \
+		PROGRAM="/bin/cat /sys/class/openisr/%k/ident", \
+		SYMLINK+="disk/by-id/openisr-%c"
+SUBSYSTEM=="block", KERNEL=="openisr[a-z][1-9]*", \
+		PROGRAM="/bin/cat /sys/class/openisr/%P/ident", \
+		SYMLINK+="disk/by-id/openisr-%c-part%n"
