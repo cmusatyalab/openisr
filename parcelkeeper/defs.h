@@ -60,7 +60,6 @@ enum mode {
 	MODE_CHECKHOARD,
 	MODE_RMHOARD,
 	MODE_REFRESH,
-	MODE_GC,
 	MODE_HELP,
 	MODE_VERSION,
 };
@@ -190,7 +189,6 @@ int hoard(void);
 int examine_hoard(void);
 int list_hoard(void);
 int rmhoard(void);
-int gc_hoard(void);
 int check_hoard(void);
 int hoard_refresh(void);
 

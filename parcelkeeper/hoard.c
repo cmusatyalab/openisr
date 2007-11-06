@@ -751,52 +751,6 @@ bad:
 	return 1;
 }
 
-int gc_hoard(void)
-{
-	sqlite3_stmt *stmt;
-	int total;
-	int goal;
-	int changes=0;
-
-	if (begin(state.db))
-		return 1;
-	if (query(&stmt, state.db, "SELECT count(tag) FROM hoard.chunks", NULL)
-				!= SQLITE_ROW) {
-		query_free(stmt);
-		pk_log(LOG_ERROR, "Couldn't count chunks in hoard cache");
-		goto bad;
-	}
-	query_row(stmt, "d", &total);
-	query_free(stmt);
-
-	/* XXX variable chunksize */
-	goal=config.minsize * 8;
-	if (goal < total) {
-		if (query(NULL, state.db, "UPDATE hoard.chunks SET "
-					"tag = NULL, length = 0, "
-					"referenced = 0 "
-					"WHERE tag IN "
-					"(SELECT tag FROM hoard.chunks "
-					"WHERE tag NOT IN "
-					"(SELECT tag FROM hoard.refs) "
-					"ORDER BY last_access LIMIT ?)", "d",
-					total - goal)) {
-			pk_log(LOG_ERROR, "Couldn't garbage-collect "
-						"hoard cache");
-			goto bad;
-		}
-		changes=sqlite3_changes(state.db);
-	}
-
-	if (commit(state.db))
-		goto bad;
-	pk_log(LOG_INFO, "Garbage-collected %d chunks", changes);
-	return 0;
-bad:
-	rollback(state.db);
-	return 1;
-}
-
 static pk_err_t cleanup_action(sqlite3 *db, char *sql, char *desc)
 {
 	int changes;

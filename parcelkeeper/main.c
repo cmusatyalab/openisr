@@ -115,8 +115,6 @@ int main(int argc, char **argv)
 		ret=list_hoard();
 	} else if (mode == MODE_RMHOARD) {
 		ret=rmhoard();
-	} else if (mode == MODE_GC) {
-		ret=gc_hoard();
 	} else if (mode == MODE_CHECKHOARD) {
 		ret=check_hoard();
 	} else if (mode == MODE_REFRESH) {

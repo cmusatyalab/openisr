@@ -138,13 +138,6 @@ mode(REFRESH) = {
 	{END_OPTS}
 };
 
-mode(GC) = {
-	{OPT_HOARD,         REQUIRED},
-	{OPT_MINSIZE,       OPTIONAL},
-	{OPT_LOG,           OPTIONAL},
-	{END_OPTS}
-};
-
 mode(HELP) = {
 	{OPT_MODE,          OPTIONAL},
 	{END_OPTS}
@@ -165,7 +158,6 @@ mode(VERSION) = {
 #define CHECKHOARD_flags	0
 #define RMHOARD_flags		0
 #define REFRESH_flags		WANT_PREV
-#define GC_flags		0
 #define HELP_flags		0
 #define VERSION_flags		0
 
@@ -180,7 +172,6 @@ static struct pk_mode pk_modes[] = {
 	{"checkhoard",  sym(CHECKHOARD), "Validate hoard cache"},
 	{"rmhoard",     sym(RMHOARD),    "Remove parcel from hoard cache"},
 	{"refresh",     sym(REFRESH),    "Update hoard cache reference list"},
-	{"gc",          sym(GC),         "Garbage-collect hoard cache"},
 	{"help",        sym(HELP),       "Show usage summary"},
 	{"version",     sym(VERSION),    "Show version information"},
 	{0}
