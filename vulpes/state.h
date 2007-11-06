@@ -1,5 +1,5 @@
 /* 
- * Vulpes - support daemon for the OpenISR (TM) system virtual disk
+ * Vulpes - support daemon for the OpenISR (R) system virtual disk
  * 
  * Copyright (C) 2002-2005 Intel Corporation
  * Copyright (C) 2005-2007 Carnegie Mellon University

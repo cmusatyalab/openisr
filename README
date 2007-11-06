@@ -1,4 +1,4 @@
-This is the OpenISR (TM) system, release 0.8.4.  For more information on
+This is the OpenISR (R) system, release 0.8.4.  For more information on
 the OpenISR system and Internet Suspend/Resume (R), please visit our website at
 <http://isr.cmu.edu>.
 
@@ -195,6 +195,6 @@ SHA-1 Accelerator
 ACKNOWLEDGMENTS
 ----------------
 
-Internet Suspend/Resume is a registered trademark and OpenISR is a trademark
-of Carnegie Mellon University.  All other trademarks are the property of their
+Internet Suspend/Resume and OpenISR are registered trademarks of
+Carnegie Mellon University.  All other trademarks are the property of their
 respective owners.

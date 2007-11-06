@@ -1,5 +1,5 @@
 .\" openisr-config - script to build and install the kernel modules for the
-.\"                  OpenISR (TM) system
+.\"                  OpenISR (R) system
 .\"
 .\" Copyright (C) 2007 Carnegie Mellon University
 .\"
@@ -19,7 +19,7 @@ openisr-config - build and install the OpenISR kernel modules
 .SH DESCRIPTION
 .B openisr-config
 is a helper program to build and install the kernel modules for the client
-part of the OpenISR\*(Tm system.  Depending on your installation method, you
+part of the OpenISR\*R system.  Depending on your installation method, you
 may need to run this command to complete the installation of the OpenISR
 client.  In addition, you must run this command after a kernel upgrade
 in order to build modules for your new kernel.
@@ -46,6 +46,9 @@ returns 0 on success and 1 on failure.
 There is no way to tell
 .B openisr-config
 to build modules against a kernel other than the one currently running.
+
+.SH ACKNOWLEDGEMENTS
+OpenISR is a registered trademark of Carnegie Mellon University.
 
 .SH SEE ALSO
 .BR isr (1)

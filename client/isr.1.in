@@ -33,7 +33,7 @@ isr \- Internet Suspend/Resume client program
 .B auth, checkin (ci), checkout (co), checkp, clean, deauth, discard, disconnect, help, hoard, ls, passwd, reset, resume, stat, sync, version
 
 .SH DESCRIPTION
-An Internet Suspend/Resume (ISR) system is a collection of
+An Internet Suspend/Resume\*R (ISR) system is a collection of
 virtual machine
 .I parcels
 in a 
@@ -635,7 +635,8 @@ remote store while the parcel is running.
 ISR was developed by Michael Kozuch and Casey Helfrich from Intel
 Research Pittsburgh; David O'Hallaron, Mahadev (Satya) Satyanarayanan,
 Matt Toups, and Benjamin Gilbert from Carnegie Mellon; and Partho Nath
-from Penn State. 
+from Penn State.  Internet Suspend/Resume and OpenISR are registered
+trademarks of Carnegie Mellon University.
 
 .SH SEE ALSO
 .BR openisr-config (8)

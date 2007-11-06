@@ -1,5 +1,5 @@
 #
-# acinclude.m4 - autoconf macros for the OpenISR system
+# acinclude.m4 - autoconf macros for the OpenISR (R) system
 #
 # Copyright (C) 2007 Carnegie Mellon University
 #

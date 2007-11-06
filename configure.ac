@@ -1,5 +1,5 @@
 #
-# configure.ac - build infrastructure for the OpenISR system
+# configure.ac - build infrastructure for the OpenISR (R) system
 #
 # Copyright (C) 2007 Carnegie Mellon University
 #
