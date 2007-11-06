@@ -85,7 +85,6 @@ struct pk_config {
 	char *prev_keyring;
 	char *cache_file;
 	char *cache_index;
-	char *devfile;
 	char *lockfile;
 	char *pidfile;
 

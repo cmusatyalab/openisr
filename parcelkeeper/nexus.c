@@ -141,7 +141,6 @@ pk_err_t nexus_init(void)
 	char protocol[8];
 	unsigned protocol_i;
 	struct utsname utsname;
-	FILE *fp;
 
 	/* Check Nexus version */
 	if (!is_dir("/sys/class/openisr")) {
@@ -222,22 +221,10 @@ pk_err_t nexus_init(void)
 		}
 	}
 
-	/* Open the regular file that will contain the name of the device node
-	   we receive */
-	fp=fopen(config.devfile, "w");
-	if (fp == NULL) {
-		pk_log(LOG_ERROR, "couldn't open %s for writing",
-					config.devfile);
-		return PK_IOERR;
-	}
-
 	/* Bind the image file to a loop device */
 	ret=loop_bind();
-	if (ret) {
-		fclose(fp);
-		unlink(config.devfile);
+	if (ret)
 		return ret;
-	}
 
 	/* Register ourselves with the device */
 	memset(&setup, 0, sizeof(setup));
@@ -262,8 +249,6 @@ pk_err_t nexus_init(void)
 		   message */
 		pk_log(LOG_ERROR, "unknown crypto or compression algorithm");
 		ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
-		fclose(fp);
-		unlink(config.devfile);
 		return PK_IOERR;
 	}
 
@@ -271,12 +256,8 @@ pk_err_t nexus_init(void)
 		pk_log(LOG_ERROR, "unable to register with Nexus: %s",
 					strerror(errno));
 		ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
-		fclose(fp);
-		unlink(config.devfile);
 		return PK_IOERR;
 	}
-	fprintf(fp, "/dev/openisr%c\n", 'a' + setup.index);
-	fclose(fp);
 	state.bdev_index=setup.index;
 	pk_log(LOG_INFO, "Registered with Nexus");
 	return PK_SUCCESS;
@@ -317,7 +298,6 @@ void nexus_shutdown(void)
 	log_sysfs_value("compression_ratio_pct");
 
 	close(state.chardev_fd);
-	unlink(config.devfile);
 
 	/* XXX Sometimes the loop device doesn't unregister the first time.
 	   For now, we retry (a lot) to try to ensure that the user isn't left

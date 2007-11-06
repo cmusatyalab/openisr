@@ -371,7 +371,6 @@ enum mode parse_cmdline(int argc, char **argv)
 						config.flags & WANT_PREV);
 			config.cache_file=filepath(cp, "disk", 0);
 			config.cache_index=filepath(cp, "disk.idx", 0);
-			config.devfile=filepath(cp, "parcelkeeper.dev", 0);
 			config.lockfile=filepath(cp, "parcelkeeper.lock", 0);
 			config.pidfile=filepath(cp, "parcelkeeper.pid", 0);
 			break;
