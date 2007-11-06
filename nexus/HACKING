@@ -92,7 +92,7 @@ Here are the strings which can be written to that file:
 - "kick-cache" - start pending work for all cached chunks
 - "kick-threads" - wake up all kernel threads
 - "kick-elevator" - force the request function to be called
-- "zap" - forcibly unregister the block device
+- "kill" - forcibly unregister the block device
 
 The "states" sysfs attribute gives the number of cache lines in each state
 of the cache's state machine.  The "state_times" attribute gives the average

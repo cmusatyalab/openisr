@@ -264,7 +264,7 @@ static ssize_t dev_store_action(struct class_device *class_dev,
 		wake_all_threads();
 	} else if (!strcmp(buf, "kick-elevator\n")) {
 		kick_elevator(dev);
-	} else if (!strcmp(buf, "zap\n")) {
+	} else if (!strcmp(buf, "kill\n")) {
 		ret=-ENXIO;
 		mutex_lock(&dev->lock);
 		if (!dev_is_shutdown(dev)) {
