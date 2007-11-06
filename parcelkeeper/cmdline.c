@@ -62,7 +62,7 @@ static struct pk_option pk_options[] = {
 	{"hoard",          OPT_HOARD,          {"hoard_dir"}},
 	{"uuid",           OPT_UUID,           {"uuid"}},
 	{"destdir",        OPT_DESTDIR,        {"dir"}},
-	{"minsize",        OPT_MINSIZE,        {"MB"},                                                  "Don't garbage-collect hoard cache below this size"},
+	{"minsize",        OPT_MINSIZE,        {"MB"},                                                  "Don't reclaim hoarded chunks until the hoard cache reaches this size"},
 	{"compression",    OPT_COMPRESSION,    {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
 	{"log",            OPT_LOG,            {"logfile", "info_str", "filemask", "stderrmask"}},
 	{"foreground",     OPT_FOREGROUND,     {},                                                      "Don't run in the background"},
@@ -75,6 +75,7 @@ static struct pk_option pk_options[] = {
 mode(RUN) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         OPTIONAL},
+	{OPT_MINSIZE,       OPTIONAL},
 	{OPT_COMPRESSION,   OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
 	{OPT_FOREGROUND,    OPTIONAL},
@@ -85,6 +86,7 @@ mode(UPLOAD) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_DESTDIR,       REQUIRED},
 	{OPT_HOARD,         OPTIONAL, "Also update the specified hoard cache"},
+	{OPT_MINSIZE,       OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
 };
@@ -92,6 +94,7 @@ mode(UPLOAD) = {
 mode(HOARD) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         REQUIRED},
+	{OPT_MINSIZE,       OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
 };

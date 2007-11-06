@@ -117,6 +117,7 @@ static pk_err_t allocate_chunk_offset(int *offset)
 	sqlite3_stmt *stmt;
 	pk_err_t ret;
 	int sret;
+	int hoarded=0;
 
 	while (1) {
 		/* First, try to find an unused hoard cache slot */
@@ -134,21 +135,39 @@ static pk_err_t allocate_chunk_offset(int *offset)
 		}
 		query_free(stmt);
 
-		/* If that fails, try to reclaim an existing, unreferenced
-		   chunk in LRU order */
-		sret=query(&stmt, state.db, "SELECT offset FROM hoard.chunks "
-					"WHERE tag NOTNULL AND referenced == 0 "
-					"ORDER BY last_access LIMIT 1", NULL);
-		if (sret == SQLITE_ROW) {
-			query_row(stmt, "d", offset);
+		/* Next, we may want to try reclaiming an existing,
+		   unreferenced chunk.  See if we're permitted to do so. */
+		if (config.minsize > 0) {
+			sret=query(&stmt, state.db, "SELECT count(tag) "
+						"FROM hoard.chunks", NULL);
+			if (sret != SQLITE_ROW) {
+				query_free(stmt);
+				pk_log(LOG_ERROR, "Error finding size of "
+							"hoard cache");
+				return PK_IOERR;
+			}
+			query_row(stmt, "d", &hoarded);
 			query_free(stmt);
-			break;
-		} else if (sret != SQLITE_OK) {
-			pk_log(LOG_ERROR, "Error finding reclaimable hoard "
-						"cache offset");
-			return PK_IOERR;
 		}
-		query_free(stmt);
+
+		/* XXX assumes 128 KB */
+		if ((unsigned)(hoarded / 8) >= config.minsize) {
+			/* Try to reclaim the LRU unreferenced chunk */
+			sret=query(&stmt, state.db, "SELECT offset "
+					"FROM hoard.chunks WHERE tag NOTNULL "
+					"AND referenced == 0 "
+					"ORDER BY last_access LIMIT 1", NULL);
+			if (sret == SQLITE_ROW) {
+				query_row(stmt, "d", offset);
+				query_free(stmt);
+				break;
+			} else if (sret != SQLITE_OK) {
+				pk_log(LOG_ERROR, "Error finding reclaimable "
+							"hoard cache offset");
+				return PK_IOERR;
+			}
+			query_free(stmt);
+		}
 
 		/* Now expand the cache and try again */
 		ret=expand_cache();
