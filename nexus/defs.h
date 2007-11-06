@@ -141,6 +141,7 @@ struct nexus_tfm_state {
 /**
  * struct nexus_dev - one Nexus block device
  * @lh_devs              : list head for list of active devices (state.lock)
+ * @lh_all_devs          : list head for list of all devices (state.lock)
  * @lh_run_requests      : list head for request thread (queues.lock)
  * @class_dev            : for device model
  * @gendisk              : for block layer
@@ -152,6 +153,7 @@ struct nexus_tfm_state {
  * @requests_lock        : lock for @requests
  * @requests_oom_timer   : out-of-memory callback for nexus_run_requests() (*)
  * @lock                 : master device lock (r/w)
+ * @ident                : unique identifier for this device
  * @chunksize            : size of one chunk in bytes
  * @cachesize            : size of chunkdata cache in entries
  * @offset               : offset of first chunk in chunk store, in sectors
@@ -175,6 +177,7 @@ struct nexus_tfm_state {
  **/
 struct nexus_dev {
 	struct list_head lh_devs;
+	struct list_head lh_all_devs;
 	struct list_head lh_run_requests;
 	
 	struct class_device *class_dev;
@@ -188,6 +191,7 @@ struct nexus_dev {
 	struct timer_list requests_oom_timer;
 	
 	MUTEX lock;
+	char *ident;
 	unsigned chunksize;
 	unsigned cachesize;
 	sector_t offset;
@@ -416,7 +420,7 @@ static inline unsigned io_chunks(struct nexus_io *io)
 /* init.c */
 extern int blk_major;
 extern unsigned debug_mask;
-struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
+struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
 			enum nexus_crypto crypto,
 			enum nexus_compress default_compress,

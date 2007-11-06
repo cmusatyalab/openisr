@@ -52,6 +52,24 @@ static inline void *kzalloc(size_t size, gfp_t gfp)
 #endif
 
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
+static inline char *kstrdup(const char *str, gfp_t flags)
+{
+	size_t len;
+	char *new;
+	
+	if (str == NULL)
+		return NULL;
+	len=strlen(str);
+	new=kmalloc(len + 1, flags);
+	if (new == NULL)
+		return NULL;
+	memcpy(new, str, len + 1);
+	return new;
+}
+#endif
+
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
 /* This is struct kmem_cache_s up to 2.6.14 and struct kmem_cache thereafter.
    "#define kmem_cache kmem_cache_s" would pick up every instance of that

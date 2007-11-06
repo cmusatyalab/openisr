@@ -230,6 +230,20 @@ int setup(struct params *params, char *storefile)
 	return 0;
 }
 
+void set_ident(unsigned char *out, const char *chunk_dev)
+{
+	int index=0;
+	
+	if (strstr(chunk_dev, "/dev/") == chunk_dev)
+		index=strlen("/dev/");
+	strcpy((char*)out, &chunk_dev[index]);
+	while (*out) {
+		if (*out == '/')
+			*out='-';
+		out++;
+	}
+}
+
 /* Returns true if a reply needs to be sent */
 int handle_message(struct chunk *chunk, struct nexus_message *message,
 				struct nexus_message *message_out,
@@ -307,6 +321,7 @@ int run(char *storefile, enum nexus_compress compress)
 		perror("Opening device");
 		return 1;
 	}
+	set_ident(setup.ident, params.chunk_device);
 	memcpy(setup.chunk_device, params.chunk_device, NEXUS_MAX_DEVICE_LEN);
 	setup.chunksize=params.chunksize;
 	setup.cachesize=params.cachesize;

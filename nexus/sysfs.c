@@ -79,6 +79,12 @@ struct class_attribute class_attrs[] = {
    after device initialization has finished, but may run before the gendisk
    is live. */
 
+static ssize_t dev_show_ident(struct class_device *class_dev, char *buf)
+{
+	struct nexus_dev *dev=class_get_devdata(class_dev);
+	return snprintf(buf, PAGE_SIZE, "%s\n", dev->ident);
+}
+
 static ssize_t dev_show_owner(struct class_device *class_dev, char *buf)
 {
 	struct nexus_dev *dev=class_get_devdata(class_dev);
@@ -280,6 +286,7 @@ static ssize_t dev_store_action(struct class_device *class_dev,
 }
 
 struct class_device_attribute class_dev_attrs[] = {
+	__ATTR(ident, S_IRUGO, dev_show_ident, NULL),
 	__ATTR(owner, S_IRUGO, dev_show_owner, NULL),
 	__ATTR(chunk_size, S_IRUGO, dev_show_chunksize, NULL),
 	__ATTR(cache_entries, S_IRUGO, dev_show_cachesize, NULL),

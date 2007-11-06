@@ -289,11 +289,14 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 			return -EBUSY;
 		if (copy_from_user(&setup, (void __user *)arg, sizeof(setup)))
 			return -EFAULT;
+		if (strnlen(setup.ident, NEXUS_MAX_DEVICE_LEN)
+					== NEXUS_MAX_DEVICE_LEN)
+			return -EINVAL;
 		if (strnlen(setup.chunk_device, NEXUS_MAX_DEVICE_LEN)
 					== NEXUS_MAX_DEVICE_LEN)
 			return -EINVAL;
-		dev=nexus_dev_ctr(setup.chunk_device, setup.chunksize,
-					setup.cachesize,
+		dev=nexus_dev_ctr(setup.ident, setup.chunk_device,
+					setup.chunksize, setup.cachesize,
 					(sector_t)setup.offset, setup.crypto,
 					setup.compress_default,
 					setup.compress_required);

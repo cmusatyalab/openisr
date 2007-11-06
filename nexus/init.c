@@ -39,12 +39,14 @@ GLOBAL_QUEUE_LOCK(queue_lock);
  * struct state - singleton tracking global, modifiable state
  * @lock       : lock for the other fields
  * @devs       : list of non-shutdown &nexus_dev (for nexus_open())
+ * @all_devs   : list of all &nexus_dev (for ident uniqueness)
  * @devnums    : bitmap of allocated device numbers (for minornum allocation)
  * @cache_pages: count of &struct page allocated to all &nexus_dev caches
  **/
 static struct state {
 	spinlock_t lock;
 	struct list_head devs;
+	struct list_head all_devs;
 	DECLARE_BITMAP(devnums, DEVICES);
 	unsigned long cache_pages;
 } state;
@@ -213,6 +215,21 @@ static unsigned long get_system_page_count(void)
 	si_meminfo(&s);
 	BUG_ON(s.mem_unit != PAGE_SIZE);
 	return s.totalram;
+}
+
+/**
+ * ident_exists - return true if some Nexus device has the given @ident
+ **/
+static int ident_exists(char *ident)
+{
+	struct nexus_dev *dev;
+	
+	BUG_ON(!spin_is_locked(&state.lock));
+	list_for_each_entry(dev, &state.all_devs, lh_all_devs) {
+		if (!strcmp(ident, dev->ident))
+			return 1;
+	}
+	return 0;
 }
 
 /**
@@ -410,10 +427,12 @@ static void nexus_dev_dtr(struct class_device *class_dev)
 	if (dev->chunk_bdev)
 		close_bdev_excl(dev->chunk_bdev);
 	spin_lock(&state.lock);
+	list_del(&dev->lh_all_devs);
 	state.cache_pages -= dev->cachesize * chunk_pages(dev);
 	spin_unlock(&state.lock);
 	free_devnum(dev->devnum);
 	kfree(dev->class_dev);
+	kfree(dev->ident);
 	kfree(dev);
 	module_put(THIS_MODULE);
 }
@@ -432,7 +451,7 @@ static struct block_device_operations nexus_ops = {
  * is the responsibility of this function, but validation of their form (e.g.,
  * strings being null-terminated) is the responsibility of the caller.
  **/
-struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
+struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 			unsigned cachesize, sector_t offset,
 			enum nexus_crypto suite,
 			enum nexus_compress default_compress,
@@ -486,13 +505,33 @@ struct nexus_dev *nexus_dev_ctr(char *devnode, unsigned chunksize,
 	spin_lock_init(&dev->requests_lock);
 	setup_timer(&dev->requests_oom_timer, oom_timer_fn, (unsigned long)dev);
 	INIT_LIST_HEAD(&dev->lh_run_requests);
+	INIT_LIST_HEAD(&dev->lh_devs);
+	INIT_LIST_HEAD(&dev->lh_all_devs);
 	init_waitqueue_head(&dev->waiting_users);
 	init_waitqueue_head(&dev->waiting_idle);
 	dev->devnum=devnum;
 	dev->owner=current->uid;
 	
-	INIT_LIST_HEAD(&dev->lh_devs);
+	if (strchr(ident, '/')) {
+		log(KERN_ERR, "device identifier may not contain '/'");
+		ret=-EINVAL;
+		goto bad;
+	}
+	dev->ident=kstrdup(ident, GFP_KERNEL);
+	if (dev->ident == NULL) {
+		log(KERN_ERR, "couldn't allocate identifier string");
+		ret=-ENOMEM;
+		goto bad;
+	}
+	
 	spin_lock(&state.lock);
+	if (ident_exists(ident)) {
+		spin_unlock(&state.lock);
+		log(KERN_ERR, "specified identifier already exists");
+		ret=-EEXIST;
+		goto bad;
+	}
+	list_add_tail(&dev->lh_all_devs, &state.all_devs);
 	list_add_tail(&dev->lh_devs, &state.devs);
 	spin_unlock(&state.lock);
 	
@@ -698,6 +737,7 @@ static int __init nexus_init(void)
 	
 	spin_lock_init(&state.lock);
 	INIT_LIST_HEAD(&state.devs);
+	INIT_LIST_HEAD(&state.all_devs);
 	INIT_QUEUE_LOCK(&queue_lock);
 	
 	debug(DBG_INIT, "Initializing request handler");

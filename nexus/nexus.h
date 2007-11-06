@@ -32,7 +32,7 @@
 #define NEXUS_IOC_UNREGISTER      _IO(0x1a, 1)
 #define NEXUS_IOC_CONFIG_THREAD   _IO(0x1a, 2)
 
-#define NEXUS_INTERFACE_VERSION 6
+#define NEXUS_INTERFACE_VERSION 7
 
 typedef __u16 compressmask_t;
 typedef __u16 msgtype_t;
@@ -55,6 +55,7 @@ enum nexus_compress {
 
 /**
  * struct nexus_setup - information exchanged during NEXUS_IOC_REGISTER
+ * @ident            : unique identifier for this device (null-terminated) (k)
  * @chunk_device     : path to the chunk-store block device (k)
  * @offset           : starting sector of first chunk in chunk store (k)
  * @chunksize        : chunk size in bytes (k)
@@ -84,6 +85,7 @@ enum nexus_compress {
  **/
 struct nexus_setup {
 	/* To kernel: */
+	__u8 ident[NEXUS_MAX_DEVICE_LEN];
 	__u8 chunk_device[NEXUS_MAX_DEVICE_LEN];
 	__u64 offset;
 	__u32 chunksize;
