@@ -36,3 +36,7 @@ ls_versions = 5
 
 # Compression algorithm to use for new chunks (none, zlib, lzf)
 compression = zlib
+
+# Minimum size of the hoard cache, in MB.  Chunks will not be garbage-collected
+# from the hoard cache until it reaches this size.
+hoard_minsize = 0
