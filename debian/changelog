@@ -1,3 +1,10 @@
+openisr (0.8.4-0pre2) experimental; urgency=low
+
+  * more packaging fixes
+  * debianized openisr-config
+
+ -- Matt Toups <mtoups@cs.cmu.edu>  Thu,  8 Nov 2007 19:15:13 -0500
+
 openisr (0.8.4-0pre1) experimental; urgency=low
 
   * new upstream release, many fixes

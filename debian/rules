@@ -12,6 +12,7 @@
 
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
+SVER=0.8.4-pre
 
 # This has to be exported to make some magic below work.
 export DH_OPTIONS
@@ -140,6 +141,9 @@ install-arch:
 	# Add here commands to install the arch part of the package
 	$(MAKE) install DESTDIR=$(CURDIR)/debian/openisr
 
+	#now let's replace openisr-config with our own debianized version
+	cp $(CURDIR)/debian/openisr-config $(CURDIR)/debian/openisr/usr/sbin
+
 	# Debian policy manual section 8.1 says we need this symlink
 #	(cd $(CURDIR)/debian/openisr/usr/lib && ln -s libvdisk.so.0.0.0 libvdisk.so.0)
 #
@@ -152,7 +156,7 @@ install-arch:
 
 	dh_installdirs -s usr/src/modules
 
-	$(MAKE) dist-gzip && mv openisr-0.8.3.tar.gz debian/openisr/usr/src && cd debian/openisr/usr/src && tar zxf openisr-0.8.3.tar.gz && rm openisr-0.8.3.tar.gz && mv openisr-0.8.3 modules/openisr
+	$(MAKE) dist-gzip && mv openisr-$(SVER).tar.gz debian/openisr/usr/src && cd debian/openisr/usr/src && tar zxf openisr-$(SVER).tar.gz && rm openisr-$(SVER).tar.gz && mv openisr-$(SVER) modules/openisr
 	
 	dh_installdirs -s usr/src/modules/openisr/debian
 	cd debian && cp changelog control.template compat rules copyright openisr/usr/src/modules/openisr/debian
@@ -194,8 +198,8 @@ binary-common:
 	dh_md5sums
 	dh_builddeb
 # Build architecture independant packages using the common target.
-binary-indep: build-indep install-indep
-	$(MAKE) -f debian/rules DH_OPTIONS=-i binary-common
+#binary-indep: build-indep install-indep
+#	$(MAKE) -f debian/rules DH_OPTIONS=-i binary-common
 
 # Build architecture dependant packages using the common target.
 binary-arch: build-arch install-arch
