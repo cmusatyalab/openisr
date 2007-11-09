@@ -184,7 +184,7 @@ my @locks;          # Names and FDs of open lock files
 
 # Read-only command line arguments that are visible to other modules.
 my $verbose = 1;    # Verbosity level; by default, we print a few messages
-my $nocheckstate;   # Skip state  consistency check in ci, sync, disconnect
+my $nocheckstate;   # Skip state consistency check in disconnect
 my $bwlimit;        # Bandwidth limit (KBytes/sec) in ci and sync
 my $server;         # Server domain name
 my $parceldir;
@@ -2422,7 +2422,7 @@ sub usage ($) {
     print "  -s,--server        Server domain name (optional).\n";
     print "  -u,--user          Your ISR user name (defaults to your login name).\n";    
     print "  -v,--verbose       Increment verbosity level.\n";
-    print "  -x,--nocheckstate  Skip consistency check [ci, sync, disconnect].\n";
+    print "  -x,--nocheckstate  Skip consistency check [disconnect].\n";
     print "  -X,--noauto        Don't automatically start/stop VMware [resume].\n";
     print "\n";
     
@@ -2728,11 +2728,9 @@ sub isr_priv_commit () {
 	errexit("The remote parcel is not available.");
     }
 
-    # If requested, check the current version of the parcel for consistency
-    if (!$nocheckstate) {
-	isr_srun("checkparcel", "-u $userid -p $parcel", "", 0) == 0
-	    or errexit("There is something wrong with the remote parcel. Aborting with no change to the remote parcel.");
-    }
+    # Check the current version of the parcel for consistency
+    isr_srun("checkparcel", "-u $userid -p $parcel", "", 0) == 0
+	or errexit("There is something wrong with the remote parcel. Aborting with no change to the remote parcel.");
 
     #
     # Trigger the server-side commit.
@@ -2747,11 +2745,9 @@ sub isr_priv_commit () {
 	or errexit("Server-side commit of parcel $userid/$parcel failed.");
     message("INFO", "End server side commit");
 
-    # If requested, check the newly committed version for consistency
-    if (!$nocheckstate) {
-	isr_srun("checkparcel", "-u $userid -p $parcel", "", 0) == 0
-	     or errexit("Something went wrong during commit.  Remote parcel is inconsistent.");
-    }
+    # Check the newly committed version for consistency
+    isr_srun("checkparcel", "-u $userid -p $parcel", "", 0) == 0
+	 or errexit("Something went wrong during commit.  Remote parcel is inconsistent.");
 }
 
 #
