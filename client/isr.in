@@ -184,7 +184,6 @@ my @locks;          # Names and FDs of open lock files
 
 # Read-only command line arguments that are visible to other modules.
 my $verbose = 1;    # Verbosity level; by default, we print a few messages
-my $nocheckstate;   # Skip state consistency check in disconnect
 my $bwlimit;        # Bandwidth limit (KBytes/sec) in ci and sync
 my $server;         # Server domain name
 my $parceldir;
@@ -321,7 +320,6 @@ Getopt::Long::Configure("no_ignore_case", "bundling_override",
 $result = GetOptions(
 		     "b|bwlimit=i"    => \$bwlimit,
 		     "c|checkstate+"  => \$checkstate,
-		     "x|nocheckstate" => \$nocheckstate,
 		     "d|disconnected" => \$disconnected,
 		     "l|long"         => \$longflag,
 		     "L|longvers=i"   => \$longvers,
@@ -487,7 +485,7 @@ elsif ($command eq "disconnect") {
     need_network();
     $do_sync = 1;
     acquire_lock("$isrdir/$uuid.lock", "Parcel", 0)
-	if (!$nocheckstate);
+	if $checkstate;
     acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
     disconnect();
 }
@@ -980,27 +978,18 @@ sub discard () {
 sub disconnect () {
     print "Preparing client host to run parcel $userid/$parcel disconnected...\n";
     
-    if (!$nocheckstate) {
-	print "Hint: Use the -x option to skip the lengthy consistency check.\n";
-    }
-
-
     # Hoard the parcel if it's not already hoarded
     if (isr_stathoard() < $cfg{NUMCHUNKS}) {
 	hoard();
     }
 
-    # Optionally check the hoard cache for consistency
-    if (!$nocheckstate) {
+    # Optionally check the hoard cache for consistency, and print a success
+    # message
+    if ($checkstate) {
 	isr_checkhoard();
-    }
-
-    # Print the appropriate success message
-    if (!$nocheckstate) {
 	print(GREEN, "Success: You can safely run disconnected.\n", RESET)
 	    if $verbose;
-    }
-    else {
+    } else {
 	print(GREEN, "Success: You can now run disconnected.\n", RESET)
 	    if $verbose;
     }
@@ -2399,7 +2388,7 @@ sub usage ($) {
 	print "  clean      Remove parcel from client and release its lock.\n";
 	print "  deauth     Remove authentication credentials from your client.\n";
 	print "  discard    Discard all local changes to parcel since last checkout or sync.\n";
-	print "  disconnect Prepare the client to run a parcel disconnected (-x optional).\n";
+	print "  disconnect Prepare the client to run a parcel disconnected (-c optional).\n";
 	print "  help       Print help message.\n";
 	print "  hoard      Fetch entire virtual disk so you can run disconnected.\n";
 	print "  ls         List info about your parcels (parcel, -l and -L optional).\n";
@@ -2413,7 +2402,7 @@ sub usage ($) {
     }
     print "Options:\n";
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [ci, sync].\n";
-    print "  -c,--checkstate    Do additional consistency check [checkp, stat].\n";
+    print "  -c,--checkstate    Do additional consistency check [checkp, disconnect, stat].\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [resume].\n";
     print "  -l,--long          Long listing [ls, lshoard].\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls].\n";
@@ -2422,7 +2411,6 @@ sub usage ($) {
     print "  -s,--server        Server domain name (optional).\n";
     print "  -u,--user          Your ISR user name (defaults to your login name).\n";    
     print "  -v,--verbose       Increment verbosity level.\n";
-    print "  -x,--nocheckstate  Skip consistency check [disconnect].\n";
     print "  -X,--noauto        Don't automatically start/stop VMware [resume].\n";
     print "\n";
     
