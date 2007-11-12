@@ -1432,7 +1432,7 @@ sub need_not_parcel () {
 #
 sub need_checked_out () {
     errexit("Parcel $userid/$parcel not checked out. Checkout or resume first.")
-	if !defined $uuid or !-e "$isrdir/$uuid";
+	if !$parceldir or !-e $parceldir;
 }
 
 #
