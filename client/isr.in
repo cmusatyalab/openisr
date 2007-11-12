@@ -427,19 +427,29 @@ if ($command eq "checkout") {
     # parcels with the same name can't be in "checkout" at the same time.
     acquire_lock("$isrdir/checkout-$parcel.lock", "Checkout", 0);
     checkout();
+    release_lock("Checkout");
+    if ($disconnected) {
+	acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
+	disconnect();
+    }
 } 
 elsif ($command eq "resume") {
     need_parcel();
     # Resume will need a network connection if the requested parcel is not
-    # currently checked out, or if the parcel is checked out and we're not
-    # planning on running disconnected.
+    # currently checked out, or if we're not planning on running disconnected,
+    # or if we need to do some hoarding to run disconnected.
     need_network()
-	if ((!-e "$isrdir/$parcel") or
-	    (-e "$isrdir/$parcel" and !$disconnected));
+        if !$parceldir or !-e $parceldir or !$disconnected
+	    or !is_fully_hoarded();
     $do_sync = 1;
     acquire_lock("$isrdir/checkout-$parcel.lock", "Checkout", 0);
     checkout();
     release_lock("Checkout");
+    if ($disconnected) {
+	acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
+	disconnect();
+	release_lock("Hoard cache");
+    }
     acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
     run();
 } 
@@ -476,16 +486,6 @@ elsif ($command eq "stat") {
     need_parcel();
     need_checked_out();
     statparcel();
-}
-elsif ($command eq "disconnect") {
-    need_parcel();
-    need_checked_out();
-    need_network();
-    $do_sync = 1;
-    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0)
-	if $checkstate;
-    acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
-    disconnect();
 }
 elsif ($command eq "checkparcel") {
     need_parcel();
@@ -581,6 +581,11 @@ sub checkout () {
     my $sigset;
     my %map;
 
+    # Warn the user if they asked for checkstate and we're not going to give it
+    if (!$disconnected and $checkstate) {
+	errexit("--checkstate is only valid in combination with --disconnected");
+    }
+    
     # If the parcel is already checked out on this machine, return immediately
     if ($parceldir and -e $parceldir) {
 	print(GREEN, "Success: Parcel $userid/$parcel already checked out on this host. Ready to run.\n", RESET)
@@ -756,10 +761,6 @@ sub run () {
     unlink($cdcache_file);
 
     if ($disconnected) {
-	# If the user wants to run disconnected, they better have all of their
-	# disk blocks hoarded
-	is_fully_hoarded()
-	    or errexit("Running disconnected without a fully hoarded parcel.\nPlease run \"isr disconnect $parcel\" first.");
 	print("Running disconnected...\n")
 	    if $verbose;
     } else {
@@ -2363,20 +2364,19 @@ sub usage ($) {
 
     print RED, "Usage: $progname command [parcel] [options...]\n", RESET;
     print BLUE, "Commands: auth, checkhoard, checkin (ci), checkout (co), checkp, clean, deauth,\n", RESET;
-    print BLUE, "          discard, disconnect, help, hoard, ls, lshoard, passwd, resume,\n", RESET;
-    print BLUE, "          rmhoard, stat, sync, version\n", RESET;
+    print BLUE, "          discard, help, hoard, ls, lshoard, passwd, resume, rmhoard,\n", RESET;
+    print BLUE, "          stat, sync, version\n", RESET;
     print BLUE, "Parcel is required for most commands\n", RESET;
     if (!$msg) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR server (once per X session only).\n";
 	print "  checkhoard Check hoard cache for consistency.\n";
 	print "  checkin    Sync parcel to server and release lock (-b optional).\n";
-	print "  checkout   Fetch parcel from server and acquire its lock (-r optional).\n";
+	print "  checkout   Fetch parcel from server and acquire its lock (-r and -c optional).\n";
 	print "  checkp     Check parcel for consistency (-e, -r and -c optional).\n";
 	print "  clean      Remove parcel from client and release its lock.\n";
 	print "  deauth     Remove authentication credentials from your client.\n";
 	print "  discard    Discard all local changes to parcel since last checkout or sync.\n";
-	print "  disconnect Prepare the client to run a parcel disconnected (-c optional).\n";
 	print "  help       Print help message.\n";
 	print "  hoard      Fetch entire virtual disk so you can run disconnected.\n";
 	print "  ls         List info about your parcels (parcel, -l and -L optional).\n";
@@ -2390,8 +2390,8 @@ sub usage ($) {
     }
     print "Options:\n";
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [ci, sync].\n";
-    print "  -c,--checkstate    Do additional consistency check [checkp, disconnect].\n";
-    print "  -d,--disconnected  Run disconnected (after hoarding) [resume].\n";
+    print "  -c,--checkstate    Do additional consistency check [checkp, checkout, resume].\n";
+    print "  -d,--disconnected  Run disconnected (after hoarding) [checkout, resume].\n";
     print "  -e,--remote        Perform action on server rather than client [checkp].\n";
     print "  -l,--long          Long listing [ls, lshoard].\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls].\n";
