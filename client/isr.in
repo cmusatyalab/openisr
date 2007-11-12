@@ -163,6 +163,7 @@ my $longflag;        # Print default number of versions for ls long format
 my $longvers;        # Print specific number of versions for ls long format
 my $version;         # Rollback version
 my $checkstate = 0;  # Optionally check content consistency in some cmds
+my $remote = 0;      # Perform action on server rather than client
 my $noautoflag;      # Don't automatically start/stop VMware at launch time
 
 # Write once globals that are visible in this module only. These globals are
@@ -319,8 +320,9 @@ Getopt::Long::Configure("no_ignore_case", "bundling_override",
 			"no_getopt_compat");
 $result = GetOptions(
 		     "b|bwlimit=i"    => \$bwlimit,
-		     "c|checkstate+"  => \$checkstate,
+		     "c|checkstate"   => \$checkstate,
 		     "d|disconnected" => \$disconnected,
+		     "e|remote"       => \$remote,
 		     "l|long"         => \$longflag,
 		     "L|longvers=i"   => \$longvers,
 		     "q|quiet"        => sub { $verbose = 0 },
@@ -491,7 +493,12 @@ elsif ($command eq "disconnect") {
 }
 elsif ($command eq "checkparcel") {
     need_parcel();
-    need_network();
+    if ($remote) {
+	need_network();
+    } else {
+	need_checked_out();
+	acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
+    }
     checkparcel();
 }
 elsif ($command eq "ls") {
@@ -1113,31 +1120,36 @@ sub hoard () {
 }
 
 #
-# checkparcel - Check a remote parcel for consistency
+# checkparcel - Check a parcel for consistency
 #
 sub checkparcel () {
-    my $versionflag;
-    my $checkstateflag;
+    my $flags = "";
     
-    #
-    # Ask the server the to check the consistency of the parcel
-    #
-    $versionflag = "";
-    if ($version) {
-	$versionflag = "-v $version";
+    if ($remote) {
+	# Ask the server the to check the consistency of the parcel
+	if ($version) {
+	    $flags .= " -v $version";
+	}
+	if ($checkstate) {
+	    $flags .= " -c";
+	}
+	
+	isr_srun("checkparcel", "-u $userid -p $parcel -V $flags", "", 0) == 0
+	     or errexit("There is something wrong with parcel $userid/$parcel on the server.");
+        
+	print(GREEN, "Success: The parcel $userid/$parcel looks OK on the server.\n", RESET)
+	    if $verbose;
+    } else {
+	# Check the local cache
+	errexit("-r only makes sense if -e is specified")
+	    if $version;
+	
+	isr_run_parcelkeeper("validate", "parcel") == 0
+	    or errexit("Could not validate cache");
+	
+	print(GREEN, "Success: The parcel $userid/$parcel looks OK.\n", RESET)
+	    if $verbose;
     }
-
-    $checkstateflag = "";
-    if ($checkstate) {
-	$checkstateflag = "-c";
-    }
-    isr_srun("checkparcel", 
-	     "-u $userid -p $parcel -V $versionflag $checkstateflag",
-	     "", 0) == 0
-		 or errexit("There is something wrong with parcel $userid/$parcel on the server.");
-
-    print(GREEN, "Success: The parcel $userid/$parcel on the server looks OK.\n", RESET)
-	if $verbose;
 }
 
 #
@@ -1168,18 +1180,9 @@ sub statparcel () {
 	or errexit("Could not examine cache");
     
     #
-    # Verify that each block in local cache has a valid keyring tag, if
-    # requested
-    #
-    if ($checkstate == 1 or $checkstate == 2) {
-	isr_run_parcelkeeper("validate", "parcel") == 0
-	    or errexit("Could not validate cache");
-    }
-
-    #
     # Check hoard cache for consistency (optional)
     #
-    if ($checkstate == 1 or $checkstate == 3) {
+    if ($checkstate) {
 	isr_checkhoard();
     }
 }
@@ -2384,7 +2387,7 @@ sub usage ($) {
 	print "  auth       Authenticate to the ISR server (once per X session only).\n";
 	print "  checkin    Sync parcel to server and release lock (-b optional).\n";
 	print "  checkout   Fetch parcel from server and acquire its lock (-r optional).\n";
-	print "  checkp     Check parcel on server for consistency (-r and -c optional).\n";
+	print "  checkp     Check parcel for consistency (-e, -r and -c optional).\n";
 	print "  clean      Remove parcel from client and release its lock.\n";
 	print "  deauth     Remove authentication credentials from your client.\n";
 	print "  discard    Discard all local changes to parcel since last checkout or sync.\n";
@@ -2404,6 +2407,7 @@ sub usage ($) {
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [ci, sync].\n";
     print "  -c,--checkstate    Do additional consistency check [checkp, disconnect, stat].\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [resume].\n";
+    print "  -e,--remote        Perform action on server rather than client [checkp].\n";
     print "  -l,--long          Long listing [ls, lshoard].\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls].\n";
     print "  -q,--quiet         Run silently (except if things go wrong).\n";    
