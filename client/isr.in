@@ -508,6 +508,7 @@ elsif ($command eq "lshoard") {
 }
 elsif ($command eq "rmhoard") {
     need_uuid();
+    acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
     rmhoard();
 }
 elsif ($command eq "checkhoard") {
