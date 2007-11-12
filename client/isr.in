@@ -100,6 +100,7 @@ sub parse_cfgfile ($$);
 sub parse_parcelcfg ($);
 sub build_cache ();
 sub hdksize ();
+sub is_fully_hoarded ();
 sub connected ();
 sub check_nexus_version ();
 sub check_for_old_isrdir ();
@@ -141,7 +142,6 @@ sub isr_connected_parcel ();
 sub isr_connected_http ();
 sub isr_parcelkeeper_cmd ($$);
 sub isr_run_parcelkeeper ($$);
-sub isr_stathoard ();
 sub isr_priv_upload ();
 sub copy_dirtychunks ();
 sub isr_priv_commit ();
@@ -765,7 +765,7 @@ sub run () {
 	# If the local cache is not fully populated, then make sure
 	# the hoard cache is fully populated
 	if ($numchunks != $cfg{NUMCHUNKS}) {
-	    if (isr_stathoard() != $cfg{NUMCHUNKS}) {
+	    if (!is_fully_hoarded()) {
 		errexit("Running disconnected without a fully hoarded parcel.\nPlease run \"isr disconnect $parcel\" first.");
 	    }
 	}
@@ -984,7 +984,7 @@ sub disconnect () {
     print "Preparing client host to run parcel $userid/$parcel disconnected...\n";
     
     # Hoard the parcel if it's not already hoarded
-    if (isr_stathoard() < $cfg{NUMCHUNKS}) {
+    if (!is_fully_hoarded()) {
 	hoard();
     }
 
@@ -1552,6 +1552,18 @@ sub clean ($) {
     }
     
     return $ret;
+}
+
+#
+# is_fully_hoarded - Return 1 if the parcel's disk is fully hoarded and 0
+#                    otherwise.
+#
+sub is_fully_hoarded () {
+    if (isr_run_parcelkeeper("hoard", "parcel hoard check") == 0) {
+	return 1;
+    } else {
+	return 0;
+    }
 }
 
 #
@@ -2512,6 +2524,8 @@ sub isr_parcelkeeper_cmd ($$) {
 	    $cmd .= " --compression $syscfg{compression}";
 	} elsif ($arg eq "uuid") {
 	    $cmd .= " --uuid $uuid";
+	} elsif ($arg eq "check") {
+	    $cmd .= " --check";
 	} elsif ($arg eq "log") {
 	    $do_log = 1;
 	} else {
@@ -2543,17 +2557,6 @@ sub isr_run_parcelkeeper ($$) {
     } else {
 	return mysystem($cmd);
     }
-}
-
-#
-# isr_stathoard - Report the number of chunks in the hoard cache
-# 
-sub isr_stathoard () {
-    my $numchunks = 0;
-    
-    # XXX
-    
-    return $numchunks;
 }
 
 #####################################
