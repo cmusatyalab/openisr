@@ -86,7 +86,7 @@ sub deauthenticate ();
 sub passwd ();
 sub clean ($);
 sub cleanclient ();
-sub hoard ();
+sub hoard ($);
 sub listhoard ();
 sub rmhoard ();
 sub checkhoard ();
@@ -429,6 +429,7 @@ if ($command eq "checkout") {
     checkout();
     release_lock("Checkout");
     if ($disconnected) {
+	acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
 	acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
 	disconnect();
     }
@@ -445,12 +446,12 @@ elsif ($command eq "resume") {
     acquire_lock("$isrdir/checkout-$parcel.lock", "Checkout", 0);
     checkout();
     release_lock("Checkout");
+    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
     if ($disconnected) {
 	acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
 	disconnect();
 	release_lock("Hoard cache");
     }
-    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
     run();
 } 
 elsif ($command eq "checkin") {
@@ -480,7 +481,7 @@ elsif ($command eq "hoard") {
     need_parcel();
     $do_sync = 1;
     # Locking is handled in hoard(), after we know the UUID
-    hoard();
+    hoard(0);
 }
 elsif ($command eq "stat") {
     need_parcel();
@@ -977,7 +978,7 @@ sub disconnect () {
     
     # Hoard the parcel if it's not already hoarded
     if (!is_fully_hoarded()) {
-	hoard();
+	hoard(1);
     }
 
     # Optionally check the hoard cache for consistency, and print a success
@@ -1036,52 +1037,59 @@ sub deauthenticate () {
 #
 # hoard - Copy all server disk blocks to the local client cache
 #
-sub hoard () {
+sub hoard ($) {
+    my $safe = shift;   # True if $parceldir is guaranteed not to vanish
+    
     my $retval;
     
     #
     # Fetch copies of parcel.cfg and the keyring and put them into a temporary
-    # parcel directory.  We don't use the regular last directory for the
-    # parcel, even if it is checked out, in order to allow hoard to run
-    # concurrently with operations which remove the last directory (e.g.,
-    # checkin and clean).
+    # parcel directory.  Unless we're told it's safe to do so (via $safe == 1),
+    # we don't use the regular parcel directory -- even if it is checked out --
+    # in order to allow hoard to run concurrently with operations which remove
+    # the parcel directory (e.g., checkin and clean).  If the parcel lock
+    # is taken, so that checkin and clean cannot run, then $safe can be set
+    # to true.  Note that if $safe is true, the caller should take care of
+    # obtaining the hoard lock.
     #
-    print "Fetching configuration data for $userid/$parcel from server.\n"
-	if $verbose;
+    if (!$safe) {
+	print "Fetching configuration data for $userid/$parcel from server.\n"
+	    if $verbose;
+	
+	# Assign a temporary parcel directory
+	$parceldir = "$isrdir/parceltmp-$$";
+	system("rm -rf $parceldir") == 0
+	    or errexit("Couldn't remove old temp directory $parceldir");
     
-    # Assign a temporary parcel directory
-    $parceldir = "$isrdir/parceltmp-$$";
-    system("rm -rf $parceldir") == 0
-        or errexit("Couldn't remove old temp directory $parceldir");
-
-    # Before going any further, make sure we have a protocol level
-    # connection to the server and a valid parcel
-    if (!isr_connected_http()) {
-	errexit("The server appears to be down.");
-    }
-    if (!isr_connected_parcel()) {
-	errexit("Remote parcel $userid/$parcel not found on the server.");
-    }
+	# Before going any further, make sure we have a protocol level
+	# connection to the server and a valid parcel
+	if (!isr_connected_http()) {
+	    errexit("The server appears to be down.");
+	}
+	if (!isr_connected_parcel()) {
+	    errexit("Remote parcel $userid/$parcel not found on the server.");
+	}
+	
+	# Fetch metadata from the server
+	mktree($parceldir)
+	    or errexit("Unable to make $parceldir");
+	isr_srun("getconfig", "-p $parcel", "$parceldir/parcel.cfg", 0) == 0
+	    or errexit("Parcel $userid/$parcel does not exist on the server ($server).");
+	parse_parcelcfg("$parceldir/parcel.cfg");
+	$uuid = $cfg{"UUID"};
+	set_parcel_globals($parceldir);
+	# We couldn't acquire the hoard lock during startup, because we didn't
+	# know the UUID.  Now we can.
+	acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
+	acquire_lock("$imgbase.lock", "Hoard image", 1);
+	fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0, undef) == 0
+	    or errexit("Unable to fetch keyring.enc");
     
-    # Fetch metadata from the server
-    mktree($parceldir)
-	or errexit("Unable to make $parceldir");
-    isr_srun("getconfig", "-p $parcel", "$parceldir/parcel.cfg", 0) == 0
-	or errexit("Parcel $userid/$parcel does not exist on the server ($server).");
-    parse_parcelcfg("$parceldir/parcel.cfg");
-    $uuid = $cfg{"UUID"};
-    set_parcel_globals($parceldir);
-    # We couldn't acquire the hoard lock during startup, because we didn't
-    # know the UUID.  Now we can.
-    acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
-    acquire_lock("$imgbase.lock", "Hoard image", 1);
-    fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0, undef) == 0
-	or errexit("Unable to fetch keyring.enc");
-
-    # Decrypt the keyring
-    decrypt_keyring("$parceldir/prev-keyring") == 0
-	or errexit("Unable to decrypt keyring.enc");
-    release_lock("Hoard image");
+	# Decrypt the keyring
+	decrypt_keyring("$parceldir/prev-keyring") == 0
+	    or errexit("Unable to decrypt keyring.enc");
+	release_lock("Hoard image");
+    }
 
     # Ask Parcelkeeper to hoard all hdk blocks into local store. If the
     # hoard operation returns an error, then either the network
