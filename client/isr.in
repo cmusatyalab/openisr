@@ -162,7 +162,7 @@ my $longvers;        # Print specific number of versions for ls long format
 my $version;         # Rollback version
 my $checkstate = 0;  # Optionally check content consistency in some cmds
 my $remote = 0;      # Perform action on server rather than client
-my $noautoflag;      # Don't automatically start/stop VMware at launch time
+my $fullscreen = 1;  # Run VMM in full-screen mode
 
 # Write once globals that are visible in this module only. These globals are
 # needed to cleanly handle logging.
@@ -321,6 +321,7 @@ $result = GetOptions(
 		     "c|checkstate"   => \$checkstate,
 		     "d|disconnected" => \$disconnected,
 		     "e|remote"       => \$remote,
+		     "F|no-fullscreen"=> sub { $fullscreen = 0 },
 		     "l|long"         => \$longflag,
 		     "L|longvers=i"   => \$longvers,
 		     "q|quiet"        => sub { $verbose = 0 },
@@ -328,7 +329,6 @@ $result = GetOptions(
 		     "s|server=s"     => \$server,
 		     "u|user=s"       => \$userid,
 		     "v|verbose+"     => \$verbose,
-		     "X|noauto"       => \$noautoflag
 		     );
 
 if ($result == 0) {
@@ -730,7 +730,7 @@ sub run () {
     my $i;
     my $iters;
     my $sigset;
-    my $vmware_opts;
+    my $vmware_opts = "";
     my $pk_pid;
     my $devnode;
     
@@ -812,10 +812,8 @@ sub run () {
     # Launch VMware
     print "Launching VMware...\n"
 	if $verbose;
-    if (!$noautoflag) {
-        $vmware_opts = "-X";
-    } else {
-        $vmware_opts = "";
+    if ($fullscreen) {
+        $vmware_opts .= " -X";
     }
     mysystem("LD_PRELOAD=libvdisk.so.0 VDISK_DEVICE=$devnode $syscfg{vmcommand} $vmware_opts $parceldir/cfg/$cfgfile") == 0
 	or system_errexit("VMware terminated abnormally.");
@@ -2402,6 +2400,7 @@ sub usage ($) {
     print "  -c,--checkstate    Do additional consistency check [checkp, checkout, resume].\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [checkout, resume].\n";
     print "  -e,--remote        Perform action on server rather than client [checkp].\n";
+    print "  -F,--no-fullscreen Start VMware in windowed mode [resume].\n";
     print "  -l,--long          Long listing [ls, lshoard].\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls].\n";
     print "  -q,--quiet         Run silently (except if things go wrong).\n";    
@@ -2409,7 +2408,6 @@ sub usage ($) {
     print "  -s,--server        Server domain name (optional).\n";
     print "  -u,--user          Your ISR user name (defaults to your login name).\n";    
     print "  -v,--verbose       Increment verbosity level.\n";
-    print "  -X,--noauto        Don't automatically start/stop VMware [resume].\n";
     print "\n";
     
     exit 0;
