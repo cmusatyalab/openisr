@@ -89,6 +89,7 @@ sub cleanclient ();
 sub hoard ();
 sub listhoard ();
 sub rmhoard ();
+sub checkhoard ();
 sub checkparcel ();
 sub statparcel ();
 sub set_parcel_globals;
@@ -141,7 +142,6 @@ sub isr_connected_http ();
 sub isr_parcelkeeper_cmd ($$);
 sub isr_run_parcelkeeper ($$);
 sub isr_stathoard ();
-sub isr_checkhoard ();
 sub isr_priv_upload ();
 sub copy_dirtychunks ();
 sub isr_priv_commit ();
@@ -477,8 +477,6 @@ elsif ($command eq "hoard") {
 elsif ($command eq "stat") {
     need_parcel();
     need_checked_out();
-    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0)
-	if $checkstate;
     statparcel();
 }
 elsif ($command eq "disconnect") {
@@ -512,6 +510,10 @@ elsif ($command eq "lshoard") {
 elsif ($command eq "rmhoard") {
     need_uuid();
     rmhoard();
+}
+elsif ($command eq "checkhoard") {
+    need_not_parcel();
+    checkhoard();
 }
 elsif ($command eq "auth") {
     need_not_parcel();
@@ -993,7 +995,7 @@ sub disconnect () {
     # Optionally check the hoard cache for consistency, and print a success
     # message
     if ($checkstate) {
-	isr_checkhoard();
+	checkhoard();
 	print(GREEN, "Success: You can safely run disconnected.\n", RESET)
 	    if $verbose;
     } else {
@@ -1153,8 +1155,7 @@ sub checkparcel () {
 }
 
 #
-# statparcel - Report general statistics about the cache and if requested, 
-#              run a content consistency check on the chunks
+# statparcel - Report general statistics about the hoard and local caches
 #
 sub statparcel () {
     my $memsize;
@@ -1178,13 +1179,6 @@ sub statparcel () {
     #
     isr_run_parcelkeeper("examine", "parcel hoard") == 0
 	or errexit("Could not examine cache");
-    
-    #
-    # Check hoard cache for consistency (optional)
-    #
-    if ($checkstate) {
-	isr_checkhoard();
-    }
 }
 
 #
@@ -1349,6 +1343,20 @@ sub rmhoard () {
 	}
     }
     release_lock("Hoard image");
+}
+
+#
+# checkhoard - Reports on the consistency of the hoard cache
+# 
+sub checkhoard () {
+    print "Checking hoard cache for internal consistency...\n"
+	if $verbose;
+    
+    isr_run_parcelkeeper("checkhoard", "hoard") == 0
+        or errexit("Hoard cache check failed");
+    
+    print GREEN, "Success: The hoard cache is consistent.\n", RESET
+        if $verbose;
 }
 
 #
@@ -2378,13 +2386,14 @@ sub usage ($) {
     }
 
     print RED, "Usage: $progname command [parcel] [options...]\n", RESET;
-    print BLUE, "Commands: auth, checkin (ci), checkout (co), checkp, clean, deauth, discard,\n", RESET;
-    print BLUE, "          disconnect, help, hoard, ls, lshoard, passwd, resume, rmhoard, stat,\n", RESET;
-    print BLUE, "          sync, version\n", RESET;
+    print BLUE, "Commands: auth, checkhoard, checkin (ci), checkout (co), checkp, clean, deauth,\n", RESET;
+    print BLUE, "          discard, disconnect, help, hoard, ls, lshoard, passwd, resume,\n", RESET;
+    print BLUE, "          rmhoard, stat, sync, version\n", RESET;
     print BLUE, "Parcel is required for most commands\n", RESET;
     if (!$msg) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR server (once per X session only).\n";
+	print "  checkhoard Check hoard cache for consistency.\n";
 	print "  checkin    Sync parcel to server and release lock (-b optional).\n";
 	print "  checkout   Fetch parcel from server and acquire its lock (-r optional).\n";
 	print "  checkp     Check parcel for consistency (-e, -r and -c optional).\n";
@@ -2399,13 +2408,13 @@ sub usage ($) {
 	print "  passwd     Change your ISR password on the server.\n";
  	print "  resume     Checkout (if necessary) and run a parcel (-r and -d optional).\n";
 	print "  rmhoard    Remove a parcel from the hoard cache\n";
-	print "  stat       Display information about local ISR state (-c optional).\n";
+	print "  stat       Display information about local ISR state.\n";
 	print "  sync       Make new parcel version on server w/o releasing lock (-b optional).\n";
 	print "  version    Print ISR version.\n";
     }
     print "Options:\n";
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [ci, sync].\n";
-    print "  -c,--checkstate    Do additional consistency check [checkp, disconnect, stat].\n";
+    print "  -c,--checkstate    Do additional consistency check [checkp, disconnect].\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [resume].\n";
     print "  -e,--remote        Perform action on server rather than client [checkp].\n";
     print "  -l,--long          Long listing [ls, lshoard].\n";
@@ -2549,16 +2558,6 @@ sub isr_stathoard () {
     # XXX
     
     return $numchunks;
-}
-
-#
-# isr_checkhoard - Reports on the consistency of the hoard cache
-# 
-sub isr_checkhoard () {
-    print "Checking hoard cache for internal consistency...\n"
-	if $verbose;
-    
-    # XXX
 }
 
 #####################################
