@@ -70,6 +70,7 @@ enum mode_flags {
 	WANT_PREV	= 0x0004,
 	WANT_BACKGROUND = 0x0008,
 	WANT_TRANSPORT	= 0x0010,
+	WANT_CHECK	= 0x0020,
 };
 
 struct pk_connection;

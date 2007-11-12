@@ -494,6 +494,22 @@ int hoard(void)
 	int ret=1;
 	int sret;
 
+	/* First, see how many unhoarded chunks there are */
+	if (query(&stmt, state.db, "SELECT count(DISTINCT tag) FROM prev.keys "
+				"WHERE tag NOT IN "
+				"(SELECT tag FROM hoard.chunks)",
+				NULL) != SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't count unhoarded chunks");
+		return 1;
+	}
+	query_row(stmt, "d", &to_hoard);
+	query_free(stmt);
+
+	/* If WANT_CHECK, that's all we need to do */
+	if (config.flags & WANT_CHECK)
+		return to_hoard ? 1 : 0;
+
 	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failure");
@@ -504,17 +520,6 @@ int hoard(void)
 		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
 		goto out;
 	}
-
-	if (query(&stmt, state.db, "SELECT count(DISTINCT tag) FROM prev.keys "
-				"WHERE tag NOT IN "
-				"(SELECT tag FROM hoard.chunks)",
-				NULL) != SQLITE_ROW) {
-		query_free(stmt);
-		pk_log(LOG_ERROR, "Couldn't count unhoarded chunks");
-		goto out;
-	}
-	query_row(stmt, "d", &to_hoard);
-	query_free(stmt);
 
 	while ((sret=query(&stmt, state.db, "SELECT chunk, tag FROM prev.keys "
 				"WHERE tag NOT IN "

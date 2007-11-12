@@ -31,6 +31,7 @@ enum option {
 	OPT_COMPRESSION,
 	OPT_LOG,
 	OPT_FOREGROUND,
+	OPT_CHECK,
 	OPT_MODE,
 	END_OPTS = -1
 };
@@ -66,6 +67,7 @@ static struct pk_option pk_options[] = {
 	{"compression",    OPT_COMPRESSION,    {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
 	{"log",            OPT_LOG,            {"logfile", "info_str", "filemask", "stderrmask"}},
 	{"foreground",     OPT_FOREGROUND,     {},                                                      "Don't run in the background"},
+	{"check",          OPT_CHECK,          {},                                                      "Don't download; just return 0 if fully hoarded or 1 otherwise"},
 	{"mode",           OPT_MODE,           {"mode"},                                                "Print detailed usage message about the given mode"},
 	{0}
 };
@@ -95,6 +97,7 @@ mode(HOARD) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         REQUIRED},
 	{OPT_MINSIZE,       OPTIONAL},
+	{OPT_CHECK,         OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
 	{END_OPTS}
 };
@@ -411,6 +414,10 @@ enum mode parse_cmdline(int argc, char **argv)
 			break;
 		case OPT_FOREGROUND:
 			config.flags &= ~WANT_BACKGROUND;
+			break;
+		case OPT_CHECK:
+			/* Abuse of WANT_ flags? */
+			config.flags |= WANT_CHECK;
 			break;
 		case OPT_MODE:
 			helpmode=parse_mode(optparams[0]);
