@@ -146,7 +146,6 @@ sub isr_priv_upload ();
 sub copy_dirtychunks ();
 sub isr_priv_commit ();
 sub isr_priv_clientcommit($);
-sub isr_priv_cleanhoard ();
 
 #########################
 # Section 2. Main routine
@@ -886,9 +885,6 @@ sub sync ($) {
     my $vflag = "-q";
     my $bwflag = "";
     my $i;
-
-    # Garbage collect the hoard cache
-    isr_priv_cleanhoard();
 
     if (!-e $cleancache_file) {
 	# Upload the dirty blocks in a cache directory on the server
@@ -2793,19 +2789,4 @@ sub isr_priv_clientcommit($) {
     message("INFO", "Client side commit - start removing upload directory");
     system("rm -rf $uploaddir");
     message("INFO", "Client side commit - finish removing upload directory");
-}
-
-#
-# isr_priv_cleanhoard - perform garbage collection on hoard cache at sync time
-# 
-sub isr_priv_cleanhoard () {
-    my $deletecnt = 0;
-
-    print "Garbage-collecting hoard cache..."
-	if $verbose;
-
-    # XXX
-
-    print " (Deleted $deletecnt unused chunks)\n"
-	if $verbose;
 }
