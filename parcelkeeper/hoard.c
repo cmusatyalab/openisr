@@ -474,6 +474,50 @@ bad:
 	return ret;
 }
 
+static pk_err_t open_hoard_index(void)
+{
+	sqlite3_stmt *stmt;
+	pk_err_t ret;
+	int ver;
+
+	ret=attach(state.db, "hoard", config.hoard_index);
+	if (ret)
+		return ret;
+	ret=begin(state.db);
+	if (ret)
+		return ret;
+	if (query(&stmt, state.db, "PRAGMA hoard.user_version", NULL) !=
+				SQLITE_ROW) {
+		query_free(stmt);
+		pk_log(LOG_ERROR, "Couldn't get hoard cache index version");
+		ret=PK_IOERR;
+		goto bad;
+	}
+	query_row(stmt, "d", &ver);
+	query_free(stmt);
+	switch (ver) {
+	case 0:
+		ret=create_hoard_index();
+		if (ret)
+			goto bad;
+		break;
+	case HOARD_INDEX_VERSION:
+		break;
+	default:
+		pk_log(LOG_ERROR, "Unknown hoard cache version %d", ver);
+		ret=PK_BADFORMAT;
+		goto bad;
+	}
+	ret=commit(state.db);
+	if (ret)
+		goto bad;
+	return PK_SUCCESS;
+
+bad:
+	rollback(state.db);
+	return ret;
+}
+
 /* Releases the hoard_fd lock before returning, including on error */
 static pk_err_t hoard_try_cleanup(void)
 {
@@ -504,8 +548,6 @@ out:
 
 pk_err_t hoard_init(void)
 {
-	sqlite3_stmt *stmt;
-	int ver;
 	pk_err_t ret;
 
 	if (config.hoard_dir == NULL)
@@ -528,37 +570,9 @@ pk_err_t hoard_init(void)
 		goto bad;
 	}
 
-	ret=attach(state.db, "hoard", config.hoard_index);
+	ret=open_hoard_index();
 	if (ret)
 		goto bad;
-	ret=begin(state.db);
-	if (ret)
-		goto bad;
-	if (query(&stmt, state.db, "PRAGMA hoard.user_version", NULL) !=
-				SQLITE_ROW) {
-		query_free(stmt);
-		pk_log(LOG_ERROR, "Couldn't get hoard cache index version");
-		ret=PK_IOERR;
-		goto bad_rollback;
-	}
-	query_row(stmt, "d", &ver);
-	query_free(stmt);
-	switch (ver) {
-	case 0:
-		ret=create_hoard_index();
-		if (ret)
-			goto bad_rollback;
-		break;
-	case HOARD_INDEX_VERSION:
-		break;
-	default:
-		pk_log(LOG_ERROR, "Unknown hoard cache version %d", ver);
-		ret=PK_BADFORMAT;
-		goto bad_rollback;
-	}
-	ret=commit(state.db);
-	if (ret)
-		goto bad_rollback;
 
 	if (config.parcel_dir != NULL) {
 		ret=get_parcel_ident();
@@ -567,8 +581,6 @@ pk_err_t hoard_init(void)
 	}
 	return PK_SUCCESS;
 
-bad_rollback:
-	rollback(state.db);
 bad:
 	close(state.hoard_fd);
 	return ret;
