@@ -152,9 +152,11 @@ pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
 	return PK_SUCCESS;
 }
 
-pk_err_t _begin(sqlite3 *db, const char *caller)
+pk_err_t _begin(sqlite3 *db, int immediate, const char *caller)
 {
-	if (query(NULL, db, "BEGIN TRANSACTION", NULL)) {
+	char *sql = immediate ? "BEGIN IMMEDIATE" : "BEGIN";
+
+	if (query(NULL, db, sql, NULL)) {
 		pk_log(LOG_ERROR, "Couldn't begin transaction "
 					"on behalf of %s()", caller);
 		return PK_IOERR;

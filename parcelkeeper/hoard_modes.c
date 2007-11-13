@@ -233,7 +233,7 @@ int rmhoard(void)
 	int parcel;
 	int removed;
 
-	if (begin(state.db))
+	if (begin_immediate(state.db))
 		return 1;
 	if (query(&stmt, state.db, "SELECT parcel, server, user, name "
 				"FROM hoard.parcels WHERE uuid == ?", "S",
@@ -304,7 +304,7 @@ int check_hoard(void)
 	printf("Validating hoard cache...\n");
 	if (validate_db(state.db))
 		return 1;
-	if (begin(state.db))
+	if (begin_immediate(state.db))
 		return 1;
 
 	for (sret=query(&stmt, state.db, "SELECT uuid FROM hoard.parcels",

@@ -227,7 +227,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 
 	if (config.hoard_dir == NULL)
 		return PK_NOTFOUND;
-	ret=begin(state.hoard);
+	ret=begin_immediate(state.hoard);
 	if (ret)
 		return ret;
 
@@ -299,7 +299,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 
 	if (config.hoard_dir == NULL)
 		return PK_SUCCESS;
-	ret=begin(state.hoard);
+	ret=begin_immediate(state.hoard);
 	if (ret)
 		return ret;
 
@@ -440,7 +440,7 @@ static pk_err_t get_parcel_ident(void)
 	pk_err_t ret;
 	int sret;
 
-	ret=begin(state.hoard);
+	ret=begin_immediate(state.hoard);
 	if (ret)
 		return ret;
 	while ((sret=query(&stmt, state.hoard, "SELECT parcel FROM parcels "
@@ -491,7 +491,7 @@ static pk_err_t open_hoard_index(void)
 	ret=set_busy_handler(state.hoard);
 	if (ret)
 		goto bad;
-	ret=begin(state.hoard);
+	ret=begin_immediate(state.hoard);
 	if (ret)
 		goto bad;
 	if (query(&stmt, state.hoard, "PRAGMA user_version", NULL)
