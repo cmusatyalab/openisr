@@ -23,13 +23,13 @@
 static pk_err_t create_hoard_index(void)
 {
 	/* XXX auto_vacuum */
-	if (query(NULL, state.db, "PRAGMA hoard.user_version = "
+	if (query(NULL, state.hoard, "PRAGMA user_version = "
 				stringify(HOARD_INDEX_VERSION), NULL)) {
 		pk_log(LOG_ERROR, "Couldn't set schema version");
 		return PK_IOERR;
 	}
 
-	if (query(NULL, state.db, "CREATE TABLE hoard.parcels ("
+	if (query(NULL, state.hoard, "CREATE TABLE parcels ("
 				"parcel INTEGER PRIMARY KEY NOT NULL, "
 				"uuid TEXT UNIQUE NOT NULL, "
 				"server TEXT NOT NULL, "
@@ -39,7 +39,7 @@ static pk_err_t create_hoard_index(void)
 		return PK_IOERR;
 	}
 
-	if (query(NULL, state.db, "CREATE TABLE hoard.chunks ("
+	if (query(NULL, state.hoard, "CREATE TABLE chunks ("
 				"tag BLOB UNIQUE, "
 				/* 512-byte sectors */
 				"offset INTEGER UNIQUE NOT NULL, "
@@ -50,19 +50,19 @@ static pk_err_t create_hoard_index(void)
 		pk_log(LOG_ERROR, "Couldn't create chunk table");
 		return PK_IOERR;
 	}
-	if (query(NULL, state.db, "CREATE INDEX hoard.chunks_lru ON "
+	if (query(NULL, state.hoard, "CREATE INDEX chunks_lru ON "
 				"chunks (last_access)", NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create chunk LRU index");
 		return PK_IOERR;
 	}
 
-	if (query(NULL, state.db, "CREATE TABLE hoard.refs ("
+	if (query(NULL, state.hoard, "CREATE TABLE refs ("
 				"parcel INTEGER NOT NULL, "
 				"tag BLOB NOT NULL)", NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create reference table");
 		return PK_IOERR;
 	}
-	if (query(NULL, state.db, "CREATE UNIQUE INDEX hoard.refs_constraint "
+	if (query(NULL, state.hoard, "CREATE UNIQUE INDEX refs_constraint "
 				"ON refs (parcel, tag)", NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create chunk LRU index");
 		return PK_IOERR;
@@ -88,8 +88,8 @@ static pk_err_t expand_cache(void)
 	int i;
 	int step = parcel.chunksize >> 9;
 
-	if (query(&stmt, state.db, "SELECT count(*), max(offset) "
-				"FROM hoard.chunks", NULL) != SQLITE_ROW) {
+	if (query(&stmt, state.hoard, "SELECT count(*), max(offset) "
+				"FROM chunks", NULL) != SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't find maximum hoard cache offset");
 		return PK_IOERR;
@@ -99,7 +99,7 @@ static pk_err_t expand_cache(void)
 	if (count)
 		start += step;
 	for (i=0; i<EXPAND_CHUNKS; i++) {
-		if (query(NULL, state.db, "INSERT INTO hoard.chunks (offset) "
+		if (query(NULL, state.hoard, "INSERT INTO chunks (offset) "
 					"VALUES (?)", "d", start + i * step)) {
 			pk_log(LOG_ERROR, "Couldn't expand hoard cache to "
 						"offset %d", start + i * step);
@@ -119,7 +119,7 @@ static pk_err_t allocate_chunk_offset(int *offset)
 
 	while (1) {
 		/* First, try to find an unused hoard cache slot */
-		sret=query(&stmt, state.db, "SELECT offset FROM hoard.chunks "
+		sret=query(&stmt, state.hoard, "SELECT offset FROM chunks "
 					"WHERE tag ISNULL AND referenced == 0 "
 					"LIMIT 1", NULL);
 		if (sret == SQLITE_ROW) {
@@ -136,8 +136,8 @@ static pk_err_t allocate_chunk_offset(int *offset)
 		/* Next, we may want to try reclaiming an existing,
 		   unreferenced chunk.  See if we're permitted to do so. */
 		if (config.minsize > 0) {
-			sret=query(&stmt, state.db, "SELECT count(tag) "
-						"FROM hoard.chunks", NULL);
+			sret=query(&stmt, state.hoard, "SELECT count(tag) "
+						"FROM chunks", NULL);
 			if (sret != SQLITE_ROW) {
 				query_free(stmt);
 				pk_log(LOG_ERROR, "Error finding size of "
@@ -151,8 +151,8 @@ static pk_err_t allocate_chunk_offset(int *offset)
 		/* XXX assumes 128 KB */
 		if ((unsigned)(hoarded / 8) >= config.minsize) {
 			/* Try to reclaim the LRU unreferenced chunk */
-			sret=query(&stmt, state.db, "SELECT offset "
-					"FROM hoard.chunks WHERE tag NOTNULL "
+			sret=query(&stmt, state.hoard, "SELECT offset "
+					"FROM chunks WHERE tag NOTNULL "
 					"AND referenced == 0 "
 					"ORDER BY last_access LIMIT 1", NULL);
 			if (sret == SQLITE_ROW) {
@@ -173,7 +173,7 @@ static pk_err_t allocate_chunk_offset(int *offset)
 			return ret;
 	}
 
-	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 1, "
+	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1, "
 				"tag = NULL, length = 0, last_access = 0 "
 				"WHERE offset == ?", "d", *offset)) {
 		pk_log(LOG_ERROR, "Couldn't allocate hoard cache chunk");
@@ -184,7 +184,7 @@ static pk_err_t allocate_chunk_offset(int *offset)
 
 static void deallocate_chunk_offset(int offset)
 {
-	if (query(NULL, state.db, "UPDATE hoard.chunks SET tag = NULL, "
+	if (query(NULL, state.hoard, "UPDATE chunks SET tag = NULL, "
 				"length = 0, last_access = 0, referenced = 0 "
 				"WHERE offset = ?", "d", offset)) {
 		pk_log(LOG_ERROR, "Couldn't deallocate hoard chunk at "
@@ -196,7 +196,7 @@ static pk_err_t add_chunk_reference(const void *tag)
 {
 	char *ftag;
 
-	if (query(NULL, state.db, "INSERT OR IGNORE INTO hoard.refs "
+	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO refs "
 				"(parcel, tag) VALUES (?, ?)", "db",
 				state.hoard_ident, tag, parcel.hashlen)
 				!= SQLITE_OK) {
@@ -206,7 +206,7 @@ static pk_err_t add_chunk_reference(const void *tag)
 		free(ftag);
 		return PK_IOERR;
 	}
-	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 1 "
+	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1 "
 				" WHERE tag == ?", "b", tag, parcel.hashlen)) {
 		ftag=format_tag(tag);
 		pk_log(LOG_ERROR, "Couldn't set referenced flag for tag %s",
@@ -227,15 +227,15 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 
 	if (config.hoard_dir == NULL)
 		return PK_NOTFOUND;
-	ret=begin(state.db);
+	ret=begin(state.hoard);
 	if (ret)
 		return ret;
 
-	sret=query(&stmt, state.db, "SELECT offset, length FROM hoard.chunks "
+	sret=query(&stmt, state.hoard, "SELECT offset, length FROM chunks "
 				"WHERE tag == ?", "b", tag, parcel.hashlen);
 	if (sret == SQLITE_OK) {
 		query_free(stmt);
-		ret=commit(state.db);
+		ret=commit(state.hoard);
 		if (ret)
 			goto bad;
 		return PK_NOTFOUND;
@@ -247,7 +247,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	query_row(stmt, "dd", &offset, &clen);
 	query_free(stmt);
 
-	if (query(NULL, state.db, "UPDATE hoard.chunks SET last_access = ? "
+	if (query(NULL, state.hoard, "UPDATE chunks SET last_access = ? "
 				"WHERE tag == ?", "db", timestamp(), tag,
 				parcel.hashlen)) {
 		/* Not fatal */
@@ -257,7 +257,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	if (ret)
 		goto bad;
 
-	ret=commit(state.db);
+	ret=commit(state.hoard);
 	if (ret)
 		goto bad;
 
@@ -287,7 +287,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	return PK_SUCCESS;
 
 bad:
-	rollback(state.db);
+	rollback(state.hoard);
 	return ret;
 }
 
@@ -299,17 +299,17 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 
 	if (config.hoard_dir == NULL)
 		return PK_SUCCESS;
-	ret=begin(state.db);
+	ret=begin(state.hoard);
 	if (ret)
 		return ret;
 
-	sret=query(NULL, state.db, "SELECT tag FROM hoard.chunks WHERE "
-				"tag == ?", "b", tag, parcel.hashlen);
+	sret=query(NULL, state.hoard, "SELECT tag FROM chunks WHERE tag == ?",
+				"b", tag, parcel.hashlen);
 	if (sret == SQLITE_ROW) {
 		ret=add_chunk_reference(tag);
 		if (ret)
 			goto bad;
-		ret=commit(state.db);
+		ret=commit(state.hoard);
 		if (ret)
 			goto bad;
 		return PK_SUCCESS;
@@ -322,7 +322,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	if (ret)
 		goto bad;
 
-	ret=commit(state.db);
+	ret=commit(state.hoard);
 	if (ret)
 		goto bad;
 
@@ -334,15 +334,14 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 		return PK_IOERR;
 	}
 
-	ret=begin(state.db);
+	ret=begin(state.hoard);
 	if (ret) {
 		deallocate_chunk_offset(offset);
 		return ret;
 	}
-	sret=query(NULL, state.db, "UPDATE hoard.chunks SET tag = ?, "
-				"length = ?, last_access = ? WHERE offset = ?",
-				"bddd", tag, parcel.hashlen, len, timestamp(),
-				offset);
+	sret=query(NULL, state.hoard, "UPDATE chunks SET tag = ?, length = ?, "
+				"last_access = ? WHERE offset = ?", "bddd",
+				tag, parcel.hashlen, len, timestamp(), offset);
 	if (sret == SQLITE_CONSTRAINT) {
 		/* Someone else has already written this tag */
 		deallocate_chunk_offset(offset);
@@ -354,7 +353,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	ret=add_chunk_reference(tag);
 	if (ret)
 		goto bad_dealloc;
-	ret=commit(state.db);
+	ret=commit(state.hoard);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
 		goto bad_dealloc;
@@ -362,14 +361,16 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	return PK_SUCCESS;
 
 bad:
-	rollback(state.db);
+	rollback(state.hoard);
 	return ret;
 bad_dealloc:
-	rollback(state.db);
+	rollback(state.hoard);
 	deallocate_chunk_offset(offset);
 	return ret;
 }
 
+/* We use state.db rather than state.hoard in this function, since we need to
+   compare to the previous or current keyring */
 pk_err_t hoard_sync_refs(int from_cache)
 {
 	pk_err_t ret;
@@ -439,14 +440,14 @@ static pk_err_t get_parcel_ident(void)
 	pk_err_t ret;
 	int sret;
 
-	ret=begin(state.db);
+	ret=begin(state.hoard);
 	if (ret)
 		return ret;
-	while ((sret=query(&stmt, state.db, "SELECT parcel FROM hoard.parcels "
+	while ((sret=query(&stmt, state.hoard, "SELECT parcel FROM parcels "
 				"WHERE uuid == ?", "S", parcel.uuid))
 				== SQLITE_OK) {
 		query_free(stmt);
-		if (query(NULL, state.db, "INSERT INTO hoard.parcels "
+		if (query(NULL, state.hoard, "INSERT INTO parcels "
 					"(uuid, server, user, name) "
 					"VALUES (?, ?, ?, ?)", "SSSS",
 					parcel.uuid, parcel.server,
@@ -458,19 +459,19 @@ static pk_err_t get_parcel_ident(void)
 	}
 	if (sret != SQLITE_ROW) {
 		query_free(stmt);
-		pk_log(LOG_ERROR, "Couldn't query hoard.parcels");
+		pk_log(LOG_ERROR, "Couldn't query parcels table");
 		ret=PK_IOERR;
 		goto bad;
 	}
 	query_row(stmt, "d", &state.hoard_ident);
 	query_free(stmt);
-	ret=commit(state.db);
+	ret=commit(state.hoard);
 	if (ret)
 		goto bad;
 	return PK_SUCCESS;
 
 bad:
-	rollback(state.db);
+	rollback(state.hoard);
 	return ret;
 }
 
@@ -480,18 +481,25 @@ static pk_err_t open_hoard_index(void)
 	pk_err_t ret;
 	int ver;
 
-	ret=attach(state.db, "hoard", config.hoard_index);
+	/* First open the dedicated hoard cache DB connection */
+	if (sqlite3_open(config.hoard_index, &state.hoard)) {
+		pk_log(LOG_ERROR, "Couldn't open hoard cache index %s: %s",
+					config.hoard_index,
+					sqlite3_errmsg(state.hoard));
+		return PK_IOERR;
+	}
+	ret=set_busy_handler(state.hoard);
 	if (ret)
-		return ret;
-	ret=begin(state.db);
+		goto bad;
+	ret=begin(state.hoard);
 	if (ret)
-		return ret;
-	if (query(&stmt, state.db, "PRAGMA hoard.user_version", NULL) !=
-				SQLITE_ROW) {
+		goto bad;
+	if (query(&stmt, state.hoard, "PRAGMA user_version", NULL)
+				!= SQLITE_ROW) {
 		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't get hoard cache index version");
 		ret=PK_IOERR;
-		goto bad;
+		goto bad_rollback;
 	}
 	query_row(stmt, "d", &ver);
 	query_free(stmt);
@@ -499,22 +507,32 @@ static pk_err_t open_hoard_index(void)
 	case 0:
 		ret=create_hoard_index();
 		if (ret)
-			goto bad;
+			goto bad_rollback;
 		break;
 	case HOARD_INDEX_VERSION:
 		break;
 	default:
 		pk_log(LOG_ERROR, "Unknown hoard cache version %d", ver);
 		ret=PK_BADFORMAT;
-		goto bad;
+		goto bad_rollback;
 	}
-	ret=commit(state.db);
+	ret=commit(state.hoard);
+	if (ret)
+		goto bad_rollback;
+
+	/* Now attach the hoard cache index to the primary DB connection
+	   for cross-table queries */
+	ret=attach(state.db, "hoard", config.hoard_index);
 	if (ret)
 		goto bad;
 	return PK_SUCCESS;
 
+bad_rollback:
+	rollback(state.hoard);
 bad:
-	rollback(state.db);
+	if (sqlite3_close(state.hoard))
+		pk_log(LOG_ERROR, "Couldn't close hoard cache index: %s",
+					sqlite3_errmsg(state.hoard));
 	return ret;
 }
 
@@ -533,13 +551,13 @@ static pk_err_t hoard_try_cleanup(void)
 	}
 
 	pk_log(LOG_INFO, "Cleaning up hoard cache...");
-	ret=cleanup_action(state.db, "UPDATE hoard.chunks SET referenced = 0 "
+	ret=cleanup_action(state.hoard, "UPDATE chunks SET referenced = 0 "
 				"WHERE referenced == 1 AND tag ISNULL",
 				"orphaned cache slots");
 	if (ret)
 		goto out;
-	ret=cleanup_action(state.db, "DELETE FROM hoard.parcels WHERE parcel "
-				"NOT IN (SELECT parcel FROM hoard.refs)",
+	ret=cleanup_action(state.hoard, "DELETE FROM parcels WHERE parcel "
+				"NOT IN (SELECT parcel FROM refs)",
 				"dangling parcel records");
 out:
 	put_file_lock(state.hoard_fd);
@@ -589,5 +607,8 @@ bad:
 void hoard_shutdown(void)
 {
 	hoard_try_cleanup();
+	if (sqlite3_close(state.hoard))
+		pk_log(LOG_ERROR, "Couldn't close hoard cache index: %s",
+					sqlite3_errmsg(state.hoard));
 	close(state.hoard_fd);
 }

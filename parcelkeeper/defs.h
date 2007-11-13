@@ -136,6 +136,7 @@ struct pk_state {
 	int signal_fds[2];
 	struct pk_connection *conn;
 	sqlite3 *db;
+	sqlite3 *hoard;
 
 	int bdev_index;
 	int hoard_ident;
