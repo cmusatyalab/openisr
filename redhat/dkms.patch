@@ -1,0 +1,11 @@
+--- Makefile.in
++++ Makefile.in
+@@ -193,7 +193,7 @@
+ SUBDIRS = $(CLIENTDIRS) $(VDISKDIR) nexus sha1
+ dist_noinst_SCRIPTS = mkrevision.sh autogen.sh
+ EXTRA_DIST = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL CHANGES \
+-	kernel.mk .gitrevision
++	kernel.mk .gitrevision dkms.conf Makefile.dkms
+ all: config.h
+ 	$(MAKE) $(AM_MAKEFLAGS) all-recursive
+ 

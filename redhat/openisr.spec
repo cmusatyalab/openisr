@@ -1,6 +1,6 @@
 ### begin RPM spec
 %define name openisr
-%define version 0.8.3
+%define version 0.8.4
 
 Summary: 	OpenISR Internet Suspend-Resume client
 Name: 		%name
@@ -9,13 +9,14 @@ Release: 	2%{?redhatvers:.%{redhatvers}}
 Group: 		Applications/Internet
 License:	Eclipse Public License	
 BuildRequires: 	curl-devel
-Requires: 	openssh, rsync, pv
+Requires: 	openssh, rsync, pv, dkms
 BuildRoot: 	/var/tmp/%{name}-buildroot
 Packager:	Matt Toups <mtoups@cs.cmu.edu>
 
 URL:		http://isr.cmu.edu
 Source: 	http://isr.cmu.edu/software/openisr-%{version}.tar.gz
 # line below is working around an annoying rpm "feature"
+Patch1:		dkms.patch
 Provides:	perl(IsrRevision)
 
 %description
@@ -30,33 +31,46 @@ Provides:	perl(IsrRevision)
 
 %prep
 %setup -q
+%patch1
 
 %build
 ./configure --enable-client --disable-modules --prefix=/usr --sysconfdir=/etc && make DESTDIR=%{buildroot}
+ make dist
 
 %install
 make install DESTDIR=%{buildroot}
+mkdir -p %{buildroot}/usr/src && cd %{buildroot}/usr/src && tar zxvf ../share/openisr/openisr.tar.gz && chmod 0755 openisr-%{version}
 
 %clean
 rm -rf %{buildroot}
 
 %pre
 
-%post -p /sbin/ldconfig
+%post
+/sbin/ldconfig
+dkms add -m openisr -v %{version}
+echo To complete installation, run openisr-config as root.
 
 %preun
+/etc/init.d/openisr stop
+dkms remove -m openisr -v %{version} --all
 
-%postun -p /sbin/ldconfig
+%postun
+/sbin/ldconfig
 
 %files
 %dir /etc/openisr
 %dir /usr/share/openisr
 %dir /usr/lib/openisr
+/usr/src/openisr-%{version}
 /usr/bin/isr
+/usr/sbin/openisr-config
 /usr/lib/openisr/vulpes
 /usr/lib/openisr/readstats
 /usr/lib/openisr/nexus_debug
 /usr/share/man/man1/isr.1.gz
+/usr/share/man/man8/openisr-config.8.gz
+/usr/share/openisr/openisr.tar.gz
 /usr/share/openisr/config
 /usr/share/openisr/HTTPSSH.pm
 /usr/share/openisr/IsrConfigTie.pm
@@ -73,6 +87,10 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Tue Nov 13 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.4-0pre0
+- soon to be new upstream release
+- DKMS support (thanks to Adam Goode)
+
 * Wed Jul 11 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.3-1
 - New upstream release
 
