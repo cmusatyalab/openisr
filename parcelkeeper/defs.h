@@ -221,6 +221,7 @@ pk_err_t _rollback(sqlite3 *db, const char *caller);
 #define rollback(db) _rollback(db, __func__)
 pk_err_t set_busy_handler(sqlite3 *db);
 pk_err_t validate_db(sqlite3 *db);
+pk_err_t cleanup_action(sqlite3 *db, char *sql, char *desc);
 
 /* util.c */
 #define FILE_LOCK_READ     0

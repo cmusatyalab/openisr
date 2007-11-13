@@ -229,3 +229,17 @@ pk_err_t validate_db(sqlite3 *db)
 	}
 	return PK_SUCCESS;
 }
+
+pk_err_t cleanup_action(sqlite3 *db, char *sql, char *desc)
+{
+	int changes;
+
+	if (query(NULL, db, sql, NULL) != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't clean %s", desc);
+		return PK_IOERR;
+	}
+	changes=sqlite3_changes(db);
+	if (changes > 0)
+		pk_log(LOG_INFO, "Cleaned %d %s", changes, desc);
+	return PK_SUCCESS;
+}
