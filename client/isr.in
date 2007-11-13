@@ -307,7 +307,7 @@ $server = $syscfg{server};
 # Handle the case where the user calls the program with no arguments
 #
 if (@ARGV == 0) {
-    print("$progname: Try '$progname help' for more information.\n");
+    print("Try '$progname help' for a usage summary or 'man $progname' for an introduction to OpenISR.\n");
     exit 0;
 }
 
@@ -2376,24 +2376,26 @@ sub usage ($) {
     print BLUE, "Parcel is required for most commands\n", RESET;
     if (!$msg) {
 	print "Basic commands:\n";
-	print "  auth       Authenticate to the ISR server (once per X session only).\n";
-	print "  checkhoard Check hoard cache for consistency.\n";
-	print "  checkin    Sync parcel to server and release lock (-b optional).\n";
-	print "  checkout   Fetch parcel from server and acquire lock (-c, -d, -r optional).\n";
-	print "  checkp     Check parcel for consistency (-c, -e, -r optional).\n";
-	print "  clean      Remove parcel from client and release its lock.\n";
-	print "  deauth     Remove authentication credentials from your client.\n";
-	print "  discard    Discard all local changes to parcel since last checkout or sync.\n";
-	print "  help       Print help message.\n";
-	print "  hoard      Fetch entire virtual disk so you can run disconnected.\n";
-	print "  ls         List info about your parcels (parcel, -l, -L optional).\n";
-	print "  lshoard    List info about the hoard cache (-l optional).\n";
-	print "  passwd     Change your ISR password on the server.\n";
- 	print "  resume     Checkout (if necessary) and run a parcel (-c, -d, -F, -r optional).\n";
+	print "  auth       Authenticate to the ISR server (once per X session only)\n";
+	print "  ls         List info about your parcels (parcel, -l, -L optional)\n";
+ 	print "  resume     Checkout (if necessary) and run a parcel (-c, -d, -F, -r optional)\n";
+	print "  checkin    Sync parcel to server and check it in (-b optional)\n";
+	print "  passwd     Change your ISR password on the server\n";
+	print "  help       Print help message\n";
+	print "Advanced commands:\n";
+	print "  stat       Display information about local ISR state for a parcel\n";
+	print "  checkout   Checkout parcel without running it (-c, -d, -r optional)\n";
+	print "  discard    Discard all local changes to parcel since last checkout or sync\n";
+	print "  sync       Sync parcel to server without checking it in (-b optional)\n";
+	print "  hoard      Fetch entire virtual disk for improved performance\n";
+	print "  deauth     Remove authentication credentials from your client\n";
+	print "Debugging and maintenance commands:\n";
+	print "  checkp     Check parcel for consistency (-c, -e, -r optional)\n";
+	print "  checkhoard Check hoard cache for consistency\n";
+	print "  lshoard    List info about the hoard cache (-l optional)\n";
 	print "  rmhoard    Remove a parcel from the hoard cache\n";
-	print "  stat       Display information about local ISR state.\n";
-	print "  sync       Make new parcel version on server w/o releasing lock (-b optional).\n";
-	print "  version    Print ISR version.\n";
+	print "  clean      Remove parcel from client and release its lock\n";
+	print "  version    Print OpenISR version\n";
     }
     print "Options:\n";
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [ci, sync].\n";
