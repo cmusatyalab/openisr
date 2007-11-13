@@ -53,13 +53,21 @@ system(INITSCRIPT . " stop") == 0
 				"running parcels and try again.";
 
 #TODO: check to see if modules are already built
-status "Building modules with DKMS.";
-system("dkms build -m openisr -v " . VERSION) == 0
-	or fail "DKMS build failed.";
+# (this is not a very robust test)
 
-status "Installing modules with DKMS.";
-system("dkms install -m openisr -v " . VERSION) == 0
-	or fail "DKMS install failed.";
+status "Checking status of kernel modules.";
+
+if (system("dkms status | grep openisr | grep " . VERSION . " | grep installed") == 0) {
+	print "Modules for this version are already built and installed.\n";
+} else {
+	status "Building modules with DKMS.";
+	system("dkms build -m openisr -v " . VERSION) == 0
+		or fail "DKMS build failed.";
+
+	status "Installing modules with DKMS.";
+	system("dkms install -m openisr -v " . VERSION) == 0
+		or fail "DKMS install failed.";
+}
 
 status "Loading kernel modules...";
 system(INITSCRIPT . " start") == 0
