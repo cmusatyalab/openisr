@@ -13,6 +13,7 @@
 #define PK_DEFS_H
 
 #include <stdio.h>
+#include <unistd.h>
 #include <sqlite3.h>
 
 typedef enum pk_err {
@@ -175,6 +176,9 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 			enum compresstype *compress, unsigned *length);
 pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 			enum compresstype compress, unsigned length);
+off64_t cache_chunk_to_offset(unsigned chunk);
+
+/* cache_modes.c */
 int copy_for_upload(void);
 int validate_cache(void);
 int examine_cache(void);

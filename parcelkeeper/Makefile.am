@@ -8,8 +8,9 @@ AM_LDFLAGS = -L$(top_srcdir)/sqlite -lcrypto -lcurl -lsqlite
 AM_LDFLAGS += $(APR_LIBS) $(OSSP_UUID_LIBS)
 
 pkglib_PROGRAMS = parcelkeeper
-parcelkeeper_SOURCES  = cmdline.c main.c log.c cache.c hoard.c nexus.c util.c
-parcelkeeper_SOURCES += parcelcfg.c transport.c sql.c defs.h
+parcelkeeper_SOURCES  = cmdline.c main.c log.c cache.c cache_modes.c
+parcelkeeper_SOURCES += hoard.c nexus.c util.c parcelcfg.c
+parcelkeeper_SOURCES += transport.c sql.c defs.h
 nodist_parcelkeeper_SOURCES = revision.c
 
 include $(top_srcdir)/mkrevision.mk
