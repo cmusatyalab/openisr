@@ -23,8 +23,7 @@ int hoard(void)
 	void *buf;
 	size_t chunklen;
 	int chunk;
-	void *tagp;
-	char tag[parcel.hashlen];
+	void *tag;
 	unsigned taglen;
 	int num_hoarded=0;
 	int to_hoard;
@@ -58,29 +57,59 @@ int hoard(void)
 		goto out;
 	}
 
-	while ((sret=query(&stmt, state.db, "SELECT chunk, tag FROM prev.keys "
-				"WHERE tag NOT IN "
-				"(SELECT tag FROM hoard.chunks) LIMIT 1", NULL))
-				== SQLITE_ROW) {
-		query_row(stmt, "db", &chunk, &tagp, &taglen);
-		if (taglen != parcel.hashlen) {
-			query_free(stmt);
-			pk_log(LOG_ERROR, "Invalid tag length for chunk %d",
-						chunk);
-			goto out;
-		}
-		memcpy(tag, tagp, parcel.hashlen);
-		query_free(stmt);
-		if (transport_fetch_chunk(buf, chunk, tag, &chunklen))
-			goto out;
-		print_progress(++num_hoarded, to_hoard);
-	}
-	query_free(stmt);
-	if (sret != SQLITE_OK) {
-		pk_log(LOG_ERROR, "Querying hoard index failed");
+	/* First build a temp table listing the chunks to hoard, so that
+	   while we're actually hoarding we don't have locks against
+	   the hoard index.  Take care not to list a tag more than once,
+	   to keep the progress meter accurate */
+	if (query(NULL, state.db, "CREATE TEMP TABLE to_hoard "
+				"(chunk INTEGER NOT NULL, "
+				"tag BLOB UNIQUE NOT NULL)", NULL)) {
+		pk_log(LOG_ERROR, "Couldn't create temporary table");
 		goto out;
 	}
-	ret=0;
+	if (query(NULL, state.db, "INSERT OR IGNORE INTO temp.to_hoard "
+				"(chunk, tag) SELECT chunk, tag "
+				"FROM prev.keys WHERE tag NOT IN "
+				"(SELECT tag FROM hoard.chunks)", NULL)) {
+		pk_log(LOG_ERROR, "Couldn't build list of chunks to hoard");
+		goto out;
+	}
+
+	for (sret=query(&stmt, state.db, "SELECT chunk, tag "
+				"FROM temp.to_hoard", NULL);
+				sret == SQLITE_ROW; sret=query_next(stmt)) {
+		query_row(stmt, "db", &chunk, &tag, &taglen);
+		if (taglen != parcel.hashlen) {
+			pk_log(LOG_ERROR, "Invalid tag length for chunk %d",
+						chunk);
+			goto out_cleanup;
+		}
+
+		/* Make sure the chunk hasn't already been put in the hoard
+		   cache (because someone else already downloaded it) before
+		   we download.  Use the hoard DB connection so that state.db
+		   doesn't acquire the hoard DB lock. */
+		sret=query(NULL, state.hoard, "SELECT tag FROM chunks "
+					"WHERE tag == ?", "b", tag, taglen);
+		if (sret == SQLITE_OK) {
+			if (transport_fetch_chunk(buf, chunk, tag, &chunklen))
+				goto out_cleanup;
+			print_progress(++num_hoarded, to_hoard);
+		} else if (sret == SQLITE_ROW) {
+			print_progress(num_hoarded, --to_hoard);
+		} else {
+			pk_log(LOG_ERROR, "Couldn't query hoard cache index");
+			goto out_cleanup;
+		}
+	}
+	if (sret != SQLITE_OK)
+		pk_log(LOG_ERROR, "Querying hoard index failed");
+	else
+		ret=0;
+out_cleanup:
+	query_free(stmt);
+	if (query(NULL, state.db, "DROP TABLE temp.to_hoard", NULL))
+		pk_log(LOG_ERROR, "Couldn't drop table temp.to_hoard");
 out:
 	free(buf);
 	return ret;
