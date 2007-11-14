@@ -34,6 +34,8 @@ typedef enum pk_err {
 
 enum pk_log_type {
 	LOG_INFO,
+	LOG_QUERY,
+	LOG_SLOW_QUERY,
 	LOG_ERROR,
 	LOG_STATS
 };

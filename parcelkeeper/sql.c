@@ -13,14 +13,18 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/time.h>
+#include <time.h>
 #include <sqlite3.h>
 #include "defs.h"
 
 #define CACHE_BUCKETS 200
+#define SLOW_THRESHOLD_MS 200
 
 struct query {
 	sqlite3_stmt *stmt;
 	char *sql;
+	struct timeval start;
 };
 
 static struct query *prepared[CACHE_BUCKETS];
@@ -77,16 +81,21 @@ static void destroy_query(struct query *qry)
 static int get_query(struct query **result, sqlite3 *db, char *sql)
 {
 	unsigned bucket=get_bucket(sql);
+	int ret;
 
 	/* XXX when we go to multi-threaded, this will need locking */
 	/* XXX also, might need a better hash table */
 	if (prepared[bucket] && !strcmp(sql, prepared[bucket]->sql)) {
 		*result=prepared[bucket];
 		prepared[bucket]=NULL;
-		return SQLITE_OK;
+		ret=SQLITE_OK;
 	} else {
-		return alloc_query(result, db, sql);
+		ret=alloc_query(result, db, sql);
 	}
+
+	if (ret == SQLITE_OK)
+		gettimeofday(&(*result)->start, NULL);
+	return ret;
 }
 
 int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...)
@@ -206,10 +215,23 @@ void query_row(struct query *qry, char *fmt, ...)
 
 void query_free(struct query *qry)
 {
+	struct timeval cur;
+	struct timeval diff;
+	unsigned ms;
 	unsigned bucket;
 
 	if (qry == NULL)
 		return;
+
+	gettimeofday(&cur, NULL);
+	timersub(&cur, &qry->start, &diff);
+	ms = diff.tv_sec * 1000 + diff.tv_usec / 1000;
+	if (ms >= SLOW_THRESHOLD_MS)
+		pk_log(LOG_SLOW_QUERY, "Slow query took %u ms: \"%s\"",
+					ms, qry->sql);
+	else
+		pk_log(LOG_QUERY, "Query took %u ms: \"%s\"", ms, qry->sql);
+
 	sqlite3_reset(qry->stmt);
 	sqlite3_clear_bindings(qry->stmt);
 	bucket=get_bucket(qry->sql);
