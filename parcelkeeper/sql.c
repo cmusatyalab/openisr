@@ -16,13 +16,28 @@
 #include <sqlite3.h>
 #include "defs.h"
 
+#define CACHE_BUCKETS 200
+
 struct query {
 	sqlite3_stmt *stmt;
+	char *sql;
 };
+
+static struct query *prepared[CACHE_BUCKETS];
 
 static void sqlerr(sqlite3 *db)
 {
 	pk_log(LOG_ERROR, "SQL error: %s", sqlite3_errmsg(db));
+}
+
+static unsigned get_bucket(char *sql)
+{
+	/* DJB string hash algorithm */
+	unsigned hash = 5381;
+
+	while (*sql)
+		hash = ((hash << 5) + hash) ^ *sql++;
+	return hash % CACHE_BUCKETS;
 }
 
 static int alloc_query(struct query **result, sqlite3 *db, char *sql)
@@ -35,9 +50,16 @@ static int alloc_query(struct query **result, sqlite3 *db, char *sql)
 		pk_log(LOG_ERROR, "malloc failed");
 		return SQLITE_NOMEM;
 	}
+	qry->sql=strdup(sql);
+	if (qry->sql == NULL) {
+		pk_log(LOG_ERROR, "malloc failed");
+		free(qry);
+		return SQLITE_NOMEM;
+	}
 	ret=sqlite3_prepare_v2(db, sql, -1, &qry->stmt, NULL);
 	if (ret) {
 		sqlerr(db);
+		free(qry->sql);
 		free(qry);
 	} else {
 		*result=qry;
@@ -48,7 +70,23 @@ static int alloc_query(struct query **result, sqlite3 *db, char *sql)
 static void destroy_query(struct query *qry)
 {
 	sqlite3_finalize(qry->stmt);
+	free(qry->sql);
 	free(qry);
+}
+
+static int get_query(struct query **result, sqlite3 *db, char *sql)
+{
+	unsigned bucket=get_bucket(sql);
+
+	/* XXX when we go to multi-threaded, this will need locking */
+	/* XXX also, might need a better hash table */
+	if (prepared[bucket] && !strcmp(sql, prepared[bucket]->sql)) {
+		*result=prepared[bucket];
+		prepared[bucket]=NULL;
+		return SQLITE_OK;
+	} else {
+		return alloc_query(result, db, sql);
+	}
 }
 
 int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...)
@@ -63,7 +101,7 @@ int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...)
 
 	if (result != NULL)
 		*result=NULL;
-	ret=alloc_query(&qry, db, query);
+	ret=get_query(&qry, db, query);
 	if (ret)
 		return ret;
 	stmt=qry->stmt;
@@ -168,9 +206,30 @@ void query_row(struct query *qry, char *fmt, ...)
 
 void query_free(struct query *qry)
 {
+	unsigned bucket;
+
 	if (qry == NULL)
 		return;
-	destroy_query(qry);
+	sqlite3_reset(qry->stmt);
+	sqlite3_clear_bindings(qry->stmt);
+	bucket=get_bucket(qry->sql);
+	/* XXX locking */
+	if (prepared[bucket])
+		destroy_query(prepared[bucket]);
+	prepared[bucket]=qry;
+}
+
+void query_flush(void)
+{
+	int i;
+
+	/* XXX locking */
+	for (i=0; i<CACHE_BUCKETS; i++) {
+		if (prepared[i]) {
+			destroy_query(prepared[i]);
+			prepared[i]=NULL;
+		}
+	}
 }
 
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file)

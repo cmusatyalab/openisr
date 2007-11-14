@@ -176,6 +176,7 @@ void cache_shutdown(void)
 {
 	if (state.cache_fd)
 		close(state.cache_fd);
+	query_flush();
 	if (state.db && sqlite3_close(state.db))
 		pk_log(LOG_ERROR, "Couldn't close keyring: %s",
 					sqlite3_errmsg(state.db));

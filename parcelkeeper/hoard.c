@@ -519,6 +519,7 @@ static pk_err_t open_hoard_index(void)
 bad_rollback:
 	rollback(state.hoard);
 bad:
+	query_flush();
 	if (sqlite3_close(state.hoard))
 		pk_log(LOG_ERROR, "Couldn't close hoard cache index: %s",
 					sqlite3_errmsg(state.hoard));
@@ -596,6 +597,7 @@ bad:
 void hoard_shutdown(void)
 {
 	hoard_try_cleanup();
+	query_flush();
 	if (sqlite3_close(state.hoard))
 		pk_log(LOG_ERROR, "Couldn't close hoard cache index: %s",
 					sqlite3_errmsg(state.hoard));
