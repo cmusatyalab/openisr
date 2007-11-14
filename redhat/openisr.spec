@@ -5,7 +5,7 @@
 Summary: 	OpenISR Internet Suspend-Resume client
 Name: 		%name
 Version: 	%version
-Release: 	2%{?redhatvers:.%{redhatvers}}
+Release: 	1%{?redhatvers:.%{redhatvers}}
 Group: 		Applications/Internet
 License:	Eclipse Public License	
 BuildRequires: 	curl-devel
@@ -36,8 +36,8 @@ Provides:	perl(IsrRevision)
 %patch1
 
 %build
-./configure --enable-client --disable-modules --prefix=/usr --sysconfdir=/etc && make DESTDIR=%{buildroot}
- make dist
+./configure --enable-client --disable-modules --prefix=/usr --sysconfdir=/etc --mandir=/usr/share/man && make DESTDIR=%{buildroot}
+make dist
 
 %install
 make install DESTDIR=%{buildroot}
@@ -89,7 +89,7 @@ dkms remove -m openisr -v %{version} --all
 
 
 %changelog
-* Tue Nov 13 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.4-0pre0
+* Tue Nov 13 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.4-1
 - soon to be new upstream release
 - DKMS support (thanks to Adam Goode)
 
