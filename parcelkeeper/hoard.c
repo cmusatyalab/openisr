@@ -433,25 +433,22 @@ static pk_err_t get_parcel_ident(void)
 {
 	sqlite3_stmt *stmt;
 	pk_err_t ret;
-	int sret;
 
-	ret=begin_immediate(state.hoard);
+	ret=begin(state.hoard);
 	if (ret)
 		return ret;
-	while ((sret=query(&stmt, state.hoard, "SELECT parcel FROM parcels "
-				"WHERE uuid == ?", "S", parcel.uuid))
-				== SQLITE_OK) {
-		if (query(NULL, state.hoard, "INSERT INTO parcels "
-					"(uuid, server, user, name) "
-					"VALUES (?, ?, ?, ?)", "SSSS",
-					parcel.uuid, parcel.server,
-					parcel.user, parcel.parcel)) {
-			pk_log(LOG_ERROR, "Couldn't insert parcel record");
-			ret=PK_IOERR;
-			goto bad;
-		}
+	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO parcels "
+				"(uuid, server, user, name) "
+				"VALUES (?, ?, ?, ?)", "SSSS",
+				parcel.uuid, parcel.server,
+				parcel.user, parcel.parcel)) {
+		pk_log(LOG_ERROR, "Couldn't insert parcel record");
+		ret=PK_IOERR;
+		goto bad;
 	}
-	if (sret != SQLITE_ROW) {
+	if (query(&stmt, state.hoard, "SELECT parcel FROM parcels "
+				"WHERE uuid == ?", "S", parcel.uuid)
+				!= SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't query parcels table");
 		ret=PK_IOERR;
 		goto bad;
