@@ -82,19 +82,19 @@ static int timestamp(void)
 /* must be within transaction */
 static pk_err_t expand_cache(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	int count;
 	int start;
 	int i;
 	int step = parcel.chunksize >> 9;
 
-	if (query(&stmt, state.hoard, "SELECT count(*), max(offset) "
+	if (query(&qry, state.hoard, "SELECT count(*), max(offset) "
 				"FROM chunks", NULL) != SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't find maximum hoard cache offset");
 		return PK_IOERR;
 	}
-	query_row(stmt, "dd", &count, &start);
-	query_free(stmt);
+	query_row(qry, "dd", &count, &start);
+	query_free(qry);
 	if (count)
 		start += step;
 	for (i=0; i<EXPAND_CHUNKS; i++) {
@@ -111,19 +111,19 @@ static pk_err_t expand_cache(void)
 /* must be within transaction */
 static pk_err_t allocate_chunk_offset(int *offset)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	pk_err_t ret;
 	int sret;
 	int hoarded=0;
 
 	while (1) {
 		/* First, try to find an unused hoard cache slot */
-		sret=query(&stmt, state.hoard, "SELECT offset FROM chunks "
+		sret=query(&qry, state.hoard, "SELECT offset FROM chunks "
 					"WHERE tag ISNULL AND referenced == 0 "
 					"LIMIT 1", NULL);
 		if (sret == SQLITE_ROW) {
-			query_row(stmt, "d", offset);
-			query_free(stmt);
+			query_row(qry, "d", offset);
+			query_free(qry);
 			break;
 		} else if (sret != SQLITE_OK) {
 			pk_log(LOG_ERROR, "Error finding unused hoard cache "
@@ -134,27 +134,27 @@ static pk_err_t allocate_chunk_offset(int *offset)
 		/* Next, we may want to try reclaiming an existing,
 		   unreferenced chunk.  See if we're permitted to do so. */
 		if (config.minsize > 0) {
-			sret=query(&stmt, state.hoard, "SELECT count(tag) "
+			sret=query(&qry, state.hoard, "SELECT count(tag) "
 						"FROM chunks", NULL);
 			if (sret != SQLITE_ROW) {
 				pk_log(LOG_ERROR, "Error finding size of "
 							"hoard cache");
 				return PK_IOERR;
 			}
-			query_row(stmt, "d", &hoarded);
-			query_free(stmt);
+			query_row(qry, "d", &hoarded);
+			query_free(qry);
 		}
 
 		/* XXX assumes 128 KB */
 		if ((unsigned)(hoarded / 8) >= config.minsize) {
 			/* Try to reclaim the LRU unreferenced chunk */
-			sret=query(&stmt, state.hoard, "SELECT offset "
+			sret=query(&qry, state.hoard, "SELECT offset "
 					"FROM chunks WHERE tag NOTNULL "
 					"AND referenced == 0 "
 					"ORDER BY last_access LIMIT 1", NULL);
 			if (sret == SQLITE_ROW) {
-				query_row(stmt, "d", offset);
-				query_free(stmt);
+				query_row(qry, "d", offset);
+				query_free(qry);
 				break;
 			} else if (sret != SQLITE_OK) {
 				pk_log(LOG_ERROR, "Error finding reclaimable "
@@ -215,7 +215,7 @@ static pk_err_t add_chunk_reference(const void *tag)
 
 pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	int offset;
 	int clen;
 	pk_err_t ret;
@@ -227,7 +227,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	if (ret)
 		return ret;
 
-	sret=query(&stmt, state.hoard, "SELECT offset, length FROM chunks "
+	sret=query(&qry, state.hoard, "SELECT offset, length FROM chunks "
 				"WHERE tag == ?", "b", tag, parcel.hashlen);
 	if (sret == SQLITE_OK) {
 		ret=commit(state.hoard);
@@ -239,8 +239,8 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 		ret=PK_IOERR;
 		goto bad;
 	}
-	query_row(stmt, "dd", &offset, &clen);
-	query_free(stmt);
+	query_row(qry, "dd", &offset, &clen);
+	query_free(qry);
 
 	if (query(NULL, state.hoard, "UPDATE chunks SET last_access = ? "
 				"WHERE tag == ?", "db", timestamp(), tag,
@@ -431,7 +431,7 @@ bad:
 
 static pk_err_t get_parcel_ident(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	pk_err_t ret;
 
 	ret=begin(state.hoard);
@@ -446,15 +446,15 @@ static pk_err_t get_parcel_ident(void)
 		ret=PK_IOERR;
 		goto bad;
 	}
-	if (query(&stmt, state.hoard, "SELECT parcel FROM parcels "
+	if (query(&qry, state.hoard, "SELECT parcel FROM parcels "
 				"WHERE uuid == ?", "S", parcel.uuid)
 				!= SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't query parcels table");
 		ret=PK_IOERR;
 		goto bad;
 	}
-	query_row(stmt, "d", &state.hoard_ident);
-	query_free(stmt);
+	query_row(qry, "d", &state.hoard_ident);
+	query_free(qry);
 	ret=commit(state.hoard);
 	if (ret)
 		goto bad;
@@ -467,7 +467,7 @@ bad:
 
 static pk_err_t open_hoard_index(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	pk_err_t ret;
 	int ver;
 
@@ -484,14 +484,14 @@ static pk_err_t open_hoard_index(void)
 	ret=begin_immediate(state.hoard);
 	if (ret)
 		goto bad;
-	if (query(&stmt, state.hoard, "PRAGMA user_version", NULL)
+	if (query(&qry, state.hoard, "PRAGMA user_version", NULL)
 				!= SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't get hoard cache index version");
 		ret=PK_IOERR;
 		goto bad_rollback;
 	}
-	query_row(stmt, "d", &ver);
-	query_free(stmt);
+	query_row(qry, "d", &ver);
+	query_free(qry);
 	switch (ver) {
 	case 0:
 		ret=create_hoard_index();

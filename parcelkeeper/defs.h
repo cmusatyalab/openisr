@@ -75,6 +75,7 @@ enum mode_flags {
 };
 
 struct pk_connection;
+struct query;
 
 struct pk_config {
 	/* mode flags */
@@ -211,10 +212,10 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 			unsigned *length);
 
 /* sql.c */
-int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...);
-int query_next(sqlite3_stmt *stmt);
-void query_row(sqlite3_stmt *stmt, char *fmt, ...);
-void query_free(sqlite3_stmt *stmt);
+int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...);
+int query_next(struct query *qry);
+void query_row(struct query *qry, char *fmt, ...);
+void query_free(struct query *qry);
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file);
 pk_err_t _begin(sqlite3 *db, int immediate, const char *caller);
 #define begin(db) _begin(db, 0, __func__)

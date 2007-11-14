@@ -153,16 +153,16 @@ bad:
 
 static pk_err_t verify_cache_index(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	int found;
 
-	if (query(&stmt, state.db, "PRAGMA cache.user_version", NULL) !=
+	if (query(&qry, state.db, "PRAGMA cache.user_version", NULL) !=
 				SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't query cache index version");
 		return PK_IOERR;
 	}
-	query_row(stmt, "d", &found);
-	query_free(stmt);
+	query_row(qry, "d", &found);
+	query_free(qry);
 	if (found != CA_INDEX_VERSION) {
 		pk_log(LOG_ERROR, "Invalid version reading cache index: "
 					"expected %d, found %d",
@@ -306,7 +306,7 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 			enum compresstype *compress, unsigned *length)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	int ret;
 	void *rowtag;
 	void *rowkey;
@@ -316,15 +316,15 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 
 	/* XXX does not use transaction.  do we need to?  might introduce
 	   conflicts in obtain_chunk() */
-	if (query(&stmt, state.db, "SELECT tag, key, compression FROM keys "
+	if (query(&qry, state.db, "SELECT tag, key, compression FROM keys "
 				"WHERE chunk == ?", "d", chunk)
 				!= SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't query keyring");
 		return PK_IOERR;
 	}
-	query_row(stmt, "bbd", &rowtag, &taglen, &rowkey, &keylen, compress);
+	query_row(qry, "bbd", &rowtag, &taglen, &rowkey, &keylen, compress);
 	if (taglen != parcel.hashlen || keylen != parcel.hashlen) {
-		query_free(stmt);
+		query_free(qry);
 		pk_log(LOG_ERROR, "Invalid hash length for chunk %u: "
 					"expected %d, tag %d, key %d",
 					chunk, parcel.hashlen, taglen, keylen);
@@ -332,9 +332,9 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 	}
 	memcpy(tag, rowtag, parcel.hashlen);
 	memcpy(key, rowkey, parcel.hashlen);
-	query_free(stmt);
+	query_free(qry);
 
-	ret=query(&stmt, state.db, "SELECT length FROM cache.chunks "
+	ret=query(&qry, state.db, "SELECT length FROM cache.chunks "
 				"WHERE chunk == ?", "d", chunk);
 	if (ret == SQLITE_OK) {
 		/* Chunk is not in the local cache */
@@ -342,8 +342,8 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 		if (err)
 			return err;
 	} else if (ret == SQLITE_ROW) {
-		query_row(stmt, "d", length);
-		query_free(stmt);
+		query_row(qry, "d", length);
+		query_free(qry);
 	} else {
 		pk_log(LOG_ERROR, "Couldn't query cache index");
 		return PK_IOERR;

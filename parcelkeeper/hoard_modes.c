@@ -19,7 +19,7 @@
 /* XXX SIGINT */
 int hoard(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	void *buf;
 	size_t chunklen;
 	int chunk;
@@ -62,13 +62,13 @@ int hoard(void)
 	}
 
 	/* See how much we need to hoard */
-	if (query(&stmt, state.db, "SELECT count(*) FROM temp.to_hoard", NULL)
+	if (query(&qry, state.db, "SELECT count(*) FROM temp.to_hoard", NULL)
 				!= SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't count unhoarded chunks");
 		goto out_drop;
 	}
-	query_row(stmt, "d", &to_hoard);
-	query_free(stmt);
+	query_row(qry, "d", &to_hoard);
+	query_free(qry);
 
 	/* If WANT_CHECK, that's all we need to do */
 	if (config.flags & WANT_CHECK) {
@@ -77,14 +77,14 @@ int hoard(void)
 		goto out_drop;
 	}
 
-	for (sret=query(&stmt, state.db, "SELECT chunk, tag "
+	for (sret=query(&qry, state.db, "SELECT chunk, tag "
 				"FROM temp.to_hoard", NULL);
-				sret == SQLITE_ROW; sret=query_next(stmt)) {
-		query_row(stmt, "db", &chunk, &tag, &taglen);
+				sret == SQLITE_ROW; sret=query_next(qry)) {
+		query_row(qry, "db", &chunk, &tag, &taglen);
 		if (taglen != parcel.hashlen) {
 			pk_log(LOG_ERROR, "Invalid tag length for chunk %d",
 						chunk);
-			goto out_stmt;
+			goto out_qry;
 		}
 
 		/* Make sure the chunk hasn't already been put in the hoard
@@ -95,21 +95,21 @@ int hoard(void)
 					"WHERE tag == ?", "b", tag, taglen);
 		if (sret == SQLITE_OK) {
 			if (transport_fetch_chunk(buf, chunk, tag, &chunklen))
-				goto out_stmt;
+				goto out_qry;
 			print_progress(++num_hoarded, to_hoard);
 		} else if (sret == SQLITE_ROW) {
 			print_progress(num_hoarded, --to_hoard);
 		} else {
 			pk_log(LOG_ERROR, "Couldn't query hoard cache index");
-			goto out_stmt;
+			goto out_qry;
 		}
 	}
 	if (sret != SQLITE_OK)
 		pk_log(LOG_ERROR, "Querying hoard index failed");
 	else
 		ret=0;
-out_stmt:
-	query_free(stmt);
+out_qry:
+	query_free(qry);
 out_drop:
 	if (query(NULL, state.db, "DROP TABLE temp.to_hoard", NULL))
 		pk_log(LOG_ERROR, "Couldn't drop table temp.to_hoard");
@@ -120,7 +120,7 @@ out_free:
 
 int examine_hoard(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	unsigned validchunks;
 	unsigned maxchunks;
 	unsigned valid_mb;
@@ -134,22 +134,22 @@ int examine_hoard(void)
 
 	if (begin(state.db))
 		return 1;
-	if (query(&stmt, state.db, "SELECT count(DISTINCT tag) FROM prev.keys",
+	if (query(&qry, state.db, "SELECT count(DISTINCT tag) FROM prev.keys",
 				NULL) != SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't query previous keyring");
 		goto bad;
 	}
-	query_row(stmt, "d", &maxchunks);
-	query_free(stmt);
-	if (query(&stmt, state.db, "SELECT count(DISTINCT hoard.chunks.tag) "
+	query_row(qry, "d", &maxchunks);
+	query_free(qry);
+	if (query(&qry, state.db, "SELECT count(DISTINCT hoard.chunks.tag) "
 				"FROM prev.keys JOIN hoard.chunks "
 				"ON prev.keys.tag == hoard.chunks.tag", NULL)
 				!= SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't query hoard cache");
 		goto bad;
 	}
-	query_row(stmt, "d", &validchunks);
-	query_free(stmt);
+	query_row(qry, "d", &validchunks);
+	query_free(qry);
 	if (commit(state.db))
 		goto bad;
 
@@ -167,8 +167,8 @@ bad:
 
 int list_hoard(void)
 {
-	sqlite3_stmt *p_stmt;
-	sqlite3_stmt *t_stmt;
+	struct query *p_qry;
+	struct query *t_qry;
 	int sret;
 	int ret=1;
 	int parcel;
@@ -184,42 +184,42 @@ int list_hoard(void)
 
 	if (begin(state.db))
 		return 1;
-	if (query(&t_stmt, state.db, "SELECT count(tag) FROM hoard.chunks "
+	if (query(&t_qry, state.db, "SELECT count(tag) FROM hoard.chunks "
 				"WHERE referenced == 1", NULL) != SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't count referenced chunks");
 		goto out;
 	}
-	query_row(t_stmt, "d", &shared);
-	query_free(t_stmt);
-	if (query(&t_stmt, state.db, "SELECT count(tag) FROM hoard.chunks "
+	query_row(t_qry, "d", &shared);
+	query_free(t_qry);
+	if (query(&t_qry, state.db, "SELECT count(tag) FROM hoard.chunks "
 				"WHERE referenced == 0", NULL) != SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't count unreferenced chunks");
 		goto out;
 	}
-	query_row(t_stmt, "d", &unreferenced);
-	query_free(t_stmt);
-	if (query(&t_stmt, state.db, "SELECT count(*) FROM hoard.chunks "
+	query_row(t_qry, "d", &unreferenced);
+	query_free(t_qry);
+	if (query(&t_qry, state.db, "SELECT count(*) FROM hoard.chunks "
 				"WHERE tag ISNULL", NULL) != SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't count unused chunk slots");
 		goto out;
 	}
-	query_row(t_stmt, "d", &unused);
-	query_free(t_stmt);
-	for (sret=query(&p_stmt, state.db, "SELECT parcel, uuid, server, "
+	query_row(t_qry, "d", &unused);
+	query_free(t_qry);
+	for (sret=query(&p_qry, state.db, "SELECT parcel, uuid, server, "
 				"user, name FROM hoard.parcels", NULL);
-				sret == SQLITE_ROW; sret=query_next(p_stmt)) {
-		query_row(p_stmt, "dssss", &parcel, &uuid, &server, &user,
+				sret == SQLITE_ROW; sret=query_next(p_qry)) {
+		query_row(p_qry, "dssss", &parcel, &uuid, &server, &user,
 					&name);
-		if (query(&t_stmt, state.db, "SELECT count(*) FROM hoard.refs "
+		if (query(&t_qry, state.db, "SELECT count(*) FROM hoard.refs "
 					"WHERE parcel == ?", "d", parcel)
 					!= SQLITE_ROW) {
 			pk_log(LOG_ERROR, "Couldn't query hoard index for "
 						"parcel %s", name);
 			break;
 		}
-		query_row(t_stmt, "d", &p_total);
-		query_free(t_stmt);
-		if (query(&t_stmt, state.db, "SELECT count(*) FROM hoard.refs "
+		query_row(t_qry, "d", &p_total);
+		query_free(t_qry);
+		if (query(&t_qry, state.db, "SELECT count(*) FROM hoard.refs "
 					"WHERE parcel == ? AND tag NOT IN "
 					"(SELECT tag FROM hoard.refs WHERE "
 					"parcel != ?)", "dd", parcel, parcel)
@@ -228,13 +228,13 @@ int list_hoard(void)
 						"parcel %s", name);
 			break;
 		}
-		query_row(t_stmt, "d", &p_unique);
-		query_free(t_stmt);
+		query_row(t_qry, "d", &p_unique);
+		query_free(t_qry);
 		printf("%s %s %s %s %d %d\n", uuid, server, user, name, p_total,
 					p_unique);
 		shared -= p_unique;
 	}
-	query_free(p_stmt);
+	query_free(p_qry);
 	if (sret == SQLITE_OK) {
 		printf("shared %d\n", shared);
 		printf("unreferenced %d\n", unreferenced);
@@ -250,7 +250,7 @@ out:
 
 int rmhoard(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	const char *server;
 	const char *user;
 	const char *name;
@@ -260,23 +260,23 @@ int rmhoard(void)
 
 	if (begin_immediate(state.db))
 		return 1;
-	if (query(&stmt, state.db, "SELECT parcel, server, user, name "
+	if (query(&qry, state.db, "SELECT parcel, server, user, name "
 				"FROM hoard.parcels WHERE uuid == ?", "S",
 				config.uuid) != SQLITE_ROW) {
 		pk_log(LOG_INFO, "rmhoard: %s: No such parcel", config.uuid);
 		rollback(state.db);
 		return 0;
 	}
-	query_row(stmt, "dsss", &parcel, &server, &user, &name);
+	query_row(qry, "dsss", &parcel, &server, &user, &name);
 	/* server, user, and name expire when we free the query */
 	if (asprintf(&desc, "%s/%s/%s", server, user, name) == -1) {
-		query_free(stmt);
+		query_free(qry);
 		pk_log(LOG_ERROR, "malloc failure");
 		goto bad;
 	}
-	query_free(stmt);
+	query_free(qry);
 
-	if (query(&stmt, state.db, "SELECT count(*) FROM hoard.refs WHERE "
+	if (query(&qry, state.db, "SELECT count(*) FROM hoard.refs WHERE "
 				"parcel == ? AND tag NOT IN (SELECT tag "
 				"FROM hoard.refs WHERE parcel != ?)", "dd",
 				parcel, parcel) != SQLITE_ROW) {
@@ -284,8 +284,8 @@ int rmhoard(void)
 		pk_log(LOG_ERROR, "Couldn't enumerate unique parcel chunks");
 		goto bad;
 	}
-	query_row(stmt, "d", &removed);
-	query_free(stmt);
+	query_row(qry, "d", &removed);
+	query_free(qry);
 
 	pk_log(LOG_INFO, "Removing parcel %s from hoard cache...", desc);
 	free(desc);
@@ -318,7 +318,7 @@ bad:
 
 int check_hoard(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	const char *uuid;
 	int count;
 	int sret;
@@ -330,10 +330,10 @@ int check_hoard(void)
 	if (begin_immediate(state.db))
 		return 1;
 
-	for (sret=query(&stmt, state.db, "SELECT uuid FROM hoard.parcels",
+	for (sret=query(&qry, state.db, "SELECT uuid FROM hoard.parcels",
 				NULL), count=0; sret == SQLITE_ROW;
-				sret=query_next(stmt)) {
-		query_row(stmt, "s", &uuid);
+				sret=query_next(qry)) {
+		query_row(qry, "s", &uuid);
 		if (canonicalize_uuid(uuid, NULL) == PK_INVALID) {
 			if (query(NULL, state.db, "DELETE FROM hoard.parcels "
 						"WHERE uuid == ?", "s",
@@ -346,7 +346,7 @@ int check_hoard(void)
 			count += sqlite3_changes(state.db);
 		}
 	}
-	query_free(stmt);
+	query_free(qry);
 	if (count)
 		pk_log(LOG_INFO, "Removed %d invalid parcel records", count);
 	if (sret != SQLITE_OK) {

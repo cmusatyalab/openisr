@@ -11,24 +11,31 @@
 
 #include <string.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sqlite3.h>
 #include "defs.h"
+
+struct query {
+	sqlite3_stmt *stmt;
+};
 
 static void sqlerr(sqlite3 *db)
 {
 	pk_log(LOG_ERROR, "SQL error: %s", sqlite3_errmsg(db));
 }
 
-void query_free(sqlite3_stmt *stmt)
+void query_free(struct query *qry)
 {
-	if (stmt == NULL)
+	if (qry == NULL)
 		return;
-	sqlite3_finalize(stmt);
+	sqlite3_finalize(qry->stmt);
+	free(qry);
 }
 
-int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
+int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...)
 {
+	struct query *qry;
 	sqlite3_stmt *stmt;
 	va_list ap;
 	int i=1;
@@ -38,11 +45,18 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 
 	if (result != NULL)
 		*result=NULL;
+	qry=malloc(sizeof(*qry));
+	if (qry == NULL) {
+		pk_log(LOG_ERROR, "malloc failed");
+		return SQLITE_NOMEM;
+	}
 	ret=sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
 	if (ret) {
 		sqlerr(db);
+		free(qry);
 		return ret;
 	}
+	qry->stmt=stmt;
 	va_start(ap, fmt);
 	for (; fmt != NULL && *fmt; fmt++) {
 		switch (*fmt) {
@@ -79,32 +93,33 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 	}
 	va_end(ap);
 	if (ret == SQLITE_OK)
-		ret=query_next(stmt);
+		ret=query_next(qry);
 	else if (!found_unknown)
 		sqlerr(db);
 	if (ret != SQLITE_ROW || result == NULL)
-		query_free(stmt);
+		query_free(qry);
 	else
-		*result=stmt;
+		*result=qry;
 	return ret;
 }
 
-int query_next(sqlite3_stmt *stmt)
+int query_next(struct query *qry)
 {
 	int ret;
 
-	ret=sqlite3_step(stmt);
+	ret=sqlite3_step(qry->stmt);
 	/* Collapse DONE into OK, since we don't want everyone to have to test
 	   for a gratuitously nonzero error code */
 	if (ret == SQLITE_DONE)
 		ret=SQLITE_OK;
 	if (ret != SQLITE_OK && ret != SQLITE_ROW)
-		sqlerr(sqlite3_db_handle(stmt));
+		sqlerr(sqlite3_db_handle(qry->stmt));
 	return ret;
 }
 
-void query_row(sqlite3_stmt *stmt, char *fmt, ...)
+void query_row(struct query *qry, char *fmt, ...)
 {
+	struct sqlite3_stmt *stmt=qry->stmt;
 	va_list ap;
 	int i=0;
 
@@ -211,17 +226,17 @@ pk_err_t set_busy_handler(sqlite3 *db)
 /* This validates both the primary and attached databases */
 pk_err_t validate_db(sqlite3 *db)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	const char *str;
 	int result;
 
-	if (query(&stmt, db, "PRAGMA integrity_check(1)", NULL) != SQLITE_ROW) {
+	if (query(&qry, db, "PRAGMA integrity_check(1)", NULL) != SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't run SQLite integrity check");
 		return PK_IOERR;
 	}
-	query_row(stmt, "s", &str);
+	query_row(qry, "s", &str);
 	result=strcmp(str, "ok");
-	query_free(stmt);
+	query_free(qry);
 	if (result) {
 		pk_log(LOG_ERROR, "SQLite integrity check failed");
 		return PK_BADFORMAT;

@@ -65,7 +65,7 @@ static pk_err_t write_upload_stats(unsigned chunks, off64_t bytes)
 
 int copy_for_upload(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	char *buf;
 	unsigned chunk;
 	void *tag;
@@ -88,7 +88,7 @@ int copy_for_upload(void)
 		return 1;
 	if (begin(state.db))
 		return 1;
-	if (query(&stmt, state.db, "SELECT count(*) FROM "
+	if (query(&qry, state.db, "SELECT count(*) FROM "
 				"main.keys JOIN prev.keys "
 				"ON main.keys.chunk == prev.keys.chunk "
 				"WHERE main.keys.tag != prev.keys.tag", NULL)
@@ -97,23 +97,23 @@ int copy_for_upload(void)
 		rollback(state.db);
 		return 1;
 	}
-	query_row(stmt, "d", &total_modified);
-	query_free(stmt);
+	query_row(qry, "d", &total_modified);
+	query_free(qry);
 	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failed");
 		rollback(state.db);
 		return 1;
 	}
-	for (sret=query(&stmt, state.db, "SELECT main.keys.chunk, "
+	for (sret=query(&qry, state.db, "SELECT main.keys.chunk, "
 				"main.keys.tag, cache.chunks.length FROM "
 				"main.keys JOIN prev.keys ON "
 				"main.keys.chunk == prev.keys.chunk "
 				"LEFT JOIN cache.chunks ON "
 				"main.keys.chunk == cache.chunks.chunk WHERE "
 				"main.keys.tag != prev.keys.tag", NULL);
-				sret == SQLITE_ROW; sret=query_next(stmt)) {
-		query_row(stmt, "dbd", &chunk, &tag, &taglen, &length);
+				sret == SQLITE_ROW; sret=query_next(qry)) {
+		query_row(qry, "dbd", &chunk, &tag, &taglen, &length);
 		print_progress(modified_chunks, total_modified);
 		if (chunk > parcel.chunks) {
 			pk_log(LOG_ERROR, "Chunk %u: greater than parcel size "
@@ -185,7 +185,7 @@ int copy_for_upload(void)
 		ret=0;
 out:
 	free(buf);
-	query_free(stmt);
+	query_free(qry);
 	/* We didn't make any changes; we just need to release the locks */
 	rollback(state.db);
 	if (ret == 0)
@@ -196,7 +196,7 @@ out:
 
 static pk_err_t validate_keyring(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	unsigned expected_chunk=0;
 	unsigned chunk;
 	unsigned taglen;
@@ -205,10 +205,10 @@ static pk_err_t validate_keyring(void)
 	int sret;
 	pk_err_t ret=PK_SUCCESS;
 
-	for (sret=query(&stmt, state.db, "SELECT chunk, tag, key, compression "
+	for (sret=query(&qry, state.db, "SELECT chunk, tag, key, compression "
 				"FROM keys ORDER BY chunk ASC", NULL);
-				sret == SQLITE_ROW; sret=query_next(stmt)) {
-		query_row(stmt, "dnnd", &chunk, &taglen, &keylen, &compress);
+				sret == SQLITE_ROW; sret=query_next(qry)) {
+		query_row(qry, "dnnd", &chunk, &taglen, &keylen, &compress);
 		if (chunk >= parcel.chunks) {
 			pk_log(LOG_ERROR, "Found keyring entry %u greater than"
 						" parcel size %u", chunk,
@@ -252,13 +252,13 @@ static pk_err_t validate_keyring(void)
 		pk_log(LOG_ERROR, "Keyring query failed");
 		ret=PK_IOERR;
 	}
-	query_free(stmt);
+	query_free(qry);
 	return ret;
 }
 
 static pk_err_t validate_cachefile(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	void *buf;
 	void *tag;
 	char calctag[parcel.hashlen];
@@ -272,14 +272,14 @@ static pk_err_t validate_cachefile(void)
 
 	if (begin(state.db))
 		return PK_IOERR;
-	if (query(&stmt, state.db, "SELECT count(*) FROM cache.chunks", NULL)
+	if (query(&qry, state.db, "SELECT count(*) FROM cache.chunks", NULL)
 				!= SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't enumerate valid chunks");
 		rollback(state.db);
 		return PK_IOERR;
 	}
-	query_row(stmt, "d", &valid);
-	query_free(stmt);
+	query_row(qry, "d", &valid);
+	query_free(qry);
 
 	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
@@ -288,12 +288,12 @@ static pk_err_t validate_cachefile(void)
 		return PK_NOMEM;
 	}
 
-	for (sret=query(&stmt, state.db, "SELECT cache.chunks.chunk, "
+	for (sret=query(&qry, state.db, "SELECT cache.chunks.chunk, "
 				"cache.chunks.length, keys.tag FROM "
 				"cache.chunks LEFT JOIN keys ON "
 				"cache.chunks.chunk == keys.chunk", NULL);
-				sret == SQLITE_ROW; sret=query_next(stmt)) {
-		query_row(stmt, "ddb", &chunk, &chunklen, &tag, &taglen);
+				sret == SQLITE_ROW; sret=query_next(qry)) {
+		query_row(qry, "ddb", &chunk, &chunklen, &tag, &taglen);
 		print_progress(++processed, valid);
 
 		if (chunk > parcel.chunks) {
@@ -343,7 +343,7 @@ static pk_err_t validate_cachefile(void)
 		pk_log(LOG_ERROR, "Error querying cache index");
 		ret=PK_IOERR;
 	}
-	query_free(stmt);
+	query_free(qry);
 	free(buf);
 	/* We didn't make any changes; we just need to release the locks */
 	rollback(state.db);
@@ -369,7 +369,7 @@ int validate_cache(void)
 
 int examine_cache(void)
 {
-	sqlite3_stmt *stmt;
+	struct query *qry;
 	unsigned validchunks;
 	unsigned dirtychunks;
 	unsigned max_mb;
@@ -380,15 +380,15 @@ int examine_cache(void)
 
 	if (begin(state.db))
 		return 1;
-	if (query(&stmt, state.db, "SELECT count(*) from cache.chunks", NULL)
+	if (query(&qry, state.db, "SELECT count(*) from cache.chunks", NULL)
 				!= SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't query cache index");
 		rollback(state.db);
 		return 1;
 	}
-	query_row(stmt, "d", &validchunks);
-	query_free(stmt);
-	if (query(&stmt, state.db, "SELECT count(*) FROM main.keys "
+	query_row(qry, "d", &validchunks);
+	query_free(qry);
+	if (query(&qry, state.db, "SELECT count(*) FROM main.keys "
 				"JOIN prev.keys ON "
 				"main.keys.chunk == prev.keys.chunk WHERE "
 				"main.keys.tag != prev.keys.tag", NULL)
@@ -397,8 +397,8 @@ int examine_cache(void)
 		rollback(state.db);
 		return 1;
 	}
-	query_row(stmt, "d", &dirtychunks);
-	query_free(stmt);
+	query_row(qry, "d", &dirtychunks);
+	query_free(qry);
 	/* We didn't make any changes; we just need to release the locks */
 	rollback(state.db);
 
