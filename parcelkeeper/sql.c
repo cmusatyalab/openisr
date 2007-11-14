@@ -79,12 +79,8 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 	}
 	va_end(ap);
 	if (ret == SQLITE_OK)
-		ret=sqlite3_step(stmt);
-	/* Collapse DONE into OK, since we don't want everyone to have to test
-	   for a gratuitously nonzero error code */
-	if (ret == SQLITE_DONE)
-		ret=SQLITE_OK;
-	if (ret != SQLITE_OK && ret != SQLITE_ROW && !found_unknown)
+		ret=query_next(stmt);
+	else if (!found_unknown)
 		sqlerr(db);
 	if ((ret != SQLITE_OK && ret != SQLITE_ROW) || result == NULL)
 		query_free(stmt);
@@ -98,6 +94,8 @@ int query_next(sqlite3_stmt *stmt)
 	int ret;
 
 	ret=sqlite3_step(stmt);
+	/* Collapse DONE into OK, since we don't want everyone to have to test
+	   for a gratuitously nonzero error code */
 	if (ret == SQLITE_DONE)
 		ret=SQLITE_OK;
 	if (ret != SQLITE_OK && ret != SQLITE_ROW)
