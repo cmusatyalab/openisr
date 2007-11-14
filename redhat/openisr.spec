@@ -16,7 +16,8 @@ Packager:	Matt Toups <mtoups@cs.cmu.edu>
 URL:		http://isr.cmu.edu
 Source: 	http://isr.cmu.edu/software/openisr-%{version}.tar.gz
 # line below is working around an annoying rpm "feature"
-Patch1:		dkms.patch
+Patch0:		dkms.patch
+Patch1:		openisr-config.patch
 Provides:	perl(IsrRevision)
 
 %description
@@ -31,6 +32,7 @@ Provides:	perl(IsrRevision)
 
 %prep
 %setup -q
+%patch0
 %patch1
 
 %build

@@ -58,11 +58,16 @@ system(INITSCRIPT . " stop") == 0
 status "Checking status of kernel modules.";
 
 if (system("dkms status | grep openisr | grep " . VERSION . " | grep installed") == 0) {
-	print "Modules for this version are already built and installed.\n";
+	status "Modules for this version are already built and installed.\n";
 } else {
+	if (system("dkms status | grep openisr | grep " . VERSION . " | grep built") == 0)
+	{
+		status "Modules already built with DKMS.\n";
+	} else {
 	status "Building modules with DKMS.";
 	system("dkms build -m openisr -v " . VERSION) == 0
 		or fail "DKMS build failed.";
+	}
 
 	status "Installing modules with DKMS.";
 	system("dkms install -m openisr -v " . VERSION) == 0
