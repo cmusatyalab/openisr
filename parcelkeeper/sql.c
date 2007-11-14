@@ -25,10 +25,28 @@ static void sqlerr(sqlite3 *db)
 	pk_log(LOG_ERROR, "SQL error: %s", sqlite3_errmsg(db));
 }
 
-void query_free(struct query *qry)
+static int alloc_query(struct query **result, sqlite3 *db, char *sql)
 {
-	if (qry == NULL)
-		return;
+	struct query *qry;
+	int ret;
+
+	qry=malloc(sizeof(*qry));
+	if (qry == NULL) {
+		pk_log(LOG_ERROR, "malloc failed");
+		return SQLITE_NOMEM;
+	}
+	ret=sqlite3_prepare_v2(db, sql, -1, &qry->stmt, NULL);
+	if (ret) {
+		sqlerr(db);
+		free(qry);
+	} else {
+		*result=qry;
+	}
+	return ret;
+}
+
+static void destroy_query(struct query *qry)
+{
 	sqlite3_finalize(qry->stmt);
 	free(qry);
 }
@@ -45,18 +63,10 @@ int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...)
 
 	if (result != NULL)
 		*result=NULL;
-	qry=malloc(sizeof(*qry));
-	if (qry == NULL) {
-		pk_log(LOG_ERROR, "malloc failed");
-		return SQLITE_NOMEM;
-	}
-	ret=sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
-	if (ret) {
-		sqlerr(db);
-		free(qry);
+	ret=alloc_query(&qry, db, query);
+	if (ret)
 		return ret;
-	}
-	qry->stmt=stmt;
+	stmt=qry->stmt;
 	va_start(ap, fmt);
 	for (; fmt != NULL && *fmt; fmt++) {
 		switch (*fmt) {
@@ -154,6 +164,13 @@ void query_row(struct query *qry, char *fmt, ...)
 		}
 	}
 	va_end(ap);
+}
+
+void query_free(struct query *qry)
+{
+	if (qry == NULL)
+		return;
+	destroy_query(qry);
 }
 
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
