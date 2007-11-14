@@ -93,7 +93,6 @@ int copy_for_upload(void)
 				"ON main.keys.chunk == prev.keys.chunk "
 				"WHERE main.keys.tag != prev.keys.tag", NULL)
 				!= SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_ERROR, "Query failed");
 		rollback(state.db);
 		return 1;
@@ -275,7 +274,6 @@ static pk_err_t validate_cachefile(void)
 		return PK_IOERR;
 	if (query(&stmt, state.db, "SELECT count(*) FROM cache.chunks", NULL)
 				!= SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't enumerate valid chunks");
 		rollback(state.db);
 		return PK_IOERR;
@@ -384,7 +382,6 @@ int examine_cache(void)
 		return 1;
 	if (query(&stmt, state.db, "SELECT count(*) from cache.chunks", NULL)
 				!= SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't query cache index");
 		rollback(state.db);
 		return 1;
@@ -396,7 +393,6 @@ int examine_cache(void)
 				"main.keys.chunk == prev.keys.chunk WHERE "
 				"main.keys.tag != prev.keys.tag", NULL)
 				!= SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't compare keyrings");
 		rollback(state.db);
 		return 1;

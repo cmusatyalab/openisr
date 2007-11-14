@@ -82,7 +82,7 @@ int query(sqlite3_stmt **result, sqlite3 *db, char *query, char *fmt, ...)
 		ret=query_next(stmt);
 	else if (!found_unknown)
 		sqlerr(db);
-	if ((ret != SQLITE_OK && ret != SQLITE_ROW) || result == NULL)
+	if (ret != SQLITE_ROW || result == NULL)
 		query_free(stmt);
 	else
 		*result=stmt;
@@ -216,7 +216,6 @@ pk_err_t validate_db(sqlite3 *db)
 	int result;
 
 	if (query(&stmt, db, "PRAGMA integrity_check(1)", NULL) != SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't run SQLite integrity check");
 		return PK_IOERR;
 	}

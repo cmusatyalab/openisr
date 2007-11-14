@@ -158,7 +158,6 @@ static pk_err_t verify_cache_index(void)
 
 	if (query(&stmt, state.db, "PRAGMA cache.user_version", NULL) !=
 				SQLITE_ROW) {
-		query_free(stmt);  /* in case the query produced no rows */
 		pk_log(LOG_ERROR, "Couldn't query cache index version");
 		return PK_IOERR;
 	}
@@ -320,7 +319,6 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 	if (query(&stmt, state.db, "SELECT tag, key, compression FROM keys "
 				"WHERE chunk == ?", "d", chunk)
 				!= SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't query keyring");
 		return PK_IOERR;
 	}
@@ -340,7 +338,6 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 				"WHERE chunk == ?", "d", chunk);
 	if (ret == SQLITE_OK) {
 		/* Chunk is not in the local cache */
-		query_free(stmt);
 		err=obtain_chunk(chunk, tag, length);
 		if (err)
 			return err;

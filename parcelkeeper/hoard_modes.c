@@ -65,7 +65,7 @@ int hoard(void)
 	if (query(&stmt, state.db, "SELECT count(*) FROM temp.to_hoard", NULL)
 				!= SQLITE_ROW) {
 		pk_log(LOG_ERROR, "Couldn't count unhoarded chunks");
-		goto out_stmt;
+		goto out_drop;
 	}
 	query_row(stmt, "d", &to_hoard);
 	query_free(stmt);
@@ -136,7 +136,6 @@ int examine_hoard(void)
 		return 1;
 	if (query(&stmt, state.db, "SELECT count(DISTINCT tag) FROM prev.keys",
 				NULL) != SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't query previous keyring");
 		goto bad;
 	}
@@ -146,7 +145,6 @@ int examine_hoard(void)
 				"FROM prev.keys JOIN hoard.chunks "
 				"ON prev.keys.tag == hoard.chunks.tag", NULL)
 				!= SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't query hoard cache");
 		goto bad;
 	}
@@ -188,7 +186,6 @@ int list_hoard(void)
 		return 1;
 	if (query(&t_stmt, state.db, "SELECT count(tag) FROM hoard.chunks "
 				"WHERE referenced == 1", NULL) != SQLITE_ROW) {
-		query_free(t_stmt);
 		pk_log(LOG_ERROR, "Couldn't count referenced chunks");
 		goto out;
 	}
@@ -196,7 +193,6 @@ int list_hoard(void)
 	query_free(t_stmt);
 	if (query(&t_stmt, state.db, "SELECT count(tag) FROM hoard.chunks "
 				"WHERE referenced == 0", NULL) != SQLITE_ROW) {
-		query_free(t_stmt);
 		pk_log(LOG_ERROR, "Couldn't count unreferenced chunks");
 		goto out;
 	}
@@ -204,7 +200,6 @@ int list_hoard(void)
 	query_free(t_stmt);
 	if (query(&t_stmt, state.db, "SELECT count(*) FROM hoard.chunks "
 				"WHERE tag ISNULL", NULL) != SQLITE_ROW) {
-		query_free(t_stmt);
 		pk_log(LOG_ERROR, "Couldn't count unused chunk slots");
 		goto out;
 	}
@@ -218,7 +213,6 @@ int list_hoard(void)
 		if (query(&t_stmt, state.db, "SELECT count(*) FROM hoard.refs "
 					"WHERE parcel == ?", "d", parcel)
 					!= SQLITE_ROW) {
-			query_free(t_stmt);
 			pk_log(LOG_ERROR, "Couldn't query hoard index for "
 						"parcel %s", name);
 			break;
@@ -230,7 +224,6 @@ int list_hoard(void)
 					"(SELECT tag FROM hoard.refs WHERE "
 					"parcel != ?)", "dd", parcel, parcel)
 					!= SQLITE_ROW) {
-			query_free(t_stmt);
 			pk_log(LOG_ERROR, "Couldn't query hoard index for "
 						"parcel %s", name);
 			break;
@@ -270,7 +263,6 @@ int rmhoard(void)
 	if (query(&stmt, state.db, "SELECT parcel, server, user, name "
 				"FROM hoard.parcels WHERE uuid == ?", "S",
 				config.uuid) != SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_INFO, "rmhoard: %s: No such parcel", config.uuid);
 		rollback(state.db);
 		return 0;
@@ -288,7 +280,6 @@ int rmhoard(void)
 				"parcel == ? AND tag NOT IN (SELECT tag "
 				"FROM hoard.refs WHERE parcel != ?)", "dd",
 				parcel, parcel) != SQLITE_ROW) {
-		query_free(stmt);
 		free(desc);
 		pk_log(LOG_ERROR, "Couldn't enumerate unique parcel chunks");
 		goto bad;

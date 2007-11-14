@@ -90,7 +90,6 @@ static pk_err_t expand_cache(void)
 
 	if (query(&stmt, state.hoard, "SELECT count(*), max(offset) "
 				"FROM chunks", NULL) != SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't find maximum hoard cache offset");
 		return PK_IOERR;
 	}
@@ -131,7 +130,6 @@ static pk_err_t allocate_chunk_offset(int *offset)
 						"offset");
 			return PK_IOERR;
 		}
-		query_free(stmt);
 
 		/* Next, we may want to try reclaiming an existing,
 		   unreferenced chunk.  See if we're permitted to do so. */
@@ -139,7 +137,6 @@ static pk_err_t allocate_chunk_offset(int *offset)
 			sret=query(&stmt, state.hoard, "SELECT count(tag) "
 						"FROM chunks", NULL);
 			if (sret != SQLITE_ROW) {
-				query_free(stmt);
 				pk_log(LOG_ERROR, "Error finding size of "
 							"hoard cache");
 				return PK_IOERR;
@@ -164,7 +161,6 @@ static pk_err_t allocate_chunk_offset(int *offset)
 							"hoard cache offset");
 				return PK_IOERR;
 			}
-			query_free(stmt);
 		}
 
 		/* Now expand the cache and try again */
@@ -234,7 +230,6 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	sret=query(&stmt, state.hoard, "SELECT offset, length FROM chunks "
 				"WHERE tag == ?", "b", tag, parcel.hashlen);
 	if (sret == SQLITE_OK) {
-		query_free(stmt);
 		ret=commit(state.hoard);
 		if (ret)
 			goto bad;
@@ -446,7 +441,6 @@ static pk_err_t get_parcel_ident(void)
 	while ((sret=query(&stmt, state.hoard, "SELECT parcel FROM parcels "
 				"WHERE uuid == ?", "S", parcel.uuid))
 				== SQLITE_OK) {
-		query_free(stmt);
 		if (query(NULL, state.hoard, "INSERT INTO parcels "
 					"(uuid, server, user, name) "
 					"VALUES (?, ?, ?, ?)", "SSSS",
@@ -458,7 +452,6 @@ static pk_err_t get_parcel_ident(void)
 		}
 	}
 	if (sret != SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't query parcels table");
 		ret=PK_IOERR;
 		goto bad;
@@ -496,7 +489,6 @@ static pk_err_t open_hoard_index(void)
 		goto bad;
 	if (query(&stmt, state.hoard, "PRAGMA user_version", NULL)
 				!= SQLITE_ROW) {
-		query_free(stmt);
 		pk_log(LOG_ERROR, "Couldn't get hoard cache index version");
 		ret=PK_IOERR;
 		goto bad_rollback;
