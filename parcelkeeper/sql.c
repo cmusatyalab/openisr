@@ -85,7 +85,8 @@ static int get_query(struct query **result, sqlite3 *db, char *sql)
 
 	/* XXX when we go to multi-threaded, this will need locking */
 	/* XXX also, might need a better hash table */
-	if (prepared[bucket] && !strcmp(sql, prepared[bucket]->sql)) {
+	if (prepared[bucket] && db == sqlite3_db_handle(prepared[bucket]->stmt)
+				&& !strcmp(sql, prepared[bucket]->sql)) {
 		*result=prepared[bucket];
 		prepared[bucket]=NULL;
 		ret=SQLITE_OK;
