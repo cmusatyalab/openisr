@@ -86,26 +86,40 @@ sub build_debian () {
 }
 
 sub build_redhat () {
-	#TODO: check to see if modules are already built
-	# (this is not a very robust test)
+	my $need_build = 1;
+	my $need_install = 1;
 	
-	status "Checking status of kernel modules.";
+	status "Checking status of kernel modules...";
 	
-	if (system("dkms status | grep openisr | grep " . VERSION . " | grep installed") == 0) {
-		status "Modules for this version are already built and installed.\n";
-	} else {
-		if (system("dkms status | grep openisr | grep " . VERSION . " | grep built") == 0)
-		{
-			status "Modules already built with DKMS.\n";
-		} else {
-		status "Building modules with DKMS.";
+	open FD, "-|", "dkms status"
+		or fail "Couldn't get DKMS status";
+	while (<FD>) {
+		next if !/^openisr, ([^,]+),/;
+		next if $1 ne VERSION;
+		if (/installed/) {
+			$need_build = 0;
+			$need_install = 0;
+		} elsif (/built/) {
+			$need_build = 0;
+		}
+		last;
+	}
+	close FD;
+	
+	if ($need_build) {
+		status "Building modules with DKMS...";
 		system("dkms build -m openisr -v " . VERSION) == 0
 			or fail "DKMS build failed.";
-		}
+	} else {
+		status "Modules already built with DKMS.";
+	}
 	
-		status "Installing modules with DKMS.";
+	if ($need_install) {
+		status "Installing modules with DKMS...";
 		system("dkms install -m openisr -v " . VERSION) == 0
 			or fail "DKMS install failed.";
+	} else {
+		status "Modules already installed with DKMS.";
 	}
 }
 
