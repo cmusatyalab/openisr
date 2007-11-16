@@ -9,3 +9,26 @@
  all: config.h
  	$(MAKE) $(AM_MAKEFLAGS) all-recursive
  
+--- dkms.conf
++++ dkms.conf
+@@ -0,0 +1,6 @@
++PACKAGE_NAME="openisr"
++PACKAGE_VERSION="0.8.3-git"
++BUILT_MODULE_NAME[0]="openisr"
++DEST_MODULE_LOCATION[0]="/kernel/drivers/block"
++MAKE[0]="make kernel_source_dir=$kernel_source_dir -f Makefile.dkms"
++AUTOINSTALL="yes"
+--- Makefile.dkms
++++ Makefile.dkms
+@@ -0,0 +1,11 @@
++unexport KERNELRELEASE
++unexport MAKEFLAGS
++
++all:
++	./configure --disable-client --enable-modules \
++		--with-kernel=$(kernel_source_dir)
++	$(MAKE)
++	cp -a nexus/openisr.ko .
++clean:
++	$(RM) openisr.ko
++	make distclean

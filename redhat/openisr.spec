@@ -35,11 +35,11 @@ Provides:	perl(IsrRevision)
 
 %build
 ./configure --enable-client --disable-modules --prefix=/usr --sysconfdir=/etc --mandir=/usr/share/man --with-kbuild-wrapper=dkms && make DESTDIR=%{buildroot}
-make dist
 
 %install
 make install DESTDIR=%{buildroot}
-mkdir -p %{buildroot}/usr/src && cd %{buildroot}/usr/src && tar zxvf ../share/openisr/openisr.tar.gz && chmod 0755 openisr-%{version}
+make dist-gzip && mkdir -p %{buildroot}/usr/src && mv openisr-%{version}.tar.gz %{buildroot}/usr/src && cp Makefile.dkms dkms.conf %{buildroot}/usr/src && cd %{buildroot}/usr/src && tar zxf openisr-%{version}.tar.gz
+mv Makefile.dkms dkms.conf %{buildroot}/usr/src/openisr-%{version} && cd %{buildroot}/usr/src && tar zcf openisr-%{version}.tar.gz openisr-%{version} && chmod 0755 openisr-%{version}
 
 %clean
 rm -rf %{buildroot}
@@ -63,6 +63,7 @@ dkms remove -m openisr -v %{version} --all
 %dir /usr/share/openisr
 %dir /usr/lib/openisr
 /usr/src/openisr-%{version}
+/usr/src/openisr-%{version}.tar.gz
 /usr/bin/isr
 /usr/sbin/openisr-config
 /usr/lib/openisr/vulpes
@@ -70,7 +71,6 @@ dkms remove -m openisr -v %{version} --all
 /usr/lib/openisr/nexus_debug
 /usr/share/man/man1/isr.1.gz
 /usr/share/man/man8/openisr-config.8.gz
-/usr/share/openisr/openisr.tar.gz
 /usr/share/openisr/config
 /usr/share/openisr/HTTPSSH.pm
 /usr/share/openisr/IsrConfigTie.pm
