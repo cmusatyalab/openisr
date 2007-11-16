@@ -193,6 +193,7 @@ void hoard_shutdown(void);
 pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len);
 pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len);
 pk_err_t hoard_sync_refs(int from_cache);
+void hoard_invalidate_chunk(int offset, const void *tag);
 
 /* hoard_modes.c */
 int hoard(void);

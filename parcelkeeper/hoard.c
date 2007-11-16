@@ -13,6 +13,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/time.h>
 #include <time.h>
 #include "defs.h"
@@ -213,9 +214,58 @@ static pk_err_t add_chunk_reference(const void *tag)
 	return PK_SUCCESS;
 }
 
+/* This function is intended to be used when a particular chunk in the hoard
+   cache is found to be invalid (e.g., the data does not match the tag).
+   It first checks to make sure that the provided tag/offset pair is still
+   valid, in case the chunk in the hoard cache was deleted out from under us
+   as we were reading it.  (hoard_get_chunk() cares about this case.)
+   Must be called within transaction for hoard connection. */
+static void _hoard_invalidate_chunk(int offset, const void *tag)
+{
+	struct query *qry;
+	int sret;
+	char *ftag;
+
+	sret=query(&qry, state.hoard, "SELECT offset FROM chunks WHERE "
+				"offset == ? AND tag == ?", "db",
+				offset, tag, parcel.hashlen);
+	if (sret == SQLITE_OK) {
+		/* Harmless: it's already not there.  But let's warn anyway. */
+		ftag=format_tag(tag);
+		pk_log(LOG_ERROR, "Attempted to invalidate tag %s at "
+					"offset %d, but it does not exist "
+					"(harmless)", ftag, offset);
+		free(ftag);
+		return;
+	} else if (sret != SQLITE_ROW) {
+		pk_log(LOG_ERROR, "Could not query chunk list");
+		return;
+	}
+	query_free(qry);
+
+	deallocate_chunk_offset(offset);
+	if (query(NULL, state.hoard, "DELETE FROM refs WHERE tag == ?", "b",
+				tag, parcel.hashlen)) {
+		ftag=format_tag(tag);
+		pk_log(LOG_ERROR, "Couldn't invalidate references to tag %s",
+					ftag);
+		free(ftag);
+	}
+}
+
+void hoard_invalidate_chunk(int offset, const void *tag)
+{
+	if (begin(state.hoard))
+		return;
+	_hoard_invalidate_chunk(offset, tag);
+	if (commit(state.hoard))
+		rollback(state.hoard);
+}
+
 pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 {
 	struct query *qry;
+	char calctag[parcel.hashlen];
 	int offset;
 	int clen;
 	pk_err_t ret;
@@ -242,6 +292,16 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	query_row(qry, "dd", &offset, &clen);
 	query_free(qry);
 
+	if (offset < 0 || clen <= 0 || (unsigned)clen > parcel.chunksize) {
+		pk_log(LOG_ERROR, "Chunk has unreasonable offset/length "
+					"%d/%d; invalidating", offset, clen);
+		_hoard_invalidate_chunk(offset, tag);
+		ret=PK_BADFORMAT;
+		if (commit(state.hoard))
+			goto bad;
+		return ret;
+	}
+
 	if (query(NULL, state.hoard, "UPDATE chunks SET last_access = ? "
 				"WHERE tag == ?", "db", timestamp(), tag,
 				parcel.hashlen)) {
@@ -256,27 +316,31 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	if (ret)
 		goto bad;
 
-	/* XXX what if the reference is released right now?  we could read in
-	   bad chunk data.  do we need to hold a read lock the whole time? */
-
-	if (clen <= 0 || (unsigned)clen > parcel.chunksize)
-		/* XXX */;
-
 	if (pread(state.hoard_fd, buf, clen, ((off_t)offset) << 9) != clen) {
 		pk_log(LOG_ERROR, "Couldn't read chunk at offset %d", offset);
-		/* XXX */
+		hoard_invalidate_chunk(offset, tag);
+		return PK_IOERR;
 	}
 
-#if 0
-	XXX
-	if chunk does not match hash {
-		warn;
-		delete from references where tag == hash;
-		update chunks (tag, length) set to (null, null) where
-			tag == hash;
-		fail;
+	/* Make sure the stored hash matches the actual hash of the data.
+	   If not, remove the chunk from the hoard cache.  If the reference
+	   is released right now (e.g. by an rmhoard) and the chunk slot is
+	   immediately reused, we'll find a hash mismatch, but we don't want
+	   to blindly invalidate the slot because some other data has been
+	   stored there in the interim.  Therefore, _hoard_invalidate_chunk()
+	   checks that the tag/index pair is still present in the chunks
+	   table before invalidating the slot. */
+
+	ret=digest(calctag, buf, clen);
+	if (ret)
+		return ret;
+	if (memcmp(tag, calctag, parcel.hashlen)) {
+		pk_log(LOG_ERROR, "Tag mismatch reading hoard cache at "
+					"offset %d", offset);
+		log_tag_mismatch(tag, calctag);
+		hoard_invalidate_chunk(offset, tag);
+		return PK_TAGFAIL;
 	}
-#endif
 
 	*len=clen;
 	return PK_SUCCESS;
