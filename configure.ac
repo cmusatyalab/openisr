@@ -63,6 +63,8 @@ then
 else
 	AC_MSG_ERROR([unknown kbuild wrapper $with_kbuild_wrapper])
 fi
+AM_CONDITIONAL([WANT_MODULE_SOURCE], [test z$enable_client = zyes -a \
+			z$with_kbuild_wrapper = znone])
 
 if test z$enable_modules = zyes ; then
 	if test z$srcdir != z. ; then
