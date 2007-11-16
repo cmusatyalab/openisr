@@ -23,7 +23,8 @@ $(GEN): %: %.in Makefile
 				-e "s=!!SYSCONFDIR!!=$(pkgsysconfdir)=g" \
 				-e "s=!!INITDIR!!=$(initexecdir)=g" \
 				-e "s=!!BINDIR!!=$(bindir)=g" \
-				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" $< > $@
+				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" \
+				-e "s=!!KBUILDTYPE!!=$(KBUILDTYPE)=g" $< > $@
 
 install-exec-hook:
 	mv $(DESTDIR)$(initexecdir)/openisr.init \

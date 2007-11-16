@@ -37,6 +37,10 @@ AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--enable-libvdisk],
 AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules],
 			[build kernel modules [$client]])],,
 			[enable_modules=${enable_client}])
+AC_ARG_WITH([kbuild-wrapper],
+			[AS_HELP_STRING([--with-kbuild-wrapper={none|debian|dkms}],
+			[for use by packaging scripts only])],,
+			[with_kbuild_wrapper=none])
 
 PROCESS_ENABLE_VAR([$enable_client], [WANT_CLIENT],
 			[whether we should build the client])
@@ -44,6 +48,21 @@ PROCESS_ENABLE_VAR([$enable_libvdisk], [WANT_LIBVDISK],
 			[whether we should build libvdisk])
 PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
 			[whether we should build the kernel modules])
+
+AC_MSG_CHECKING([how to build kernel modules])
+if test x$with_kbuild_wrapper = xnone ; then
+	AC_MSG_RESULT([source])
+	AC_SUBST([KBUILDTYPE], [source])
+elif test x$with_kbuild_wrapper = xdebian -o x$with_kbuild_wrapper = xdkms
+then
+	AC_MSG_RESULT([$with_kbuild_wrapper])
+	if test z$enable_modules = zyes ; then
+		AC_MSG_ERROR([--enable-modules cannot be used with a kbuild wrapper])
+	fi
+	AC_SUBST([KBUILDTYPE], [$with_kbuild_wrapper])
+else
+	AC_MSG_ERROR([unknown kbuild wrapper $with_kbuild_wrapper])
+fi
 
 if test z$enable_modules = zyes ; then
 	if test z$srcdir != z. ; then

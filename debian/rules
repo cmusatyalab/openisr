@@ -33,7 +33,7 @@ endif
 configure: configure-stamp
 configure-stamp:
 	dh_testdir
-	./configure --host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) --prefix=/usr --sysconfdir=/etc --mandir=\$${prefix}/share/man --infodir=\$${prefix}/share/info --disable-modules CFLAGS="$(CFLAGS)" LDFLAGS="-Wl,-z,defs"
+	./configure --host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) --prefix=/usr --sysconfdir=/etc --mandir=\$${prefix}/share/man --infodir=\$${prefix}/share/info --disable-modules --with-kbuild-wrapper=debian CFLAGS="$(CFLAGS)" LDFLAGS="-Wl,-z,defs"
 
 	touch configure-stamp
 
@@ -140,9 +140,6 @@ install-arch:
 
 	# Add here commands to install the arch part of the package
 	$(MAKE) install DESTDIR=$(CURDIR)/debian/openisr
-
-	#now let's replace openisr-config with our own debianized version
-	cp $(CURDIR)/debian/openisr-config $(CURDIR)/debian/openisr/usr/sbin
 
 	# Debian policy manual section 8.1 says we need this symlink
 #	(cd $(CURDIR)/debian/openisr/usr/lib && ln -s libvdisk.so.0.0.0 libvdisk.so.0)

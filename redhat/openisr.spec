@@ -17,7 +17,6 @@ URL:		http://isr.cmu.edu
 Source: 	http://isr.cmu.edu/software/openisr-%{version}.tar.gz
 # line below is working around an annoying rpm "feature"
 Patch0:		dkms.patch
-Patch1:		openisr-config.patch
 Provides:	perl(IsrRevision)
 
 %description
@@ -33,10 +32,9 @@ Provides:	perl(IsrRevision)
 %prep
 %setup -q
 %patch0
-%patch1
 
 %build
-./configure --enable-client --disable-modules --prefix=/usr --sysconfdir=/etc --mandir=/usr/share/man && make DESTDIR=%{buildroot}
+./configure --enable-client --disable-modules --prefix=/usr --sysconfdir=/etc --mandir=/usr/share/man --with-kbuild-wrapper=dkms && make DESTDIR=%{buildroot}
 make dist
 
 %install
