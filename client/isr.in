@@ -130,6 +130,7 @@ sub need_uuid ();
 sub need_not_parcel ();
 sub need_checked_out ();
 sub need_network ();
+sub fcntl_lock ($$$);
 sub acquire_lock ($$$);
 sub release_lock ($);
 sub release_locks ();
@@ -1457,13 +1458,12 @@ sub need_network () {
 # Misc helper functions
 # 
 
-sub acquire_lock ($$$) {
-    my $file = shift;
-    my $desc = shift;
+sub fcntl_lock ($$$) {
+    my $fh = shift;
+    my $type = shift;
     my $wait = shift;
     
     my $lockstruct;
-    my $fh;
     my $op;
     
     # This is black magic.  We don't want to make assumptions about whether
@@ -1475,17 +1475,31 @@ sub acquire_lock ($$$) {
     # is off64_t, in 32-bit chunks.  We do, however, still make assumptions
     # about the ordering of the fields in the struct; there doesn't seem to
     # be any way around that.
-    $lockstruct = pack("s!s!lllll", F_WRLCK, SEEK_SET);
-    open($fh, ">", $file)
-	or unix_errexit("Can't open $file for writing");
+    $lockstruct = pack("s!s!lllll", $type, SEEK_SET);
     $op = $wait ? F_SETLKW : F_SETLK;
     while (1) {
 	last if fcntl($fh, $op, $lockstruct);
 	next if $! == EINTR;
-	errexit("$desc locked by another process")
-	    if ($! == EACCES or $! == EAGAIN);
-	unix_errexit("Can't acquire lock");
+	return $!;
     }
+    return 0;
+}
+
+sub acquire_lock ($$$) {
+    my $file = shift;
+    my $desc = shift;
+    my $wait = shift;
+    
+    my $fh;
+    my $ret;
+    
+    open($fh, ">", $file)
+	or unix_errexit("Can't open $file for writing");
+    $ret = fcntl_lock($fh, F_WRLCK, $wait);
+    errexit("$desc locked by another process")
+	if $ret == EACCES or $ret == EAGAIN;
+    unix_errexit("Can't acquire lock")
+        if $ret;
     push(@locks, {"DESC" => $desc, "NAME" => $file, "FH" => $fh});
 }
 
