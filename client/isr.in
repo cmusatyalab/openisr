@@ -167,7 +167,6 @@ my $fullscreen = 1;  # Run VMM in full-screen mode
 
 # Write once globals that are visible in this module only. These globals are
 # needed to cleanly handle logging.
-my $log_enabled = 0;# Is logging enabled?
 my $pid;            # Pid of child created in mysystem
 my $sessionid = 0;  # Unique session id (nonce from lock operation)
 my $userid;         # ISR userid
@@ -413,6 +412,13 @@ if ($parceldir && -e "$parceldir/nonce" && open(NONCE, "$parceldir/nonce")) {
     close(NONCE);
     chomp($sessionid);
 }
+
+#
+# Log the fact that we are starting.
+#
+message("START", "OpenISR " . ISRVERSION . ", revision " . RCS_REVISION);
+message("ENTER", "@ARGV");
+message("BEGIN", $command);
 
 #
 # Now process the ISR command.
@@ -1403,29 +1409,14 @@ sub cleanclient() {
 sub need_parcel () {
     usage("Missing parcel name")
 	if !$parcel;
-    
-    # 
-    # Hack: the cases in which we need a parcel name are exactly the cases
-    # in which we want to log.  (If we don't have a parcel name, we don't know
-    # what log file to write to.)  So we start the log as a side-effect.
-    #
-    $log_enabled = 1;
-    message("START", "OpenISR " . ISRVERSION . ", revision " . RCS_REVISION);
-    message("ENTER", "@ARGV");
-    message("BEGIN", $command);
 }
 
 #
 # Some commands require a UUID on the command line
 #
-sub need_uuid() {
+sub need_uuid () {
     usage("Missing parcel UUID")
 	if !$uuid;
-    
-    $log_enabled = 1;
-    message("START", "OpenISR " . ISRVERSION . ", revision " . RCS_REVISION);
-    message("ENTER", "@ARGV");
-    message("BEGIN", $command);
 }
 
 #
@@ -2303,28 +2294,36 @@ sub message($$) {
     my $event = shift;
     my $msg = shift;
 
+    my $logdir = "$ENV{HOME}/.isr";
     my $date = localtime();
     my $string;
-    my $logfile;
+    my @logs;
+    my $file;
 
-    return
-        if !$log_enabled;
     $string = message_string();
-    # XXX
     if ($uuid) {
-        $logfile = "$ENV{HOME}/.isr/$uuid.log";
+	push @logs, "$logdir/$uuid.log";
     } else {
-	$logfile = "$ENV{HOME}/.isr/isr.log";
+	opendir(DIR, $logdir)
+	    or return;
+	while ($file = readdir(DIR)) {
+	    if ($file =~ /\.log$/) {
+		push @logs, "$logdir/$file";
+	    }
+	}
+	closedir(DIR);
     }
-    open(LOG, ">>", $logfile)
-	or return;
-    # Ignore lock and reseek errors; we'll get an approximation of the right
-    # thing in this case
-    fcntl_lock(\*LOG, F_WRLCK, 1);
-    # We've already seeked to EOF, but it might have moved since the open()
-    seek(LOG, 0, SEEK_END);
-    print LOG "$date|$event|$string|$msg\n";
-    close(LOG);
+    foreach $file (@logs) {
+	open(LOG, ">>", $file)
+	    or next;
+	# Ignore lock and reseek errors; we'll get an approximation of the
+	# right thing in this case
+	fcntl_lock(\*LOG, F_WRLCK, 1);
+	# We've already seeked to EOF, but it might have moved since the open()
+	seek(LOG, 0, SEEK_END);
+	print LOG "$date|$event|$string|$msg\n";
+	close(LOG);
+    }
 }
 
 #
