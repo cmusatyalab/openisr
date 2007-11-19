@@ -125,7 +125,7 @@ sub errexit ($);
 sub unix_errexit ($);
 sub system_errexit ($);
 sub system_err ($);
-sub message ($$);
+sub message ($);
 sub usage ($);
 sub need_parcel ();
 sub need_uuid ();
@@ -241,7 +241,7 @@ sub exit_handler ($) {
     system("rm -rf $isrdir/parceltmp-$$")
 	if $isrdir;
     
-    message("EXIT", $status);
+    message("Exit: $status");
     release_locks();
 }
 
@@ -258,7 +258,7 @@ END {
 # Install a signal handler that catches ctrl-c
 #
 sub sigint_handler () {
-    message("INFO", "Caught SIGINT");
+    message("Caught SIGINT");
     # Call the exit handler, then unregister the signal handler and send the
     # signal again (whereupon we will die).  This ensures that our exit status
     # properly reports that we were killed by a signal.
@@ -418,9 +418,9 @@ if ($parceldir && -e "$parceldir/nonce" && open(NONCE, "$parceldir/nonce")) {
 #
 # Log the fact that we are starting.
 #
-message("START", "OpenISR " . ISRVERSION . ", revision " . RCS_REVISION);
-message("ENTER", "@ARGV");
-message("BEGIN", $command);
+message("Starting: OpenISR " . ISRVERSION . ", revision " . RCS_REVISION);
+message("Command line: @ARGV");
+message("Running $command");
 
 #
 # Now process the ISR command.
@@ -573,7 +573,7 @@ else {
 #
 # Clean up and exit
 #
-message("END", $command);
+message("Finished: $command");
 exit 0;
 
 
@@ -836,7 +836,7 @@ sub run () {
 	if $verbose;
     kill("TERM", $pk_pid);
     $kill_pk = 0;
-    message("INFO", "Sent SIGTERM signal to Parcelkeeper (pid=$pk_pid)");
+    message("Sent SIGTERM signal to Parcelkeeper (pid=$pk_pid)");
     $iters = 0;
     while (1) {
 	if (++$iters > 60) {
@@ -912,7 +912,7 @@ sub sync ($) {
 
     # Append the session log to the persistent log in remote storage
     # and if successful delete the session log. 
-    message("INFO", "Uploading session log");
+    message("Uploading session log");
     print "Uploading session log...\n"
 	if $verbose;
 
@@ -1341,7 +1341,7 @@ sub rmhoard () {
 	if (-e $parceldir) {
 	    print "Not removing memory image for $desc, since it is checked out\n"
 		if $verbose;
-	    message("INFO", "Skipping unlink of memory image");
+	    message("Skipping unlink of memory image");
 	} else {
 	    unlink("$imgbase.cfg");
 	}
@@ -1831,7 +1831,7 @@ sub check_nexus_version () {
     
     if (!-e "/sys/class/openisr/release") {
 	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
-	message("INFO", "Nexus is out of date (<=0.8.3 vs. $isr_version)");
+	message("Nexus is out of date (<=0.8.3 vs. $isr_version)");
 	return;
     }
     open(NEX, "/sys/class/openisr/release")
@@ -1853,7 +1853,7 @@ sub check_nexus_version () {
     }
     if ($warn) {
 	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
-	message("INFO", "Nexus is out of date ($nexus_version vs. $isr_version)");
+	message("Nexus is out of date ($nexus_version vs. $isr_version)");
     }
 }
 
@@ -2207,7 +2207,7 @@ sub err ($) {
     ($progname = $0) =~ s#.*/##s; 
 
     print "[$progname] Warning: $msg\n";
-    message("ERROR", "[$progname] Warning: $msg");
+    message("Warning: $msg");
 }
 
 #
@@ -2222,7 +2222,7 @@ sub unix_err ($) {
     ($progname = $0) =~ s#.*/##s; 
 
     print "[$progname] Warning: $msg ($!)\n";
-    message("ERROR", "[$progname] Warning: $msg");
+    message("Warning: $msg");
 }
 
 #
@@ -2237,7 +2237,7 @@ sub errexit ($) {
     ($progname = $0) =~ s#.*/##s; 
 
     print RED, "[$progname] Error: $msg\n", RESET;
-    message("ERROR", "[$progname] Error: $msg");
+    message("Error: $msg");
     exit 1;
 }
 
@@ -2253,7 +2253,7 @@ sub unix_errexit ($) {
     ($progname = $0) =~ s#.*/##s; 
 
     print RED, "[$progname] Error: $msg ($!)\n", RESET;
-    message("ERROR", "[$progname] Error: $msg ($!)");
+    message("Error: $msg ($!)");
     exit 1;
 }
 
@@ -2274,7 +2274,7 @@ sub system_err ($) {
     # $signal_num  = $? & 127;
     # $dumped_core = $? & 128;
     print RED, "[$progname] Error: $msg\n", RESET;
-    message("ERROR", "[$progname] Error: $msg");
+    message("Error: $msg");
     
     # Pass the exit value back to the caller
     return $exit_value; 
@@ -2292,8 +2292,7 @@ sub system_errexit ($) {
 #
 # message - Emits a message to the ISR client side session log
 #
-sub message($$) {
-    my $event = shift;
+sub message ($) {
     my $msg = shift;
 
     my $logdir = "$ENV{HOME}/.isr";
@@ -2325,7 +2324,7 @@ sub message($$) {
 	fcntl_lock(\*LOG, F_WRLCK, 1);
 	# We've already seeked to EOF, but it might have moved since the open()
 	seek(LOG, 0, SEEK_END);
-	print LOG "$date|$event|$string|$msg\n";
+	print LOG "$date|$string|$msg\n";
 	close(LOG);
     }
 }
@@ -2637,7 +2636,7 @@ sub isr_priv_upload () {
     # Log the number of hdk bytes that were transferred
     #
     $virtualbytes = $dirtyblocks*$cfg{CHUNKSIZE};
-    message("INFO", "upload:hdk:$dirtybytes:$virtualbytes");
+    message("Upload: disk: $dirtybytes dirty, $virtualbytes virtual");
 
     # We need to do this, so that if the commit doesn't finish
     # rsync doesn't blow everything away
@@ -2675,8 +2674,7 @@ sub copy_dirtychunks () {
     encrypt_keyring("$parceldir/keyring", "$uploaddir/keyring.enc") == 0
 	or system_errexit("Unable to encrypt keyring.");
     foreach $target ("cfg.tgz", "keyring") {
-	message("INFO", 
-		sprintf("upload:$target.enc:%d:", 
+	message(sprintf("Upload: $target.enc: %d", 
 			stat("$uploaddir/$target.enc")->size));
     }
 
@@ -2729,10 +2727,10 @@ sub isr_priv_commit () {
 	or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
     print("Committing updates on server...\n")
 	if $verbose;
-    message("INFO", "Begin server side commit");
+    message("Begin server side commit");
     isr_srun("commit", "-u $userid -p $parcel", "", 0) == 0
 	or errexit("Server-side commit of parcel $userid/$parcel failed.");
-    message("INFO", "End server side commit");
+    message("End server side commit");
 
     # Check the newly committed version for consistency
     isr_srun("checkparcel", "-u $userid -p $parcel", "", 0) == 0
@@ -2762,12 +2760,12 @@ sub isr_priv_clientcommit($) {
 	# There's no point in copying the keyring to prev-keyring if the
 	# whole directory tree is going to be removed.  SIGINT is blocked, and
 	# must remain blocked until the lock is released.
-	message("INFO", "Client side commit - skipping copy of keyring");
+	message("Client side commit - skipping copy of keyring");
     } else {
-	message("INFO", "Client side commit - start copying keyring");
+	message("Client side commit - start copying keyring");
 	copy("$parceldir/keyring", "$parceldir/prev-keyring")
 	    or unix_errexit("Unable to copy keyring to $parceldir/prev-keyring.");
-	message("INFO", "Client side commit - finish copying keyring");
+	message("Client side commit - finish copying keyring");
     }
 
     #
@@ -2777,7 +2775,7 @@ sub isr_priv_clientcommit($) {
 	or errexit("Couldn't make directory $hoarddir/img");
     rename("$uploaddir/cfg.tgz.enc", "$hoarddir/img/$cfg{UUID}.cfg");
     rename("$uploaddir/keyring.enc", "$hoarddir/img/$cfg{UUID}.key");
-    message("INFO", "Client side commit - moved memory image into hoard cache");
+    message("Client side commit - moved memory image into hoard cache");
     
     #
     # Note that the local cache is consistent with the server
@@ -2788,7 +2786,7 @@ sub isr_priv_clientcommit($) {
     #
     # Remove the upload directory
     #
-    message("INFO", "Client side commit - start removing upload directory");
+    message("Client side commit - start removing upload directory");
     system("rm -rf $uploaddir");
-    message("INFO", "Client side commit - finish removing upload directory");
+    message("Client side commit - finish removing upload directory");
 }
