@@ -55,6 +55,11 @@ int main(int argc, char **argv)
 		}
 	}
 
+	/* Now that we have the lock, it's safe to create the pidfile */
+	if (config.flags & WANT_BACKGROUND)
+		if (create_pidfile())
+			goto shutdown;
+
 	if (config.parcel_dir != NULL)
 		if (parse_parcel_cfg())
 			goto shutdown;
@@ -69,12 +74,6 @@ int main(int argc, char **argv)
 			goto shutdown;
 		else
 			have_hoard=1;
-	}
-
-	if (config.flags & WANT_BACKGROUND) {
-		/* Now that we have the lock, it's safe to create the pidfile */
-		if (create_pidfile())
-			goto shutdown;
 	}
 
 	if (config.flags & WANT_TRANSPORT) {
@@ -131,11 +130,11 @@ shutdown:
 		hoard_shutdown();
 	if (have_cache)
 		cache_shutdown();
-	log_shutdown();  /* safe to call unconditionally */
 	if (have_lock) {
 		remove_pidfile();  /* safe if lock held */
 		release_lockfile();
 	}
+	log_shutdown();  /* safe to call unconditionally */
 	if (completion_fd != -1)
 		write(completion_fd, &ret, 1);
 	return ret;
