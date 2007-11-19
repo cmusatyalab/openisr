@@ -53,6 +53,8 @@ use File::Path;
 use File::Copy;
 use File::stat;
 use Term::ANSIColor qw(:constants);
+use Time::HiRes qw(gettimeofday);
+use POSIX qw(strftime);
 use POSIX ":sys_wait_h";
 use POSIX ":signal_h";
 use Fcntl qw(:DEFAULT :seek);
@@ -2295,7 +2297,9 @@ sub message($$) {
     my $msg = shift;
 
     my $logdir = "$ENV{HOME}/.isr";
-    my $date = localtime();
+    my @time = gettimeofday();
+    my $ms = sprintf("%.3d", int($time[1] / 1000));
+    my $date = strftime("%a %b %d %H:%M:%S.$ms %Y", localtime($time[0]));
     my $string;
     my @logs;
     my $file;
