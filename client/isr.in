@@ -2318,6 +2318,11 @@ sub message($$) {
     }
     open(LOG, ">>", $logfile)
 	or return;
+    # Ignore lock and reseek errors; we'll get an approximation of the right
+    # thing in this case
+    fcntl_lock(\*LOG, F_WRLCK, 1);
+    # We've already seeked to EOF, but it might have moved since the open()
+    seek(LOG, 0, SEEK_END);
     print LOG "$date|$event|$string|$msg\n";
     close(LOG);
 }
