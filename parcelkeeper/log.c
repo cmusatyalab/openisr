@@ -37,6 +37,11 @@ void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
 
 	if (state.log_fp != NULL && ((1 << type) & config.log_file_mask)) {
 		curtime(buf, sizeof(buf));
+		/* Ignore errors; it's better to write the log entry unlocked
+		   than to drop it on the floor */
+		get_file_lock(fileno(state.log_fp),
+					FILE_LOCK_WRITE | FILE_LOCK_WAIT);
+		fseek(state.log_fp, 0, SEEK_END);
 		va_start(ap, func);
 		fprintf(state.log_fp, "%s %s%s%s", buf, config.log_info_str,
 					type == LOG_ERROR ? func : "",
@@ -44,6 +49,8 @@ void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
 		vfprintf(state.log_fp, fmt, ap);
 		fprintf(state.log_fp, "\n");
 		va_end(ap);
+		fflush(state.log_fp);
+		put_file_lock(fileno(state.log_fp));
 	}
 
 	if ((1 << type) & config.log_stderr_mask) {
@@ -63,9 +70,7 @@ void log_start(void)
 	setlinebuf(stderr);
 	if (config.log_file != NULL && config.log_file_mask) {
 		state.log_fp=fopen(config.log_file, "a");
-		if (state.log_fp != NULL)
-			setlinebuf(state.log_fp);
-		else
+		if (state.log_fp == NULL)
 			pk_log(LOG_ERROR, "Couldn't open log file %s",
 						config.log_file);
 	}

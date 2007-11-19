@@ -36,13 +36,14 @@ int main(int argc, char **argv)
 	/* Trivial modes (usage, version) have already been handled by
 	   parse_cmdline() */
 
+	log_start();
+
 	/* We can't take the lock until we fork (if we're going to do that) */
 	if (config.flags & WANT_BACKGROUND)
 		if (fork_and_wait(&completion_fd))
 			goto shutdown;
 
-	/* Take the lock early, so that we don't even write to the logfile
-	   without holding it */
+	/* Now take the lock */
 	if (config.flags & WANT_LOCK) {
 		err=acquire_lockfile();
 		if (err) {
@@ -54,8 +55,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/* XXX inhibit logging in examine/hoard/checkhoard modes? */
-	log_start();
 	if (config.parcel_dir != NULL)
 		if (parse_parcel_cfg())
 			goto shutdown;
