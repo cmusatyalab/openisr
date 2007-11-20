@@ -8,16 +8,16 @@ Version: 	%version
 Release: 	1%{?redhatvers:.%{redhatvers}}
 Group: 		Applications/Internet
 License:	Eclipse Public License	
-BuildRequires: 	curl-devel, kernel-devel
+BuildRequires:	curl-devel, openssl-devel, kernel-devel
 Requires: 	openssh, rsync, pv, dkms
 BuildRoot: 	/var/tmp/%{name}-buildroot
 Packager:	Matt Toups <mtoups@cs.cmu.edu>
 
 URL:		http://isr.cmu.edu
 Source0: 	http://isr.cmu.edu/software/openisr-%{version}.tar.gz
-# line below is working around an annoying rpm "feature"
 Source1:	Makefile.dkms
 Source2:	dkms.conf
+# line below is working around an annoying rpm "feature"
 Provides:	perl(IsrRevision)
 
 %description
@@ -53,7 +53,7 @@ rm -rf %{buildroot}
 %post
 /sbin/ldconfig
 dkms add -m openisr -v %{version}
-/usr/sbin/openisr-config
+/usr/sbin/openisr-config ||:
 
 %preun
 /etc/init.d/openisr stop
@@ -81,6 +81,10 @@ dkms remove -m openisr -v %{version} --all
 /usr/share/openisr/Isr.pm
 /usr/share/openisr/IsrRevision.pm
 /usr/lib/libvdisk.so.0
+%ifarch x86_64
+/usr/lib64/libvdisk.so.0
+/usr/lib64/libvdisk.so.0.0.0
+%endif
 %config /etc/udev/openisr.rules
 %config /etc/udev/rules.d/openisr.rules
 %doc README CHANGES LICENSE.*
@@ -91,9 +95,17 @@ dkms remove -m openisr -v %{version} --all
 
 
 %changelog
-* Tue Nov 13 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.4-1
-- soon to be new upstream release
+* Tue Nov 20 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.4-1
+- New upstream release (see CHANGES):
+  * use pv (dependency added)
+  * openisr-config
+  * 64 bit host support for libvdisk
+  * AES support
+  * 'dirtometer' support
+  * and more fixes
 - DKMS support (thanks to Adam Goode)
+- postinst calls dkms to automate module build
+- updated BuildRequires (kernel-devel, openssl-devel)
 
 * Wed Jul 11 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.3-1
 - New upstream release
