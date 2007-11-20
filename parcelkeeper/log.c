@@ -29,7 +29,6 @@ static void curtime(char *buf, unsigned buflen)
 	strftime(buf, buflen, fmt, &tm);
 }
 
-/* This must be safe to call before log_start() has been called */
 void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
 {
 	va_list ap;
@@ -43,9 +42,9 @@ void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
 					FILE_LOCK_WRITE | FILE_LOCK_WAIT);
 		fseek(state.log_fp, 0, SEEK_END);
 		va_start(ap, func);
-		fprintf(state.log_fp, "%s %s%s%s", buf, config.log_info_str,
-					type == LOG_ERROR ? func : "",
-					type == LOG_ERROR ? "(): " : "");
+		fprintf(state.log_fp, "%s %d ", buf, state.pk_pid);
+		if (type == LOG_ERROR)
+			fprintf(state.log_fp, "%s(): ", func);
 		vfprintf(state.log_fp, fmt, ap);
 		fprintf(state.log_fp, "\n");
 		va_end(ap);
@@ -55,9 +54,8 @@ void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
 
 	if ((1 << type) & config.log_stderr_mask) {
 		va_start(ap, func);
-		fprintf(stderr, "%s%s%s", config.log_info_str,
-					type == LOG_ERROR ? func : "",
-					type == LOG_ERROR ? "(): " : "");
+		if (type == LOG_ERROR)
+			fprintf(stderr, "%s(): ", func);
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, "\n");
 		va_end(ap);
@@ -66,6 +64,7 @@ void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
 
 void log_start(void)
 {
+	state.pk_pid=getpid();
 	/* stderr is unbuffered by default */
 	setlinebuf(stderr);
 	if (config.log_file != NULL && config.log_file_mask) {
@@ -74,11 +73,12 @@ void log_start(void)
 			pk_log(LOG_ERROR, "Couldn't open log file %s",
 						config.log_file);
 	}
+	pk_log(LOG_INFO, "Parcelkeeper starting in %s mode", config.modename);
 }
 
-/* This may be called even if log_start() hasn't been */
 void log_shutdown(void)
 {
+	pk_log(LOG_INFO, "Parcelkeeper shutting down");
 	if (state.log_fp != NULL) {
 		fclose(state.log_fp);
 		state.log_fp=NULL;

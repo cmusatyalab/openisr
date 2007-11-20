@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include "defs.h"
 
-#define MAXPARAMS 4
+#define MAXPARAMS 3
 
 enum arg_type {
 	REQUIRED,
@@ -65,7 +65,7 @@ static struct pk_option pk_options[] = {
 	{"destdir",        OPT_DESTDIR,        {"dir"}},
 	{"minsize",        OPT_MINSIZE,        {"MB"},                                                  "Don't reclaim hoarded chunks until the hoard cache reaches this size"},
 	{"compression",    OPT_COMPRESSION,    {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
-	{"log",            OPT_LOG,            {"logfile", "info_str", "filemask", "stderrmask"}},
+	{"log",            OPT_LOG,            {"logfile", "filemask", "stderrmask"}},
 	{"foreground",     OPT_FOREGROUND,     {},                                                      "Don't run in the background"},
 	{"check",          OPT_CHECK,          {},                                                      "Don't download; just return 0 if fully hoarded or 1 otherwise"},
 	{"mode",           OPT_MODE,           {"mode"},                                                "Print detailed usage message about the given mode"},
@@ -359,6 +359,7 @@ enum mode parse_cmdline(int argc, char **argv)
 	curmode=parse_mode(argv[1]);
 	if (curmode == NULL)
 		PARSE_ERROR("unknown mode %s", argv[1]);
+	config.modename=curmode->name;
 	config.flags=curmode->flags;
 
 	while ((opt=pk_getopt(argc, argv)) != END_OPTS) {
@@ -404,13 +405,12 @@ enum mode parse_cmdline(int argc, char **argv)
 			break;
 		case OPT_LOG:
 			config.log_file=optparams[0];
-			config.log_info_str=optparams[1];
-			if (parseuint(&config.log_file_mask, optparams[2], 0))
+			if (parseuint(&config.log_file_mask, optparams[1], 0))
+				PARSE_ERROR("invalid integer value: %s",
+							optparams[1]);
+			if (parseuint(&config.log_stderr_mask, optparams[2], 0))
 				PARSE_ERROR("invalid integer value: %s",
 							optparams[2]);
-			if (parseuint(&config.log_stderr_mask, optparams[3], 0))
-				PARSE_ERROR("invalid integer value: %s",
-							optparams[3]);
 			break;
 		case OPT_FOREGROUND:
 			config.flags &= ~WANT_BACKGROUND;

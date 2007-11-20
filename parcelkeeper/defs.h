@@ -80,7 +80,8 @@ struct pk_connection;
 struct query;
 
 struct pk_config {
-	/* mode flags */
+	/* mode data */
+	const char *modename;
 	unsigned flags;
 
 	/* top-level parcel directory and its contents */
@@ -104,7 +105,6 @@ struct pk_config {
 
 	/* log parameters */
 	char *log_file;
-	char *log_info_str;
 	unsigned log_file_mask;
 	unsigned log_stderr_mask;
 
@@ -129,6 +129,7 @@ struct pk_parcel {
 };
 
 struct pk_state {
+	pid_t pk_pid;
 	FILE *log_fp;
 	int lock_fd;
 	int cache_fd;
