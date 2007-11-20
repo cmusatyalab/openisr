@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <sys/time.h>
 #include <time.h>
@@ -106,18 +107,26 @@ static pk_err_t parse_logtype(char *name, enum pk_log_type *out)
 /* Cannot call pk_log(), since the logger hasn't started yet */
 pk_err_t logtypes_to_mask(char *list, unsigned *out)
 {
+	char *list_copy;
 	char *tok;
+	char *initptr;
 	char *saveptr;
 	enum pk_log_type type;
 
 	*out=0;
 	if (strcmp(list, "none")) {
-		while ((tok=strtok_r(list, ",", &saveptr)) != NULL) {
-			list=NULL;
+		/* strtok_r() changes the string, so if we don't make a copy,
+		   we'll change the PK command line as seen by "ps" */
+		initptr=list_copy=strdup(list);
+		if (list_copy == NULL)
+			return PK_NOMEM;
+		while ((tok=strtok_r(initptr, ",", &saveptr)) != NULL) {
+			initptr=NULL;
 			if (parse_logtype(tok, &type))
 				return PK_INVALID;
 			*out |= (1 << type);
 		}
+		free(list_copy);
 	}
 	return PK_SUCCESS;
 }
