@@ -1,19 +1,18 @@
-openisr (0.8.4-0pre2) experimental; urgency=low
+openisr (0.8.4-1) experimental; urgency=low
 
-  * more packaging fixes
-  * debianized openisr-config
+   * New upstream release (see CHANGES):
+      * use pv (dependency added)
+      * openisr-config
+      * 64 bit support
+      * AES support
+      * 'dirtometer' support
+      * and more fixes
+   * Debianized openisr-config (essentially a module-assistant wrapper)
+   * postinst updated accordingly
+   * eliminate openisr-modules-source package (and Conflict with it)
+   * updated Build-Depends (linux-headers, amd64 libraries)
 
- -- Matt Toups <mtoups@cs.cmu.edu>  Thu,  8 Nov 2007 19:15:13 -0500
-
-openisr (0.8.4-0pre1) experimental; urgency=low
-
-  * new upstream release, many fixes
-  * stop building openisr-modules-source package
-     * Conflict with openisr-modules-source so that it goes away
-  * Depend on pv
-  * update postinst
-
- -- Matt Toups <mtoups@cs.cmu.edu>  Wed, 10 Oct 2007 16:52:44 -0400
+ -- Matt Toups <mtoups@cs.cmu.edu>  Tue, 20 Nov 2007 17:09:53 -0500
 
 openisr (0.8.3-1) experimental; urgency=low
 
