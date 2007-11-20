@@ -17,10 +17,10 @@ userid =
 vmcommand = vmplayer
 
 # Vulpes logging mask
-logmask = 0xf
+logmask = info,error,stats,slow
 
 # Vulpes console logging mask
-console_logmask = 0x1
+console_logmask = error
 
 # How many seconds should elapse before we decide the client is unconnected
 connect_timeout = 10
