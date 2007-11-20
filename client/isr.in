@@ -2522,9 +2522,9 @@ sub isr_parcelkeeper_cmd ($$) {
     }
     
     if ($do_log) {
-	$cmd .= " --log $isrdir/$uuid.log $syscfg{logmask} $syscfg{console_logmask}";
+	$cmd .= " --log $isrdir/$uuid.log --log-filter $syscfg{logmask} --stderr-filter $syscfg{console_logmask}";
     } else {
-	$cmd .= " --log /dev/null none $syscfg{console_logmask}";
+	$cmd .= " --stderr-filter $syscfg{console_logmask}";
     }
     message("Running Parcelkeeper: $cmd");
     return $cmd;
