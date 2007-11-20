@@ -2526,6 +2526,7 @@ sub isr_parcelkeeper_cmd ($$) {
     } else {
 	$cmd .= " --log /dev/null '' 0x0 $syscfg{console_logmask}";
     }
+    message("Running Parcelkeeper: $cmd");
     return $cmd;
 }
 
