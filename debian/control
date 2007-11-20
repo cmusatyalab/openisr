@@ -2,7 +2,7 @@ Source: openisr
 Section: net
 Priority: extra
 Maintainer: Matt Toups <mtoups@cs.cmu.edu>
-Build-Depends: debhelper, libcurl-dev, zlib1g-dev, libssl-dev, ia32-libs [amd64]
+Build-Depends: debhelper, libcurl-dev, zlib1g-dev, libssl-dev, ia32-libs [amd64], libc6-dev-i386 [amd64]
 Standards-Version: 3.7.2
 
 Package: openisr
