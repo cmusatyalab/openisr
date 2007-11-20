@@ -649,11 +649,11 @@ sub checkout () {
     }
 
     # Use the nonce from the lock operation as the unique session id
-    if (-e "$isrdir/$parcel-nonce" && open(NONCE, "$isrdir/$parcel-nonce")) {
-	$sessionid = <NONCE>;
-	close(NONCE);
-	chomp($sessionid);
-    }
+    open(NONCE, "$isrdir/$parcel-nonce")
+        or errexit("Couldn't read nonce file");
+    $sessionid = <NONCE>;
+    close(NONCE);
+    chomp($sessionid);
 
     # If requested, roll back to a previous version on the server
     if ($version) {
