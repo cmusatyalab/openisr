@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include "defs.h"
 
-#define MAXPARAMS 3
+#define MAXPARAMS 1
 
 enum arg_type {
 	REQUIRED,
@@ -30,6 +30,8 @@ enum option {
 	OPT_MINSIZE,
 	OPT_COMPRESSION,
 	OPT_LOG,
+	OPT_MASK_FILE,
+	OPT_MASK_STDERR,
 	OPT_FOREGROUND,
 	OPT_CHECK,
 	OPT_MODE,
@@ -65,7 +67,9 @@ static struct pk_option pk_options[] = {
 	{"destdir",        OPT_DESTDIR,        {"dir"}},
 	{"minsize",        OPT_MINSIZE,        {"MB"},                                                  "Don't reclaim hoarded chunks until the hoard cache reaches this size"},
 	{"compression",    OPT_COMPRESSION,    {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
-	{"log",            OPT_LOG,            {"logfile", "filemask", "stderrmask"}},
+	{"log",            OPT_LOG,            {"file"}},
+	{"log-filter",     OPT_MASK_FILE,      {"comma_separated_list"},                                "Override default list of log types"},
+	{"stderr-filter",  OPT_MASK_STDERR,    {"comma_separated_list"},                                "Override default list of log types"},
 	{"foreground",     OPT_FOREGROUND,     {},                                                      "Don't run in the background"},
 	{"check",          OPT_CHECK,          {},                                                      "Don't download; just return 0 if fully hoarded or 1 otherwise"},
 	{"mode",           OPT_MODE,           {"mode"},                                                "Print detailed usage message about the given mode"},
@@ -80,6 +84,8 @@ mode(RUN) = {
 	{OPT_MINSIZE,       OPTIONAL},
 	{OPT_COMPRESSION,   OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
+	{OPT_MASK_FILE,     OPTIONAL},
+	{OPT_MASK_STDERR,   OPTIONAL},
 	{OPT_FOREGROUND,    OPTIONAL},
 	{END_OPTS}
 };
@@ -90,6 +96,8 @@ mode(UPLOAD) = {
 	{OPT_HOARD,         OPTIONAL, "Also update the specified hoard cache"},
 	{OPT_MINSIZE,       OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
+	{OPT_MASK_FILE,     OPTIONAL},
+	{OPT_MASK_STDERR,   OPTIONAL},
 	{END_OPTS}
 };
 
@@ -99,6 +107,8 @@ mode(HOARD) = {
 	{OPT_MINSIZE,       OPTIONAL},
 	{OPT_CHECK,         OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
+	{OPT_MASK_FILE,     OPTIONAL},
+	{OPT_MASK_STDERR,   OPTIONAL},
 	{END_OPTS}
 };
 
@@ -106,24 +116,32 @@ mode(EXAMINE) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         OPTIONAL, "Print statistics on the specified hoard cache"},
 	{OPT_LOG,           OPTIONAL},
+	{OPT_MASK_FILE,     OPTIONAL},
+	{OPT_MASK_STDERR,   OPTIONAL},
 	{END_OPTS}
 };
 
 mode(VALIDATE) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_LOG,           OPTIONAL},
+	{OPT_MASK_FILE,     OPTIONAL},
+	{OPT_MASK_STDERR,   OPTIONAL},
 	{END_OPTS}
 };
 
 mode(LISTHOARD) = {
 	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
+	{OPT_MASK_FILE,     OPTIONAL},
+	{OPT_MASK_STDERR,   OPTIONAL},
 	{END_OPTS}
 };
 
 mode(CHECKHOARD) = {
 	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
+	{OPT_MASK_FILE,     OPTIONAL},
+	{OPT_MASK_STDERR,   OPTIONAL},
 	{END_OPTS}
 };
 
@@ -131,6 +149,8 @@ mode(RMHOARD) = {
 	{OPT_HOARD,         REQUIRED},
 	{OPT_UUID,          REQUIRED, "UUID of parcel to remove from hoard cache"},
 	{OPT_LOG,           OPTIONAL},
+	{OPT_MASK_FILE,     OPTIONAL},
+	{OPT_MASK_STDERR,   OPTIONAL},
 	{END_OPTS}
 };
 
@@ -138,6 +158,8 @@ mode(REFRESH) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         REQUIRED},
 	{OPT_LOG,           OPTIONAL},
+	{OPT_MASK_FILE,     OPTIONAL},
+	{OPT_MASK_STDERR,   OPTIONAL},
 	{END_OPTS}
 };
 
@@ -405,14 +427,18 @@ enum mode parse_cmdline(int argc, char **argv)
 			break;
 		case OPT_LOG:
 			config.log_file=optparams[0];
-			if (logtypes_to_mask(optparams[1],
+			break;
+		case OPT_MASK_FILE:
+			if (logtypes_to_mask(optparams[0],
 						&config.log_file_mask))
 				PARSE_ERROR("invalid log type list: %s",
-							optparams[1]);
-			if (logtypes_to_mask(optparams[2],
+							optparams[0]);
+			break;
+		case OPT_MASK_STDERR:
+			if (logtypes_to_mask(optparams[0],
 						&config.log_stderr_mask))
 				PARSE_ERROR("invalid log type list: %s",
-							optparams[2]);
+							optparams[0]);
 			break;
 		case OPT_FOREGROUND:
 			config.flags &= ~WANT_BACKGROUND;

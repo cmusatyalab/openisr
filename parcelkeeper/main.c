@@ -13,6 +13,7 @@
 #include "defs.h"
 
 struct pk_config config = {
+	.log_file_mask = (1 << LOG_INFO) | (1 << LOG_ERROR) | (1 << LOG_STATS),
 	.log_stderr_mask = 1 << LOG_ERROR,
 	.compress = COMP_NONE
 };
