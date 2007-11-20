@@ -1,4 +1,4 @@
-====== 0.8.4
+====== 0.8.4 (2007-11-20)
 
 - Add dependency on "pv" (http://www.ivarch.com/programs/pv.shtml)
 - Fix kernel crash triggerable by any local user
