@@ -1943,7 +1943,7 @@ sub fetch_parcel_file ($$$$$) {
     #
     # Look aside to see if the file is available 
     #
-    if (-e $local_path) {
+    if (!$syscfg{disable_lookaside} and -e $local_path) {
 	$local_hash = `openssl sha1 < $local_path`;
 	chomp $local_hash;
     }
