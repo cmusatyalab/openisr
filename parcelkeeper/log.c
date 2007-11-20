@@ -19,11 +19,11 @@ static void curtime(char *buf, unsigned buflen)
 {
 	struct timeval tv;
 	struct tm tm;
-	char fmt[25];
+	char fmt[22];
 
 	gettimeofday(&tv, NULL);
 	localtime_r(&tv.tv_sec, &tm);
-	snprintf(fmt, sizeof(fmt), "%%a %%b %%d %%H:%%M:%%S.%.3u %%Y",
+	snprintf(fmt, sizeof(fmt), "%%b %%d %%Y %%H:%%M:%%S.%.3u",
 				(unsigned)(tv.tv_usec / 1000));
 	buf[0]=0;
 	strftime(buf, buflen, fmt, &tm);
