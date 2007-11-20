@@ -12,6 +12,7 @@
 
 use strict;
 use warnings;
+use POSIX;
 use File::Temp qw/tempdir/;
 use Term::ANSIColor;
 use constant {
@@ -94,8 +95,9 @@ sub build_dkms () {
 	open FD, "-|", "dkms status"
 		or fail "Couldn't get DKMS status";
 	while (<FD>) {
-		next if !/^openisr, ([^,]+),/;
+		next if !/^openisr, ([^,]+), ([^,]+),/;
 		next if $1 ne VERSION;
+		next if $2 ne (uname)[2];
 		if (/installed/) {
 			$need_build = 0;
 			$need_install = 0;
