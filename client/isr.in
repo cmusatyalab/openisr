@@ -2300,7 +2300,7 @@ sub message ($) {
     my $logdir = "$ENV{HOME}/.isr";
     my @time = gettimeofday();
     my $ms = sprintf("%.3d", int($time[1] / 1000));
-    my $date = strftime("%a %b %d %H:%M:%S.$ms %Y", localtime($time[0]));
+    my $date = strftime("%b %d %Y %H:%M:%S.$ms", localtime($time[0]));
     my @logs;
     my $file;
 
