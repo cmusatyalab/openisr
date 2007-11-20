@@ -8,15 +8,16 @@ Version: 	%version
 Release: 	1%{?redhatvers:.%{redhatvers}}
 Group: 		Applications/Internet
 License:	Eclipse Public License	
-BuildRequires: 	curl-devel
+BuildRequires: 	curl-devel, kernel-devel
 Requires: 	openssh, rsync, pv, dkms
 BuildRoot: 	/var/tmp/%{name}-buildroot
 Packager:	Matt Toups <mtoups@cs.cmu.edu>
 
 URL:		http://isr.cmu.edu
-Source: 	http://isr.cmu.edu/software/openisr-%{version}.tar.gz
+Source0: 	http://isr.cmu.edu/software/openisr-%{version}.tar.gz
 # line below is working around an annoying rpm "feature"
-Patch0:		dkms.patch
+Source1:	Makefile.dkms
+Source2:	dkms.conf
 Provides:	perl(IsrRevision)
 
 %description
@@ -31,15 +32,18 @@ Provides:	perl(IsrRevision)
 
 %prep
 %setup -q
-%patch0
 
 %build
 ./configure --enable-client --disable-modules --prefix=/usr --sysconfdir=/etc --mandir=/usr/share/man --with-kbuild-wrapper=dkms && make DESTDIR=%{buildroot}
 
 %install
 make install DESTDIR=%{buildroot}
-make dist-gzip && mkdir -p %{buildroot}/usr/src && mv openisr-%{version}.tar.gz %{buildroot}/usr/src && cp Makefile.dkms dkms.conf %{buildroot}/usr/src && cd %{buildroot}/usr/src && tar zxf openisr-%{version}.tar.gz
-mv Makefile.dkms dkms.conf %{buildroot}/usr/src/openisr-%{version} && cd %{buildroot}/usr/src && tar zcf openisr-%{version}.tar.gz openisr-%{version} && chmod 0755 openisr-%{version}
+make dist-gzip
+mkdir -p %{buildroot}%{_usrsrc}
+mv openisr-%{version}.tar.gz %{buildroot}%{_usrsrc}
+cd %{buildroot}%{_usrsrc}
+tar zxf openisr-%{version}.tar.gz
+cp %{SOURCE1} %{SOURCE2} %{buildroot}%{_usrsrc}/openisr-%{version}
 
 %clean
 rm -rf %{buildroot}
@@ -49,7 +53,7 @@ rm -rf %{buildroot}
 %post
 /sbin/ldconfig
 dkms add -m openisr -v %{version}
-echo To complete installation, run openisr-config as root.
+/usr/sbin/openisr-config
 
 %preun
 /etc/init.d/openisr stop
