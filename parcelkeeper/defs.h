@@ -150,6 +150,8 @@ struct pk_state {
 	unsigned request_count;  /* XXX */
 	unsigned sql_hits;
 	unsigned sql_misses;
+	unsigned sql_busy_queries;
+	unsigned sql_busy_highwater;
 };
 
 extern struct pk_config config;

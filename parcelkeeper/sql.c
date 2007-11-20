@@ -269,6 +269,9 @@ void sql_shutdown(void)
 {
 	pk_log(LOG_STATS, "Prepared statement cache: %u hits, %u misses",
 				state.sql_hits, state.sql_misses);
+	pk_log(LOG_STATS, "Busy handler called for %u queries; longest "
+				"wait %u iterations", state.sql_busy_queries,
+				state.sql_busy_highwater);
 }
 
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
@@ -317,14 +320,18 @@ static int busy_handler(void *db, int count)
 	int ms;
 
 	(void)db;  /* silence warning */
-	if (count == 0)
+	if (count == 0) {
 		ms=1;
-	else if (count <= 2)
+		state.sql_busy_queries++;
+	} else if (count <= 2) {
 		ms=2;
-	else if (count <= 5)
+	} else if (count <= 5) {
 		ms=5;
-	else
+	} else {
 		ms=10;
+	}
+	if ((unsigned)count > state.sql_busy_highwater)
+		state.sql_busy_highwater=count;
 	usleep(ms * 1000);
 	return 1;
 }
