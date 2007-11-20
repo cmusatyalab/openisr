@@ -147,7 +147,7 @@ struct pk_state {
 
 	unsigned offset;
 
-	unsigned request_count;  /* XXX */
+	unsigned request_count;
 	unsigned sql_hits;
 	unsigned sql_misses;
 	unsigned sql_busy_queries;

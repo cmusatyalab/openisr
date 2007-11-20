@@ -296,6 +296,7 @@ void nexus_shutdown(void)
 	log_sysfs_value("sectors_read");
 	log_sysfs_value("sectors_written");
 	log_sysfs_value("compression_ratio_pct");
+	pk_log(LOG_STATS, "messages_received: %u", state.request_count);
 
 	close(state.chardev_fd);
 
