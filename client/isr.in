@@ -420,6 +420,7 @@ if ($parceldir && -e "$parceldir/nonce" && open(NONCE, "$parceldir/nonce")) {
 #
 message("Starting: OpenISR " . ISRVERSION . ", revision " . RCS_REVISION);
 message("Command line: @ARGV");
+message("Session $sessionid on " . hostname());
 message("Running $command");
 
 #
@@ -654,6 +655,7 @@ sub checkout () {
     $sessionid = <NONCE>;
     close(NONCE);
     chomp($sessionid);
+    message("Obtained lock for $parcel with nonce $sessionid");
 
     # If requested, roll back to a previous version on the server
     if ($version) {
@@ -2299,11 +2301,9 @@ sub message ($) {
     my @time = gettimeofday();
     my $ms = sprintf("%.3d", int($time[1] / 1000));
     my $date = strftime("%a %b %d %H:%M:%S.$ms %Y", localtime($time[0]));
-    my $string;
     my @logs;
     my $file;
 
-    $string = message_string();
     if ($uuid) {
 	push @logs, "$logdir/$uuid.log";
     } else {
@@ -2324,18 +2324,9 @@ sub message ($) {
 	fcntl_lock(\*LOG, F_WRLCK, 1);
 	# We've already seeked to EOF, but it might have moved since the open()
 	seek(LOG, 0, SEEK_END);
-	print LOG "$date|$string|$msg\n";
+	print LOG "$date $$ $msg\n";
 	close(LOG);
     }
-}
-
-#
-# message_string - returns the inner fields of a log message string
-#
-sub message_string {
-    my $hostname = hostname();
-
-    return "$$|$hostname|$sessionid";
 }
 
 #
@@ -2504,7 +2495,6 @@ sub isr_parcelkeeper_cmd ($$) {
     my $mode = shift;
     my $args = shift;
     
-    my $logstring = "|PARCELKEEPER|" . message_string() ."|";
     my $cmd = LIBDIR . "/parcelkeeper $mode";
     my $arg;
     my $do_log = 0;
@@ -2532,7 +2522,7 @@ sub isr_parcelkeeper_cmd ($$) {
     }
     
     if ($do_log) {
-	$cmd .= " --log $isrdir/$uuid.log '$logstring' $syscfg{logmask} $syscfg{console_logmask}";
+	$cmd .= " --log $isrdir/$uuid.log '$$' $syscfg{logmask} $syscfg{console_logmask}";
     } else {
 	$cmd .= " --log /dev/null '' 0x0 $syscfg{console_logmask}";
     }
