@@ -170,6 +170,7 @@ void log_start(void);
 void log_shutdown(void);
 void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...);
 #define pk_log(type, fmt, args...) _pk_log(type, fmt, __func__, ## args)
+pk_err_t logtypes_to_mask(char *list, unsigned *out);
 
 /* parcelcfg.c */
 pk_err_t parse_parcel_cfg(void);

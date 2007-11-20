@@ -10,6 +10,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include <stdarg.h>
 #include <sys/time.h>
 #include <time.h>
@@ -83,4 +84,40 @@ void log_shutdown(void)
 		fclose(state.log_fp);
 		state.log_fp=NULL;
 	}
+}
+
+static pk_err_t parse_logtype(char *name, enum pk_log_type *out)
+{
+	if (!strcmp(name, "info"))
+		*out=LOG_INFO;
+	else if (!strcmp(name, "query"))
+		*out=LOG_QUERY;
+	else if (!strcmp(name, "slow"))
+		*out=LOG_SLOW_QUERY;
+	else if (!strcmp(name, "error"))
+		*out=LOG_ERROR;
+	else if (!strcmp(name, "stats"))
+		*out=LOG_STATS;
+	else
+		return PK_INVALID;
+	return PK_SUCCESS;
+}
+
+/* Cannot call pk_log(), since the logger hasn't started yet */
+pk_err_t logtypes_to_mask(char *list, unsigned *out)
+{
+	char *tok;
+	char *saveptr;
+	enum pk_log_type type;
+
+	*out=0;
+	if (strcmp(list, "none")) {
+		while ((tok=strtok_r(list, ",", &saveptr)) != NULL) {
+			list=NULL;
+			if (parse_logtype(tok, &type))
+				return PK_INVALID;
+			*out |= (1 << type);
+		}
+	}
+	return PK_SUCCESS;
 }

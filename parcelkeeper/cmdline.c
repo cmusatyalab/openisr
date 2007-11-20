@@ -405,11 +405,13 @@ enum mode parse_cmdline(int argc, char **argv)
 			break;
 		case OPT_LOG:
 			config.log_file=optparams[0];
-			if (parseuint(&config.log_file_mask, optparams[1], 0))
-				PARSE_ERROR("invalid integer value: %s",
+			if (logtypes_to_mask(optparams[1],
+						&config.log_file_mask))
+				PARSE_ERROR("invalid log type list: %s",
 							optparams[1]);
-			if (parseuint(&config.log_stderr_mask, optparams[2], 0))
-				PARSE_ERROR("invalid integer value: %s",
+			if (logtypes_to_mask(optparams[2],
+						&config.log_stderr_mask))
+				PARSE_ERROR("invalid log type list: %s",
 							optparams[2]);
 			break;
 		case OPT_FOREGROUND:
