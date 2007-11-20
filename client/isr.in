@@ -1111,7 +1111,7 @@ sub hoard ($) {
 	print("Hoarding any missing disk blocks from the server...\n")
 	    if $verbose;
 	
-	$retval = isr_run_parcelkeeper("hoard", "parcel hoard minsize");
+	$retval = isr_run_parcelkeeper("hoard", "parcel hoard minsize log");
 	if ($retval == 0) {
 	    last; 
 	} elsif (WIFSIGNALED($retval)) {
@@ -1152,7 +1152,7 @@ sub checkparcel () {
 	errexit("-r only makes sense if -e is specified")
 	    if $version;
 	
-	isr_run_parcelkeeper("validate", "parcel") == 0
+	isr_run_parcelkeeper("validate", "parcel log") == 0
 	    or errexit("Could not validate cache");
 	
 	print(GREEN, "Success: The parcel $userid/$parcel looks OK.\n", RESET)
@@ -1183,7 +1183,7 @@ sub statparcel () {
     #
     # Display cache stats
     #
-    isr_run_parcelkeeper("examine", "parcel hoard") == 0
+    isr_run_parcelkeeper("examine", "parcel hoard log") == 0
 	or errexit("Could not examine cache");
 }
 
@@ -1326,7 +1326,7 @@ sub rmhoard () {
     
     print "Removing $desc from the hoard cache...\n"
         if $verbose;
-    isr_run_parcelkeeper("rmhoard", "hoard uuid") == 0
+    isr_run_parcelkeeper("rmhoard", "hoard uuid log") == 0
         or errexit("Couldn't run Parcelkeeper rmhoard");
     
     #
@@ -1567,7 +1567,7 @@ sub clean ($) {
 #                    otherwise.
 #
 sub is_fully_hoarded () {
-    if (isr_run_parcelkeeper("hoard", "parcel hoard check") == 0) {
+    if (isr_run_parcelkeeper("hoard", "parcel hoard check log") == 0) {
 	return 1;
     } else {
 	return 0;
@@ -2674,7 +2674,7 @@ sub copy_dirtychunks () {
     #
     print("Collecting modified disk state...\n")
 	if $verbose;
-    isr_run_parcelkeeper("upload", "parcel dest hoard minsize") == 0
+    isr_run_parcelkeeper("upload", "parcel dest hoard minsize log") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
     # Hack to get stats from PK
     open(STATFILE, "$uploaddir/hdk/stats");
