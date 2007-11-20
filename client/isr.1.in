@@ -432,7 +432,7 @@ to
 Perform an additional content consistency check during the 
 .B stat
 and 
-.B checkparcel
+.B checkp
 commands.
 
 .TP

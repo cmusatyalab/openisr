@@ -395,9 +395,6 @@ if ($command eq "ci") {
 if ($command eq "co") {
     $command = "checkout"
 }
-if ($command eq "checkp") {
-    $command = "checkparcel"
-}
 
 
 #####
@@ -498,7 +495,7 @@ elsif ($command eq "stat") {
     need_checked_out();
     statparcel();
 }
-elsif ($command eq "checkparcel") {
+elsif ($command eq "checkp") {
     need_parcel();
     if ($remote) {
 	need_network();
