@@ -148,6 +148,8 @@ struct pk_state {
 	unsigned offset;
 
 	unsigned request_count;  /* XXX */
+	unsigned sql_hits;
+	unsigned sql_misses;
 };
 
 extern struct pk_config config;
@@ -217,6 +219,8 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 			unsigned *length);
 
 /* sql.c */
+void sql_init(void);
+void sql_shutdown(void);
 int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...);
 int query_next(struct query *qry);
 void query_row(struct query *qry, char *fmt, ...);

@@ -25,6 +25,7 @@ int main(int argc, char **argv)
 	enum mode mode;
 	int completion_fd=-1;
 	char ret=1;
+	int have_sql=0;
 	int have_cache=0;
 	int have_hoard=0;
 	int have_transport=0;
@@ -63,6 +64,9 @@ int main(int argc, char **argv)
 	if (config.parcel_dir != NULL)
 		if (parse_parcel_cfg())
 			goto shutdown;
+
+	sql_init();
+	have_sql=1;
 
 	if (cache_init())
 		goto shutdown;
@@ -130,6 +134,8 @@ shutdown:
 		hoard_shutdown();
 	if (have_cache)
 		cache_shutdown();
+	if (have_sql)
+		sql_shutdown();
 	if (have_lock) {
 		remove_pidfile();  /* safe if lock held */
 		release_lockfile();

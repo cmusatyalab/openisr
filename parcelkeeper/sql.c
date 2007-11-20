@@ -90,8 +90,10 @@ static int get_query(struct query **result, sqlite3 *db, char *sql)
 		*result=prepared[bucket];
 		prepared[bucket]=NULL;
 		ret=SQLITE_OK;
+		state.sql_hits++;
 	} else {
 		ret=alloc_query(result, db, sql);
+		state.sql_misses++;
 	}
 
 	if (ret == SQLITE_OK)
@@ -253,6 +255,20 @@ void query_flush(void)
 			prepared[i]=NULL;
 		}
 	}
+}
+
+void sql_init(void)
+{
+	pk_log(LOG_INFO, "Using SQLite %s", sqlite3_version);
+	if (strcmp(SQLITE_VERSION, sqlite3_version))
+		pk_log(LOG_INFO, "Warning: built against version "
+					SQLITE_VERSION);
+}
+
+void sql_shutdown(void)
+{
+	pk_log(LOG_STATS, "Prepared statement cache: %u hits, %u misses",
+				state.sql_hits, state.sql_misses);
 }
 
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
