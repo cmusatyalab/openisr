@@ -154,11 +154,10 @@ sub isr_priv_clientcommit($);
 #########################
 
 # Local variables
-my $isrdir;
 my $result;
-my $progname; 
 
-# Command line arguments that are private to this module
+# Command line arguments
+my $command;         # isr subcommand
 my $disconnected;    # Run disconnected
 my $longflag;        # Print default number of versions for ls long format
 my $longvers;        # Print specific number of versions for ls long format
@@ -166,40 +165,38 @@ my $version;         # Rollback version
 my $checkstate = 0;  # Optionally check content consistency in some cmds
 my $remote = 0;      # Perform action on server rather than client
 my $fullscreen = 1;  # Run VMM in full-screen mode
+my $verbose = 1;     # Verbosity level; by default, we print a few messages
+my $bwlimit;         # Bandwidth limit (KBytes/sec) in ci and sync
 
-# Write once globals that are visible in this module only. These globals are
-# needed to cleanly handle logging.
-my $sessionid = 0;  # Unique session id (nonce from lock operation)
-my $userid;         # ISR userid
-my $parcel;         # parcel name
-my $uuid;           # parcel UUID
-my $command;        # isr subcommand
+# General global state, mostly about the parcel we are working with
+my $progname;        # $0 without the directory part
+my $isrdir;          # Path to toplevel ~/.isr directory
+my $server;          # Server domain name
+my $userid;          # ISR userid
+my $parcel;          # Parcel name
+my $uuid;            # Parcel UUID
+my $sessionid = 0;   # Unique session id (nonce from lock operation)
+my $parceldir;       # Path to parcel directory (named after its UUID)
+my $uploaddir;       # Path to dir to be rsynced to the server at upload
+my $hoarddir;        # Path to hoard cache directory
+my $imgbase;         # Path to hoard image w/o the file extension (.cfg, .key)
+my $cleancache_file; # Path to flag that local cache is clean vs. server
+my $cdcache_file;    # Path to flag that upload directory is consistent
 
-# State globals, visible in this module only, which track which cleanup actions
-# will be necessary when we exit.
+# State globals which track which cleanup actions will be necessary when
+# we exit
 my $no_shutdown = 0;# Set by forked children so the child won't run END
 my $kill_pk = 0;    # Set by run command, tells END handler to kill Parcelkeeper
 my $do_sync = 0;    # Set when the END handler should call sys_sync()
 my @locks;          # Names and FDs of open lock files
 
-# Read-only command line arguments that are visible to other modules.
-my $verbose = 1;    # Verbosity level; by default, we print a few messages
-my $bwlimit;        # Bandwidth limit (KBytes/sec) in ci and sync
-my $server;         # Server domain name
-my $parceldir;
-my $uploaddir;
-my $hoarddir;
-my $imgbase;
-my $cleancache_file;
-my $cdcache_file;
-
 #
-# Read/write global variable: At any point in time, this hash contains
-# the key/value pairs from the parcel.cfg for the current parcel. For
-# each command except listparcels, %cfg is initialized exactly once, 
-# and only by calls to parse_parcelcfg.  This variable is tied such that
-# accesses to nonexistent keys will result in a call to errexit().
-# XXX false!
+# Write-once global variable: This hash contains the key/value pairs from
+# the parcel.cfg for the current parcel.  This variable is only written
+# by parse_parcelcfg() -- at startup when we have a parcel.cfg for the current
+# parcel, and after parcel.cfg has been acquired in the case of checkout()
+# and hoard().  This variable is tied such that accesses to nonexistent keys
+# will result in a call to errexit().
 #
 my %cfg = ();
 
