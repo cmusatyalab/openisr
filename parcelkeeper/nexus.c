@@ -274,9 +274,9 @@ static void log_sysfs_value(char *attr)
 		return;
 	}
 	if (read_sysfs_file(fname, buf, sizeof(buf))) {
-		pk_log(LOG_STATS, "%s:unknown", attr);
+		pk_log(LOG_STATS, "%s: unknown", attr);
 	} else {
-		pk_log(LOG_STATS, "%s:%s", attr, buf);
+		pk_log(LOG_STATS, "%s: %s", attr, buf);
 	}
 	free(fname);
 }
