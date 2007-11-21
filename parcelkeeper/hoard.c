@@ -529,6 +529,14 @@ bad:
 	return ret;
 }
 
+static void close_hoard_index(void)
+{
+	query_flush();
+	if (sqlite3_close(state.hoard))
+		pk_log(LOG_ERROR, "Couldn't close hoard cache index: %s",
+					sqlite3_errmsg(state.hoard));
+}
+
 static pk_err_t open_hoard_index(void)
 {
 	struct query *qry;
@@ -583,10 +591,7 @@ static pk_err_t open_hoard_index(void)
 bad_rollback:
 	rollback(state.hoard);
 bad:
-	query_flush();
-	if (sqlite3_close(state.hoard))
-		pk_log(LOG_ERROR, "Couldn't close hoard cache index: %s",
-					sqlite3_errmsg(state.hoard));
+	close_hoard_index();
 	return ret;
 }
 
@@ -654,10 +659,12 @@ pk_err_t hoard_init(void)
 	if (config.parcel_dir != NULL) {
 		ret=get_parcel_ident();
 		if (ret)
-			goto bad;
+			goto bad_close;
 	}
 	return PK_SUCCESS;
 
+bad_close:
+	close_hoard_index();
 bad:
 	close(state.hoard_fd);
 	return ret;
@@ -666,9 +673,6 @@ bad:
 void hoard_shutdown(void)
 {
 	hoard_try_cleanup();
-	query_flush();
-	if (sqlite3_close(state.hoard))
-		pk_log(LOG_ERROR, "Couldn't close hoard cache index: %s",
-					sqlite3_errmsg(state.hoard));
+	close_hoard_index();
 	close(state.hoard_fd);
 }
