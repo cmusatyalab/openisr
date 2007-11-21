@@ -232,8 +232,7 @@ void query_free(struct query *qry)
 	if (ms >= SLOW_THRESHOLD_MS)
 		pk_log(LOG_SLOW_QUERY, "Slow query took %u ms: \"%s\"",
 					ms, qry->sql);
-	else
-		pk_log(LOG_QUERY, "Query took %u ms: \"%s\"", ms, qry->sql);
+	pk_log(LOG_QUERY, "Query took %u ms: \"%s\"", ms, qry->sql);
 
 	sqlite3_reset(qry->stmt);
 	sqlite3_clear_bindings(qry->stmt);
