@@ -534,8 +534,12 @@ elsif ($command eq "passwd") {
 }
 elsif ($command eq "clean") {
     need_parcel();
-    # XXX
-    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
+    # If we can't map the parcel to a UUID, cleanclient() becomes a
+    # server-side-only operation, but we still need the checkout lock
+    # to prevent checkout/clean races
+    acquire_lock("$isrdir/checkout-$parcel.lock", "Checkout", 0);
+    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0)
+        if $uuid;
     cleanclient();
 }
 elsif ($command eq "help") {
@@ -1530,10 +1534,17 @@ sub clean ($) {
     # Make sure the current working directory exists
     chdir($isrdir);
     
-    # Now remove all traces of the parcel on the client and unlock it
-    if (mysystem("rm -rf $parceldir") != 0) {
-	err("Unable to remove $parceldir.");
-	$ret = -1;
+    # Now remove all traces of the parcel on the client and unlock it.
+    # If we don't know the parcel UUID, we can't remove the parceldir
+    # because we don't know what it's called.
+    if ($uuid) {
+	# Make sure we cannot be interrupted, since once the parcel.cfg
+	# is gone, another call to "isr clean" won't remove the rest of
+	# the parceldir.
+	if (system("rm -rf $parceldir") != 0) {
+	    err("Unable to remove $parceldir.");
+	    $ret = -1;
+	}
     }
 
     if ($nonce) {
