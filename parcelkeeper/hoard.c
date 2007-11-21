@@ -607,12 +607,12 @@ static pk_err_t hoard_try_cleanup(void)
 	pk_log(LOG_INFO, "Cleaning up hoard cache...");
 	ret=cleanup_action(state.hoard, "UPDATE chunks SET referenced = 0 "
 				"WHERE referenced == 1 AND tag ISNULL",
-				"orphaned cache slots");
+				LOG_INFO, "orphaned cache slots");
 	if (ret)
 		goto out;
 	ret=cleanup_action(state.hoard, "DELETE FROM parcels WHERE parcel "
 				"NOT IN (SELECT parcel FROM refs)",
-				"dangling parcel records");
+				LOG_INFO, "dangling parcel records");
 out:
 	put_file_lock(state.hoard_fd);
 	return ret;

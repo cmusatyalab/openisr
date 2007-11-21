@@ -368,7 +368,8 @@ pk_err_t validate_db(sqlite3 *db)
 	return PK_SUCCESS;
 }
 
-pk_err_t cleanup_action(sqlite3 *db, char *sql, char *desc)
+pk_err_t cleanup_action(sqlite3 *db, char *sql, enum pk_log_type logtype,
+			char *desc)
 {
 	int changes;
 
@@ -378,6 +379,6 @@ pk_err_t cleanup_action(sqlite3 *db, char *sql, char *desc)
 	}
 	changes=sqlite3_changes(db);
 	if (changes > 0)
-		pk_log(LOG_INFO, "Cleaned %d %s", changes, desc);
+		pk_log(logtype, "Cleaned %d %s", changes, desc);
 	return PK_SUCCESS;
 }

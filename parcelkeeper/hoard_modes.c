@@ -354,24 +354,29 @@ int check_hoard(void)
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
 				"length = 0, last_access = 0, referenced = 0 "
 				"WHERE referenced != 0 AND referenced != 1",
+				LOG_ERROR,
 				"chunks with invalid referenced flag"))
 		goto bad;
 	if (cleanup_action(state.db, "DELETE FROM hoard.refs WHERE parcel "
 				"NOT IN (SELECT parcel FROM hoard.parcels)",
+				LOG_ERROR,
 				"refs with dangling parcel ID"))
 		goto bad;
 	if (cleanup_action(state.db, "DELETE FROM hoard.refs WHERE tag NOT IN "
 				"(SELECT tag FROM hoard.chunks)",
+				LOG_ERROR,
 				"refs with dangling tag"))
 		goto bad;
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET referenced = 0 "
 				"WHERE referenced == 1 AND tag NOTNULL AND "
 				"tag NOT IN (SELECT tag FROM hoard.refs)",
+				LOG_ERROR,
 				"chunks with spurious referenced flag"))
 		goto bad;
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET referenced = 1 "
 				"WHERE referenced == 0 AND tag NOTNULL AND "
 				"tag IN (SELECT tag FROM hoard.refs)",
+				LOG_ERROR,
 				"chunks with missing referenced flag"))
 		goto bad;
 
