@@ -5,7 +5,7 @@
 # in /etc/openisr/openisr.conf or ~/.openisr.conf will override these defaults.
 
 # Default server domain name (override with -s)
-server = isrserver09.isr.cmu.edu
+server = isrserver05.isr.cmu.edu
 
 # Default userid (override with -u)
 # If this variable is undefined or empty, then it defaults to the Unix
