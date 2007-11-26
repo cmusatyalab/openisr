@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 #
-# upgrade-0.9 - Tool to generate an OpenISR 0.9 parcel from an 0.8 parcel
+# upgrade-0.9 - Tool to generate an OpenISR (R) 0.9 parcel from an 0.8 parcel
 #
 # Copyright (C) 2007 Carnegie Mellon University
 #

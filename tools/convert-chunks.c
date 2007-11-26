@@ -1,5 +1,6 @@
 /*
- * convert-chunks - tool to translate an OpenISR 0.8 chunk store to 0.9 format
+ * convert-chunks - tool to translate an OpenISR (R) 0.8 chunk store to
+ *                  0.9 format
  *
  * Copyright (C) 2007 Carnegie Mellon University
  *

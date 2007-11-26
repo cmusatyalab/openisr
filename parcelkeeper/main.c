@@ -1,5 +1,5 @@
 /*
- * Parcelkeeper - support daemon for the OpenISR (TM) system virtual disk
+ * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
  *
  * Copyright (C) 2006-2007 Carnegie Mellon University
  *
