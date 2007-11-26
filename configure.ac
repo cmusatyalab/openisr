@@ -1,5 +1,5 @@
 #
-# configure.ac - build infrastructure for the OpenISR system
+# configure.ac - build infrastructure for the OpenISR (R) system
 #
 # Copyright (C) 2007 Carnegie Mellon University
 #
@@ -12,7 +12,7 @@
 ## Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT([OpenISR], [0.8.3])
+AC_INIT([OpenISR], [0.8.4])
 AM_INIT_AUTOMAKE([foreign])
 AC_COPYRIGHT([Copyright (C) 2007 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([nexus/request.c])
@@ -39,6 +39,10 @@ AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules],
 			[enable_modules=${enable_client}])
 AC_ARG_ENABLE([server], [AS_HELP_STRING([--enable-server],
 			[build server code [no]])],, [enable_server=no])
+AC_ARG_WITH([kbuild-wrapper],
+			[AS_HELP_STRING([--with-kbuild-wrapper={none|debian|dkms}],
+			[for use by packaging scripts only])],,
+			[with_kbuild_wrapper=none])
 
 PROCESS_ENABLE_VAR([$enable_client], [WANT_CLIENT],
 			[whether we should build the client])
@@ -50,6 +54,23 @@ PROCESS_ENABLE_VAR([$enable_server], [WANT_SERVER],
 			[whether we should build the server])
 AM_CONDITIONAL([WANT_COMMON],
 			[test z$enable_client = zyes -o z$enable_server = zyes])
+
+AC_MSG_CHECKING([how to build kernel modules])
+if test x$with_kbuild_wrapper = xnone ; then
+	AC_MSG_RESULT([source])
+	AC_SUBST([KBUILDTYPE], [source])
+elif test x$with_kbuild_wrapper = xdebian -o x$with_kbuild_wrapper = xdkms
+then
+	AC_MSG_RESULT([$with_kbuild_wrapper])
+	if test z$enable_modules = zyes ; then
+		AC_MSG_ERROR([--enable-modules cannot be used with a kbuild wrapper])
+	fi
+	AC_SUBST([KBUILDTYPE], [$with_kbuild_wrapper])
+else
+	AC_MSG_ERROR([unknown kbuild wrapper $with_kbuild_wrapper])
+fi
+AM_CONDITIONAL([WANT_MODULE_SOURCE], [test z$enable_client = zyes -a \
+			z$with_kbuild_wrapper = znone])
 
 if test z$enable_modules = zyes ; then
 	if test z$srcdir != z. ; then

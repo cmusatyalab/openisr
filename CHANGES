@@ -1,4 +1,26 @@
-====== 0.8.3
+====== 0.8.4 (2007-11-20)
+
+- Add dependency on "pv" (http://www.ivarch.com/programs/pv.shtml)
+- Fix kernel crash triggerable by any local user
+- Fix rare deadlock on single-core, non-HT machines
+- Dramatically reduce Vulpes' CPU utilization
+- Add support for 2.6.23 kernel
+- Add support for running VMware on 64-bit hosts
+- Add AES support to Nexus
+- Add support for external "dirtometer" program
+- Add openisr-config script to build and install the OpenISR kernel modules
+- Show a progress bar while encoding/decoding a memory image
+- Various improvements to handling of parcel memory image
+- Improve handling of loop device unbinding at suspend time
+- Fix client-commit and resume failures after a VMware crash with newer
+  versions of VMware
+- Fix bug which could cause a stale memory image to be used after a parcel
+  was shut down
+- Print a warning on resume if the loaded Nexus module is out-of-date
+- Various fixes and performance improvements
+- Packaging updates
+
+====== 0.8.3 (2007-07-11)
 
 - Fix deadlock under high I/O load with large guest memory image
 - Fix kernel oops occurring with some kernel builds (e.g. Fedora Core 5) after
@@ -11,7 +33,7 @@
 - Packaging updates
 - Minor fixes
 
-====== 0.8.2
+====== 0.8.2 (2007-04-16)
 
 - Fix memory leak in Nexus kernel module.  After upgrading to 0.8.2, you should
   reboot your system to free up leaked memory.
@@ -23,7 +45,7 @@
 - Compile fixes for some Linux distributions
 - Documentation updates
 
-====== 0.8.1
+====== 0.8.1 (2007-03-15)
 
 - Improve efficiency of zlib compression/decompression
 - Add optimized SHA-1 implementation for x86-64 architecture
@@ -40,6 +62,6 @@
 - Improved documentation
 - Minor fixes
 
-====== 0.8
+====== 0.8 (2007-02-15)
 
 - First release of OpenISR

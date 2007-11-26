@@ -1,0 +1,158 @@
+#!/usr/bin/perl
+#
+# openisr-config - script to build and install the kernel modules for the
+#                  OpenISR (R) system
+#
+# Copyright (C) 2007 Carnegie Mellon University
+#
+# This software is distributed under the terms of the Eclipse Public License,
+# Version 1.0 which can be found in the file named LICENSE.Eclipse.  ANY USE,
+# REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES RECIPIENT'S
+# ACCEPTANCE OF THIS AGREEMENT
+
+use strict;
+use warnings;
+use POSIX;
+use File::Temp qw/tempdir/;
+use Term::ANSIColor;
+use constant {
+	SRC => "!!SHAREDIR!!/openisr.tar.gz",
+	INITSCRIPT => "!!INITDIR!!/openisr",
+	VERSION => "!!VERSION!!",
+	KBUILDTYPE => "!!KBUILDTYPE!!",
+};
+
+sub fail ($) {
+	my $msg = shift;
+
+	print colored("Failed: $msg", "red") . "\n";
+	exit 1;
+}
+
+sub warning ($) {
+	my $msg = shift;
+	
+	print colored("Warning: $msg", "yellow") . "\n";
+}
+
+sub status ($) {
+	my $msg = shift;
+	
+	print colored($msg, "green") . "\n";
+}
+
+sub build_source () {
+	my $topdir;
+	my @files;
+	my $subdir;
+	
+	status "Unpacking kernel module source...";
+	$topdir= tempdir("openisr-config-XXXXXXXX", TMPDIR => 1, CLEANUP => 1)
+		or fail "Couldn't create temporary directory";
+	system("tar xzf " . SRC . " -C $topdir") == 0
+		or fail "Couldn't unpack kernel sources";
+	opendir(DIR, $topdir)
+		or fail "Couldn't read temporary directory";
+	@files = grep(/^openisr-/, readdir(DIR));
+	closedir(DIR);
+	@files == 1
+		or fail "Problem unpacking temporary directory";
+	$subdir = "$topdir/$files[0]";
+	$subdir =~ /openisr-([0-9a-zA-Z.-]+)$/
+		or fail "Couldn't parse source directory name";
+	$1 eq VERSION
+		or warning "Expected module version " . VERSION . ", found $1";
+	chdir($subdir)
+		or fail "Couldn't chdir";
+	
+	status "Configuring kernel module source...";
+	system("./configure --disable-client --enable-modules") == 0
+		or fail "Couldn't configure kernel source";
+	
+	status "Building kernel modules...";
+	system("make") == 0
+		or fail "Couldn't build kernel source";
+	
+	status "Installing kernel modules...";
+	system("make install") == 0
+		or fail "Couldn't install kernel modules";
+	system("depmod") == 0
+		or fail "Couldn't run depmod";
+}
+
+sub build_debian () {
+	status "Building and installing kernel modules...";
+	system("module-assistant auto-install openisr") == 0
+		or fail "Couldn't build and install kernel modules";
+}
+
+sub build_dkms () {
+	my $need_build = 1;
+	my $need_install = 1;
+	
+	status "Checking status of kernel modules...";
+	
+	open FD, "-|", "dkms status"
+		or fail "Couldn't get DKMS status";
+	while (<FD>) {
+		next if !/^openisr, ([^,]+), ([^,]+),/;
+		next if $1 ne VERSION;
+		next if $2 ne (uname)[2];
+		if (/installed/) {
+			$need_build = 0;
+			$need_install = 0;
+		} elsif (/built/) {
+			$need_build = 0;
+		}
+		last;
+	}
+	close FD;
+	
+	if ($need_build) {
+		status "Building modules with DKMS...";
+		system("dkms build -m openisr -v " . VERSION) == 0
+			or fail "DKMS build failed.";
+	} else {
+		status "Modules already built with DKMS.";
+	}
+	
+	if ($need_install) {
+		status "Installing modules with DKMS...";
+		system("dkms install -m openisr -v " . VERSION) == 0
+			or fail "DKMS install failed.";
+	} else {
+		status "Modules already installed with DKMS.";
+	}
+}
+
+
+status "Building kernel modules for OpenISR " . VERSION . ".";
+print "\n";
+fail "You must be root." if $> != 0;
+
+status "Unloading kernel modules...";
+system(INITSCRIPT . " stop") == 0
+	or fail "Couldn't unload kernel modules.\nPlease suspend any " .
+				"running parcels and try again.";
+
+if (KBUILDTYPE eq "source") {
+	build_source;
+} elsif (KBUILDTYPE eq "debian") {
+	build_debian;
+} elsif (KBUILDTYPE eq "dkms") {
+	build_dkms;
+}
+
+status "Loading kernel modules...";
+system(INITSCRIPT . " start") == 0
+	or fail "Couldn't load kernel modules";
+
+print "\n";
+if (KBUILDTYPE eq "source") {
+	status "Successfully installed OpenISR kernel modules.  Please " . 
+			"ensure that\n" . INITSCRIPT . " is configured " .
+			"to run at boot.";
+} else {
+	status "Successfully installed OpenISR kernel modules.";
+}
+exit 0;

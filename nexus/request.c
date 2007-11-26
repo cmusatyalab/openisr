@@ -1,7 +1,7 @@
 /* request.c - request queue interface code */
 
 /* 
- * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
+ * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
  * Copyright (C) 2006-2007 Carnegie Mellon University
@@ -281,7 +281,17 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 		return -ENXIO;
 	}
 	
-	io=mempool_alloc(io_pool, GFP_NOIO);  /* always succeeds */
+	/* mempool_alloc() always calls the underlying allocator with
+	   __GFP_WAIT masked out.  If the call fails, the pool is empty, and
+	   we ask for __GFP_WAIT, mempool_alloc() will block waiting for an
+	   io to be freed back into the pool.  If there's only one crypto
+	   thread, this will cause a deadlock, since no io will be freed
+	   until there's a crypto thread available to process it.  So,
+	   we tell mempool_alloc() not to block, and we handle the backoff
+	   and retry ourselves. */
+	io=mempool_alloc(io_pool, GFP_NOIO & ~__GFP_WAIT);
+	if (io == NULL)
+		return -ENOMEM;
 	io->dev=dev;
 	io->orig_req=req;
 	io->flags=0;

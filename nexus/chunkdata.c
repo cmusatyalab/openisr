@@ -1,7 +1,7 @@
 /* chunkdata.c - chunk cache and state machine */
 
 /* 
- * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
+ * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
  * Copyright (C) 2006-2007 Carnegie Mellon University
@@ -107,7 +107,7 @@ struct chunkdata {
  * @buckets        : the number of buckets in @hash (r/o)
  * @busy_count     : count of &chunkdata in non-idle state
  * @pending_updates: length of CB_UPDATE_CHUNK queue
- * @lru            : LRU list for chunkdata_get()
+ * @lru            : LRU list for chunkdata_reclaim()
  * @user           : usermsg queue for chardev
  * @hash           : &chunkdata hash table -- array of @buckets list_heads
  *
@@ -188,15 +188,6 @@ static inline int is_idle_state(enum cd_state state)
 	default:
 		return 0;
 	}
-}
-
-/**
- * chunkdata_hit - move @cd to the MRU side of the chunkdata LRU list
- **/
-static void chunkdata_hit(struct chunkdata *cd)
-{
-	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
-	list_move_tail(&cd->lh_lru, &cd->table->lru);
 }
 
 /**
@@ -282,42 +273,72 @@ static void update_chunk(struct chunkdata *cd)
 }
 
 /**
- * chunkdata_get - get a &struct chunkdata for the specified @cid
+ * chunkdata_find - find an existing &struct chunkdata for the specified @cid
  *
- * chunkdata_get() will return the existing &struct chunkdata for @cid, or
- * if none exists, it will allocate a new one by recycling the LRU &chunkdata
- * which does not have work pending against it.  If neither of these are
- * possible (not an infrequent occurrence!) it returns NULL.
+ * chunkdata_find() will return the existing &struct chunkdata for @cid, or
+ * if none exists, it will return NULL.
  **/
-static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
+static struct chunkdata *chunkdata_find(struct chunkdata_table *table,
 			chunk_t cid)
 {
 	struct chunkdata *cd;
-	struct chunkdata *next;
 	
 	BUG_ON(!mutex_is_locked(&table->dev->lock));
-	
-	/* See if the chunk is in the table already */
 	list_for_each_entry(cd, &table->hash[hash(table, cid)], lh_bucket) {
 		if (cd->cid == cid) {
-			chunkdata_hit(cd);
+			list_move_tail(&cd->lh_lru, &table->lru);
 			return cd;
 		}
 	}
+	return NULL;
+}
+
+/**
+ * __chunkdata_invalidate - mark the specified @cd invalid
+ *
+ * This function marks the specified &struct chunkdata as invalid and ready 
+ * for reuse by another chunk.  Returns 1 on success, or 0 if the
+ * given &chunkdata cannot be invalidated because it is not idle or has
+ * pending work against it.  Does not update the LRU list.
+ **/
+static int __chunkdata_invalidate(struct chunkdata *cd)
+{
+	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
+
+	if (!list_empty(&cd->pending) || !is_idle_state(cd->state))
+		return 0;
+	if (cd->state == ST_ENCRYPTED)
+		cd->table->dev->stats.encrypted_discards++;
+	list_del_init(&cd->lh_bucket);
+	cd->flags=0;
+	transition(cd, ST_INVALID);
+	return 1;
+}
+
+/**
+ * chunkdata_reclaim - get a &struct chunkdata for the specified @cid
+ *
+ * chunkdata_reclaim() will allocate a new &struct chunkdata for @cid by
+ * recycling the LRU &chunkdata which does not have work pending against
+ * it. If this is not possible (not an infrequent occurrence!) it
+ * returns NULL.
+ *
+ * Caller has to make sure there is not an existing &struct chunkdata for
+ * @cid by first checking with chunkdata_find().
+ **/
+static struct chunkdata *chunkdata_reclaim(struct chunkdata_table *table,
+			chunk_t cid)
+{
+	struct chunkdata *cd;
 	
-	/* Steal the LRU chunk */
-	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
-		if (!list_empty(&cd->pending) || !is_idle_state(cd->state))
+	BUG_ON(!mutex_is_locked(&table->dev->lock));
+
+	list_for_each_entry(cd, &table->lru, lh_lru) {
+		if (!__chunkdata_invalidate(cd))
 			continue;
-		
-		if (cd->state == ST_ENCRYPTED)
-			table->dev->stats.encrypted_discards++;
-		list_del_init(&cd->lh_bucket);
 		list_add(&cd->lh_bucket, &table->hash[hash(table, cid)]);
-		chunkdata_hit(cd);
+		list_move_tail(&cd->lh_lru, &table->lru);
 		cd->cid=cid;
-		cd->flags=0;
-		transition(cd, ST_INVALID);
 		return cd;
 	}
 	
@@ -325,6 +346,27 @@ static struct chunkdata *chunkdata_get(struct chunkdata_table *table,
 	debug(DBG_CD, "Can't get cd for " SECTOR_FORMAT, cid);
 	table->dev->stats.cache_alloc_failures++;
 	return NULL;
+}
+
+/**
+ * chunkdata_invalidate_all - debug function to invalidate all idle &chunkdata
+ *
+ * Walk the &struct chunkdata LRU list and invalidate every &chunkdata which
+ * is idle and has no work queued against it.  Invalidated chunks are moved
+ * to the head of the LRU list.
+ **/
+void chunkdata_invalidate_all(struct nexus_dev *dev)
+{
+	struct chunkdata_table *table=dev->chunkdata;
+	struct chunkdata *cd;
+	struct chunkdata *next;
+
+	BUG_ON(!mutex_is_locked(&dev->lock));
+
+	list_for_each_entry_safe(cd, next, &table->lru, lh_lru) {
+		if (__chunkdata_invalidate(cd))
+			list_move(&cd->lh_lru, &table->lru);
+	}
 }
 
 /**
@@ -775,7 +817,7 @@ static int io_has_reservation(struct nexus_io *io)
 		if ((chunk->flags & CHUNK_DEAD) ||
 					(chunk->flags & CHUNK_STARTED))
 			continue;
-		cd=chunkdata_get(io->dev->chunkdata, chunk->cid);
+		cd=chunkdata_find(io->dev->chunkdata, chunk->cid);
 		if (cd == NULL || !pending_head_is(cd, chunk))
 			return 0;
 	}
@@ -812,7 +854,8 @@ static void try_start_io(struct nexus_io *io)
 		if ((chunk->flags & CHUNK_DEAD) ||
 					(chunk->flags & CHUNK_STARTED))
 			continue;
-		cd=chunkdata_get(dev->chunkdata, chunk->cid);
+		cd=chunkdata_find(dev->chunkdata, chunk->cid);
+		BUG_ON(cd == NULL);
 		
 		switch (cd->state) {
 		case ST_INVALID:
@@ -1039,7 +1082,7 @@ void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
 	static int warn_count;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
-	cd=chunkdata_get(dev->chunkdata, cid);
+	cd=chunkdata_find(dev->chunkdata, cid);
 	if (cd == NULL || !(cd->flags & CD_USER) ||
 				cd->state != ST_LOAD_META) {
 		/* Userspace is messing with us. */
@@ -1071,7 +1114,7 @@ void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid)
 	static int warn_count;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
-	cd=chunkdata_get(dev->chunkdata, cid);
+	cd=chunkdata_find(dev->chunkdata, cid);
 	if (cd == NULL || !(cd->flags & CD_USER) ||
 				cd->state != ST_LOAD_META) {
 		/* Userspace is messing with us. */
@@ -1297,8 +1340,19 @@ int reserve_chunks(struct nexus_io *io)
 	int i;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
+	/* First pin down any chunkdata entry that's already in the cache */
 	for (i=0; i<io_chunks(io); i++) {
-		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
+		cd=chunkdata_find(dev->chunkdata, io->first_cid + i);
+		if (cd == NULL)
+			continue;
+		list_add_tail(&io->chunks[i].lh_pending, &cd->pending);
+		user_get(dev);
+	}
+	/* Now allocate new entries */
+	for (i=0; i<io_chunks(io); i++) {
+		if (!list_empty(&io->chunks[i].lh_pending))
+			continue;
+		cd=chunkdata_reclaim(dev->chunkdata, io->first_cid + i);
 		if (cd == NULL)
 			goto bad;
 		list_add_tail(&io->chunks[i].lh_pending, &cd->pending);
@@ -1307,7 +1361,7 @@ int reserve_chunks(struct nexus_io *io)
 	if (!test_and_set_bit(__DEV_HAVE_CD_REF, &dev->flags))
 		nexus_dev_get(dev);
 	for (i=0; i<io_chunks(io); i++) {
-		cd=chunkdata_get(dev->chunkdata, io->first_cid + i);
+		cd=chunkdata_find(dev->chunkdata, io->first_cid + i);
 		BUG_ON(cd == NULL);
 		if (cd->state == ST_INVALID &&
 					pending_head(cd) == &io->chunks[i])
@@ -1317,11 +1371,13 @@ int reserve_chunks(struct nexus_io *io)
 		update_chunk(cd);
 	}
 	return 0;
-	
+
 bad:
-	while (--i >= 0) {
-		list_del_init(&io->chunks[i].lh_pending);
-		user_put(dev);
+	for (i=0; i<io_chunks(io); i++) {
+		if (!list_empty(&io->chunks[i].lh_pending)) {
+			list_del_init(&io->chunks[i].lh_pending);
+			user_put(dev);
+		}
 	}
 	/* XXX this isn't strictly nomem */
 	return -ENOMEM;
@@ -1336,8 +1392,8 @@ void unreserve_chunk(struct nexus_io_chunk *chunk)
 	struct chunkdata *cd;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
-	cd=chunkdata_get(dev->chunkdata, chunk->cid);
-	BUG_ON(!pending_head_is(cd, chunk));
+	cd=chunkdata_find(dev->chunkdata, chunk->cid);
+	BUG_ON(cd == NULL || !pending_head_is(cd, chunk));
 	list_del_init(&chunk->lh_pending);
 	user_put(dev);
 	update_chunk(cd);

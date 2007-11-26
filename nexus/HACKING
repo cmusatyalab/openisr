@@ -93,6 +93,8 @@ Here are the strings which can be written to that file:
 - "kick-threads" - wake up all kernel threads
 - "kick-elevator" - force the request function to be called
 - "kill" - forcibly unregister the block device
+- "sync" - sleep until the block device is idle
+- "drop-cache" - invalidate all idle cache entries
 
 The "states" sysfs attribute gives the number of cache lines in each state
 of the cache's state machine.  The "state_times" attribute gives the average

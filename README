@@ -1,11 +1,11 @@
-This is the OpenISR (TM) system, release 0.8.3.  For more information on
+This is the OpenISR (R) system, release 0.8.4.  For more information on
 the OpenISR system and Internet Suspend/Resume (R), please visit our website at
 <http://isr.cmu.edu>.
 
 REQUIREMENTS
 ------------
 
-- Linux kernel (versions 2.6.8 through 2.6.22 supported)
+- Linux kernel (versions 2.6.8 through 2.6.23 supported)
 - curl >= 7.12.3
 - Perl
 - OpenSSL
@@ -146,6 +146,11 @@ the /dev/loopN devices
 
 - Run "/etc/init.d/openisr start" to load the kernel modules
 
+If you upgrade your kernel after installing the OpenISR system, you will
+need to rebuild the OpenISR kernel modules.  You can do this by re-running
+"configure", "make", "make install", and "depmod", or you can run
+"openisr-config" as root to do all of this for you.
+
 COMPONENTS AND THEIR LICENSES
 -----------------------------
 
@@ -194,6 +199,6 @@ SHA-1 Accelerator
 ACKNOWLEDGMENTS
 ----------------
 
-Internet Suspend/Resume is a registered trademark and OpenISR is a trademark
-of Carnegie Mellon University.  All other trademarks are the property of their
+Internet Suspend/Resume and OpenISR are registered trademarks of
+Carnegie Mellon University.  All other trademarks are the property of their
 respective owners.

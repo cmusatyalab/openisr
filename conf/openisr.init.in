@@ -36,44 +36,63 @@ probe_module() {
 	[ "$direction" = "remove" ] && flags="-r" || flags=""
 	if modprobe $flags "$name" 2>/dev/null ; then
 		echo -n " $name"
-	else
-		[ "$required" = "required" ] && echo -n " failed"
+	elif [ "$required" = "required" ] ; then
+		if [ "$direction" = "remove" ] ; then
+			# We might be here because modprobe has never heard
+			# of this module, even though it isn't loaded.  Call
+			# this success.
+			lsmod | grep -q "^$name " || return 0
+		fi
+		echo -n " failed"
+		return 1
 	fi
+	return 0
 }
 
 do_start() {
 	arch=`get_mod_arch`
+	ret=0
 	
 	echo -n "Loading OpenISR kernel modules:"
-	probe_module loop insert
-	probe_module openisr insert required
-	[ "$arch" != "none" ] && probe_module "aes-$arch" insert
-	[ "$arch" != "none" ] && probe_module "sha1-$arch" insert
-	
+	if probe_module openisr insert required
+	then
+		probe_module loop insert
+		[ "$arch" != "none" ] && probe_module "aes-$arch" insert
+		[ "$arch" != "none" ] && probe_module "sha1-$arch" insert
+	else
+		ret=1
+	fi
 	echo "."
+	return $ret
 }
 
 do_stop() {
 	arch=`get_mod_arch`
+	ret=0
 	
 	echo -n "Unloading OpenISR kernel modules:"
-	[ "$arch" != "none" ] && probe_module "sha1-$arch" remove
-	[ "$arch" != "none" ] && probe_module "aes-$arch" remove
-	probe_module openisr remove required
-	probe_module loop remove
+	if probe_module openisr remove required
+	then
+		probe_module loop remove
+		[ "$arch" != "none" ] && probe_module "aes-$arch" remove
+		[ "$arch" != "none" ] && probe_module "sha1-$arch" remove
+	else
+		ret=1
+	fi
 	echo "."
+	return $ret
 }
 
 case "$1" in
 	start)
-		do_start
+		do_start || exit 1
 		;;
 	stop)
-		do_stop
+		do_stop || exit 1
 		;;
 	restart|force-reload)
-		do_stop
-		do_start
+		do_stop || exit 1
+		do_start || exit 1
 		;;
 	*)
 		echo "Usage: $SCRIPTNAME {start|stop|restart|force-reload}" >&2

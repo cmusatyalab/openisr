@@ -103,7 +103,7 @@ sub parse_parcelcfg ($);
 sub build_cache ();
 sub is_fully_hoarded ();
 sub connected ();
-sub check_nexus_version ();
+sub check_for_nexus ();
 sub check_for_old_isrdir ();
 sub get_parcelkeeper_pid ();
 sub fetch_parcel_file ($$$$$);
@@ -754,13 +754,7 @@ sub run () {
     if (!-e $pkcmd or !-x $pkcmd ) {
 	errexit("Could not find an executable Parcelkeeper binary.");
     }
-    if (!-d "/sys/class/openisr") {
-        errexit("The OpenISR kernel module does not appear to be loaded.");
-    }
-    if (!-e "/dev/openisrctl") {
-        errexit("Nexus control device does not exist");
-    }
-    check_nexus_version();
+    check_for_nexus();
     check_for_old_isrdir();
 
     # Reset the clean-cache flag, since we're about to make the cache dirty.
@@ -1826,43 +1820,41 @@ sub connected () {
 }
 
 #
-# check_nexus_version - print a warning if the Nexus release number is older
-#                       than our own
+# check_for_nexus - Make sure Nexus is loaded and accessible, and print a
+#                   warning if its release number is older than our own
 #
-sub check_nexus_version () {
+sub check_for_nexus () {
     my $nexus_version;
-    my $nexus_major;
-    my $nexus_minor;
-    my $nexus_patch;
-    my $isr_version = ISRVERSION;
-    my $isr_major;
-    my $isr_minor;
-    my $isr_patch;
-    my $warn = 0;
+    my $nexus_verval;
+    my $isr_version = "!!VERSION!!";
+    my $isr_verval;
     
+    # Check for fatal problems first
+    -d "/sys/class/openisr"
+        or errexit("The OpenISR kernel module does not appear to be loaded.  Please run 'openisr-config' as root.");
+    -e "/dev/openisrctl"
+        or errexit("Nexus control device does not exist; udev misconfiguration?");
+    
+    # Now check the Nexus version
     if (!-e "/sys/class/openisr/release") {
-	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
-	message("Nexus is out of date (<=0.8.3 vs. $isr_version)");
-	return;
+	$nexus_version = "<=0.8.3";
+	$nexus_verval = 0;
+    } else {
+	open(NEX, "/sys/class/openisr/release")
+	    or errexit("Couldn't read Nexus release attribute");
+	$nexus_version = <NEX>;
+	close(NEX);
+	chomp $nexus_version;
+	$nexus_version =~ /^([0-9]+)\.([0-9]+)(\.([0-9]+))?(-[a-zA-Z0-9]+)?/
+	    or errexit("Invalid Nexus release string $nexus_version");
+	$nexus_verval = $1 * 100_000 + $2 * 1_000 + (defined $4 ? $4 * 10 : 0)
+		    + (defined $5 ? 0 : 1);
     }
-    open(NEX, "/sys/class/openisr/release")
-    	or errexit("Couldn't read Nexus release attribute");
-    $nexus_version = <NEX>;
-    close(NEX);
-    chomp $nexus_version;
-    ($nexus_major, $nexus_minor, $nexus_patch) = split(/\./, $nexus_version);
-    $nexus_patch = 0 unless defined($nexus_patch);
-    ($isr_major, $isr_minor, $isr_patch) = split(/\./, $isr_version);
-    $isr_patch = 0 unless defined($isr_patch);
-    if ($isr_major >= $nexus_major) {
-	if ($isr_major > $nexus_major) {
-	    $warn = 1;
-	} elsif ($isr_minor >= $nexus_minor) {
-	    $warn = 1
-	        if ($isr_minor > $nexus_minor or $isr_patch > $nexus_patch);
-	}
-    }
-    if ($warn) {
+    $isr_version =~ /^([0-9]+)\.([0-9]+)(\.([0-9]+))?(-[a-zA-Z0-9]+)?/
+        or errexit("Invalid client release string $isr_version");
+    $isr_verval = $1 * 100_000 + $2 * 1_000 + (defined $4 ? $4 * 10 : 0)
+                + (defined $5 ? 0 : 1);
+    if ($nexus_verval < $isr_verval) {
 	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
 	message("Nexus is out of date ($nexus_version vs. $isr_version)");
     }

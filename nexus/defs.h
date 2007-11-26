@@ -1,7 +1,7 @@
 /* defs.h - struct/symbol definitions, utility fns, exported fn prototypes */
 
 /* 
- * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
+ * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
  * Copyright (C) 2006-2007 Carnegie Mellon University
@@ -451,6 +451,7 @@ int chunkdata_start(void);
 void chunkdata_shutdown(void);
 int chunkdata_alloc_table(struct nexus_dev *dev);
 void chunkdata_free_table(struct nexus_dev *dev);
+void chunkdata_invalidate_all(struct nexus_dev *dev);
 int have_usermsg(struct nexus_dev *dev);
 struct chunkdata *next_usermsg(struct nexus_dev *dev, msgtype_t *type);
 void fail_usermsg(struct chunkdata *cd);

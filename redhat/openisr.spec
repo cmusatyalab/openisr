@@ -1,20 +1,22 @@
 ### begin RPM spec
 %define name openisr
-%define version 0.8.3
+%define version 0.8.4
 
 Summary: 	OpenISR Internet Suspend-Resume client
 Name: 		%name
 Version: 	%version
-Release: 	2%{?redhatvers:.%{redhatvers}}
+Release: 	1%{?redhatvers:.%{redhatvers}}
 Group: 		Applications/Internet
 License:	Eclipse Public License	
-BuildRequires: 	curl-devel
-Requires: 	openssh, rsync, pv
+BuildRequires:	curl-devel, openssl-devel, kernel-devel
+Requires: 	openssh, rsync, pv, dkms
 BuildRoot: 	/var/tmp/%{name}-buildroot
 Packager:	Matt Toups <mtoups@cs.cmu.edu>
 
 URL:		http://isr.cmu.edu
-Source: 	http://isr.cmu.edu/software/openisr-%{version}.tar.gz
+Source0: 	http://isr.cmu.edu/software/openisr-%{version}.tar.gz
+Source1:	Makefile.dkms
+Source2:	dkms.conf
 # line below is working around an annoying rpm "feature"
 Provides:	perl(IsrRevision)
 
@@ -32,37 +34,57 @@ Provides:	perl(IsrRevision)
 %setup -q
 
 %build
-./configure --enable-client --disable-modules --prefix=/usr --sysconfdir=/etc && make DESTDIR=%{buildroot}
+./configure --enable-client --disable-modules --prefix=/usr --sysconfdir=/etc --mandir=/usr/share/man --with-kbuild-wrapper=dkms && make DESTDIR=%{buildroot}
 
 %install
 make install DESTDIR=%{buildroot}
+make dist-gzip
+mkdir -p %{buildroot}%{_usrsrc}
+mv openisr-%{version}.tar.gz %{buildroot}%{_usrsrc}
+cd %{buildroot}%{_usrsrc}
+tar zxf openisr-%{version}.tar.gz
+cp %{SOURCE1} %{SOURCE2} %{buildroot}%{_usrsrc}/openisr-%{version}
 
 %clean
 rm -rf %{buildroot}
 
 %pre
 
-%post -p /sbin/ldconfig
+%post
+/sbin/ldconfig
+dkms add -m openisr -v %{version}
+/usr/sbin/openisr-config ||:
 
 %preun
+/etc/init.d/openisr stop
+dkms remove -m openisr -v %{version} --all
 
-%postun -p /sbin/ldconfig
+%postun
+/sbin/ldconfig
 
 %files
 %dir /etc/openisr
 %dir /usr/share/openisr
 %dir /usr/lib/openisr
+/usr/src/openisr-%{version}
+/usr/src/openisr-%{version}.tar.gz
 /usr/bin/isr
+/usr/sbin/openisr-config
 /usr/lib/openisr/vulpes
 /usr/lib/openisr/readstats
 /usr/lib/openisr/nexus_debug
 /usr/share/man/man1/isr.1.gz
+/usr/share/man/man8/openisr-config.8.gz
 /usr/share/openisr/config
 /usr/share/openisr/HTTPSSH.pm
 /usr/share/openisr/IsrConfigTie.pm
 /usr/share/openisr/Isr.pm
 /usr/share/openisr/IsrRevision.pm
 /usr/lib/libvdisk.so.0
+%ifarch x86_64
+/usr/lib64/libvdisk.so.0
+/usr/lib64/libvdisk.so.0.0.0
+%endif
 %config /etc/udev/openisr.rules
 %config /etc/udev/rules.d/openisr.rules
 %doc README CHANGES LICENSE.*
@@ -73,6 +95,18 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Tue Nov 20 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.4-1
+- New upstream release (see CHANGES):
+  * use pv (dependency added)
+  * openisr-config
+  * 64 bit host support for libvdisk
+  * AES support
+  * 'dirtometer' support
+  * and more fixes
+- DKMS support (thanks to Adam Goode)
+- postinst calls dkms to automate module build
+- updated BuildRequires (kernel-devel, openssl-devel)
+
 * Wed Jul 11 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.3-1
 - New upstream release
 

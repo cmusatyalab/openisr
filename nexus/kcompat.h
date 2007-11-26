@@ -1,7 +1,7 @@
 /* kcompat.h - compatibility macros for different kernel versions */
 
 /* 
- * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
+ * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
  * Copyright (C) 2006-2007 Carnegie Mellon University
@@ -31,7 +31,7 @@
 #endif
 
 /* We (optimistically) don't check for kernel releases that are too new; the
-   module will either build or it won't.  We are known to support <= 2.6.22. */
+   module will either build or it won't.  We are known to support <= 2.6.23. */
 
 /***** Memory allocation *****************************************************/
 
@@ -422,6 +422,12 @@ static inline int try_to_freeze(void) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
 /* This used to be in sched.h */
 #include <linux/freezer.h>
+#endif
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)
+/* Kernel threads are freezable by default */
+#define set_freezable() do {} while (0)
 #endif
 
 /***** cryptoapi *************************************************************/

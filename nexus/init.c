@@ -1,7 +1,7 @@
 /* init.c - startup/shutdown, device constructor/destructor, refcounting */
 
 /* 
- * Nexus - convergently encrypting virtual disk driver for the OpenISR (TM)
+ * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
  * Copyright (C) 2006-2007 Carnegie Mellon University
@@ -553,7 +553,8 @@ struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 		ret=-EINVAL;
 		goto bad;
 	}
-	if (cachesize * chunk_pages(dev) > pages * MAX_DEV_ALLOCATION_MULT /
+	/* Avoid arithmetic overflow */
+	if (cachesize > pages / chunk_pages(dev) * MAX_DEV_ALLOCATION_MULT /
 				MAX_DEV_ALLOCATION_DIV) {
 		log(KERN_ERR, "cache size may not be larger than %u/%u of "
 					"system RAM", MAX_DEV_ALLOCATION_MULT,

@@ -2,13 +2,14 @@ Source: openisr
 Section: net
 Priority: extra
 Maintainer: Matt Toups <mtoups@cs.cmu.edu>
-Build-Depends: debhelper, libcurl-dev, zlib1g-dev, libssl-dev
+Build-Depends: debhelper, libcurl-dev, zlib1g-dev, libssl-dev, linux-headers-2.6, ia32-libs [amd64], libc6-dev-i386 [amd64]
 Standards-Version: 3.7.2
 
 Package: openisr
 Architecture: any
 Suggests: kvm | vmware-player
-Depends: openisr-modules-source (= 0.8.3-1), udev, curl (>= 7.12.3), ssh | openssh-client, openssl, rsync, pv, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
+Depends: udev, curl (>= 7.12.3), ssh | openssh-client, openssl, rsync, pv, module-assistant, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
+Conflicts: openisr-modules-source
 Description: Internet Suspend/Resume (ISR) client
  OpenISR is the latest implementation of Internet Suspend/Resume, which 
  combines a virtual machine with distributed storage to provide the user 
@@ -17,12 +18,3 @@ Description: Internet Suspend/Resume (ISR) client
  library for VMware (libvdisk), and the source to the openisr kernel module 
  (Nexus).  A virtual machine monitor (VMware, Xen, KVM, etc) should also be 
  installed.   OpenISR is developed at Carnegie Mellon University.
-
-Package: openisr-modules-source
-Architecture: all
-Depends: module-assistant, debhelper, make, bzip2
-Description: source code for OpenISR kernel modules
- OpenISR is the latest implementation of Internet Suspend/Resume.  The
- sources for the Nexus kernel module (and a SHA-1 accelerator module) are
- included in this package.  They can be built into a binary Debian package
- using module-assistant, or by other means.

@@ -27,7 +27,7 @@ EXTRA_DIST += .gitrevision
 # generated Makefile seems to indicate that this shouldn't happen).  Thus
 # we only generate the tarball when we're actually doing the install (and
 # remove it afterward), rather than generating it during the build.
-if WANT_CLIENT
+if WANT_MODULE_SOURCE
 install-data-local: dist-gzip
 	$(INSTALL_DATA) openisr-$(VERSION).tar.gz \
 				$(DESTDIR)$(pkgdatadir)/openisr.tar.gz
