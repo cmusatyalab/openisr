@@ -82,7 +82,7 @@ my %keydiff; # one hash key for every keyring entry that differs
 # Parse the command line args
 #
 no strict 'vars';
-getopts('Vhcsu:p:v:');
+getopts('Vhcs:u:p:v:');
 
 if ($opt_h) {
     usage();
@@ -153,7 +153,9 @@ $parcelcfg = get_parcelcfg_path($username, $parcelname);
 # Variables for the predecessor version (if any)
 if ($precommit) {
     $predver = "checkin";
-    $preddir = "$parceldir/cache";
+    $preddir = "$parceldir/cache/$precommit";
+    -d $preddir
+        or errexit("Cache directory $preddir does not exist");
 } else {
     $predver = $currver - 1; 
     $preddir = "$parceldir/" . sprintf("%06d", $predver);
@@ -388,13 +390,13 @@ sub usage
         print "Error: $msg\n\n";
     }
 
-    print "Usage: $progname [-hcVs] [-u <username>] -p <parcel> [-v <version>]\n";
+    print "Usage: $progname [-hcV] [-u <username>] -p <parcel> [-s <nonce>] [-v <version>]\n";
     print "Options:\n";
     print "  -c           Perform content consistency check\n";
     print "  -h           Print this message\n";
     print "  -u <user>    User for this parcel (default is $ENV{'USER'})\n";
     print "  -p <parcel>  Parcel name\n";    
-    print "  -s           Run pre-commit check\n";
+    print "  -s <nonce>   Run pre-commit check against cache with the given nonce\n";
     print "  -v <ver>     Parcel version to check (default is last)\n";
     print "  -V           Be verbose\n";
     print "\n";
