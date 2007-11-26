@@ -75,19 +75,22 @@ my %config = get_config();
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hlu:p:v:V');
+getopts('hN:u:p:v:V');
 
 if ($opt_h) {
     usage();
 }
 
-$lock = $opt_l;
+$nonce = $opt_N;
 $username = $opt_u;
 $parcel = $opt_p;
 $targetver = $opt_v;
 
 if (!$username) {
     $username = $ENV{"USER"};
+}
+if (!$nonce) {
+    $lock = 1;
 }
 if (!$parcel) {
     usage("Missing parcel name (-p)");
@@ -110,7 +113,7 @@ $hostname = hostname();
     or errexit("$parceldir does not exist.");
 
 #
-# Acquire the lock (if called with -l)
+# Acquire the lock (if not called with -N)
 # 
 if ($lock) {
     $nonce = `isr_runserv lock -p $parcelpath -n $hostname -a`;
@@ -121,6 +124,9 @@ if ($lock) {
     chomp($nonce);
     print("Acquired lock.\n")
 	if $verbose;
+} else {
+    system("isr_runserv lock -p $parcelpath -C $nonce") == 0
+        or errexit("Parcel not checked out or nonce invalid");
 }
 
 # 
@@ -192,12 +198,13 @@ unlink($targetkeyring, $lastkeyring);
 #
 # Create the cache directory where we'll be writing our updates
 #
-$cachedir = "$parceldir/cache";
+$cachedir = "$parceldir/cache/$nonce";
 system("rm -rf $cachedir") == 0
     or system_errexit("Unable to remove $cachedir");
-mkdir($cachedir)
-    or unix_errexit("Unable to create $cachedir");
-mkdir("$cachedir/hdk")
+mkdir("$parceldir/cache");
+mkdir($cachedir);
+mkdir("$cachedir/hdk");
+-d "$cachedir/hdk"
     or unix_errexit("Unable to create $cachedir/hdk");
 
 #
@@ -275,7 +282,7 @@ foreach $file ("cfg.tgz.enc", "keyring.enc") {
 # 
 print "Committing updates...\n"
     if $verbose;
-system("isr_runserv commit -u $username -p $parcel") == 0
+system("isr_runserv commit -u $username -p $parcel -N $nonce") == 0
     or system_errexit("Unable to commit version $targetver.");
 
 #
@@ -304,14 +311,14 @@ sub usage
         print "$progname: $msg\n";
     }
 
-    print "Usage: $progname [-hlV] [-u username] -p <parcel> -v <ver>\n";
+    print "Usage: $progname [-hV] [-u username] [-N nonce] -p <parcel> -v <ver>\n";
     print "Options:\n";
-    print "  -h        Print this message\n";
-    print "  -l        Acquire and release the parcel lock\n";
-    print "  -V        Be verbose\n";
-    print "  -u <user> Username for this parcel (default is $ENV{'USER'})\n";
-    print "  -p <name> Parcel name\n";
-    print "  -v <ver>  Target version to revert to\n";
+    print "  -h         Print this message\n";
+    print "  -N <nonce> Use the existing parcel lock rather than acquiring it ourselves\n";
+    print "  -V         Be verbose\n";
+    print "  -u <user>  Username for this parcel (default is $ENV{'USER'})\n";
+    print "  -p <name>  Parcel name\n";
+    print "  -v <ver>   Target version to revert to\n";
     print "\n";
 
     exit 0;
@@ -330,7 +337,7 @@ END {
     #
     # Release the lock if we had already acquired it
     #
-    if ($nonce) {
+    if ($lock and $nonce) {
 	if (system("isr_runserv lock -p $parcelpath -n $hostname -r $nonce") == 0) {
 	    print("Released the lock.\n")
 		if $verbose;
