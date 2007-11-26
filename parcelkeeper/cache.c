@@ -11,12 +11,14 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <fcntl.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <errno.h>
 #include "defs.h"
 
 #define CA_MAGIC 0x51528038
@@ -31,6 +33,13 @@ struct ca_header {
 	uint32_t reserved_1[2];
 	uint8_t version;
 	uint8_t reserved_2[491];
+};
+
+enum shm_chunk_status {
+	SHM_NOT_PRESENT,
+	SHM_PRESENT,
+	SHM_ACCESSED,
+	SHM_DIRTY
 };
 
 off64_t cache_chunk_to_offset(unsigned chunk)
@@ -172,8 +181,95 @@ static pk_err_t verify_cache_index(void)
 	return PK_SUCCESS;
 }
 
+static void shm_set(unsigned chunk, enum shm_chunk_status status)
+{
+	int offset;
+	int shift;
+	unsigned char curbyte;
+	unsigned char curbits;
+	unsigned char newbits;
+
+	if (state.shm_base == NULL)
+		return;
+	if (chunk > parcel.chunks) {
+		pk_log(LOG_ERROR, "Invalid chunk %u", chunk);
+		return;
+	}
+	offset = chunk / 4;
+	shift = 2 * (3 - (chunk % 4));
+	curbyte = state.shm_base[offset];
+	curbits = (curbyte >> shift) & 0x3;
+	newbits = status & 0x3;
+	if (curbits < newbits) {
+		curbyte &= ~(0x3 << shift);
+		curbyte |= newbits << shift;
+		state.shm_base[offset]=curbyte;
+	}
+}
+
+static pk_err_t shm_init(void)
+{
+	int fd;
+	struct query *qry;
+	unsigned chunk;
+	int sret;
+
+	state.shm_len = (parcel.chunks + 3) / 4;
+	if (asprintf(&state.shm_name, "/openisr-chunkmap-%s", parcel.uuid)
+					== -1) {
+		pk_log(LOG_ERROR, "malloc failed");
+		return PK_NOMEM;
+	}
+	fd=shm_open(state.shm_name, O_RDWR|O_CREAT|O_EXCL, 0600);
+	if (fd == -1) {
+		pk_log(LOG_ERROR, "Couldn't create shared memory segment: %s",
+					strerror(errno));
+		free(state.shm_name);
+		return PK_IOERR;
+	}
+	if (ftruncate(fd, state.shm_len)) {
+		pk_log(LOG_ERROR, "Couldn't set shared memory segment to "
+					"%u bytes", state.shm_len);
+		close(fd);
+		shm_unlink(state.shm_name);
+		free(state.shm_name);
+		return PK_IOERR;
+	}
+	state.shm_base=mmap(NULL, state.shm_len, PROT_READ|PROT_WRITE,
+				MAP_SHARED, fd, 0);
+	close(fd);
+	if (state.shm_base == MAP_FAILED) {
+		pk_log(LOG_ERROR, "Couldn't map shared memory segment");
+		state.shm_base=NULL;
+		shm_unlink(state.shm_name);
+		free(state.shm_name);
+		return PK_CALLFAIL;
+	}
+
+	for (sret=query(&qry, state.db, "SELECT chunk FROM cache.chunks", NULL);
+				sret == SQLITE_ROW; sret=query_next(qry)) {
+		query_row(qry, "d", &chunk);
+		shm_set(chunk, SHM_PRESENT);
+	}
+	query_free(qry);
+	if (sret != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't query cache index");
+		munmap(state.shm_base, state.shm_len);
+		state.shm_base=NULL;
+		shm_unlink(state.shm_name);
+		free(state.shm_name);
+		return PK_CALLFAIL;
+	}
+	return PK_SUCCESS;
+}
+
 void cache_shutdown(void)
 {
+	if (state.shm_base) {
+		munmap(state.shm_base, state.shm_len);
+		shm_unlink(state.shm_name);
+		free(state.shm_name);
+	}
 	if (state.cache_fd)
 		close(state.cache_fd);
 	query_flush();
@@ -255,6 +351,12 @@ pk_err_t cache_init(void)
 		if (ret)
 			goto bad;
 	}
+
+	if (config.flags & WANT_SHM)
+		if (shm_init())
+			pk_log(LOG_ERROR, "Couldn't set up shared memory "
+						"segment; continuing");
+
 	return PK_SUCCESS;
 
 bad:
@@ -300,6 +402,7 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 					chunk);
 		return PK_IOERR;
 	}
+	shm_set(chunk, SHM_PRESENT);
 	*length=len;
 	return PK_SUCCESS;
 }
@@ -360,6 +463,7 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 					"for chunk %u: %u", chunk, *compress);
 		return PK_INVALID;
 	}
+	shm_set(chunk, SHM_ACCESSED);
 	return PK_SUCCESS;
 }
 
@@ -388,6 +492,7 @@ pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 	ret=commit(state.db);
 	if (ret)
 		goto bad;
+	shm_set(chunk, SHM_DIRTY);
 	return PK_SUCCESS;
 
 bad:

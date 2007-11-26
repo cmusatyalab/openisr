@@ -74,6 +74,7 @@ enum mode_flags {
 	WANT_BACKGROUND = 0x0008,
 	WANT_TRANSPORT	= 0x0010,
 	WANT_CHECK	= 0x0020,
+	WANT_SHM	= 0x0040,
 };
 
 struct pk_connection;
@@ -138,6 +139,9 @@ struct pk_state {
 	int loopdev_fd;
 	int chardev_fd;
 	int signal_fds[2];
+	char *shm_name;
+	unsigned char *shm_base;
+	unsigned shm_len;
 	struct pk_connection *conn;
 	sqlite3 *db;
 	sqlite3 *hoard;
