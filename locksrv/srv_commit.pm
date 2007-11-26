@@ -30,6 +30,7 @@ use strict;
 my $username;
 my $parcelname;
 my $parceldir;
+my $nonce;
 my $lastver;
 my $nextver;
 my $lastdir;
@@ -47,7 +48,7 @@ my %config = get_config();
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hu:p:V');
+getopts('hu:p:VN:');
 
 if ($opt_h) {
     usage();
@@ -55,9 +56,13 @@ if ($opt_h) {
 if (!$opt_p) {
     usage("Missing parcel name (-p)");
 }
+if (!$opt_N) {
+    usage("Missing nonce value (-N)");
+}
 $username = $opt_u;
 $username = $ENV{'USER'} if !$username;
 $parcelname = $opt_p;
+$nonce = $opt_N;
 $parceldir = "$config{content_root}/$username/$parcelname";
 $verbose = $opt_V;
 use strict 'vars';
@@ -69,15 +74,20 @@ use strict 'vars';
     or errexit("$parceldir does not exist");
 
 #
-# If there is no cache directory, simply exit with successful status
+# Make sure the nonce matches
 #
-$cachedir = "$parceldir/cache";
-if (! -e $cachedir) {
-    exit 0;
-}
+system("isr_runserv lock -p $username/$parcelname -C $nonce") == 0
+    or errexit("Parcel is not checked out or nonce does not match");
+
+#
+# If there is no cache directory, fail
+#
+$cachedir = "$parceldir/cache/$nonce";
+-e $cachedir
+    or errexit("Cache directory $cachedir does not exist");
 
 # Otherwise, make sure the cache has the right permissions
-system("chmod -R u=rwX,go=rX $parceldir/cache");
+system("chmod -R u=rwX,go=rX $cachedir");
 
 #
 # Determine the most recent (last) version number
@@ -189,6 +199,11 @@ symlink(sprintf("%06d", $nextver), "$parceldir/last")
     or unix_errexit("Unable to create link $parceldir/last.");
 
 #
+# Remove old partial uploads that may still be hanging around
+#
+system("rm -rf $parceldir/cache");
+
+#
 # Clean up and exit
 #
 exit 0;
@@ -212,12 +227,13 @@ sub usage
         print "$progname: $msg\n";
     }
 
-    print "Usage: $progname [-hV] [-u <username>] -p <parcel>\n";
+    print "Usage: $progname [-hV] [-u <username>] -p <parcel> -N <nonce>\n";
     print "Options:\n";
     print "  -h    Print this message\n";
     print "  -V    Be verbose\n";
     print "  -u    Username for this parcel (default is $ENV{'USER'})\n";
     print "  -p    Parcel name\n";
+    print "  -N    Nonce obtained when lock was acquired\n";
     print "\n";
     exit 0;
 }
