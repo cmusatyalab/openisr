@@ -79,7 +79,7 @@ if ($opt_h) {
 if (!$opt_p) {
     usage("Missing parcel path (-p)");
 }
-if (!$opt_n) {
+if (($opt_a or $opt_r or $opt_R) and !$opt_n) {
     usage("Missing client host name (-n)");
 }
 if (!$opt_a and !$opt_r and !$opt_R and !$opt_c and !$opt_C) {
@@ -302,12 +302,12 @@ sub usage
         print "$progname: $msg\n";
     }
 
-    print "Usage: $progname [-hV] -p <parcel path> -n <hostname> -a|-r <nonce>|-R|-c|-C <nonce>\n";
+    print "Usage: $progname [-hV] -p <parcel path> [-n <hostname>] -a|-r <nonce>|-R|-c|-C <nonce>\n";
     print "Options:\n";
     print "  -h    Print this message\n";
     print "  -V    Be verbose\n";
     print "  -p    Relative parcel path (userid/parcelname)\n";    
-    print "  -n    Client host name\n";    
+    print "  -n    Client host name (required in acquire/release modes)\n";
     print "Specify exactly one of the following commands:\n";
     print "  -a          Acquire lock and return nonce on stdout\n";
     print "  -r <nonce>  Release lock after checking <nonce>\n";
