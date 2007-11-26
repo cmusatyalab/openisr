@@ -19,26 +19,19 @@
 # Standard prologue
 ###################
 use strict;
-use File::Basename;
-use Sys::Hostname;
 
 ####################
 # Begin main routine
 ####################
-my $parcelpath;
-my $verbose;
-my $parceldir;
 my $parcelname;
 my $username;
-my $homedir;
 my $motdfile;
-my %config = get_config();
 
 #
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hVu:p:');
+getopts('hu:p:');
 
 if ($opt_h) {
     usage();
@@ -52,16 +45,11 @@ if (!$opt_u) {
 }
 $parcelname = $opt_p;
 $username = $opt_u;
-$verbose = $opt_V;
 use strict 'vars';
 
 #
 # Set some variables that we'll need later
 #
-$homedir = $ENV{HOME};
-if ($username ne basename($homedir)) {
-    errexit("The user name on the command line ($username) is inconsistent with the home directory ($homedir).");
-}
 $motdfile = "/etc/openisr/motd";
 
 #
@@ -98,14 +86,11 @@ sub usage
         print "$progname: $msg\n";
     }
 
-    print "Usage: $progname [-hV] -p <parcel> -u <user>\n";
+    print "Usage: $progname [-h] -p <parcel> -u <user>\n";
     print "Options:\n";
     print "  -h    Print this message\n";
     print "  -p    Parcel name\n";    
     print "  -u    User name\n";    
-    print "  -V    Be verbose\n";
     print "\n";
     exit 0;
 }
-
-
