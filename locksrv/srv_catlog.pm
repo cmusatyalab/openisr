@@ -31,7 +31,7 @@ use Sys::Hostname;
 my $srcfile;
 my $userid;
 my $parcel;
-my $userdir;
+my $parceldir;
 my $line;
 my %config = get_config();
 
@@ -59,19 +59,19 @@ $parcel = $opt_p;
 use strict 'vars';
 
 # Set some variable names
-$userdir = "$config{content_root}/$userid/$parcel";
+$parceldir = "$config{content_root}/$userid/$parcel";
 
 # Cat the session log to the parcel log and delete session log
-open(INFILE, "$userdir/$srcfile") 
+open(INFILE, "$parceldir/$srcfile") 
     or errexit("Unable to open session log ($srcfile) for reading");
-open(OUTFILE, ">>$userdir/session.log") 
+open(OUTFILE, ">>$parceldir/session.log") 
     or errexit("Unable to open user log for appending");
 while ($line = <INFILE>) {
     print OUTFILE $line;
 }
 close(INFILE);
 close(OUTFILEFILE);
-unlink("$userdir/$srcfile");
+unlink("$parceldir/$srcfile");
 exit 0;
 
 
