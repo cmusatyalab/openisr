@@ -46,7 +46,6 @@ sub stored_nonce ($) {
 # Variables
 #
 my $parceldir;
-my $parcelpath;
 my $parcelname;
 my $serverhostname;
 my $userid;
@@ -71,13 +70,16 @@ my %config = get_config();
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hVp:n:ar:RcC:');
+getopts('hVu:p:n:ar:RcC:');
 
 if ($opt_h) {
     usage();
 }
+if (!$opt_u) {
+    $opt_u = $ENV{"USER"};
+}
 if (!$opt_p) {
-    usage("Missing parcel path (-p)");
+    usage("Missing parcel name (-p)");
 }
 if (($opt_a or $opt_r or $opt_R) and !$opt_n) {
     usage("Missing client host name (-n)");
@@ -85,7 +87,8 @@ if (($opt_a or $opt_r or $opt_R) and !$opt_n) {
 if (!$opt_a and !$opt_r and !$opt_R and !$opt_c and !$opt_C) {
     usage("Must specify either -a, -r <nonce>, -R, -c, or -C <nonce>.");
 }
-$parcelpath = $opt_p;
+$userid = $opt_u;
+$parcelname = $opt_p;
 $clienthostname = $opt_n;
 $acquire = $opt_a;
 $release = $opt_r;
@@ -98,7 +101,7 @@ use strict 'vars';
 #
 # Make sure the parcel directory exists
 #
-$parceldir = "$config{content_root}/$parcelpath";
+$parceldir = "$config{content_root}/$userid/$parcelname";
 (-e $parceldir)
     or errexit("Parcel $parceldir does not exist");
 
@@ -109,7 +112,6 @@ $lockfile = "$parceldir/LOCK";
 $logfile = "$parceldir/lockholder.log";
 $noncefile = "$parceldir/nonce";
 $serverhostname = hostname();
-($userid, $parcelname) = split("/", $parcelpath);
 
 #
 # If the logfile doesn't exist then create an empty one
@@ -138,7 +140,7 @@ if ($acquire) {
 	    errexit("Unable to acquire lock for $parcelname because lock is currently held by $userid on $clienthostname since $datestring.");
 	}
 	else {
-	    errexit("Unable to lock $parcelpath (reason unknown).");
+	    errexit("Unable to lock $userid/$parcelname (reason unknown).");
 	}
     }
 
@@ -302,12 +304,13 @@ sub usage
         print "$progname: $msg\n";
     }
 
-    print "Usage: $progname [-hV] -p <parcel path> [-n <hostname>] -a|-r <nonce>|-R|-c|-C <nonce>\n";
+    print "Usage: $progname [-hV] [-u <userid>] -p <parcel> [-n <hostname>] -a|-r <nonce>|-R|-c|-C <nonce>\n";
     print "Options:\n";
-    print "  -h    Print this message\n";
-    print "  -V    Be verbose\n";
-    print "  -p    Relative parcel path (userid/parcelname)\n";    
-    print "  -n    Client host name (required in acquire/release modes)\n";
+    print "  -h          Print this message\n";
+    print "  -V          Be verbose\n";
+    print "  -u <user>   Username for this parcel (default is $ENV{'USER'})\n";
+    print "  -p <parcel> Parcel name\n";    
+    print "  -n <name>   Client host name (required in acquire/release modes)\n";
     print "Specify exactly one of the following commands:\n";
     print "  -a          Acquire lock and return nonce on stdout\n";
     print "  -r <nonce>  Release lock after checking <nonce>\n";

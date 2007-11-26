@@ -640,7 +640,7 @@ sub checkout () {
     print("Acquiring lock from server.\n")
 	if $verbose;
 
-    if (isr_srun("lock", "-p $userid/$parcel -n $clientname -a",
+    if (isr_srun("lock", "-p $parcel -n $clientname -a",
 		 "$isrdir/$parcel-nonce", 0) != 0) {
 	unlink("$isrdir/$parcel-nonce");
 	errexit("Unable to acquire lock for $parcel.");
@@ -881,7 +881,7 @@ sub sync ($) {
     my $i;
 
     # Do an early check to make sure we still have the parcel lock
-    isr_srun("lock", "-p $userid/$parcel -C $sessionid", "", 0) == 0
+    isr_srun("lock", "-p $parcel -C $sessionid", "", 0) == 0
 	or errexit("Parcel lock no longer held; aborting");
 
     if (!-e $cleancache_file) {
@@ -1547,14 +1547,14 @@ sub clean ($) {
 
     if ($nonce) {
         # If the caller supplied a nonce, then request a soft release
-	if (isr_srun("lock", "-p $userid/$parcel -n $clientname -r $nonce", 
+	if (isr_srun("lock", "-p $parcel -n $clientname -r $nonce", 
 		     "", 0) != 0) {
 	    err("Unable to release lock for $parcel. Use 'isr clean' to force the release.");
 	    $ret = -1;
 	}
     } else {
         # No nonce supplied, request a hard release
-	if (isr_srun("lock", "-p $userid/$parcel -n $clientname -R", "", 0)
+	if (isr_srun("lock", "-p $parcel -n $clientname -R", "", 0)
 	    	!= 0) {
 	    err("Unable to release lock for $parcel.");
 	    $ret = -1;

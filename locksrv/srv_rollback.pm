@@ -33,7 +33,6 @@ use sigtrap qw(die normal-signals);
 # Variables
 #
 my $username;
-my $parcelpath;
 my $hostname;
 my $verbose;
 my $parceldir;
@@ -98,8 +97,7 @@ if (!$parcel) {
 if (!$targetver or $targetver < 1) {
     usage("Missing or incorrect target version number (-v)");
 }
-$parcelpath = "$username/$parcel";
-$parceldir = "$config{content_root}/$parcelpath";
+$parceldir = "$config{content_root}/$username/$parcel";
 $verbose = $opt_V;
 use strict 'vars';
 
@@ -116,7 +114,7 @@ $hostname = hostname();
 # Acquire the lock (if not called with -N)
 # 
 if ($lock) {
-    $nonce = `isr_runserv lock -p $parcelpath -n $hostname -a`;
+    $nonce = `isr_runserv lock -u $username -p $parcel -n $hostname -a`;
     if ($? != 0) {
 	undef $nonce;
 	errexit("Unable to acquire lock.");
@@ -125,7 +123,7 @@ if ($lock) {
     print("Acquired lock.\n")
 	if $verbose;
 } else {
-    system("isr_runserv lock -p $parcelpath -C $nonce") == 0
+    system("isr_runserv lock -u $username -p $parcel -C $nonce") == 0
         or errexit("Parcel not checked out or nonce invalid");
 }
 
@@ -337,7 +335,7 @@ END {
     # Release the lock if we had already acquired it
     #
     if ($lock and $nonce) {
-	if (system("isr_runserv lock -p $parcelpath -n $hostname -r $nonce") == 0) {
+	if (system("isr_runserv lock -u $username -p $parcel -n $hostname -r $nonce") == 0) {
 	    print("Released the lock.\n")
 		if $verbose;
 	} else {

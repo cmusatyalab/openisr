@@ -76,7 +76,7 @@ use strict 'vars';
 #
 # Make sure the nonce matches
 #
-system("isr_runserv lock -p $username/$parcelname -C $nonce") == 0
+system("isr_runserv lock -u $username -p $parcelname -C $nonce") == 0
     or errexit("Parcel is not checked out or nonce does not match");
 
 #
