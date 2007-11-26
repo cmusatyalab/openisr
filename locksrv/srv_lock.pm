@@ -21,6 +21,23 @@
 use strict;
 use Sys::Hostname;
 
+##################
+# Helper functions
+##################
+
+sub stored_nonce ($) {
+    my $noncefile = shift;
+    my $found;
+    
+    open(NONCEFILE, $noncefile)
+	or errexit("Unable to open nonce file $noncefile");
+    $found = <NONCEFILE>;
+    chomp($found);
+    close(NONCEFILE)
+	or errexit("Unable to close nonce file $noncefile");
+    return $found;
+}
+
 ####################
 # Begin main routine
 ####################
@@ -44,6 +61,7 @@ my $acquire;
 my $release;
 my $hard_release;
 my $check;
+my $check_nonce;
 my $line;
 my $action;
 my $unused;
@@ -53,7 +71,7 @@ my %config = get_config();
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hVp:n:ar:Rc');
+getopts('hVp:n:ar:RcC:');
 
 if ($opt_h) {
     usage();
@@ -64,8 +82,8 @@ if (!$opt_p) {
 if (!$opt_n) {
     usage("Missing client host name (-n)");
 }
-if (!$opt_a and !$opt_r and !$opt_R and !$opt_c) {
-    usage("Must specify either -a, -r <nonce>, -R, or -c.");
+if (!$opt_a and !$opt_r and !$opt_R and !$opt_c and !$opt_C) {
+    usage("Must specify either -a, -r <nonce>, -R, -c, or -C <nonce>.");
 }
 $parcelpath = $opt_p;
 $clienthostname = $opt_n;
@@ -73,6 +91,7 @@ $acquire = $opt_a;
 $release = $opt_r;
 $hard_release = $opt_R;
 $check = $opt_c;
+$check_nonce = $opt_C;
 $verbose = $opt_V;
 use strict 'vars';
 
@@ -151,19 +170,10 @@ if ($acquire) {
 # Release a lock
 ################
 if ($release or $hard_release) {
-
     # Compare nonce stored on server with the one passed on command line
     # Don't do any checking if we are asked to do a hard release 
-    if ($release) {
-	open(NONCEFILE, $noncefile)
-	    or errexit("Unable to open nonce file $noncefile");
-	$server_nonce = <NONCEFILE>;
-	chomp($server_nonce);
-	close(NONCEFILE)
-	    or errexit("Unable to close nonce file $noncefile");
-	if ($release ne $server_nonce) {
-	    errexit("Unable to release lock because the nonce passed on the command line does not match the nonce stored on the server.");
-	}
+    if ($release and stored_nonce($noncefile) != $release) {
+	errexit("Unable to release lock because the nonce passed on the command line does not match the nonce stored on the server.");
     }
     unlink($noncefile);
 
@@ -198,16 +208,16 @@ if ($release or $hard_release) {
 # Note: To be consistent with the lockfile command, we return 0 if lock
 # exists (success), 1 if lock does not exist (failure). 
 #
-$line = get_last_entry($logfile);
-if ($check) {    
+if ($check or $check_nonce) {
+    $line = get_last_entry($logfile);
+    print("$line\n")
+	if $verbose;
+
     if (-e $lockfile) {
-	print("$line\n")
-	    if $verbose;
+	exit 1
+	    if $check_nonce and stored_nonce($noncefile) != $check_nonce;
 	exit 0;
-    }
-    else {
-	print("$line\n")
-	    if $verbose;
+    } else {
 	exit 1;
     }
 }
@@ -292,7 +302,7 @@ sub usage
         print "$progname: $msg\n";
     }
 
-    print "Usage: $progname [-hV] -p <parcel path> -n <hostname> -a|-r <nonce>|-R|-c\n";
+    print "Usage: $progname [-hV] -p <parcel path> -n <hostname> -a|-r <nonce>|-R|-c|-C <nonce>\n";
     print "Options:\n";
     print "  -h    Print this message\n";
     print "  -V    Be verbose\n";
@@ -303,6 +313,7 @@ sub usage
     print "  -r <nonce>  Release lock after checking <nonce>\n";
     print "  -R          Release lock without checking nonce\n";
     print "  -c          Check lock\n";
+    print "  -C <nonce>  Check lock against <nonce>\n";
     print "\n";
     exit 0;
 }
