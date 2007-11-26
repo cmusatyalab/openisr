@@ -605,7 +605,7 @@ sub checkout () {
     # Fetch and print message-of-the-day from the server
     print "Connecting to server.\n"
     	if $verbose;
-    isr_srun("motd", "-p $parcel -u $userid", "", 0) == 0
+    isr_srun("motd", "-p $parcel", "", 0) == 0
 	or system_err("Couldn't read message of the day from the server ($server).");
 
     # Fetch and parse the config file from the server
@@ -662,8 +662,8 @@ sub checkout () {
 	}
 	print("Rolling back to version $version.\n")
 	    if $verbose;
-	if (isr_srun("rollback", "-u $userid -p $parcel -v $version " .
-	             "-N $sessionid", "", 0) != 0) {
+	if (isr_srun("rollback", "-p $parcel -v $version -N $sessionid",
+	             "", 0) != 0) {
 	    clean(0);
 	    errexit("Unable to roll back to version $version");
 	}
@@ -921,7 +921,7 @@ sub sync ($) {
     # Retry if the put operation fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
 	if (mysystem("rsync -e ssh --partial -z $vflag $bwflag $isrdir/$uuid.log $userid\@$cfg{WPATH}/session.log.new") == 0) {
-	    if (isr_srun("catlog", "-u $userid -p $parcel -f session.log.new", "", 0) == 0) {
+	    if (isr_srun("catlog", "-p $parcel -f session.log.new", "", 0) == 0) {
 		unlink("$isrdir/$uuid.log");
 		last;
 	    }
@@ -1020,7 +1020,7 @@ sub listparcels () {
     # Run the remote ls program on the server.  Pass through server
     # errors without further comment.
     print "Parcels for $userid on server $server:\n";
-    isr_srun("ls", "-u $userid $lsargs", "", 0);
+    isr_srun("ls", "$lsargs", "", 0);
 }
 
 #
@@ -1137,7 +1137,7 @@ sub checkparcel () {
 	    $flags .= " -c";
 	}
 	
-	isr_srun("checkparcel", "-u $userid -p $parcel -V $flags", "", 0) == 0
+	isr_srun("checkparcel", "-p $parcel -V $flags", "", 0) == 0
 	     or errexit("There is something wrong with parcel $userid/$parcel on the server.");
         
 	print(GREEN, "Success: The parcel $userid/$parcel looks OK on the server.\n", RESET)
@@ -2473,7 +2473,7 @@ sub isr_srun ($$$$) {
 # isr_connected_parcel - Return true if parcel exists in remote store
 #
 sub isr_connected_parcel () {
-    isr_srun("ls", "-u $userid -p $parcel", "/dev/null", 1) == 0
+    isr_srun("ls", "-p $parcel", "/dev/null", 1) == 0
         or return 0;
     return 1;
 }
@@ -2714,24 +2714,24 @@ sub isr_priv_commit () {
     }
 
     # Check the current version of the parcel for consistency
-    isr_srun("checkparcel", "-u $userid -p $parcel", "", 0) == 0
+    isr_srun("checkparcel", "-p $parcel", "", 0) == 0
 	or errexit("There is something wrong with the remote parcel. Aborting with no change to the remote parcel.");
 
     #
     # Trigger the server-side commit.
     #
     print("Checking uploaded cache dir before committing...\n");
-    isr_srun("checkparcel", "-s $sessionid -u $userid -p $parcel", "", 0) == 0
+    isr_srun("checkparcel", "-s $sessionid -p $parcel", "", 0) == 0
 	or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
     print("Committing updates on server...\n")
 	if $verbose;
     message("Begin server side commit");
-    isr_srun("commit", "-u $userid -p $parcel -N $sessionid", "", 0) == 0
+    isr_srun("commit", "-p $parcel -N $sessionid", "", 0) == 0
 	or errexit("Server-side commit of parcel $userid/$parcel failed.");
     message("End server side commit");
 
     # Check the newly committed version for consistency
-    isr_srun("checkparcel", "-u $userid -p $parcel", "", 0) == 0
+    isr_srun("checkparcel", "-p $parcel", "", 0) == 0
 	 or errexit("Something went wrong during commit.  Remote parcel is inconsistent.");
 }
 
