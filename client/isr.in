@@ -662,8 +662,8 @@ sub checkout () {
 	}
 	print("Rolling back to version $version.\n")
 	    if $verbose;
-	if (isr_srun("rollback", "-u $userid -p $parcel -v $version",
-		     "", 0) != 0) {
+	if (isr_srun("rollback", "-u $userid -p $parcel -v $version " .
+	             "-N $sessionid", "", 0) != 0) {
 	    clean(0);
 	    errexit("Unable to roll back to version $version");
 	}
@@ -879,6 +879,10 @@ sub sync ($) {
     my $vflag = "-q";
     my $bwflag = "";
     my $i;
+
+    # Do an early check to make sure we still have the parcel lock
+    isr_srun("lock", "-p $userid/$parcel -C $sessionid", "", 0) == 0
+	or errexit("Parcel lock no longer held; aborting");
 
     if (!-e $cleancache_file) {
 	# Upload the dirty blocks in a cache directory on the server
@@ -2618,7 +2622,7 @@ sub isr_priv_upload () {
     # Retry if the upload fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
 	last
-	    if mysystem("rsync -e ssh --delete --partial --recursive -z $vflag $bwflag $uploaddir/ $userid\@$cfg{WPATH}/cache") == 0;
+	    if mysystem("rsync -e ssh --delete --partial --recursive -z $vflag $bwflag $uploaddir/ $userid\@$cfg{WPATH}/cache/$sessionid") == 0;
 	print "[isr] upload failed. Retrying...\n"
 	    if $verbose;
     }
@@ -2717,12 +2721,12 @@ sub isr_priv_commit () {
     # Trigger the server-side commit.
     #
     print("checking uploaded cache dir before committing...\n");
-    isr_srun("checkparcel", "-s -u $userid -p $parcel", "", 0) == 0
+    isr_srun("checkparcel", "-s $sessionid -u $userid -p $parcel", "", 0) == 0
 	or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
     print("Committing updates on server...\n")
 	if $verbose;
     message("Begin server side commit");
-    isr_srun("commit", "-u $userid -p $parcel", "", 0) == 0
+    isr_srun("commit", "-u $userid -p $parcel -N $sessionid", "", 0) == 0
 	or errexit("Server-side commit of parcel $userid/$parcel failed.");
     message("End server side commit");
 
