@@ -464,6 +464,8 @@ sub init_parceldir ($$) {
     # Create empty directories for the parcel
     mkdir($parceldir)
 	or unix_errexit("Unable to make directory $parceldir.");
+    mkdir("$parceldir/cache")
+	or unix_errexit("Unable to make directory $parceldir/cache.");
     $umask = umask(0077);
     mkdir($parcelcfgdir)
 	or unix_errexit("Unable to make directory $parcelcfgdir.");

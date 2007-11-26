@@ -201,7 +201,6 @@ unlink($targetkeyring, $lastkeyring);
 $cachedir = "$parceldir/cache/$nonce";
 system("rm -rf $cachedir") == 0
     or system_errexit("Unable to remove $cachedir");
-mkdir("$parceldir/cache");
 mkdir($cachedir);
 mkdir("$cachedir/hdk");
 -d "$cachedir/hdk"

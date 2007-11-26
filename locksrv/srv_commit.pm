@@ -201,7 +201,7 @@ symlink(sprintf("%06d", $nextver), "$parceldir/last")
 #
 # Remove old partial uploads that may still be hanging around
 #
-system("rm -rf $parceldir/cache");
+system("rm -rf $parceldir/cache/*");
 
 #
 # Clean up and exit

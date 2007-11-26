@@ -129,6 +129,12 @@ if ($filename ne sprintf("%06d", $lastver)) {
     errexit("Parcel misconfigured: last link does not point to last.");
 }
 
+#
+# Make sure there is a cache directory
+#
+-d "$parceldir/cache"
+    or errexit("Parcel misconfigured: $parceldir/cache does not exist");
+
 # 
 # Set the current version (default is the most recent)
 #

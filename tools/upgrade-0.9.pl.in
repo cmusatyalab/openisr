@@ -77,7 +77,7 @@ EOF
 sub init_dest {
 	print "Initializing destination directory...\n";
 	die "Destination $dst already exists" if -e $dst;
-	mkpath $dst;
+	mkpath "$dst/cache";
 	copy("$src/lockholder.log", "$dst/lockholder.log") or die;
 	die if ! -l "$src/last";
 	symlink(readlink("$src/last"), "$dst/last") or die;
