@@ -41,7 +41,7 @@ if (!$opt_p) {
     usage("Missing parcel name (-p)");
 }
 if (!$opt_u) {
-    usage("Missing user name (-u)");
+    $opt_u = $ENV{"USER"};
 }
 $parcelname = $opt_p;
 $username = $opt_u;
@@ -86,11 +86,11 @@ sub usage
         print "$progname: $msg\n";
     }
 
-    print "Usage: $progname [-h] -p <parcel> -u <user>\n";
+    print "Usage: $progname [-h] [-u <userid>] -p <parcel>\n";
     print "Options:\n";
     print "  -h    Print this message\n";
+    print "  -u    User name (default is $ENV{'USER'})\n";
     print "  -p    Parcel name\n";    
-    print "  -u    User name\n";    
     print "\n";
     exit 0;
 }

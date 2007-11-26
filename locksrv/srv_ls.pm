@@ -48,7 +48,7 @@ if ($opt_h) {
     usage();
 }
 if (!$opt_u) {
-    usage("Missing user name (-u)");
+    $opt_u = $ENV{"USER"};
 }
 $longvers = $opt_L;  # Use long format using specific number of versions
 $username = $opt_u;
@@ -209,12 +209,12 @@ sub usage
         print "$progname: $msg\n\n";
     }
     
-    print "Usage: $progname [-h] [-L <n>] -u <username> [-p <parcel>]\n";
+    print "Usage: $progname [-h] [-L <n>] [-u <username>] [-p <parcel>]\n";
     print "Options:\n";
     print "  -h              Print this message\n";
     print "  -L <n>          List the <n> most recent versions\n";  
-    print "  -p <parcel>     Parcel name\n";  
-    print "  -u <username>   User name\n";  
+    print "  -u <username>   User name (default is $ENV{'USER'})\n";
+    print "  -p <parcel>     Parcel name\n";
     print "\n";
     exit 0;
 }

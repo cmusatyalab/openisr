@@ -45,7 +45,7 @@ if ($opt_h) {
     usage();
 }
 if (!$opt_u) {
-    usage("Missing userid (-u)");
+    $opt_u = $ENV{"USER"};
 }
 if (!$opt_p) {
     usage("Missing parcel name (-p)");
@@ -92,11 +92,11 @@ sub usage
         print "$progname: $msg\n\n";
     }
     
-    print "Usage: $progname [-h] -u <userid> -p <parcel> -f <file>\n";
+    print "Usage: $progname [-h] [-u <userid>] -p <parcel> -f <file>\n";
     print "Options:\n";
     print "  -h           Print this message\n";
     print "  -f <file>    Session log to append to parcel log\n";
-    print "  -u <userid>  User ID for this parcel\n";
+    print "  -u <userid>  User ID for this parcel (default is $ENV{'USER'})\n";
     print "  -p <parcel>  Parcel name\n";
     print "\n";
     exit 0;
