@@ -860,7 +860,7 @@ sub checkin () {
     # (soft release)
     print "Releasing parcel lock...\n"
 	if $verbose;
-    if (clean($sessionid) == 0) {
+    if (clean(0) == 0) {
 	print(GREEN, "Success: Parcel $userid/$parcel is now checked in (and lock released).\n", RESET)
 	    if $verbose;
     } else {
@@ -1386,7 +1386,7 @@ sub cleanclient() {
     # Remove the parcel's session state
     print("Removing session state and releasing server lock...\n")
 	if $verbose;
-    if (clean(0)) {
+    if (clean(1)) {
 	return;
     }
 
@@ -1524,7 +1524,7 @@ sub release_locks () {
 #         (with nonce) or hard (no nonce) release of its lock.
 #
 sub clean ($) {
-    my $nonce = shift;     # nonce (optional)
+    my $force = shift;     # do a hard release
 
     my $ret = 0;
     my $clientname = hostname();
@@ -1545,15 +1545,15 @@ sub clean ($) {
 	}
     }
 
-    if ($nonce) {
-        # If the caller supplied a nonce, then request a soft release
-	if (isr_srun("lock", "-p $parcel -n $clientname -r $nonce", 
+    if (!$force) {
+        # Request a soft release
+	if (isr_srun("lock", "-p $parcel -n $clientname -r $sessionid", 
 		     "", 0) != 0) {
 	    err("Unable to release lock for $parcel. Use 'isr clean' to force the release.");
 	    $ret = -1;
 	}
     } else {
-        # No nonce supplied, request a hard release
+        # Request a hard release
 	if (isr_srun("lock", "-p $parcel -n $clientname -R", "", 0)
 	    	!= 0) {
 	    err("Unable to release lock for $parcel.");
