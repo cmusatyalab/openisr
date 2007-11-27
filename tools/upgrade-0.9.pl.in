@@ -208,6 +208,7 @@ opendir(SRC, $src) || die "Can't open directory $src";
 @versions = sort grep {/[0-9]+/} readdir SRC or die;
 closedir(SRC);
 
+umask 0077;
 gen_keyroot;
 process_parcel_cfg;
 init_dest;
@@ -220,5 +221,7 @@ foreach my $ver (@versions) {
 	rewrite_keyring $ver;
 	finish_version $ver;
 }
+print "Finishing up...\n";
 unlink("$dst/mapdb") == 1 or die;
+system("chmod -R g+rX,o+rX $dst") == 0 or die;
 print "Upgrade complete\n";
