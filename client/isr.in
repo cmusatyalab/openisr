@@ -180,6 +180,7 @@ my $parceldir;       # Path to parcel directory (named after its UUID)
 my $uploaddir;       # Path to dir to be rsynced to the server at upload
 my $hoarddir;        # Path to hoard cache directory
 my $imgbase;         # Path to hoard image w/o the file extension (.cfg, .key)
+my $logfile;         # Path to the log file for this parcel
 my $cleancache_file; # Path to flag that local cache is clean vs. server
 my $cdcache_file;    # Path to flag that upload directory is consistent
 
@@ -920,9 +921,9 @@ sub sync ($) {
 
     # Retry if the put operation fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
-	if (mysystem("rsync -e ssh --partial -z $vflag $bwflag $isrdir/$uuid.log $userid\@$cfg{WPATH}/session.log.new") == 0) {
+	if (mysystem("rsync -e ssh --partial -z $vflag $bwflag $logfile $userid\@$cfg{WPATH}/session.log.new") == 0) {
 	    if (isr_srun("catlog", "-p $parcel -f session.log.new", "", 0) == 0) {
-		unlink("$isrdir/$uuid.log");
+		unlink($logfile);
 		last;
 	    }
 	}
@@ -1598,6 +1599,7 @@ sub set_parcel_globals {
     }
     $uploaddir = "$parceldir/upload";
     $imgbase = "$hoarddir/img/$uuid";
+    $logfile = "$isrdir/logs/$uuid";
     # Existence of this file is a flag indicating that the local cache
     # is identical to the most recent checkin.
     $cleancache_file = "$parceldir/clean-cache-flag";
@@ -1882,7 +1884,7 @@ sub check_for_old_isrdir () {
     opendir(IDIR, $isrdir)
         or errexit("Couldn't read $isrdir");
     while ($ientry = readdir(IDIR)) {
-        next if valid_uuid($ientry) or $ientry =~ /^hoard|locks$/;
+        next if valid_uuid($ientry) or $ientry =~ /^hoard|locks|logs$/;
         next if ! -d "$isrdir/$ientry" or $ientry =~ /^\.{1,2}$/;
         opendir(UDIR, "$isrdir/$ientry")
             or errexit("Couldn't read $isrdir/$ientry");
@@ -2309,7 +2311,7 @@ sub system_errexit ($) {
 sub message ($) {
     my $msg = shift;
 
-    my $logdir = "$ENV{HOME}/.isr";
+    my $logdir = "$ENV{HOME}/.isr/logs";
     my @time = gettimeofday();
     my $ms = sprintf("%.3d", int($time[1] / 1000));
     my $date = strftime("%b %d %Y %H:%M:%S.$ms", localtime($time[0]));
@@ -2317,12 +2319,16 @@ sub message ($) {
     my $file;
 
     if ($uuid) {
-	push @logs, "$logdir/$uuid.log";
+	mktree($logdir)
+	    or unix_errexit("Couldn't make directory $logdir");
+	push @logs, "$logdir/$uuid";
     } else {
+	# No sense creating the directory, since we won't be writing to
+	# anything in it
 	opendir(DIR, $logdir)
 	    or return;
 	while ($file = readdir(DIR)) {
-	    if ($file =~ /\.log$/) {
+	    if (-f "$logdir/$file") {
 		push @logs, "$logdir/$file";
 	    }
 	}
@@ -2534,7 +2540,7 @@ sub isr_parcelkeeper_cmd ($$) {
     }
     
     if ($do_log) {
-	$cmd .= " --log $isrdir/$uuid.log --log-filter $syscfg{logmask} --stderr-filter $syscfg{console_logmask}";
+	$cmd .= " --log $logfile --log-filter $syscfg{logmask} --stderr-filter $syscfg{console_logmask}";
     } else {
 	$cmd .= " --stderr-filter $syscfg{console_logmask}";
     }
