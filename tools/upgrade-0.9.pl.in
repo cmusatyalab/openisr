@@ -13,6 +13,7 @@
 use File::Copy;
 use File::Path;
 use File::stat;
+use Fcntl;
 use strict;
 use warnings;
 
@@ -26,6 +27,25 @@ our $bindir = "!!LIBDIR!!";
 our @versions;
 our %parcelcfg;
 our $new_keyroot;
+
+# Return a handle to a pipe, and its corresponding fd, from which can be read
+# the specified string
+sub keyroot_pipe {
+	my $keyroot = shift;
+
+	my $rh;
+	my $wh;
+	my $flags;
+
+	# Each end is automatically closed when it goes out of scope
+	pipe($rh, $wh) or die;
+	# Clear close-on-exec flag for the read end
+	$flags = fcntl($rh, F_GETFD, 0);
+	fcntl($rh, F_SETFD, $flags & ~FD_CLOEXEC);
+	print $wh "$keyroot\n";
+	# We can't just return fileno($rh) because $rh would drop out of scope
+	return ($rh, fileno($rh));
+}
 
 sub gen_keyroot {
 	open(KR, "-|", "openssl rand -rand /dev/urandom -base64 15 2>/dev/null")
@@ -86,17 +106,21 @@ sub init_dest {
 sub prepare_version {
 	my $ver = shift;
 	my $keyroot = $parcelcfg{"KEYROOT"};
+	my $rh;
+	my $fd;
 
 	print "Unpacking version $ver...\n";
 	die unless -e "$src/$ver/cfg.tgz.enc" && -e "$src/$ver/keyring.enc";
 	mkpath "$dst/$ver";
+	($rh, $fd) = keyroot_pipe($keyroot);
 	system("openssl enc -d -bf -in '$src/$ver/cfg.tgz.enc' " .
-				"-pass 'pass:$keyroot' -nosalt | " .
+				"-pass 'fd:$fd' -nosalt | " .
 				"tar xzC '$dst/$ver'") == 0 or die;
 	if (! -e "$dst/$ver/cfg/keyring.bin") {
+		($rh, $fd) = keyroot_pipe($keyroot);
 		system("openssl enc -d -bf -in '$src/$ver/keyring.enc' " .
 				"-out '$dst/$ver/keyring.old' " .
-				"-pass 'pass:$keyroot' -nosalt") == 0
+				"-pass 'fd:$fd' -nosalt") == 0
 				or die;
 	}
 }
@@ -166,6 +190,8 @@ sub finish_version {
 	my $pattern;
 	my $file;
 	my $stat;
+	my $rh;
+	my $fd;
 
 	print "Packing version $ver...\n";
 	opendir(CFG, "$dst/$ver/cfg") or die;
@@ -184,12 +210,14 @@ sub finish_version {
 			print "Unknown file in $ver/cfg: $file\n";
 		}
 	}
+	($rh, $fd) = keyroot_pipe($new_keyroot);
 	system("tar cC '$dst/$ver' cfg | gzip -c9 | openssl enc " .
 				"-aes-128-cbc -out '$dst/$ver/cfg.tgz.enc' " .
-				"-pass 'pass:$new_keyroot' -salt") == 0 or die;
+				"-pass 'fd:$fd' -salt") == 0 or die;
+	($rh, $fd) = keyroot_pipe($new_keyroot);
 	system("openssl enc -aes-128-cbc -in '$dst/$ver/keyring' " .
 			"-out '$dst/$ver/keyring.enc' " .
-			"-pass 'pass:$new_keyroot' -salt") == 0 or die;
+			"-pass 'fd:$fd' -salt") == 0 or die;
 	unlink("$dst/$ver/keyring") or die;
 	system("rm -rf '$dst/$ver/cfg'") == 0 or die;
 	$stat = stat("$src/$ver/keyring.enc") or die;
