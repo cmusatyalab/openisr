@@ -9,10 +9,13 @@
  * ACCEPTANCE OF THIS AGREEMENT
  */
 
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <sys/time.h>
 #include <time.h>
 #include "defs.h"
@@ -31,6 +34,39 @@ static void curtime(char *buf, unsigned buflen)
 	strftime(buf, buflen, fmt, &tm);
 }
 
+static void open_log(void)
+{
+	state.log_fp=fopen(config.log_file, "a");
+	if (state.log_fp == NULL)
+		pk_log(LOG_ERROR, "Couldn't open log file %s",
+					config.log_file);
+}
+
+static void close_log(void)
+{
+	fclose(state.log_fp);
+	state.log_fp=NULL;
+}
+
+static void check_log(void)
+{
+	struct stat st;
+
+	if (state.log_fp == NULL)
+		return;
+	if (fstat(fileno(state.log_fp), &st)) {
+		close_log();
+		pk_log(LOG_ERROR, "Couldn't stat log file %s",
+					config.log_file);
+		return;
+	}
+	if (st.st_nlink == 0) {
+		close_log();
+		open_log();
+		pk_log(LOG_INFO, "Log file disappeared; reopening");
+	}
+}
+
 void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
 {
 	va_list ap;
@@ -38,6 +74,7 @@ void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
 
 	if (state.log_fp != NULL && ((1 << type) & config.log_file_mask)) {
 		curtime(buf, sizeof(buf));
+		check_log();
 		/* Ignore errors; it's better to write the log entry unlocked
 		   than to drop it on the floor */
 		get_file_lock(fileno(state.log_fp),
@@ -69,22 +106,16 @@ void log_start(void)
 	state.pk_pid=getpid();
 	/* stderr is unbuffered by default */
 	setlinebuf(stderr);
-	if (config.log_file != NULL && config.log_file_mask) {
-		state.log_fp=fopen(config.log_file, "a");
-		if (state.log_fp == NULL)
-			pk_log(LOG_ERROR, "Couldn't open log file %s",
-						config.log_file);
-	}
+	if (config.log_file != NULL && config.log_file_mask)
+		open_log();
 	pk_log(LOG_INFO, "Parcelkeeper starting in %s mode", config.modename);
 }
 
 void log_shutdown(void)
 {
 	pk_log(LOG_INFO, "Parcelkeeper shutting down");
-	if (state.log_fp != NULL) {
-		fclose(state.log_fp);
-		state.log_fp=NULL;
-	}
+	if (state.log_fp != NULL)
+		close_log();
 }
 
 static pk_err_t parse_logtype(char *name, enum pk_log_type *out)
