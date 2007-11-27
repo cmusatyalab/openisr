@@ -428,12 +428,12 @@ if ($command eq "checkout") {
     # If the parcel isn't checked out, we don't know the UUID, so we take
     # a "checkout lock" by parcel name.  This means that two different
     # parcels with the same name can't be in "checkout" at the same time.
-    acquire_lock("$isrdir/checkout-$parcel.lock", "Checkout", 0);
+    acquire_lock("checkout-$parcel", "Checkout", 0);
     checkout();
     release_lock("Checkout");
     if ($disconnected) {
-	acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
-	acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
+	acquire_lock("parcel-$uuid", "Parcel", 0);
+	acquire_lock("hoard-$uuid", "Hoard cache", 0);
 	disconnect();
     }
 } 
@@ -446,12 +446,12 @@ elsif ($command eq "resume") {
         if !$parceldir or !-e $parceldir or !$disconnected
 	    or !is_fully_hoarded();
     $do_sync = 1;
-    acquire_lock("$isrdir/checkout-$parcel.lock", "Checkout", 0);
+    acquire_lock("checkout-$parcel", "Checkout", 0);
     checkout();
     release_lock("Checkout");
-    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
+    acquire_lock("parcel-$uuid", "Parcel", 0);
     if ($disconnected) {
-	acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
+	acquire_lock("hoard-$uuid", "Hoard cache", 0);
 	disconnect();
 	release_lock("Hoard cache");
     }
@@ -462,7 +462,7 @@ elsif ($command eq "checkin") {
     need_checked_out();
     need_network();
     $do_sync = 1;
-    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
+    acquire_lock("parcel-$uuid", "Parcel", 0);
     checkin();
 } 
 elsif ($command eq "sync") {
@@ -470,14 +470,14 @@ elsif ($command eq "sync") {
     need_checked_out();
     need_network();
     $do_sync = 1;
-    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
+    acquire_lock("parcel-$uuid", "Parcel", 0);
     sync(0);
 } 
 elsif ($command eq "discard") {
     need_parcel();
     need_checked_out();
     $do_sync = 1;
-    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
+    acquire_lock("parcel-$uuid", "Parcel", 0);
     discard();
 }
 elsif ($command eq "hoard") {
@@ -497,7 +497,7 @@ elsif ($command eq "checkp") {
 	need_network();
     } else {
 	need_checked_out();
-	acquire_lock("$isrdir/$uuid.lock", "Parcel", 0);
+	acquire_lock("parcel-$uuid", "Parcel", 0);
     }
     checkparcel();
 }
@@ -511,7 +511,7 @@ elsif ($command eq "lshoard") {
 }
 elsif ($command eq "rmhoard") {
     need_uuid();
-    acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
+    acquire_lock("hoard-$uuid", "Hoard cache", 0);
     rmhoard();
 }
 elsif ($command eq "checkhoard") {
@@ -537,8 +537,8 @@ elsif ($command eq "clean") {
     # If we can't map the parcel to a UUID, cleanclient() becomes a
     # server-side-only operation, but we still need the checkout lock
     # to prevent checkout/clean races
-    acquire_lock("$isrdir/checkout-$parcel.lock", "Checkout", 0);
-    acquire_lock("$isrdir/$uuid.lock", "Parcel", 0)
+    acquire_lock("checkout-$parcel", "Checkout", 0);
+    acquire_lock("parcel-$uuid", "Parcel", 0)
         if $uuid;
     cleanclient();
 }
@@ -692,7 +692,7 @@ sub checkout () {
     #
     # Fetch the parcel's virtualization files from the server
     #
-    acquire_lock("$imgbase.lock", "Hoard image", 1);
+    acquire_lock("image-$uuid", "Hoard image", 1);
     if (fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0,
 		\$sigset)) {
         # We now have an incomplete parcel directory.  Blow it away and
@@ -1085,8 +1085,8 @@ sub hoard ($) {
 	set_parcel_globals($parceldir);
 	# We couldn't acquire the hoard lock during startup, because we didn't
 	# know the UUID.  Now we can.
-	acquire_lock("$isrdir/$uuid-hoard.lock", "Hoard cache", 0);
-	acquire_lock("$imgbase.lock", "Hoard image", 1);
+	acquire_lock("hoard-$uuid", "Hoard cache", 0);
+	acquire_lock("image-$uuid", "Hoard image", 1);
 	fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0, undef) == 0
 	    or errexit("Unable to fetch keyring.enc");
     
@@ -1329,7 +1329,7 @@ sub rmhoard () {
     # the parcel is checked out we can't remove the memory image because
     # "isr discard" will break.
     #
-    acquire_lock("$imgbase.lock", "Hoard image", 1);
+    acquire_lock("image-$uuid", "Hoard image", 1);
     if (-e "$imgbase.key") {
 	unlink("$imgbase.key")
 	    or errexit("Couldn't unlink $imgbase.key");
@@ -1480,9 +1480,14 @@ sub acquire_lock ($$$) {
     my $desc = shift;
     my $wait = shift;
     
+    my $lockdir = "$isrdir/locks";
     my $fh;
     my $ret;
     
+    mkdir($lockdir);
+    unix_errexit("Can't create lock directory $lockdir")
+        if ! -d $lockdir;
+    $file = "$lockdir/$file";
     open($fh, ">", $file)
 	or unix_errexit("Can't open $file for writing");
     $ret = fcntl_lock($fh, F_WRLCK, $wait);
@@ -1877,7 +1882,7 @@ sub check_for_old_isrdir () {
     opendir(IDIR, $isrdir)
         or errexit("Couldn't read $isrdir");
     while ($ientry = readdir(IDIR)) {
-        next if valid_uuid($ientry) or $ientry eq "hoard";
+        next if valid_uuid($ientry) or $ientry =~ /^hoard|locks$/;
         next if ! -d "$isrdir/$ientry" or $ientry =~ /^\.{1,2}$/;
         opendir(UDIR, "$isrdir/$ientry")
             or errexit("Couldn't read $isrdir/$ientry");
