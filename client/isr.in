@@ -1484,18 +1484,29 @@ sub acquire_lock ($$$) {
     my $lockdir = "$isrdir/locks";
     my $fh;
     my $ret;
+    my $stat;
     
     mkdir($lockdir);
     unix_errexit("Can't create lock directory $lockdir")
         if ! -d $lockdir;
     $file = "$lockdir/$file";
-    open($fh, ">", $file)
-	or unix_errexit("Can't open $file for writing");
-    $ret = fcntl_lock($fh, F_WRLCK, $wait);
-    errexit("$desc locked by another process")
-	if $ret == EACCES or $ret == EAGAIN;
-    unix_errexit("Can't acquire lock")
-        if $ret;
+    
+    while (1) {
+	open($fh, ">", $file)
+	    or unix_errexit("Can't open $file for writing");
+	$ret = fcntl_lock($fh, F_WRLCK, $wait);
+	errexit("$desc locked by another process")
+	    if $ret == EACCES or $ret == EAGAIN;
+	unix_errexit("Can't acquire lock")
+	    if $ret;
+	$stat = stat($fh);
+	errexit("Couldn't stat $file")
+	    if !$stat;
+	last if $stat->nlink == 1;
+	# We have a lock on a deleted lockfile.
+	close($fh);
+	$fh = undef;
+    }
     push(@locks, {"DESC" => $desc, "NAME" => $file, "FH" => $fh});
 }
 
