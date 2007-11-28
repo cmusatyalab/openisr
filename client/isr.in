@@ -1158,7 +1158,10 @@ sub checkparcel () {
 	errexit("-r only makes sense if -e is specified")
 	    if $version;
 	
-	isr_run_parcelkeeper("validate", "parcel log") == 0
+	$flags .= " full"
+	    if $checkstate;
+	
+	isr_run_parcelkeeper("validate", "parcel log $flags") == 0
 	    or errexit("Could not validate cache");
 	
 	print(GREEN, "Success: The parcel $userid/$parcel looks OK.\n", RESET)
@@ -1361,10 +1364,12 @@ sub rmhoard () {
 # checkhoard - Reports on the consistency of the hoard cache
 # 
 sub checkhoard () {
+    my $flags = $checkstate ? "full" : "";
+    
     print "Checking hoard cache for internal consistency...\n"
 	if $verbose;
     
-    isr_run_parcelkeeper("checkhoard", "hoard") == 0
+    isr_run_parcelkeeper("checkhoard", "hoard $flags") == 0
         or errexit("Hoard cache check failed");
     
     print GREEN, "Success: The hoard cache is consistent.\n", RESET
@@ -2442,7 +2447,7 @@ sub usage ($) {
 	print "  deauth     Remove authentication credentials from your client\n";
 	print "Debugging and maintenance commands:\n";
 	print "  checkp     Check parcel for consistency (-c, -e, -r optional)\n";
-	print "  checkhoard Check hoard cache for consistency\n";
+	print "  checkhoard Check hoard cache for consistency (-c optional)\n";
 	print "  lshoard    List info about the hoard cache (-l optional)\n";
 	print "  rmhoard    Remove a parcel from the hoard cache\n";
 	print "  clean      Remove parcel from client and release its lock\n";
@@ -2450,7 +2455,7 @@ sub usage ($) {
     }
     print "Options:\n";
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [ci, sync].\n";
-    print "  -c,--checkstate    Do additional consistency check [checkp, checkout, resume].\n";
+    print "  -c,--checkstate    Do extra checks [checkout, resume, checkp, checkhoard].\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [checkout, resume].\n";
     print "  -e,--remote        Perform action on server rather than client [checkp].\n";
     print "  -F,--no-fullscreen Start VMware in windowed mode [resume].\n";
@@ -2553,6 +2558,8 @@ sub isr_parcelkeeper_cmd ($$) {
 	    $cmd .= " --uuid $uuid";
 	} elsif ($arg eq "check") {
 	    $cmd .= " --check";
+	} elsif ($arg eq "full") {
+	    $cmd .= " --full";
 	} elsif ($arg eq "log") {
 	    $do_log = 1;
 	} else {
