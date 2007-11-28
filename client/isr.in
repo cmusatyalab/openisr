@@ -721,6 +721,16 @@ sub checkout () {
     }
     release_lock("Hoard image");
     
+    #
+    # Update the hoard cache reference list from the newly-obtained keyring
+    #
+    print "Updating hoard cache.\n"
+        if $verbose;
+    if (isr_run_parcelkeeper("refresh", "parcel hoard log")) {
+        clean(0);
+        errexit("Could not refresh hoard cache");
+    }
+    
     # Clean up and return
     print(GREEN, "Success: Parcel $userid/$parcel now checked out (and lock acquired).\n", RESET)
 	if $verbose;
