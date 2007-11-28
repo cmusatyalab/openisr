@@ -23,7 +23,7 @@
 
 struct query {
 	sqlite3_stmt *stmt;
-	char *sql;
+	const char *sql;
 	struct timeval start;
 };
 
@@ -34,7 +34,7 @@ static void sqlerr(sqlite3 *db)
 	pk_log(LOG_ERROR, "SQL error: %s", sqlite3_errmsg(db));
 }
 
-static unsigned get_bucket(char *sql)
+static unsigned get_bucket(const char *sql)
 {
 	/* DJB string hash algorithm */
 	unsigned hash = 5381;
@@ -54,18 +54,12 @@ static int alloc_query(struct query **result, sqlite3 *db, char *sql)
 		pk_log(LOG_ERROR, "malloc failed");
 		return SQLITE_NOMEM;
 	}
-	qry->sql=strdup(sql);
-	if (qry->sql == NULL) {
-		pk_log(LOG_ERROR, "malloc failed");
-		free(qry);
-		return SQLITE_NOMEM;
-	}
 	ret=sqlite3_prepare_v2(db, sql, -1, &qry->stmt, NULL);
 	if (ret) {
 		sqlerr(db);
-		free(qry->sql);
 		free(qry);
 	} else {
+		qry->sql=sqlite3_sql(qry->stmt);
 		*result=qry;
 	}
 	return ret;
@@ -74,7 +68,6 @@ static int alloc_query(struct query **result, sqlite3 *db, char *sql)
 static void destroy_query(struct query *qry)
 {
 	sqlite3_finalize(qry->stmt);
-	free(qry->sql);
 	free(qry);
 }
 
