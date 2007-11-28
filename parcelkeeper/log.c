@@ -122,6 +122,10 @@ static pk_err_t parse_logtype(char *name, enum pk_log_type *out)
 {
 	if (!strcmp(name, "info"))
 		*out=LOG_INFO;
+	else if (!strcmp(name, "chunk"))
+		*out=LOG_CHUNK;
+	else if (!strcmp(name, "transport"))
+		*out=LOG_TRANSPORT;
 	else if (!strcmp(name, "query"))
 		*out=LOG_QUERY;
 	else if (!strcmp(name, "slow"))

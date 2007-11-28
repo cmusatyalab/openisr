@@ -123,6 +123,7 @@ static pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
 		pk_log(LOG_ERROR, "malloc failure");
 		return PK_NOMEM;
 	}
+	pk_log(LOG_TRANSPORT, "Fetching %s", url);
 	if (curl_easy_setopt(conn->curl, CURLOPT_URL, url)) {
 		pk_log(LOG_ERROR, "Couldn't set connection URL");
 		free(url);

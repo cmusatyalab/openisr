@@ -378,7 +378,7 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 	}
 	if (hoard_get_chunk(tag, buf, &len)) {
 		ftag=format_tag(tag);
-		pk_log(LOG_INFO, "Tag %s not in hoard cache", ftag);
+		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
 		free(ftag);
 		ret=transport_fetch_chunk(buf, chunk, tag, &len);
 		if (ret) {
@@ -386,7 +386,7 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 			return ret;
 		}
 	} else {
-		pk_log(LOG_INFO, "Fetched chunk %u from hoard cache", chunk);
+		pk_log(LOG_CHUNK, "Fetched chunk %u from hoard cache", chunk);
 	}
 	count=pwrite(state.loopdev_fd, buf, len, cache_chunk_to_offset(chunk));
 	free(buf);
@@ -420,6 +420,7 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 
 	/* XXX does not use transaction.  do we need to?  might introduce
 	   conflicts in obtain_chunk() */
+	pk_log(LOG_CHUNK, "Get: %u", chunk);
 	if (query(&qry, state.db, "SELECT tag, key, compression FROM keys "
 				"WHERE chunk == ?", "d", chunk)
 				!= SQLITE_ROW) {
@@ -472,6 +473,7 @@ pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 {
 	pk_err_t ret;
 
+	pk_log(LOG_CHUNK, "Update: %u", chunk);
 	ret=begin(state.db);
 	if (ret)
 		return ret;
