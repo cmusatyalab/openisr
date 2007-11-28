@@ -250,18 +250,32 @@ pk_err_t put_file_lock(int fd)
 pk_err_t acquire_lockfile(void)
 {
 	int fd;
+	struct stat st;
 	pk_err_t ret;
 
-	fd=open(config.lockfile, O_CREAT|O_WRONLY, 0666);
-	if (fd == -1) {
-		pk_log(LOG_ERROR, "Couldn't open lock file %s",
-					config.lockfile);
-		return PK_IOERR;
-	}
-	ret=get_file_lock(fd, FILE_LOCK_WRITE);
-	if (ret) {
+	while (1) {
+		fd=open(config.lockfile, O_CREAT|O_WRONLY, 0666);
+		if (fd == -1) {
+			pk_log(LOG_ERROR, "Couldn't open lock file %s",
+						config.lockfile);
+			return PK_IOERR;
+		}
+		ret=get_file_lock(fd, FILE_LOCK_WRITE);
+		if (ret) {
+			close(fd);
+			return ret;
+		}
+		if (fstat(fd, &st)) {
+			pk_log(LOG_ERROR, "Couldn't stat lock file %s",
+						config.lockfile);
+			close(fd);
+			return PK_CALLFAIL;
+		}
+		if (st.st_nlink == 1)
+			break;
+		/* We probably have a lock on a deleted lockfile, which
+		   doesn't do anyone any good.  Try again. */
 		close(fd);
-		return ret;
 	}
 	state.lock_fd=fd;
 	return PK_SUCCESS;
@@ -269,6 +283,8 @@ pk_err_t acquire_lockfile(void)
 
 void release_lockfile(void)
 {
+	/* To prevent races, we must unlink the lockfile while we still
+	   hold the lock */
 	unlink(config.lockfile);
 	close(state.lock_fd);
 }
