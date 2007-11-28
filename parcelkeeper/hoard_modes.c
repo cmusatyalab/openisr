@@ -383,8 +383,11 @@ int check_hoard(void)
 	/* XXX validate offsets and offset/length pairs */
 	if (commit(state.db))
 		return 1;
-	/* XXX validate data */
-	/* XXX gc */
+
+	if (config.flags & WANT_FULL_CHECK) {
+		/* XXX validate data */
+	}
+	/* XXX compact */
 	return 0;
 
 bad:

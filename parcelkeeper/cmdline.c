@@ -34,6 +34,7 @@ enum option {
 	OPT_MASK_STDERR,
 	OPT_FOREGROUND,
 	OPT_CHECK,
+	OPT_FULL,
 	OPT_MODE,
 	END_OPTS = -1
 };
@@ -72,6 +73,7 @@ static struct pk_option pk_options[] = {
 	{"stderr-filter",  OPT_MASK_STDERR,    {"comma_separated_list"},                                "Override default list of log types"},
 	{"foreground",     OPT_FOREGROUND,     {},                                                      "Don't run in the background"},
 	{"check",          OPT_CHECK,          {},                                                      "Don't download; just return 0 if fully hoarded or 1 otherwise"},
+	{"full",           OPT_FULL,           {},                                                      "Perform full data-integrity check"},
 	{"mode",           OPT_MODE,           {"mode"},                                                "Print detailed usage message about the given mode"},
 	{0}
 };
@@ -123,6 +125,7 @@ mode(EXAMINE) = {
 
 mode(VALIDATE) = {
 	{OPT_PARCEL,        REQUIRED},
+	{OPT_FULL,          OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
@@ -139,6 +142,7 @@ mode(LISTHOARD) = {
 
 mode(CHECKHOARD) = {
 	{OPT_HOARD,         REQUIRED},
+	{OPT_FULL,          OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
@@ -446,6 +450,10 @@ enum mode parse_cmdline(int argc, char **argv)
 		case OPT_CHECK:
 			/* Abuse of WANT_ flags? */
 			config.flags |= WANT_CHECK;
+			break;
+		case OPT_FULL:
+			/* Abuse of WANT_ flags? */
+			config.flags |= WANT_FULL_CHECK;
 			break;
 		case OPT_MODE:
 			helpmode=parse_mode(optparams[0]);

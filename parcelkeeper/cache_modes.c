@@ -323,20 +323,23 @@ static pk_err_t validate_cachefile(void)
 			continue;
 		}
 
-		if (pread(state.cache_fd, buf, chunklen,
-					cache_chunk_to_offset(chunk)) !=
-					(int)chunklen) {
-			pk_log(LOG_ERROR, "Chunk %u: couldn't read from "
-						"local cache", chunk);
-			ret=PK_IOERR;
-			continue;
-		}
-		digest(calctag, buf, chunklen);
-		if (memcmp(tag, calctag, taglen)) {
-			pk_log(LOG_ERROR, "Chunk %u: tag check failure",
-						chunk);
-			log_tag_mismatch(tag, calctag);
-			ret=PK_TAGFAIL;
+		if (config.flags & WANT_FULL_CHECK) {
+			if (pread(state.cache_fd, buf, chunklen,
+						cache_chunk_to_offset(chunk))
+						!= (int)chunklen) {
+				pk_log(LOG_ERROR, "Chunk %u: couldn't read "
+							"from local cache",
+							chunk);
+				ret=PK_IOERR;
+				continue;
+			}
+			digest(calctag, buf, chunklen);
+			if (memcmp(tag, calctag, taglen)) {
+				pk_log(LOG_ERROR, "Chunk %u: tag check "
+							"failure", chunk);
+				log_tag_mismatch(tag, calctag);
+				ret=PK_TAGFAIL;
+			}
 		}
 	}
 	if (sret != SQLITE_OK) {
