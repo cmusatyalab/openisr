@@ -1,4 +1,4 @@
-This is the OpenISR (R) system, release 0.8.4.  For more information on
+This is the OpenISR (R) system, release 0.9-pre.  For more information on
 the OpenISR system and Internet Suspend/Resume (R), please visit our website at
 <http://isr.cmu.edu>.
 
@@ -19,10 +19,10 @@ REQUIREMENTS
 - On 64-bit systems: 32-bit glibc (if you are building libvdisk)
 - ssh-agent running in your X session (most systems provide this by default)
 - VMware or VMware Player (other VMMs to follow)
-- An accessible ISR server
+- An accessible OpenISR 0.9 server
 
-This release requires a (slightly modified) ISR-3 server.  Future releases will
-include a completely new server implementation.
+This release ships with an updated version of the ISR-3 server software.
+Future releases will include a completely new server implementation.
 
 INSTALLATION SUMMARY
 --------------------
@@ -46,7 +46,8 @@ following command line options:
 	configure will check a set of default paths for each component.
 
 --disable-client
-	Do not build components that are only used by the OpenISR client.
+	Do not build or install components that are only used by the OpenISR
+	client.
 
 --enable-libvdisk
 --disable-libvdisk
@@ -73,6 +74,9 @@ following command line options:
 	distribution, you must install the kernel-headers package corresponding
 	to that kernel or the modules will not build successfully.  The OpenISR
 	kernel modules must be loaded for the client to function.
+
+--enable-server
+	Build and install components that are used by the OpenISR server.
 
 CONFIGURING YOUR KERNEL
 -----------------------
@@ -133,7 +137,7 @@ variable to its absolute path when running "make install".
 POST-INSTALLATION
 -----------------
 
-If you install the OpenISR system from source, you should perform several
+If you install the OpenISR client from source, you should perform several
 additional steps to complete the installation:
 
 - Run "ldconfig; depmod" as root
@@ -146,7 +150,7 @@ the /dev/loopN devices
 
 - Run "/etc/init.d/openisr start" to load the kernel modules
 
-If you upgrade your kernel after installing the OpenISR system, you will
+If you upgrade your kernel after installing the OpenISR client, you will
 need to rebuild the OpenISR kernel modules.  You can do this by re-running
 "configure", "make", "make install", and "depmod", or you can run
 "openisr-config" as root to do all of this for you.
@@ -154,22 +158,22 @@ need to rebuild the OpenISR kernel modules.  You can do this by re-running
 COMPONENTS AND THEIR LICENSES
 -----------------------------
 
-The OpenISR client is composed of several components, licensed under several
+The OpenISR system is composed of several components, licensed under several
 different software licenses.  Here is a short summary of each component:
 
 User interface
-	This consists of the "isr" command plus associated Perl modules, and
-	is licensed under the Eclipse Public License, version 1.0.  The code
-	for this component can be found in the "client" directory of the source
-	tree.
+	This is the "isr" command-line client, and is licensed under the
+	Eclipse Public License, version 1.0.  The code for this component
+	can be found in the "client" directory of the source tree.
 
-Vulpes
+Parcelkeeper
 	This is the userspace half of the virtual disk provided by the OpenISR
-	system to guest VMs.  It is responsible for runtime communication with
-	the content server, maintenance of the parcel keyring, and various
-	maintenance tasks.  Vulpes is launched by the user interface code when
-	necessary; most users will never need to start it directly.  Vulpes is
-	licensed under the Eclipse Public License, version 1.0.
+	system to guest VMs.  It is responsible for maintenance of the parcel
+	keyring, local cache, and hoard cache; runtime communication with
+	the server; and various maintenance tasks.  Parcelkeeper is launched
+	by the user interface code when necessary; most users will never need
+	to start it directly.  Parcelkeeper is licensed under the Eclipse
+	Public License, version 1.0.
 
 libvdisk
 	This is a small LD_PRELOAD shim which works around restrictions placed
@@ -195,6 +199,23 @@ SHA-1 Accelerator
 	built-in SHA-1 implementation at reduced performance.  This component
 	is licensed under version 2.1 of the GNU Lesser General Public License
 	and can be found in the "sha1" directory of the source tree.
+
+locksrv
+	This is the server component of the OpenISR system.  It includes
+	the programs implementing the server API, as well as a program
+	to perform various administrative tasks.  It can be found in the
+	"locksrv" directory of the source tree, and is licensed under the
+	Eclipse Public License, version 1.0.
+
+Miscellaneous tools
+	The "tools" directory contains a set of command-line tools used by
+	the client and/or server.  The programs found there are licensed
+	under the Eclipse Public License, version 1.0.
+
+SQLite
+	The third-party SQLite embedded database is included in the OpenISR
+	distribution.  It can be found in the "sqlite" directory of the source
+	tree and is in the public domain.
 
 ACKNOWLEDGMENTS
 ----------------
