@@ -1,3 +1,147 @@
+====== 0.9-pre
+
+------ Headlines
+
+- Significant server API changes.  0.9-series clients will not work with
+  older servers, and vice versa.  Parcels created for older versions of ISR
+  will need to be converted to 0.9 format before they can be used with an
+  0.9 server.
+- The distinction between nameservers and content servers has been eliminated;
+  each parcel is now associated with exactly one server.
+- The client has a new hoard cache implementation which significantly reduces
+  the need to download data more than once, even across parcels.
+
+------ Parcel format changes
+
+- Parcel data is now encrypted with the AES algorithm instead of Blowfish.
+- Replace redundant ASCII and binary keyring files with a new, SQLite-based
+  keyring
+- Eliminate index.lev1 file and fold its contents into parcel.cfg
+- Session logs are now per-parcel rather than per-user.  Actions which do
+  not apply to a specific parcel are logged to the per-parcel log of every
+  parcel known to the client.
+- Each parcel now has a UUID which uniquely identifies that parcel
+- The layout of the ~/.isr directory on the client has changed significantly
+
+------ Client changes
+
+- Checkouts and hoard caches created by OpenISR 0.8.4 and earlier will not
+  be recognized by this version.  At resume time, the client will warn about
+  any old-style checkouts, and will offer to delete old-style hoard caches to
+  free up disk space.
+- Replace Vulpes with Parcelkeeper, a near-complete rewrite
+- Always copy disk chunks, keyrings, and memory images to the hoard cache
+  after downloading, eliminating redundant downloads
+- Eliminate extra copy of memory image on the first resume after checkout,
+  at the cost of a slower "isr discard"
+- Dramatically improve the performance of "isr ls"
+- Significantly clean up logging format for enhanced readability
+- Add experimental support for LZF compression
+- Add low-level infrastructure for VMM independence
+- Rename the Nexus "zap" sysfs action to "kill" to clarify the destructive
+  nature of the action
+- No longer zero the Nexus "state_times" counters when the sysfs attribute is
+  read.  Writing a string to the attribute file will zero the counters.
+- Eliminate or reduce several logging races
+- Miscellaneous fixes and cleanups
+
+------ "isr" command line
+
+- Add new hoard cache management commands: lshoard, rmhoard, checkhoard
+- Rename -n/--nameserver option to -s/--server
+- Rename -X/--noauto option to -F/--no-fullscreen
+- Eliminate "clean -a"; use rmhoard instead
+- Eliminate broken (and dangerous) "reset" command
+- Eliminate "-p" option, which was accepted and ignored in 0.8
+- Eliminate "checkparcel" command, which was just an alias for "checkp"
+- Move server-side parcel validation from "checkp" to "checkp -e"
+- Move local cache validation from "stat -c" to "checkp"
+- Move hoard cache validation from "stat -c" to "checkhoard"
+- "checkp" and "checkhoard" will not validate the hashes of stored disk
+  chunks unless the -c/--checkstate option is provided
+- Eliminate "disconnect"; use "checkout -d"/"resume -d" instead.
+  "checkout -d" is now an alias for checkout + hoard, and "resume -d" will
+  invoke "hoard" if the parcel is not fully hoarded.
+- Eliminate -x/--nocheckstate; the functionality it was bypassing is now
+  mandatory for checkin/sync and is no longer the default in other cases.
+  When passing -d/--disconnected to checkout and resume, you can pass
+  -c/--checkstate to get the old "disconnect" behavior.
+- Allow a parcel's UUID to be used on the command line in place of its name
+  if the parcel is currently checked out
+
+------ Client configuration
+
+- Read per-user config file from ~/.openisrrc instead of ~/.openisr.conf
+- Rename "nameserver" config option to "server"
+- Change format of "logmask"/"console_logmask" options: instead of a bitmask,
+  these now take a comma-separated list of log types.  Currently accepted
+  types are: none, info, error, chunk, transport, query, slow.
+- Add "compression" option, which specifies the compression algorithm to
+  be used for newly written disk chunks
+- Add "hoard_minsize" option, which specifies the hoard cache size (in MB)
+  below which no chunks will be garbage-collected from the cache
+- Add "disable_lookaside" debug option; set this to "1" to force re-downloading
+  of the keyring and memory image at checkout
+
+------ Significant client bugfixes
+
+- Permit a server-side checkparcel operation concurrently with other parcel
+  operations (such as resume)
+- Disallow sync/checkin if we no longer hold the parcel lock
+- No longer allow running in disconnected mode if the local cache is fully
+  populated but the hoard cache is not, since this could cause "isr discard"
+  to have unexpected side effects
+- Properly handle simultaneous checkouts of parcels with the same userid and
+  parcel name, but different servers
+
+------ Server changes
+
+- Ship the server code in the source tarball; the server can be installed by
+  passing --enable-server to configure.
+- Allow the server modules to be installed anywhere in the filesystem, so long
+  as the new "isr_runserv" wrapper script is in the PATH
+- Add a script, upgrade-0.9.pl, which will read an ISR-3 or OpenISR 0.8 parcel
+  and write out a new one in OpenISR 0.9 format
+- Improve the thoroughness of the checkparcel module
+- Various performance improvements
+
+------ isr_admin changes
+
+- All isr_admin commands should now work properly
+- Simplify isr_admin's command-line syntax
+- Add "isr_admin makeparcel" command to create an empty parcel from scratch
+
+------ Server configuration
+
+- The message-of-the-day file is now located at /etc/openisr/motd
+- cfg tarballs included in parcels generated with "isr_admin makeparcel" will
+  be pre-populated from the contents of the /etc/openisr/skel directory,
+  if it exists
+- Server.pm no longer contains system-specific configuration information.
+  That data has been moved to a new config file, /etc/openisr/locksrv.conf,
+  which contains "key = value" pairs.  Default values will be chosen if
+  locksrv.conf is missing or does not contain a particular key.
+- Add "content_root" config option to locksrv.conf, giving the path to the
+  HTTP document root
+- Add "default_pass" config option, giving the password that will be assigned
+  to user accounts created by isr_admin
+- Add "hostname" config option, giving the server hostname that should be
+  written to parcel.cfg files generated by isr_admin
+
+------ Significant server bugfixes
+
+- Don't create world-readable, unencrypted keyrings in the webroot
+- Don't set execute bits on chunk and image files during commit
+- Allow checkparcel on a version != 1 which has no predecessors (i.e., a parcel
+  that has been pruned)
+- Don't allow a client to commit or rollback a parcel unless the client
+  holds a valid nonce
+- Avoid potential data corruption if multiple clients try to upload a checkin
+  at the same time (due to a stolen parcel lock)
+- Avoid exposing a parcel's keyroot to other users of the server system
+- Generate each new parcel with a unique keyroot
+- Significantly improve the entropy in generated keyroots
+
 ====== 0.8.4 (2007-11-20)
 
 - Add dependency on "pv" (http://www.ivarch.com/programs/pv.shtml)
