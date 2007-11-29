@@ -1,3 +1,9 @@
+openisr (0.8.4-2) experimental; urgency=low
+
+  * To make upgrades smoother, only Replace: openisr-modules-source
+
+ -- Matt Toups <mtoups@cs.cmu.edu>  Tue, 27 Nov 2007 14:49:08 -0500
+
 openisr (0.8.4-1) experimental; urgency=low
 
    * New upstream release (see CHANGES):
