@@ -10,7 +10,6 @@ REQUIREMENTS
 - Perl
 - OpenSSL
 - SQLite 3 library (but not the command-line utility)
-- Apache Portable Runtime library >= 1.2
 - OSSP uuid library
 - udev
 - ssh

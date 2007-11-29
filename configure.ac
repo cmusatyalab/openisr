@@ -153,7 +153,6 @@ if test z$enable_client = zyes ; then
 	FIND_LIBRARY([zlib], [z], [inflate], [zlib.h],
 				[$with_zlib /usr/local /usr])
 	
-	PKG_CHECK_MODULES([APR], [apr-1])
 	PKG_CHECK_MODULES([OSSP_UUID], [ossp-uuid])
 fi
 
