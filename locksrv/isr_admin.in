@@ -742,18 +742,14 @@ EOF
 #
 sub getusage () {
     my $userid;
-    my $isrdir;
+    my $locklog;
+    my $sessionlog;
     my $logentry;
-    my $logserver;
     my $logdate;
     my $logstatus;
-    my $loguserid;
-    my $logparcel;
-    my $logclient;
     my $lastcmd;
     my $lastdate;
     my $lastlog;
-    my $junk;
     my $msg;
     
     my @isrusers = ();
@@ -770,21 +766,33 @@ sub getusage () {
     # For each user and parcel, extract the last last entry in the 
     # lockholder log
     foreach $userid (sort @isrusers) {
-	print "\n";
 	opendir(ISRDIR, "/home/$userid/.isr")
 	    or unix_errexit("Couldn't read $userid's ISR directory");
 	foreach $parcel (sort grep(!/^\./, readdir(ISRDIR))) {
+	    $locklog = "$config{content_root}/$userid/$parcel/lockholder.log";
+	    $sessionlog = "$config{content_root}/$userid/$parcel/session.log";
+	    
 	    # Extract the date of the last release or acquire of this parcel
-	    $logentry = `tail -n 1 $config{content_root}/$userid/$parcel/lockholder.log`;
-	    chomp($logentry);
-	    ($logserver, $logdate, $logstatus, $loguserid, $logparcel, $logclient) = 
-		split('\|', $logentry);
+	    if (-e $locklog) {
+		$logentry = `tail -n 1 $locklog`;
+		chomp($logentry);
+		($logdate, $logstatus) = (split('\|', $logentry))[1,2];
+	    } else {
+		($logdate, $logstatus) = ("Never", "");
+	    }
 	    
 	    # Extract the date of the last activity of any kind on this parcel
-	    $lastlog = `fgrep BEGIN $config{content_root}/$userid/$parcel/session.log | tail -n 1`;
-	    chomp($lastlog);
-	    ($lastdate, $junk, $junk, $junk, $junk, $lastcmd) 
-		= split('\|', $lastlog);
+	    if (-e $sessionlog) {
+		$lastlog = `egrep 'Running\ [^ ]+\$' $sessionlog | tail -n 1`;
+		chomp($lastlog);
+		if ($lastlog =~ /^(([^ ]+ ){3}[^ ]+) [0-9]+ Running ([a-zA-Z]+)$/) {
+		    ($lastdate, $lastcmd) = ($1, $3);
+		} else {
+		    $lastdate = $lastcmd = "Unknown";
+		}
+	    } else {
+		$lastdate = $lastcmd = "Never";
+	    }
 	    
 	    # Now print the message
 	    $msg = "$userid/$parcel $logdate [$lastcmd $lastdate]\n";
@@ -797,6 +805,7 @@ sub getusage () {
 	    }
 	}
 	closedir(ISRDIR);
+	print "\n";
     }
 }
 
