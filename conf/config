@@ -2,7 +2,7 @@
 #
 # This file is distributed with the OpenISR client, and changes made here
 # will be lost whenever the client is upgraded.  Configuration entries placed
-# in /etc/openisr/openisr.conf or ~/.openisr.conf will override these defaults.
+# in /etc/openisr/openisr.conf or ~/.openisrrc will override these defaults.
 
 # Default server domain name (override with -s)
 server = isrserver05.isr.cmu.edu
