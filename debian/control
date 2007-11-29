@@ -9,7 +9,7 @@ Package: openisr
 Architecture: any
 Suggests: kvm | vmware-player
 Depends: udev, curl (>= 7.12.3), ssh | openssh-client, openssl, rsync, pv, module-assistant, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
-Conflicts: openisr-modules-source
+Replaces: openisr-modules-source
 Description: Internet Suspend/Resume (ISR) client
  OpenISR is the latest implementation of Internet Suspend/Resume, which 
  combines a virtual machine with distributed storage to provide the user 

@@ -12,7 +12,7 @@
 
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
-SVER=0.8.4-pre
+SVER=0.8.4
 
 # This has to be exported to make some magic below work.
 export DH_OPTIONS
