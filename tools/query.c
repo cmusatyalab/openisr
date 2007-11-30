@@ -394,6 +394,7 @@ static int parseInt(char *argv0, char *str)
 static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
 {
 	int opt;
+	char *arg;
 	char *cp;
 
 	while ((opt=getopt(argc, argv, "a:r:b:p:ict")) != -1) {
@@ -417,23 +418,30 @@ static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
 		case 'a':
 			if (num_attached == MAX_ATTACHED)
 				die("Too many attached databases");
-			cp=strchr(optarg, ':');
+			arg=strdup(optarg);
+			if (arg == NULL)
+				die("malloc error");
+			cp=strchr(arg, ':');
 			if (cp == NULL)
 				usage(argv[0]);
 			*cp=0;
-			attached_names[num_attached]=optarg;
+			attached_names[num_attached]=arg;
 			attached_files[num_attached]=cp+1;
 			num_attached++;
 			break;
 		case 'r':
-			cp=strchr(optarg, ':');
+			arg=strdup(optarg);
+			if (arg == NULL)
+				die("malloc error");
+			cp=strchr(arg, ':');
 			if (cp == NULL)
 				usage(argv[0]);
 			*cp=0;
-			loop_min=parseInt(argv[0], optarg);
+			loop_min=parseInt(argv[0], arg);
 			loop_max=parseInt(argv[0], cp+1);
 			if (loop_min > loop_max)
 				die("min cannot be greater than max for -r");
+			free(arg);
 			break;
 		case 'c':
 			show_col_names=1;
