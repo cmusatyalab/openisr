@@ -32,8 +32,6 @@ static int no_transaction;
 static int num_params;
 static int used_params;
 static int num_attached;
-extern char *optarg;
-extern int optind;
 
 typedef enum {
 	OK = 0,
