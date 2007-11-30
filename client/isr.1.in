@@ -9,7 +9,7 @@
 .\" RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
 .\" ==========================================================================
 .\"
-.TH ISR 1 "Feb 13, 2007" "OpenISR !!VERSION!!" "User Commands"
+.TH ISR 1 "Nov 30, 2007" "OpenISR !!VERSION!!" "User Commands"
 .LO 1
 
 .SH NAME
@@ -19,7 +19,7 @@ isr \- Internet Suspend/Resume client program
 .B isr 
 .I command
 .RI [ parcel ]
-.RB [ \-abcdlqrvxX ]
+.RB [ \-bcdeFlqv ]
 .RB [ \-r
 .IR version ]
 .RB [ \-s
@@ -30,7 +30,7 @@ isr \- Internet Suspend/Resume client program
 .IR count ]
 
 .I Commands: 
-.B auth, checkin (ci), checkout (co), checkp, clean, deauth, discard, disconnect, help, hoard, ls, passwd, reset, resume, stat, sync, version
+.B auth, checkin (ci), checkout (co), checkhoard, checkp, clean, deauth, discard, help, hoard, ls, lshoard, passwd, resume, rmhoard, stat, sync, version
 
 .SH DESCRIPTION
 An Internet Suspend/Resume\*R (ISR) system is a collection of
@@ -86,14 +86,15 @@ client program also provides a command to
 parcel state into a persistent 
 .I hoard cache
 on the client host.
-Each parcel has its own separate hoard cache. 
 A fully-hoarded parcel contains the entire virtual disk state 
-in its hoard cache, and thus can be
+in the hoard cache, and thus can be
 resumed
 .I disconnected,
 without a network connection. Use the 
+.B lshoard
+command to view the state of the hoard cache on your client, and the
 .B stat
-command to view the state of a parcel's hoard cache on your client. 
+command to see how much of a particular parcel is currently hoarded.
 
 You can safely attempt to interrupt any
 .B isr
@@ -158,16 +159,28 @@ meaning that it can be safely interrupted with ctrl-c and rerun until
 it successfully completes.
 
 .TP
-.BI "isr checkout(co) " "parcel" " [-r " "oldversion" "]"
+.BI "isr checkout(co) " "parcel" " [-c] [-d] [-r " "oldversion" "]"
 Download  a 
 .I parcel 
-from the remote store without running it. 
-The
+from the remote store without running it.  The
+.B -d
+option will
+.B hoard
+the parcel after downloading it, ensuring that you will be able to
+.B resume
+the parcel when disconnected from the network.  The
+.B -c
+option, when used in conjunction with the
+.B -d
+option, performs lengthy consistency checks on the hoard cache after
+hoarding has completed.  The
 .B -r
 option allows you to rollback to previous parcel versions, 
 as described in the documentation for the 
 .B resume
-command. The 
+command.
+
+The 
 .B checkout
 command is normally subsumed by the 
 .B resume 
@@ -180,28 +193,48 @@ before you actually run the parcel.
 
 
 .TP
-.BI "isr checkp " "parcel" " [-r " "version" "] [-c]" 
+.BI "isr checkp " "parcel" " [-e] [-r " "version" "] [-c]"
 This is a debugging command that checks a 
-.I version
-of a 
 .I parcel 
-on the server for consistency. Checks the most recent version
-by default. The 
+for consistency.  By default, this command performs fast sanity checks
+on the local cache of a checked-out
+.IR parcel .
+The
+.B -e
+option causes the command to check a particular version of the
+.I parcel
+on the server instead.  By default,
+.B -e
+checks the most recent
+.IR version ,
+but the
+.B -r
+option can be used to specify a different
+.I version
+instead.  The
 .B -c
 option performs an additional (and time-consuming) content consistency
-check.
+check on the server
+.I version
+(if 
+.B -e
+is specified) or on the local cache (otherwise).
 
 .TP
-.BI "isr clean " "parcel" " [-a]"
+.B "isr checkhoard [-c]"
+This is a debugging command that checks the hoard cache for consistency
+and repairs any problems it finds.  By default, this command performs
+fast checks on the hoard cache indexes.  The
+.B -c
+option causes it to perform an additional (and time-consuming) content
+consistency check.
+
+.TP
+.BI "isr clean " "parcel"
 Remove  
 .I parcel 
 from the client host and forcibly release its
-server lock. The 
-.B -a
-option removes 
-.I all 
-local parcel state, including any persistent state in the parcel's
-hoard cache. This command can be used to release the lock on a parcel
+server lock. This command can be used to release the lock on a parcel
 from any machine, which is handy if you've forgotten to checkin the
 parcel and want to use it from another machine.
 
@@ -237,26 +270,12 @@ sync
 command.
 
 .TP
-.BI "isr disconnect " "parcel" " [-x]"
-Prepare the host client so that it can safely 
-.B resume 
-.I parcel 
-disconnected from the network. You should always run this command before
-attempting to resume a parcel in disconnected mode.  By default, the
-.B disconnect 
-command is somewhat conservative, performing a lengthy internal
-consistency check of the hoard cache. You can skip the consistency
-check with the
-.B -x
-option. 
-
-.TP
 .BI "isr help"
 Display a brief usage summary.
 
 .TP
 .BI "isr hoard " "parcel"
-Fetch the parcel's entire virtual disk into the parcel's 
+Fetch the parcel's entire virtual disk into the
 .I hoard cache
 on the client. This command
 fetches only the blocks that are missing on the client. You can kill
@@ -293,6 +312,14 @@ The
 option is similar, printing information for some
 small default number of the most recent versions.
 
+.TP
+.B isr lshoard [-l]
+List information about the parcels currently in the hoard cache.  The
+.B -l
+option causes additional information to be displayed, including parcel
+UUIDs for passing to the
+.B rmhoard
+command.
 
 .TP
 .BI "isr passwd" 
@@ -305,13 +332,7 @@ account on your client host. (Use the local
 command for that.)  
 
 .TP
-.BI "isr reset"
-This command resets the ISR runtime.
-If the client gets into an inconsistent state, try this command
-before rebooting.
-  
-.TP
-.BI "isr resume " "parcel" " [-r " "oldversion" "] [-dX]"
+.BI "isr resume " "parcel" " [-r " "oldversion" "] [-c] [-d] [-F]"
 Checkout a 
 .I parcel
 (if necessary) and then run it. 
@@ -342,36 +363,55 @@ is then downloaded as before.
 By default, the 
 .B resume 
 command requires a network connection. 
-However, if the parcel is fully
-.B hoarded
-then you can use the 
+However, if the parcel is fully hoarded then you can use the 
 .B -d
 option to resume
 .IR disconnected .
-Running the 
-.B disconnect
-or
+If the parcel is not fully hoarded, the
+.B -d
+option will cause the parcel to be hoarded (which requires a network
+connection) and then will resume
+.IR disconnected .
+Running the
 .B hoard
-commands before resuming disconnected will ensure that 
-the parcel is fully hoarded. 
-
+command, or the
+.B checkout
+command with the
+.B -d
+flag, before resuming disconnected will ensure that the parcel is
+fully hoarded.  The
+.B -c
+option, when used in conjunction with
+.BR -d ,
+will cause a lengthy consistency check to be performed on the hoard
+cache before resuming.
 
 The 
-.B -X 
-option is useful for configuring the virtual machine monitor,
-landing control in the virtual machine monitor when the
-the parcel is resumed and suspended.
+.B -F 
+option causes the parcel to be resumed in a window rather than in
+full-screen mode, which can be useful for configuring the virtual
+machine monitor or for running multiple parcels at once.
 
 .TP
-.BI "isr stat " parcel " [-c]"
+.BI "isr rmhoard " parcel
+Remove hoarded state for
+.I parcel
+from the client.  If
+.I parcel
+is currently checked out, it can be specified by name; otherwise,
+it must be specified by its UUID.  The
+.I parcel
+UUID can be obtained with the
+.B lshoard
+command.
+
+.TP
+.BI "isr stat " parcel
 Display information about the local state of a 
 .IR parcel ,
 such as the amount of state demand paged from the remote
-store, the amount of dirty state, the amount of state that
-is hoarded in the persistent hoard cache. The 
-.B -c
-option will also check the consistency of the local 
-cache and the hoard cache. The
+store, the amount of dirty state, and the amount of state that
+is hoarded in the persistent hoard cache. The
 .I parcel
 must be checked out in order to use the
 .B stat
@@ -409,12 +449,6 @@ Display the version of the ISR client.
 
 .SH OPTIONS
 Each option has equivalent short and long forms.
-.TP
-.B -a/--allstate
-Remove all parcel state, including any persistent state in the 
-hoard cache, during the
-.B clean
-command. 
 
 .TP
 .BI -b/--bwlimit " KBytes/s"
@@ -426,19 +460,28 @@ and
 to 
 .IR KBytes/s .
 
-
 .TP
 .B -c/--checkstate
 Perform an additional content consistency check during the 
-.B stat
-and 
-.B checkp
+.BR checkp ", " checkhoard ", " checkout ", and " resume
 commands.
 
 .TP
 .B -d/--disconnected
 .B Resume
-disconnected (after hoarding).
+disconnected (after hoarding), or ensure that the parcel can later
+be resumed disconnected.
+
+.TP
+.B -e/--remote
+For
+.BR checkp ,
+check the parcel on the server rather than on the client.
+
+.TP
+.B -F/--no-fullscreen
+When the parcel is resumed, display it in a window rather than in
+full-screen mode.
 
 .TP
 .B -l/--long
@@ -471,7 +514,9 @@ to rollback to. For
 .B checkp
 it determines the parcel
 .I version
-to check for consistency.
+to check for consistency if
+.B -e
+is specified.
 
 .TP
 .BI -s/--server " name"
@@ -493,26 +538,6 @@ option overrides both of these and sets the current ISR userid to
 .TP
 .B -v/--verbose
 Increment the verbosity level. 
-
-.TP
-.B -x/--nocheckstate
-This option speeds up the 
-.B disconnect
-command by skipping the lengthy internal consistency check
-of the hoard cache. 
-
-It is provided as a debugging option to the
-.B sync
-and 
-.B ci
-commands, in which case it skips the content consistency check
-of a parcel before and after a new version is committed to the server.
-
-.TP
-.B -X/--noauto
-When the parcel is resumed, control lands in the virtual machine monitor
-instead of the parcel.
-This is a debugging option that is not intended for everyday use.
 
 .SH EXAMPLES
 
@@ -565,7 +590,7 @@ the VMM to return control to the Linux shell.  After making sure that
 it is safe to run disconnected (i.e., your parcel state is hoarded), 
 
 .RS
-\fCisruser> isr disconnect winxp -x\fP
+\fCisruser> isr co winxp -d\fP
 .RE
 
 you unplug the network cable, carry your laptop to the noon meeting, 
