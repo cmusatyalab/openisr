@@ -36,16 +36,16 @@ isr \- Internet Suspend/Resume client program
 An Internet Suspend/Resume\*R (ISR) system is a collection of
 virtual machine
 .I parcels
-in a 
-.I remote store 
-(a server), together with a set of 
+on a 
+.IR server ,
+together with a set of 
 .I client hosts,
 each loaded with the 
 .B isr
 client program and a 
 .I virtual machine monitor.  
 A parcel is a file tree that represents all of the state of some
-virtual machine in execution.  The remote store maintains checkpointed
+virtual machine in execution.  The server maintains checkpointed
 versions of each parcel.
 
 Each ISR user has a unique
@@ -63,12 +63,11 @@ The
 .B isr
 client program provides commands to 
 .I checkout 
-(download) parcels from the remote
-store to the client host, 
+(download) parcels from the server to the client host, 
 run parcels on the client host, 
 .I checkin 
 (upload) parcels from the client
-host back to the remote store, query the status of parcels,
+host back to the server, query the status of parcels,
 authenticate to the ISR system, and change the ISR password.
 Downloading and running a parcel is known as 
 .I resuming
@@ -142,8 +141,8 @@ to avoid having to keep typing your ISR password.
 .BI "isr checkin(ci) " parcel " [-b " "KBytes/s" "]"
 Checkin a 
 .I parcel 
-to the remote store. This command creates a new checkpointed version
-of the parcel in the remote store, and then releases a lock on the
+to the server. This command creates a new checkpointed version
+of the parcel on the server, and then releases a lock on the
 parcel so that it can be resumed by other client hosts.
 The 
 .BI -b 
@@ -162,7 +161,7 @@ it successfully completes.
 .BI "isr checkout(co) " "parcel" " [-c] [-d] [-r " "oldversion" "]"
 Download  a 
 .I parcel 
-from the remote store without running it.  The
+from the server without running it.  The
 .B -d
 option will
 .B hoard
@@ -339,7 +338,7 @@ Checkout a
 This command acquires a lock on the parcel and
 downloads the minimum amount of virtual machine state needed to
 run the parcel on the client host. Any additional state that the parcel
-needs while it is running will be demand paged from the remote store.
+needs while it is running will be demand paged from the server.
 
 By default, the 
 .B resume
@@ -350,10 +349,10 @@ the
 .I oldversion
 option. Let 
 .I lastversion
-be the most recent parcel version on the remote store. Then
+be the most recent parcel version on the server. Then
 .B -r 
 .I oldversion
-causes the remote store to first create a new version
+causes the server to first create a new version
 .I lastversion+1
 that is an identical copy  of version
 .IR oldversion .
@@ -409,8 +408,8 @@ command.
 .BI "isr stat " parcel
 Display information about the local state of a 
 .IR parcel ,
-such as the amount of state demand paged from the remote
-store, the amount of dirty state, and the amount of state that
+such as the amount of state demand paged from the server,
+the amount of dirty state, and the amount of state that
 is hoarded in the persistent hoard cache. The
 .I parcel
 must be checked out in order to use the
@@ -420,9 +419,8 @@ command.
 .TP
 .BI "isr sync " parcel " [-b " "KBytes/s" "]"
 Save a new checkpointed version of 
-.I 
-parcel 
-in the remote store, without releasing the lock or 
+.I parcel 
+on the server, without releasing the lock or 
 .B discarding 
 any of the current local state. You can
 .B sync
@@ -602,7 +600,7 @@ and then run you parcel disconnected during the meeting:
 
 After the meeting, you head back to the office, plug your network
 cable back in, and create a checkpointed version of your current
-parcel state on the remote store:
+parcel state on the server:
 
 .RS
 \fC$ isr sync winxp\fP
@@ -647,8 +645,8 @@ file override those in
 
 .TP
 .I !!LIBDIR!!/parcelkeeper
-The user level process that demand pages state from the
-remote store while the parcel is running.
+The user level process that demand pages state from the server while the
+parcel is running.
 
 .SH ACKNOWLEDGMENTS
 ISR was developed by Michael Kozuch and Casey Helfrich from Intel
