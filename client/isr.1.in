@@ -556,7 +556,7 @@ and then start up X windows. Next, you will need to
 authenticate to the ISR server,
 
 .RS
-\fCisruser> isr auth\fP
+\fC$ isr auth\fP
 .RE
 
 which prompts you for your ISR password.  You are now authenticated
@@ -567,7 +567,7 @@ or terminate the X session.
 After listing your available parcels,
 
 .RS
-\fCisruser> isr ls\fP
+\fC$ isr ls\fP
 .RE
 
 you decide to resume the Windows parcel called 
@@ -575,7 +575,7 @@ you decide to resume the Windows parcel called
 in connected mode:
 
 .RS
-\fCisruser> isr resume winxp\fP
+\fC$ isr resume winxp\fP
 .RE
 
 This downloads parcel
@@ -590,14 +590,14 @@ the VMM to return control to the Linux shell.  After making sure that
 it is safe to run disconnected (i.e., your parcel state is hoarded), 
 
 .RS
-\fCisruser> isr co winxp -d\fP
+\fC$ isr co winxp -d\fP
 .RE
 
 you unplug the network cable, carry your laptop to the noon meeting, 
 and then run you parcel disconnected during the meeting:
 
 .RS
-\fCisruser> isr resume winxp -d\fP
+\fC$ isr resume winxp -d\fP
 .RE
 
 After the meeting, you head back to the office, plug your network
@@ -605,21 +605,21 @@ cable back in, and create a checkpointed version of your current
 parcel state on the remote store:
 
 .RS
-\fCisruser> isr sync winxp\fP
+\fC$ isr sync winxp\fP
 .RE
 
 After running connected for the rest of the day, it's time to head
 home. So you terminate the ISR session by checking in your parcel:
 
 .RS
-\fCisruser> isr ci winxp\fP
+\fC$ isr ci winxp\fP
 .RE
 
 Once home, you login to your home ISR client, authenticate to the ISR
 server, and then checkout the parcel that you were working on at work:
 
 .RS
-\fCisruser> isr resume winxp\fP
+\fC$ isr resume winxp\fP
 .RE
 
 .SH FILES
