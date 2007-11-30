@@ -39,14 +39,15 @@ virtual machine
 on a 
 .IR server ,
 together with a set of 
-.I client hosts,
+.IR "client hosts" ,
 each loaded with the 
 .B isr
 client program and a 
-.I virtual machine monitor.  
-A parcel is a file tree that represents all of the state of some
-virtual machine in execution.  The server maintains checkpointed
-versions of each parcel.
+.IR "virtual machine monitor" .
+A parcel is a set of data that represents all of the state of some
+virtual machine in execution, and includes a
+.IR keyring ", a " "memory image" ", and a " "virtual disk" .
+The server maintains checkpointed versions of each parcel.
 
 Each ISR user has a unique
 .I ISR userid
@@ -85,20 +86,15 @@ client program also provides a command to
 parcel state into a persistent 
 .I hoard cache
 on the client host.
-A fully-hoarded parcel contains the entire virtual disk state 
-in the hoard cache, and thus can be
+A fully-hoarded parcel is one where the hoard cache contains the parcel's
+entire virtual disk state; thus the parcel, once checked out, can be
 resumed
-.I disconnected,
-without a network connection. Use the 
+.I disconnected
+(without a network connection). Use the 
 .B lshoard
 command to view the state of the hoard cache on your client, and the
 .B stat
 command to see how much of a particular parcel is currently hoarded.
-
-You can safely attempt to interrupt any
-.B isr
-command at any time by typing control-c (SIGINT).  Regions of commands
-that should not be interrupted will ignore these SIGINT signals.
 
 On a particular client host, the
 .I default server
@@ -128,6 +124,11 @@ which in turn can be overridden by specifying the
 .B -u
 option on the command line.
 
+You can safely attempt to interrupt any
+.B isr
+command at any time by typing control-c (SIGINT).  Regions of commands
+that should not be interrupted will ignore these SIGINT signals.
+
 .SH COMMANDS 
 
 .TP
@@ -153,7 +154,7 @@ option limits the upload bandwidth to
 The
 .B checkin
 command is 
-.I idempotent, 
+.IR idempotent , 
 meaning that it can be safely interrupted with ctrl-c and rerun until
 it successfully completes.
 
@@ -161,9 +162,32 @@ it successfully completes.
 .BI "isr checkout(co) " "parcel" " [-c] [-d] [-r " "oldversion" "]"
 Download  a 
 .I parcel 
-from the server without running it.  The
+from the server without running it.  This command acquires a lock on the
+parcel and downloads the minimum amount of virtual machine state needed to
+run the parcel on the client host.
+
+By default, the 
+.B checkout
+command downloads the most recent parcel
+version. However, you can rollback to previous parcel versions using
+the
+.BI -r 
+.I oldversion
+option. Let 
+.I lastversion
+be the most recent parcel version on the server. Then
+.B -r 
+.I oldversion
+causes the server to first create a new version
+.I lastversion+1
+that is an identical copy  of version
+.IR oldversion .
+This new version, which is now the most recent version, 
+is then downloaded as before. 
+
+The
 .B -d
-option will
+option will additionally
 .B hoard
 the parcel after downloading it, ensuring that you will be able to
 .B resume
@@ -172,20 +196,18 @@ the parcel when disconnected from the network.  The
 option, when used in conjunction with the
 .B -d
 option, performs lengthy consistency checks on the hoard cache after
-hoarding has completed.  The
-.B -r
-option allows you to rollback to previous parcel versions, 
-as described in the documentation for the 
-.B resume
-command.
+hoarding has completed.
 
 The 
 .B checkout
-command is normally subsumed by the 
+command is useful for preparing a parcel to run
+.IR disconnected ,
+but it is normally subsumed by the 
 .B resume 
-command. However, it can be useful in some situations.
-For example, you might want to 
-use the 
+command when you are running
+.IR connected .
+Even in connected mode, it can be useful in some situations.
+For example, you might want to use the 
 .B stat
 command (which requires the parcel to be checked out) 
 before you actually run the parcel.
@@ -274,13 +296,12 @@ Display a brief usage summary.
 
 .TP
 .BI "isr hoard " "parcel"
-Fetch the parcel's entire virtual disk into the
-.I hoard cache
+Fetch the parcel's entire virtual disk into the hoard cache
 on the client. This command
 fetches only the blocks that are missing on the client. You can kill
 it with
 .B ctrl-c
-and rerun it as many times as you wish without any ill effects. 
+and rerun it as many times as you wish without any ill effects.
 
 You can hoard a parcel anytime and anywhere, even if other
 .B isr 
@@ -293,9 +314,7 @@ List information about your parcels. By default, this command displays
 the status of all of the user's parcels that are managed by the
 default server. The display identifies the server, and then for
 each parcel, prints a single line with the name, the current lock status
-.I (acquired 
-or 
-.I released), 
+.IR "" ( acquired " or " released ),
 the user and client host that last changed the lock status, and the
 time of that change.  
 
@@ -334,30 +353,9 @@ command for that.)
 .BI "isr resume " "parcel" " [-r " "oldversion" "] [-c] [-d] [-F]"
 Checkout a 
 .I parcel
-(if necessary) and then run it. 
-This command acquires a lock on the parcel and
-downloads the minimum amount of virtual machine state needed to
-run the parcel on the client host. Any additional state that the parcel
-needs while it is running will be demand paged from the server.
-
-By default, the 
-.B resume
-command downloads the most recent parcel
-version. However, you can rollback to previous parcel versions using
-the
-.BI -r 
-.I oldversion
-option. Let 
-.I lastversion
-be the most recent parcel version on the server. Then
-.B -r 
-.I oldversion
-causes the server to first create a new version
-.I lastversion+1
-that is an identical copy  of version
-.IR oldversion .
-This new version, which is now the most recent version, 
-is then downloaded as before. 
+(if necessary) and then run it. Any additional state that the parcel
+needs while it is running, beyond that downloaded by the checkout operation,
+will be demand-paged from the server.
 
 By default, the 
 .B resume 
@@ -369,23 +367,23 @@ option to resume
 If the parcel is not fully hoarded, the
 .B -d
 option will cause the parcel to be hoarded (which requires a network
-connection) and then will resume
-.IR disconnected .
-Running the
-.B hoard
-command, or the
-.B checkout
-command with the
-.B -d
-flag, before resuming disconnected will ensure that the parcel is
-fully hoarded.  The
+connection) and then will resume disconnected.  (To ensure that no network
+access is needed in order to resume disconnected, run
+.B checkout -d
+beforehand to ensure that the parcel is both checked out and fully
+hoarded.)  The
 .B -c
 option, when used in conjunction with
 .BR -d ,
 will cause a lengthy consistency check to be performed on the hoard
 cache before resuming.
 
-The 
+The
+.B -r
+option allows you to rollback to previous parcel versions, 
+as described in the documentation for the 
+.B checkout
+command.  The 
 .B -F 
 option causes the parcel to be resumed in a window rather than in
 full-screen mode, which can be useful for configuring the virtual
@@ -401,14 +399,14 @@ is currently checked out, it can be specified by name; otherwise,
 it must be specified by its UUID.  The
 .I parcel
 UUID can be obtained with the
-.B lshoard
+.B lshoard -l
 command.
 
 .TP
 .BI "isr stat " parcel
 Display information about the local state of a 
 .IR parcel ,
-such as the amount of state demand paged from the server,
+such as the amount of state demand-paged from the server,
 the amount of dirty state, and the amount of state that
 is hoarded in the persistent hoard cache. The
 .I parcel
@@ -421,7 +419,7 @@ command.
 Save a new checkpointed version of 
 .I parcel 
 on the server, without releasing the lock or 
-.B discarding 
+.BR discard ing 
 any of the current local state. You can
 .B sync
 as often as you like between 
@@ -539,19 +537,12 @@ Increment the verbosity level.
 
 .SH EXAMPLES
 
-In the following, suppose that your Unix login name is 
-.I isruser
-and that your ISR userid is 
-.IR bovik .
 Here is how you might use
 .B isr
 during a typical day: 
 
-After arriving at work, you login to your ISR client host using the
-Linux login name
-.I isruser
-and then start up X windows. Next, you will need to 
-authenticate to the ISR server,
+After arriving at work, you login to your ISR client host. Next, you will
+need to authenticate to the ISR server,
 
 .RS
 \fC$ isr auth\fP
@@ -560,7 +551,7 @@ authenticate to the ISR server,
 which prompts you for your ISR password.  You are now authenticated
 and will not need to type this password again until you either explicitly
 .B deauth
-or terminate the X session.  
+or terminate your X session.
 
 After listing your available parcels,
 
@@ -645,7 +636,7 @@ file override those in
 
 .TP
 .I !!LIBDIR!!/parcelkeeper
-The user level process that demand pages state from the server while the
+The user-level process that demand-pages state from the server while the
 parcel is running.
 
 .SH ACKNOWLEDGMENTS
