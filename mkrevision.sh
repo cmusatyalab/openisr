@@ -20,7 +20,9 @@ if [ "$1" = "update" ] ; then
 		exit 0
 	fi
 
-	REV=`git-describe`
+	# git describe will throw a fatal error if there is no predecessor
+	# tag to the current commit
+	REV=`git-describe 2>/dev/null || git-rev-parse --short HEAD`
 	# Coda-specific workaround: different Coda clients may see different
 	# stat information for the same files, which can cause a client to
 	# believe the git index is not up-to-date, which could cause the
