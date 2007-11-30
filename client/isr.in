@@ -213,6 +213,11 @@ my %syscfg = ();
 #
 
 #
+# Set program name as early as possible for logging
+#
+($progname = $0) =~ s#.*/##s;    # Strip off path from program name
+
+#
 # Define what we do on shutdown (placed here for clarity)
 #
 sub exit_handler ($) {
@@ -298,9 +303,6 @@ $userid = $ENV{USER}
 
 # Set the default server; may be overridden from command line
 $server = $syscfg{server};
-
-# Strip off pathname from the program name
-($progname = $0) =~ s#.*/##s; # Strip off path from program name
 
 #
 # Handle the case where the user calls the program with no arguments
@@ -2243,11 +2245,6 @@ sub touch ($) {
 sub err ($) {
     my $msg = shift;
 
-    my $progname;
-
-    # Strip any path information from the program name
-    ($progname = $0) =~ s#.*/##s; 
-
     print "[$progname] Warning: $msg\n";
     message("Warning: $msg");
 }
@@ -2257,11 +2254,6 @@ sub err ($) {
 #
 sub unix_err ($) {
     my $msg = shift;
-
-    my $progname;
-
-    # Strip any path information from the program name
-    ($progname = $0) =~ s#.*/##s; 
 
     print "[$progname] Warning: $msg ($!)\n";
     message("Warning: $msg");
@@ -2273,11 +2265,6 @@ sub unix_err ($) {
 sub errexit ($) {
     my $msg = shift;
 
-    my $progname;
-
-    # Strip any path information from the program name
-    ($progname = $0) =~ s#.*/##s; 
-
     print RED, "[$progname] Error: $msg\n", RESET;
     message("Error: $msg");
     exit 1;
@@ -2288,11 +2275,6 @@ sub errexit ($) {
 #
 sub unix_errexit ($) {
     my $msg = shift;
-
-    my $progname;
-
-    # Strip any path information from the program name
-    ($progname = $0) =~ s#.*/##s; 
 
     print RED, "[$progname] Error: $msg ($!)\n", RESET;
     message("Error: $msg ($!)");
@@ -2306,10 +2288,6 @@ sub system_err ($) {
     my $msg = shift;
 
     my $exit_value = $? >> 8;
-    my $progname;
-
-    # Strip any path information from the program name
-    ($progname = $0) =~ s#.*/##s; 
 
     # $? is the wait() style return value. $! is strerr[errno]
     # $exit_value  = $? >> 8;
@@ -2416,10 +2394,6 @@ sub mypause($) {
 #
 sub usage ($) {
     my $msg = shift;
-    my $progname;
-
-    # Strip any path information from the program name
-    ($progname = $0) =~ s#.*/##s; 
 
     if ($msg) {
         print RED, "Error: $msg\n", RESET;
