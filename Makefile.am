@@ -1,5 +1,5 @@
 if WANT_CLIENT
-CLIENTDIRS = client parcelkeeper conf tools
+CLIENTDIRS = client parcelkeeper conf
 endif
 
 if WANT_SERVER
