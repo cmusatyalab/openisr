@@ -2465,6 +2465,9 @@ sub isr_srun ($$$$) {
     my $retval;
     my $redirect = "";
 
+    # Log the operation
+    message("srun: $operation $args");
+
     # Redirect stderr to outfile if requested
     if ($stderr) {
 	$redirect = "2>&1";
