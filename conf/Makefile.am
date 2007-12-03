@@ -13,17 +13,6 @@ GEN = openisr.init
 CLEANFILES = $(GEN)
 EXTRA_DIST = $(GEN:=.in) magic
 
-$(GEN): %: %.in Makefile
-	@echo "Generating $@ from $<"
-	@sed -e "s=!!LIBDIR!!=$(pkglibdir)=g" \
-				-e "s=!!SHAREDIR!!=$(pkgdatadir)=g" \
-				-e "s=!!SYSCONFDIR!!=$(pkgsysconfdir)=g" \
-				-e "s=!!INITDIR!!=$(initexecdir)=g" \
-				-e "s=!!BINDIR!!=$(bindir)=g" \
-				-e "s=!!PERLPATH!!=$(PERL)=g" \
-				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" \
-				-e "s=!!KBUILDTYPE!!=$(KBUILDTYPE)=g" $< > $@
-
 install-exec-hook:
 	mv $(DESTDIR)$(initexecdir)/openisr.init \
 				$(DESTDIR)$(initexecdir)/openisr
@@ -34,3 +23,6 @@ install-data-hook:
 uninstall-hook:
 	rm -f $(DESTDIR)$(initexecdir)/openisr \
 				$(DESTDIR)$(udevrulesdir)/openisr.rules
+
+include $(top_srcdir)/mkrevision.mk
+include $(top_srcdir)/subst.mk
