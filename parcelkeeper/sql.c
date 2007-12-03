@@ -18,7 +18,7 @@
 #include <sqlite3.h>
 #include "defs.h"
 
-#define CACHE_BUCKETS 200
+#define CACHE_BUCKETS 199
 #define SLOW_THRESHOLD_MS 200
 
 struct query {
