@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!!!PERLPATH!!
 
 ##########################################################
 # isr_admin - Perform various ISR administrative functions

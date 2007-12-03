@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!!!PERLPATH!!
 #
 # upgrade-0.9 - Tool to generate an OpenISR (R) 0.9 parcel from an 0.8 parcel
 #

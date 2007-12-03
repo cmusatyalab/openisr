@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!!!PERLPATH!!
 #
 # openisr-config - script to build and install the kernel modules for the
 #                  OpenISR (R) system

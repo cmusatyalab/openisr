@@ -110,6 +110,14 @@ if test z$enable_libvdisk = zyes ; then
 fi
 AM_CONDITIONAL([LIBVDISK_BUILD_32], [test z$build_32 = zyes])
 
+# Checks for programs.
+AC_PATH_PROG([PERL], [perl], [no])
+if test z$PERL = zno ; then
+	AC_MSG_ERROR([Perl not found])
+fi
+AC_SUBST([PERL])
+AC_ARG_VAR([PERL], [path to Perl])
+
 # Checks for libraries.
 AC_ARG_WITH([kernel], [AS_HELP_STRING([--with-kernel=DIR],
 			[look for configured kernel source tree in DIR])])

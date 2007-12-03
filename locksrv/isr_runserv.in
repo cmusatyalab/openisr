@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!!!PERLPATH!!
 
 ######################################################
 # isr_runserv - Wrapper script for ISR server commands
