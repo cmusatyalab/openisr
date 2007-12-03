@@ -1,4 +1,3 @@
-initexecdir = ${sysconfdir}/init.d
 udevdir = ${sysconfdir}/udev
 udevrulesdir = ${udevdir}/rules.d
 

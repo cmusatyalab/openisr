@@ -171,6 +171,7 @@ if test z$enable_libvdisk = zyes ; then
 fi
 
 AC_SUBST([pkgsysconfdir], [\$\(sysconfdir\)/$PACKAGE])
+AC_SUBST([initexecdir], [\$\(sysconfdir\)/init.d])
 AC_CONFIG_FILES([Makefile
                  conf/Makefile
                  client/Makefile
