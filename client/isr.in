@@ -966,6 +966,10 @@ sub discard () {
     # This operation should not be interrupted by the user
     block_sigint();
 
+    # Reset the consistent dirty cache flag, since any temporary dirty
+    # cache directory can no longer be consistent with an empty local cache.
+    unlink($cdcache_file);
+    
     # Delete the dirty keyring and cfg directory.  If this fails, we'll
     # notice it in build_cache().
     mysystem("rm -rf $parceldir/cfg");
@@ -976,10 +980,6 @@ sub discard () {
     errexit("Can't remove disk image")
         if -e "$parceldir/disk" or -e "$parceldir/disk.idx";
 
-    # Reset the consistent dirty cache flag, since any temporary dirty
-    # cache directory can no longer be consistent with an empty local cache.
-    unlink($cdcache_file);
-    
     # Recreate the keyring and cfg directory
     build_cache() == 0
 	or errexit("Parcel in inconsistent state.  Try discarding again.");
@@ -2649,10 +2649,6 @@ sub isr_priv_upload () {
     $virtualbytes = $dirtyblocks*$cfg{CHUNKSIZE};
     message("Upload: disk: $dirtybytes dirty, $virtualbytes virtual");
 
-    # We need to do this, so that if the commit doesn't finish
-    # rsync doesn't blow everything away
-    unlink($cdcache_file);
-
     # Return successful status
     print("Upload completed, all updates have been sent to the server.\n")
 	if $verbose;
@@ -2778,6 +2774,11 @@ sub isr_priv_clientcommit($) {
 	    or unix_errexit("Unable to copy keyring to $parceldir/prev-keyring.");
 	message("Client side commit - finish copying keyring");
     }
+
+    #
+    # Note that the upload cache is no longer correct
+    #
+    unlink($cdcache_file);
 
     #
     # Move the cfg.tgz.enc and keyring.enc files into the hoard cache
