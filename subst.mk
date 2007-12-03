@@ -8,6 +8,8 @@ $(GEN): %: %.in Makefile $(REVISION_DEPENDS)
 				-e "s=!!SHAREDIR!!=$(pkgdatadir)=g" \
 				-e "s=!!SYSCONFDIR!!=$(pkgsysconfdir)=g" \
 				-e "s=!!BINDIR!!=$(bindir)=g" \
+				-e "s=!!INITDIR!!=$(initexecdir)=g" \
 				-e "s=!!PERLPATH!!=$(PERL)=g" \
+				-e "s=!!KBUILDTYPE!!=$(KBUILDTYPE)=g" \
 				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" \
 				-e "s=!!REVISION!!=$(RCS_REVISION)=g" $< > $@

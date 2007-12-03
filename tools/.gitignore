@@ -1,5 +1,7 @@
 convert-chunks
 convert-keyring
+openisr-config
+openisr-config.8
 upgrade-0.9.pl
 query
 zlib
