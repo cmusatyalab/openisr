@@ -55,19 +55,21 @@ PROCESS_ENABLE_VAR([$enable_server], [WANT_SERVER],
 AM_CONDITIONAL([WANT_COMMON],
 			[test z$enable_client = zyes -o z$enable_server = zyes])
 
-AC_MSG_CHECKING([how to build kernel modules])
-if test x$with_kbuild_wrapper = xnone ; then
-	AC_MSG_RESULT([source])
-	AC_SUBST([KBUILDTYPE], [source])
-elif test x$with_kbuild_wrapper = xdebian -o x$with_kbuild_wrapper = xdkms
-then
-	AC_MSG_RESULT([$with_kbuild_wrapper])
-	if test z$enable_modules = zyes ; then
-		AC_MSG_ERROR([--enable-modules cannot be used with a kbuild wrapper])
+if test z$enable_client = zyes -o z$enable_modules = zyes ; then
+	AC_MSG_CHECKING([how to build kernel modules])
+	if test x$with_kbuild_wrapper = xnone ; then
+		AC_MSG_RESULT([source])
+		AC_SUBST([KBUILDTYPE], [source])
+	elif test x$with_kbuild_wrapper = xdebian -o x$with_kbuild_wrapper = xdkms
+	then
+		AC_MSG_RESULT([$with_kbuild_wrapper])
+		if test z$enable_modules = zyes ; then
+			AC_MSG_ERROR([--enable-modules cannot be used with a kbuild wrapper])
+		fi
+		AC_SUBST([KBUILDTYPE], [$with_kbuild_wrapper])
+	else
+		AC_MSG_ERROR([unknown kbuild wrapper $with_kbuild_wrapper])
 	fi
-	AC_SUBST([KBUILDTYPE], [$with_kbuild_wrapper])
-else
-	AC_MSG_ERROR([unknown kbuild wrapper $with_kbuild_wrapper])
 fi
 AM_CONDITIONAL([WANT_MODULE_SOURCE], [test z$enable_client = zyes -a \
 			z$with_kbuild_wrapper = znone])
