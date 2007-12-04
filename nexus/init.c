@@ -219,12 +219,13 @@ static unsigned long get_system_page_count(void)
 
 /**
  * ident_exists - return true if some Nexus device has the given @ident
+ *
+ * state.lock must be held.
  **/
 static int ident_exists(char *ident)
 {
 	struct nexus_dev *dev;
 	
-	BUG_ON(!spin_is_locked(&state.lock));
 	list_for_each_entry(dev, &state.all_devs, lh_all_devs) {
 		if (!strcmp(ident, dev->ident))
 			return 1;
