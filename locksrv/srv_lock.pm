@@ -20,6 +20,7 @@
 ###################
 use strict;
 use Sys::Hostname;
+use Fcntl;
 
 ##################
 # Helper functions
@@ -128,21 +129,19 @@ if (!-e $logfile) {
 # Acquire a lock
 ################
 if ($acquire) {
-
     # Try to acquire the lock
-    if (system("lockfile -r 0 $lockfile > /dev/null 2>&1") != 0) {
-
+    if (!sysopen(LOCK, $lockfile, O_WRONLY|O_CREAT|O_EXCL)) {
 	# If we can't acquire the lock, try to print an informative
 	# message that explains exactly why the request failed.
 	$line = get_last_acquired_entry($logfile);
 	($serverhostname, $datestring, $action, $userid, $parcelname, $clienthostname) = split('\|', $line); # NOTE: single quotes are important here
 	if (-e $lockfile and $action eq "acquired") {
 	    errexit("Unable to acquire lock for $parcelname because lock is currently held by $userid on $clienthostname since $datestring.");
-	}
-	else {
+	} else {
 	    errexit("Unable to lock $userid/$parcelname (reason unknown).");
 	}
     }
+    close(LOCK);
 
     # Create a nonce [1..MAXNONCE] that can be used to validate releases
     srand();  # Generate a different seed each time
@@ -207,8 +206,8 @@ if ($release or $hard_release) {
 # Also, return most recent acquire or release log entry via stdout
 # if running in verbose mode.
 #
-# Note: To be consistent with the lockfile command, we return 0 if lock
-# exists (success), 1 if lock does not exist (failure). 
+# Note: We return 0 if lock exists (success), 1 if lock does not
+# exist (failure). 
 #
 if ($check or $check_nonce) {
     $line = get_last_entry($logfile);
