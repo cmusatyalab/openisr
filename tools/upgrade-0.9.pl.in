@@ -197,15 +197,15 @@ sub finish_version {
 	opendir(CFG, "$dst/$ver/cfg") or die;
 	@files = readdir(CFG);
 	closedir(CFG);
-	foreach $pattern ("\.{1,2}", "nvram", ".*\.vmdk", ".*\.vmem",
+	foreach $pattern ("\.{1,2}", "(.*\.)?nvram", ".*\.vmdk", ".*\.vmem",
 				".*\.vmss", ".*\.vmx", ".*\.vmxf",
 				"vmware[-0-9]*\.log") {
 		eval "\@files = grep(!/^$pattern\$/, \@files)";
 	}
 	foreach $file (@files) {
-		if ($file =~ /\.WRITELOCK$/) {
+		if ($file =~ /\.(WRITELOCK|lck|vmsd|vmsn)$|^vmware-core\.gz$/) {
 			print "Removing $ver/cfg/$file\n";
-			unlink("$dst/$ver/cfg/$file") or die;
+			system("rm -rf $dst/$ver/cfg/$file") == 0 or die;
 		} else {
 			print "Unknown file in $ver/cfg: $file\n";
 		}
