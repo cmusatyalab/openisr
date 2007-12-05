@@ -27,15 +27,15 @@ use Fcntl;
 ##################
 
 sub stored_nonce ($) {
-    my $noncefile = shift;
+    my $lockfile = shift;
     my $found;
     
-    open(NONCEFILE, $noncefile)
-	or errexit("Unable to open nonce file $noncefile");
-    $found = <NONCEFILE>;
+    open(LOCK, $lockfile)
+	or errexit("Unable to open lock file $lockfile");
+    $found = <LOCK>;
     chomp($found);
-    close(NONCEFILE)
-	or errexit("Unable to close nonce file $noncefile");
+    close(LOCK)
+	or errexit("Unable to close lock file $lockfile");
     return $found;
 }
 
@@ -55,7 +55,6 @@ my $verbose;
 my $lockfile;
 my $logfile;
 my $server_nonce;
-my $noncefile;
 my $datestring;
 my $acquire;
 my $release;
@@ -111,7 +110,6 @@ $parceldir = "$config{content_root}/$userid/$parcelname";
 #
 $lockfile = "$parceldir/LOCK";
 $logfile = "$parceldir/lockholder.log";
-$noncefile = "$parceldir/nonce";
 $serverhostname = hostname();
 
 #
@@ -129,6 +127,10 @@ if (!-e $logfile) {
 # Acquire a lock
 ################
 if ($acquire) {
+    # Create a nonce [1..MAXNONCE] that can be used to validate releases
+    srand();  # Generate a different seed each time
+    $server_nonce = int(rand(Server::MAXNONCE)) + 1;
+
     # Try to acquire the lock
     if (!sysopen(LOCK, $lockfile, O_WRONLY|O_CREAT|O_EXCL)) {
 	# If we can't acquire the lock, try to print an informative
@@ -141,18 +143,11 @@ if ($acquire) {
 	    errexit("Unable to lock $userid/$parcelname (reason unknown).");
 	}
     }
-    close(LOCK);
-
-    # Create a nonce [1..MAXNONCE] that can be used to validate releases
-    srand();  # Generate a different seed each time
-    $server_nonce = int(rand(Server::MAXNONCE)) + 1;
 
     # Save the nonce
-    open(NONCEFILE, ">$noncefile")
-	or errexit("Error: Unable to open $noncefile");
-    print NONCEFILE "$server_nonce\n";
-    close(NONCEFILE)
-	or errexit("Error: Unable to close $noncefile");
+    print LOCK "$server_nonce\n";
+    close(LOCK)
+	or errexit("Error: Unable to close $lockfile");
 
     # Log the successful result
     open(LOGFILE, ">>$logfile")
@@ -177,10 +172,9 @@ if ($release or $hard_release) {
     if (-e $lockfile) {
 	# If we were asked for a soft release, compare nonce stored on
 	# the server with the one passed on command line
-	if ($release and stored_nonce($noncefile) != $release) {
+	if ($release and stored_nonce($lockfile) != $release) {
 	    errexit("Unable to release lock because the nonce passed on the command line does not match the nonce stored on the server.");
 	}
-	unlink($noncefile);
 
 	# Release the lock
 	unlink($lockfile)
@@ -219,7 +213,7 @@ if ($check or $check_nonce) {
 
     if (-e $lockfile) {
 	exit 1
-	    if $check_nonce and stored_nonce($noncefile) != $check_nonce;
+	    if $check_nonce and stored_nonce($lockfile) != $check_nonce;
 	exit 0;
     } else {
 	exit 1;
