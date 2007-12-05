@@ -251,13 +251,25 @@ option causes it to perform an additional (and time-consuming) content
 consistency check.
 
 .TP
-.BI "isr clean " "parcel"
+.BI "isr clean " "parcel" " [-f]"
 Remove  
 .I parcel 
-from the client host and forcibly release its
-server lock. This command can be used to release the lock on a parcel
-from any machine, which is handy if you've forgotten to checkin the
-parcel and want to use it from another machine.
+from the client host and release its server lock.  This command can be used
+as a faster alternative to 
+.B checkin
+when you don't need to save any of the changes you have made to
+.I parcel
+since the last
+.B checkout
+or
+.BR sync .
+
+The
+.B -f
+option forcibly releases the server lock, even if it is held by a different
+client host.  That client host will be unable to checkin the parcel.  This
+option can be useful if you've forgotten to checkin the parcel and want to
+use it from another client host.
 
 .TP
 .BI "isr deauth" 
@@ -272,11 +284,8 @@ Discard all local client changes to
 since the last 
 .B checkout
 or 
-.B sync.  
-This command can be useful for speeding up the
-.B checkin 
-command after brief ISR sessions where you don't need to save any of
-the changes you made. It is also useful for "micro-rollbacks" that allow 
+.BR sync .
+This command is useful for "micro-rollbacks" that allow 
 you to recover from mistakes during the current session. For example, 
 if you inadvertently type "rm -rf /bin" as root in the guest, the
 .B
@@ -473,6 +482,14 @@ be resumed disconnected.
 For
 .BR checkp ,
 check the parcel on the server rather than on the client.
+
+.TP
+.B -f/--force
+Cause
+.B clean
+to release the parcel lock on the server even if the lock is held by another
+client host.  This will cause that client host to be unable to checkin the
+parcel.
 
 .TP
 .B -F/--no-fullscreen
