@@ -171,19 +171,22 @@ if ($acquire) {
 # Release a lock
 ################
 if ($release or $hard_release) {
-    # Compare nonce stored on server with the one passed on command line
-    # Don't do any checking if we are asked to do a hard release 
-    if ($release and stored_nonce($noncefile) != $release) {
-	errexit("Unable to release lock because the nonce passed on the command line does not match the nonce stored on the server.");
-    }
-    unlink($noncefile);
-
-    # Release the lock. Notice that this will succeed even if no one
-    # currently holds the lock. This is a policy decision that
-    # simplifies termination cleanup in other scripts.
+    # If no one holds the lock and we were asked for a hard release, we
+    # silently succeed.  On the other hand, if we were asked for a soft
+    # release, we fail.
     if (-e $lockfile) {
+	# If we were asked for a soft release, compare nonce stored on
+	# the server with the one passed on command line
+	if ($release and stored_nonce($noncefile) != $release) {
+	    errexit("Unable to release lock because the nonce passed on the command line does not match the nonce stored on the server.");
+	}
+	unlink($noncefile);
+
+	# Release the lock
 	unlink($lockfile)
 	    or errexit("couldn't remove lockfile $lockfile: $!\n");
+    } elsif ($release) {
+	errexit("Cannot perform soft release when lock is not held");
     }
 
     # Log the successful result
