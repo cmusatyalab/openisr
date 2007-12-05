@@ -167,6 +167,7 @@ my $remote = 0;      # Perform action on server rather than client
 my $fullscreen = 1;  # Run VMM in full-screen mode
 my $verbose = 1;     # Verbosity level; by default, we print a few messages
 my $bwlimit;         # Bandwidth limit (KBytes/sec) in ci and sync
+my $forceflag = 0;   # Force release of lock in cleanclient()
 
 # General global state, mostly about the parcel we are working with
 my $progname;        # $0 without the directory part
@@ -322,6 +323,7 @@ $result = GetOptions(
 		     "c|checkstate"   => \$checkstate,
 		     "d|disconnected" => \$disconnected,
 		     "e|remote"       => \$remote,
+		     "f|force"        => \$forceflag,
 		     "F|no-fullscreen"=> sub { $fullscreen = 0 },
 		     "l|long"         => \$longflag,
 		     "L|longvers=i"   => \$longvers,
@@ -1402,9 +1404,14 @@ sub cleanclient() {
     }
 
     # Remove the parcel's session state
-    print("Removing session state and releasing server lock...\n")
-	if $verbose;
-    if (clean(1)) {
+    if ($verbose) {
+	if ($forceflag) {
+	    print "Removing session state and forcing release of server lock...\n";
+	} else {
+	    print "Removing session state and releasing server lock...\n";
+	}
+    }
+    if (clean($forceflag)) {
 	return;
     }
 
@@ -1581,9 +1588,12 @@ sub clean ($) {
 
     if (!$force) {
         # Request a soft release
-	if (isr_srun("lock", "-p $parcel -n $clientname -r $sessionid", 
+	if ($sessionid == 0) {
+	    err("Unable to release lock for $parcel because its nonce is unknown.");
+	    $ret = -1;
+	} elsif (isr_srun("lock", "-p $parcel -n $clientname -r $sessionid", 
 		     "", 0) != 0) {
-	    err("Unable to release lock for $parcel. Use 'isr clean' to force the release.");
+	    err("Unable to release lock for $parcel.");
 	    $ret = -1;
 	}
     } else {
@@ -2416,8 +2426,9 @@ sub usage ($) {
 	print "Advanced commands:\n";
 	print "  stat       Display information about local ISR state for a parcel\n";
 	print "  checkout   Checkout parcel without running it (-c, -d, -r optional)\n";
-	print "  discard    Discard all local changes to parcel since last checkout or sync\n";
 	print "  sync       Sync parcel to server without checking it in (-b optional)\n";
+	print "  discard    Discard all local changes to parcel since last checkout or sync\n";
+	print "  clean      Remove parcel from client and release its lock (-f optional)\n";
 	print "  hoard      Fetch entire virtual disk for improved performance\n";
 	print "  deauth     Remove authentication credentials from your client\n";
 	print "Debugging and maintenance commands:\n";
@@ -2425,7 +2436,6 @@ sub usage ($) {
 	print "  checkhoard Check hoard cache for consistency (-c optional)\n";
 	print "  lshoard    List info about the hoard cache (-l optional)\n";
 	print "  rmhoard    Remove a parcel from the hoard cache\n";
-	print "  clean      Remove parcel from client and release its lock\n";
 	print "  version    Print OpenISR version\n";
     }
     print "Options:\n";
@@ -2433,6 +2443,7 @@ sub usage ($) {
     print "  -c,--checkstate    Do extra checks [checkout, resume, checkp, checkhoard]\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [checkout, resume]\n";
     print "  -e,--remote        Perform action on server rather than client [checkp]\n";
+    print "  -f,--force         Release parcel lock even if we don't hold it [clean]\n";
     print "  -F,--no-fullscreen Start VMware in windowed mode [resume]\n";
     print "  -l,--long          Long listing [ls, lshoard]\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls]\n";
