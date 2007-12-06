@@ -426,7 +426,7 @@ int check_hoard(void)
 					"future", count);
 
 	if (commit(state.db))
-		return 1;
+		goto bad;
 
 	if (config.flags & WANT_FULL_CHECK) {
 		/* XXX validate data */
