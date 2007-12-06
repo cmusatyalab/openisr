@@ -190,28 +190,49 @@ int set_signal_handler(int sig, void (*handler)(int sig))
 	return sigaction(sig, &sa, NULL);
 }
 
-void print_progress(unsigned chunks, unsigned maxchunks)
+void print_progress_chunks(unsigned chunks, unsigned maxchunks)
 {
-	static unsigned last_percent;
-	static unsigned last_mb;
+	static int last_timestamp;
+	int cur_timestamp;
 	unsigned percent;
-	unsigned mb;
-	unsigned chunks_per_mb=(1 << 20)/parcel.chunksize;
 
 	if (maxchunks)
 		percent=chunks*100/maxchunks;
 	else
 		percent=0;
-	mb=chunks/chunks_per_mb;
 
-	/* Don't talk if we have nothing new to say */
-	if (last_percent == percent && last_mb == mb)
+	/* Don't talk if we've talked recently */
+	cur_timestamp=timestamp();
+	if (last_timestamp == cur_timestamp)
 		return;
-	last_percent=percent;
-	last_mb=mb;
+	last_timestamp=cur_timestamp;
 
 	/* Note carriage return rather than newline */
-	printf("  %u%% (%u/%u MB)\r", percent, mb, maxchunks/chunks_per_mb);
+	printf("  %u%% (%u/%u)\r", percent, chunks, maxchunks);
+	fflush(stdout);
+}
+
+void print_progress_mb(off64_t bytes, off64_t max_bytes)
+{
+	static int last_timestamp;
+	int cur_timestamp;
+	unsigned percent;
+	off64_t mb = bytes >> 20;
+	off64_t max_mb = max_bytes >> 20;
+
+	if (max_mb)
+		percent=mb*100/max_mb;
+	else
+		percent=0;
+
+	/* Don't talk if we've talked recently */
+	cur_timestamp=timestamp();
+	if (last_timestamp == cur_timestamp)
+		return;
+	last_timestamp=cur_timestamp;
+
+	/* Note carriage return rather than newline */
+	printf("  %u%% (%llu/%llu MB)\r", percent, mb, max_mb);
 	fflush(stdout);
 }
 

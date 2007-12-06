@@ -93,9 +93,9 @@ int hoard(void)
 		if (sret == SQLITE_OK) {
 			if (transport_fetch_chunk(buf, chunk, tag, &chunklen))
 				goto out_qry;
-			print_progress(++num_hoarded, to_hoard);
+			print_progress_chunks(++num_hoarded, to_hoard);
 		} else if (sret == SQLITE_ROW) {
-			print_progress(num_hoarded, --to_hoard);
+			print_progress_chunks(num_hoarded, --to_hoard);
 		} else {
 			pk_log(LOG_ERROR, "Couldn't query hoard cache index");
 			goto out_qry;

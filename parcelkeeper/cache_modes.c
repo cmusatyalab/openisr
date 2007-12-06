@@ -114,7 +114,7 @@ int copy_for_upload(void)
 				"main.keys.tag != prev.keys.tag", NULL);
 				sret == SQLITE_ROW; sret=query_next(qry)) {
 		query_row(qry, "dbd", &chunk, &tag, &taglen, &length);
-		print_progress(modified_chunks, total_modified);
+		print_progress_chunks(modified_chunks, total_modified);
 		if (chunk > parcel.chunks) {
 			pk_log(LOG_ERROR, "Chunk %u: greater than parcel size "
 						"%u", chunk, parcel.chunks);
@@ -294,7 +294,7 @@ static pk_err_t validate_cachefile(void)
 				"cache.chunks.chunk == keys.chunk", NULL);
 				sret == SQLITE_ROW; sret=query_next(qry)) {
 		query_row(qry, "ddb", &chunk, &chunklen, &tag, &taglen);
-		print_progress(++processed, valid);
+		print_progress_chunks(++processed, valid);
 
 		if (chunk > parcel.chunks) {
 			pk_log(LOG_ERROR, "Found chunk %u greater than "
