@@ -377,7 +377,7 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 		return PK_NOMEM;
 	}
 	if (hoard_get_chunk(tag, buf, &len)) {
-		ftag=format_tag(tag);
+		ftag=format_tag(tag, parcel.hashlen);
 		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
 		free(ftag);
 		ret=transport_fetch_chunk(buf, chunk, tag, &len);

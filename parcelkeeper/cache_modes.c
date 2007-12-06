@@ -148,7 +148,7 @@ int copy_for_upload(void)
 		if (memcmp(tag, calctag, parcel.hashlen)) {
 			pk_log(LOG_ERROR, "Chunk %u: tag mismatch.  "
 					"Data corruption has occurred", chunk);
-			log_tag_mismatch(tag, calctag);
+			log_tag_mismatch(tag, calctag, parcel.hashlen);
 			goto out;
 		}
 		path=form_chunk_path(config.dest_dir, chunk);
@@ -337,7 +337,7 @@ static pk_err_t validate_cachefile(void)
 			if (memcmp(tag, calctag, taglen)) {
 				pk_log(LOG_ERROR, "Chunk %u: tag check "
 							"failure", chunk);
-				log_tag_mismatch(tag, calctag);
+				log_tag_mismatch(tag, calctag, taglen);
 				ret=PK_TAGFAIL;
 			}
 		}

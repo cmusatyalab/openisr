@@ -187,7 +187,7 @@ static pk_err_t add_chunk_reference(const void *tag)
 				"(parcel, tag) VALUES (?, ?)", "db",
 				state.hoard_ident, tag, parcel.hashlen)
 				!= SQLITE_OK) {
-		ftag=format_tag(tag);
+		ftag=format_tag(tag, parcel.hashlen);
 		pk_log(LOG_ERROR, "Couldn't add chunk reference for tag %s",
 					ftag);
 		free(ftag);
@@ -195,7 +195,7 @@ static pk_err_t add_chunk_reference(const void *tag)
 	}
 	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1 "
 				" WHERE tag == ?", "b", tag, parcel.hashlen)) {
-		ftag=format_tag(tag);
+		ftag=format_tag(tag, parcel.hashlen);
 		pk_log(LOG_ERROR, "Couldn't set referenced flag for tag %s",
 					ftag);
 		free(ftag);
@@ -221,7 +221,7 @@ static void _hoard_invalidate_chunk(int offset, const void *tag)
 				offset, tag, parcel.hashlen);
 	if (sret == SQLITE_OK) {
 		/* Harmless: it's already not there.  But let's warn anyway. */
-		ftag=format_tag(tag);
+		ftag=format_tag(tag, parcel.hashlen);
 		pk_log(LOG_ERROR, "Attempted to invalidate tag %s at "
 					"offset %d, but it does not exist "
 					"(harmless)", ftag, offset);
@@ -236,7 +236,7 @@ static void _hoard_invalidate_chunk(int offset, const void *tag)
 	deallocate_chunk_offset(offset);
 	if (query(NULL, state.hoard, "DELETE FROM refs WHERE tag == ?", "b",
 				tag, parcel.hashlen)) {
-		ftag=format_tag(tag);
+		ftag=format_tag(tag, parcel.hashlen);
 		pk_log(LOG_ERROR, "Couldn't invalidate references to tag %s",
 					ftag);
 		free(ftag);
@@ -327,7 +327,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	if (memcmp(tag, calctag, parcel.hashlen)) {
 		pk_log(LOG_ERROR, "Tag mismatch reading hoard cache at "
 					"offset %d", offset);
-		log_tag_mismatch(tag, calctag);
+		log_tag_mismatch(tag, calctag, parcel.hashlen);
 		hoard_invalidate_chunk(offset, tag);
 		return PK_TAGFAIL;
 	}

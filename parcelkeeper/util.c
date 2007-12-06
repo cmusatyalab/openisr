@@ -393,27 +393,27 @@ pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
 	return PK_SUCCESS;
 }
 
-char *format_tag(const void *tag)
+char *format_tag(const void *tag, unsigned len)
 {
 	char *buf;
 	const unsigned char *tbuf=tag;
 	unsigned u;
 
-	buf=malloc(2 * parcel.hashlen + 1);
+	buf=malloc(2 * len + 1);
 	if (buf == NULL)
 		return NULL;
-	for (u=0; u<parcel.hashlen; u++)
+	for (u=0; u<len; u++)
 		sprintf(buf + 2 * u, "%.2x", tbuf[u]);
 	return buf;
 }
 
-void log_tag_mismatch(const void *expected, const void *found)
+void log_tag_mismatch(const void *expected, const void *found, unsigned len)
 {
 	char *fmt_expected;
 	char *fmt_found;
 
-	fmt_expected=format_tag(expected);
-	fmt_found=format_tag(found);
+	fmt_expected=format_tag(expected, len);
+	fmt_found=format_tag(found, len);
 	if (fmt_expected != NULL && fmt_found != NULL)
 		pk_log(LOG_ERROR, "Expected %s, found %s", fmt_expected,
 					fmt_found);

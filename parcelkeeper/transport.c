@@ -186,7 +186,7 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 	}
 	if (memcmp(tag, calctag, parcel.hashlen)) {
 		pk_log(LOG_ERROR, "Invalid tag for retrieved chunk %u", chunk);
-		log_tag_mismatch(tag, calctag);
+		log_tag_mismatch(tag, calctag, parcel.hashlen);
 		return PK_TAGFAIL;
 	}
 	hoard_put_chunk(tag, buf, len);
