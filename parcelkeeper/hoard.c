@@ -14,8 +14,6 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
-#include <time.h>
 #include "defs.h"
 
 #define HOARD_INDEX_VERSION 4
@@ -69,14 +67,6 @@ static pk_err_t create_hoard_index(void)
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
-}
-
-static int timestamp(void)
-{
-	struct timeval tv;
-
-	gettimeofday(&tv, NULL);
-	return tv.tv_sec;
 }
 
 /* XXX cache chunks of different sizes */

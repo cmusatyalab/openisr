@@ -278,5 +278,6 @@ pk_err_t digest(void *out, const void *in, unsigned len);
 char *format_tag(const void *tag);
 void log_tag_mismatch(const void *expected, const void *found);
 pk_err_t canonicalize_uuid(const char *in, char **out);
+int timestamp(void);
 
 #endif

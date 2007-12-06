@@ -319,6 +319,7 @@ int check_hoard(void)
 	const char *uuid;
 	int count;
 	int sret;
+	int time;
 
 	pk_log(LOG_INFO, "Validating hoard cache");
 	printf("Validating hoard cache...\n");
@@ -379,6 +380,19 @@ int check_hoard(void)
 				LOG_ERROR,
 				"chunks with missing referenced flag"))
 		goto bad;
+
+	time=timestamp();
+	if (query(NULL, state.db, "UPDATE hoard.chunks SET last_access = ? "
+				"WHERE last_access > ?", "dd", time,
+				time + 10)) {
+		pk_log(LOG_ERROR, "Couldn't locate chunks with invalid "
+					"timestamps");
+		goto bad;
+	}
+	count=sqlite3_changes(state.db);
+	if (count)
+		pk_log(LOG_ERROR, "Repaired %d chunks with timestamps in the "
+					"future", count);
 
 	/* XXX validate offsets and offset/length pairs */
 	if (commit(state.db))

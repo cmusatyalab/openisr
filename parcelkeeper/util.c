@@ -18,6 +18,8 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <sys/time.h>
+#include <time.h>
 #include <openssl/evp.h>
 #include <uuid.h>
 #include "defs.h"
@@ -452,4 +454,12 @@ pk_err_t canonicalize_uuid(const char *in, char **out)
 out:
 	uuid_destroy(uuid);
 	return ret;
+}
+
+int timestamp(void)
+{
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	return tv.tv_sec;
 }
