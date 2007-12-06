@@ -317,6 +317,8 @@ int check_hoard(void)
 {
 	struct query *qry;
 	const char *uuid;
+	int offset;
+	int next_offset;
 	int count;
 	int sret;
 	int time;
@@ -352,6 +354,35 @@ int check_hoard(void)
 		goto bad;
 	}
 
+	next_offset=0;
+	for (sret=query(&qry, state.db, "SELECT offset FROM hoard.chunks "
+				"ORDER BY offset", NULL); sret == SQLITE_ROW;
+				sret=query_next(qry)) {
+		query_row(qry, "d", &offset);
+		if (offset != next_offset) {
+			/* XXX how do we fix this? */
+			pk_log(LOG_ERROR, "Expected offset %d, found %d",
+						next_offset, offset);
+			query_free(qry);
+			goto bad;
+		}
+		/* XXX assumes 128 KB */
+		next_offset += 256;
+	}
+	query_free(qry);
+	if (sret != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't query chunk table");
+		goto bad;
+	}
+
+	/* XXX assumes 128 KB */
+	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
+				"length = 0, last_access = 0, referenced = 0 "
+				"WHERE length < 0 OR length > 131072 OR "
+				"(length == 0 AND tag NOTNULL)",
+				LOG_ERROR,
+				"chunks with invalid length"))
+		goto bad;
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
 				"length = 0, last_access = 0, referenced = 0 "
 				"WHERE referenced != 0 AND referenced != 1",
@@ -394,7 +425,6 @@ int check_hoard(void)
 		pk_log(LOG_ERROR, "Repaired %d chunks with timestamps in the "
 					"future", count);
 
-	/* XXX validate offsets and offset/length pairs */
 	if (commit(state.db))
 		return 1;
 
