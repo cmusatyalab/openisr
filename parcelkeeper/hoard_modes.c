@@ -345,7 +345,7 @@ int check_hoard(void)
 	}
 	query_free(qry);
 	if (count)
-		pk_log(LOG_INFO, "Removed %d invalid parcel records", count);
+		pk_log(LOG_ERROR, "Removed %d invalid parcel records", count);
 	if (sret != SQLITE_OK) {
 		pk_log(LOG_ERROR, "Couldn't query parcel list");
 		goto bad;
