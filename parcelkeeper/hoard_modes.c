@@ -313,6 +313,95 @@ bad:
 	return 1;
 }
 
+static pk_err_t check_hoard_data(void)
+{
+	struct query *qry;
+	char buf[131072];  /* XXX assumes 128 KB */
+	const void *tag;
+	char calctag[20];  /* XXX */
+	unsigned expected_taglen;
+	unsigned taglen;
+	unsigned offset;
+	unsigned len;
+	off64_t examined_bytes;
+	off64_t total_bytes;
+	int sret;
+	pk_err_t ret=PK_SUCCESS;
+	int count=0;
+
+	pk_log(LOG_INFO, "Validating hoard cache data");
+	printf("Validating hoard cache data...\n");
+
+	if (query(&qry, state.db, "SELECT sum(length) FROM temp.to_check",
+				NULL) != SQLITE_ROW) {
+		pk_log(LOG_ERROR, "Couldn't find the amount of data to check");
+		return PK_IOERR;
+	}
+	query_row(qry, "D", &total_bytes);
+	query_free(qry);
+
+	/* XXX shouldn't hardcode crypto type -- we need a column for this */
+	expected_taglen=crypto_hashlen(CRY_AES_SHA1);
+	examined_bytes=0;
+	for (sret=query(&qry, state.db, "SELECT tag, offset, length "
+				"FROM temp.to_check", NULL);
+				sret == SQLITE_ROW; sret=query_next(qry)) {
+		query_row(qry, "bdd", &tag, &taglen, &offset, &len);
+		examined_bytes += len;
+		print_progress_mb(examined_bytes, total_bytes);
+		if (taglen != expected_taglen) {
+			/* XXX */
+			pk_log(LOG_ERROR, "Found chunk with invalid tag "
+						"length %d", taglen);
+			hoard_invalidate_chunk(offset, tag, taglen);
+			count++;
+			continue;
+		}
+		/* check_hoard() already checked this, but buffer overflows
+		   are bad */
+		if (len > sizeof(buf)) {
+			/* XXX */
+			pk_log(LOG_ERROR, "Found chunk with invalid length %d",
+						len);
+			hoard_invalidate_chunk(offset, tag, taglen);
+			count++;
+			continue;
+		}
+		if (pread(state.hoard_fd, buf, len, ((off_t)offset) << 9)
+					!= (off_t)len) {
+			pk_log(LOG_ERROR, "Couldn't read chunk at offset %d",
+						offset);
+			hoard_invalidate_chunk(offset, tag, taglen);
+			count++;
+			continue;
+		}
+
+		if (digest(CRY_AES_SHA1, calctag, buf, len)) {
+			pk_log(LOG_ERROR, "digest() failed");
+			ret=PK_CALLFAIL;
+			continue;
+		}
+		if (memcmp(tag, calctag, taglen)) {
+			pk_log(LOG_ERROR, "Tag mismatch at offset %d", offset);
+			log_tag_mismatch(tag, calctag, taglen);
+			hoard_invalidate_chunk(offset, tag, taglen);
+			count++;
+		}
+	}
+	query_free(qry);
+	if (sret != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't walk chunk list");
+		ret=PK_IOERR;
+	}
+	if (query(NULL, state.db, "DROP TABLE temp.to_check", NULL)) {
+		pk_log(LOG_ERROR, "Couldn't drop temporary table");
+		ret=PK_IOERR;
+	}
+	if (count)
+		pk_log(LOG_ERROR, "Removed %d invalid chunks", count);
+	return ret;
+}
+
 int check_hoard(void)
 {
 	struct query *qry;
@@ -425,12 +514,24 @@ int check_hoard(void)
 		pk_log(LOG_ERROR, "Repaired %d chunks with timestamps in the "
 					"future", count);
 
+	/* If we're going to do a FULL_CHECK, then get the necessary metadata
+	   *now* while we still know it's consistent. */
+	if (config.flags & WANT_FULL_CHECK) {
+		if (query(NULL, state.db, "CREATE TEMP TABLE to_check AS "
+					"SELECT tag, offset, length "
+					"FROM hoard.chunks WHERE tag NOTNULL "
+					"ORDER BY offset", NULL)) {
+			pk_log(LOG_ERROR, "Couldn't enumerate hoarded chunks");
+			goto bad;
+		}
+	}
+
 	if (commit(state.db))
 		goto bad;
 
-	if (config.flags & WANT_FULL_CHECK) {
-		/* XXX validate data */
-	}
+	if (config.flags & WANT_FULL_CHECK)
+		if (check_hoard_data())
+			return 1;
 	/* XXX compact */
 	return 0;
 
