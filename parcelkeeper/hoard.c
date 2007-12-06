@@ -210,7 +210,8 @@ static pk_err_t add_chunk_reference(const void *tag)
    valid, in case the chunk in the hoard cache was deleted out from under us
    as we were reading it.  (hoard_get_chunk() cares about this case.)
    Must be called within transaction for hoard connection. */
-static void _hoard_invalidate_chunk(int offset, const void *tag)
+static void _hoard_invalidate_chunk(int offset, const void *tag,
+			unsigned taglen)
 {
 	struct query *qry;
 	int sret;
@@ -218,10 +219,10 @@ static void _hoard_invalidate_chunk(int offset, const void *tag)
 
 	sret=query(&qry, state.hoard, "SELECT offset FROM chunks WHERE "
 				"offset == ? AND tag == ?", "db",
-				offset, tag, parcel.hashlen);
+				offset, tag, taglen);
 	if (sret == SQLITE_OK) {
 		/* Harmless: it's already not there.  But let's warn anyway. */
-		ftag=format_tag(tag, parcel.hashlen);
+		ftag=format_tag(tag, taglen);
 		pk_log(LOG_ERROR, "Attempted to invalidate tag %s at "
 					"offset %d, but it does not exist "
 					"(harmless)", ftag, offset);
@@ -235,19 +236,19 @@ static void _hoard_invalidate_chunk(int offset, const void *tag)
 
 	deallocate_chunk_offset(offset);
 	if (query(NULL, state.hoard, "DELETE FROM refs WHERE tag == ?", "b",
-				tag, parcel.hashlen)) {
-		ftag=format_tag(tag, parcel.hashlen);
+				tag, taglen)) {
+		ftag=format_tag(tag, taglen);
 		pk_log(LOG_ERROR, "Couldn't invalidate references to tag %s",
 					ftag);
 		free(ftag);
 	}
 }
 
-void hoard_invalidate_chunk(int offset, const void *tag)
+void hoard_invalidate_chunk(int offset, const void *tag, unsigned taglen)
 {
 	if (begin(state.hoard))
 		return;
-	_hoard_invalidate_chunk(offset, tag);
+	_hoard_invalidate_chunk(offset, tag, taglen);
 	if (commit(state.hoard))
 		rollback(state.hoard);
 }
@@ -285,7 +286,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	if (offset < 0 || clen <= 0 || (unsigned)clen > parcel.chunksize) {
 		pk_log(LOG_ERROR, "Chunk has unreasonable offset/length "
 					"%d/%d; invalidating", offset, clen);
-		_hoard_invalidate_chunk(offset, tag);
+		_hoard_invalidate_chunk(offset, tag, parcel.hashlen);
 		ret=PK_BADFORMAT;
 		if (commit(state.hoard))
 			goto bad;
@@ -308,7 +309,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 
 	if (pread(state.hoard_fd, buf, clen, ((off_t)offset) << 9) != clen) {
 		pk_log(LOG_ERROR, "Couldn't read chunk at offset %d", offset);
-		hoard_invalidate_chunk(offset, tag);
+		hoard_invalidate_chunk(offset, tag, parcel.hashlen);
 		return PK_IOERR;
 	}
 
@@ -328,7 +329,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 		pk_log(LOG_ERROR, "Tag mismatch reading hoard cache at "
 					"offset %d", offset);
 		log_tag_mismatch(tag, calctag, parcel.hashlen);
-		hoard_invalidate_chunk(offset, tag);
+		hoard_invalidate_chunk(offset, tag, parcel.hashlen);
 		return PK_TAGFAIL;
 	}
 
