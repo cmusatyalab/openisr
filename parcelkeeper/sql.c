@@ -12,6 +12,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <sys/time.h>
 #include <time.h>
@@ -116,6 +117,9 @@ int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...)
 		case 'd':
 			ret=sqlite3_bind_int(stmt, i++, va_arg(ap, int));
 			break;
+		case 'D':
+			ret=sqlite3_bind_int64(stmt, i++, va_arg(ap, int64_t));
+			break;
 		case 'f':
 			ret=sqlite3_bind_double(stmt, i++, va_arg(ap, double));
 			break;
@@ -181,6 +185,9 @@ void query_row(struct query *qry, char *fmt, ...)
 		switch (*fmt) {
 		case 'd':
 			*va_arg(ap, int *)=sqlite3_column_int(stmt, i++);
+			break;
+		case 'D':
+			*va_arg(ap, int64_t *)=sqlite3_column_int64(stmt, i++);
 			break;
 		case 'f':
 			*va_arg(ap, double *)=sqlite3_column_double(stmt, i++);
