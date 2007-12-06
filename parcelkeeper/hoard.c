@@ -246,7 +246,7 @@ static void _hoard_invalidate_chunk(int offset, const void *tag,
 
 void hoard_invalidate_chunk(int offset, const void *tag, unsigned taglen)
 {
-	if (begin(state.hoard))
+	if (begin_immediate(state.hoard))
 		return;
 	_hoard_invalidate_chunk(offset, tag, taglen);
 	if (commit(state.hoard))
