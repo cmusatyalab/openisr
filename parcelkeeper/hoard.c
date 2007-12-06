@@ -321,7 +321,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	   checks that the tag/index pair is still present in the chunks
 	   table before invalidating the slot. */
 
-	ret=digest(calctag, buf, clen);
+	ret=digest(parcel.crypto, calctag, buf, clen);
 	if (ret)
 		return ret;
 	if (memcmp(tag, calctag, parcel.hashlen)) {

@@ -179,7 +179,7 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 		pk_log(LOG_ERROR, "Couldn't fetch chunk %u", chunk);
 		return ret;
 	}
-	ret=digest(calctag, buf, len);
+	ret=digest(parcel.crypto, calctag, buf, len);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't calculate chunk hash");
 		return ret;

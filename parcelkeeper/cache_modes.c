@@ -144,7 +144,7 @@ int copy_for_upload(void)
 						"local cache: %u", chunk);
 			goto out;
 		}
-		digest(calctag, buf, length);
+		digest(parcel.crypto, calctag, buf, length);
 		if (memcmp(tag, calctag, parcel.hashlen)) {
 			pk_log(LOG_ERROR, "Chunk %u: tag mismatch.  "
 					"Data corruption has occurred", chunk);
@@ -333,7 +333,7 @@ static pk_err_t validate_cachefile(void)
 				ret=PK_IOERR;
 				continue;
 			}
-			digest(calctag, buf, chunklen);
+			digest(parcel.crypto, calctag, buf, chunklen);
 			if (memcmp(tag, calctag, taglen)) {
 				pk_log(LOG_ERROR, "Chunk %u: tag check "
 							"failure", chunk);

@@ -361,12 +361,13 @@ char *form_chunk_path(char *prefix, unsigned chunk)
 	return ret;
 }
 
-pk_err_t digest(void *out, const void *in, unsigned len)
+pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
+			unsigned len)
 {
 	EVP_MD_CTX ctx;
 	const EVP_MD *alg=NULL;  /* make compiler happy */
 
-	switch (parcel.crypto) {
+	switch (crypto) {
 	case CRY_BLOWFISH_SHA1:
 	case CRY_AES_SHA1:
 		alg=EVP_sha1();
