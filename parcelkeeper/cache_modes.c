@@ -76,7 +76,7 @@ int copy_for_upload(void)
 	int fd;
 	unsigned modified_chunks=0;
 	off64_t modified_bytes=0;
-	unsigned total_modified;
+	int64_t total_modified_bytes;
 	int sret;
 	int ret=1;
 
@@ -88,16 +88,26 @@ int copy_for_upload(void)
 		return 1;
 	if (begin(state.db))
 		return 1;
-	if (query(&qry, state.db, "SELECT count(*) FROM "
-				"main.keys JOIN prev.keys "
-				"ON main.keys.chunk == prev.keys.chunk "
-				"WHERE main.keys.tag != prev.keys.tag", NULL)
-				!= SQLITE_ROW) {
-		pk_log(LOG_ERROR, "Query failed");
+	if (query(NULL, state.db, "CREATE TEMP TABLE to_upload AS "
+				"SELECT main.keys.chunk AS chunk, "
+				"main.keys.tag AS tag, "
+				"cache.chunks.length AS length FROM "
+				"main.keys JOIN prev.keys ON "
+				"main.keys.chunk == prev.keys.chunk "
+				"LEFT JOIN cache.chunks ON "
+				"main.keys.chunk == cache.chunks.chunk WHERE "
+				"main.keys.tag != prev.keys.tag", NULL)) {
+		pk_log(LOG_ERROR, "Couldn't enumerate modified chunks");
 		rollback(state.db);
 		return 1;
 	}
-	query_row(qry, "d", &total_modified);
+	if (query(&qry, state.db, "SELECT sum(length) FROM temp.to_upload",
+				NULL) != SQLITE_ROW) {
+		pk_log(LOG_ERROR, "Couldn't find size of modified chunks");
+		rollback(state.db);
+		return 1;
+	}
+	query_row(qry, "D", &total_modified_bytes);
 	query_free(qry);
 	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
@@ -105,16 +115,11 @@ int copy_for_upload(void)
 		rollback(state.db);
 		return 1;
 	}
-	for (sret=query(&qry, state.db, "SELECT main.keys.chunk, "
-				"main.keys.tag, cache.chunks.length FROM "
-				"main.keys JOIN prev.keys ON "
-				"main.keys.chunk == prev.keys.chunk "
-				"LEFT JOIN cache.chunks ON "
-				"main.keys.chunk == cache.chunks.chunk WHERE "
-				"main.keys.tag != prev.keys.tag", NULL);
-				sret == SQLITE_ROW; sret=query_next(qry)) {
+	for (sret=query(&qry, state.db, "SELECT chunk, tag, length FROM "
+				"temp.to_upload", NULL); sret == SQLITE_ROW;
+				sret=query_next(qry)) {
 		query_row(qry, "dbd", &chunk, &tag, &taglen, &length);
-		print_progress_chunks(modified_chunks, total_modified);
+		print_progress_mb(modified_bytes, total_modified_bytes);
 		if (chunk > parcel.chunks) {
 			pk_log(LOG_ERROR, "Chunk %u: greater than parcel size "
 						"%u", chunk, parcel.chunks);
@@ -186,7 +191,6 @@ int copy_for_upload(void)
 out:
 	free(buf);
 	query_free(qry);
-	/* We didn't make any changes; we just need to release the locks */
 	rollback(state.db);
 	if (ret == 0)
 		if (write_upload_stats(modified_chunks, modified_bytes))
