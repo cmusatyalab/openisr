@@ -607,9 +607,18 @@ sub checkout () {
 	return;
     }
     
-    # Fetch and print message-of-the-day from the server
+    # Before going any further, make sure we have a protocol level
+    # connection to the server and a consistent parcel.
     print "Connecting to server.\n"
     	if $verbose;
+    if (!isr_connected_http()) {
+	errexit("The server appears to be down.");
+    }
+    if (!isr_connected_parcel()) {
+	errexit("The remote parcel is not available.");
+    }
+
+    # Fetch and print message-of-the-day from the server
     isr_srun("motd", "-p $parcel", "", 0) == 0
 	or system_err("Couldn't read message of the day from the server ($server).");
 
@@ -623,15 +632,6 @@ sub checkout () {
     parse_parcelcfg("$isrdir/$parcel-parcel.cfg");
     $uuid = $cfg{"UUID"};
     set_parcel_globals();
-
-    # Before going any further, make sure we have a protocol level
-    # connection to the server and a consistent parcel.
-    if (!isr_connected_http()) {
-	errexit("The server appears to be down.");
-    }
-    if (!isr_connected_parcel()) {
-	errexit("The remote parcel is not available.");
-    }
 
     # Confirm that there is enough disk space.
     if ($diskspace < $cfg{MAXKB}) {
@@ -894,6 +894,17 @@ sub sync ($) {
     my $vflag = "-q";
     my $bwflag = "";
     my $i;
+
+    #
+    # Before going any further, make sure we have a protocol level 
+    # connection to the server and a consistent parcel.
+    # 
+    if (!isr_connected_http()) {
+	errexit("The server appears to be down.");
+    }
+    if (!isr_connected_parcel()) {
+	errexit("The remote parcel is not available.");
+    }
 
     # Do an early check to make sure we still have the parcel lock
     isr_srun("lock", "-p $parcel -C $sessionid", "", 0) == 0
@@ -2606,17 +2617,6 @@ sub isr_priv_upload () {
     my $bwflag = "";
     my $i;
 
-    #
-    # Before going any further, make sure we have a protocol level 
-    # connection to the server and a consistent parcel
-    # 
-    if (!isr_connected_http()) {
-	errexit("The server appears to be down.");
-    }
-    if (!isr_connected_parcel()) {
-	errexit("The remote parcel $userid/$parcel is not available.");
-    }
-
     errexit("Inconsistent parcel directory $parceldir")
         if (!-e "$parceldir/keyring" or !-d "$parceldir/cfg");
 
@@ -2732,17 +2732,6 @@ sub copy_dirtychunks () {
 #                   cache by upload
 #
 sub isr_priv_commit () {
-    #
-    # Before going any further, make sure we have a protocol level 
-    # connection to the server and a consistent parcel.
-    # 
-    if (!isr_connected_http()) {
-	errexit("The server appears to be down.");
-    }
-    if (!isr_connected_parcel()) {
-	errexit("The remote parcel is not available.");
-    }
-
     # Check the current version of the parcel for consistency
     isr_srun("checkparcel", "-p $parcel", "", 0) == 0
 	or errexit("There is something wrong with the remote parcel. Aborting with no change to the remote parcel.");
