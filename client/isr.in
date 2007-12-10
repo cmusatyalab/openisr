@@ -1182,6 +1182,12 @@ sub statparcel () {
     my @files = ();
 
     #
+    # Show extra information about the parcel if the user asked for it
+    #
+    print "UUID        : $uuid\n"
+        if $longflag;
+    
+    #
     # Display the size of the memory image
     #
     opendir(DIR, "$parceldir/cfg") 
@@ -2424,7 +2430,7 @@ sub usage ($) {
 	print "  passwd     Change your ISR password on the server\n";
 	print "  help       Print help message\n";
 	print "Advanced commands:\n";
-	print "  stat       Display information about local ISR state for a parcel\n";
+	print "  stat       Display information about local state for a parcel (-l optional)\n";
 	print "  checkout   Checkout parcel without running it (-c, -d, -r optional)\n";
 	print "  sync       Sync parcel to server without checking it in (-b optional)\n";
 	print "  discard    Discard all local changes to parcel since last checkout or sync\n";
@@ -2445,7 +2451,7 @@ sub usage ($) {
     print "  -e,--remote        Perform action on server rather than client [checkp]\n";
     print "  -f,--force         Release parcel lock even if we don't hold it [clean]\n";
     print "  -F,--no-fullscreen Start VMware in windowed mode [resume]\n";
-    print "  -l,--long          Long listing [ls, lshoard]\n";
+    print "  -l,--long          Long listing [ls, lshoard, stat]\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls]\n";
     print "  -q,--quiet         Run silently (except if things go wrong)\n";
     print "  -r,--rollback      Rollback to or check version [co, checkp]\n";

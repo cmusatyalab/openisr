@@ -412,12 +412,16 @@ UUID can be obtained with the
 command.
 
 .TP
-.BI "isr stat " parcel
+.BI "isr stat " parcel " [-l]"
 Display information about the local state of a 
 .IR parcel ,
 such as the amount of state demand-paged from the server,
 the amount of dirty state, and the amount of state that
 is hoarded in the persistent hoard cache. The
+.B -l
+option also displays the
+.IR parcel 's
+UUID.  The
 .I parcel
 must be checked out in order to use the
 .B stat
@@ -501,7 +505,9 @@ full-screen mode.
 Use long listing format for the 
 .B ls
 command, printing information about some small default 
-number of the most recent parcel versions.
+number of the most recent parcel versions.  For the
+.BR lshoard " and " stat
+commands, show additional information about the parcels being examined.
 
 .TP
 .BI -L/--longvers " n"
