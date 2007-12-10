@@ -431,6 +431,9 @@ pk_err_t hoard_sync_refs(int from_cache)
 	pk_err_t ret;
 	int sret;
 
+	if (config.hoard_dir == NULL)
+		return PK_SUCCESS;
+
 	ret=begin(state.db);
 	if (ret)
 		return ret;
