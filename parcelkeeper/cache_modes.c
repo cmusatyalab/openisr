@@ -127,8 +127,8 @@ int copy_for_upload(void)
 		}
 		if (taglen != parcel.hashlen) {
 			pk_log(LOG_ERROR, "Chunk %u: expected tag length %u, "
-						"found %u", parcel.hashlen,
-						taglen);
+						"found %u", chunk,
+						parcel.hashlen, taglen);
 			goto out;
 		}
 		if (length == 0) {

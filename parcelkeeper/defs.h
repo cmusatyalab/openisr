@@ -180,7 +180,8 @@ enum mode parse_cmdline(int argc, char **argv);
 /* log.c */
 void log_start(void);
 void log_shutdown(void);
-void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...);
+void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
+			__attribute__ ((format(printf, 2, 4)));
 #define pk_log(type, fmt, args...) _pk_log(type, fmt, __func__, ## args)
 pk_err_t logtypes_to_mask(char *list, unsigned *out);
 

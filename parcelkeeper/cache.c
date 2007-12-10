@@ -120,7 +120,7 @@ static pk_err_t open_cache_file(long page_size)
 		/* This may occur with old cache files, or with cache files
 		   copied from another system with a different page size. */
 		pk_log(LOG_ERROR, "Cache file's header length %u is not "
-					"a multiple of the page size %u",
+					"a multiple of the page size %ld",
 					state.offset, page_size);
 		pk_log(LOG_ERROR, "Data corruption may occur.  If it does, "
 					"checkin will be disallowed");
