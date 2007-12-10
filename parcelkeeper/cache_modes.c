@@ -265,20 +265,20 @@ static pk_err_t validate_cachefile(void)
 	unsigned chunk;
 	unsigned taglen;
 	unsigned chunklen;
-	unsigned processed=0;
-	unsigned valid;
+	int64_t processed_bytes=0;
+	int64_t valid_bytes;
 	pk_err_t ret=PK_SUCCESS;
 	int sret;
 
 	if (begin(state.db))
 		return PK_IOERR;
-	if (query(&qry, state.db, "SELECT count(*) FROM cache.chunks", NULL)
+	if (query(&qry, state.db, "SELECT sum(length) FROM cache.chunks", NULL)
 				!= SQLITE_ROW) {
-		pk_log(LOG_ERROR, "Couldn't enumerate valid chunks");
+		pk_log(LOG_ERROR, "Couldn't get total size of valid chunks");
 		rollback(state.db);
 		return PK_IOERR;
 	}
-	query_row(qry, "d", &valid);
+	query_row(qry, "D", &valid_bytes);
 	query_free(qry);
 
 	buf=malloc(parcel.chunksize);
@@ -294,7 +294,8 @@ static pk_err_t validate_cachefile(void)
 				"cache.chunks.chunk == keys.chunk", NULL);
 				sret == SQLITE_ROW; sret=query_next(qry)) {
 		query_row(qry, "ddb", &chunk, &chunklen, &tag, &taglen);
-		print_progress_chunks(++processed, valid);
+		processed_bytes += chunklen;
+		print_progress_mb(processed_bytes, valid_bytes);
 
 		if (chunk > parcel.chunks) {
 			pk_log(LOG_ERROR, "Found chunk %u greater than "
