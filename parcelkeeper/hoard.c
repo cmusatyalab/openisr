@@ -16,7 +16,7 @@
 #include <string.h>
 #include "defs.h"
 
-#define HOARD_INDEX_VERSION 4
+#define HOARD_INDEX_VERSION 5
 #define EXPAND_CHUNKS 128
 
 static pk_err_t create_hoard_index(void)
@@ -42,8 +42,9 @@ static pk_err_t create_hoard_index(void)
 				"tag BLOB UNIQUE, "
 				/* 512-byte sectors */
 				"offset INTEGER UNIQUE NOT NULL, "
-				"length INTEGER NOT NULL DEFAULT 0,"
-				"last_access INTEGER NOT NULL DEFAULT 0,"
+				"length INTEGER NOT NULL DEFAULT 0, "
+				"crypto INTEGER NOT NULL DEFAULT 0, "
+				"last_access INTEGER NOT NULL DEFAULT 0, "
 				"referenced INTEGER NOT NULL DEFAULT 0)",
 				NULL)) {
 		pk_log(LOG_ERROR, "Couldn't create chunk table");
@@ -161,8 +162,9 @@ static pk_err_t allocate_chunk_offset(int *offset)
 	}
 
 	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1, "
-				"tag = NULL, length = 0, last_access = 0 "
-				"WHERE offset == ?", "d", *offset)) {
+				"tag = NULL, length = 0, crypto = 0, "
+				"last_access = 0 WHERE offset == ?", "d",
+				*offset)) {
 		pk_log(LOG_ERROR, "Couldn't allocate hoard cache chunk");
 		return PK_IOERR;
 	}
@@ -172,8 +174,9 @@ static pk_err_t allocate_chunk_offset(int *offset)
 static void deallocate_chunk_offset(int offset)
 {
 	if (query(NULL, state.hoard, "UPDATE chunks SET tag = NULL, "
-				"length = 0, last_access = 0, referenced = 0 "
-				"WHERE offset = ?", "d", offset)) {
+				"length = 0, crypto = 0, last_access = 0, "
+				"referenced = 0 WHERE offset = ?", "d",
+				offset)) {
 		pk_log(LOG_ERROR, "Couldn't deallocate hoard chunk at "
 					"offset %d", offset);
 	}
@@ -390,8 +393,10 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 		return ret;
 	}
 	sret=query(NULL, state.hoard, "UPDATE chunks SET tag = ?, length = ?, "
-				"last_access = ? WHERE offset = ?", "bddd",
-				tag, parcel.hashlen, len, timestamp(), offset);
+				"crypto = ?, last_access = ? "
+				"WHERE offset = ?", "bddd",
+				tag, parcel.hashlen, len, parcel.crypto,
+				timestamp(), offset);
 	if (sret == SQLITE_CONSTRAINT) {
 		/* Someone else has already written this tag */
 		deallocate_chunk_offset(offset);

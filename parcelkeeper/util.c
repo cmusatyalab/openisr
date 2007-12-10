@@ -98,6 +98,18 @@ unsigned crypto_hashlen(enum cryptotype type)
 	return 0;
 }
 
+int crypto_is_valid(enum cryptotype type)
+{
+	switch (type) {
+	case CRY_AES_SHA1:
+	case CRY_BLOWFISH_SHA1:
+		return 1;
+	case CRY_UNKNOWN:
+		break;
+	}
+	return 0;
+}
+
 int compress_is_valid(enum compresstype type)
 {
 	if (type <= COMP_UNKNOWN ||

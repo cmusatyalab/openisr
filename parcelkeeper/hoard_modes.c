@@ -318,11 +318,11 @@ static pk_err_t check_hoard_data(void)
 	struct query *qry;
 	char buf[131072];  /* XXX assumes 128 KB */
 	const void *tag;
-	char calctag[20];  /* XXX */
-	unsigned expected_taglen;
+	char calctag[64];  /* XXX */
 	unsigned taglen;
 	unsigned offset;
 	unsigned len;
+	int crypto;
 	off64_t examined_bytes;
 	off64_t total_bytes;
 	int sret;
@@ -340,33 +340,15 @@ static pk_err_t check_hoard_data(void)
 	query_row(qry, "D", &total_bytes);
 	query_free(qry);
 
-	/* XXX shouldn't hardcode crypto type -- we need a column for this */
-	expected_taglen=crypto_hashlen(CRY_AES_SHA1);
 	examined_bytes=0;
-	for (sret=query(&qry, state.db, "SELECT tag, offset, length "
+	for (sret=query(&qry, state.db, "SELECT tag, offset, length, crypto "
 				"FROM temp.to_check", NULL);
 				sret == SQLITE_ROW; sret=query_next(qry)) {
-		query_row(qry, "bdd", &tag, &taglen, &offset, &len);
+		query_row(qry, "bddd", &tag, &taglen, &offset, &len, &crypto);
 		examined_bytes += len;
 		print_progress_mb(examined_bytes, total_bytes);
-		if (taglen != expected_taglen) {
-			/* XXX */
-			pk_log(LOG_ERROR, "Found chunk with invalid tag "
-						"length %d", taglen);
-			hoard_invalidate_chunk(offset, tag, taglen);
-			count++;
-			continue;
-		}
-		/* check_hoard() already checked this, but buffer overflows
-		   are bad */
-		if (len > sizeof(buf)) {
-			/* XXX */
-			pk_log(LOG_ERROR, "Found chunk with invalid length %d",
-						len);
-			hoard_invalidate_chunk(offset, tag, taglen);
-			count++;
-			continue;
-		}
+		/* We assume the taglen, crypto suite, and chunk length are
+		   good, because check_hoard() already validated these */
 		if (pread(state.hoard_fd, buf, len, ((off_t)offset) << 9)
 					!= (off_t)len) {
 			pk_log(LOG_ERROR, "Couldn't read chunk at offset %d",
@@ -376,7 +358,7 @@ static pk_err_t check_hoard_data(void)
 			continue;
 		}
 
-		if (digest(CRY_AES_SHA1, calctag, buf, len)) {
+		if (digest(crypto, calctag, buf, len)) {
 			pk_log(LOG_ERROR, "digest() failed");
 			ret=PK_CALLFAIL;
 			continue;
@@ -408,6 +390,9 @@ int check_hoard(void)
 	const char *uuid;
 	int offset;
 	int next_offset;
+	const void *tag;
+	unsigned taglen;
+	int crypto;
 	int count;
 	int sret;
 	int time;
@@ -464,17 +449,45 @@ int check_hoard(void)
 		goto bad;
 	}
 
+	count=0;
+	for (sret=query(&qry, state.db, "SELECT offset, tag, crypto FROM "
+				"hoard.chunks", NULL); sret == SQLITE_ROW;
+				sret=query_next(qry)) {
+		query_row(qry, "dbd", &offset, &tag, &taglen, &crypto);
+		if ((tag == NULL && crypto != 0) || (tag != NULL &&
+					(!crypto_is_valid(crypto) ||
+					crypto_hashlen(crypto) != taglen))) {
+			count++;
+			if (query(NULL, state.db, "UPDATE hoard.chunks "
+						"SET tag = NULL, length = 0, "
+						"crypto = 0, last_access = 0, "
+						"referenced = 0 WHERE "
+						"offset = ?", "d", offset))
+				goto bad;
+		}
+	}
+	query_free(qry);
+	if (sret != SQLITE_OK) {
+		pk_log(LOG_ERROR, "Couldn't query chunk list");
+		goto bad;
+	}
+	if (count)
+		pk_log(LOG_ERROR, "Cleaned %d chunks with invalid "
+					"crypto suite", count);
+
 	/* XXX assumes 128 KB */
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
-				"length = 0, last_access = 0, referenced = 0 "
-				"WHERE length < 0 OR length > 131072 OR "
+				"length = 0, crypto = 0, last_access = 0, "
+				"referenced = 0 WHERE length < 0 OR "
+				"length > 131072 OR "
 				"(length == 0 AND tag NOTNULL)",
 				LOG_ERROR,
 				"chunks with invalid length"))
 		goto bad;
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
-				"length = 0, last_access = 0, referenced = 0 "
-				"WHERE referenced != 0 AND referenced != 1",
+				"length = 0, crypto = 0, last_access = 0, "
+				"referenced = 0 WHERE referenced != 0 AND "
+				"referenced != 1",
 				LOG_ERROR,
 				"chunks with invalid referenced flag"))
 		goto bad;
@@ -518,7 +531,7 @@ int check_hoard(void)
 	   *now* while we still know it's consistent. */
 	if (config.flags & WANT_FULL_CHECK) {
 		if (query(NULL, state.db, "CREATE TEMP TABLE to_check AS "
-					"SELECT tag, offset, length "
+					"SELECT tag, offset, length, crypto "
 					"FROM hoard.chunks WHERE tag NOTNULL "
 					"ORDER BY offset", NULL)) {
 			pk_log(LOG_ERROR, "Couldn't enumerate hoarded chunks");

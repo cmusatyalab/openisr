@@ -261,6 +261,7 @@ pk_err_t parseuint(unsigned *out, char *in, int base);
 enum cryptotype parse_crypto(char *desc);
 enum compresstype parse_compress(char *desc);
 unsigned crypto_hashlen(enum cryptotype type);
+int crypto_is_valid(enum cryptotype type);
 int compress_is_valid(enum compresstype type);
 pk_err_t read_file(const char *path, char *buf, int *bufsize);
 pk_err_t read_sysfs_file(const char *path, char *buf, int bufsize);
