@@ -139,7 +139,7 @@ sub release_locks ();
 sub exit_handler ($);
 
 # Old HTTPSSH prototypes
-sub isr_srun ($$$$);
+sub isr_srun ($$%);
 sub isr_connected_parcel ();
 sub isr_connected_http ();
 sub isr_parcelkeeper_cmd ($$);
@@ -619,13 +619,13 @@ sub checkout () {
     }
 
     # Fetch and print message-of-the-day from the server
-    isr_srun("motd", "-p $parcel", "", 0) == 0
+    isr_srun("motd", "-p $parcel") == 0
 	or system_err("Couldn't read message of the day from the server ($server).");
 
     # Fetch and parse the config file from the server
     print "Fetching configuration data for $userid/$parcel from server.\n"
 	if $verbose;
-    if (isr_srun("getconfig", "-p $parcel", "$isrdir/$parcel-parcel.cfg", 0)) {
+    if (isr_srun("getconfig", "-p $parcel", OUTFILE => "$isrdir/$parcel-parcel.cfg")) {
 	unlink("$isrdir/$parcel-parcel.cfg");
 	errexit("Parcel $userid/$parcel does not exist on the server ($server).");
     }
@@ -646,7 +646,7 @@ sub checkout () {
 	if $verbose;
 
     if (isr_srun("lock", "-p $parcel -n $clientname -a",
-		 "$isrdir/$parcel-nonce", 0) != 0) {
+		 OUTFILE => "$isrdir/$parcel-nonce") != 0) {
 	unlink("$isrdir/$parcel-nonce");
 	errexit("Unable to acquire lock for $parcel.");
     }
@@ -667,8 +667,7 @@ sub checkout () {
 	}
 	print("Rolling back to version $version.\n")
 	    if $verbose;
-	if (isr_srun("rollback", "-p $parcel -v $version -N $sessionid",
-	             "", 0) != 0) {
+	if (isr_srun("rollback", "-p $parcel -v $version -N $sessionid") != 0) {
 	    clean(0);
 	    errexit("Unable to roll back to version $version");
 	}
@@ -907,7 +906,7 @@ sub sync ($) {
     }
 
     # Do an early check to make sure we still have the parcel lock
-    isr_srun("lock", "-p $parcel -C $sessionid", "", 0) == 0
+    isr_srun("lock", "-p $parcel -C $sessionid") == 0
 	or errexit("Parcel lock no longer held; aborting");
 
     if (!-e $cleancache_file) {
@@ -947,7 +946,7 @@ sub sync ($) {
     # Retry if the put operation fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
 	if (mysystem("rsync -e ssh --partial -z $vflag $bwflag $logfile $userid\@$cfg{WPATH}/session.log.new") == 0) {
-	    if (isr_srun("catlog", "-p $parcel -f session.log.new", "", 0) == 0) {
+	    if (isr_srun("catlog", "-p $parcel -f session.log.new") == 0) {
 		unlink($logfile);
 		last;
 	    }
@@ -1046,7 +1045,7 @@ sub listparcels () {
     # Run the remote ls program on the server.  Pass through server
     # errors without further comment.
     print "Parcels for $userid on server $server:\n";
-    isr_srun("ls", "$lsargs", "", 0);
+    isr_srun("ls", $lsargs);
 }
 
 #
@@ -1104,7 +1103,7 @@ sub hoard ($) {
 	# Fetch metadata from the server
 	mktree($parceldir)
 	    or errexit("Unable to make $parceldir");
-	isr_srun("getconfig", "-p $parcel", "$parceldir/parcel.cfg", 0) == 0
+	isr_srun("getconfig", "-p $parcel", OUTFILE => "$parceldir/parcel.cfg") == 0
 	    or errexit("Parcel $userid/$parcel does not exist on the server ($server).");
 	parse_parcelcfg("$parceldir/parcel.cfg");
 	$uuid = $cfg{"UUID"};
@@ -1163,7 +1162,7 @@ sub checkparcel () {
 	    $flags .= " -c";
 	}
 	
-	isr_srun("checkparcel", "-p $parcel -V $flags", "", 0) == 0
+	isr_srun("checkparcel", "-p $parcel -V $flags") == 0
 	     or errexit("There is something wrong with parcel $userid/$parcel on the server.");
         
 	print(GREEN, "Success: The parcel $userid/$parcel looks OK on the server.\n", RESET)
@@ -1608,15 +1607,13 @@ sub clean ($) {
 	if ($sessionid == 0) {
 	    err("Unable to release lock for $parcel because its nonce is unknown.");
 	    $ret = -1;
-	} elsif (isr_srun("lock", "-p $parcel -n $clientname -r $sessionid", 
-		     "", 0) != 0) {
+	} elsif (isr_srun("lock", "-p $parcel -n $clientname -r $sessionid") != 0) {
 	    err("Unable to release lock for $parcel.");
 	    $ret = -1;
 	}
     } else {
         # Request a hard release
-	if (isr_srun("lock", "-p $parcel -n $clientname -R", "", 0)
-	    	!= 0) {
+	if (isr_srun("lock", "-p $parcel -n $clientname -R") != 0) {
 	    err("Unable to release lock for $parcel.");
 	    $ret = -1;
 	}
@@ -1996,7 +1993,7 @@ sub fetch_parcel_file ($$$$$) {
     
     $tmpfile = "/tmp/stat.$$";
     if (isr_srun("stat", "-f $userid/$parcel/last/$remote_name",
-		 $tmpfile, 0) != 0) {
+		OUTFILE => $tmpfile) != 0) {
 	unlink($tmpfile);
 	err("Unable to stat $remote_name file on server");
 	return -1;
@@ -2485,38 +2482,34 @@ sub usage ($) {
 #
 # isr_srun - Perform an operation on parcel tree in remote store
 #
-sub isr_srun ($$$$) {
+sub isr_srun ($$%) {
     my $operation = shift;# requested operation
     my $args = shift;     # argument string
-    my $outfile = shift;  # where to store stdout command output  (optional)
-    my $stderr = shift;   # if true, redirect stderr to outfile (optional)
+    my %opts = @_;        # key/value pairs giving optional arguments
     
-    my $retval;
     my $redirect = "";
 
     # Log the operation
     message("srun: $operation $args");
 
     # Redirect stderr to outfile if requested
-    if ($stderr) {
+    if (exists($opts{'REDIRECT_STDERR'}) and $opts{'REDIRECT_STDERR'}) {
 	$redirect = "2>&1";
     }
 
     # Perform the operation on remote storage
-    if ($outfile) {
-	$retval = mysystem("ssh -l $userid $server isr_runserv $operation $args > $outfile $redirect");
+    if (exists($opts{'OUTFILE'})) {
+	return mysystem("ssh -l $userid $server isr_runserv $operation $args > $opts{'OUTFILE'} $redirect");
+    } else {
+	return mysystem("ssh -l $userid $server isr_runserv $operation $args");
     }
-    else {
-	$retval = mysystem("ssh -l $userid $server isr_runserv $operation $args");
-    }
-    return $retval;
 }
 
 #
 # isr_connected_parcel - Return true if parcel exists in remote store
 #
 sub isr_connected_parcel () {
-    isr_srun("ls", "-p $parcel", "/dev/null", 1) == 0
+    isr_srun("ls", "-p $parcel", OUTFILE => "/dev/null", REDIRECT_STDERR => 1) == 0
         or return 0;
     return 1;
 }
@@ -2733,24 +2726,24 @@ sub copy_dirtychunks () {
 #
 sub isr_priv_commit () {
     # Check the current version of the parcel for consistency
-    isr_srun("checkparcel", "-p $parcel", "", 0) == 0
+    isr_srun("checkparcel", "-p $parcel") == 0
 	or errexit("There is something wrong with the remote parcel. Aborting with no change to the remote parcel.");
 
     #
     # Trigger the server-side commit.
     #
     print("Checking uploaded cache dir before committing...\n");
-    isr_srun("checkparcel", "-s $sessionid -p $parcel", "", 0) == 0
+    isr_srun("checkparcel", "-s $sessionid -p $parcel") == 0
 	or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
     print("Committing updates on server...\n")
 	if $verbose;
     message("Begin server side commit");
-    isr_srun("commit", "-p $parcel -N $sessionid", "", 0) == 0
+    isr_srun("commit", "-p $parcel -N $sessionid") == 0
 	or errexit("Server-side commit of parcel $userid/$parcel failed.");
     message("End server side commit");
 
     # Check the newly committed version for consistency
-    isr_srun("checkparcel", "-p $parcel", "", 0) == 0
+    isr_srun("checkparcel", "-p $parcel") == 0
 	 or errexit("Something went wrong during commit.  Remote parcel is inconsistent.");
 }
 
