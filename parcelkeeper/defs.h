@@ -232,7 +232,7 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 /* sql.c */
 void sql_init(void);
 void sql_shutdown(void);
-int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...);
+int query(struct query **new_qry, sqlite3 *db, char *query, char *fmt, ...);
 int query_next(struct query *qry);
 void query_row(struct query *qry, char *fmt, ...);
 void query_free(struct query *qry);

@@ -45,7 +45,7 @@ static unsigned get_bucket(const char *sql)
 	return hash % CACHE_BUCKETS;
 }
 
-static int alloc_query(struct query **result, sqlite3 *db, char *sql)
+static int alloc_query(struct query **new_qry, sqlite3 *db, char *sql)
 {
 	struct query *qry;
 	int ret;
@@ -61,7 +61,7 @@ static int alloc_query(struct query **result, sqlite3 *db, char *sql)
 		free(qry);
 	} else {
 		qry->sql=sqlite3_sql(qry->stmt);
-		*result=qry;
+		*new_qry=qry;
 	}
 	return ret;
 }
@@ -72,7 +72,7 @@ static void destroy_query(struct query *qry)
 	free(qry);
 }
 
-static int get_query(struct query **result, sqlite3 *db, char *sql)
+static int get_query(struct query **new_qry, sqlite3 *db, char *sql)
 {
 	unsigned bucket=get_bucket(sql);
 	int ret;
@@ -81,21 +81,21 @@ static int get_query(struct query **result, sqlite3 *db, char *sql)
 	/* XXX also, might need a better hash table */
 	if (prepared[bucket] && db == sqlite3_db_handle(prepared[bucket]->stmt)
 				&& !strcmp(sql, prepared[bucket]->sql)) {
-		*result=prepared[bucket];
+		*new_qry=prepared[bucket];
 		prepared[bucket]=NULL;
 		ret=SQLITE_OK;
 		state.sql_hits++;
 	} else {
-		ret=alloc_query(result, db, sql);
+		ret=alloc_query(new_qry, db, sql);
 		state.sql_misses++;
 	}
 
 	if (ret == SQLITE_OK)
-		gettimeofday(&(*result)->start, NULL);
+		gettimeofday(&(*new_qry)->start, NULL);
 	return ret;
 }
 
-int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...)
+int query(struct query **new_qry, sqlite3 *db, char *query, char *fmt, ...)
 {
 	struct query *qry;
 	sqlite3_stmt *stmt;
@@ -105,8 +105,8 @@ int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...)
 	int found_unknown=0;
 	void *blob;
 
-	if (result != NULL)
-		*result=NULL;
+	if (new_qry != NULL)
+		*new_qry=NULL;
 	ret=get_query(&qry, db, query);
 	if (ret)
 		return ret;
@@ -153,10 +153,10 @@ int query(struct query **result, sqlite3 *db, char *query, char *fmt, ...)
 		ret=query_next(qry);
 	else if (!found_unknown)
 		sqlerr(db);
-	if (ret != SQLITE_ROW || result == NULL)
+	if (ret != SQLITE_ROW || new_qry == NULL)
 		query_free(qry);
 	else
-		*result=qry;
+		*new_qry=qry;
 	return ret;
 }
 
