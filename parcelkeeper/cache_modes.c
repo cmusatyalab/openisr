@@ -77,7 +77,6 @@ int copy_for_upload(void)
 	unsigned modified_chunks=0;
 	off64_t modified_bytes=0;
 	int64_t total_modified_bytes;
-	int sret;
 	int ret=1;
 
 	pk_log(LOG_INFO, "Copying chunks to upload directory %s",
@@ -101,8 +100,8 @@ int copy_for_upload(void)
 		rollback(state.db);
 		return 1;
 	}
-	if (query(&qry, state.db, "SELECT sum(length) FROM temp.to_upload",
-				NULL) != SQLITE_ROW) {
+	query(&qry, state.db, "SELECT sum(length) FROM temp.to_upload", NULL);
+	if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Couldn't find size of modified chunks");
 		rollback(state.db);
 		return 1;
@@ -115,9 +114,9 @@ int copy_for_upload(void)
 		rollback(state.db);
 		return 1;
 	}
-	for (sret=query(&qry, state.db, "SELECT chunk, tag, length FROM "
-				"temp.to_upload", NULL); sret == SQLITE_ROW;
-				sret=query_next(qry)) {
+	for (query(&qry, state.db, "SELECT chunk, tag, length FROM "
+				"temp.to_upload", NULL); query_has_row();
+				query_next(qry)) {
 		query_row(qry, "dbd", &chunk, &tag, &taglen, &length);
 		print_progress_mb(modified_bytes, total_modified_bytes);
 		if (chunk > parcel.chunks) {
@@ -184,7 +183,7 @@ int copy_for_upload(void)
 		modified_chunks++;
 		modified_bytes += length;
 	}
-	if (sret != SQLITE_OK)
+	if (!query_ok())
 		pk_log(LOG_ERROR, "Database query failed");
 	else
 		ret=0;
@@ -206,12 +205,11 @@ static pk_err_t validate_keyring(void)
 	unsigned taglen;
 	unsigned keylen;
 	unsigned compress;
-	int sret;
 	pk_err_t ret=PK_SUCCESS;
 
-	for (sret=query(&qry, state.db, "SELECT chunk, tag, key, compression "
+	for (query(&qry, state.db, "SELECT chunk, tag, key, compression "
 				"FROM keys ORDER BY chunk ASC", NULL);
-				sret == SQLITE_ROW; sret=query_next(qry)) {
+				query_has_row(); query_next(qry)) {
 		query_row(qry, "dnnd", &chunk, &taglen, &keylen, &compress);
 		if (chunk >= parcel.chunks) {
 			pk_log(LOG_ERROR, "Found keyring entry %u greater than"
@@ -252,7 +250,7 @@ static pk_err_t validate_keyring(void)
 			ret=PK_INVALID;
 		}
 	}
-	if (sret != SQLITE_OK) {
+	if (!query_ok()) {
 		pk_log(LOG_ERROR, "Keyring query failed");
 		ret=PK_IOERR;
 	}
@@ -272,12 +270,11 @@ static pk_err_t validate_cachefile(void)
 	int64_t processed_bytes=0;
 	int64_t valid_bytes;
 	pk_err_t ret=PK_SUCCESS;
-	int sret;
 
 	if (begin(state.db))
 		return PK_IOERR;
-	if (query(&qry, state.db, "SELECT sum(length) FROM cache.chunks", NULL)
-				!= SQLITE_ROW) {
+	query(&qry, state.db, "SELECT sum(length) FROM cache.chunks", NULL);
+	if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Couldn't get total size of valid chunks");
 		rollback(state.db);
 		return PK_IOERR;
@@ -292,11 +289,11 @@ static pk_err_t validate_cachefile(void)
 		return PK_NOMEM;
 	}
 
-	for (sret=query(&qry, state.db, "SELECT cache.chunks.chunk, "
+	for (query(&qry, state.db, "SELECT cache.chunks.chunk, "
 				"cache.chunks.length, keys.tag FROM "
 				"cache.chunks LEFT JOIN keys ON "
 				"cache.chunks.chunk == keys.chunk", NULL);
-				sret == SQLITE_ROW; sret=query_next(qry)) {
+				query_has_row(); query_next(qry)) {
 		query_row(qry, "ddb", &chunk, &chunklen, &tag, &taglen);
 		processed_bytes += chunklen;
 		print_progress_mb(processed_bytes, valid_bytes);
@@ -347,7 +344,7 @@ static pk_err_t validate_cachefile(void)
 			}
 		}
 	}
-	if (sret != SQLITE_OK) {
+	if (!query_ok()) {
 		pk_log(LOG_ERROR, "Error querying cache index");
 		ret=PK_IOERR;
 	}
@@ -388,19 +385,19 @@ int examine_cache(void)
 
 	if (begin(state.db))
 		return 1;
-	if (query(&qry, state.db, "SELECT count(*) from cache.chunks", NULL)
-				!= SQLITE_ROW) {
+	query(&qry, state.db, "SELECT count(*) from cache.chunks", NULL);
+	if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Couldn't query cache index");
 		rollback(state.db);
 		return 1;
 	}
 	query_row(qry, "d", &validchunks);
 	query_free(qry);
-	if (query(&qry, state.db, "SELECT count(*) FROM main.keys "
+	query(&qry, state.db, "SELECT count(*) FROM main.keys "
 				"JOIN prev.keys ON "
 				"main.keys.chunk == prev.keys.chunk WHERE "
-				"main.keys.tag != prev.keys.tag", NULL)
-				!= SQLITE_ROW) {
+				"main.keys.tag != prev.keys.tag", NULL);
+	if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Couldn't compare keyrings");
 		rollback(state.db);
 		return 1;

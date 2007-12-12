@@ -165,8 +165,8 @@ static pk_err_t verify_cache_index(void)
 	struct query *qry;
 	int found;
 
-	if (query(&qry, state.db, "PRAGMA cache.user_version", NULL) !=
-				SQLITE_ROW) {
+	query(&qry, state.db, "PRAGMA cache.user_version", NULL);
+	if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Couldn't query cache index version");
 		return PK_IOERR;
 	}
@@ -212,7 +212,6 @@ static pk_err_t shm_init(void)
 	int fd;
 	struct query *qry;
 	unsigned chunk;
-	int sret;
 
 	state.shm_len = (parcel.chunks + 3) / 4;
 	if (asprintf(&state.shm_name, "/openisr-chunkmap-%s", parcel.uuid)
@@ -246,13 +245,13 @@ static pk_err_t shm_init(void)
 		return PK_CALLFAIL;
 	}
 
-	for (sret=query(&qry, state.db, "SELECT chunk FROM cache.chunks", NULL);
-				sret == SQLITE_ROW; sret=query_next(qry)) {
+	for (query(&qry, state.db, "SELECT chunk FROM cache.chunks", NULL);
+				query_has_row(); query_next(qry)) {
 		query_row(qry, "d", &chunk);
 		shm_set(chunk, SHM_PRESENT);
 	}
 	query_free(qry);
-	if (sret != SQLITE_OK) {
+	if (!query_ok()) {
 		pk_log(LOG_ERROR, "Couldn't query cache index");
 		munmap(state.shm_base, state.shm_len);
 		state.shm_base=NULL;
@@ -411,19 +410,18 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 			enum compresstype *compress, unsigned *length)
 {
 	struct query *qry;
-	int ret;
 	void *rowtag;
 	void *rowkey;
 	unsigned taglen;
 	unsigned keylen;
-	pk_err_t err;
+	pk_err_t ret;
 
 	/* XXX does not use transaction.  do we need to?  might introduce
 	   conflicts in obtain_chunk() */
 	pk_log(LOG_CHUNK, "Get: %u", chunk);
-	if (query(&qry, state.db, "SELECT tag, key, compression FROM keys "
-				"WHERE chunk == ?", "d", chunk)
-				!= SQLITE_ROW) {
+	query(&qry, state.db, "SELECT tag, key, compression FROM keys "
+				"WHERE chunk == ?", "d", chunk);
+	if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Couldn't query keyring");
 		return PK_IOERR;
 	}
@@ -439,14 +437,14 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 	memcpy(key, rowkey, parcel.hashlen);
 	query_free(qry);
 
-	ret=query(&qry, state.db, "SELECT length FROM cache.chunks "
+	query(&qry, state.db, "SELECT length FROM cache.chunks "
 				"WHERE chunk == ?", "d", chunk);
-	if (ret == SQLITE_OK) {
+	if (query_ok()) {
 		/* Chunk is not in the local cache */
-		err=obtain_chunk(chunk, tag, length);
-		if (err)
-			return err;
-	} else if (ret == SQLITE_ROW) {
+		ret=obtain_chunk(chunk, tag, length);
+		if (ret)
+			return ret;
+	} else if (query_has_row()) {
 		query_row(qry, "d", length);
 		query_free(qry);
 	} else {

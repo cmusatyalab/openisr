@@ -80,8 +80,9 @@ static pk_err_t expand_cache(void)
 	int i;
 	int step = parcel.chunksize >> 9;
 
-	if (query(&qry, state.hoard, "SELECT count(*), max(offset) "
-				"FROM chunks", NULL) != SQLITE_ROW) {
+	query(&qry, state.hoard, "SELECT count(*), max(offset) FROM chunks",
+				NULL);
+	if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Couldn't find maximum hoard cache offset");
 		return PK_IOERR;
 	}
@@ -105,19 +106,18 @@ static pk_err_t allocate_chunk_offset(int *offset)
 {
 	struct query *qry;
 	pk_err_t ret;
-	int sret;
 	int hoarded=0;
 
 	while (1) {
 		/* First, try to find an unused hoard cache slot */
-		sret=query(&qry, state.hoard, "SELECT offset FROM chunks "
+		query(&qry, state.hoard, "SELECT offset FROM chunks "
 					"WHERE tag ISNULL AND referenced == 0 "
 					"LIMIT 1", NULL);
-		if (sret == SQLITE_ROW) {
+		if (query_has_row()) {
 			query_row(qry, "d", offset);
 			query_free(qry);
 			break;
-		} else if (sret != SQLITE_OK) {
+		} else if (!query_ok()) {
 			pk_log(LOG_ERROR, "Error finding unused hoard cache "
 						"offset");
 			return PK_IOERR;
@@ -126,9 +126,9 @@ static pk_err_t allocate_chunk_offset(int *offset)
 		/* Next, we may want to try reclaiming an existing,
 		   unreferenced chunk.  See if we're permitted to do so. */
 		if (config.minsize > 0) {
-			sret=query(&qry, state.hoard, "SELECT count(tag) "
+			query(&qry, state.hoard, "SELECT count(tag) "
 						"FROM chunks", NULL);
-			if (sret != SQLITE_ROW) {
+			if (!query_has_row()) {
 				pk_log(LOG_ERROR, "Error finding size of "
 							"hoard cache");
 				return PK_IOERR;
@@ -140,15 +140,15 @@ static pk_err_t allocate_chunk_offset(int *offset)
 		/* XXX assumes 128 KB */
 		if ((unsigned)(hoarded / 8) >= config.minsize) {
 			/* Try to reclaim the LRU unreferenced chunk */
-			sret=query(&qry, state.hoard, "SELECT offset "
+			query(&qry, state.hoard, "SELECT offset "
 					"FROM chunks WHERE tag NOTNULL "
 					"AND referenced == 0 "
 					"ORDER BY last_access LIMIT 1", NULL);
-			if (sret == SQLITE_ROW) {
+			if (query_has_row()) {
 				query_row(qry, "d", offset);
 				query_free(qry);
 				break;
-			} else if (sret != SQLITE_OK) {
+			} else if (!query_ok()) {
 				pk_log(LOG_ERROR, "Error finding reclaimable "
 							"hoard cache offset");
 				return PK_IOERR;
@@ -188,8 +188,7 @@ static pk_err_t add_chunk_reference(const void *tag)
 
 	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO refs "
 				"(parcel, tag) VALUES (?, ?)", "db",
-				state.hoard_ident, tag, parcel.hashlen)
-				!= SQLITE_OK) {
+				state.hoard_ident, tag, parcel.hashlen)) {
 		ftag=format_tag(tag, parcel.hashlen);
 		pk_log(LOG_ERROR, "Couldn't add chunk reference for tag %s",
 					ftag);
@@ -217,13 +216,12 @@ static void _hoard_invalidate_chunk(int offset, const void *tag,
 			unsigned taglen)
 {
 	struct query *qry;
-	int sret;
 	char *ftag;
 
-	sret=query(&qry, state.hoard, "SELECT offset FROM chunks WHERE "
+	query(&qry, state.hoard, "SELECT offset FROM chunks WHERE "
 				"offset == ? AND tag == ?", "db",
 				offset, tag, taglen);
-	if (sret == SQLITE_OK) {
+	if (query_ok()) {
 		/* Harmless: it's already not there.  But let's warn anyway. */
 		ftag=format_tag(tag, taglen);
 		pk_log(LOG_ERROR, "Attempted to invalidate tag %s at "
@@ -231,7 +229,7 @@ static void _hoard_invalidate_chunk(int offset, const void *tag,
 					"(harmless)", ftag, offset);
 		free(ftag);
 		return;
-	} else if (sret != SQLITE_ROW) {
+	} else if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Could not query chunk list");
 		return;
 	}
@@ -263,7 +261,6 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	int offset;
 	int clen;
 	pk_err_t ret;
-	int sret;
 
 	if (config.hoard_dir == NULL)
 		return PK_NOTFOUND;
@@ -271,14 +268,14 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	if (ret)
 		return ret;
 
-	sret=query(&qry, state.hoard, "SELECT offset, length FROM chunks "
+	query(&qry, state.hoard, "SELECT offset, length FROM chunks "
 				"WHERE tag == ?", "b", tag, parcel.hashlen);
-	if (sret == SQLITE_OK) {
+	if (query_ok()) {
 		ret=commit(state.hoard);
 		if (ret)
 			goto bad;
 		return PK_NOTFOUND;
-	} else if (sret != SQLITE_ROW) {
+	} else if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Couldn't query hoard chunk index");
 		ret=PK_IOERR;
 		goto bad;
@@ -348,7 +345,6 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 {
 	pk_err_t ret;
 	int offset;
-	int sret;
 
 	if (config.hoard_dir == NULL)
 		return PK_SUCCESS;
@@ -356,9 +352,9 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	if (ret)
 		return ret;
 
-	sret=query(NULL, state.hoard, "SELECT tag FROM chunks WHERE tag == ?",
+	query(NULL, state.hoard, "SELECT tag FROM chunks WHERE tag == ?",
 				"b", tag, parcel.hashlen);
-	if (sret == SQLITE_ROW) {
+	if (query_has_row()) {
 		ret=add_chunk_reference(tag);
 		if (ret)
 			goto bad;
@@ -366,7 +362,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 		if (ret)
 			goto bad;
 		return PK_SUCCESS;
-	} else if (sret != SQLITE_OK) {
+	} else if (!query_ok()) {
 		pk_log(LOG_ERROR, "Couldn't look up tag in hoard cache index");
 		goto bad;
 	}
@@ -392,15 +388,15 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 		deallocate_chunk_offset(offset);
 		return ret;
 	}
-	sret=query(NULL, state.hoard, "UPDATE chunks SET tag = ?, length = ?, "
+	query(NULL, state.hoard, "UPDATE chunks SET tag = ?, length = ?, "
 				"crypto = ?, last_access = ? "
 				"WHERE offset = ?", "bdddd",
 				tag, parcel.hashlen, len, parcel.crypto,
 				timestamp(), offset);
-	if (sret == SQLITE_CONSTRAINT) {
+	if (query_result() == SQLITE_CONSTRAINT) {
 		/* Someone else has already written this tag */
 		deallocate_chunk_offset(offset);
-	} else if (sret != SQLITE_OK) {
+	} else if (!query_ok()) {
 		pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
 		ret=PK_IOERR;
 		goto bad_dealloc;
@@ -429,7 +425,6 @@ bad_dealloc:
 pk_err_t hoard_sync_refs(int from_cache)
 {
 	pk_err_t ret;
-	int sret;
 
 	if (config.hoard_dir == NULL)
 		return PK_SUCCESS;
@@ -438,14 +433,14 @@ pk_err_t hoard_sync_refs(int from_cache)
 	if (ret)
 		return ret;
 	if (from_cache)
-		sret=query(NULL, state.db, "CREATE TEMP VIEW newrefs AS "
+		query(NULL, state.db, "CREATE TEMP VIEW newrefs AS "
 					"SELECT DISTINCT tag FROM keys", NULL);
 	else
-		sret=query(NULL, state.db, "CREATE TEMP VIEW newrefs AS "
+		query(NULL, state.db, "CREATE TEMP VIEW newrefs AS "
 					"SELECT DISTINCT tag FROM prev.keys",
 					NULL);
 	ret=PK_IOERR;
-	if (sret) {
+	if (!query_ok()) {
 		pk_log(LOG_ERROR, "Couldn't generate tag list");
 		goto bad;
 	}
@@ -509,9 +504,9 @@ static pk_err_t get_parcel_ident(void)
 		ret=PK_IOERR;
 		goto bad;
 	}
-	if (query(&qry, state.hoard, "SELECT parcel FROM parcels "
-				"WHERE uuid == ?", "S", parcel.uuid)
-				!= SQLITE_ROW) {
+	query(&qry, state.hoard, "SELECT parcel FROM parcels WHERE uuid == ?",
+				"S", parcel.uuid);
+	if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Couldn't query parcels table");
 		ret=PK_IOERR;
 		goto bad;
@@ -555,8 +550,8 @@ static pk_err_t open_hoard_index(void)
 	ret=begin_immediate(state.hoard);
 	if (ret)
 		goto bad;
-	if (query(&qry, state.hoard, "PRAGMA user_version", NULL)
-				!= SQLITE_ROW) {
+	query(&qry, state.hoard, "PRAGMA user_version", NULL);
+	if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Couldn't get hoard cache index version");
 		ret=PK_IOERR;
 		goto bad_rollback;

@@ -30,6 +30,7 @@ typedef enum pk_err {
 	PK_PROTOFAIL,
 	PK_NETFAIL,  /* Used instead of IOERR if a retry might fix it */
 	PK_BUSY,
+	PK_SQLERR,
 } pk_err_t;
 
 enum pk_log_type {
@@ -232,8 +233,10 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 /* sql.c */
 void sql_init(void);
 void sql_shutdown(void);
-int query(struct query **new_qry, sqlite3 *db, char *query, char *fmt, ...);
-int query_next(struct query *qry);
+pk_err_t query(struct query **new_qry, sqlite3 *db, char *query, char *fmt,
+			...);
+pk_err_t query_next(struct query *qry);
+int query_result(void);
 void query_row(struct query *qry, char *fmt, ...);
 void query_free(struct query *qry);
 void query_flush(void);
@@ -249,6 +252,8 @@ pk_err_t set_busy_handler(sqlite3 *db);
 pk_err_t validate_db(sqlite3 *db);
 pk_err_t cleanup_action(sqlite3 *db, char *sql, enum pk_log_type logtype,
 			char *desc);
+#define query_has_row() (query_result() == SQLITE_ROW)
+#define query_ok() (query_result() == SQLITE_OK)
 
 /* util.c */
 #define FILE_LOCK_READ     0

@@ -190,6 +190,8 @@ char *pk_strerror(pk_err_t err)
 		return "Network failure";
 	case PK_BUSY:
 		return "Object busy";
+	case PK_SQLERR:
+		return "SQL error";
 	}
 	return "(Unknown)";
 }

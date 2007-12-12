@@ -29,6 +29,7 @@ struct query {
 };
 
 static struct query *prepared[CACHE_BUCKETS];
+static __thread int result;  /* set by query() and query_next() */
 
 static void sqlerr(sqlite3 *db)
 {
@@ -95,37 +96,39 @@ static int get_query(struct query **new_qry, sqlite3 *db, char *sql)
 	return ret;
 }
 
-int query(struct query **new_qry, sqlite3 *db, char *query, char *fmt, ...)
+pk_err_t query(struct query **new_qry, sqlite3 *db, char *query, char *fmt,
+			...)
 {
 	struct query *qry;
 	sqlite3_stmt *stmt;
 	va_list ap;
 	int i=1;
-	int ret;
 	int found_unknown=0;
 	void *blob;
 
 	if (new_qry != NULL)
 		*new_qry=NULL;
-	ret=get_query(&qry, db, query);
-	if (ret)
-		return ret;
+	result=get_query(&qry, db, query);
+	if (result)
+		return PK_SQLERR;
 	stmt=qry->stmt;
 	va_start(ap, fmt);
 	for (; fmt != NULL && *fmt; fmt++) {
 		switch (*fmt) {
 		case 'd':
-			ret=sqlite3_bind_int(stmt, i++, va_arg(ap, int));
+			result=sqlite3_bind_int(stmt, i++, va_arg(ap, int));
 			break;
 		case 'D':
-			ret=sqlite3_bind_int64(stmt, i++, va_arg(ap, int64_t));
+			result=sqlite3_bind_int64(stmt, i++, va_arg(ap,
+						int64_t));
 			break;
 		case 'f':
-			ret=sqlite3_bind_double(stmt, i++, va_arg(ap, double));
+			result=sqlite3_bind_double(stmt, i++, va_arg(ap,
+						double));
 			break;
 		case 's':
 		case 'S':
-			ret=sqlite3_bind_text(stmt, i++, va_arg(ap, char *),
+			result=sqlite3_bind_text(stmt, i++, va_arg(ap, char *),
 						-1, *fmt == 's'
 						? SQLITE_TRANSIENT
 						: SQLITE_STATIC);
@@ -133,45 +136,55 @@ int query(struct query **new_qry, sqlite3 *db, char *query, char *fmt, ...)
 		case 'b':
 		case 'B':
 			blob=va_arg(ap, void *);
-			ret=sqlite3_bind_blob(stmt, i++, blob, va_arg(ap, int),
-						*fmt == 'b' ? SQLITE_TRANSIENT
+			result=sqlite3_bind_blob(stmt, i++, blob, va_arg(ap,
+						int), *fmt == 'b'
+						? SQLITE_TRANSIENT
 						: SQLITE_STATIC);
 			break;
 		default:
 			pk_log(LOG_ERROR, "Unknown format specifier %c", *fmt);
-			ret=SQLITE_MISUSE;
+			result=SQLITE_MISUSE;
 			/* Don't call sqlerr(), since we synthesized this
 			   error */
 			found_unknown=1;
 			break;
 		}
-		if (ret)
+		if (result)
 			break;
 	}
 	va_end(ap);
-	if (ret == SQLITE_OK)
-		ret=query_next(qry);
+	if (result == SQLITE_OK)
+		query_next(qry);
 	else if (!found_unknown)
 		sqlerr(db);
-	if (ret != SQLITE_ROW || new_qry == NULL)
+	if (result != SQLITE_ROW || new_qry == NULL)
 		query_free(qry);
 	else
 		*new_qry=qry;
-	return ret;
+	if (result == SQLITE_OK || result == SQLITE_ROW)
+		return PK_SUCCESS;
+	else
+		return PK_SQLERR;
 }
 
-int query_next(struct query *qry)
+pk_err_t query_next(struct query *qry)
 {
-	int ret;
-
-	ret=sqlite3_step(qry->stmt);
-	/* Collapse DONE into OK, since we don't want everyone to have to test
-	   for a gratuitously nonzero error code */
-	if (ret == SQLITE_DONE)
-		ret=SQLITE_OK;
-	if (ret != SQLITE_OK && ret != SQLITE_ROW)
+	result=sqlite3_step(qry->stmt);
+	/* Collapse DONE into OK, since they're semantically equivalent and
+	   it simplifies error checking */
+	if (result == SQLITE_DONE)
+		result=SQLITE_OK;
+	if (result == SQLITE_OK || result == SQLITE_ROW) {
+		return PK_SUCCESS;
+	} else {
 		sqlerr(sqlite3_db_handle(qry->stmt));
-	return ret;
+		return PK_SQLERR;
+	}
+}
+
+int query_result(void)
+{
+	return result;
 }
 
 void query_row(struct query *qry, char *fmt, ...)
@@ -352,16 +365,17 @@ pk_err_t validate_db(sqlite3 *db)
 {
 	struct query *qry;
 	const char *str;
-	int result;
+	int res;
 
-	if (query(&qry, db, "PRAGMA integrity_check(1)", NULL) != SQLITE_ROW) {
+	query(&qry, db, "PRAGMA integrity_check(1)", NULL);
+	if (!query_has_row()) {
 		pk_log(LOG_ERROR, "Couldn't run SQLite integrity check");
 		return PK_IOERR;
 	}
 	query_row(qry, "s", &str);
-	result=strcmp(str, "ok");
+	res=strcmp(str, "ok");
 	query_free(qry);
-	if (result) {
+	if (res) {
 		pk_log(LOG_ERROR, "SQLite integrity check failed");
 		return PK_BADFORMAT;
 	}
@@ -373,7 +387,7 @@ pk_err_t cleanup_action(sqlite3 *db, char *sql, enum pk_log_type logtype,
 {
 	int changes;
 
-	if (query(NULL, db, sql, NULL) != SQLITE_OK) {
+	if (query(NULL, db, sql, NULL)) {
 		pk_log(LOG_ERROR, "Couldn't clean %s", desc);
 		return PK_IOERR;
 	}
