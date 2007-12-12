@@ -96,13 +96,13 @@ int copy_for_upload(void)
 				"LEFT JOIN cache.chunks ON "
 				"main.keys.chunk == cache.chunks.chunk WHERE "
 				"main.keys.tag != prev.keys.tag", NULL)) {
-		pk_log(LOG_ERROR, "Couldn't enumerate modified chunks");
+		pk_log_sqlerr("Couldn't enumerate modified chunks");
 		rollback(state.db);
 		return 1;
 	}
 	query(&qry, state.db, "SELECT sum(length) FROM temp.to_upload", NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't find size of modified chunks");
+		pk_log_sqlerr("Couldn't find size of modified chunks");
 		rollback(state.db);
 		return 1;
 	}
@@ -184,7 +184,7 @@ int copy_for_upload(void)
 		modified_bytes += length;
 	}
 	if (!query_ok())
-		pk_log(LOG_ERROR, "Database query failed");
+		pk_log_sqlerr("Database query failed");
 	else
 		ret=0;
 out:
@@ -251,7 +251,7 @@ static pk_err_t validate_keyring(void)
 		}
 	}
 	if (!query_ok()) {
-		pk_log(LOG_ERROR, "Keyring query failed");
+		pk_log_sqlerr("Keyring query failed");
 		ret=PK_IOERR;
 	}
 	query_free(qry);
@@ -275,7 +275,7 @@ static pk_err_t validate_cachefile(void)
 		return PK_IOERR;
 	query(&qry, state.db, "SELECT sum(length) FROM cache.chunks", NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't get total size of valid chunks");
+		pk_log_sqlerr("Couldn't get total size of valid chunks");
 		rollback(state.db);
 		return PK_IOERR;
 	}
@@ -345,7 +345,7 @@ static pk_err_t validate_cachefile(void)
 		}
 	}
 	if (!query_ok()) {
-		pk_log(LOG_ERROR, "Error querying cache index");
+		pk_log_sqlerr("Error querying cache index");
 		ret=PK_IOERR;
 	}
 	query_free(qry);
@@ -387,7 +387,7 @@ int examine_cache(void)
 		return 1;
 	query(&qry, state.db, "SELECT count(*) from cache.chunks", NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't query cache index");
+		pk_log_sqlerr("Couldn't query cache index");
 		rollback(state.db);
 		return 1;
 	}
@@ -398,7 +398,7 @@ int examine_cache(void)
 				"main.keys.chunk == prev.keys.chunk WHERE "
 				"main.keys.tag != prev.keys.tag", NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't compare keyrings");
+		pk_log_sqlerr("Couldn't compare keyrings");
 		rollback(state.db);
 		return 1;
 	}

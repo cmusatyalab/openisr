@@ -46,21 +46,21 @@ int hoard(void)
 	if (query(NULL, state.db, "CREATE TEMP TABLE to_hoard "
 				"(chunk INTEGER NOT NULL, "
 				"tag BLOB UNIQUE NOT NULL)", NULL)) {
-		pk_log(LOG_ERROR, "Couldn't create temporary table");
+		pk_log_sqlerr("Couldn't create temporary table");
 		goto out_free;
 	}
 	if (query(NULL, state.db, "INSERT OR IGNORE INTO temp.to_hoard "
 				"(chunk, tag) SELECT chunk, tag "
 				"FROM prev.keys WHERE tag NOT IN "
 				"(SELECT tag FROM hoard.chunks)", NULL)) {
-		pk_log(LOG_ERROR, "Couldn't build list of chunks to hoard");
+		pk_log_sqlerr("Couldn't build list of chunks to hoard");
 		goto out_drop;
 	}
 
 	/* See how much we need to hoard */
 	query(&qry, state.db, "SELECT count(*) FROM temp.to_hoard", NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't count unhoarded chunks");
+		pk_log_sqlerr("Couldn't count unhoarded chunks");
 		goto out_drop;
 	}
 	query_row(qry, "d", &to_hoard);
@@ -95,19 +95,19 @@ int hoard(void)
 		} else if (query_has_row()) {
 			print_progress_chunks(num_hoarded, --to_hoard);
 		} else {
-			pk_log(LOG_ERROR, "Couldn't query hoard cache index");
+			pk_log_sqlerr("Couldn't query hoard cache index");
 			goto out_qry;
 		}
 	}
 	if (!query_ok())
-		pk_log(LOG_ERROR, "Querying hoard index failed");
+		pk_log_sqlerr("Querying hoard index failed");
 	else
 		ret=0;
 out_qry:
 	query_free(qry);
 out_drop:
 	if (query(NULL, state.db, "DROP TABLE temp.to_hoard", NULL))
-		pk_log(LOG_ERROR, "Couldn't drop table temp.to_hoard");
+		pk_log_sqlerr("Couldn't drop table temp.to_hoard");
 out_free:
 	free(buf);
 	return ret;
@@ -132,7 +132,7 @@ int examine_hoard(void)
 	query(&qry, state.db, "SELECT count(DISTINCT tag) FROM prev.keys",
 				NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't query previous keyring");
+		pk_log_sqlerr("Couldn't query previous keyring");
 		goto bad;
 	}
 	query_row(qry, "d", &maxchunks);
@@ -141,7 +141,7 @@ int examine_hoard(void)
 				"FROM prev.keys JOIN hoard.chunks "
 				"ON prev.keys.tag == hoard.chunks.tag", NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't query hoard cache");
+		pk_log_sqlerr("Couldn't query hoard cache");
 		goto bad;
 	}
 	query_row(qry, "d", &validchunks);
@@ -182,7 +182,7 @@ int list_hoard(void)
 	query(&t_qry, state.db, "SELECT count(tag) FROM hoard.chunks WHERE "
 				"referenced == 1", NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't count referenced chunks");
+		pk_log_sqlerr("Couldn't count referenced chunks");
 		goto out;
 	}
 	query_row(t_qry, "d", &shared);
@@ -190,7 +190,7 @@ int list_hoard(void)
 	query(&t_qry, state.db, "SELECT count(tag) FROM hoard.chunks WHERE "
 				"referenced == 0", NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't count unreferenced chunks");
+		pk_log_sqlerr("Couldn't count unreferenced chunks");
 		goto out;
 	}
 	query_row(t_qry, "d", &unreferenced);
@@ -198,7 +198,7 @@ int list_hoard(void)
 	query(&t_qry, state.db, "SELECT count(*) FROM hoard.chunks WHERE "
 				"tag ISNULL", NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't count unused chunk slots");
+		pk_log_sqlerr("Couldn't count unused chunk slots");
 		goto out;
 	}
 	query_row(t_qry, "d", &unused);
@@ -211,7 +211,7 @@ int list_hoard(void)
 		query(&t_qry, state.db, "SELECT count(*) FROM hoard.refs "
 					"WHERE parcel == ?", "d", parcel);
 		if (!query_has_row()) {
-			pk_log(LOG_ERROR, "Couldn't query hoard index for "
+			pk_log_sqlerr("Couldn't query hoard index for "
 						"parcel %s", name);
 			break;
 		}
@@ -222,7 +222,7 @@ int list_hoard(void)
 					"(SELECT tag FROM hoard.refs WHERE "
 					"parcel != ?)", "dd", parcel, parcel);
 		if (!query_has_row()) {
-			pk_log(LOG_ERROR, "Couldn't query hoard index for "
+			pk_log_sqlerr("Couldn't query hoard index for "
 						"parcel %s", name);
 			break;
 		}
@@ -239,7 +239,7 @@ int list_hoard(void)
 		printf("unused %d\n", unused);
 		ret=0;
 	} else {
-		pk_log(LOG_ERROR, "Couldn't list parcels in hoard cache");
+		pk_log_sqlerr("Couldn't list parcels in hoard cache");
 	}
 out:
 	rollback(state.db);
@@ -261,10 +261,13 @@ int rmhoard(void)
 	query(&qry, state.db, "SELECT parcel, server, user, name FROM "
 				"hoard.parcels WHERE uuid == ?", "S",
 				config.uuid);
-	if (!query_has_row()) {
+	if (query_ok()) {
 		pk_log(LOG_INFO, "rmhoard: %s: No such parcel", config.uuid);
 		rollback(state.db);
 		return 0;
+	} else if (!query_has_row()) {
+		pk_log_sqlerr("Couldn't query parcel table");
+		goto bad;
 	}
 	query_row(qry, "dsss", &parcel, &server, &user, &name);
 	/* server, user, and name expire when we free the query */
@@ -281,7 +284,7 @@ int rmhoard(void)
 				parcel, parcel);
 	if (!query_has_row()) {
 		free(desc);
-		pk_log(LOG_ERROR, "Couldn't enumerate unique parcel chunks");
+		pk_log_sqlerr("Couldn't enumerate unique parcel chunks");
 		goto bad;
 	}
 	query_row(qry, "d", &removed);
@@ -294,12 +297,12 @@ int rmhoard(void)
 				"WHERE parcel == ? AND tag NOT IN "
 				"(SELECT tag FROM hoard.refs WHERE "
 				"PARCEL != ?))", "dd", parcel, parcel)) {
-		pk_log(LOG_ERROR, "Couldn't update referenced flags");
+		pk_log_sqlerr("Couldn't update referenced flags");
 		goto bad;
 	}
 	if (query(NULL, state.db, "DELETE FROM hoard.refs WHERE parcel == ?",
 				"d", parcel)) {
-		pk_log(LOG_ERROR, "Couldn't remove parcel from hoard cache");
+		pk_log_sqlerr("Couldn't remove parcel from hoard cache");
 		goto bad;
 	}
 
@@ -336,7 +339,7 @@ static pk_err_t check_hoard_data(void)
 
 	query(&qry, state.db, "SELECT sum(length) FROM temp.to_check", NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't find the amount of data to check");
+		pk_log_sqlerr("Couldn't find the amount of data to check");
 		return PK_IOERR;
 	}
 	query_row(qry, "D", &total_bytes);
@@ -374,11 +377,11 @@ static pk_err_t check_hoard_data(void)
 	}
 	query_free(qry);
 	if (!query_ok()) {
-		pk_log(LOG_ERROR, "Couldn't walk chunk list");
+		pk_log_sqlerr("Couldn't walk chunk list");
 		ret=PK_IOERR;
 	}
 	if (query(NULL, state.db, "DROP TABLE temp.to_check", NULL)) {
-		pk_log(LOG_ERROR, "Couldn't drop temporary table");
+		pk_log_sqlerr("Couldn't drop temporary table");
 		ret=PK_IOERR;
 	}
 	if (count)
@@ -413,7 +416,7 @@ int check_hoard(void)
 			if (query(NULL, state.db, "DELETE FROM hoard.parcels "
 						"WHERE uuid == ?", "s",
 						uuid)) {
-				pk_log(LOG_ERROR, "Couldn't remove invalid "
+				pk_log_sqlerr("Couldn't remove invalid "
 							"parcel record "
 							"from hoard index");
 				goto bad;
@@ -425,7 +428,7 @@ int check_hoard(void)
 	if (count)
 		pk_log(LOG_ERROR, "Removed %d invalid parcel records", count);
 	if (!query_ok()) {
-		pk_log(LOG_ERROR, "Couldn't query parcel list");
+		pk_log_sqlerr("Couldn't query parcel list");
 		goto bad;
 	}
 
@@ -446,7 +449,7 @@ int check_hoard(void)
 	}
 	query_free(qry);
 	if (!query_ok()) {
-		pk_log(LOG_ERROR, "Couldn't query chunk table");
+		pk_log_sqlerr("Couldn't query chunk table");
 		goto bad;
 	}
 
@@ -463,13 +466,16 @@ int check_hoard(void)
 						"SET tag = NULL, length = 0, "
 						"crypto = 0, last_access = 0, "
 						"referenced = 0 WHERE "
-						"offset = ?", "d", offset))
+						"offset = ?", "d", offset)) {
+				pk_log_sqlerr("Couldn't deallocate offset %d",
+							offset);
 				goto bad;
+			}
 		}
 	}
 	query_free(qry);
 	if (!query_ok()) {
-		pk_log(LOG_ERROR, "Couldn't query chunk list");
+		pk_log_sqlerr("Couldn't query chunk list");
 		goto bad;
 	}
 	if (count)
@@ -519,8 +525,7 @@ int check_hoard(void)
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET last_access = ? "
 				"WHERE last_access > ?", "dd", time,
 				time + 10)) {
-		pk_log(LOG_ERROR, "Couldn't locate chunks with invalid "
-					"timestamps");
+		pk_log_sqlerr("Couldn't locate chunks with invalid timestamps");
 		goto bad;
 	}
 	count=sqlite3_changes(state.db);
@@ -535,7 +540,7 @@ int check_hoard(void)
 					"SELECT tag, offset, length, crypto "
 					"FROM hoard.chunks WHERE tag NOTNULL "
 					"ORDER BY offset", NULL)) {
-			pk_log(LOG_ERROR, "Couldn't enumerate hoarded chunks");
+			pk_log_sqlerr("Couldn't enumerate hoarded chunks");
 			goto bad;
 		}
 	}

@@ -13,6 +13,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <sys/time.h>
 #include <time.h>
@@ -21,6 +22,7 @@
 
 #define CACHE_BUCKETS 199
 #define SLOW_THRESHOLD_MS 200
+#define ERRBUFSZ 256
 
 struct query {
 	sqlite3_stmt *stmt;
@@ -30,10 +32,15 @@ struct query {
 
 static struct query *prepared[CACHE_BUCKETS];
 static __thread int result;  /* set by query() and query_next() */
+static __thread char errmsg[ERRBUFSZ];
 
-static void sqlerr(sqlite3 *db)
+static void sqlerr(char *fmt, ...)
 {
-	pk_log(LOG_ERROR, "SQL error: %s", sqlite3_errmsg(db));
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(errmsg, ERRBUFSZ, fmt, ap);
+	va_end(ap);
 }
 
 static unsigned get_bucket(const char *sql)
@@ -58,7 +65,7 @@ static int alloc_query(struct query **new_qry, sqlite3 *db, char *sql)
 	}
 	ret=sqlite3_prepare_v2(db, sql, -1, &qry->stmt, NULL);
 	if (ret) {
-		sqlerr(db);
+		sqlerr("%s", sqlite3_errmsg(db));
 		free(qry);
 	} else {
 		qry->sql=sqlite3_sql(qry->stmt);
@@ -142,10 +149,8 @@ pk_err_t query(struct query **new_qry, sqlite3 *db, char *query, char *fmt,
 						: SQLITE_STATIC);
 			break;
 		default:
-			pk_log(LOG_ERROR, "Unknown format specifier %c", *fmt);
+			sqlerr("Unknown format specifier %c", *fmt);
 			result=SQLITE_MISUSE;
-			/* Don't call sqlerr(), since we synthesized this
-			   error */
 			found_unknown=1;
 			break;
 		}
@@ -156,7 +161,7 @@ pk_err_t query(struct query **new_qry, sqlite3 *db, char *query, char *fmt,
 	if (result == SQLITE_OK)
 		query_next(qry);
 	else if (!found_unknown)
-		sqlerr(db);
+		sqlerr("%s", sqlite3_errmsg(db));
 	if (result != SQLITE_ROW || new_qry == NULL)
 		query_free(qry);
 	else
@@ -177,7 +182,7 @@ pk_err_t query_next(struct query *qry)
 	if (result == SQLITE_OK || result == SQLITE_ROW) {
 		return PK_SUCCESS;
 	} else {
-		sqlerr(sqlite3_db_handle(qry->stmt));
+		sqlerr("%s", sqlite3_errmsg(sqlite3_db_handle(qry->stmt)));
 		return PK_SQLERR;
 	}
 }
@@ -185,6 +190,11 @@ pk_err_t query_next(struct query *qry)
 int query_result(void)
 {
 	return result;
+}
+
+const char *query_errmsg(void)
+{
+	return errmsg;
 }
 
 void query_row(struct query *qry, char *fmt, ...)
@@ -292,7 +302,7 @@ void sql_shutdown(void)
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
 {
 	if (query(NULL, db, "ATTACH ? AS ?", "ss", file, handle)) {
-		pk_log(LOG_ERROR, "Couldn't attach %s", file);
+		pk_log_sqlerr("Couldn't attach %s", file);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -303,8 +313,8 @@ pk_err_t _begin(sqlite3 *db, int immediate, const char *caller)
 	char *sql = immediate ? "BEGIN IMMEDIATE" : "BEGIN";
 
 	if (query(NULL, db, sql, NULL)) {
-		pk_log(LOG_ERROR, "Couldn't begin transaction "
-					"on behalf of %s()", caller);
+		pk_log_sqlerr("Couldn't begin transaction on behalf of %s()",
+					caller);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -313,8 +323,8 @@ pk_err_t _begin(sqlite3 *db, int immediate, const char *caller)
 pk_err_t _commit(sqlite3 *db, const char *caller)
 {
 	if (query(NULL, db, "COMMIT", NULL)) {
-		pk_log(LOG_ERROR, "Couldn't commit transaction "
-					"on behalf of %s()", caller);
+		pk_log_sqlerr("Couldn't commit transaction on behalf of %s()",
+					caller);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -323,8 +333,8 @@ pk_err_t _commit(sqlite3 *db, const char *caller)
 pk_err_t _rollback(sqlite3 *db, const char *caller)
 {
 	if (query(NULL, db, "ROLLBACK", NULL)) {
-		pk_log(LOG_ERROR, "Couldn't roll back transaction "
-					"on behalf of %s()", caller);
+		pk_log_sqlerr("Couldn't roll back transaction on behalf of "
+					"%s()", caller);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -369,7 +379,7 @@ pk_err_t validate_db(sqlite3 *db)
 
 	query(&qry, db, "PRAGMA integrity_check(1)", NULL);
 	if (!query_has_row()) {
-		pk_log(LOG_ERROR, "Couldn't run SQLite integrity check");
+		pk_log_sqlerr("Couldn't run SQLite integrity check");
 		return PK_IOERR;
 	}
 	query_row(qry, "s", &str);
@@ -388,7 +398,7 @@ pk_err_t cleanup_action(sqlite3 *db, char *sql, enum pk_log_type logtype,
 	int changes;
 
 	if (query(NULL, db, sql, NULL)) {
-		pk_log(LOG_ERROR, "Couldn't clean %s", desc);
+		pk_log_sqlerr("Couldn't clean %s", desc);
 		return PK_IOERR;
 	}
 	changes=sqlite3_changes(db);

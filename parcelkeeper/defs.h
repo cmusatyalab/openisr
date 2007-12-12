@@ -237,6 +237,7 @@ pk_err_t query(struct query **new_qry, sqlite3 *db, char *query, char *fmt,
 			...);
 pk_err_t query_next(struct query *qry);
 int query_result(void);
+const char *query_errmsg(void);
 void query_row(struct query *qry, char *fmt, ...);
 void query_free(struct query *qry);
 void query_flush(void);
@@ -254,6 +255,14 @@ pk_err_t cleanup_action(sqlite3 *db, char *sql, enum pk_log_type logtype,
 			char *desc);
 #define query_has_row() (query_result() == SQLITE_ROW)
 #define query_ok() (query_result() == SQLITE_OK)
+#define pk_log_sqlerr(fmt, args...) do { \
+		int _res = query_result(); \
+		if (_res == SQLITE_ROW || _res == SQLITE_OK) \
+			pk_log(LOG_ERROR, fmt, ## args); \
+		else \
+			pk_log(LOG_ERROR, fmt " (%s)", ## args, \
+						query_errmsg()); \
+	} while (0)
 
 /* util.c */
 #define FILE_LOCK_READ     0
