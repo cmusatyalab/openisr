@@ -111,8 +111,7 @@ static pk_err_t allocate_chunk_offset(int *offset)
 	while (1) {
 		/* First, try to find an unused hoard cache slot */
 		query(&qry, state.hoard, "SELECT offset FROM chunks "
-					"WHERE tag ISNULL AND referenced == 0 "
-					"LIMIT 1", NULL);
+					"WHERE tag ISNULL LIMIT 1", NULL);
 		if (query_has_row()) {
 			query_row(qry, "d", offset);
 			query_free(qry);
@@ -160,26 +159,7 @@ static pk_err_t allocate_chunk_offset(int *offset)
 		if (ret)
 			return ret;
 	}
-
-	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1, "
-				"tag = NULL, length = 0, crypto = 0, "
-				"last_access = 0 WHERE offset == ?", "d",
-				*offset)) {
-		pk_log_sqlerr("Couldn't allocate hoard cache chunk");
-		return PK_IOERR;
-	}
 	return PK_SUCCESS;
-}
-
-static void deallocate_chunk_offset(int offset)
-{
-	if (query(NULL, state.hoard, "UPDATE chunks SET tag = NULL, "
-				"length = 0, crypto = 0, last_access = 0, "
-				"referenced = 0 WHERE offset = ?", "d",
-				offset)) {
-		pk_log_sqlerr("Couldn't deallocate hoard chunk at offset %d",
-					offset);
-	}
 }
 
 static pk_err_t add_chunk_reference(const void *tag)
@@ -233,7 +213,14 @@ static void _hoard_invalidate_chunk(int offset, const void *tag,
 	}
 	query_free(qry);
 
-	deallocate_chunk_offset(offset);
+	if (query(NULL, state.hoard, "UPDATE chunks SET tag = NULL, "
+				"length = 0, crypto = 0, last_access = 0, "
+				"referenced = 0 WHERE offset = ?", "d",
+				offset)) {
+		pk_log_sqlerr("Couldn't deallocate hoard chunk at offset %d",
+					offset);
+		return;
+	}
 	if (query(NULL, state.hoard, "DELETE FROM refs WHERE tag == ?", "b",
 				tag, taglen)) {
 		ftag=format_tag(tag, taglen);
@@ -369,52 +356,35 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	if (ret)
 		goto bad;
 
-	ret=commit(state.hoard);
-	if (ret)
-		goto bad;
-
 	if (pwrite(state.hoard_fd, buf, len, ((off_t)offset) << 9) !=
 				(int)len) {
 		pk_log(LOG_ERROR, "Couldn't write hoard cache: offset %d, "
 					"length %d", offset, len);
-		deallocate_chunk_offset(offset);
-		return PK_IOERR;
+		ret=PK_IOERR;
+		goto bad;
 	}
 
-	ret=begin(state.hoard);
-	if (ret) {
-		deallocate_chunk_offset(offset);
-		return ret;
-	}
-	query(NULL, state.hoard, "UPDATE chunks SET tag = ?, length = ?, "
-				"crypto = ?, last_access = ? "
-				"WHERE offset = ?", "bdddd",
+	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1, "
+				"tag = ?, length = ?, crypto = ?, "
+				"last_access = ? WHERE offset = ?", "bdddd",
 				tag, parcel.hashlen, len, parcel.crypto,
-				timestamp(), offset);
-	if (query_result() == SQLITE_CONSTRAINT) {
-		/* Someone else has already written this tag */
-		deallocate_chunk_offset(offset);
-	} else if (!query_ok()) {
+				timestamp(), offset)) {
 		pk_log_sqlerr("Couldn't commit hoard cache chunk");
 		ret=PK_IOERR;
-		goto bad_dealloc;
+		goto bad;
 	}
 	ret=add_chunk_reference(tag);
 	if (ret)
-		goto bad_dealloc;
+		goto bad;
 	ret=commit(state.hoard);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
-		goto bad_dealloc;
+		goto bad;
 	}
 	return PK_SUCCESS;
 
 bad:
 	rollback(state.hoard);
-	return ret;
-bad_dealloc:
-	rollback(state.hoard);
-	deallocate_chunk_offset(offset);
 	return ret;
 }
 
@@ -602,11 +572,6 @@ static pk_err_t hoard_try_cleanup(void)
 	}
 
 	pk_log(LOG_INFO, "Cleaning up hoard cache...");
-	ret=cleanup_action(state.hoard, "UPDATE chunks SET referenced = 0 "
-				"WHERE referenced == 1 AND tag ISNULL",
-				LOG_INFO, "orphaned cache slots");
-	if (ret)
-		goto out;
 	ret=cleanup_action(state.hoard, "DELETE FROM parcels WHERE parcel "
 				"NOT IN (SELECT parcel FROM refs)",
 				LOG_INFO, "dangling parcel records");

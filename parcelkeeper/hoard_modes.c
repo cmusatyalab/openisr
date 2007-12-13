@@ -509,14 +509,14 @@ int check_hoard(void)
 				"refs with dangling tag"))
 		goto bad;
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET referenced = 0 "
-				"WHERE referenced == 1 AND tag NOTNULL AND "
-				"tag NOT IN (SELECT tag FROM hoard.refs)",
+				"WHERE referenced == 1 AND (tag ISNULL OR "
+				"tag NOT IN (SELECT tag FROM hoard.refs))",
 				LOG_ERROR,
 				"chunks with spurious referenced flag"))
 		goto bad;
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET referenced = 1 "
-				"WHERE referenced == 0 AND tag NOTNULL AND "
-				"tag IN (SELECT tag FROM hoard.refs)",
+				"WHERE referenced == 0 AND tag IN "
+				"(SELECT tag FROM hoard.refs)",
 				LOG_ERROR,
 				"chunks with missing referenced flag"))
 		goto bad;
