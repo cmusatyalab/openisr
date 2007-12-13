@@ -394,7 +394,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	}
 	sret=query(NULL, state.hoard, "UPDATE chunks SET tag = ?, length = ?, "
 				"crypto = ?, last_access = ? "
-				"WHERE offset = ?", "bddd",
+				"WHERE offset = ?", "bdddd",
 				tag, parcel.hashlen, len, parcel.crypto,
 				timestamp(), offset);
 	if (sret == SQLITE_CONSTRAINT) {
