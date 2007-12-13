@@ -1,3 +1,18 @@
+openisr (0.9-1) experimental; urgency=low
+
+  * Server changes -- this client can NOT be used with the same server
+    used for 0.8.4, so do not upgrade until you are prepared to switch
+    servers.
+  * Vulpes replaced by Parcelkeeper
+  * Parcel format changes: AES encryption, SQLite keyring, UUID
+  * New hoard cache implementation
+     * hoard cache is shared across parcels, data downloaded only once
+     * new hoard cache management commands: lshoard, rmhoard, checkhoard
+  * ~/.openisr.conf is now ~/.openisrrc
+  * Many more changes and bugfixes, see CHANGES
+  
+ -- Matt Toups <mtoups@cs.cmu.edu>  Thu, 13 Dec 2007 13:51:33 -0500
+
 openisr (0.8.4-2) experimental; urgency=low
 
   * To make upgrades smoother, only Replace: openisr-modules-source

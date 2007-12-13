@@ -2,19 +2,20 @@ Source: openisr
 Section: net
 Priority: extra
 Maintainer: Matt Toups <mtoups@cs.cmu.edu>
-Build-Depends: debhelper, libcurl-dev, zlib1g-dev, libssl-dev, linux-headers-2.6, ia32-libs [amd64], libc6-dev-i386 [amd64]
+Build-Depends: debhelper, libcurl-dev, zlib1g-dev, libssl-dev, linux-headers-2.6, ia32-libs [amd64], libc6-dev-i386 [amd64], libossp-uuid-dev
 Standards-Version: 3.7.2
 
 Package: openisr
 Architecture: any
-Suggests: kvm | vmware-player
+Suggests: kvm | vmware-player | virtualbox
 Depends: udev, curl (>= 7.12.3), ssh | openssh-client, openssl, rsync, pv, module-assistant, ${shlibs:Depends}, ${perl:Depends}, ${misc:Depends}
 Replaces: openisr-modules-source
 Description: Internet Suspend/Resume (ISR) client
  OpenISR is the latest implementation of Internet Suspend/Resume, which 
  combines a virtual machine with distributed storage to provide the user 
  with both mobility and consistent state without the need for mobile hardware.
- This package contains a client (isr), a parcel manager (Vulpes), a wrapper 
- library for VMware (libvdisk), and the source to the openisr kernel module 
- (Nexus).  A virtual machine monitor (VMware, Xen, KVM, etc) should also be 
- installed.   OpenISR is developed at Carnegie Mellon University.
+ This package contains a client (isr), a parcel manager (parcelkeeper), a 
+ wrapper library for VMware (libvdisk), and the source to the openisr kernel 
+ modules (Nexus and a sha-1 accelerator).  A virtual machine monitor (VMware, 
+ Xen, KVM, VirtualBox, etc) should also be installed to make use of OpenISR.
+ OpenISR is developed at Carnegie Mellon University.
