@@ -295,7 +295,7 @@ int rmhoard(void)
 	int removed;
 
 again:
-	if (begin_immediate(state.db))
+	if (begin(state.db))
 		return 1;
 	query(&qry, state.db, "SELECT parcel, server, user, name FROM "
 				"hoard.parcels WHERE uuid == ?", "S",
@@ -455,7 +455,7 @@ int check_hoard(void)
 		return 1;
 
 again:
-	if (begin_immediate(state.db))
+	if (begin(state.db))
 		return 1;
 
 	for (query(&qry, state.db, "SELECT uuid FROM hoard.parcels",

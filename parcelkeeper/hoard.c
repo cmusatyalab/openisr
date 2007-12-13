@@ -235,7 +235,7 @@ static pk_err_t _hoard_invalidate_chunk(int offset, const void *tag,
 void hoard_invalidate_chunk(int offset, const void *tag, unsigned taglen)
 {
 again:
-	if (begin_immediate(state.hoard))
+	if (begin(state.hoard))
 		return;
 	if (_hoard_invalidate_chunk(offset, tag, taglen)) {
 		rollback(state.hoard);
@@ -259,7 +259,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 		return PK_NOTFOUND;
 
 again:
-	ret=begin_immediate(state.hoard);
+	ret=begin(state.hoard);
 	if (ret)
 		return ret;
 
@@ -351,7 +351,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 		return PK_SUCCESS;
 
 again:
-	ret=begin_immediate(state.hoard);
+	ret=begin(state.hoard);
 	if (ret)
 		return ret;
 
@@ -543,7 +543,7 @@ static pk_err_t open_hoard_index(void)
 		goto bad;
 
 again:
-	ret=begin_immediate(state.hoard);
+	ret=begin(state.hoard);
 	if (ret)
 		goto bad;
 	query(&qry, state.hoard, "PRAGMA user_version", NULL);

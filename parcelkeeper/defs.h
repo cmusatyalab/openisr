@@ -242,9 +242,8 @@ void query_row(struct query *qry, char *fmt, ...);
 void query_free(struct query *qry);
 void query_flush(void);
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file);
-pk_err_t _begin(sqlite3 *db, int immediate, const char *caller);
-#define begin(db) _begin(db, 0, __func__)
-#define begin_immediate(db) _begin(db, 1, __func__)
+pk_err_t _begin(sqlite3 *db, const char *caller);
+#define begin(db) _begin(db, __func__)
 pk_err_t _commit(sqlite3 *db, const char *caller);
 #define commit(db) _commit(db, __func__)
 pk_err_t _rollback(sqlite3 *db, const char *caller);

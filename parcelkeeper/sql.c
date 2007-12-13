@@ -311,12 +311,10 @@ again:
 	return PK_SUCCESS;
 }
 
-pk_err_t _begin(sqlite3 *db, int immediate, const char *caller)
+pk_err_t _begin(sqlite3 *db, const char *caller)
 {
-	char *sql = immediate ? "BEGIN IMMEDIATE" : "BEGIN";
-
 again:
-	if (query(NULL, db, sql, NULL)) {
+	if (query(NULL, db, "BEGIN", NULL)) {
 		if (query_busy())
 			goto again;
 		pk_log_sqlerr("Couldn't begin transaction on behalf of %s()",
