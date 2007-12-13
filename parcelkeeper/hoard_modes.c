@@ -13,6 +13,50 @@
 #include <stdlib.h>
 #include "defs.h"
 
+/* Helper for hoard().  Begins a transaction and *leaves it open*, except
+   in case of error. */
+static pk_err_t build_hoard_table(int *chunks_to_hoard)
+{
+	struct query *qry;
+
+again:
+	/* Build a temp table listing the chunks to hoard, so that
+	   while we're actually hoarding we don't have locks against
+	   the hoard index.  Take care not to list a tag more than once,
+	   to keep the progress meter accurate */
+	if (begin(state.db))
+		return PK_IOERR;
+	if (query(NULL, state.db, "CREATE TEMP TABLE to_hoard "
+				"(chunk INTEGER NOT NULL, "
+				"tag BLOB UNIQUE NOT NULL)", NULL)) {
+		pk_log_sqlerr("Couldn't create temporary table");
+		goto bad;
+	}
+	if (query(NULL, state.db, "INSERT OR IGNORE INTO temp.to_hoard "
+				"(chunk, tag) SELECT chunk, tag "
+				"FROM prev.keys WHERE tag NOT IN "
+				"(SELECT tag FROM hoard.chunks)", NULL)) {
+		pk_log_sqlerr("Couldn't build list of chunks to hoard");
+		goto bad;
+	}
+
+	/* See how much we need to hoard */
+	query(&qry, state.db, "SELECT count(*) FROM temp.to_hoard", NULL);
+	if (!query_has_row()) {
+		pk_log_sqlerr("Couldn't count unhoarded chunks");
+		goto bad;
+	}
+	query_row(qry, "d", chunks_to_hoard);
+	query_free(qry);
+	return PK_SUCCESS;
+
+bad:
+	rollback(state.db);
+	if (query_busy())
+		goto again;
+	return PK_IOERR;
+}
+
 /* XXX SIGINT */
 int hoard(void)
 {
@@ -26,62 +70,48 @@ int hoard(void)
 	int to_hoard;
 	int ret=1;
 
+	/* We need to do this first; otherwise, chunks we thought were hoarded
+	   could disappear out from under us */
+	if (hoard_sync_refs(0)) {
+		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
+		return 1;
+	}
+
+	/* This opens a transaction */
+	if (build_hoard_table(&to_hoard))
+		return 1;
+
+	/* If WANT_CHECK, that's all we need to do */
+	if (config.flags & WANT_CHECK) {
+		rollback(state.db);
+		if (to_hoard == 0)
+			return 0;
+		else
+			return 1;
+	}
+
+	if (commit(state.db)) {
+		rollback(state.db);
+		return 1;
+	}
+
 	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failure");
 		return 1;
 	}
 
-	/* We need to do this first; otherwise, chunks we thought were hoarded
-	   could disappear out from under us */
-	if (hoard_sync_refs(0)) {
-		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
-		goto out_free;
-	}
-
-	/* Build a temp table listing the chunks to hoard, so that
-	   while we're actually hoarding we don't have locks against
-	   the hoard index.  Take care not to list a tag more than once,
-	   to keep the progress meter accurate */
-	if (query(NULL, state.db, "CREATE TEMP TABLE to_hoard "
-				"(chunk INTEGER NOT NULL, "
-				"tag BLOB UNIQUE NOT NULL)", NULL)) {
-		pk_log_sqlerr("Couldn't create temporary table");
-		goto out_free;
-	}
-	if (query(NULL, state.db, "INSERT OR IGNORE INTO temp.to_hoard "
-				"(chunk, tag) SELECT chunk, tag "
-				"FROM prev.keys WHERE tag NOT IN "
-				"(SELECT tag FROM hoard.chunks)", NULL)) {
-		pk_log_sqlerr("Couldn't build list of chunks to hoard");
-		goto out_drop;
-	}
-
-	/* See how much we need to hoard */
-	query(&qry, state.db, "SELECT count(*) FROM temp.to_hoard", NULL);
-	if (!query_has_row()) {
-		pk_log_sqlerr("Couldn't count unhoarded chunks");
-		goto out_drop;
-	}
-	query_row(qry, "d", &to_hoard);
-	query_free(qry);
-
-	/* If WANT_CHECK, that's all we need to do */
-	if (config.flags & WANT_CHECK) {
-		if (to_hoard == 0)
-			ret=0;
-		goto out_drop;
-	}
-
+again:
 	for (query(&qry, state.db, "SELECT chunk, tag FROM temp.to_hoard",
 				NULL); query_has_row(); query_next(qry)) {
 		query_row(qry, "db", &chunk, &tag, &taglen);
 		if (taglen != parcel.hashlen) {
 			pk_log(LOG_ERROR, "Invalid tag length for chunk %d",
 						chunk);
-			goto out_qry;
+			goto out;
 		}
 
+again_inner:
 		/* Make sure the chunk hasn't already been put in the hoard
 		   cache (because someone else already downloaded it) before
 		   we download.  Use the hoard DB connection so that state.db
@@ -90,25 +120,27 @@ int hoard(void)
 					"tag == ?", "b", tag, taglen);
 		if (query_ok()) {
 			if (transport_fetch_chunk(buf, chunk, tag, &chunklen))
-				goto out_qry;
+				goto out;
 			print_progress_chunks(++num_hoarded, to_hoard);
 		} else if (query_has_row()) {
 			print_progress_chunks(num_hoarded, --to_hoard);
+		} else if (query_busy()) {
+			goto again_inner;
 		} else {
 			pk_log_sqlerr("Couldn't query hoard cache index");
-			goto out_qry;
+			goto out;
 		}
 	}
 	if (!query_ok())
 		pk_log_sqlerr("Querying hoard index failed");
 	else
 		ret=0;
-out_qry:
+out:
 	query_free(qry);
-out_drop:
+	if (query_busy())
+		goto again;
 	if (query(NULL, state.db, "DROP TABLE temp.to_hoard", NULL))
 		pk_log_sqlerr("Couldn't drop table temp.to_hoard");
-out_free:
 	free(buf);
 	return ret;
 }
@@ -127,6 +159,7 @@ int examine_hoard(void)
 		return 1;
 	}
 
+again:
 	if (begin(state.db))
 		return 1;
 	query(&qry, state.db, "SELECT count(DISTINCT tag) FROM prev.keys",
@@ -158,6 +191,8 @@ int examine_hoard(void)
 
 bad:
 	rollback(state.db);
+	if (query_busy())
+		goto again;
 	return 1;
 }
 
@@ -177,6 +212,7 @@ int list_hoard(void)
 	int unreferenced;
 	int unused;
 
+again:
 	if (begin(state.db))
 		return 1;
 	query(&t_qry, state.db, "SELECT count(tag) FROM hoard.chunks WHERE "
@@ -243,6 +279,8 @@ int list_hoard(void)
 	}
 out:
 	rollback(state.db);
+	if (query_busy())
+		goto again;
 	return ret;
 }
 
@@ -256,6 +294,7 @@ int rmhoard(void)
 	int parcel;
 	int removed;
 
+again:
 	if (begin_immediate(state.db))
 		return 1;
 	query(&qry, state.db, "SELECT parcel, server, user, name FROM "
@@ -316,6 +355,8 @@ int rmhoard(void)
 
 bad:
 	rollback(state.db);
+	if (query_busy())
+		goto again;
 	return 1;
 }
 
@@ -332,19 +373,21 @@ static pk_err_t check_hoard_data(void)
 	off64_t examined_bytes;
 	off64_t total_bytes;
 	pk_err_t ret=PK_SUCCESS;
-	int count=0;
+	int count;
 
 	pk_log(LOG_INFO, "Validating hoard cache data");
 	printf("Validating hoard cache data...\n");
 
+again:
 	query(&qry, state.db, "SELECT sum(length) FROM temp.to_check", NULL);
 	if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't find the amount of data to check");
-		return PK_IOERR;
+		goto bad;
 	}
 	query_row(qry, "D", &total_bytes);
 	query_free(qry);
 
+	count=0;
 	examined_bytes=0;
 	for (query(&qry, state.db, "SELECT tag, offset, length, crypto "
 				"FROM temp.to_check", NULL);
@@ -378,15 +421,20 @@ static pk_err_t check_hoard_data(void)
 	query_free(qry);
 	if (!query_ok()) {
 		pk_log_sqlerr("Couldn't walk chunk list");
-		ret=PK_IOERR;
+		goto bad;
 	}
-	if (query(NULL, state.db, "DROP TABLE temp.to_check", NULL)) {
+	if (query(NULL, state.db, "DROP TABLE temp.to_check", NULL))
 		pk_log_sqlerr("Couldn't drop temporary table");
-		ret=PK_IOERR;
-	}
 	if (count)
 		pk_log(LOG_ERROR, "Removed %d invalid chunks", count);
 	return ret;
+
+bad:
+	if (query_busy())
+		goto again;
+	if (query(NULL, state.db, "DROP TABLE temp.to_check", NULL))
+		pk_log_sqlerr("Couldn't drop temporary table");
+	return PK_IOERR;
 }
 
 int check_hoard(void)
@@ -405,6 +453,8 @@ int check_hoard(void)
 	printf("Validating hoard cache...\n");
 	if (validate_db(state.db))
 		return 1;
+
+again:
 	if (begin_immediate(state.db))
 		return 1;
 
@@ -419,18 +469,19 @@ int check_hoard(void)
 				pk_log_sqlerr("Couldn't remove invalid "
 							"parcel record "
 							"from hoard index");
+				query_free(qry);
 				goto bad;
 			}
 			count += sqlite3_changes(state.db);
 		}
 	}
 	query_free(qry);
-	if (count)
-		pk_log(LOG_ERROR, "Removed %d invalid parcel records", count);
 	if (!query_ok()) {
 		pk_log_sqlerr("Couldn't query parcel list");
 		goto bad;
 	}
+	if (count)
+		pk_log(LOG_ERROR, "Removed %d invalid parcel records", count);
 
 	next_offset=0;
 	for (query(&qry, state.db, "SELECT offset FROM hoard.chunks "
@@ -469,6 +520,7 @@ int check_hoard(void)
 						"offset = ?", "d", offset)) {
 				pk_log_sqlerr("Couldn't deallocate offset %d",
 							offset);
+				query_free(qry);
 				goto bad;
 			}
 		}
@@ -556,6 +608,8 @@ int check_hoard(void)
 
 bad:
 	rollback(state.db);
+	if (query_busy())
+		goto again;
 	return 1;
 }
 

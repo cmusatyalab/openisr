@@ -135,6 +135,7 @@ static pk_err_t create_cache_index(void)
 {
 	pk_err_t ret;
 
+again:
 	ret=begin(state.db);
 	if (ret)
 		return ret;
@@ -157,6 +158,8 @@ static pk_err_t create_cache_index(void)
 
 bad:
 	rollback(state.db);
+	if (query_busy())
+		goto again;
 	return ret;
 }
 
@@ -165,8 +168,11 @@ static pk_err_t verify_cache_index(void)
 	struct query *qry;
 	int found;
 
+again:
 	query(&qry, state.db, "PRAGMA cache.user_version", NULL);
-	if (!query_has_row()) {
+	if (query_busy())
+		goto again;
+	else if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't query cache index version");
 		return PK_IOERR;
 	}
@@ -245,13 +251,16 @@ static pk_err_t shm_init(void)
 		return PK_CALLFAIL;
 	}
 
+again:
 	for (query(&qry, state.db, "SELECT chunk FROM cache.chunks", NULL);
 				query_has_row(); query_next(qry)) {
 		query_row(qry, "d", &chunk);
 		shm_set(chunk, SHM_PRESENT);
 	}
 	query_free(qry);
-	if (!query_ok()) {
+	if (query_busy()) {
+		goto again;
+	} else if (!query_ok()) {
 		pk_log_sqlerr("Couldn't query cache index");
 		munmap(state.shm_base, state.shm_len);
 		state.shm_base=NULL;
@@ -416,14 +425,17 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 	unsigned keylen;
 	pk_err_t ret;
 
-	/* XXX does not use transaction.  do we need to?  might introduce
-	   conflicts in obtain_chunk() */
 	pk_log(LOG_CHUNK, "Get: %u", chunk);
+again:
+	ret=begin(state.db);
+	if (ret)
+		return ret;
 	query(&qry, state.db, "SELECT tag, key, compression FROM keys "
 				"WHERE chunk == ?", "d", chunk);
 	if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't query keyring");
-		return PK_IOERR;
+		ret=PK_IOERR;
+		goto bad;
 	}
 	query_row(qry, "bbd", &rowtag, &taglen, &rowkey, &keylen, compress);
 	if (taglen != parcel.hashlen || keylen != parcel.hashlen) {
@@ -431,7 +443,8 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 		pk_log(LOG_ERROR, "Invalid hash length for chunk %u: "
 					"expected %d, tag %d, key %d",
 					chunk, parcel.hashlen, taglen, keylen);
-		return PK_INVALID;
+		ret=PK_INVALID;
+		goto bad;
 	}
 	memcpy(tag, rowtag, parcel.hashlen);
 	memcpy(key, rowkey, parcel.hashlen);
@@ -443,27 +456,39 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 		/* Chunk is not in the local cache */
 		ret=obtain_chunk(chunk, tag, length);
 		if (ret)
-			return ret;
+			goto bad;
 	} else if (query_has_row()) {
 		query_row(qry, "d", length);
 		query_free(qry);
 	} else {
 		pk_log_sqlerr("Couldn't query cache index");
-		return PK_IOERR;
+		ret=PK_IOERR;
+		goto bad;
 	}
 
 	if (*length > parcel.chunksize) {
 		pk_log(LOG_ERROR, "Invalid chunk length for chunk %u: %u",
 					chunk, *length);
-		return PK_INVALID;
+		ret=PK_INVALID;
+		goto bad;
 	}
 	if (!compress_is_valid(*compress)) {
 		pk_log(LOG_ERROR, "Invalid or unsupported compression type "
 					"for chunk %u: %u", chunk, *compress);
-		return PK_INVALID;
+		ret=PK_INVALID;
+		goto bad;
 	}
+	ret=commit(state.db);
+	if (ret)
+		goto bad;
 	shm_set(chunk, SHM_ACCESSED);
 	return PK_SUCCESS;
+
+bad:
+	rollback(state.db);
+	if (query_busy())
+		goto again;
+	return ret;
 }
 
 pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
@@ -472,6 +497,7 @@ pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 	pk_err_t ret;
 
 	pk_log(LOG_CHUNK, "Update: %u", chunk);
+again:
 	ret=begin(state.db);
 	if (ret)
 		return ret;
@@ -497,5 +523,7 @@ pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 
 bad:
 	rollback(state.db);
+	if (query_busy())
+		goto again;
 	return ret;
 }

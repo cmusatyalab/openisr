@@ -301,7 +301,10 @@ void sql_shutdown(void)
 
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
 {
+again:
 	if (query(NULL, db, "ATTACH ? AS ?", "ss", file, handle)) {
+		if (query_busy())
+			goto again;
 		pk_log_sqlerr("Couldn't attach %s", file);
 		return PK_IOERR;
 	}
@@ -312,7 +315,10 @@ pk_err_t _begin(sqlite3 *db, int immediate, const char *caller)
 {
 	char *sql = immediate ? "BEGIN IMMEDIATE" : "BEGIN";
 
+again:
 	if (query(NULL, db, sql, NULL)) {
+		if (query_busy())
+			goto again;
 		pk_log_sqlerr("Couldn't begin transaction on behalf of %s()",
 					caller);
 		return PK_IOERR;
@@ -322,7 +328,10 @@ pk_err_t _begin(sqlite3 *db, int immediate, const char *caller)
 
 pk_err_t _commit(sqlite3 *db, const char *caller)
 {
+again:
 	if (query(NULL, db, "COMMIT", NULL)) {
+		if (query_busy())
+			goto again;
 		pk_log_sqlerr("Couldn't commit transaction on behalf of %s()",
 					caller);
 		return PK_IOERR;
@@ -332,12 +341,19 @@ pk_err_t _commit(sqlite3 *db, const char *caller)
 
 pk_err_t _rollback(sqlite3 *db, const char *caller)
 {
+	int saved=result;
+	pk_err_t ret=PK_SUCCESS;
+
+again:
 	if (query(NULL, db, "ROLLBACK", NULL)) {
+		if (query_busy())
+			goto again;
 		pk_log_sqlerr("Couldn't roll back transaction on behalf of "
 					"%s()", caller);
-		return PK_IOERR;
+		ret=PK_IOERR;
 	}
-	return PK_SUCCESS;
+	result=saved;
+	return ret;
 }
 
 static int busy_handler(void *db, int count)
@@ -377,8 +393,11 @@ pk_err_t validate_db(sqlite3 *db)
 	const char *str;
 	int res;
 
+again:
 	query(&qry, db, "PRAGMA integrity_check(1)", NULL);
-	if (!query_has_row()) {
+	if (query_busy()) {
+		goto again;
+	} else if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't run SQLite integrity check");
 		return PK_IOERR;
 	}

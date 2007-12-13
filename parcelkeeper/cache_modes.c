@@ -74,8 +74,8 @@ int copy_for_upload(void)
 	char calctag[parcel.hashlen];
 	char *path;
 	int fd;
-	unsigned modified_chunks=0;
-	off64_t modified_bytes=0;
+	unsigned modified_chunks;
+	off64_t modified_bytes;
 	int64_t total_modified_bytes;
 	int ret=1;
 
@@ -85,8 +85,19 @@ int copy_for_upload(void)
 		return 1;
 	if (hoard_sync_refs(1))
 		return 1;
-	if (begin(state.db))
+	buf=malloc(parcel.chunksize);
+	if (buf == NULL) {
+		pk_log(LOG_ERROR, "malloc failed");
 		return 1;
+	}
+
+again:
+	modified_chunks=0;
+	modified_bytes=0;
+	if (begin(state.db)) {
+		free(buf);
+		return 1;
+	}
 	if (query(NULL, state.db, "CREATE TEMP TABLE to_upload AS "
 				"SELECT main.keys.chunk AS chunk, "
 				"main.keys.tag AS tag, "
@@ -97,23 +108,15 @@ int copy_for_upload(void)
 				"main.keys.chunk == cache.chunks.chunk WHERE "
 				"main.keys.tag != prev.keys.tag", NULL)) {
 		pk_log_sqlerr("Couldn't enumerate modified chunks");
-		rollback(state.db);
-		return 1;
+		goto bad;
 	}
 	query(&qry, state.db, "SELECT sum(length) FROM temp.to_upload", NULL);
 	if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't find size of modified chunks");
-		rollback(state.db);
-		return 1;
+		goto bad;
 	}
 	query_row(qry, "D", &total_modified_bytes);
 	query_free(qry);
-	buf=malloc(parcel.chunksize);
-	if (buf == NULL) {
-		pk_log(LOG_ERROR, "malloc failed");
-		rollback(state.db);
-		return 1;
-	}
 	for (query(&qry, state.db, "SELECT chunk, tag, length FROM "
 				"temp.to_upload", NULL); query_has_row();
 				query_next(qry)) {
@@ -188,9 +191,14 @@ int copy_for_upload(void)
 	else
 		ret=0;
 out:
-	free(buf);
 	query_free(qry);
+bad:
+	if (query_busy()) {
+		rollback(state.db);
+		goto again;
+	}
 	rollback(state.db);
+	free(buf);
 	if (ret == 0)
 		if (write_upload_stats(modified_chunks, modified_bytes))
 			ret=1;
@@ -200,13 +208,16 @@ out:
 static pk_err_t validate_keyring(void)
 {
 	struct query *qry;
-	unsigned expected_chunk=0;
+	unsigned expected_chunk;
 	unsigned chunk;
 	unsigned taglen;
 	unsigned keylen;
 	unsigned compress;
-	pk_err_t ret=PK_SUCCESS;
+	pk_err_t ret;
 
+again:
+	expected_chunk=0;
+	ret=PK_SUCCESS;
 	for (query(&qry, state.db, "SELECT chunk, tag, key, compression "
 				"FROM keys ORDER BY chunk ASC", NULL);
 				query_has_row(); query_next(qry)) {
@@ -250,7 +261,9 @@ static pk_err_t validate_keyring(void)
 			ret=PK_INVALID;
 		}
 	}
-	if (!query_ok()) {
+	if (query_busy()) {
+		goto again;
+	} else if (!query_ok()) {
 		pk_log_sqlerr("Keyring query failed");
 		ret=PK_IOERR;
 	}
@@ -267,27 +280,29 @@ static pk_err_t validate_cachefile(void)
 	unsigned chunk;
 	unsigned taglen;
 	unsigned chunklen;
-	int64_t processed_bytes=0;
+	int64_t processed_bytes;
 	int64_t valid_bytes;
-	pk_err_t ret=PK_SUCCESS;
+	pk_err_t ret;
 
+	buf=malloc(parcel.chunksize);
+	if (buf == NULL) {
+		pk_log(LOG_ERROR, "malloc failed");
+		return PK_NOMEM;
+	}
+
+again:
+	processed_bytes=0;
+	ret=PK_SUCCESS;
 	if (begin(state.db))
 		return PK_IOERR;
 	query(&qry, state.db, "SELECT sum(length) FROM cache.chunks", NULL);
 	if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't get total size of valid chunks");
-		rollback(state.db);
-		return PK_IOERR;
+		ret=PK_IOERR;
+		goto bad;
 	}
 	query_row(qry, "D", &valid_bytes);
 	query_free(qry);
-
-	buf=malloc(parcel.chunksize);
-	if (buf == NULL) {
-		pk_log(LOG_ERROR, "malloc failed");
-		rollback(state.db);
-		return PK_NOMEM;
-	}
 
 	for (query(&qry, state.db, "SELECT cache.chunks.chunk, "
 				"cache.chunks.length, keys.tag FROM "
@@ -344,7 +359,12 @@ static pk_err_t validate_cachefile(void)
 			}
 		}
 	}
-	if (!query_ok()) {
+
+bad:
+	if (query_busy()) {
+		rollback(state.db);
+		goto again;
+	} else if (!query_ok()) {
 		pk_log_sqlerr("Error querying cache index");
 		ret=PK_IOERR;
 	}
@@ -381,15 +401,15 @@ int examine_cache(void)
 	unsigned valid_mb;
 	unsigned dirty_mb;
 	unsigned valid_pct;
-	unsigned dirty_pct=0;
+	unsigned dirty_pct;
 
+again:
 	if (begin(state.db))
 		return 1;
 	query(&qry, state.db, "SELECT count(*) from cache.chunks", NULL);
 	if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't query cache index");
-		rollback(state.db);
-		return 1;
+		goto bad;
 	}
 	query_row(qry, "d", &validchunks);
 	query_free(qry);
@@ -399,8 +419,7 @@ int examine_cache(void)
 				"main.keys.tag != prev.keys.tag", NULL);
 	if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't compare keyrings");
-		rollback(state.db);
-		return 1;
+		goto bad;
 	}
 	query_row(qry, "d", &dirtychunks);
 	query_free(qry);
@@ -413,8 +432,16 @@ int examine_cache(void)
 	valid_pct=(100 * validchunks) / parcel.chunks;
 	if (validchunks)
 		dirty_pct=(100 * dirtychunks) / validchunks;
+	else
+		dirty_pct=0;
 	printf("Local cache : %u%% populated (%u/%u MB), %u%% modified "
 				"(%u/%u MB)\n", valid_pct, valid_mb, max_mb,
 				dirty_pct, dirty_mb, valid_mb);
 	return 0;
+
+bad:
+	rollback(state.db);
+	if (query_busy())
+		goto again;
+	return 1;
 }

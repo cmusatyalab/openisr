@@ -255,11 +255,12 @@ pk_err_t cleanup_action(sqlite3 *db, char *sql, enum pk_log_type logtype,
 			char *desc);
 #define query_has_row() (query_result() == SQLITE_ROW)
 #define query_ok() (query_result() == SQLITE_OK)
+#define query_busy() (query_result() == SQLITE_BUSY)
 #define pk_log_sqlerr(fmt, args...) do { \
 		int _res = query_result(); \
 		if (_res == SQLITE_ROW || _res == SQLITE_OK) \
 			pk_log(LOG_ERROR, fmt, ## args); \
-		else \
+		else if (_res != SQLITE_BUSY) \
 			pk_log(LOG_ERROR, fmt " (%s)", ## args, \
 						query_errmsg()); \
 	} while (0)

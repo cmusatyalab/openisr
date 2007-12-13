@@ -190,7 +190,7 @@ static pk_err_t add_chunk_reference(const void *tag)
    valid, in case the chunk in the hoard cache was deleted out from under us
    as we were reading it.  (hoard_get_chunk() cares about this case.)
    Must be called within transaction for hoard connection. */
-static void _hoard_invalidate_chunk(int offset, const void *tag,
+static pk_err_t _hoard_invalidate_chunk(int offset, const void *tag,
 			unsigned taglen)
 {
 	struct query *qry;
@@ -206,10 +206,10 @@ static void _hoard_invalidate_chunk(int offset, const void *tag,
 					"offset %d, but it does not exist "
 					"(harmless)", ftag, offset);
 		free(ftag);
-		return;
+		return PK_SUCCESS;
 	} else if (!query_has_row()) {
 		pk_log_sqlerr("Could not query chunk list");
-		return;
+		return PK_IOERR;
 	}
 	query_free(qry);
 
@@ -219,7 +219,7 @@ static void _hoard_invalidate_chunk(int offset, const void *tag,
 				offset)) {
 		pk_log_sqlerr("Couldn't deallocate hoard chunk at offset %d",
 					offset);
-		return;
+		return PK_IOERR;
 	}
 	if (query(NULL, state.hoard, "DELETE FROM refs WHERE tag == ?", "b",
 				tag, taglen)) {
@@ -227,14 +227,22 @@ static void _hoard_invalidate_chunk(int offset, const void *tag,
 		pk_log_sqlerr("Couldn't invalidate references to tag %s",
 					ftag);
 		free(ftag);
+		return PK_IOERR;
 	}
+	return PK_SUCCESS;
 }
 
 void hoard_invalidate_chunk(int offset, const void *tag, unsigned taglen)
 {
+again:
 	if (begin_immediate(state.hoard))
 		return;
-	_hoard_invalidate_chunk(offset, tag, taglen);
+	if (_hoard_invalidate_chunk(offset, tag, taglen)) {
+		rollback(state.hoard);
+		if (query_busy())
+			goto again;
+		return;
+	}
 	if (commit(state.hoard))
 		rollback(state.hoard);
 }
@@ -249,6 +257,8 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 
 	if (config.hoard_dir == NULL)
 		return PK_NOTFOUND;
+
+again:
 	ret=begin_immediate(state.hoard);
 	if (ret)
 		return ret;
@@ -271,7 +281,9 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	if (offset < 0 || clen <= 0 || (unsigned)clen > parcel.chunksize) {
 		pk_log(LOG_ERROR, "Chunk has unreasonable offset/length "
 					"%d/%d; invalidating", offset, clen);
-		_hoard_invalidate_chunk(offset, tag, parcel.hashlen);
+		ret=_hoard_invalidate_chunk(offset, tag, parcel.hashlen);
+		if (ret)
+			goto bad;
 		ret=PK_BADFORMAT;
 		if (commit(state.hoard))
 			goto bad;
@@ -281,8 +293,10 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	if (query(NULL, state.hoard, "UPDATE chunks SET last_access = ? "
 				"WHERE tag == ?", "db", timestamp(), tag,
 				parcel.hashlen)) {
-		/* Not fatal */
+		/* Not fatal, but if we got SQLITE_BUSY, retry anyway */
 		pk_log_sqlerr("Couldn't update chunk timestamp");
+		if (query_busy())
+			goto bad;
 	}
 	ret=add_chunk_reference(tag);
 	if (ret)
@@ -323,6 +337,8 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 
 bad:
 	rollback(state.hoard);
+	if (query_busy())
+		goto again;
 	return ret;
 }
 
@@ -333,6 +349,8 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 
 	if (config.hoard_dir == NULL)
 		return PK_SUCCESS;
+
+again:
 	ret=begin_immediate(state.hoard);
 	if (ret)
 		return ret;
@@ -385,6 +403,8 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 
 bad:
 	rollback(state.hoard);
+	if (query_busy())
+		goto again;
 	return ret;
 }
 
@@ -397,6 +417,7 @@ pk_err_t hoard_sync_refs(int from_cache)
 	if (config.hoard_dir == NULL)
 		return PK_SUCCESS;
 
+again:
 	ret=begin(state.db);
 	if (ret)
 		return ret;
@@ -452,6 +473,8 @@ pk_err_t hoard_sync_refs(int from_cache)
 
 bad:
 	rollback(state.db);
+	if (query_busy())
+		goto again;
 	return ret;
 }
 
@@ -460,6 +483,7 @@ static pk_err_t get_parcel_ident(void)
 	struct query *qry;
 	pk_err_t ret;
 
+again:
 	ret=begin(state.hoard);
 	if (ret)
 		return ret;
@@ -488,6 +512,8 @@ static pk_err_t get_parcel_ident(void)
 
 bad:
 	rollback(state.hoard);
+	if (query_busy())
+		goto again;
 	return ret;
 }
 
@@ -515,6 +541,8 @@ static pk_err_t open_hoard_index(void)
 	ret=set_busy_handler(state.hoard);
 	if (ret)
 		goto bad;
+
+again:
 	ret=begin_immediate(state.hoard);
 	if (ret)
 		goto bad;
@@ -552,6 +580,8 @@ static pk_err_t open_hoard_index(void)
 
 bad_rollback:
 	rollback(state.hoard);
+	if (query_busy())
+		goto again;
 bad:
 	close_hoard_index();
 	return ret;
@@ -572,9 +602,12 @@ static pk_err_t hoard_try_cleanup(void)
 	}
 
 	pk_log(LOG_INFO, "Cleaning up hoard cache...");
+again:
 	ret=cleanup_action(state.hoard, "DELETE FROM parcels WHERE parcel "
 				"NOT IN (SELECT parcel FROM refs)",
 				LOG_INFO, "dangling parcel records");
+	if (query_busy())
+		goto again;
 out:
 	put_file_lock(state.hoard_fd);
 	return ret;
