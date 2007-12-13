@@ -160,7 +160,7 @@ struct pk_state {
 	unsigned sql_misses;
 	unsigned sql_replacements;
 	unsigned sql_busy_queries;
-	unsigned sql_busy_highwater;
+	unsigned sql_busy_timeouts;
 };
 
 extern struct pk_config config;
