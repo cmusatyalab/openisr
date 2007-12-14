@@ -158,7 +158,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return ret;
 }
@@ -170,7 +170,7 @@ static pk_err_t verify_cache_index(void)
 
 again:
 	query(&qry, state.db, "PRAGMA cache.user_version", NULL);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	else if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't query cache index version");
@@ -258,7 +258,7 @@ again:
 		shm_set(chunk, SHM_PRESENT);
 	}
 	query_free(qry);
-	if (query_busy()) {
+	if (query_retry()) {
 		goto again;
 	} else if (!query_ok()) {
 		pk_log_sqlerr("Couldn't query cache index");
@@ -486,7 +486,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return ret;
 }
@@ -523,7 +523,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return ret;
 }

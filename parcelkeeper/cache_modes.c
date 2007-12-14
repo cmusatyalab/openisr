@@ -193,11 +193,9 @@ again:
 out:
 	query_free(qry);
 bad:
-	if (query_busy()) {
-		rollback(state.db);
-		goto again;
-	}
 	rollback(state.db);
+	if (query_retry())
+		goto again;
 	free(buf);
 	if (ret == 0)
 		if (write_upload_stats(modified_chunks, modified_bytes))
@@ -261,13 +259,13 @@ again:
 			ret=PK_INVALID;
 		}
 	}
-	if (query_busy()) {
+	query_free(qry);
+	if (query_retry())
 		goto again;
-	} else if (!query_ok()) {
+	if (!query_ok()) {
 		pk_log_sqlerr("Keyring query failed");
 		ret=PK_IOERR;
 	}
-	query_free(qry);
 	return ret;
 }
 
@@ -361,17 +359,16 @@ again:
 	}
 
 bad:
-	if (query_busy()) {
-		rollback(state.db);
+	query_free(qry);
+	/* We didn't make any changes; we just need to release the locks */
+	rollback(state.db);
+	if (query_retry())
 		goto again;
-	} else if (!query_ok()) {
+	if (!query_ok()) {
 		pk_log_sqlerr("Error querying cache index");
 		ret=PK_IOERR;
 	}
-	query_free(qry);
 	free(buf);
-	/* We didn't make any changes; we just need to release the locks */
-	rollback(state.db);
 	return ret;
 }
 
@@ -441,7 +438,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return 1;
 }

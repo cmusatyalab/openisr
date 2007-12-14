@@ -238,6 +238,7 @@ pk_err_t query(struct query **new_qry, sqlite3 *db, char *query, char *fmt,
 pk_err_t query_next(struct query *qry);
 int query_result(void);
 const char *query_errmsg(void);
+int query_retry(void);
 void query_row(struct query *qry, char *fmt, ...);
 void query_free(struct query *qry);
 void query_flush(void);

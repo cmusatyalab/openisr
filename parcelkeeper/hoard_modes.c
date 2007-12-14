@@ -52,7 +52,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return PK_IOERR;
 }
@@ -124,7 +124,7 @@ again_inner:
 			print_progress_chunks(++num_hoarded, to_hoard);
 		} else if (query_has_row()) {
 			print_progress_chunks(num_hoarded, --to_hoard);
-		} else if (query_busy()) {
+		} else if (query_retry()) {
 			goto again_inner;
 		} else {
 			pk_log_sqlerr("Couldn't query hoard cache index");
@@ -137,7 +137,7 @@ again_inner:
 		ret=0;
 out:
 	query_free(qry);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	if (query(NULL, state.db, "DROP TABLE temp.to_hoard", NULL))
 		pk_log_sqlerr("Couldn't drop table temp.to_hoard");
@@ -191,7 +191,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return 1;
 }
@@ -279,7 +279,7 @@ again:
 	}
 out:
 	rollback(state.db);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return ret;
 }
@@ -355,7 +355,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return 1;
 }
@@ -430,7 +430,7 @@ again:
 	return ret;
 
 bad:
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	if (query(NULL, state.db, "DROP TABLE temp.to_check", NULL))
 		pk_log_sqlerr("Couldn't drop temporary table");
@@ -608,7 +608,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return 1;
 }

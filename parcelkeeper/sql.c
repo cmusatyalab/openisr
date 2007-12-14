@@ -23,6 +23,7 @@
 #define CACHE_BUCKETS 199
 #define SLOW_THRESHOLD_MS 200
 #define ERRBUFSZ 256
+#define MAX_WAIT_USEC 10000
 
 struct query {
 	sqlite3_stmt *stmt;
@@ -197,6 +198,21 @@ const char *query_errmsg(void)
 	return errmsg;
 }
 
+/* This should not be called inside a transaction, since the whole point of
+   sleeping is to do it without locks held */
+int query_retry(void)
+{
+	if (query_busy()) {
+		/* The SQLite busy handler is not called when SQLITE_BUSY
+		   results from a failed attempt to promote a shared
+		   lock to reserved.  So we can't just retry after getting
+		   SQLITE_BUSY; we have to back off first. */
+		usleep(random() % MAX_WAIT_USEC);
+		return 1;
+	}
+	return 0;
+}
+
 void query_row(struct query *qry, char *fmt, ...)
 {
 	struct sqlite3_stmt *stmt=qry->stmt;
@@ -287,6 +303,7 @@ void sql_init(void)
 	if (strcmp(SQLITE_VERSION, sqlite3_version))
 		pk_log(LOG_INFO, "Warning: built against version "
 					SQLITE_VERSION);
+	srandom(timestamp());
 }
 
 void sql_shutdown(void)
@@ -303,7 +320,7 @@ pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
 {
 again:
 	if (query(NULL, db, "ATTACH ? AS ?", "ss", file, handle)) {
-		if (query_busy())
+		if (query_retry())
 			goto again;
 		pk_log_sqlerr("Couldn't attach %s", file);
 		return PK_IOERR;
@@ -394,7 +411,7 @@ pk_err_t validate_db(sqlite3 *db)
 
 again:
 	query(&qry, db, "PRAGMA integrity_check(1)", NULL);
-	if (query_busy()) {
+	if (query_retry()) {
 		goto again;
 	} else if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't run SQLite integrity check");

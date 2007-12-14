@@ -239,7 +239,7 @@ again:
 		return;
 	if (_hoard_invalidate_chunk(offset, tag, taglen)) {
 		rollback(state.hoard);
-		if (query_busy())
+		if (query_retry())
 			goto again;
 		return;
 	}
@@ -337,7 +337,7 @@ again:
 
 bad:
 	rollback(state.hoard);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return ret;
 }
@@ -403,7 +403,7 @@ again:
 
 bad:
 	rollback(state.hoard);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return ret;
 }
@@ -473,7 +473,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return ret;
 }
@@ -512,7 +512,7 @@ again:
 
 bad:
 	rollback(state.hoard);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 	return ret;
 }
@@ -580,7 +580,7 @@ again:
 
 bad_rollback:
 	rollback(state.hoard);
-	if (query_busy())
+	if (query_retry())
 		goto again;
 bad:
 	close_hoard_index();
@@ -606,7 +606,7 @@ again:
 	ret=cleanup_action(state.hoard, "DELETE FROM parcels WHERE parcel "
 				"NOT IN (SELECT parcel FROM refs)",
 				LOG_INFO, "dangling parcel records");
-	if (query_busy())
+	if (query_retry())
 		goto again;
 out:
 	put_file_lock(state.hoard_fd);
