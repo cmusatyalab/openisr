@@ -198,21 +198,6 @@ const char *query_errmsg(void)
 	return errmsg;
 }
 
-/* This should not be called inside a transaction, since the whole point of
-   sleeping is to do it without locks held */
-int query_retry(void)
-{
-	if (query_busy()) {
-		/* The SQLite busy handler is not called when SQLITE_BUSY
-		   results from a failed attempt to promote a shared
-		   lock to reserved.  So we can't just retry after getting
-		   SQLITE_BUSY; we have to back off first. */
-		usleep(random() % MAX_WAIT_USEC);
-		return 1;
-	}
-	return 0;
-}
-
 void query_row(struct query *qry, char *fmt, ...)
 {
 	struct sqlite3_stmt *stmt=qry->stmt;
@@ -373,23 +358,17 @@ again:
 
 static int busy_handler(void *db, int count)
 {
-	int ms;
+	long time;
 
 	(void)db;  /* silence warning */
-	if (count == 0) {
-		ms=1;
+	if (count == 0)
 		state.sql_busy_queries++;
-	} else if (count <= 2) {
-		ms=2;
-	} else if (count <= 5) {
-		ms=5;
-	} else if (count <= 8) {
-		ms=10;
-	} else {
+	if (count >= 10) {
 		state.sql_busy_timeouts++;
 		return 0;
 	}
-	usleep(ms * 1000);
+	time=random() % (MAX_WAIT_USEC/2);
+	usleep(time);
 	return 1;
 }
 
@@ -400,6 +379,21 @@ pk_err_t set_busy_handler(sqlite3 *db)
 		return PK_CALLFAIL;
 	}
 	return PK_SUCCESS;
+}
+
+/* This should not be called inside a transaction, since the whole point of
+   sleeping is to do it without locks held */
+int query_retry(void)
+{
+	if (query_busy()) {
+		/* The SQLite busy handler is not called when SQLITE_BUSY
+		   results from a failed attempt to promote a shared
+		   lock to reserved.  So we can't just retry after getting
+		   SQLITE_BUSY; we have to back off first. */
+		usleep(random() % MAX_WAIT_USEC);
+		return 1;
+	}
+	return 0;
 }
 
 /* This validates both the primary and attached databases */
