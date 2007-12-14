@@ -303,6 +303,52 @@ void sql_shutdown(void)
 				state.sql_wait_usecs / 1000);
 }
 
+static int busy_handler(void *db, int count)
+{
+	long time;
+
+	(void)db;  /* silence warning */
+	if (count == 0)
+		state.sql_busy_queries++;
+	if (count >= 10) {
+		state.sql_busy_timeouts++;
+		return 0;
+	}
+	time=random() % (MAX_WAIT_USEC/2);
+	state.sql_wait_usecs += time;
+	usleep(time);
+	return 1;
+}
+
+pk_err_t set_busy_handler(sqlite3 *db)
+{
+	if (sqlite3_busy_handler(db, busy_handler, db)) {
+		pk_log(LOG_ERROR, "Couldn't set busy handler for database");
+		return PK_CALLFAIL;
+	}
+	return PK_SUCCESS;
+}
+
+/* This should not be called inside a transaction, since the whole point of
+   sleeping is to do it without locks held */
+int query_retry(void)
+{
+	long time;
+
+	if (query_busy()) {
+		/* The SQLite busy handler is not called when SQLITE_BUSY
+		   results from a failed attempt to promote a shared
+		   lock to reserved.  So we can't just retry after getting
+		   SQLITE_BUSY; we have to back off first. */
+		time=random() % MAX_WAIT_USEC;
+		state.sql_wait_usecs += time;
+		usleep(time);
+		state.sql_retries++;
+		return 1;
+	}
+	return 0;
+}
+
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
 {
 again:
@@ -356,52 +402,6 @@ again:
 	}
 	result=saved;
 	return ret;
-}
-
-static int busy_handler(void *db, int count)
-{
-	long time;
-
-	(void)db;  /* silence warning */
-	if (count == 0)
-		state.sql_busy_queries++;
-	if (count >= 10) {
-		state.sql_busy_timeouts++;
-		return 0;
-	}
-	time=random() % (MAX_WAIT_USEC/2);
-	state.sql_wait_usecs += time;
-	usleep(time);
-	return 1;
-}
-
-pk_err_t set_busy_handler(sqlite3 *db)
-{
-	if (sqlite3_busy_handler(db, busy_handler, db)) {
-		pk_log(LOG_ERROR, "Couldn't set busy handler for database");
-		return PK_CALLFAIL;
-	}
-	return PK_SUCCESS;
-}
-
-/* This should not be called inside a transaction, since the whole point of
-   sleeping is to do it without locks held */
-int query_retry(void)
-{
-	long time;
-
-	if (query_busy()) {
-		/* The SQLite busy handler is not called when SQLITE_BUSY
-		   results from a failed attempt to promote a shared
-		   lock to reserved.  So we can't just retry after getting
-		   SQLITE_BUSY; we have to back off first. */
-		time=random() % MAX_WAIT_USEC;
-		state.sql_wait_usecs += time;
-		usleep(time);
-		state.sql_retries++;
-		return 1;
-	}
-	return 0;
 }
 
 /* This validates both the primary and attached databases */
