@@ -236,6 +236,7 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 /* sql.c */
 void sql_init(void);
 void sql_shutdown(void);
+pk_err_t sql_setup_conn(sqlite3 *db);
 pk_err_t query(struct query **new_qry, sqlite3 *db, char *query, char *fmt,
 			...);
 pk_err_t query_next(struct query *qry);
@@ -252,7 +253,6 @@ pk_err_t _commit(sqlite3 *db, const char *caller);
 #define commit(db) _commit(db, __func__)
 pk_err_t _rollback(sqlite3 *db, const char *caller);
 #define rollback(db) _rollback(db, __func__)
-pk_err_t set_busy_handler(sqlite3 *db);
 pk_err_t validate_db(sqlite3 *db);
 pk_err_t cleanup_action(sqlite3 *db, char *sql, enum pk_log_type logtype,
 			char *desc);

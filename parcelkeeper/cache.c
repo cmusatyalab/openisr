@@ -295,7 +295,7 @@ static pk_err_t open_cachedir(long page_size)
 					sqlite3_errmsg(state.db));
 		return PK_IOERR;
 	}
-	ret=set_busy_handler(state.db);
+	ret=sql_setup_conn(state.db);
 	if (ret)
 		return ret;
 	if (is_file(config.cache_file) && is_file(config.cache_index)) {
@@ -348,7 +348,7 @@ pk_err_t cache_init(void)
 			ret=PK_IOERR;
 			goto bad;
 		}
-		ret=set_busy_handler(state.db);
+		ret=sql_setup_conn(state.db);
 		if (ret)
 			goto bad;
 	}

@@ -179,6 +179,9 @@ pk_err_t query_next(struct query *qry)
 	   it simplifies error checking */
 	if (result == SQLITE_DONE)
 		result=SQLITE_OK;
+	/* Collapse IOERR_BLOCKED into BUSY, likewise */
+	if (result == SQLITE_IOERR_BLOCKED)
+		result=SQLITE_BUSY;
 	if (result == SQLITE_OK || result == SQLITE_ROW) {
 		return PK_SUCCESS;
 	} else {
@@ -320,8 +323,13 @@ static int busy_handler(void *db, int count)
 	return 1;
 }
 
-pk_err_t set_busy_handler(sqlite3 *db)
+pk_err_t sql_setup_conn(sqlite3 *db)
 {
+	if (sqlite3_extended_result_codes(db, 1)) {
+		pk_log(LOG_ERROR, "Couldn't enable extended result codes "
+					"for database");
+		return PK_CALLFAIL;
+	}
 	if (sqlite3_busy_handler(db, busy_handler, db)) {
 		pk_log(LOG_ERROR, "Couldn't set busy handler for database");
 		return PK_CALLFAIL;

@@ -538,7 +538,7 @@ static pk_err_t open_hoard_index(void)
 					sqlite3_errmsg(state.hoard));
 		return PK_IOERR;
 	}
-	ret=set_busy_handler(state.hoard);
+	ret=sql_setup_conn(state.hoard);
 	if (ret)
 		goto bad;
 
