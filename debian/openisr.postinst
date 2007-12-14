@@ -7,8 +7,10 @@ if [ "$1" = "configure" ]; then
 fi
 # End automatically added section
 
-# do this by hand for now
 update-rc.d openisr start 20 S .
 
+if [ -x /sbin/udevcontrol ]; then
+	/sbin/udevcontrol reload_rules || true;
+fi
+
 echo -e "\n You will need to run openisr-config after installing or upgrading this package."
-#echo " See /usr/share/doc/openisr/README.Debian for more info."
