@@ -12,7 +12,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <stdarg.h>
 #include <unistd.h>
 #include <sys/time.h>
@@ -299,6 +298,9 @@ void sql_shutdown(void)
 	pk_log(LOG_STATS, "Busy handler called for %u queries; %u timeouts",
 				state.sql_busy_queries,
 				state.sql_busy_timeouts);
+	pk_log(LOG_STATS, "%u SQL retries; %llu ms spent in backoffs",
+				state.sql_retries,
+				state.sql_wait_usecs / 1000);
 }
 
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
@@ -368,6 +370,7 @@ static int busy_handler(void *db, int count)
 		return 0;
 	}
 	time=random() % (MAX_WAIT_USEC/2);
+	state.sql_wait_usecs += time;
 	usleep(time);
 	return 1;
 }
@@ -385,12 +388,17 @@ pk_err_t set_busy_handler(sqlite3 *db)
    sleeping is to do it without locks held */
 int query_retry(void)
 {
+	long time;
+
 	if (query_busy()) {
 		/* The SQLite busy handler is not called when SQLITE_BUSY
 		   results from a failed attempt to promote a shared
 		   lock to reserved.  So we can't just retry after getting
 		   SQLITE_BUSY; we have to back off first. */
-		usleep(random() % MAX_WAIT_USEC);
+		time=random() % MAX_WAIT_USEC;
+		state.sql_wait_usecs += time;
+		usleep(time);
+		state.sql_retries++;
 		return 1;
 	}
 	return 0;

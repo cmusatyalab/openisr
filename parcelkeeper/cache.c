@@ -14,7 +14,6 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <string.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <arpa/inet.h>

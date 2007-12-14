@@ -13,6 +13,7 @@
 #define PK_DEFS_H
 
 #include <stdio.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <sqlite3.h>
 
@@ -161,6 +162,8 @@ struct pk_state {
 	unsigned sql_replacements;
 	unsigned sql_busy_queries;
 	unsigned sql_busy_timeouts;
+	unsigned sql_retries;
+	uint64_t sql_wait_usecs;
 };
 
 extern struct pk_config config;
