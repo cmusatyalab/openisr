@@ -350,31 +350,26 @@ static void cat_tmp(void)
 static ret_t do_transaction(char *sql)
 {
 	ret_t qres;
-	int i;
 
-	for (i=0; i<10; i++) {
-		if (begin())
+again:
+	if (begin())
+		return FAIL;
+	qres=make_queries(sql);
+	if (qres != OK || commit()) {
+		fflush(tmp);
+		rewind(tmp);
+		ftruncate(fileno(tmp), 0);
+		if (rollback() || qres != FAIL_TEMP)
 			return FAIL;
-		qres=make_queries(sql);
-		if (qres != OK || commit()) {
-			fflush(tmp);
-			rewind(tmp);
-			ftruncate(fileno(tmp), 0);
-			if (rollback() || qres != FAIL_TEMP)
-				return FAIL;
-			backoff_delay();
-		} else {
-			cat_tmp();
-			if (used_params < num_params)
-				fprintf(stderr, "Warning: %d params provided "
-							"but only %d used\n",
-							num_params,
-							used_params);
-			return OK;
-		}
+		backoff_delay();
+		goto again;
 	}
-	fprintf(stderr, "Retries exceeded\n");
-	return FAIL;
+
+	cat_tmp();
+	if (used_params < num_params)
+		fprintf(stderr, "Warning: %d params provided but only %d "
+					"used\n", num_params, used_params);
+	return OK;
 }
 
 static int busy_handler(void *unused, int count)
