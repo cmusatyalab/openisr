@@ -14,8 +14,8 @@ Description: Internet Suspend/Resume (ISR) client
  OpenISR is the latest implementation of Internet Suspend/Resume, which 
  combines a virtual machine with distributed storage to provide the user 
  with both mobility and consistent state without the need for mobile hardware.
- This package contains a client (isr), a parcel manager (parcelkeeper), a 
- wrapper library for VMware (libvdisk), and the source to the openisr kernel 
- modules (Nexus and a sha-1 accelerator).  A virtual machine monitor (VMware, 
- Xen, KVM, VirtualBox, etc) should also be installed to make use of OpenISR.
+ This package contains a client (isr), a parcel manager (Parcelkeeper), a 
+ wrapper library for VMware (libvdisk), and the source to the OpenISR kernel 
+ modules (Nexus and a SHA-1 accelerator).  A virtual machine monitor (VMware, 
+ Xen, KVM, VirtualBox, etc.) should also be installed to make use of OpenISR.
  OpenISR is developed at Carnegie Mellon University.
