@@ -12,7 +12,6 @@
 
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
-RELEASE_VERSION=`grep AC_INIT ../configure.ac | sed 's|[^,]*\,\[*||' | sed 's/])//' | sed 's/\[//'`
 
 # This has to be exported to make some magic below work.
 export DH_OPTIONS
@@ -153,7 +152,7 @@ install-arch:
 
 	dh_installdirs -s usr/src/modules
 
-	$(MAKE) dist-gzip && mv openisr-$(RELEASE_VERSION).tar.gz debian/openisr/usr/src && cd debian/openisr/usr/src && tar zxf openisr-$(RELEASE_VERSION).tar.gz && rm openisr-$(RELEASE_VERSION).tar.gz && mv openisr-$(RELEASE_VERSION) modules/openisr
+	$(MAKE) dist-gzip && mv openisr-*.tar.gz debian/openisr/usr/src && cd debian/openisr/usr/src && tar zxf openisr-*.tar.gz && rm openisr-*.tar.gz && mv openisr-* modules/openisr
 	
 	dh_installdirs -s usr/src/modules/openisr/debian
 	cd debian && cp changelog control.template compat rules copyright openisr/usr/src/modules/openisr/debian
