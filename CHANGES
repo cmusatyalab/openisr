@@ -1,4 +1,29 @@
-====== 0.9-pre
+====== 0.9
+
+------ Client changes
+
+- Incompatible change to hoard cache format; see
+  http://www.coda.cs.cmu.edu/maillists/isr-list/isrlist-2007/0007.html
+- Fix Nexus BUG() on UP kernels
+- Fix deadlock with concurrent SQLite queries
+- "isr clean" now does a soft release of the parcel lock, making it safe to
+  use instead of "isr discard" + "isr checkin" (which is slower).  The
+  historical behavior is available via "isr clean -f".
+- Add -l option to "isr stat", which shows the parcel UUID
+- Improve thoroughness of "isr checkhoard" and implement "isr checkhoard -c"
+- Improve accuracy of Parcelkeeper progress bars
+- Clean up SQL error logging
+- Update to SQLite 3.5.4
+- Minor fixes and cleanups
+- Packaging updates
+
+------ Server changes
+
+- Remove dependency on procmail
+- Merge parcel nonce file into lockfile
+- upgrade-0.9 cfg directory whitelist/blacklist updates
+
+====== 0.9-pre (2007-12-03)
 
 ------ Headlines
 
