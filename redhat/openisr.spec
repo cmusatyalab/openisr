@@ -25,9 +25,9 @@ Provides:	perl(IsrRevision)
  combines a virtual machine with distributed storage to provide the user
  with both mobility and consistent state without the need for mobile hardware.
  This package contains a client (isr), a parcel manager (Parcelkeeper), a 
- wrapper library for VMware (libvdisk), and the source to the openisr kernel 
- module (Nexus and a SHA-1 accelerator).  A virtual machine monitor (VMware,
- Xen, KVM, etc) is not included in this package and should also be installed.  
+ wrapper library for VMware (libvdisk), and the source to the OpenISR kernel 
+ modules (Nexus and a SHA-1 accelerator).  A virtual machine monitor (VMware,
+ Xen, KVM, etc.) is not included in this package and should also be installed.  
  OpenISR is developed at Carnegie Mellon University.
 
 %prep
