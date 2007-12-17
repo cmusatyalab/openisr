@@ -113,6 +113,7 @@ static ret_t attach_dbs(void)
 {
 	sqlite3_stmt *stmt;
 	int i;
+	int ret;
 
 	for (i=0; i<MAX_ATTACHED; i++) {
 		if (attached_names[i] == NULL)
@@ -134,7 +135,9 @@ static ret_t attach_dbs(void)
 			sqlerr("Binding database name");
 			goto bad;
 		}
-		if (sqlite3_step(stmt) != SQLITE_DONE) {
+		while ((ret=sqlite3_step(stmt)) == SQLITE_BUSY)
+			backoff_delay();
+		if (ret != SQLITE_DONE) {
 			sqlerr("Executing ATTACH statement");
 			goto bad;
 		}
@@ -284,9 +287,14 @@ static ret_t make_queries(char *str)
 
 static ret_t begin(void)
 {
+	int ret;
+
 	if (no_transaction)
 		return OK;
-	if (sqlite3_exec(db, "BEGIN", NULL, NULL, NULL)) {
+	while ((ret=sqlite3_exec(db, "BEGIN", NULL, NULL, NULL)) ==
+				SQLITE_BUSY)
+		backoff_delay();
+	if (ret) {
 		sqlerr("Beginning transaction");
 		return FAIL;
 	}
@@ -295,11 +303,16 @@ static ret_t begin(void)
 
 static ret_t rollback(void)
 {
+	int ret;
+
 	if (no_transaction) {
 		fprintf(stderr, "Can't roll back: not within a transaction");
 		return FAIL;
 	}
-	if (sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) {
+	while ((ret=sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) ==
+				SQLITE_BUSY)
+		backoff_delay();
+	if (ret) {
 		sqlerr("Rolling back transaction");
 		return FAIL;
 	}
@@ -308,9 +321,14 @@ static ret_t rollback(void)
 
 static ret_t commit(void)
 {
+	int ret;
+
 	if (no_transaction)
 		return OK;
-	if (sqlite3_exec(db, "COMMIT", NULL, NULL, NULL)) {
+	while ((ret=sqlite3_exec(db, "COMMIT", NULL, NULL, NULL)) ==
+				SQLITE_BUSY)
+		backoff_delay();
+	if (ret) {
 		sqlerr("Committing transaction");
 		return FAIL;
 	}
@@ -344,6 +362,7 @@ static ret_t do_transaction(char *sql)
 			ftruncate(fileno(tmp), 0);
 			if (rollback() || qres != FAIL_TEMP)
 				return FAIL;
+			backoff_delay();
 		} else {
 			cat_tmp();
 			if (used_params < num_params)
@@ -361,7 +380,8 @@ static ret_t do_transaction(char *sql)
 static int busy_handler(void *unused, int count)
 {
 	(void)unused;  /* silence warning */
-	(void)count;   /* likewise */
+	if (count >= 10)
+		return 0;
 	backoff_delay();
 	return 1;
 }
