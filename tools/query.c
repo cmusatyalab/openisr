@@ -14,10 +14,12 @@
 #include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 #include <sqlite3.h>
 
 #define MAX_PARAMS 256
 #define MAX_ATTACHED 10
+#define MAX_RETRY_USECS 5000
 
 static sqlite3 *db;
 static FILE *tmp;
@@ -100,6 +102,11 @@ static char *mkbin(char *hex, unsigned *length)
 	hex2bin(hex, buf, len);
 	*length=len;
 	return buf;
+}
+
+static void backoff_delay(void)
+{
+	usleep(random() % MAX_RETRY_USECS);
 }
 
 static ret_t attach_dbs(void)
@@ -354,14 +361,8 @@ static ret_t do_transaction(char *sql)
 static int busy_handler(void *unused, int count)
 {
 	(void)unused;  /* silence warning */
-	if (count == 0)
-		usleep(1000);
-	else if (count <= 2)
-		usleep(2500);
-	else if (count <= 5)
-		usleep(5000);
-	else
-		usleep(10000);
+	(void)count;   /* likewise */
+	backoff_delay();
 	return 1;
 }
 
@@ -463,6 +464,7 @@ int main(int argc, char **argv)
 
 	parse_cmdline(argc, argv, &dbfile, &sql);
 
+	srandom(time(NULL));
 	tmp=tmpfile();
 	if (tmp == NULL)
 		die("Can't create temporary file");
