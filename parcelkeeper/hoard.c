@@ -373,6 +373,18 @@ again:
 	ret=allocate_chunk_offset(&offset);
 	if (ret)
 		goto bad;
+	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1, "
+				"tag = ?, length = ?, crypto = ?, "
+				"last_access = ? WHERE offset = ?", "bdddd",
+				tag, parcel.hashlen, len, parcel.crypto,
+				timestamp(), offset)) {
+		pk_log_sqlerr("Couldn't add metadata for hoard cache chunk");
+		ret=PK_IOERR;
+		goto bad;
+	}
+	ret=add_chunk_reference(tag);
+	if (ret)
+		goto bad;
 
 	if (pwrite(state.hoard_fd, buf, len, ((off_t)offset) << 9) !=
 				(int)len) {
@@ -382,18 +394,6 @@ again:
 		goto bad;
 	}
 
-	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1, "
-				"tag = ?, length = ?, crypto = ?, "
-				"last_access = ? WHERE offset = ?", "bdddd",
-				tag, parcel.hashlen, len, parcel.crypto,
-				timestamp(), offset)) {
-		pk_log_sqlerr("Couldn't commit hoard cache chunk");
-		ret=PK_IOERR;
-		goto bad;
-	}
-	ret=add_chunk_reference(tag);
-	if (ret)
-		goto bad;
 	ret=commit(state.hoard);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
