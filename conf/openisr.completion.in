@@ -1,0 +1,70 @@
+#
+# openisr.completion - bash completions for isr command
+#
+# Copyright (C) 2007 Carnegie Mellon University
+#
+# This software is distributed under the terms of the Eclipse Public
+# License, Version 1.0 which can be found in the file named LICENSE.Eclipse.
+# ANY USE, REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES
+# RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
+#
+
+have isr && {
+
+_isr_checked_out() {
+	local ret
+	ret=`cat ~/.isr/*/parcel.cfg 2>/dev/null | grep PARCEL | \
+			sed -re "s/^[^=]+= *//" | sort`
+	compgen -W "$ret" $1
+}
+
+_isr_hoard_uuids() {
+	local ret uuid file qres
+	# Get UUIDs of hoard images
+	for file in ~/.isr/hoard/img/*-*-*-*.* ; do
+		uuid=`echo "$file" | sed -e "s:^.*/::" -e "s:\..*$::"`
+		ret=$ret$uuid$'\n'
+	done
+	# Get UUIDs in hoard cache index
+	if [ -x !!LIBDIR!!/query -a -r ~/.isr/hoard/hoard.idx ] ; then
+		qres=`!!LIBDIR!!/query ~/.isr/hoard/hoard.idx \
+				 "SELECT uuid FROM parcels"`
+		ret="$ret$qres"
+	fi
+	ret=`echo "$ret" | sort | uniq`
+	compgen -W "$ret" $1
+}
+
+# XXX alt hostname/userid
+
+_isr()
+{
+	local cmd cur prev
+	cmd="${COMP_WORDS[1]}"
+	cur="$2"
+	prev="$3"
+
+	if [ $COMP_CWORD = 1 ] ; then
+		COMPREPLY=(`compgen -W "auth checkhoard checkin checkout checkp clean deauth discard help hoard ls lshoard passwd resume rmhoard stat sync version" $cur`)
+	else
+		case $cmd in
+		ci|checkin|discard|stat|sync)
+			# Need local parcel
+			COMPREPLY=(`_isr_checked_out $cur`)
+			;;
+		co|checkout|hoard|resume|ls|clean)
+			# Need local or remote parcel
+			;;
+		rmhoard)
+			# Need UUID from hoard cache index or image dir
+			COMPREPLY=(`_isr_hoard_uuids $cur`)
+			;;
+		checkp)
+			# Need local or remote parcel depending on options
+			;;
+		esac
+	fi
+}
+complete -F _isr isr
+
+}
