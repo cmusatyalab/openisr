@@ -37,6 +37,20 @@ _isr_hoard_uuids() {
 	compgen -W "$ret" $1
 }
 
+_isr_servers() {
+	local ret
+	ret=`_isr_query_hoard "SELECT server FROM parcels"`
+	ret=$ret$'\n'`_isr_parcel_keys SERVER`
+	compgen -W "$ret" $1
+}
+
+_isr_users() {
+	local ret
+	ret=`_isr_query_hoard 'SELECT user FROM parcels'`
+	ret=$ret$'\n'`_isr_parcel_keys USER`
+	compgen -W "$ret" $1
+}
+
 _isr_subcommand_opts() {
 	local short long
 	case $1 in
@@ -107,6 +121,15 @@ _isr()
 
 	if [ "${cur:0:1}" = "-" ] ; then
 		COMPREPLY=(`_isr_subcommand_opts $cmd $cur`)
+		return
+	fi
+	
+	if [ "$prev" = "-s" -o "$prev" = "--server" ] ; then
+		COMPREPLY=(`_isr_servers $cur`)
+		return
+	fi
+	if [ "$prev" = "-u" -o "$prev" = "--user" ] ; then
+		COMPREPLY=(`_isr_users $cur`)
 		return
 	fi
 
