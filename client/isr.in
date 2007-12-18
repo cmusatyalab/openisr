@@ -2460,7 +2460,7 @@ sub usage ($) {
 	print "  version    Print OpenISR version\n";
     }
     print "Options:\n";
-    print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [ci, sync]\n";
+    print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [checkin, sync]\n";
     print "  -c,--checkstate    Do extra checks [checkout, resume, checkp, checkhoard]\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [checkout, resume]\n";
     print "  -e,--remote        Perform action on server rather than client [checkp]\n";
@@ -2469,7 +2469,7 @@ sub usage ($) {
     print "  -l,--long          Long listing [ls, lshoard, stat]\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls]\n";
     print "  -q,--quiet         Run silently (except if things go wrong)\n";
-    print "  -r,--rollback      Rollback to or check version [co, checkp]\n";
+    print "  -r,--rollback      Rollback to or check version [checkout, checkp, resume]\n";
     print "  -s,--server        Server domain name (optional)\n";
     print "  -u,--user          Your ISR user name (defaults to your login name)\n";
     print "  -v,--verbose       Increment verbosity level\n";
