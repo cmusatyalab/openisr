@@ -52,6 +52,7 @@ rm -rf %{buildroot}
 
 %post
 /sbin/ldconfig
+/sbin/udevcontrol reload_rules ||:
 dkms add -m openisr -v %{version}
 /usr/sbin/openisr-config ||:
 
@@ -109,6 +110,7 @@ dkms remove -m openisr -v %{version} --all
      * new hoard cache management commands: lshoard, rmhoard, checkhoard
   * ~/.openisr.conf is now ~/.openisrrc
 - updated BuildRequires (uuid-devel)
+- post: udevcontrol reload_rules
 
 * Tue Nov 20 2007 Matt Toups <mtoups@cs.cmu.edu> 0.8.4-1
 - New upstream release (see CHANGES):
