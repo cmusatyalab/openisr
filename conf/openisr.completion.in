@@ -35,6 +35,60 @@ _isr_hoard_uuids() {
 	compgen -W "$ret" $1
 }
 
+_isr_subcommand_opts() {
+	local short long
+	case $1 in
+	auth|discard|hoard|passwd)
+		short="-s -u"
+		long="--server --user"
+		;;
+	checkhoard)
+		short="-c"
+		long="--checkstate"
+		;;
+	checkin|ci|sync)
+		short="-b -s -u"
+		long="--bwlimit --server --user"
+		;;
+	checkout|co)
+		short="-c -d -r -s -u"
+		long="--checkstate --disconnected --rollback --server --user"
+		;;
+	checkp)
+		short="-c -e -r -s -u"
+		long="--checkstate --remote --rollback --server --user"
+		;;
+	clean)
+		short="-f -s -u"
+		long="--force --server --user"
+		;;
+	ls)
+		short="-l -L -s -u"
+		long="--long --longvers --server --user"
+		;;
+	lshoard)
+		short="-l"
+		long="--long"
+		;;
+	resume)
+		short="-c -d -F -r -s -u"
+		long="--checkstate --disconnected --no-fullscreen --rollback --server --user"
+		;;
+	stat)
+		short="-l -s -u"
+		long="--long --server --user"
+		;;
+	esac
+	short="-q -v $short"
+	long="--quiet --verbose $long"
+
+	if [ "${2:1:1}" = "-" ] ; then
+		compgen -W "$long" -- $2
+	elif [ "${2:0:1}" = "-" ] ; then
+		compgen -W "$short" -- $2
+	fi
+}
+
 # XXX alt hostname/userid
 
 _isr()
@@ -46,24 +100,30 @@ _isr()
 
 	if [ $COMP_CWORD = 1 ] ; then
 		COMPREPLY=(`compgen -W "auth checkhoard checkin checkout checkp clean deauth discard help hoard ls lshoard passwd resume rmhoard stat sync version" $cur`)
-	else
-		case $cmd in
-		ci|checkin|discard|stat|sync)
-			# Need local parcel
-			COMPREPLY=(`_isr_checked_out $cur`)
-			;;
-		co|checkout|hoard|resume|ls|clean)
-			# Need local or remote parcel
-			;;
-		rmhoard)
-			# Need UUID from hoard cache index or image dir
-			COMPREPLY=(`_isr_hoard_uuids $cur`)
-			;;
-		checkp)
-			# Need local or remote parcel depending on options
-			;;
-		esac
+		return
 	fi
+
+	if [ "${cur:0:1}" = "-" ] ; then
+		COMPREPLY=(`_isr_subcommand_opts $cmd $cur`)
+		return
+	fi
+
+	case $cmd in
+	ci|checkin|discard|stat|sync)
+		# Need local parcel
+		COMPREPLY=(`_isr_checked_out $cur`)
+		;;
+	co|checkout|hoard|resume|ls|clean)
+		# Need local or remote parcel
+		;;
+	rmhoard)
+		# Need UUID from hoard cache index or image dir
+		COMPREPLY=(`_isr_hoard_uuids $cur`)
+		;;
+	checkp)
+		# Need local or remote parcel depending on options
+		;;
+	esac
 }
 complete -F _isr isr
 
