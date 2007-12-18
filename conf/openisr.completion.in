@@ -25,6 +25,22 @@ _isr_checked_out() {
 	compgen -W "`_isr_parcel_keys PARCEL`" $1
 }
 
+_isr_remote_parcel() {
+	local dir
+	dir=~/.isr/completion
+	if [ ! -d $dir ] ; then
+		mkdir -p $dir 2>/dev/null || return
+	fi
+	# Proactively remove stale caches to cut down on the amount of
+	# semi-sensitive information we leave lying around.
+	find $dir -mmin +30 -exec rm {} \; 2>/dev/null
+	if [ ! -f $dir/default ] ; then
+		isr ls | sed -re "s/.*\[[0-9]+m//" | \
+				awk '!/Parcels for/ {print $1}' > $dir/default
+	fi
+	compgen -W "`cat $dir/default 2>/dev/null`" $1
+}
+
 _isr_hoard_uuids() {
 	local ret uuid file
 	# Get UUIDs of hoard images
@@ -140,6 +156,7 @@ _isr()
 		;;
 	co|checkout|hoard|resume|ls|clean)
 		# Need local or remote parcel
+		COMPREPLY=(`_isr_remote_parcel $cur`)
 		;;
 	rmhoard)
 		# Need UUID from hoard cache index or image dir
