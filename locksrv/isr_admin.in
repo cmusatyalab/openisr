@@ -617,13 +617,14 @@ sub makeparcel ($$$) {
 	errexit("Can't parse specified parcel size '$size'");
     }
     if ($2 eq "K") {
-	$shift = 10;
+	$shift = 0;
     } elsif ($2 eq "M") {
-	$shift = 20;
+	$shift = 10;
     } elsif ($2 eq "G") {
-	$shift = 30;
+	$shift = 20;
     }
-    $numchunks = ($1 << $shift) / $chunksize;
+    # Avoid integer overflow on 32-bit systems
+    $numchunks = ($1 << $shift) / ($chunksize >> 10);
     $numdirs = int(($numchunks + $chunksperdir - 1) / $chunksperdir);
     $maxkb = ($chunksize >> 10) * $numchunks * 2;
     
