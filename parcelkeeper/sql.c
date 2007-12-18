@@ -290,7 +290,7 @@ void sql_init(void)
 	if (strcmp(SQLITE_VERSION, sqlite3_version))
 		pk_log(LOG_INFO, "Warning: built against version "
 					SQLITE_VERSION);
-	srandom(timestamp());
+	srandom(time(NULL));
 }
 
 void sql_shutdown(void)

@@ -18,7 +18,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
-#include <sys/time.h>
 #include <time.h>
 #include <openssl/evp.h>
 #include <uuid.h>
@@ -206,8 +205,8 @@ int set_signal_handler(int sig, void (*handler)(int sig))
 
 void print_progress_chunks(unsigned chunks, unsigned maxchunks)
 {
-	static int last_timestamp;
-	int cur_timestamp;
+	static time_t last_timestamp;
+	time_t cur_timestamp;
 	unsigned percent;
 
 	if (maxchunks)
@@ -216,7 +215,7 @@ void print_progress_chunks(unsigned chunks, unsigned maxchunks)
 		percent=0;
 
 	/* Don't talk if we've talked recently */
-	cur_timestamp=timestamp();
+	cur_timestamp=time(NULL);
 	if (last_timestamp == cur_timestamp)
 		return;
 	last_timestamp=cur_timestamp;
@@ -228,8 +227,8 @@ void print_progress_chunks(unsigned chunks, unsigned maxchunks)
 
 void print_progress_mb(off64_t bytes, off64_t max_bytes)
 {
-	static int last_timestamp;
-	int cur_timestamp;
+	static time_t last_timestamp;
+	time_t cur_timestamp;
 	unsigned percent;
 	off64_t mb = bytes >> 20;
 	off64_t max_mb = max_bytes >> 20;
@@ -240,7 +239,7 @@ void print_progress_mb(off64_t bytes, off64_t max_bytes)
 		percent=0;
 
 	/* Don't talk if we've talked recently */
-	cur_timestamp=timestamp();
+	cur_timestamp=time(NULL);
 	if (last_timestamp == cur_timestamp)
 		return;
 	last_timestamp=cur_timestamp;
@@ -490,12 +489,4 @@ pk_err_t canonicalize_uuid(const char *in, char **out)
 out:
 	uuid_destroy(uuid);
 	return ret;
-}
-
-int timestamp(void)
-{
-	struct timeval tv;
-
-	gettimeofday(&tv, NULL);
-	return tv.tv_sec;
 }

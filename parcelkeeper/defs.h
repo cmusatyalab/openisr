@@ -300,6 +300,5 @@ pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
 char *format_tag(const void *tag, unsigned len);
 void log_tag_mismatch(const void *expected, const void *found, unsigned len);
 pk_err_t canonicalize_uuid(const char *in, char **out);
-int timestamp(void);
 
 #endif

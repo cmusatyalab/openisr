@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "defs.h"
 
 #define HOARD_INDEX_VERSION 5
@@ -291,7 +292,7 @@ again:
 	}
 
 	if (query(NULL, state.hoard, "UPDATE chunks SET last_access = ? "
-				"WHERE tag == ?", "db", timestamp(), tag,
+				"WHERE tag == ?", "db", time(NULL), tag,
 				parcel.hashlen)) {
 		/* Not fatal, but if we got SQLITE_BUSY, retry anyway */
 		pk_log_sqlerr("Couldn't update chunk timestamp");
@@ -377,7 +378,7 @@ again:
 				"tag = ?, length = ?, crypto = ?, "
 				"last_access = ? WHERE offset = ?", "bdddd",
 				tag, parcel.hashlen, len, parcel.crypto,
-				timestamp(), offset)) {
+				time(NULL), offset)) {
 		pk_log_sqlerr("Couldn't add metadata for hoard cache chunk");
 		ret=PK_IOERR;
 		goto bad;

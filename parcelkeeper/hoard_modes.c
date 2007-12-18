@@ -11,6 +11,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 #include "defs.h"
 
 /* Helper for hoard().  Begins a transaction and *leaves it open*, except
@@ -447,7 +448,7 @@ int check_hoard(void)
 	unsigned taglen;
 	int crypto;
 	int count;
-	int time;
+	int curtime;
 
 	pk_log(LOG_INFO, "Validating hoard cache");
 	printf("Validating hoard cache...\n");
@@ -573,10 +574,10 @@ again:
 				"chunks with missing referenced flag"))
 		goto bad;
 
-	time=timestamp();
+	curtime=time(NULL);
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET last_access = ? "
-				"WHERE last_access > ?", "dd", time,
-				time + 10)) {
+				"WHERE last_access > ?", "dd", curtime,
+				curtime + 10)) {
 		pk_log_sqlerr("Couldn't locate chunks with invalid timestamps");
 		goto bad;
 	}
