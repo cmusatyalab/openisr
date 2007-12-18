@@ -11,27 +11,29 @@
 
 have isr && {
 
+_isr_parcel_keys() {
+	cat ~/.isr/*/parcel.cfg 2>/dev/null | grep "$1" | \
+			sed -re "s/^[^=]+= *//"
+}
+
+_isr_query_hoard() {
+	[ -x !!LIBDIR!!/query -a -r ~/.isr/hoard/hoard.idx ] || return
+	!!LIBDIR!!/query ~/.isr/hoard/hoard.idx "$1"
+}
+
 _isr_checked_out() {
-	local ret
-	ret=`cat ~/.isr/*/parcel.cfg 2>/dev/null | grep PARCEL | \
-			sed -re "s/^[^=]+= *//" | sort`
-	compgen -W "$ret" $1
+	compgen -W "`_isr_parcel_keys PARCEL`" $1
 }
 
 _isr_hoard_uuids() {
-	local ret uuid file qres
+	local ret uuid file
 	# Get UUIDs of hoard images
 	for file in ~/.isr/hoard/img/*-*-*-*.* ; do
 		uuid=`echo "$file" | sed -e "s:^.*/::" -e "s:\..*$::"`
 		ret=$ret$uuid$'\n'
 	done
 	# Get UUIDs in hoard cache index
-	if [ -x !!LIBDIR!!/query -a -r ~/.isr/hoard/hoard.idx ] ; then
-		qres=`!!LIBDIR!!/query ~/.isr/hoard/hoard.idx \
-				 "SELECT uuid FROM parcels"`
-		ret="$ret$qres"
-	fi
-	ret=`echo "$ret" | sort | uniq`
+	ret="$ret`_isr_query_hoard 'SELECT uuid FROM parcels'`"
 	compgen -W "$ret" $1
 }
 
