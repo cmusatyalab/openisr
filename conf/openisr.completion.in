@@ -182,7 +182,7 @@ _isr() {
 	prev="$3"
 
 	if [ $COMP_CWORD = 1 ] ; then
-		COMPREPLY=(`compgen -W "auth checkhoard checkin checkout checkp clean deauth discard help hoard ls lshoard passwd resume rmhoard stat sync version" $cur`)
+		COMPREPLY=(`compgen -W "auth checkhoard checkin ci checkout co checkp clean deauth discard help hoard ls lshoard passwd resume rmhoard stat sync version" $cur`)
 		return
 	fi
 
