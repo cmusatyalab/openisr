@@ -78,6 +78,47 @@ _isr_users() {
 	compgen -W "$ret" $1
 }
 
+_isr_parameter_takes_option() {
+	case $1 in
+	-b|--bwlimit|-L|--longvers|-r|--rollback|-s|--server|-u|--user)
+		return 0
+		;;
+	esac
+	return 1
+}
+
+_isr_offer_parcel_parameter() {
+	local i cur prev
+	prev=$1
+
+	# Don't autocomplete if the user is entering an option parameter
+	# rather than a parcel name
+	_isr_parameter_takes_option $prev && return 1
+
+	# Don't autocomplete if there's already a parcel parameter on the
+	# command line.
+	# Ignore "isr" and the subcommand name
+	for (( i=2; $i < ${#COMP_WORDS[@]}; i++ )) ; do
+		cur="${COMP_WORDS[$i]}"
+		prev="${COMP_WORDS[$(($i - 1))]}"
+		# Ignore the argument we're currently editing
+		if [ $i = $COMP_CWORD ] ; then
+			continue
+		fi
+		# Ignore option arguments
+		if [ "${cur:0:1}" = "-" ] ; then
+			continue
+		fi
+		# Ignore parameters to option arguments
+		if _isr_parameter_takes_option $prev ; then
+			continue
+		fi
+		# We found a parcel parameter
+		return 1
+	done
+	return 0
+}
+
 _isr_subcommand_opts() {
 	local short long
 	case $1 in
@@ -158,6 +199,9 @@ _isr() {
 		COMPREPLY=(`_isr_users $cur`)
 		return
 	fi
+
+	# Make sure it's appropriate to offer a parcel parameter here
+	_isr_offer_parcel_parameter $prev || return
 
 	case $cmd in
 	ci|checkin|discard|stat|sync)
