@@ -213,8 +213,9 @@ _isr() {
 		COMPREPLY=(`_isr_remote_parcel $cur`)
 		;;
 	rmhoard)
-		# Need UUID from hoard cache index or image dir
-		COMPREPLY=(`_isr_hoard_uuids $cur`)
+		# Need UUID from hoard cache index or image dir, or
+		# the name of a checked-out parcel
+		COMPREPLY=(`_isr_hoard_uuids $cur` `_isr_checked_out $cur`)
 		;;
 	checkp)
 		# Need local or remote parcel depending on options
