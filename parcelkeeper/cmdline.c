@@ -410,7 +410,6 @@ enum mode parse_cmdline(int argc, char **argv)
 			break;
 		case OPT_DESTDIR:
 			config.dest_dir=optparams[0];
-			config.dest_stats=filepath(optparams[0], "stats", 0);
 			break;
 		case OPT_MINSIZE:
 			if (parseuint(&config.minsize, optparams[0], 10))

@@ -105,9 +105,8 @@ struct pk_config {
 	char *hoard_file;
 	char *hoard_index;
 
-	/* upload directory and its contents */
+	/* upload directory */
 	char *dest_dir;
-	char *dest_stats;
 
 	/* log parameters */
 	char *log_file;

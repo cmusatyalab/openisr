@@ -46,23 +46,6 @@ static pk_err_t make_upload_dirs(void)
 	return PK_SUCCESS;
 }
 
-static pk_err_t write_upload_stats(unsigned chunks, off64_t bytes)
-{
-	FILE *fp;
-
-	fp=fopen(config.dest_stats, "w");
-	if (fp == NULL) {
-		pk_log(LOG_ERROR, "Couldn't open stats file %s",
-					config.dest_stats);
-		return PK_IOERR;
-	}
-	fprintf(fp, "%u\n%llu\n", chunks, bytes);
-	fclose(fp);
-	pk_log(LOG_STATS, "Copied %u modified chunks, %llu bytes",
-				chunks, bytes);
-	return PK_SUCCESS;
-}
-
 int copy_for_upload(void)
 {
 	struct query *qry;
@@ -198,8 +181,8 @@ bad:
 		goto again;
 	free(buf);
 	if (ret == 0)
-		if (write_upload_stats(modified_chunks, modified_bytes))
-			ret=1;
+		pk_log(LOG_STATS, "Copied %u modified chunks, %llu bytes",
+					modified_chunks, modified_bytes);
 	return ret;
 }
 

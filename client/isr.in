@@ -2610,9 +2610,6 @@ sub isr_run_parcelkeeper ($$) {
 #          until it works.
 #
 sub isr_priv_upload () {
-    my $dirtybytes = 0;
-    my $dirtyblocks = 0;
-    my $virtualbytes;
     my $vflag = "-q";
     my $bwflag = "";
     my $i;
@@ -2632,7 +2629,7 @@ sub isr_priv_upload () {
     # (mainly because tar is not idempotent).
     #
     if (!-e $cdcache_file) {
-	($dirtybytes, $dirtyblocks) = copy_dirtychunks();
+	copy_dirtychunks();
 	touch($cdcache_file)
 	    or unix_errexit("Unable to create dirty cache flag ($cdcache_file)");
     }
@@ -2664,12 +2661,6 @@ sub isr_priv_upload () {
         if $i == $syscfg{retries};
     mypause("Done with upload, ready to commit: hit y to continue");
 
-    #
-    # Log the number of hdk bytes that were transferred
-    #
-    $virtualbytes = $dirtyblocks*$cfg{CHUNKSIZE};
-    message("Upload: disk: $dirtybytes dirty, $virtualbytes virtual");
-
     # Return successful status
     print("Upload completed, all updates have been sent to the server.\n")
 	if $verbose;
@@ -2679,8 +2670,6 @@ sub isr_priv_upload () {
 # copy_dirtychunks - Build temp cache tree and populate it with dirty state
 #
 sub copy_dirtychunks () {
-    my $dirtyblocks;
-    my $dirtybytes;
     my $target;
 
     #
@@ -2713,18 +2702,6 @@ sub copy_dirtychunks () {
 	if $verbose;
     isr_run_parcelkeeper("upload", "parcel dest hoard minsize log") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
-    # Hack to get stats from PK
-    open(STATFILE, "$uploaddir/hdk/stats");
-    chomp($dirtyblocks = <STATFILE>);
-    chomp($dirtybytes = <STATFILE>);
-    close STATFILE;
-    unlink("$uploaddir/hdk/stats");
-
-    #
-    # For record keeping, the caller needs to know how many total hdk bytes
-    # and total hdk blocks were transferred.
-    #
-    return ($dirtybytes, $dirtyblocks);
 }
 
 #
