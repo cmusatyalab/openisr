@@ -633,6 +633,12 @@ sub checkout () {
     $uuid = $cfg{"UUID"};
     set_parcel_globals();
 
+    # Catch UUID collisions and parcel directories without a valid parcel.cfg
+    if (-e $parceldir) {
+	unlink("$isrdir/$parcel-parcel.cfg");
+	errexit("Parcel directory already exists for UUID $uuid");
+    }
+
     # Confirm that there is enough disk space.
     if ($diskspace < $cfg{MAXKB}) {
 	errexit("Not enough disk space [$diskspace/$cfg{MAXKB} KB available]");
