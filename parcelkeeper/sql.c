@@ -255,7 +255,9 @@ void query_free(struct query *qry)
 	gettimeofday(&cur, NULL);
 	timersub(&cur, &qry->start, &diff);
 	ms = diff.tv_sec * 1000 + diff.tv_usec / 1000;
-	if (ms >= SLOW_THRESHOLD_MS)
+	/* COMMIT is frequently slow, but we don't learn anything by logging
+	   that, and it clutters up the logs */
+	if (ms >= SLOW_THRESHOLD_MS && strcmp(qry->sql, "COMMIT"))
 		pk_log(LOG_SLOW_QUERY, "Slow query took %u ms: \"%s\"",
 					ms, qry->sql);
 	pk_log(LOG_QUERY, "Query took %u ms: \"%s\"", ms, qry->sql);
