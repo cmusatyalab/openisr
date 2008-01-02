@@ -565,6 +565,10 @@ sub copyparcel ($$$$) {
 	    print OUT "KEYROOT = $dstkeyroot\n";
 	} elsif (/^UUID/) {
 	    print OUT "UUID = $uuid\n";
+	} elsif (/^USER/) {
+	    print OUT "USER = $userid\n";
+	} elsif (/^PARCEL/) {
+	    print OUT "PARCEL = $parcel\n";
 	} else {
 	    print OUT;
 	}
