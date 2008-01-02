@@ -263,8 +263,8 @@ pk_err_t cleanup_action(sqlite3 *db, char *sql, enum pk_log_type logtype,
 		if (_res == SQLITE_ROW || _res == SQLITE_OK) \
 			pk_log(LOG_ERROR, fmt, ## args); \
 		else if (_res != SQLITE_BUSY) \
-			pk_log(LOG_ERROR, fmt " (%s)", ## args, \
-						query_errmsg()); \
+			pk_log(LOG_ERROR, fmt " (%d, %s)", ## args, \
+						_res, query_errmsg()); \
 	} while (0)
 
 /* util.c */
