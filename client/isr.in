@@ -1103,6 +1103,8 @@ sub hoard ($) {
 	# Fetch metadata from the server
 	mktree($parceldir)
 	    or errexit("Unable to make $parceldir");
+	mktree("$hoarddir/img")
+	    or errexit("Unable to make $hoarddir/img");
 	isr_srun("getconfig", "-p $parcel", OUTFILE => "$parceldir/parcel.cfg") == 0
 	    or errexit("Parcel $userid/$parcel does not exist on the server ($server).");
 	parse_parcelcfg("$parceldir/parcel.cfg");
