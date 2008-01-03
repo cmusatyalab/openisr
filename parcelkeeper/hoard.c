@@ -17,7 +17,7 @@
 #include <time.h>
 #include "defs.h"
 
-#define HOARD_INDEX_VERSION 5
+#define HOARD_INDEX_VERSION 6
 #define EXPAND_CHUNKS 128
 
 static pk_err_t create_hoard_index(void)
@@ -52,7 +52,7 @@ static pk_err_t create_hoard_index(void)
 		return PK_IOERR;
 	}
 	if (query(NULL, state.hoard, "CREATE INDEX chunks_lru ON "
-				"chunks (last_access)", NULL)) {
+				"chunks (referenced, last_access)", NULL)) {
 		pk_log_sqlerr("Couldn't create chunk LRU index");
 		return PK_IOERR;
 	}
@@ -67,6 +67,35 @@ static pk_err_t create_hoard_index(void)
 				"ON refs (parcel, tag)", NULL)) {
 		pk_log_sqlerr("Couldn't create chunk LRU index");
 		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
+static pk_err_t upgrade_hoard_index(int ver)
+{
+	pk_log(LOG_INFO, "Upgrading hoard cache version %d to version %d",
+				ver, HOARD_INDEX_VERSION);
+	switch (ver) {
+	default:
+		pk_log(LOG_ERROR, "Unrecognized hoard cache version %d, "
+					"bailing out", ver);
+		return PK_BADFORMAT;
+	case 5:
+		if (query(NULL, state.hoard, "PRAGMA user_version = 6",
+					NULL)) {
+			pk_log_sqlerr("Couldn't update schema version");
+			return PK_IOERR;
+		}
+		if (query(NULL, state.hoard, "DROP INDEX chunks_lru", NULL)) {
+			pk_log_sqlerr("Couldn't drop old chunk LRU index");
+			return PK_IOERR;
+		}
+		if (query(NULL, state.hoard, "CREATE INDEX chunks_lru ON "
+					"chunks (referenced, last_access)",
+					NULL)) {
+			pk_log_sqlerr("Couldn't create new chunk LRU index");
+			return PK_IOERR;
+		}
 	}
 	return PK_SUCCESS;
 }
@@ -141,8 +170,7 @@ static pk_err_t allocate_chunk_offset(int *offset)
 		if ((unsigned)(hoarded / 8) >= config.minsize) {
 			/* Try to reclaim the LRU unreferenced chunk */
 			query(&qry, state.hoard, "SELECT offset "
-					"FROM chunks WHERE tag NOTNULL "
-					"AND referenced == 0 "
+					"FROM chunks WHERE referenced == 0 "
 					"ORDER BY last_access LIMIT 1", NULL);
 			if (query_has_row()) {
 				query_row(qry, "d", offset);
@@ -555,19 +583,17 @@ again:
 	}
 	query_row(qry, "d", &ver);
 	query_free(qry);
-	switch (ver) {
-	case 0:
+	if (ver == 0) {
 		ret=create_hoard_index();
-		if (ret)
-			goto bad_rollback;
-		break;
-	case HOARD_INDEX_VERSION:
-		break;
-	default:
-		pk_log(LOG_ERROR, "Unknown hoard cache version %d", ver);
+	} else if (ver < HOARD_INDEX_VERSION) {
+		ret=upgrade_hoard_index(ver);
+	} else if (ver > HOARD_INDEX_VERSION) {
+		pk_log(LOG_ERROR, "Hoard cache version %d too new (expected "
+					"%d)", ver, HOARD_INDEX_VERSION);
 		ret=PK_BADFORMAT;
-		goto bad_rollback;
 	}
+	if (ret)
+		goto bad_rollback;
 	ret=commit(state.hoard);
 	if (ret)
 		goto bad_rollback;
