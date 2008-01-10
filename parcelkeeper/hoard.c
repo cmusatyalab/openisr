@@ -451,15 +451,20 @@ again:
 	if (ret)
 		return ret;
 	if (from_cache)
-		query(NULL, state.db, "CREATE TEMP VIEW newrefs AS "
+		query(NULL, state.db, "CREATE TEMP TABLE newrefs AS "
 					"SELECT DISTINCT tag FROM keys", NULL);
 	else
-		query(NULL, state.db, "CREATE TEMP VIEW newrefs AS "
+		query(NULL, state.db, "CREATE TEMP TABLE newrefs AS "
 					"SELECT DISTINCT tag FROM prev.keys",
 					NULL);
 	ret=PK_IOERR;
 	if (!query_ok()) {
 		pk_log_sqlerr("Couldn't generate tag list");
+		goto bad;
+	}
+	if (query(NULL, state.db, "CREATE INDEX temp.newrefs_tags ON "
+				"newrefs (tag)", NULL)) {
+		pk_log_sqlerr("Couldn't create tag index");
 		goto bad;
 	}
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 0 "
@@ -486,13 +491,13 @@ again:
 		goto bad;
 	}
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 1 "
-				"WHERE tag IN (SELECT tag FROM temp.newrefs)",
-				NULL)) {
+				"WHERE referenced == 0 AND tag IN "
+				"(SELECT tag FROM temp.newrefs)", NULL)) {
 		pk_log_sqlerr("Couldn't updated referenced flags");
 		goto bad;
 	}
-	if (query(NULL, state.db, "DROP VIEW temp.newrefs", NULL)) {
-		pk_log_sqlerr("Couldn't drop temporary view");
+	if (query(NULL, state.db, "DROP TABLE temp.newrefs", NULL)) {
+		pk_log_sqlerr("Couldn't drop temporary table");
 		goto bad;
 	}
 	ret=commit(state.db);
