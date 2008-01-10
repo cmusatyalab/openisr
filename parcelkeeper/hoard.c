@@ -631,7 +631,7 @@ static pk_err_t hoard_try_cleanup(void)
 	pk_log(LOG_INFO, "Cleaning up hoard cache...");
 again:
 	ret=cleanup_action(state.hoard, "DELETE FROM parcels WHERE parcel "
-				"NOT IN (SELECT parcel FROM refs)",
+				"NOT IN (SELECT DISTINCT parcel FROM refs)",
 				LOG_INFO, "dangling parcel records");
 	if (query_retry())
 		goto again;
