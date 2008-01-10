@@ -236,6 +236,8 @@ opendir(SRC, $src) || die "Can't open directory $src";
 @versions = sort grep {/[0-9]+/} readdir SRC or die;
 closedir(SRC);
 
+-f "$src/LOCK" && die "Source parcel is checked out";
+
 umask 0077;
 gen_keyroot;
 process_parcel_cfg;
