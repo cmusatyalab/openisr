@@ -6,6 +6,8 @@
 # Default-Start:	S
 # Short-Description:	Load kernel modules for the OpenISR system
 ### END INIT INFO
+# chkconfig: 2345 20 20
+# description: Load kernel modules for the OpenISR system
 
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 LIBDIR=!!LIBDIR!!
