@@ -47,8 +47,10 @@ sub deluser ($);
 sub init_parceldir ($$);
 sub finalize_parceldir ($$);
 sub gen_uuid ();
+sub gen_vmx ($$$);
+sub gen_vmdk ($$$);
 sub copyparcel ($$$$);
-sub makeparcel ($$$);
+sub makeparcel ($$$$);
 sub delparcel ($$);
 sub prune ($$$);
 sub getusage ();
@@ -78,6 +80,7 @@ my $srcuserid;
 my $retain;
 my $version;
 my $size;
+my $memsize;
 
 # Server configuration
 my %config = get_config();
@@ -88,6 +91,7 @@ my %config = get_config();
 Getopt::Long::Configure("no_ignore_case", "bundling_override");
 $result = GetOptions(
                      "h|help+"         => \$help,
+                     "m|memsize=i"     => \$memsize,
                      "p|parcel=s"      => \$parcel,
                      "P|srcparcel=s"   => \$srcparcel,
                      "r|retain=i"      => \$retain,
@@ -167,6 +171,8 @@ if ($command eq "makeparcel") {
         if (!$userid);
     usage("Missing parcel name (-p)")
 	if (!$parcel);
+    usage("Missing memory image size (-m)")
+        if (!$memsize);
     usage("Missing parcel size (-s)")
         if (!$size);
 }
@@ -216,7 +222,7 @@ elsif ($command eq "copyparcel") {
     copyparcel($userid, $parcel, $srcuserid, $srcparcel);
 }
 elsif ($command eq "makeparcel") {
-    makeparcel($userid, $parcel, $size);
+    makeparcel($userid, $parcel, $size, $memsize);
 }
 elsif ($command eq "delparcel") {
     delparcel($userid, $parcel);
@@ -521,6 +527,79 @@ sub gen_uuid () {
 }
 
 #
+# gen_vmx - Generate a new VMware VMX file given some information about it
+#
+sub gen_vmx ($$$) {
+    my $path = shift;
+    my $name = shift;
+    my $mem = shift;
+    
+    open(VMX, ">", $path)
+        or unix_errexit("Unable to write to $path");
+    print VMX <<EOF;
+config.version = "7"
+virtualHW.version = "6"
+displayName = "$name"
+guestOS = "other26xlinux"
+memsize = "$mem"
+ide0:0.present = "TRUE"
+ide0:0.fileName = "parcel.vmdk"
+ide0:0.deviceType = "rawDisk"
+ide0:1.present = "TRUE"
+ide0:1.deviceType = "cdrom-raw"
+ide0:1.autodetect = "TRUE"
+floppy0.present = "FALSE"
+Ethernet0.present = "TRUE"
+Ethernet0.connectionType = "nat"
+sound.present = "TRUE"
+sound.autodetect = "TRUE"
+usb.present = "TRUE"
+ehci.present = "TRUE"
+tools.remindInstall = "TRUE"
+undopoint.disableSnapshots = "TRUE"
+uuid.action = "keep"
+EOF
+    close(VMX);
+}
+
+#
+# gen_vmdk - Generate a new VMDK file given some information about it
+#
+sub gen_vmdk ($$$) {
+    my $path = shift;
+    my $diskpath = shift;
+    my $sectors = shift;
+    
+    my $cid = sprintf("%x", int(rand(0xffffffff)));
+    # Always round down
+    my $cyls = int($sectors / (16 * 63));
+    my $bioscyls = int($sectors / (255 * 63));
+    $cyls = 16383 if $cyls > 16383;
+    $bioscyls = 1024 if $bioscyls > 1024;
+    
+    open(VMDK, ">", $path)
+        or unix_errexit("Unable to write to $path");
+    print VMDK <<EOF;
+version=1
+CID=$cid
+parentCID=ffffffff
+createType="fullDevice"
+
+RW $sectors FLAT "$diskpath" 0
+
+ddb.virtualHWVersion = "6"
+ddb.geometry.cylinders = "$cyls"
+ddb.geometry.heads = "16"
+ddb.geometry.sectors = "63"
+ddb.geometry.biosCylinders = "$bioscyls"
+ddb.geometry.biosHeads = "255"
+ddb.geometry.biosSectors = "63"
+ddb.adapterType = "ide"
+EOF
+    close(VMDK);
+}
+
+#
 # copyparcel - Create a new parcel based on an existing one
 #             
 sub copyparcel ($$$$) {
@@ -597,10 +676,11 @@ sub copyparcel ($$$$) {
 #
 # makeparcel - Create a new, empty parcel
 #
-sub makeparcel ($$$) {
+sub makeparcel ($$$$) {
     my $userid = shift;      # Destination user id
     my $parcel = shift;      # Destination parcel name
     my $size = shift;        # Parcel size
+    my $memsize = shift;     # Memory image size
 
     my $parcelcfg;
     my $parceldir;
@@ -703,13 +783,16 @@ sub makeparcel ($$$) {
 		    "-r 0:" . ($numchunks - 1) . " > /dev/null") == 0
         or errexit("Couldn't populate keyring");
     
-    # Generate an empty cfg tarball
+    # Generate the cfg tarball
     mkdir("$parcelverdir/cfg")
         or errexit("Couldn't create cfg directory");
     if (-d "/etc/openisr/skel") {
 	system("cp -r /etc/openisr/skel/* $parcelverdir/cfg") == 0
 	    or errexit("Couldn't copy /etc/openisr/skel");
     }
+    gen_vmdk("$parcelverdir/cfg/parcel.vmdk", "/dev/hdk",
+	        $numchunks * ($chunksize >> 9));
+    gen_vmx("$parcelverdir/cfg/parcel.vmx", "$userid/$parcel", $memsize);
     system("tar czf $parcelverdir/cfg.tgz -C $parcelverdir cfg") == 0
         or errexit("Couldn't generate cfg tarball");
     system("rm -rf $parcelverdir/cfg") == 0
@@ -900,7 +983,7 @@ sub usage {
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u).\n";
     print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P).\n";
-    print "  makeparcel Create an empty parcel from scratch (-u, -p, -s).\n";
+    print "  makeparcel Create an empty parcel from scratch (-u, -p, -m, -s).\n";
     print "  delparcel  Delete parcel from system (-u, -p).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
     print "  encrypt    Encrypt parcel version (-u, -p, -v).\n";
@@ -911,6 +994,7 @@ sub usage {
 
     print "Options:\n";
     print "  -h,--help         Print help message (Try '-hh' for some concrete examples).\n";
+    print "  -m,--memsize      Size of the parcel's memory image in MB.\n";
     print "  -p,--parcel       Parcel name (e.g., winxp).\n";
     print "  -P,--srcparcel    Source parcel name.\n";
     print "  -r,--retain       How many of the most recent versions to retain when pruning.\n";
