@@ -55,10 +55,12 @@ rm -rf %{buildroot}
 /sbin/udevcontrol reload_rules ||:
 dkms add -m openisr -v %{version}
 /usr/sbin/openisr-config ||:
+/sbin/chkconfig --add openisr
 
 %preun
 /etc/init.d/openisr stop
 dkms remove -m openisr -v %{version} --all
+/sbin/chkconfig --del openisr
 
 %postun
 /sbin/ldconfig
@@ -98,6 +100,10 @@ dkms remove -m openisr -v %{version} --all
 
 
 %changelog
+* Thu Jan 17 2008 Matt Toups <mtoups@cs.cmu.edu> 0.9-2
+- add lines to init script, and call chkconfig, so that
+  the init scripts get executed on boot.
+
 * Mon Dec 17 2007 Matt Toups <mtoups@cs.cmu.edu> 0.9-1
 - New upstream release (see CHANGES):
   * Server changes -- this client can NOT be used with the same server
