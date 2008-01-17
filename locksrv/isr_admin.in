@@ -24,6 +24,7 @@ use strict;
 use Getopt::Long;
 use File::stat;
 use File::Basename;
+use File::Temp qw/tempdir/;
 use Socket;
 use Sys::Hostname;
 use Term::ANSIColor qw(:constants);
@@ -49,6 +50,7 @@ sub finalize_parceldir ($$);
 sub gen_uuid ();
 sub gen_vmx ($$$);
 sub gen_vmdk ($$$);
+sub filter_cfgdir ($$$);
 sub copyparcel ($$$$);
 sub makeparcel ($$$$);
 sub delparcel ($$);
@@ -600,6 +602,57 @@ EOF
 }
 
 #
+# filter_cfgdir - Clean up cloned cfg directory for newly-created parcel
+#
+sub filter_cfgdir ($$$) {
+    my $userid = shift;
+    my $parcel = shift;
+    my $path = shift;
+    
+    my $file;
+    my $line;
+    my $key;
+    my $value;
+    
+    opendir(CFGDIR, $path)
+        or unix_errexit("Can't open directory $path");
+    while ($file = readdir(CFGDIR)) {
+	next if $file =~ /^\.{1,2}$/;
+	if ($file =~ /\.(WRITELOCK|lck|log)$|^vmware-core\.gz$/) {
+	    system("rm -rf $path/$file") == 0
+	        or system_errexit("Couldn't remove $path/$file");
+	    next;
+	}
+	if ($file =~ /\.vmx$/) {
+	    open(OLD, "<", "$path/$file")
+	        or unix_errexit("Couldn't read $path/$file");
+	    open(NEW, ">", "$path/$file.new")
+	        or unix_errexit("Couldn't write $path/$file.new");
+	    while ($line = <OLD>) {
+		if ($line !~ /^([^=\s]+)\s*=\s*([^\n]+)\n$/) {
+		    print NEW $line;
+		    next;
+		}
+		($key, $value) = ($1, $2);
+		next if $key =~ /ethernet[0-9]+\.addressType/;
+		next if $key =~ /ethernet[0-9]+\.generatedAddress/;
+		next if $key =~ /uuid\.(location|bios)/;
+		if ($key eq "displayName") {
+		    print NEW "displayName = \"$userid/$parcel\"\n";
+		} else {
+		    print NEW $line;
+		}
+	    }
+	    close(OLD);
+	    close(NEW);
+	    rename("$path/$file.new", "$path/$file")
+	        or unix_errexit("Couldn't replace $path/$file");
+	}
+    }
+    closedir(CFGDIR);
+}
+
+#
 # copyparcel - Create a new parcel based on an existing one
 #             
 sub copyparcel ($$$$) {
@@ -615,6 +668,7 @@ sub copyparcel ($$$$) {
     my $dstkeyroot;
     my $uuid;
     my $umask;
+    my $tmpdir;
     my @files;
 
     my $srcpath = "$config{content_root}/$srcuserid/$srcparcel";
@@ -637,10 +691,17 @@ sub copyparcel ($$$$) {
     system("cp -R $srcpath/$lastver $parceldir/000001") == 0
 	or errexit("Unable to copy $srcpath/$lastver to $parceldir/000001");
 
-    # Re-encrypt the destination with a new keyroot
+    # Update the cfg tarball and re-encrypt the destination with a new keyroot
+    $tmpdir = tempdir("cfg-XXXXXXXX", TMPDIR => 1, CLEANUP => 1)
+        or errexit("Couldn't create temporary directory");
     $srckeyroot = get_value($srcparcelcfg, "KEYROOT");
     $dstkeyroot = keygen();
     decrypt($userid, $parcel, 1, $srckeyroot);
+    system("tar xzf $parceldir/000001/cfg.tgz -C $tmpdir") == 0
+        or errexit("Couldn't unpack cfg tarball");
+    filter_cfgdir($userid, $parcel, "$tmpdir/cfg");
+    system("tar czf $parceldir/000001/cfg.tgz -C $tmpdir cfg") == 0
+        or errexit("Couldn't repack cfg tarball");
     encrypt($userid, $parcel, 1, $dstkeyroot);
     
     # Write out the new parcel.cfg
