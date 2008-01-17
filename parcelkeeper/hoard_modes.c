@@ -199,8 +199,7 @@ bad:
 
 int list_hoard(void)
 {
-	struct query *p_qry;
-	struct query *t_qry;
+	struct query *qry;
 	int ret=1;
 	int parcel;
 	const char *uuid;
@@ -216,31 +215,31 @@ int list_hoard(void)
 again:
 	if (begin(state.db))
 		return 1;
-	query(&t_qry, state.db, "SELECT count(tag) FROM hoard.chunks WHERE "
+	query(&qry, state.db, "SELECT count(tag) FROM hoard.chunks WHERE "
 				"referenced == 1", NULL);
 	if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't count referenced chunks");
 		goto out;
 	}
-	query_row(t_qry, "d", &shared);
-	query_free(t_qry);
-	query(&t_qry, state.db, "SELECT count(tag) FROM hoard.chunks WHERE "
+	query_row(qry, "d", &shared);
+	query_free(qry);
+	query(&qry, state.db, "SELECT count(tag) FROM hoard.chunks WHERE "
 				"referenced == 0", NULL);
 	if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't count unreferenced chunks");
 		goto out;
 	}
-	query_row(t_qry, "d", &unreferenced);
-	query_free(t_qry);
-	query(&t_qry, state.db, "SELECT count(*) FROM hoard.chunks WHERE "
+	query_row(qry, "d", &unreferenced);
+	query_free(qry);
+	query(&qry, state.db, "SELECT count(*) FROM hoard.chunks WHERE "
 				"tag ISNULL", NULL);
 	if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't count unused chunk slots");
 		goto out;
 	}
-	query_row(t_qry, "d", &unused);
-	query_free(t_qry);
-	for (query(&p_qry, state.db, "SELECT hoard.parcels.parcel, uuid, "
+	query_row(qry, "d", &unused);
+	query_free(qry);
+	for (query(&qry, state.db, "SELECT hoard.parcels.parcel, uuid, "
 				"server, user, name, total, uniq "
 				"FROM hoard.parcels LEFT JOIN "
 				"(SELECT parcel, count(*) AS total "
@@ -252,14 +251,14 @@ again:
 				"HAVING count(*) == 1) GROUP BY parcel) "
 				"AS sub2 "
 				"ON parcels.parcel == sub2.parcel", NULL);
-				query_has_row(); query_next(p_qry)) {
-		query_row(p_qry, "dssssdd", &parcel, &uuid, &server, &user,
+				query_has_row(); query_next(qry)) {
+		query_row(qry, "dssssdd", &parcel, &uuid, &server, &user,
 					&name, &p_total, &p_unique);
 		printf("%s %s %s %s %d %d\n", uuid, server, user, name, p_total,
 					p_unique);
 		shared -= p_unique;
 	}
-	query_free(p_qry);
+	query_free(qry);
 	if (query_ok()) {
 		printf("shared %d\n", shared);
 		printf("unreferenced %d\n", unreferenced);
