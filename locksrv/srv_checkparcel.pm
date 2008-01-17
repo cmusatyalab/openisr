@@ -58,6 +58,7 @@ my %config = get_config();
 
 # Various temporary variables
 my $numchunks;
+my $expectchunks;
 my $tag;
 my $dirname;
 my $dirpath;
@@ -300,21 +301,30 @@ if ($currver == $lastver) {
 	if $verbose;
     
     # Iterate through the complete list of possible subdirectories
+    $expectchunks = $chunksperdir;
     for ($i = 0; $i < $numdirs; $i++) {
 	$dirname = sprintf("%04d", $i);
 	$dirpath = "$currdir/hdk/$dirname"; 
+	if ($i == $numdirs - 1) {
+	    $expectchunks = $totalchunks % $chunksperdir;
+	    $expectchunks = $chunksperdir
+	        if $expectchunks == 0;
+	}
 
-	# If the directory exists, then check its contents
+	# Check the directory contents
 	if (opendir(DIR, $dirpath)) {
 	    @files = grep(!/^[\._]/, readdir(DIR)); # filter out "." and ".."
 	    closedir(DIR);
 
 	    # Count the number of files in the subdirectory
 	    $numchunks = scalar(@files);
-	    if ($numchunks != $chunksperdir) {
-		print "Error: Directory $dirname has $numchunks blocks. Expected $chunksperdir.\n";
+	    if ($numchunks != $expectchunks) {
+		print "Error: Directory $dirname has $numchunks blocks. Expected $expectchunks.\n";
 		$errors++;
 	    }
+	} else {
+	    print "Error: Directory $dirname does not exist.\n";
+	    $errors++;
 	}
     }
 }    
