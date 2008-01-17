@@ -5,7 +5,7 @@
 Summary: 	OpenISR Internet Suspend-Resume client
 Name: 		%name
 Version: 	%version
-Release: 	1%{?redhatvers:.%{redhatvers}}
+Release: 	2%{?redhatvers:.%{redhatvers}}
 Group: 		Applications/Internet
 License:	Eclipse Public License	
 BuildRequires:	curl-devel, openssl-devel, kernel-devel, uuid-devel
