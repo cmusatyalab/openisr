@@ -49,6 +49,7 @@ sub finalize_parceldir ($$);
 sub gen_uuid ();
 sub copyparcel ($$$$);
 sub makeparcel ($$$);
+sub delparcel ($$);
 sub prune ($$$);
 sub getusage ();
 sub keygen ();
@@ -170,6 +171,13 @@ if ($command eq "makeparcel") {
         if (!$size);
 }
 
+if ($command eq "delparcel") {
+    usage("Missing userid (-u)")
+        if (!$userid);
+    usage("Missing parcel name (-p)")
+	if (!$parcel);
+}
+
 if ($command eq "prune") {
     usage("Missing userid (-u)")
 	if (!$userid);
@@ -209,6 +217,9 @@ elsif ($command eq "copyparcel") {
 }
 elsif ($command eq "makeparcel") {
     makeparcel($userid, $parcel, $size);
+}
+elsif ($command eq "delparcel") {
+    delparcel($userid, $parcel);
 }
 elsif ($command eq "prune") {
     prune($userid, $parcel, $retain);
@@ -743,6 +754,34 @@ EOF
 }
 
 #
+# delparcel - Delete a user's parcel
+#
+sub delparcel ($$) {
+    my $userid = shift;
+    my $parcel = shift;
+
+    my $userdir = "$config{content_root}/$userid";
+    my $parceldir = "$userdir/$parcel";
+    my $parcelcfg = get_parcelcfg_path($userid, $parcel);
+    my $parcelcfgdir = dirname($parcelcfg);
+    my $reply;
+
+    errexit("No such parcel $userid/$parcel")
+        if ! -d $parcelcfgdir and ! -d $parceldir;
+    $reply = query("Do you really want to delete all data for $userid/$parcel?");
+    if ($reply eq "y") {
+	$reply = query("Are you really really sure?");
+	if ($reply eq "y") {
+	    print "Removing parcel $userid/$parcel...\n";
+	    system("rm -rf $parcelcfgdir") == 0
+	        or errexit("Couldn't remove $parcelcfgdir");
+	    system("rm -rf $parceldir") == 0
+	        or errexit("Couldn't remove $parceldir");
+	}
+    }
+}
+
+#
 # getusage - Summarize the recent activity of each user
 #
 sub getusage () {
@@ -855,12 +894,14 @@ sub usage {
     
     print "$progname revision " . RCS_REVISION . "\n";
     print RED, "Usage: $progname cmd [options...]\n", RESET;
-    print BLUE, "Commands: adduser, copyparcel, decrypt, deluser, encrypt, getkeyroot,\n          getusage, keygen, makeparcel, prune.\n", RESET;
+    print BLUE, "Commands: adduser, copyparcel, decrypt, delparcel, deluser, encrypt,\n";
+    print "          getkeyroot, getusage, keygen, makeparcel, prune.\n", RESET;
 
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u).\n";
     print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P).\n";
     print "  makeparcel Create an empty parcel from scratch (-u, -p, -s).\n";
+    print "  delparcel  Delete parcel from system (-u, -p).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
     print "  encrypt    Encrypt parcel version (-u, -p, -v).\n";
     print "  getkeyroot Show parcel keyroot (-u, -p).\n";
@@ -894,6 +935,9 @@ sub usage {
 	print RED, "makeparcel - ", RESET, "Create empty 8 GB parcel debian for existing user bovik\n";
 	print "in $croot\n";
 	print BLUE, "% isr_admin makeparcel -u bovik -p debian -s 8G\n";
+	print "\n";
+	print RED, "delparcel - ", RESET, "Delete all data for parcel winxp belonging to existing user bovik\n";
+	print BLUE, "% isr_admin delparcel -u bovik -p winxp\n";
 	print "\n";
 	print RED, "decrypt - ", RESET, "Decrypt files in $croot/bovik/winxp/00003\n";
 	print BLUE, "% isr_admin decrypt -u bovik -p winxp -v 3\n", RESET;
