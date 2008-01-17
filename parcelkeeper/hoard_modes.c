@@ -240,31 +240,21 @@ again:
 	}
 	query_row(t_qry, "d", &unused);
 	query_free(t_qry);
-	for (query(&p_qry, state.db, "SELECT parcel, uuid, server, "
-				"user, name FROM hoard.parcels", NULL);
+	for (query(&p_qry, state.db, "SELECT hoard.parcels.parcel, uuid, "
+				"server, user, name, total, uniq "
+				"FROM hoard.parcels LEFT JOIN "
+				"(SELECT parcel, count(*) AS total "
+				"FROM refs GROUP BY parcel) AS sub1 "
+				"ON parcels.parcel == sub1.parcel "
+				"LEFT JOIN "
+				"(SELECT parcel, count(parcel) AS uniq FROM "
+				"(SELECT parcel FROM refs GROUP BY tag "
+				"HAVING count(*) == 1) GROUP BY parcel) "
+				"AS sub2 "
+				"ON parcels.parcel == sub2.parcel", NULL);
 				query_has_row(); query_next(p_qry)) {
-		query_row(p_qry, "dssss", &parcel, &uuid, &server, &user,
-					&name);
-		query(&t_qry, state.db, "SELECT count(*) FROM hoard.refs "
-					"WHERE parcel == ?", "d", parcel);
-		if (!query_has_row()) {
-			pk_log_sqlerr("Couldn't query hoard index for "
-						"parcel %s", name);
-			break;
-		}
-		query_row(t_qry, "d", &p_total);
-		query_free(t_qry);
-		query(&t_qry, state.db, "SELECT count(*) FROM hoard.refs "
-					"WHERE parcel == ? AND tag NOT IN "
-					"(SELECT tag FROM hoard.refs WHERE "
-					"parcel != ?)", "dd", parcel, parcel);
-		if (!query_has_row()) {
-			pk_log_sqlerr("Couldn't query hoard index for "
-						"parcel %s", name);
-			break;
-		}
-		query_row(t_qry, "d", &p_unique);
-		query_free(t_qry);
+		query_row(p_qry, "dssssdd", &parcel, &uuid, &server, &user,
+					&name, &p_total, &p_unique);
 		printf("%s %s %s %s %d %d\n", uuid, server, user, name, p_total,
 					p_unique);
 		shared -= p_unique;

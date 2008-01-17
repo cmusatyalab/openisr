@@ -17,7 +17,7 @@
 #include <time.h>
 #include "defs.h"
 
-#define HOARD_INDEX_VERSION 6
+#define HOARD_INDEX_VERSION 7
 #define EXPAND_CHUNKS 128
 
 static pk_err_t create_hoard_index(void)
@@ -68,6 +68,11 @@ static pk_err_t create_hoard_index(void)
 		pk_log_sqlerr("Couldn't create chunk LRU index");
 		return PK_IOERR;
 	}
+	if (query(NULL, state.hoard, "CREATE INDEX refs_bytag ON refs "
+				"(tag, parcel)", NULL)) {
+		pk_log_sqlerr("Couldn't create chunk reverse index");
+		return PK_IOERR;
+	}
 	return PK_SUCCESS;
 }
 
@@ -81,11 +86,6 @@ static pk_err_t upgrade_hoard_index(int ver)
 					"bailing out", ver);
 		return PK_BADFORMAT;
 	case 5:
-		if (query(NULL, state.hoard, "PRAGMA user_version = 6",
-					NULL)) {
-			pk_log_sqlerr("Couldn't update schema version");
-			return PK_IOERR;
-		}
 		if (query(NULL, state.hoard, "DROP INDEX chunks_lru", NULL)) {
 			pk_log_sqlerr("Couldn't drop old chunk LRU index");
 			return PK_IOERR;
@@ -96,6 +96,18 @@ static pk_err_t upgrade_hoard_index(int ver)
 			pk_log_sqlerr("Couldn't create new chunk LRU index");
 			return PK_IOERR;
 		}
+		/* Fall through */
+	case 6:
+		if (query(NULL, state.hoard, "CREATE INDEX refs_bytag ON refs "
+					"(tag, parcel)", NULL)) {
+			pk_log_sqlerr("Couldn't create chunk reverse index");
+			return PK_IOERR;
+		}
+	}
+	if (query(NULL, state.hoard, "PRAGMA user_version = "
+				stringify(HOARD_INDEX_VERSION), NULL)) {
+		pk_log_sqlerr("Couldn't update schema version");
+		return PK_IOERR;
 	}
 	return PK_SUCCESS;
 }
