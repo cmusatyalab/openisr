@@ -307,10 +307,10 @@ again:
 	}
 	query_free(qry);
 
-	query(&qry, state.db, "SELECT count(*) FROM hoard.refs WHERE "
-				"parcel == ? AND tag NOT IN (SELECT tag "
-				"FROM hoard.refs WHERE parcel != ?)", "dd",
-				parcel, parcel);
+	query(&qry, state.db, "SELECT count(*) FROM "
+				"(SELECT parcel FROM hoard.refs GROUP BY tag "
+				"HAVING parcel == ? AND count(*) == 1)", "d",
+				parcel);
 	if (!query_has_row()) {
 		free(desc);
 		pk_log_sqlerr("Couldn't enumerate unique parcel chunks");
@@ -322,10 +322,10 @@ again:
 	pk_log(LOG_INFO, "Removing parcel %s from hoard cache...", desc);
 	free(desc);
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 0 "
-				"WHERE tag IN (SELECT tag FROM hoard.refs "
-				"WHERE parcel == ? AND tag NOT IN "
-				"(SELECT tag FROM hoard.refs WHERE "
-				"PARCEL != ?))", "dd", parcel, parcel)) {
+				"WHERE tag IN "
+				"(SELECT tag FROM hoard.refs GROUP BY tag "
+				"HAVING parcel == ? AND count(*) == 1)",
+				"d", parcel)) {
 		pk_log_sqlerr("Couldn't update referenced flags");
 		goto bad;
 	}
