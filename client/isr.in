@@ -139,13 +139,13 @@ sub release_locks ();
 sub exit_handler ($);
 
 # Old HTTPSSH prototypes
-sub isr_srun ($$%);
-sub isr_parcelkeeper_cmd ($$);
-sub isr_run_parcelkeeper ($$);
-sub isr_priv_upload ();
+sub srun ($$%);
+sub parcelkeeper_cmd ($$);
+sub run_parcelkeeper ($$);
+sub upload ();
 sub copy_dirtychunks ();
-sub isr_priv_commit ();
-sub isr_priv_clientcommit($);
+sub commit ();
+sub clientcommit($);
 
 #########################
 # Section 2. Main routine
@@ -618,13 +618,13 @@ sub checkout () {
     # Fetch and print message-of-the-day from the server
     print "Connecting to server.\n"
     	if $verbose;
-    isr_srun("motd", "-p $parcel") == 0
+    srun("motd", "-p $parcel") == 0
 	or system_err("Couldn't read message of the day from the server ($server).");
 
     # Fetch and parse the config file from the server
     print "Fetching configuration data for $userid/$parcel from server.\n"
 	if $verbose;
-    if (isr_srun("getconfig", "-p $parcel", OUTFILE => "$isrdir/$parcel-parcel.cfg")) {
+    if (srun("getconfig", "-p $parcel", OUTFILE => "$isrdir/$parcel-parcel.cfg")) {
 	unlink("$isrdir/$parcel-parcel.cfg");
 	errexit("Parcel $userid/$parcel does not exist on the server ($server).");
     }
@@ -650,8 +650,8 @@ sub checkout () {
     print("Acquiring lock from server.\n")
 	if $verbose;
 
-    if (isr_srun("lock", "-p $parcel -n $clientname -a",
-		 OUTFILE => "$isrdir/$parcel-nonce") != 0) {
+    if (srun("lock", "-p $parcel -n $clientname -a",
+	     OUTFILE => "$isrdir/$parcel-nonce") != 0) {
 	unlink("$isrdir/$parcel-nonce");
 	errexit("Unable to acquire lock for $parcel.");
     }
@@ -672,7 +672,7 @@ sub checkout () {
 	}
 	print("Rolling back to version $version.\n")
 	    if $verbose;
-	if (isr_srun("rollback", "-p $parcel -v $version -N $sessionid") != 0) {
+	if (srun("rollback", "-p $parcel -v $version -N $sessionid") != 0) {
 	    clean(0);
 	    errexit("Unable to roll back to version $version");
 	}
@@ -734,7 +734,7 @@ sub checkout () {
     #
     print "Updating hoard cache.\n"
         if $verbose;
-    if (isr_run_parcelkeeper("refresh", "parcel hoard log")) {
+    if (run_parcelkeeper("refresh", "parcel hoard log")) {
         clean(0);
         errexit("Could not refresh hoard cache");
     }
@@ -801,7 +801,7 @@ sub run () {
     print("Launching Parcelkeeper...\n")
 	if $verbose;
     $kill_pk = 1;  # Tells the SIGINT handler to cleanly terminate PK
-    isr_run_parcelkeeper("run", "parcel hoard minsize compression log") == 0
+    run_parcelkeeper("run", "parcel hoard minsize compression log") == 0
 	or errexit("Unable to launch Parcelkeeper.");	
     
     # Wait for udev to catch up
@@ -891,12 +891,12 @@ sub sync ($) {
     my $i;
 
     # Do an early check to make sure we still have the parcel lock
-    isr_srun("lock", "-p $parcel -C $sessionid") == 0
+    srun("lock", "-p $parcel -C $sessionid") == 0
 	or errexit("Parcel lock no longer held; aborting");
 
     if (!-e $cleancache_file) {
 	# Upload the dirty blocks in a cache directory on the server
-	isr_priv_upload();
+	upload();
     } else {
 	print "Local cache is clean.  Skipping upload and commit.\n"
 	    if $verbose;
@@ -907,11 +907,11 @@ sub sync ($) {
     
     if (!-e $cleancache_file) {
 	# Commit a new version on the server
-	isr_priv_commit();
+	commit();
 
 	# If the server-side commit was successful, then do the
 	# client-side commit. 
-	isr_priv_clientcommit($releasing);
+	clientcommit($releasing);
     }
 
     # If $releasing == 1, it is not safe to unblock SIGINT until the parceldir
@@ -931,7 +931,7 @@ sub sync ($) {
     # Retry if the put operation fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
 	if (mysystem("rsync -e ssh --partial -z $vflag $bwflag $logfile $userid\@$cfg{WPATH}/session.log.new") == 0) {
-	    if (isr_srun("catlog", "-p $parcel -f session.log.new") == 0) {
+	    if (srun("catlog", "-p $parcel -f session.log.new") == 0) {
 		unlink($logfile);
 		last;
 	    }
@@ -1030,7 +1030,7 @@ sub listparcels () {
     # Run the remote ls program on the server.  Pass through server
     # errors without further comment.
     print "Parcels for $userid on server $server:\n";
-    isr_srun("ls", $lsargs);
+    srun("ls", $lsargs);
 }
 
 #
@@ -1081,7 +1081,7 @@ sub hoard ($) {
 	    or errexit("Unable to make $parceldir");
 	mktree("$hoarddir/img")
 	    or errexit("Unable to make $hoarddir/img");
-	isr_srun("getconfig", "-p $parcel", OUTFILE => "$parceldir/parcel.cfg") == 0
+	srun("getconfig", "-p $parcel", OUTFILE => "$parceldir/parcel.cfg") == 0
 	    or errexit("Parcel $userid/$parcel does not exist on the server ($server).");
 	parse_parcelcfg("$parceldir/parcel.cfg");
 	$uuid = $cfg{"UUID"};
@@ -1109,7 +1109,7 @@ sub hoard ($) {
 	print("Hoarding any missing disk blocks from the server...\n")
 	    if $verbose;
 	
-	$retval = isr_run_parcelkeeper("hoard", "parcel hoard minsize log");
+	$retval = run_parcelkeeper("hoard", "parcel hoard minsize log");
 	if ($retval == 0) {
 	    last; 
 	} elsif (WIFSIGNALED($retval)) {
@@ -1140,7 +1140,7 @@ sub checkparcel () {
 	    $flags .= " -c";
 	}
 	
-	isr_srun("checkparcel", "-p $parcel -V $flags") == 0
+	srun("checkparcel", "-p $parcel -V $flags") == 0
 	     or errexit("There is something wrong with parcel $userid/$parcel on the server.");
         
 	print(GREEN, "Success: The parcel $userid/$parcel looks OK on the server.\n", RESET)
@@ -1153,7 +1153,7 @@ sub checkparcel () {
 	$flags .= " full"
 	    if $checkstate;
 	
-	isr_run_parcelkeeper("validate", "parcel log $flags") == 0
+	run_parcelkeeper("validate", "parcel log $flags") == 0
 	    or errexit("Could not validate cache");
 	
 	print(GREEN, "Success: The parcel $userid/$parcel looks OK.\n", RESET)
@@ -1190,7 +1190,7 @@ sub statparcel () {
     #
     # Display cache stats
     #
-    isr_run_parcelkeeper("examine", "parcel hoard log") == 0
+    run_parcelkeeper("examine", "parcel hoard log") == 0
 	or errexit("Could not examine cache");
 }
 
@@ -1219,7 +1219,7 @@ sub listhoard () {
     #
     # See what we know about parcels that hold chunk references
     #
-    open(FD, "-|", isr_parcelkeeper_cmd("listhoard", "hoard"))
+    open(FD, "-|", parcelkeeper_cmd("listhoard", "hoard"))
         or errexit("Couldn't run Parcelkeeper");
     while ($line = <FD>) {
 	@fields = split(/[ \n]+/, $line);
@@ -1333,7 +1333,7 @@ sub rmhoard () {
     
     print "Removing $desc from the hoard cache...\n"
         if $verbose;
-    isr_run_parcelkeeper("rmhoard", "hoard uuid log") == 0
+    run_parcelkeeper("rmhoard", "hoard uuid log") == 0
         or errexit("Couldn't run Parcelkeeper rmhoard");
     
     #
@@ -1367,7 +1367,7 @@ sub checkhoard () {
     print "Checking hoard cache for internal consistency...\n"
 	if $verbose;
     
-    isr_run_parcelkeeper("checkhoard", "hoard $flags") == 0
+    run_parcelkeeper("checkhoard", "hoard $flags") == 0
         or errexit("Hoard cache check failed");
     
     print GREEN, "Success: The hoard cache is consistent.\n", RESET
@@ -1500,7 +1500,7 @@ sub need_network () {
 
 sub need_remote_parcel () {
     errexit("The remote parcel is not available.")
-        if isr_srun("ls", "-p $parcel", OUTFILE => "/dev/null", REDIRECT_STDERR => 1);
+        if srun("ls", "-p $parcel", OUTFILE => "/dev/null", REDIRECT_STDERR => 1);
 }
 
 #####
@@ -1625,13 +1625,13 @@ sub clean ($) {
 	if ($sessionid == 0) {
 	    err("Unable to release lock for $parcel because its nonce is unknown.");
 	    $ret = -1;
-	} elsif (isr_srun("lock", "-p $parcel -n $clientname -r $sessionid") != 0) {
+	} elsif (srun("lock", "-p $parcel -n $clientname -r $sessionid") != 0) {
 	    err("Unable to release lock for $parcel.");
 	    $ret = -1;
 	}
     } else {
         # Request a hard release
-	if (isr_srun("lock", "-p $parcel -n $clientname -R") != 0) {
+	if (srun("lock", "-p $parcel -n $clientname -R") != 0) {
 	    err("Unable to release lock for $parcel.");
 	    $ret = -1;
 	}
@@ -1645,7 +1645,7 @@ sub clean ($) {
 #                    otherwise.
 #
 sub is_fully_hoarded () {
-    if (isr_run_parcelkeeper("hoard", "parcel hoard check log") == 0) {
+    if (run_parcelkeeper("hoard", "parcel hoard check log") == 0) {
 	return 1;
     } else {
 	return 0;
@@ -1976,8 +1976,8 @@ sub fetch_parcel_file ($$$$$) {
     my %map;
     
     $tmpfile = "/tmp/stat.$$";
-    if (isr_srun("stat", "-f $userid/$parcel/last/$remote_name",
-		OUTFILE => $tmpfile) != 0) {
+    if (srun("stat", "-f $userid/$parcel/last/$remote_name",
+	     OUTFILE => $tmpfile) != 0) {
 	unlink($tmpfile);
 	err("Unable to stat $remote_name file on server");
 	return -1;
@@ -2464,9 +2464,9 @@ sub usage ($) {
 #############################
 
 #
-# isr_srun - Perform an operation on parcel tree in remote store
+# srun - Perform a server operation
 #
-sub isr_srun ($$%) {
+sub srun ($$%) {
     my $operation = shift;# requested operation
     my $args = shift;     # argument string
     my %opts = @_;        # key/value pairs giving optional arguments
@@ -2490,10 +2490,10 @@ sub isr_srun ($$%) {
 }
 
 #
-# isr_parcelkeeper_cmd - Return the command string to execute Parcelkeeper
-#                        with the given parameters.
+# parcelkeeper_cmd - Return the command string to execute Parcelkeeper with
+#                    the given parameters.
 #
-sub isr_parcelkeeper_cmd ($$) {
+sub parcelkeeper_cmd ($$) {
     my $mode = shift;
     my $args = shift;
     
@@ -2535,14 +2535,13 @@ sub isr_parcelkeeper_cmd ($$) {
 }
 
 #
-# isr_run_parcelkeeper - Run the Parcelkeeper process and return its
-#                        exit status.
+# run_parcelkeeper - Run the Parcelkeeper process and return its exit status.
 #
-sub isr_run_parcelkeeper ($$) {
+sub run_parcelkeeper ($$) {
     my $mode = shift;
     my $args = shift;
     
-    my $cmd = isr_parcelkeeper_cmd($mode, $args);
+    my $cmd = parcelkeeper_cmd($mode, $args);
     
     if ($mode eq "run") {
 	# Don't allow SIGINT
@@ -2557,11 +2556,11 @@ sub isr_run_parcelkeeper ($$) {
 #####################################
 
 #
-# isr_priv_upload - Upload a copy of the parcel to temp cache on the server.
+# upload - Upload a copy of the parcel to temp cache on the server.
 #          Note: Upload is idempotent. You can run it over and over again 
 #          until it works.
 #
-sub isr_priv_upload () {
+sub upload () {
     my $vflag = "-q";
     my $bwflag = "";
     my $i;
@@ -2652,44 +2651,43 @@ sub copy_dirtychunks () {
     #
     print("Collecting modified disk state...\n")
 	if $verbose;
-    isr_run_parcelkeeper("upload", "parcel dest hoard minsize log") == 0
+    run_parcelkeeper("upload", "parcel dest hoard minsize log") == 0
     	or errexit("Unable to copy chunks to temporary cache dir");
 }
 
 #
-# isr_priv_commit - Commit files that were copied to server-side 
-#                   cache by upload
+# commit - Commit files that were copied to server-side cache by upload
 #
-sub isr_priv_commit () {
+sub commit () {
     # Check the current version of the parcel for consistency
-    isr_srun("checkparcel", "-p $parcel") == 0
+    srun("checkparcel", "-p $parcel") == 0
 	or errexit("There is something wrong with the remote parcel. Aborting with no change to the remote parcel.");
 
     #
     # Trigger the server-side commit.
     #
     print("Checking uploaded cache dir before committing...\n");
-    isr_srun("checkparcel", "-s $sessionid -p $parcel") == 0
+    srun("checkparcel", "-s $sessionid -p $parcel") == 0
 	or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
     print("Committing updates on server...\n")
 	if $verbose;
     message("Begin server side commit");
-    isr_srun("commit", "-p $parcel -N $sessionid") == 0
+    srun("commit", "-p $parcel -N $sessionid") == 0
 	or errexit("Server-side commit of parcel $userid/$parcel failed.");
     message("End server side commit");
 
     # Check the newly committed version for consistency
-    isr_srun("checkparcel", "-p $parcel") == 0
+    srun("checkparcel", "-p $parcel") == 0
 	 or errexit("Something went wrong during commit.  Remote parcel is inconsistent.");
 }
 
 #
-# isr_priv_clientcommit - Commit state on the client.  First, copy the
-#     keyring to prev-keyring.  Second, move the encrypted memory image and
-#     keyring into the hoard cache.  These actions ensure that the client
-#     remains consistent with the server-side last/.
+# clientcommit - Commit state on the client.  First, copy the keyring to
+#                prev-keyring.  Second, move the encrypted memory image and
+#                keyring into the hoard cache.  These actions ensure that the
+#                client remains consistent with the server-side last/.
 #
-sub isr_priv_clientcommit($) {
+sub clientcommit($) {
     my $releasing = shift;
 
     my $dirtyblocks = 0;
