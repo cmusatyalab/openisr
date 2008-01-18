@@ -1863,8 +1863,6 @@ sub build_cache () {
 #
 sub connected () {
     my $pid;
-    my $childpid;
-    my $eval_result;
 
     $pid = fork();
 
@@ -1875,24 +1873,23 @@ sub connected () {
 					   PeerPort => "22",
 					   Proto    => "tcp",
 					   Type     => SOCK_STREAM);
-	exit;
+	exit ($socket ? 0 : 1);
     }
 
     # The parent waits a few seconds for the child to complete, then times out
-    $SIG{'ALRM'} = sub {die "timeout"};
-    alarm($syscfg{connect_timeout});
     eval {
+	local $SIG{'ALRM'} = sub {die "timeout"};
+	alarm($syscfg{connect_timeout});
 	waitpid($pid, 0);
+	alarm(0);
     };
 
     # Determine if the child established a connection in the allotted time.
-    alarm(0);
-    $eval_result = $@;
-    if ($eval_result =~ /timeout/) {
-	kill(9, $pid);
+    if ($@ or $?) {
+	kill("TERM", $pid)
+	    if $@;
 	return 0;
-    }
-    else {
+    } else {
 	return 1;
     }
 }
