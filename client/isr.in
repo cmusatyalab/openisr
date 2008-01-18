@@ -141,7 +141,6 @@ sub exit_handler ($);
 # Old HTTPSSH prototypes
 sub isr_srun ($$%);
 sub isr_connected_parcel ();
-sub isr_connected_http ();
 sub isr_parcelkeeper_cmd ($$);
 sub isr_run_parcelkeeper ($$);
 sub isr_priv_upload ();
@@ -607,13 +606,9 @@ sub checkout () {
 	return;
     }
     
-    # Before going any further, make sure we have a protocol level
-    # connection to the server and a consistent parcel.
+    # Before going any further, make sure the parcel exists on the server.
     print "Connecting to server.\n"
     	if $verbose;
-    if (!isr_connected_http()) {
-	errexit("The server appears to be down.");
-    }
     if (!isr_connected_parcel()) {
 	errexit("The remote parcel is not available.");
     }
@@ -788,10 +783,8 @@ sub run () {
 	print("Running disconnected...\n")
 	    if $verbose;
     } else {
-	# If the user wants to run connected, then make sure we have a
-	# protocol level connection to the server and a consistent parcel.
-	isr_connected_http()
-	    or errexit("The server appears to be down.");
+	# If the user wants to run connected, then make sure the parcel
+	# exists on the server.
 	isr_connected_parcel()
 	    or errexit("The remote parcel is not available.");
     }
@@ -901,12 +894,8 @@ sub sync ($) {
     my $i;
 
     #
-    # Before going any further, make sure we have a protocol level 
-    # connection to the server and a consistent parcel.
+    # Before going any further, make sure the parcel exists on the server.
     # 
-    if (!isr_connected_http()) {
-	errexit("The server appears to be down.");
-    }
     if (!isr_connected_parcel()) {
 	errexit("The remote parcel is not available.");
     }
@@ -1097,11 +1086,7 @@ sub hoard ($) {
 	system("rm -rf $parceldir") == 0
 	    or errexit("Couldn't remove old temp directory $parceldir");
     
-	# Before going any further, make sure we have a protocol level
-	# connection to the server and a valid parcel
-	if (!isr_connected_http()) {
-	    errexit("The server appears to be down.");
-	}
+	# Before going any further, make sure the parcel exists on the server
 	if (!isr_connected_parcel()) {
 	    errexit("Remote parcel $userid/$parcel not found on the server.");
 	}
@@ -1866,14 +1851,20 @@ sub connected () {
 
     $pid = fork();
 
-    # The child tries to establish a connection with root serve
+    # The child tries to establish SSH and HTTP connections with the server
     if ($pid == 0) {
 	$no_shutdown = 1;
-	my $socket = IO::Socket::INET->new(PeerAddr => $server,
-					   PeerPort => "22",
-					   Proto    => "tcp",
-					   Type     => SOCK_STREAM);
-	exit ($socket ? 0 : 1);
+	IO::Socket::INET->new(PeerAddr => $server,
+			      PeerPort => "22",
+			      Proto    => "tcp",
+			      Type     => SOCK_STREAM)
+	    or exit 1;
+	IO::Socket::INET->new(PeerAddr => $server,
+			      PeerPort => "80",
+			      Proto    => "tcp",
+			      Type     => SOCK_STREAM)
+	    or exit 1;
+	exit 0;
     }
 
     # The parent waits a few seconds for the child to complete, then times out
@@ -1884,7 +1875,7 @@ sub connected () {
 	alarm(0);
     };
 
-    # Determine if the child established a connection in the allotted time.
+    # Determine if the child established its connections in the allotted time.
     if ($@ or $?) {
 	kill("TERM", $pid)
 	    if $@;
@@ -2524,22 +2515,6 @@ sub isr_connected_parcel () {
     isr_srun("ls", "-p $parcel", OUTFILE => "/dev/null", REDIRECT_STDERR => 1) == 0
         or return 0;
     return 1;
-}
-
-#
-# isr_connected_http - Return true if client can talk to remote store
-#
-sub isr_connected_http () {
-
-    if (IO::Socket::INET->new(PeerAddr => $server,
-			      PeerPort => "80",
-			      Proto    => "tcp",
-			      Type     => SOCK_STREAM)) {
-	return 1;
-    }
-    else {
-	return 0;
-    }
 }
 
 #
