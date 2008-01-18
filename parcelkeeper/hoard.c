@@ -533,6 +533,7 @@ again:
 	ret=begin(state.hoard);
 	if (ret)
 		return ret;
+	/* Add the row if it's not already there */
 	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO parcels "
 				"(uuid, server, user, name) "
 				"VALUES (?, ?, ?, ?)", "SSSS",
@@ -542,6 +543,7 @@ again:
 		ret=PK_IOERR;
 		goto bad;
 	}
+	/* Find out the parcel ID assigned by SQLite */
 	query(&qry, state.hoard, "SELECT parcel FROM parcels WHERE uuid == ?",
 				"S", parcel.uuid);
 	if (!query_has_row()) {
@@ -551,6 +553,18 @@ again:
 	}
 	query_row(qry, "d", &state.hoard_ident);
 	query_free(qry);
+	/* Make sure the row has current metadata in case it was already
+	   present.  Don't promote the lock if no update is necessary. */
+	if (query(NULL, state.hoard, "UPDATE parcels SET server = ?, "
+				"user = ?, name = ? WHERE parcel == ? AND "
+				"(server != ? OR user != ? OR name != ?)",
+				"SSSdSSS", parcel.server, parcel.user,
+				parcel.parcel, state.hoard_ident,
+				parcel.server, parcel.user, parcel.parcel)) {
+		pk_log_sqlerr("Couldn't update parcel record");
+		ret=PK_IOERR;
+		goto bad;
+	}
 	ret=commit(state.hoard);
 	if (ret)
 		goto bad;
