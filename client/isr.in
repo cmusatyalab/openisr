@@ -131,6 +131,7 @@ sub need_uuid ();
 sub need_not_parcel ();
 sub need_checked_out ();
 sub need_network ();
+sub need_remote_parcel ();
 sub fcntl_lock ($$$);
 sub acquire_lock ($$$);
 sub release_lock ($);
@@ -139,7 +140,6 @@ sub exit_handler ($);
 
 # Old HTTPSSH prototypes
 sub isr_srun ($$%);
-sub isr_connected_parcel ();
 sub isr_parcelkeeper_cmd ($$);
 sub isr_run_parcelkeeper ($$);
 sub isr_priv_upload ();
@@ -427,6 +427,7 @@ message("Running $command");
 if ($command eq "checkout") {
     need_parcel();
     need_network();
+    need_remote_parcel();
     $do_sync = 1;
     # If the parcel isn't checked out, we don't know the UUID, so we take
     # a "checkout lock" by parcel name.  This means that two different
@@ -445,9 +446,11 @@ elsif ($command eq "resume") {
     # Resume will need a network connection if the requested parcel is not
     # currently checked out, or if we're not planning on running disconnected,
     # or if we need to do some hoarding to run disconnected.
-    need_network()
-        if !$parceldir or !-e $parceldir or !$disconnected
-	    or !is_fully_hoarded();
+    if (!$parceldir or !-e $parceldir or !$disconnected
+	        or !is_fully_hoarded()) {
+    	need_network();
+	need_remote_parcel();
+    }
     $do_sync = 1;
     acquire_lock("checkout-$parcel", "Checkout", 0);
     checkout();
@@ -464,6 +467,7 @@ elsif ($command eq "checkin") {
     need_parcel();
     need_checked_out();
     need_network();
+    need_remote_parcel();
     $do_sync = 1;
     acquire_lock("parcel-$uuid", "Parcel", 0);
     checkin();
@@ -472,6 +476,7 @@ elsif ($command eq "sync") {
     need_parcel();
     need_checked_out();
     need_network();
+    need_remote_parcel();
     $do_sync = 1;
     acquire_lock("parcel-$uuid", "Parcel", 0);
     sync(0);
@@ -485,6 +490,8 @@ elsif ($command eq "discard") {
 }
 elsif ($command eq "hoard") {
     need_parcel();
+    need_network();
+    need_remote_parcel();
     $do_sync = 1;
     # Locking is handled in hoard(), after we know the UUID
     hoard(0);
@@ -498,6 +505,7 @@ elsif ($command eq "checkp") {
     need_parcel();
     if ($remote) {
 	need_network();
+	need_remote_parcel();
     } else {
 	need_checked_out();
 	acquire_lock("parcel-$uuid", "Parcel", 0);
@@ -537,6 +545,8 @@ elsif ($command eq "passwd") {
 }
 elsif ($command eq "clean") {
     need_parcel();
+    # Don't require network, since the local component can still run.
+    #
     # If we can't map the parcel to a UUID, cleanclient() becomes a
     # server-side-only operation, but we still need the checkout lock
     # to prevent checkout/clean races
@@ -605,14 +615,9 @@ sub checkout () {
 	return;
     }
     
-    # Before going any further, make sure the parcel exists on the server.
+    # Fetch and print message-of-the-day from the server
     print "Connecting to server.\n"
     	if $verbose;
-    if (!isr_connected_parcel()) {
-	errexit("The remote parcel is not available.");
-    }
-
-    # Fetch and print message-of-the-day from the server
     isr_srun("motd", "-p $parcel") == 0
 	or system_err("Couldn't read message of the day from the server ($server).");
 
@@ -778,15 +783,8 @@ sub run () {
     # cache directory is about to become inconsistent with the local cache.
     unlink($cdcache_file);
 
-    if ($disconnected) {
-	print("Running disconnected...\n")
-	    if $verbose;
-    } else {
-	# If the user wants to run connected, then make sure the parcel
-	# exists on the server.
-	isr_connected_parcel()
-	    or errexit("The remote parcel is not available.");
-    }
+    print("Running disconnected...\n")
+	if $disconnected and $verbose;
 
     # Make sure there is exactly one VMware config file
     opendir(DIR, "$parceldir/cfg")
@@ -891,13 +889,6 @@ sub sync ($) {
     my $vflag = "-q";
     my $bwflag = "";
     my $i;
-
-    #
-    # Before going any further, make sure the parcel exists on the server.
-    # 
-    if (!isr_connected_parcel()) {
-	errexit("The remote parcel is not available.");
-    }
 
     # Do an early check to make sure we still have the parcel lock
     isr_srun("lock", "-p $parcel -C $sessionid") == 0
@@ -1085,11 +1076,6 @@ sub hoard ($) {
 	system("rm -rf $parceldir") == 0
 	    or errexit("Couldn't remove old temp directory $parceldir");
     
-	# Before going any further, make sure the parcel exists on the server
-	if (!isr_connected_parcel()) {
-	    errexit("Remote parcel $userid/$parcel not found on the server.");
-	}
-	
 	# Fetch metadata from the server
 	mktree($parceldir)
 	    or errexit("Unable to make $parceldir");
@@ -1510,6 +1496,11 @@ sub need_network () {
 	    if $@;
 	errexit("Couldn't contact $server.  Do you have a network connection?");
     }
+}
+
+sub need_remote_parcel () {
+    errexit("The remote parcel is not available.")
+        if isr_srun("ls", "-p $parcel", OUTFILE => "/dev/null", REDIRECT_STDERR => 1);
 }
 
 #####
@@ -2496,15 +2487,6 @@ sub isr_srun ($$%) {
     } else {
 	return mysystem("ssh -l $userid $server isr_runserv $operation $args");
     }
-}
-
-#
-# isr_connected_parcel - Return true if parcel exists in remote store
-#
-sub isr_connected_parcel () {
-    isr_srun("ls", "-p $parcel", OUTFILE => "/dev/null", REDIRECT_STDERR => 1) == 0
-        or return 0;
-    return 1;
 }
 
 #
