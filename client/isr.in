@@ -102,7 +102,6 @@ sub parse_cfgfile ($$);
 sub parse_parcelcfg ($);
 sub build_cache ();
 sub is_fully_hoarded ();
-sub connected ();
 sub check_for_nexus ();
 sub check_for_old_isrdir ();
 sub get_parcelkeeper_pid ();
@@ -1472,10 +1471,45 @@ sub need_checked_out () {
 # Most commands require a network connection
 #
 sub need_network () {
-     print "Checking network connection...\n"
-	 if $verbose > 1;
-     connected() 
-	 or errexit("You do not appear to have a network connection: couldn't contact $server.");
+    my $pid;
+    
+    print "Checking network connection...\n"
+	if $verbose > 1;
+    
+    # We have to fork a child and timeout on the wait() because the bind
+    # client coopts SIGALRM signals. 
+    $pid = fork();
+
+    # The child tries to establish SSH and HTTP connections with the server
+    if ($pid == 0) {
+	$no_shutdown = 1;
+	IO::Socket::INET->new(PeerAddr => $server,
+			      PeerPort => "22",
+			      Proto    => "tcp",
+			      Type     => SOCK_STREAM)
+	    or exit 1;
+	IO::Socket::INET->new(PeerAddr => $server,
+			      PeerPort => "80",
+			      Proto    => "tcp",
+			      Type     => SOCK_STREAM)
+	    or exit 1;
+	exit 0;
+    }
+
+    # The parent waits a few seconds for the child to complete, then times out
+    eval {
+	local $SIG{'ALRM'} = sub {die "timeout"};
+	alarm($syscfg{connect_timeout});
+	waitpid($pid, 0);
+	alarm(0);
+    };
+
+    # Determine if the child established its connections in the allotted time.
+    if ($@ or $?) {
+	kill("TERM", $pid)
+	    if $@;
+	errexit("Couldn't contact $server.  Do you have a network connection?");
+    }
 }
 
 #####
@@ -1839,50 +1873,6 @@ sub build_cache () {
     }
     
     return 0;
-}
-
-#
-# connected - Returns true if the client has a network connection.
-#             We have to fork a child and timeout on the wait() 
-#             because the bind client coopts SIGALRM signals. 
-#
-sub connected () {
-    my $pid;
-
-    $pid = fork();
-
-    # The child tries to establish SSH and HTTP connections with the server
-    if ($pid == 0) {
-	$no_shutdown = 1;
-	IO::Socket::INET->new(PeerAddr => $server,
-			      PeerPort => "22",
-			      Proto    => "tcp",
-			      Type     => SOCK_STREAM)
-	    or exit 1;
-	IO::Socket::INET->new(PeerAddr => $server,
-			      PeerPort => "80",
-			      Proto    => "tcp",
-			      Type     => SOCK_STREAM)
-	    or exit 1;
-	exit 0;
-    }
-
-    # The parent waits a few seconds for the child to complete, then times out
-    eval {
-	local $SIG{'ALRM'} = sub {die "timeout"};
-	alarm($syscfg{connect_timeout});
-	waitpid($pid, 0);
-	alarm(0);
-    };
-
-    # Determine if the child established its connections in the allotted time.
-    if ($@ or $?) {
-	kill("TERM", $pid)
-	    if $@;
-	return 0;
-    } else {
-	return 1;
-    }
 }
 
 #
