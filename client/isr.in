@@ -137,8 +137,6 @@ sub acquire_lock ($$$);
 sub release_lock ($);
 sub release_locks ();
 sub exit_handler ($);
-
-# Old HTTPSSH prototypes
 sub srun ($$%);
 sub parcelkeeper_cmd ($$);
 sub run_parcelkeeper ($$);
@@ -1504,8 +1502,310 @@ sub need_remote_parcel () {
 }
 
 #####
+# Parcelkeeper management functions
+# 
+
+#
+# parcelkeeper_cmd - Return the command string to execute Parcelkeeper with
+#                    the given parameters.
+#
+sub parcelkeeper_cmd ($$) {
+    my $mode = shift;
+    my $args = shift;
+    
+    my $cmd = LIBDIR . "/parcelkeeper $mode";
+    my $arg;
+    my $do_log = 0;
+    
+    foreach $arg (split(/\s+/, $args)) {
+	if ($arg eq "parcel") {
+	    $cmd .= " --parcel $parceldir";
+	} elsif ($arg eq "dest") {
+	    $cmd .= " --destdir $uploaddir/hdk";
+	} elsif ($arg eq "hoard") {
+	    $cmd .= " --hoard $hoarddir";
+	} elsif ($arg eq "minsize") {
+	    $cmd .= " --minsize $syscfg{hoard_minsize}";
+	} elsif ($arg eq "compression") {
+	    $cmd .= " --compression $syscfg{compression}";
+	} elsif ($arg eq "uuid") {
+	    $cmd .= " --uuid $uuid";
+	} elsif ($arg eq "check") {
+	    $cmd .= " --check";
+	} elsif ($arg eq "full") {
+	    $cmd .= " --full";
+	} elsif ($arg eq "log") {
+	    $do_log = 1;
+	} else {
+	    errexit("Unknown parcelkeeper parameter $arg");
+	}
+    }
+    
+    if ($do_log) {
+	$cmd .= " --log $logfile --log-filter $syscfg{logmask} --stderr-filter $syscfg{console_logmask}";
+    } else {
+	$cmd .= " --stderr-filter $syscfg{console_logmask}";
+    }
+    message("Running Parcelkeeper: $cmd");
+    return $cmd;
+}
+
+#
+# run_parcelkeeper - Run the Parcelkeeper process and return its exit status.
+#
+sub run_parcelkeeper ($$) {
+    my $mode = shift;
+    my $args = shift;
+    
+    my $cmd = parcelkeeper_cmd($mode, $args);
+    
+    if ($mode eq "run") {
+	# Don't allow SIGINT
+        return system($cmd);
+    } else {
+	return mysystem($cmd);
+    }
+}
+
+#
+# get_parcelkeeper_pid - Returns the PID of the Parcelkeeper background
+#                        process associated with this parcel, or zero if none
+#                        are running.
+#
+sub get_parcelkeeper_pid () {
+    my $pidfile = "$parceldir/parcelkeeper.pid";
+    my $pid;
+    
+    -e $pidfile or return 0;
+    open(PIDFILE, $pidfile) or return 0;
+    defined($pid = <PIDFILE>) or return 0;
+    close(PIDFILE);
+    chomp($pid);
+    # Make sure the process is still alive
+    kill(0, $pid) or return 0;
+    return $pid;
+}
+
+
+#####
+# Checkin functions
+# 
+
+#
+# copy_dirtychunks - Build temp cache tree and populate it with dirty state
+#
+sub copy_dirtychunks () {
+    my $target;
+
+    #
+    # Build an empty temporary cache directory structure on the client
+    #
+    mysystem("rm -rf $uploaddir");
+    mktree("$uploaddir/hdk")
+	or errexit("Unable to make temporary directory $uploaddir/hdk");
+
+    #
+    # Create cfg tarball and encrypt it and the keyring
+    #
+    print("Compressing and encrypting virtual machine memory image...\n")
+	if $verbose;
+    encrypt_cfg("$parceldir/cfg", "$uploaddir/cfg.tgz.enc") == 0
+	or system_errexit("Unable to create cfg.tgz.enc.");
+    printf("Compressed size: %d MB\n", (stat("$uploaddir/cfg.tgz.enc")->size)/(1<<20))
+    	if $verbose;
+    encrypt_keyring("$parceldir/keyring", "$uploaddir/keyring.enc") == 0
+	or system_errexit("Unable to encrypt keyring.");
+    foreach $target ("cfg.tgz", "keyring") {
+	message(sprintf("Upload: $target.enc: %d", 
+			stat("$uploaddir/$target.enc")->size));
+    }
+
+    # 
+    # Copy any dirty hdk chunks to the temporary cache directory
+    #
+    print("Collecting modified disk state...\n")
+	if $verbose;
+    run_parcelkeeper("upload", "parcel dest hoard minsize log") == 0
+    	or errexit("Unable to copy chunks to temporary cache dir");
+}
+
+#
+# upload - Upload a copy of the parcel to temp cache on the server.
+#          Note: Upload is idempotent. You can run it over and over again 
+#          until it works.
+#
+sub upload () {
+    my $vflag = "-q";
+    my $bwflag = "";
+    my $i;
+
+    errexit("Inconsistent parcel directory $parceldir")
+        if (!-e "$parceldir/keyring" or !-d "$parceldir/cfg");
+
+    #
+    # Copy the dirty parcel state to a temporary dirty cache
+    # directory.  When the operation is finished, create a consistent
+    # dirty cache flag on disk that tells us that the dirty cache is
+    # consistent with the local cache, and thus the copy operation can
+    # be skipped if the subsequent upload operation is
+    # interrupted. This is an optimization that eliminates unnecessary
+    # compress and encrypt operations, and better exploits the features
+    # of rsync if the upload is interrupted and has to be restarted
+    # (mainly because tar is not idempotent).
+    #
+    if (!-e $cdcache_file) {
+	copy_dirtychunks();
+	touch($cdcache_file)
+	    or unix_errexit("Unable to create dirty cache flag ($cdcache_file)");
+    }
+    else {
+	print("Skipping local copy operation.\n")
+	    if $verbose;
+    }
+
+    mypause("Done with local copy, ready to upload: hit y to continue");
+
+    # 
+    # Transfer the dirty local cache state to the server
+    #
+    print("Sending modified disk state to server...\n")
+	if $verbose;
+    $vflag = "--progress"
+        if ($verbose);
+    $bwflag = "--bwlimit=$bwlimit"
+	if ($bwlimit);
+
+    # Retry if the upload fails
+    for ($i = 0; $i < $syscfg{retries}; $i++) {
+	last
+	    if mysystem("rsync -e ssh --delete --partial --recursive -z $vflag $bwflag $uploaddir/ $userid\@$cfg{WPATH}/cache/$sessionid") == 0;
+	print "[isr] upload failed. Retrying...\n"
+	    if $verbose;
+    }
+    errexit("Upload failed. Aborting.")
+        if $i == $syscfg{retries};
+    mypause("Done with upload, ready to commit: hit y to continue");
+
+    # Return successful status
+    print("Upload completed, all updates have been sent to the server.\n")
+	if $verbose;
+}
+
+#
+# commit - Commit files that were copied to server-side cache by upload
+#
+sub commit () {
+    # Check the current version of the parcel for consistency
+    srun("checkparcel", "-p $parcel") == 0
+	or errexit("There is something wrong with the remote parcel. Aborting with no change to the remote parcel.");
+
+    #
+    # Trigger the server-side commit.
+    #
+    print("Checking uploaded cache dir before committing...\n");
+    srun("checkparcel", "-s $sessionid -p $parcel") == 0
+	or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
+    print("Committing updates on server...\n")
+	if $verbose;
+    message("Begin server side commit");
+    srun("commit", "-p $parcel -N $sessionid") == 0
+	or errexit("Server-side commit of parcel $userid/$parcel failed.");
+    message("End server side commit");
+
+    # Check the newly committed version for consistency
+    srun("checkparcel", "-p $parcel") == 0
+	 or errexit("Something went wrong during commit.  Remote parcel is inconsistent.");
+}
+
+#
+# clientcommit - Commit state on the client.  First, copy the keyring to
+#                prev-keyring.  Second, move the encrypted memory image and
+#                keyring into the hoard cache.  These actions ensure that the
+#                client remains consistent with the server-side last/.
+#
+sub clientcommit($) {
+    my $releasing = shift;
+
+    my $dirtyblocks = 0;
+    my $name;
+
+    print "Committing updates on client...\n"
+	if $verbose;
+
+    #
+    # Now that we have committed a new version, we can update the cached copy
+    # of the pristine keyring and memory image to match the server
+    #
+    if ($releasing) {
+	# There's no point in copying the keyring to prev-keyring if the
+	# whole directory tree is going to be removed.  SIGINT is blocked, and
+	# must remain blocked until the lock is released.
+	message("Client side commit - skipping copy of keyring");
+    } else {
+	message("Client side commit - start copying keyring");
+	copy("$parceldir/keyring", "$parceldir/prev-keyring")
+	    or unix_errexit("Unable to copy keyring to $parceldir/prev-keyring.");
+	message("Client side commit - finish copying keyring");
+    }
+
+    #
+    # Note that the upload cache is no longer correct
+    #
+    unlink($cdcache_file);
+
+    #
+    # Move the cfg.tgz.enc and keyring.enc files into the hoard cache
+    #
+    mktree("$hoarddir/img")
+	or errexit("Couldn't make directory $hoarddir/img");
+    rename("$uploaddir/cfg.tgz.enc", "$hoarddir/img/$cfg{UUID}.cfg");
+    rename("$uploaddir/keyring.enc", "$hoarddir/img/$cfg{UUID}.key");
+    message("Client side commit - moved memory image into hoard cache");
+    
+    #
+    # Note that the local cache is consistent with the server
+    #
+    touch($cleancache_file)
+        or unix_errexit("Unable to create $cleancache_file");
+    
+    #
+    # Remove the upload directory
+    #
+    message("Client side commit - start removing upload directory");
+    system("rm -rf $uploaddir");
+    message("Client side commit - finish removing upload directory");
+}
+
+
+#####
 # Misc helper functions
 # 
+
+#
+# srun - Perform a server operation
+#
+sub srun ($$%) {
+    my $operation = shift;# requested operation
+    my $args = shift;     # argument string
+    my %opts = @_;        # key/value pairs giving optional arguments
+    
+    my $redirect = "";
+
+    # Log the operation
+    message("srun: $operation $args");
+
+    # Redirect stderr to outfile if requested
+    if (exists($opts{'REDIRECT_STDERR'}) and $opts{'REDIRECT_STDERR'}) {
+	$redirect = "2>&1";
+    }
+
+    # Perform the operation on remote storage
+    if (exists($opts{'OUTFILE'})) {
+	return mysystem("ssh -l $userid $server isr_runserv $operation $args > $opts{'OUTFILE'} $redirect");
+    } else {
+	return mysystem("ssh -l $userid $server isr_runserv $operation $args");
+    }
+}
 
 sub fcntl_lock ($$$) {
     my $fh = shift;
@@ -2127,25 +2427,6 @@ sub decrypt_cfg ($) {
 }
 
 #
-# get_parcelkeeper_pid - Returns the PID of the Parcelkeeper background
-#                        process associated with this parcel, or zero if none
-#                        are running.
-#
-sub get_parcelkeeper_pid () {
-    my $pidfile = "$parceldir/parcelkeeper.pid";
-    my $pid;
-    
-    -e $pidfile or return 0;
-    open(PIDFILE, $pidfile) or return 0;
-    defined($pid = <PIDFILE>) or return 0;
-    close(PIDFILE);
-    chomp($pid);
-    # Make sure the process is still alive
-    kill(0, $pid) or return 0;
-    return $pid;
-}
-
-#
 # block_sigint - Block receipt of SIGINT (ctrl-c) and return sigmask
 # 
 sub block_sigint () {
@@ -2453,289 +2734,4 @@ sub usage ($) {
     print "\n";
     
     exit 0;
-}
-
-#######################################################################
-# HTTPSSH - Distributed storage system module (HTTP/SSH version)
-#######################################################################
-
-#############################
-# Section 1: Public functions
-#############################
-
-#
-# srun - Perform a server operation
-#
-sub srun ($$%) {
-    my $operation = shift;# requested operation
-    my $args = shift;     # argument string
-    my %opts = @_;        # key/value pairs giving optional arguments
-    
-    my $redirect = "";
-
-    # Log the operation
-    message("srun: $operation $args");
-
-    # Redirect stderr to outfile if requested
-    if (exists($opts{'REDIRECT_STDERR'}) and $opts{'REDIRECT_STDERR'}) {
-	$redirect = "2>&1";
-    }
-
-    # Perform the operation on remote storage
-    if (exists($opts{'OUTFILE'})) {
-	return mysystem("ssh -l $userid $server isr_runserv $operation $args > $opts{'OUTFILE'} $redirect");
-    } else {
-	return mysystem("ssh -l $userid $server isr_runserv $operation $args");
-    }
-}
-
-#
-# parcelkeeper_cmd - Return the command string to execute Parcelkeeper with
-#                    the given parameters.
-#
-sub parcelkeeper_cmd ($$) {
-    my $mode = shift;
-    my $args = shift;
-    
-    my $cmd = LIBDIR . "/parcelkeeper $mode";
-    my $arg;
-    my $do_log = 0;
-    
-    foreach $arg (split(/\s+/, $args)) {
-	if ($arg eq "parcel") {
-	    $cmd .= " --parcel $parceldir";
-	} elsif ($arg eq "dest") {
-	    $cmd .= " --destdir $uploaddir/hdk";
-	} elsif ($arg eq "hoard") {
-	    $cmd .= " --hoard $hoarddir";
-	} elsif ($arg eq "minsize") {
-	    $cmd .= " --minsize $syscfg{hoard_minsize}";
-	} elsif ($arg eq "compression") {
-	    $cmd .= " --compression $syscfg{compression}";
-	} elsif ($arg eq "uuid") {
-	    $cmd .= " --uuid $uuid";
-	} elsif ($arg eq "check") {
-	    $cmd .= " --check";
-	} elsif ($arg eq "full") {
-	    $cmd .= " --full";
-	} elsif ($arg eq "log") {
-	    $do_log = 1;
-	} else {
-	    errexit("Unknown parcelkeeper parameter $arg");
-	}
-    }
-    
-    if ($do_log) {
-	$cmd .= " --log $logfile --log-filter $syscfg{logmask} --stderr-filter $syscfg{console_logmask}";
-    } else {
-	$cmd .= " --stderr-filter $syscfg{console_logmask}";
-    }
-    message("Running Parcelkeeper: $cmd");
-    return $cmd;
-}
-
-#
-# run_parcelkeeper - Run the Parcelkeeper process and return its exit status.
-#
-sub run_parcelkeeper ($$) {
-    my $mode = shift;
-    my $args = shift;
-    
-    my $cmd = parcelkeeper_cmd($mode, $args);
-    
-    if ($mode eq "run") {
-	# Don't allow SIGINT
-        return system($cmd);
-    } else {
-	return mysystem($cmd);
-    }
-}
-
-#####################################
-# Section 2: Private helper functions
-#####################################
-
-#
-# upload - Upload a copy of the parcel to temp cache on the server.
-#          Note: Upload is idempotent. You can run it over and over again 
-#          until it works.
-#
-sub upload () {
-    my $vflag = "-q";
-    my $bwflag = "";
-    my $i;
-
-    errexit("Inconsistent parcel directory $parceldir")
-        if (!-e "$parceldir/keyring" or !-d "$parceldir/cfg");
-
-    #
-    # Copy the dirty parcel state to a temporary dirty cache
-    # directory.  When the operation is finished, create a consistent
-    # dirty cache flag on disk that tells us that the dirty cache is
-    # consistent with the local cache, and thus the copy operation can
-    # be skipped if the subsequent upload operation is
-    # interrupted. This is an optimization that eliminates unnecessary
-    # compress and encrypt operations, and better exploits the features
-    # of rsync if the upload is interrupted and has to be restarted
-    # (mainly because tar is not idempotent).
-    #
-    if (!-e $cdcache_file) {
-	copy_dirtychunks();
-	touch($cdcache_file)
-	    or unix_errexit("Unable to create dirty cache flag ($cdcache_file)");
-    }
-    else {
-	print("Skipping local copy operation.\n")
-	    if $verbose;
-    }
-
-    mypause("Done with local copy, ready to upload: hit y to continue");
-
-    # 
-    # Transfer the dirty local cache state to the server
-    #
-    print("Sending modified disk state to server...\n")
-	if $verbose;
-    $vflag = "--progress"
-        if ($verbose);
-    $bwflag = "--bwlimit=$bwlimit"
-	if ($bwlimit);
-
-    # Retry if the upload fails
-    for ($i = 0; $i < $syscfg{retries}; $i++) {
-	last
-	    if mysystem("rsync -e ssh --delete --partial --recursive -z $vflag $bwflag $uploaddir/ $userid\@$cfg{WPATH}/cache/$sessionid") == 0;
-	print "[isr] upload failed. Retrying...\n"
-	    if $verbose;
-    }
-    errexit("Upload failed. Aborting.")
-        if $i == $syscfg{retries};
-    mypause("Done with upload, ready to commit: hit y to continue");
-
-    # Return successful status
-    print("Upload completed, all updates have been sent to the server.\n")
-	if $verbose;
-}
-
-#
-# copy_dirtychunks - Build temp cache tree and populate it with dirty state
-#
-sub copy_dirtychunks () {
-    my $target;
-
-    #
-    # Build an empty temporary cache directory structure on the client
-    #
-    mysystem("rm -rf $uploaddir");
-    mktree("$uploaddir/hdk")
-	or errexit("Unable to make temporary directory $uploaddir/hdk");
-
-    #
-    # Create cfg tarball and encrypt it and the keyring
-    #
-    print("Compressing and encrypting virtual machine memory image...\n")
-	if $verbose;
-    encrypt_cfg("$parceldir/cfg", "$uploaddir/cfg.tgz.enc") == 0
-	or system_errexit("Unable to create cfg.tgz.enc.");
-    printf("Compressed size: %d MB\n", (stat("$uploaddir/cfg.tgz.enc")->size)/(1<<20))
-    	if $verbose;
-    encrypt_keyring("$parceldir/keyring", "$uploaddir/keyring.enc") == 0
-	or system_errexit("Unable to encrypt keyring.");
-    foreach $target ("cfg.tgz", "keyring") {
-	message(sprintf("Upload: $target.enc: %d", 
-			stat("$uploaddir/$target.enc")->size));
-    }
-
-    # 
-    # Copy any dirty hdk chunks to the temporary cache directory
-    #
-    print("Collecting modified disk state...\n")
-	if $verbose;
-    run_parcelkeeper("upload", "parcel dest hoard minsize log") == 0
-    	or errexit("Unable to copy chunks to temporary cache dir");
-}
-
-#
-# commit - Commit files that were copied to server-side cache by upload
-#
-sub commit () {
-    # Check the current version of the parcel for consistency
-    srun("checkparcel", "-p $parcel") == 0
-	or errexit("There is something wrong with the remote parcel. Aborting with no change to the remote parcel.");
-
-    #
-    # Trigger the server-side commit.
-    #
-    print("Checking uploaded cache dir before committing...\n");
-    srun("checkparcel", "-s $sessionid -p $parcel") == 0
-	or errexit("Something went wrong during upload.  Aborting with no change to the remote parcel.\n");
-    print("Committing updates on server...\n")
-	if $verbose;
-    message("Begin server side commit");
-    srun("commit", "-p $parcel -N $sessionid") == 0
-	or errexit("Server-side commit of parcel $userid/$parcel failed.");
-    message("End server side commit");
-
-    # Check the newly committed version for consistency
-    srun("checkparcel", "-p $parcel") == 0
-	 or errexit("Something went wrong during commit.  Remote parcel is inconsistent.");
-}
-
-#
-# clientcommit - Commit state on the client.  First, copy the keyring to
-#                prev-keyring.  Second, move the encrypted memory image and
-#                keyring into the hoard cache.  These actions ensure that the
-#                client remains consistent with the server-side last/.
-#
-sub clientcommit($) {
-    my $releasing = shift;
-
-    my $dirtyblocks = 0;
-    my $name;
-
-    print "Committing updates on client...\n"
-	if $verbose;
-
-    #
-    # Now that we have committed a new version, we can update the cached copy
-    # of the pristine keyring and memory image to match the server
-    #
-    if ($releasing) {
-	# There's no point in copying the keyring to prev-keyring if the
-	# whole directory tree is going to be removed.  SIGINT is blocked, and
-	# must remain blocked until the lock is released.
-	message("Client side commit - skipping copy of keyring");
-    } else {
-	message("Client side commit - start copying keyring");
-	copy("$parceldir/keyring", "$parceldir/prev-keyring")
-	    or unix_errexit("Unable to copy keyring to $parceldir/prev-keyring.");
-	message("Client side commit - finish copying keyring");
-    }
-
-    #
-    # Note that the upload cache is no longer correct
-    #
-    unlink($cdcache_file);
-
-    #
-    # Move the cfg.tgz.enc and keyring.enc files into the hoard cache
-    #
-    mktree("$hoarddir/img")
-	or errexit("Couldn't make directory $hoarddir/img");
-    rename("$uploaddir/cfg.tgz.enc", "$hoarddir/img/$cfg{UUID}.cfg");
-    rename("$uploaddir/keyring.enc", "$hoarddir/img/$cfg{UUID}.key");
-    message("Client side commit - moved memory image into hoard cache");
-    
-    #
-    # Note that the local cache is consistent with the server
-    #
-    touch($cleancache_file)
-        or unix_errexit("Unable to create $cleancache_file");
-    
-    #
-    # Remove the upload directory
-    #
-    message("Client side commit - start removing upload directory");
-    system("rm -rf $uploaddir");
-    message("Client side commit - finish removing upload directory");
 }
