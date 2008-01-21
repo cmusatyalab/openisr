@@ -132,6 +132,7 @@ sub need_not_parcel ();
 sub need_checked_out ();
 sub need_network ();
 sub need_remote_parcel ();
+sub need_credentials ();
 sub fcntl_lock ($$$);
 sub acquire_lock ($$$);
 sub release_lock ($);
@@ -512,6 +513,8 @@ elsif ($command eq "checkp") {
 }
 elsif ($command eq "ls") {
     need_network();
+    # listparcels() uses CHECK_AUTH, so there's no need for an explicit
+    # need_credentials() here
     listparcels();
 }
 elsif ($command eq "lshoard") {
@@ -539,6 +542,7 @@ elsif ($command eq "deauth") {
 elsif ($command eq "passwd") {
     need_not_parcel();
     need_network();
+    need_credentials();
     passwd();
 }
 elsif ($command eq "clean") {
@@ -1028,7 +1032,7 @@ sub listparcels () {
     # Run the remote ls program on the server.  Pass through server
     # errors without further comment.
     print "Parcels for $userid on server $server:\n";
-    srun("ls", $lsargs);
+    srun("ls", $lsargs, CHECK_AUTH => 1);
 }
 
 #
@@ -1496,9 +1500,22 @@ sub need_network () {
     }
 }
 
+#
+# Error out if the specified parcel does not exist
+#
 sub need_remote_parcel () {
     errexit("The remote parcel is not available.")
-        if srun("ls", "-p $parcel", OUTFILE => "/dev/null", REDIRECT_STDERR => 1);
+        if srun("ls", "-p $parcel", OUTFILE => "/dev/null", CHECK_AUTH => 1);
+}
+
+#
+# Error out if we are not authenticated to the ISR server.  This is normally
+# subsumed by need_remote_parcel() but is available separately for when
+# need_remote_parcel is not appropriate.
+#
+sub need_credentials () {
+    # Reasonably close to a no-op, used for the CHECK_AUTH side-effect
+    srun("ls", "", OUTFILE => "/dev/null", CHECK_AUTH => 1);
 }
 
 #####
@@ -1789,21 +1806,39 @@ sub srun ($$%) {
     my $args = shift;     # argument string
     my %opts = @_;        # key/value pairs giving optional arguments
     
+    my $tmpfile = "/tmp/auth.$$";
+    my $ret;
+    
     # Log the operation
     message("srun: $operation $args");
     
     # Redirect stdout to outfile if requested
     if (exists($opts{'OUTFILE'})) {
 	$args .= " > $opts{'OUTFILE'}";
-	
-	# Also redirect stderr if requested
-	if (exists($opts{'REDIRECT_STDERR'}) and $opts{'REDIRECT_STDERR'}) {
-	    $args .= " 2>&1";
-	}
+    }
+    
+    # If requested, make a special check for unauthenticated access and
+    # print a helpful error message.  This option also prevents stderr
+    # from going to the terminal.
+    if (exists($opts{'CHECK_AUTH'}) and $opts{'CHECK_AUTH'}) {
+	$args .= " 2> $tmpfile";
     }
 
     # Perform the operation on remote storage
-    return mysystem("ssh -o PasswordAuthentication=no -l $userid $server isr_runserv $operation $args");
+    $ret = mysystem("ssh -o PasswordAuthentication=no -l $userid $server isr_runserv $operation $args");
+    
+    # Check stderr for problems if necessary
+    if (exists($opts{'CHECK_AUTH'}) and $opts{'CHECK_AUTH'}) {
+	open(ST, "<", $tmpfile)
+	    or errexit("Couldn't open $tmpfile");
+	while (<ST>) {
+	    errexit("No credentials for $userid\@$server; have you run \"isr auth\"?")
+	        if /^Permission denied/;
+	}
+	close(ST);
+    }
+    
+    return $ret;
 }
 
 sub fcntl_lock ($$$) {
