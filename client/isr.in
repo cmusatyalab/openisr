@@ -928,7 +928,7 @@ sub sync ($) {
 
     # Retry if the put operation fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
-	if (mysystem("rsync -e ssh --partial -z $vflag $bwflag $logfile $userid\@$cfg{WPATH}/session.log.new") == 0) {
+	if (mysystem("rsync -e 'ssh -o PasswordAuthentication=no' --partial -z $vflag $bwflag $logfile $userid\@$cfg{WPATH}/session.log.new") == 0) {
 	    if (srun("catlog", "-p $parcel -f session.log.new") == 0) {
 		unlink($logfile);
 		last;
@@ -1377,7 +1377,7 @@ sub checkhoard () {
 #
 sub passwd () {
     print "Changing password for ISR userid $userid:\n";
-    mysystem("ssh -l $userid -t $server passwd") == 0
+    mysystem("ssh -o PasswordAuthentication=no -l $userid -t $server passwd") == 0
 	or errexit("Unable to change ISR password.");
 }
 
@@ -1678,7 +1678,7 @@ sub upload () {
     # Retry if the upload fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
 	last
-	    if mysystem("rsync -e ssh --delete --partial --recursive -z $vflag $bwflag $uploaddir/ $userid\@$cfg{WPATH}/cache/$sessionid") == 0;
+	    if mysystem("rsync -e 'ssh -o PasswordAuthentication=no' --delete --partial --recursive -z $vflag $bwflag $uploaddir/ $userid\@$cfg{WPATH}/cache/$sessionid") == 0;
 	print "[isr] upload failed. Retrying...\n"
 	    if $verbose;
     }
@@ -1803,7 +1803,7 @@ sub srun ($$%) {
     }
 
     # Perform the operation on remote storage
-    return mysystem("ssh -l $userid $server isr_runserv $operation $args");
+    return mysystem("ssh -o PasswordAuthentication=no -l $userid $server isr_runserv $operation $args");
 }
 
 sub fcntl_lock ($$$) {
