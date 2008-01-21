@@ -1789,22 +1789,21 @@ sub srun ($$%) {
     my $args = shift;     # argument string
     my %opts = @_;        # key/value pairs giving optional arguments
     
-    my $redirect = "";
-
     # Log the operation
     message("srun: $operation $args");
-
-    # Redirect stderr to outfile if requested
-    if (exists($opts{'REDIRECT_STDERR'}) and $opts{'REDIRECT_STDERR'}) {
-	$redirect = "2>&1";
+    
+    # Redirect stdout to outfile if requested
+    if (exists($opts{'OUTFILE'})) {
+	$args .= " > $opts{'OUTFILE'}";
+	
+	# Also redirect stderr if requested
+	if (exists($opts{'REDIRECT_STDERR'}) and $opts{'REDIRECT_STDERR'}) {
+	    $args .= " 2>&1";
+	}
     }
 
     # Perform the operation on remote storage
-    if (exists($opts{'OUTFILE'})) {
-	return mysystem("ssh -l $userid $server isr_runserv $operation $args > $opts{'OUTFILE'} $redirect");
-    } else {
-	return mysystem("ssh -l $userid $server isr_runserv $operation $args");
-    }
+    return mysystem("ssh -l $userid $server isr_runserv $operation $args");
 }
 
 sub fcntl_lock ($$$) {
