@@ -1,15 +1,16 @@
-This is the OpenISR (R) system, release 0.9-pre.  For more information on
+This is the OpenISR (R) system, release 0.9.  For more information on
 the OpenISR system and Internet Suspend/Resume (R), please visit our website at
 <http://isr.cmu.edu>.
 
 REQUIREMENTS
 ------------
 
+To run:
 - Linux kernel (versions 2.6.8 through 2.6.23 supported)
+- Development headers for your Linux kernel version
 - curl >= 7.12.3
 - Perl
 - OpenSSL
-- SQLite 3 library (but not the command-line utility)
 - OSSP uuid library
 - udev
 - ssh
@@ -20,12 +21,24 @@ REQUIREMENTS
 - VMware or VMware Player (other VMMs to follow)
 - An accessible OpenISR 0.9 server
 
+To build from a source tarball:
+- All of the above, plus:
+- Development headers for glibc, libcurl, OpenSSL, and the OSSP uuid library
+- pkg-config
+
+To build from the Git repository:
+- All of the above, plus:
+- Autoconf >= 2.59
+- Automake >= 1.10
+- libtool
+
 This release ships with an updated version of the ISR-3 server software.
 Future releases will include a completely new server implementation.
 
 INSTALLATION SUMMARY
 --------------------
 
+./autogen.sh      # Only if building from the Git repository
 ./configure --sysconfdir=/etc
 make
 make install
