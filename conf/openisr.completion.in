@@ -53,9 +53,18 @@ _isr_cur_user() {
 	[ -n "$ret" ] && echo "$ret"
 }
 
-_isr_parcel_keys() {
-	cat ~/.isr/*/parcel.cfg 2>/dev/null | grep "$1" | \
-			sed -re "s/^[^=]+= *//"
+_isr_checked_out() {
+	local file
+	for file in ~/.isr/*/parcel.cfg
+	do
+		[ -r $file ] || continue
+		awk -F '[ \t]*=[ \t]*' \
+				'$1 ~ /^SERVER$/ { S=$2 } 
+				$1 ~ /^USER$/ { U=$2 }
+				$1 ~ /^PARCEL$/ { P=$2 }
+				$1 ~ /^UUID$/ { UU=$2 }
+				END { print UU, S, U, P }' $file
+	done
 }
 
 _isr_query_hoard() {
@@ -63,8 +72,11 @@ _isr_query_hoard() {
 	!!LIBDIR!!/query ~/.isr/hoard/hoard.idx "$1"
 }
 
-_isr_checked_out() {
-	compgen -W "`_isr_parcel_keys PARCEL`" $1
+_isr_local_parcel() {
+	local ret
+	ret=`_isr_checked_out | awk "\\$2 == \"$1\" && \\$3 == \"$2\" \
+				{ print \\$4 }"`
+	compgen -W "$ret" $3
 }
 
 _isr_remote_parcel() {
@@ -105,14 +117,14 @@ _isr_hoard_uuids() {
 _isr_servers() {
 	local ret
 	ret=`_isr_query_hoard "SELECT server FROM parcels"`
-	ret=$ret$'\n'`_isr_parcel_keys SERVER`
+	ret=$ret$'\n'`_isr_checked_out | awk '{print $2}'`
 	compgen -W "$ret" $1
 }
 
 _isr_users() {
 	local ret
 	ret=`_isr_query_hoard 'SELECT user FROM parcels'`
-	ret=$ret$'\n'`_isr_parcel_keys USER`
+	ret=$ret$'\n'`_isr_checked_out | awk '{print $3}'`
 	compgen -W "$ret" $1
 }
 
@@ -211,8 +223,6 @@ _isr_subcommand_opts() {
 	fi
 }
 
-# XXX alt hostname/userid
-
 _isr() {
 	local cmd cur prev server user
 	cmd="${COMP_WORDS[1]}"
@@ -248,7 +258,7 @@ _isr() {
 	case $cmd in
 	ci|checkin|discard|stat|sync)
 		# Need local parcel
-		COMPREPLY=(`_isr_checked_out $cur`)
+		COMPREPLY=(`_isr_local_parcel $server $user $cur`)
 		;;
 	co|checkout|hoard|resume|ls|clean)
 		# Need local or remote parcel
@@ -257,7 +267,8 @@ _isr() {
 	rmhoard)
 		# Need UUID from hoard cache index or image dir, or
 		# the name of a checked-out parcel
-		COMPREPLY=(`_isr_hoard_uuids $cur` `_isr_checked_out $cur`)
+		COMPREPLY=(`_isr_hoard_uuids $cur` \
+					`_isr_local_parcel $server $user $cur`)
 		;;
 	checkp)
 		# Need local or remote parcel depending on options
@@ -265,7 +276,7 @@ _isr() {
 				`_isr_find_word --remote` != "-1" ] ; then
 			COMPREPLY=(`_isr_remote_parcel $server $user $cur`)
 		else
-			COMPREPLY=(`_isr_checked_out $cur`)
+			COMPREPLY=(`_isr_local_parcel $server $user $cur`)
 		fi
 		;;
 	esac
