@@ -22,6 +22,37 @@ _isr_find_word() {
 	echo -1
 }
 
+_isr_config_value() {
+	local ret file tmp
+	for file in !!SHAREDIR!!/config !!SYSCONFDIR!!/openisr.conf ~/.openisrrc
+	do
+		[ -r $file ] || continue
+		tmp=`awk -F '[ \t]*=[ \t]*' \
+				"\\$1 ~ /^[ \t]*$1$/ {print \\$2}" $file`
+		[ -n "$tmp" ] && ret="$tmp"
+	done
+	[ -n "$ret" ] && echo "$ret"
+}
+
+_isr_cur_server() {
+	local ret i
+	i=`_isr_find_word -s`
+	[ $i == -1 ] && i=`_isr_find_word --server`
+	[ $i != -1 ] && ret="${COMP_WORDS[$(($i + 1))]}"
+	[ -z "$ret" ] && ret=`_isr_config_value server`
+	[ -n "$ret" ] && echo "$ret"
+}
+
+_isr_cur_user() {
+	local ret i
+	i=`_isr_find_word -u`
+	[ $i == -1 ] && i=`_isr_find_word --user`
+	[ $i != -1 ] && ret="${COMP_WORDS[$(($i + 1))]}"
+	[ -z "$ret" ] && ret=`_isr_config_value userid`
+	[ -z "$ret" ] && ret="$USER"
+	[ -n "$ret" ] && echo "$ret"
+}
+
 _isr_parcel_keys() {
 	cat ~/.isr/*/parcel.cfg 2>/dev/null | grep "$1" | \
 			sed -re "s/^[^=]+= *//"
@@ -39,7 +70,7 @@ _isr_checked_out() {
 _isr_remote_parcel() {
 	local dir file
 	dir=~/.isr/completion
-	file=$dir/default
+	file=$dir/$1-$2
 	if [ ! -d $dir ] ; then
 		mkdir -p $dir 2>/dev/null || return
 	fi
@@ -47,7 +78,7 @@ _isr_remote_parcel() {
 	# semi-sensitive information we leave lying around.
 	find $dir -mmin +30 -exec rm {} \; 2>/dev/null
 	if [ ! -f $file ] ; then
-		if isr ls > $file.$$ 2>/dev/null ; then
+		if isr ls -s $1 -u $2 > $file.$$ 2>/dev/null ; then
 			sed -re "s/.*\[[0-9]+m//" $file.$$ | \
 				awk '!/Parcels for/ {print $1}' > $file
 		else
@@ -56,7 +87,7 @@ _isr_remote_parcel() {
 		fi
 		rm -f $file.$$
 	fi
-	compgen -W "`cat $file 2>/dev/null`" $1
+	compgen -W "`cat $file 2>/dev/null`" $3
 }
 
 _isr_hoard_uuids() {
@@ -183,7 +214,7 @@ _isr_subcommand_opts() {
 # XXX alt hostname/userid
 
 _isr() {
-	local cmd cur prev
+	local cmd cur prev server user
 	cmd="${COMP_WORDS[1]}"
 	cur="$2"
 	prev="$3"
@@ -210,6 +241,10 @@ _isr() {
 	# Make sure it's appropriate to offer a parcel parameter here
 	_isr_offer_parcel_parameter $prev || return
 
+	# Determine the server and userid to filter the parcel list against
+	server=`_isr_cur_server`
+	user=`_isr_cur_user`
+
 	case $cmd in
 	ci|checkin|discard|stat|sync)
 		# Need local parcel
@@ -217,7 +252,7 @@ _isr() {
 		;;
 	co|checkout|hoard|resume|ls|clean)
 		# Need local or remote parcel
-		COMPREPLY=(`_isr_remote_parcel $cur`)
+		COMPREPLY=(`_isr_remote_parcel $server $user $cur`)
 		;;
 	rmhoard)
 		# Need UUID from hoard cache index or image dir, or
@@ -228,7 +263,7 @@ _isr() {
 		# Need local or remote parcel depending on options
 		if [ `_isr_find_word -e` != "-1" -o \
 				`_isr_find_word --remote` != "-1" ] ; then
-			COMPREPLY=(`_isr_remote_parcel $cur`)
+			COMPREPLY=(`_isr_remote_parcel $server $user $cur`)
 		else
 			COMPREPLY=(`_isr_checked_out $cur`)
 		fi
