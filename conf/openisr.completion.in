@@ -37,19 +37,26 @@ _isr_checked_out() {
 }
 
 _isr_remote_parcel() {
-	local dir
+	local dir file
 	dir=~/.isr/completion
+	file=$dir/default
 	if [ ! -d $dir ] ; then
 		mkdir -p $dir 2>/dev/null || return
 	fi
 	# Proactively remove stale caches to cut down on the amount of
 	# semi-sensitive information we leave lying around.
 	find $dir -mmin +30 -exec rm {} \; 2>/dev/null
-	if [ ! -f $dir/default ] ; then
-		isr ls | sed -re "s/.*\[[0-9]+m//" | \
-				awk '!/Parcels for/ {print $1}' > $dir/default
+	if [ ! -f $file ] ; then
+		if isr ls > $file.$$ 2>/dev/null ; then
+			sed -re "s/.*\[[0-9]+m//" $file.$$ | \
+				awk '!/Parcels for/ {print $1}' > $file
+		else
+			# "isr ls" returned an error.  Cache a negative result.
+			>$file
+		fi
+		rm -f $file.$$
 	fi
-	compgen -W "`cat $dir/default 2>/dev/null`" $1
+	compgen -W "`cat $file 2>/dev/null`" $1
 }
 
 _isr_hoard_uuids() {
