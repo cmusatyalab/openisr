@@ -101,6 +101,7 @@ sub sync_parcel_name_from_uuid ();
 sub parse_cfgfile ($$);
 sub parse_parcelcfg ($);
 sub build_cache ();
+sub purge_completion_cache ();
 sub is_fully_hoarded ();
 sub check_for_nexus ();
 sub check_for_old_isrdir ();
@@ -176,6 +177,7 @@ my $uuid;            # Parcel UUID
 my $sessionid = 0;   # Unique session id (nonce from lock operation)
 my $parceldir;       # Path to parcel directory (named after its UUID)
 my $uploaddir;       # Path to dir to be rsynced to the server at upload
+my $completiondir;   # Path to shell completion cache directory
 my $hoarddir;        # Path to hoard cache directory
 my $imgbase;         # Path to hoard image w/o the file extension (.cfg, .key)
 my $logfile;         # Path to the log file for this parcel
@@ -375,6 +377,7 @@ if (valid_uuid($ARGV[1])) {
 # Set other directory paths that we'll need, and read parcel.cfg if we
 # have it.
 #
+$completiondir = "$isrdir/completion";
 $hoarddir = "$isrdir/hoard";
 if ($uuid) {
     set_parcel_globals();
@@ -417,6 +420,11 @@ message("Starting: OpenISR " . ISRVERSION . ", revision " . RCS_REVISION);
 message("Command line: @ARGV");
 message("Session $sessionid on " . hostname());
 message("Running $command");
+
+#
+# Clean up the completion cache, if present.
+#
+purge_completion_cache();
 
 #
 # Now process the ISR command.
@@ -1041,14 +1049,25 @@ sub listparcels () {
 sub authenticate () {
     mysystem("ssh -A -l $userid $server ssh-add") == 0
 	or system_errexit("Unable to run ssh-add on the server ($server)");
+    # Remove stale completion cache, if any
+    unlink("$completiondir/$server-$userid");
 }
 
 #
 # deauthenticate - Remove all SSH keys
 #
 sub deauthenticate () {
+    my $file;
+    
     mysystem("ssh-add -D") == 0
 	or system_errexit("Unable to run \"ssh-add -D\" on local machine");
+    # Remove all completion caches, since they are now stale
+    opendir(COMP, $completiondir)
+        or return;
+    while ($file = readdir(COMP)) {
+	unlink("$completiondir/$file");
+    }
+    closedir(COMP);
 }
 
 #
@@ -2198,6 +2217,25 @@ sub build_cache () {
     }
     
     return 0;
+}
+
+#
+# purge_completion_cache - Remove files in $completiondir older than 30 minutes
+#
+sub purge_completion_cache () {
+    my $file;
+    my $stat;
+    my $threshold = time() - (30 * 60);
+    
+    opendir(COMP, $completiondir)
+        or return;
+    while ($file = readdir(COMP)) {
+	$stat = stat("$completiondir/$file");
+	next if !$stat;
+	unlink("$completiondir/$file")
+	    if $stat->mtime < $threshold;
+    }
+    closedir(COMP);
 }
 
 #
