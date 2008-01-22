@@ -2254,7 +2254,7 @@ sub check_for_old_isrdir () {
     opendir(IDIR, $isrdir)
         or errexit("Couldn't read $isrdir");
     while ($ientry = readdir(IDIR)) {
-        next if valid_uuid($ientry) or $ientry =~ /^hoard|locks|logs$/;
+        next if valid_uuid($ientry);
         next if ! -d "$isrdir/$ientry" or $ientry =~ /^\.{1,2}$/;
         opendir(UDIR, "$isrdir/$ientry")
             or errexit("Couldn't read $isrdir/$ientry");
@@ -2276,7 +2276,7 @@ sub check_for_old_isrdir () {
                     system("rm -rf $isrdir/$ientry/$uentry") == 0
                         or system_errexit("Couldn't remove $isrdir/$ientry/$uentry");
                 }
-            } else {
+            } elsif (-e "$isrdir/$ientry/$uentry/parcel.cfg") {
                 err("Found old-style checkout ~/.isr/$ientry/$uentry, ignoring");
             }
         }
