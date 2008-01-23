@@ -42,6 +42,7 @@ INSTALLATION SUMMARY
 ./configure --sysconfdir=/etc
 make
 make install
+Follow the directions in "POST-INSTALLATION", below
 
 CONFIGURE OPTIONS
 -----------------
@@ -133,10 +134,11 @@ source you chose.  libvdisk will always be installed in the appropriate
 --disable-modules options are both passed to configure, files will be
 installed only in the configured directories.
 
-By default, the OpenISR init script and udev rules are installed in
-subdirectories of $prefix/etc.  However, most systems only look for these
-files in subdirectories of /etc.  To solve this problem, you can pass
-"--sysconfdir=/etc" to configure, or you can move the files into /etc by hand.
+By default, the OpenISR init script, udev rules, and bash completion rules
+are installed in subdirectories of $prefix/etc.  However, most systems only
+look for these files in subdirectories of /etc.  To solve this problem, you
+can pass "--sysconfdir=/etc" to configure, or you can move the files into
+/etc by hand.
 
 During the build process, several pieces of the OpenISR system are configured
 to expect helper programs and data files in the locations specified to
