@@ -2,7 +2,7 @@
 # Does not use newer udev syntax for compatibility with old versions
 
 SUBSYSTEM=="misc", KERNEL=="openisrctl", \
-		MODE="0666"
+		GROUP="!!ISRGROUP!!", MODE="0660"
 
 # There's no good way to read a sysfs attribute from a variably-named
 # directory other than the one associated with the current device
@@ -20,3 +20,7 @@ SUBSYSTEM=="block", KERNEL=="openisr[a-z]", \
 SUBSYSTEM=="block", KERNEL=="openisr[a-z][1-9]*", \
 		PROGRAM="/bin/cat /sys/class/openisr/%P/ident", \
 		SYMLINK+="disk/by-id/openisr-%c-part%n"
+
+# Override permissions on loop device
+SUBSYSTEM=="block", KERNEL=="loop[0-9]*", \
+		GROUP="!!ISRGROUP!!", MODE="0660"

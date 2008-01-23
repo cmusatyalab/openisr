@@ -50,6 +50,10 @@ CONFIGURE OPTIONS
 Aside from the standard options, the OpenISR configure script supports the
 following command line options:
 
+--with-group=GROUP
+	Overrides the name of the group which will be permitted to access
+	the OpenISR device nodes.  The default is "isrusers".
+
 --with-kernel=DIR
 --with-ssl=DIR
 --with-zlib=DIR
@@ -156,11 +160,12 @@ additional steps to complete the installation:
 
 - Run "ldconfig; depmod" as root
 
+- Create the "isrusers" group (or the group specified using --with-group, if
+different) and add to it the users who should be able to run the OpenISR
+client
+
 - Configure your system to start the "openisr" init script at boot, probably
 in the "S" runlevel
-
-- Ensure that any users who will run OpenISR have read and write access to
-the /dev/loopN devices
 
 - Run "/etc/init.d/openisr start" to load the kernel modules
 

@@ -3,7 +3,7 @@ udevrulesdir = ${udevdir}/rules.d
 completiondir = ${sysconfdir}/bash_completion.d
 
 dist_pkgdata_DATA = config
-dist_udev_DATA = openisr.rules
+udev_DATA = openisr.rules
 initexec_SCRIPTS = openisr.init
 completion_DATA = openisr.completion
 
@@ -11,7 +11,7 @@ completion_DATA = openisr.completion
 dist_pkgsysconf_DATA = 
 dist_udevrules_DATA = 
 
-GEN = openisr.init openisr.completion
+GEN = openisr.init openisr.rules openisr.completion
 CLEANFILES = $(GEN)
 EXTRA_DIST = $(GEN:=.in) magic
 

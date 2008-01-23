@@ -43,6 +43,9 @@ AC_ARG_WITH([kbuild-wrapper],
 			[AS_HELP_STRING([--with-kbuild-wrapper={none|debian|dkms}],
 			[for use by packaging scripts only])],,
 			[with_kbuild_wrapper=none])
+AC_ARG_WITH([group], [AS_HELP_STRING([--with-group=GROUP],
+			[group for device node access [isrusers]])],,
+			[with_group=isrusers])
 
 PROCESS_ENABLE_VAR([$enable_client], [WANT_CLIENT],
 			[whether we should build the client])
@@ -54,6 +57,12 @@ PROCESS_ENABLE_VAR([$enable_server], [WANT_SERVER],
 			[whether we should build the server])
 AM_CONDITIONAL([WANT_COMMON],
 			[test z$enable_client = zyes -o z$enable_server = zyes])
+
+if test z$enable_client = zyes ; then
+	AC_MSG_CHECKING([group for OpenISR device nodes])
+	AC_MSG_RESULT([$with_group])
+	AC_SUBST([ISRGROUP], [$with_group])
+fi
 
 if test z$enable_client = zyes -o z$enable_modules = zyes ; then
 	AC_MSG_CHECKING([how to build kernel modules])
