@@ -7,6 +7,19 @@ if [ "$1" = "configure" ]; then
 fi
 # End automatically added section
 
+GROUP=isrusers
+GID=$(grep ${GROUP} /etc/group | cut -d ':' -f 3)
+
+if [ -z "$GID" ]; then
+    /usr/sbin/addgroup --system ${GROUP}
+    if [ $? -ne 0 ]; then
+        echo >&2 "Error: failed to add the group ${GROUP}."
+        exit 4
+    fi
+else
+    echo >&2 "openisr: Using the existing group \"$GROUP\" (gid $GID) for device nodes."
+fi
+
 update-rc.d openisr start 20 S .
 
 if [ -x /sbin/udevcontrol ]; then
