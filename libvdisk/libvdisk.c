@@ -366,9 +366,9 @@ int dup2(int oldfd, int newfd)
 
 int fcntl(int fd, int cmd, ...)
 {
-	unsigned arg;
+	unsigned long arg;
 	int ret, err;
-	get_last_arg(cmd, unsigned, arg);
+	get_last_arg(cmd, unsigned long, arg);
 	ret=fcntl_real(fd, cmd, arg);
 	err=errno;
 	debug("fcntl %d on %d => %d", cmd, fd, ret);
