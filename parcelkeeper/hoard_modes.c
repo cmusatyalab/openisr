@@ -58,7 +58,6 @@ bad:
 	return PK_IOERR;
 }
 
-/* XXX SIGINT */
 int hoard(void)
 {
 	struct query *qry;

@@ -23,6 +23,7 @@
 #define SLOW_THRESHOLD_MS 200
 #define ERRBUFSZ 256
 #define MAX_WAIT_USEC 10000
+#define PROGRESS_HANDLER_INTERVAL 100000
 
 struct query {
 	sqlite3_stmt *stmt;
@@ -174,6 +175,12 @@ pk_err_t query(struct query **new_qry, sqlite3 *db, char *query, char *fmt,
 
 pk_err_t query_next(struct query *qry)
 {
+	if (pending_signal()) {
+		/* Try to stop the query.  If this succeeds, the transaction
+		   will be automatically rolled back.  Often, though, the
+		   attempt will not succeed. */
+		sqlite3_interrupt(sqlite3_db_handle(qry->stmt));
+	}
 	result=sqlite3_step(qry->stmt);
 	/* Collapse DONE into OK, since they're semantically equivalent and
 	   it simplifies error checking */
@@ -325,6 +332,12 @@ static int busy_handler(void *db, int count)
 	return 1;
 }
 
+static int progress_handler(void *db)
+{
+	(void)db;  /* silence warning */
+	return pending_signal();
+}
+
 pk_err_t sql_setup_conn(sqlite3 *db)
 {
 	if (sqlite3_extended_result_codes(db, 1)) {
@@ -336,6 +349,10 @@ pk_err_t sql_setup_conn(sqlite3 *db)
 		pk_log(LOG_ERROR, "Couldn't set busy handler for database");
 		return PK_CALLFAIL;
 	}
+	/* Every so often during long-running queries, check to see if a
+	   signal is pending */
+	sqlite3_progress_handler(db, PROGRESS_HANDLER_INTERVAL,
+				progress_handler, db);
 	return PK_SUCCESS;
 }
 
@@ -403,7 +420,10 @@ pk_err_t _rollback(sqlite3 *db, const char *caller)
 	pk_err_t ret=PK_SUCCESS;
 
 again:
-	if (query(NULL, db, "ROLLBACK", NULL)) {
+	/* SQLITE_INTERRUPT implies that a rollback has already occurred.
+	   Try anyway, just to be safe, but don't report an error if we
+	   fail. */
+	if (query(NULL, db, "ROLLBACK", NULL) && saved != SQLITE_INTERRUPT) {
 		if (query_busy())
 			goto again;
 		pk_log_sqlerr("Couldn't roll back transaction on behalf of "
