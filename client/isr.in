@@ -52,6 +52,8 @@ use File::Basename;
 use File::Path;
 use File::Copy;
 use File::stat;
+use File::Spec;
+use File::Temp qw(tempfile tempdir);
 use Term::ANSIColor qw(:constants);
 use Time::HiRes qw(gettimeofday);
 use POSIX qw(strftime);
@@ -119,6 +121,8 @@ sub mysystem ($);
 sub sys_sync ();
 sub mktree ($);
 sub touch ($);
+sub mktempfile ();
+sub mktempdir ();
 sub err ($);
 sub unix_err ($);
 sub errexit ($);
@@ -190,6 +194,7 @@ my $no_shutdown = 0;# Set by forked children so the child won't run END
 my $kill_pk = 0;    # Set by run command, tells END handler to kill Parcelkeeper
 my $do_sync = 0;    # Set when the END handler should call sys_sync()
 my @locks;          # Names and FDs of open lock files
+my @temps;          # Paths to temporary files and directories we've created
 
 #
 # Write-once global variable: This hash contains the key/value pairs from
@@ -224,6 +229,7 @@ sub exit_handler ($) {
     my $status = shift;
     
     my $pid;
+    my $obj;
     
     return if $no_shutdown;
     
@@ -238,10 +244,14 @@ sub exit_handler ($) {
     sys_sync()
         if $do_sync;
     
-    # Remove temporary files
-    system("rm -f /tmp/*.$$");
-    system("rm -rf $isrdir/parceltmp-$$")
-	if $isrdir;
+    # Remove temporary files and directories
+    foreach $obj (@temps) {
+	if (-d $obj) {
+	    system("rm -rf $obj");
+	} else {
+	    unlink($obj);
+	}
+    }
     
     message("Exit: $status");
     release_locks();
@@ -1093,13 +1103,9 @@ sub hoard ($) {
 	    if $verbose;
 	
 	# Assign a temporary parcel directory
-	$parceldir = "$isrdir/parceltmp-$$";
-	system("rm -rf $parceldir") == 0
-	    or errexit("Couldn't remove old temp directory $parceldir");
+	$parceldir = mktempdir();
     
 	# Fetch metadata from the server
-	mktree($parceldir)
-	    or errexit("Unable to make $parceldir");
 	mktree("$hoarddir/img")
 	    or errexit("Unable to make $hoarddir/img");
 	srun("getconfig", "-p $parcel", OUTFILE => "$parceldir/parcel.cfg") == 0
@@ -1825,7 +1831,7 @@ sub srun ($$%) {
     my $args = shift;     # argument string
     my %opts = @_;        # key/value pairs giving optional arguments
     
-    my $tmpfile = "/tmp/auth.$$";
+    my $tmpfile;
     my $ret;
     
     # Log the operation
@@ -1840,6 +1846,7 @@ sub srun ($$%) {
     # print a helpful error message.  This option also prevents stderr
     # from going to the terminal.
     if (exists($opts{'CHECK_AUTH'}) and $opts{'CHECK_AUTH'}) {
+	$tmpfile = mktempfile();
 	$args .= " 2> $tmpfile";
     }
 
@@ -2347,15 +2354,13 @@ sub fetch_parcel_file ($$$$$) {
     my $i;
     my %map;
     
-    $tmpfile = "/tmp/stat.$$";
+    $tmpfile = mktempfile();
     if (srun("stat", "-f $userid/$parcel/last/$remote_name",
 	     OUTFILE => $tmpfile) != 0) {
-	unlink($tmpfile);
 	err("Unable to stat $remote_name file on server");
 	return -1;
     }
     parse_cfgfile($tmpfile, \%map);
-    unlink($tmpfile);
     $remote_size = $map{SIZE};
     $remote_hash = $map{SHA1};
 
@@ -2595,6 +2600,38 @@ sub touch ($) {
         or return 0;
     close(FLAG);
     return 1;
+}
+
+#
+# mktempfile - Create a unique temporary file and return its name.  The file
+#              will be automatically removed at exit.
+#
+sub mktempfile () {
+    my $fh;
+    my $file;
+    
+    # We can't use UNLINK because it doesn't run in the SIGINT path
+    ($fh, $file) = tempfile("isr-XXXXXXXX", DIR => File::Spec->tmpdir())
+        or errexit("Couldn't create temporary file");
+    close $fh;
+    # Racy, but that's OK
+    push @temps, $file;
+    return $file;
+}
+
+#
+# mktempdir - Create a unique temporary directory and return its name.  The
+#             directory will be automatically removed at exit.
+#
+sub mktempdir () {
+    my $dir;
+    
+    # We can't use CLEANUP because it doesn't run in the SIGINT path
+    $dir = tempdir("isr-XXXXXXXX", TMPDIR => 1)
+        or errexit("Couldn't create temporary directory");
+    # Racy, but that's OK
+    push @temps, $dir;
+    return $dir;
 }
 
 ######
