@@ -154,7 +154,7 @@ $errors = 0;
 # Variables for the current version
 $currdir = "$parceldir/" . sprintf("%06d", $currver);
 $currkeyring_enc = "$currdir/keyring.enc";
-$currkeyring = "/tmp/keyring-curr.$$";
+$currkeyring = mktempfile();
 $parcelcfg = get_parcelcfg_path($username, $parcelname);
 
 # Variables for the predecessor version (if any)
@@ -168,7 +168,7 @@ if ($precommit) {
     $preddir = "$parceldir/" . sprintf("%06d", $predver);
 }
 $predkeyring_enc = "$preddir/keyring.enc";
-$predkeyring = "/tmp/keyring-pred.$$";
+$predkeyring = mktempfile();
 
 #
 # Make sure that the other files we will need are available
@@ -203,9 +203,6 @@ else {
 }
 
 $keyroot = get_value($parcelcfg, "KEYROOT");
-
-# Make sure the decrypted files in /tmp are not world-readable
-umask(0077);
 
 ($rh, $fd) = keyroot_pipe($keyroot);
 system("openssl enc -d -aes-128-cbc -in $currkeyring_enc -out $currkeyring -pass fd:$fd -salt") == 0
@@ -261,11 +258,6 @@ if (-e $preddir) {
     $? == 0
 	or unix_errexit("Keyring comparison failed");
     
-    #
-    # Get rid of the unencrypted key rings, which are no longer needed
-    #
-    unlink($currkeyring, $predkeyring);
-
     # 
     # Check that the blocks in the predecessor correspond to the differing
     # entries in the keyring
@@ -285,11 +277,6 @@ if (-e $preddir) {
 	    $errors++;
 	}
     }
-} else {
-    #
-    # Get rid of the unencrypted keyring
-    #
-    unlink($currkeyring);
 }
 
 #

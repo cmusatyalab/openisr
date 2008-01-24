@@ -18,9 +18,14 @@
 package Server;
 use POSIX;
 use Sys::Hostname;
+use File::Temp qw/tempfile/;
+use File::Spec;
 
 # Maximum nonce value
 use constant MAXNONCE => 1000000000;
+
+# Temporary files to be deleted at shutdown
+my @tmpfiles;
 
 ###########
 # Functions
@@ -39,6 +44,7 @@ require Exporter;
 	     get_parcelcfg_path
 	     get_numdirs
 	     keyroot_pipe
+	     mktempfile
 	     );
 
 #
@@ -211,6 +217,45 @@ sub keyroot_pipe {
     # We can't just return fileno($rh) because $rh would drop out of scope
     return ($rh, fileno($rh));
 }
+
+#
+# mktempfile - Create a unique temporary file and return its name.  The file
+#              will be automatically removed at exit.
+#
+sub mktempfile {
+    my $fh;
+    my $file;
+    
+    # We can't use UNLINK because it doesn't run in the SIGINT path
+    ($fh, $file) = tempfile("isr-XXXXXXXX", DIR => File::Spec->tmpdir())
+        or errexit("Couldn't create temporary file");
+    close $fh;
+    # Racy, but that's OK
+    push @tmpfiles, $file;
+    return $file;
+}
+
+###################
+# Shutdown handling
+###################
+
+sub remove_tmpfiles {
+    my $file;
+    
+    foreach $file (@tmpfiles) {
+	unlink($file);
+    }
+}
+
+END {
+    remove_tmpfiles();
+}
+
+$SIG{"INT"} = sub {
+    remove_tmpfiles();
+    $SIG{"INT"} = 'DEFAULT';
+    kill("INT", $$);
+};
 
 # Every module must end with a 1; 
 1;

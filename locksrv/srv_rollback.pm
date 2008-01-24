@@ -61,7 +61,6 @@ my $reason;
 my $file;
 my $rh;
 my $fd;
-my $umask;
 
 # Arrays and list
 my @filelist = ();
@@ -165,19 +164,16 @@ $keyroot = get_value($parcelcfg, "KEYROOT");
 print "Decrypting and comparing target and last keyrings.\n"
     if $verbose;
 
-$targetkeyring = "/tmp/keyring-target.$$";
-$lastkeyring = "/tmp/keyring-last.$$";
+$targetkeyring = mktempfile();
+$lastkeyring = mktempfile();
 
 # Decrypt the keyrings
-unlink($targetkeyring, $lastkeyring);
-$umask = umask(0077);
 ($rh, $fd) = keyroot_pipe($keyroot);
 system("openssl enc -d -aes-128-cbc -in $targetdir/keyring.enc -out $targetkeyring -pass fd:$fd -salt") == 0
     or system_errexit("Unable to decode $targetdir/keyring.enc");
 ($rh, $fd) = keyroot_pipe($keyroot);
 system("openssl enc -d -aes-128-cbc -in $lastdir/keyring.enc -out $lastkeyring -pass fd:$fd -salt") == 0
     or system_errexit("Unable to decode $lastdir/keyring.enc");
-umask($umask);
 
 # Compare the keyrings
 open(IN, "-|", LIBDIR . "/query", "-a", "last:$lastkeyring", $targetkeyring, "SELECT main.keys.chunk FROM main.keys JOIN last.keys ON main.keys.chunk == last.keys.chunk WHERE main.keys.tag != last.keys.tag")
@@ -189,9 +185,6 @@ while ($chunk = <IN>) {
 close(IN);
 $? == 0
     or unix_errexit("Keyring query failed");
-
-# Remove the decrypted keyrings
-unlink($targetkeyring, $lastkeyring);
 
 #
 # Create the cache directory where we'll be writing our updates
@@ -322,12 +315,11 @@ sub usage
 }
 
 
-#############################################################
-# END - This block of code executes when the program terminates 
-# for any reason, either by normal exit or an uncaught signal.
-#############################################################
+################################################################
+# END - This block of code executes when the program terminates,
+#       unless it is dying on a signal.
+################################################################
 END {
-
     print("Cleaning up.\n")
 	if $verbose;
 

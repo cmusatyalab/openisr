@@ -763,6 +763,8 @@ sub makeparcel ($$$$) {
 
     my $chunksize = CHUNKSIZE;
     my $chunksperdir = CHUNKSPERDIR;
+    my $tmp1 = mktempfile();
+    my $tmp2 = mktempfile();
 
     # Create new content directory for this user and parcel
     ($parceldir, $parcelcfg) = init_parceldir($userid, $parcel);
@@ -787,23 +789,22 @@ sub makeparcel ($$$$) {
     # Generate a single, zeroed chunk
     print "Generating chunk directories...\n";
     system("dd if=/dev/zero bs=$chunksize count=1 2> /dev/null| " .
-	            LIBDIR . "/zlib > /tmp/chunk.$$") == 0
+	            LIBDIR . "/zlib > $tmp1") == 0
         or errexit("Unable to generate zeroed chunk");
-    $key = `openssl sha1 < /tmp/chunk.$$`
+    $key = `openssl sha1 < $tmp1`
         or errexit("Unable to generate key");
     chomp $key;
-    system("openssl enc -aes-128-cbc -in /tmp/chunk.$$ -out /tmp/chunk2.$$ " .
-	            "-nosalt -iv 0 -K $key") == 0
+    system("openssl enc -aes-128-cbc -in $tmp1 -out $tmp2 -nosalt -iv 0 " .
+	            "-K $key") == 0
         or errexit("Unable to encrypt chunk");
-    $tag = `openssl sha1 < /tmp/chunk2.$$`
+    $tag = `openssl sha1 < $tmp2`
         or errexit("Unable to generate tag");
     chomp $tag;
-    open(FD, "/tmp/chunk2.$$")
+    open(FD, $tmp2)
         or errexit("Unable to read encrypted chunk");
     read(FD, $data, $chunksize)
         or errexit("Unable to read encrypted chunk data");
     close(FD);
-    unlink("/tmp/chunk.$$", "/tmp/chunk2.$$");
     
     # Generate the chunk tree
     mkdir($parcelverdir)
