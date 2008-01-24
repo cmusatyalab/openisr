@@ -33,7 +33,7 @@ static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 #error This code uses a different interface version than the one defined in nexus.h
 #endif
 
-static void signal_handler(int sig)
+static void nexus_signal_handler(int sig)
 {
 	char c=sig;
 	/* Race-free method of catching signals */
@@ -135,7 +135,6 @@ pk_err_t nexus_init(void)
 {
 	struct nexus_setup setup;
 	pk_err_t ret;
-	int i;
 	unsigned u;
 	char revision[64];
 	char protocol[8];
@@ -190,22 +189,15 @@ pk_err_t nexus_init(void)
 		pk_log(LOG_ERROR, "couldn't set pipe nonblocking");
 		return PK_CALLFAIL;
 	}
-	/* Register signal handler */
-	for (i=0; caught_signals[i] != 0; i++) {
-		if (set_signal_handler(caught_signals[i], signal_handler)) {
-			pk_log(LOG_ERROR, "unable to register default "
-						"signal handler for signal %d",
-						caught_signals[i]);
-			return PK_CALLFAIL;
-		}
-	}
-	/* Ignore signals that don't make sense for us */
-	for (i=0; ignored_signals[i] != 0; i++) {
-		if (set_signal_handler(ignored_signals[i], SIG_IGN)) {
-			pk_log(LOG_ERROR, "unable to ignore signal %d",
-						ignored_signals[i]);
-			return PK_CALLFAIL;
-		}
+	/* Register pipe-based signal handler */
+	ret=setup_signal_handlers(nexus_signal_handler, caught_signals,
+				ignored_signals);
+	if (ret)
+		return ret;
+	if (pending_signal()) {
+		/* We already got a signal under the generic signal-handling
+		   system.  Exit. */
+		return PK_INTERRUPT;
 	}
 
 	/* Open the device.  O_NONBLOCK ensures we never block on a read(), but

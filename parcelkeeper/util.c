@@ -11,6 +11,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -191,6 +192,8 @@ char *pk_strerror(pk_err_t err)
 		return "Object busy";
 	case PK_SQLERR:
 		return "SQL error";
+	case PK_INTERRUPT:
+		return "Interrupted";
 	}
 	return "(Unknown)";
 }
@@ -201,6 +204,50 @@ int set_signal_handler(int sig, void (*handler)(int sig))
 	sa.sa_handler=handler;
 	sa.sa_flags=SA_RESTART;
 	return sigaction(sig, &sa, NULL);
+}
+
+pk_err_t setup_signal_handlers(void (*caught_handler)(int sig),
+			const int *caught_signals, const int *ignored_signals)
+{
+	int i;
+
+	if (caught_signals != NULL) {
+		for (i=0; caught_signals[i] != 0; i++) {
+			if (set_signal_handler(caught_signals[i],
+						caught_handler)) {
+				pk_log(LOG_ERROR, "unable to register signal "
+						"handler for signal %d",
+						caught_signals[i]);
+				return PK_CALLFAIL;
+			}
+		}
+	}
+	if (ignored_signals != NULL) {
+		for (i=0; ignored_signals[i] != 0; i++) {
+			if (set_signal_handler(ignored_signals[i], SIG_IGN)) {
+				pk_log(LOG_ERROR, "unable to ignore signal %d",
+						ignored_signals[i]);
+				return PK_CALLFAIL;
+			}
+		}
+	}
+	return PK_SUCCESS;
+}
+
+void generic_signal_handler(int sig)
+{
+	state.signal=sig;
+}
+
+int pending_signal(void)
+{
+	static int warned;
+
+	if (state.signal && !warned) {
+		warned=1;
+		pk_log(LOG_INFO, "Interrupt");
+	}
+	return state.signal ? 1 : 0;
 }
 
 void print_progress_chunks(unsigned chunks, unsigned maxchunks)
@@ -354,6 +401,7 @@ pk_err_t fork_and_wait(int *status_fd)
 	int fds[2];
 	pid_t pid;
 	char ret=1;
+	int status;
 
 	/* Make sure the child isn't killed if the parent dies */
 	if (set_signal_handler(SIGPIPE, SIG_IGN)) {
@@ -372,10 +420,19 @@ pk_err_t fork_and_wait(int *status_fd)
 	} else if (pid) {
 		/* Parent */
 		close(fds[1]);
-		if (read(fds[0], &ret, sizeof(ret)) == 0)
+		if (read(fds[0], &ret, sizeof(ret)) == 0) {
 			exit(0);
-		else
+		} else {
+			if (waitpid(pid, &status, 0) == -1)
+				exit(ret);
+			if (WIFEXITED(status))
+				exit(WEXITSTATUS(status));
+			if (WIFSIGNALED(status)) {
+				set_signal_handler(WTERMSIG(status), SIG_DFL);
+				raise(WTERMSIG(status));
+			}
 			exit(ret);
+		}
 	} else {
 		/* Child */
 		close(fds[0]);

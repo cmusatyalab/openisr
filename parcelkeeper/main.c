@@ -10,6 +10,7 @@
  */
 
 #include <unistd.h>
+#include <signal.h>
 #include "defs.h"
 
 struct pk_config config = {
@@ -20,11 +21,15 @@ struct pk_config config = {
 struct pk_parcel parcel;
 struct pk_state state;
 
+static const int ignored_signals[]={SIGUSR1, SIGUSR2, 0};
+static const int caught_signals[]={SIGINT, SIGTERM, SIGHUP, 0};
+
 int main(int argc, char **argv)
 {
 	enum mode mode;
 	int completion_fd=-1;
 	char ret=1;
+	int sig;
 	int have_sql=0;
 	int have_cache=0;
 	int have_hoard=0;
@@ -32,6 +37,13 @@ int main(int argc, char **argv)
 	int have_nexus=0;
 	int have_lock=0;
 	pk_err_t err;
+
+	if (setup_signal_handlers(generic_signal_handler, caught_signals,
+				ignored_signals)) {
+		/* Logging isn't up yet */
+		printf("Couldn't set up signal handlers\n");
+		return 1;
+	}
 
 	mode=parse_cmdline(argc, argv);
 	/* Trivial modes (usage, version) have already been handled by
@@ -94,6 +106,9 @@ int main(int argc, char **argv)
 			have_nexus=1;
 	}
 
+	if (pending_signal())
+		goto shutdown;
+
 	/* Release our parent, if we've forked */
 	if (completion_fd != -1) {
 		close(completion_fd);
@@ -143,5 +158,13 @@ shutdown:
 	log_shutdown();  /* safe to call unconditionally */
 	if (completion_fd != -1)
 		write(completion_fd, &ret, 1);
+	sig=state.signal;
+	if (sig) {
+		/* Make sure our exit status reflects the fact that we died
+		   on a signal.  If we're backgrounded, the parent will pick
+		   this up in fork_and_wait(). */
+		set_signal_handler(sig, SIG_DFL);
+		raise(sig);
+	}
 	return ret;
 }

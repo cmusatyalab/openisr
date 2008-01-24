@@ -32,6 +32,7 @@ typedef enum pk_err {
 	PK_NETFAIL,  /* Used instead of IOERR if a retry might fix it */
 	PK_BUSY,
 	PK_SQLERR,
+	PK_INTERRUPT,
 } pk_err_t;
 
 enum pk_log_type {
@@ -163,6 +164,8 @@ struct pk_state {
 	unsigned sql_busy_timeouts;
 	unsigned sql_retries;
 	uint64_t sql_wait_usecs;
+
+	volatile int signal;  /* Last signal received by generic handler */
 };
 
 extern struct pk_config config;
@@ -284,6 +287,10 @@ pk_err_t read_file(const char *path, char *buf, int *bufsize);
 pk_err_t read_sysfs_file(const char *path, char *buf, int bufsize);
 char *pk_strerror(pk_err_t err);
 int set_signal_handler(int sig, void (*handler)(int sig));
+pk_err_t setup_signal_handlers(void (*caught_handler)(int sig),
+			const int *caught_signals, const int *ignored_signals);
+void generic_signal_handler(int sig);
+int pending_signal(void);
 void print_progress_chunks(unsigned chunks, unsigned maxchunks);
 void print_progress_mb(off64_t bytes, off64_t max_bytes);
 pk_err_t fork_and_wait(int *status_fd);
