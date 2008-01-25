@@ -2254,12 +2254,31 @@ sub check_for_nexus () {
     my $nexus_verval;
     my $isr_version = "!!VERSION!!";
     my $isr_verval;
+    my $stat;
+    my $grp;
     
     # Check for fatal problems first
     -d "/sys/class/openisr"
         or errexit("The OpenISR kernel module does not appear to be loaded.  Please run 'openisr-config' as root.");
     -e "/dev/openisrctl"
         or errexit("Nexus control device does not exist; udev misconfiguration?");
+    if (!-r "/dev/openisrctl" or !-w "/dev/openisrctl") {
+	# Normally the problem here is that the user isn't a member of the
+	# !!ISRGROUP!! group.  But before we tell the user to fix their
+	# group membership, make sure that will actually solve the problem.
+	$stat = stat("/dev/openisrctl")
+	    or errexit("Couldn't stat /dev/openisrctl");
+	if (($stat->mode & 0060) == 0060 &&
+	    		!grep($_ == $stat->gid, split(/ /, $)))) {
+	    # Don't assume that the node's group is actually !!ISRGROUP!!
+	    $grp = getgrgid($stat->gid);
+	    errexit("You must be a member of the \"$grp\" group to resume a parcel.")
+	        if $grp;
+	    errexit("You must be a member of group " . $stat->gid . " to resume a parcel.")
+	} else {
+	    errexit("You do not have access to the OpenISR device nodes.");
+	}
+    }
     
     # Now check the Nexus version
     if (!-e "/sys/class/openisr/release") {
