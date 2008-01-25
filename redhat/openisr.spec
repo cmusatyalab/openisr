@@ -5,7 +5,7 @@
 Summary: 	OpenISR Internet Suspend-Resume client
 Name: 		%name
 Version: 	%version
-Release: 	2%{?redhatvers:.%{redhatvers}}
+Release: 	3%{?redhatvers:.%{redhatvers}}
 Group: 		Applications/Internet
 License:	Eclipse Public License	
 BuildRequires:	curl-devel, openssl-devel, kernel-devel, uuid-devel
@@ -56,6 +56,20 @@ rm -rf %{buildroot}
 dkms add -m openisr -v %{version}
 /usr/sbin/openisr-config ||:
 /sbin/chkconfig --add openisr
+GROUP=isrusers
+GID=$(grep ${GROUP} /etc/group | cut -d ':' -f 3)
+if [ -z "$GID" ]; then
+    /usr/sbin/groupadd -r ${GROUP}
+    if [ $? -ne 0 ]; then
+        echo >&2 "Error: failed to add the group ${GROUP}."
+        exit 4
+    else
+        echo >2 "Group \"$GROUP\" (gid $GID) added."
+    fi
+else
+    echo >&2 "openisr: Using the existing group \"$GROUP\" (gid $GID) for device nodes."
+fi
+echo "Any user who will use OpenISR must be added to the \"$GROUP\" group."
 
 %preun
 /etc/init.d/openisr stop
@@ -97,9 +111,14 @@ dkms remove -m openisr -v %{version} --all
 %endif
 %defattr(0755,root,root)
 /etc/init.d/openisr
-
+/etc/bash_completion.d/openisr
 
 %changelog
+* Fri Jan 25 2008 Matt Toups <mtoups@cs.cmu.edu> 0.9-3
+- create group in post
+- display message directing user to add self to group
+- add bash completion rule to files
+
 * Thu Jan 17 2008 Matt Toups <mtoups@cs.cmu.edu> 0.9-2
 - add lines to init script, and call chkconfig, so that
   the init scripts get executed on boot.
