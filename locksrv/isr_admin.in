@@ -613,6 +613,7 @@ sub filter_cfgdir ($$$) {
     my $line;
     my $key;
     my $value;
+    my $type;
     
     opendir(CFGDIR, $path)
         or unix_errexit("Can't open directory $path");
@@ -623,7 +624,8 @@ sub filter_cfgdir ($$$) {
 	        or system_errexit("Couldn't remove $path/$file");
 	    next;
 	}
-	if ($file =~ /\.vmx$/) {
+	if ($file =~ /\.(vmx|vmdk)$/) {
+	    $type = $1;
 	    open(OLD, "<", "$path/$file")
 	        or unix_errexit("Couldn't read $path/$file");
 	    open(NEW, ">", "$path/$file.new")
@@ -634,12 +636,17 @@ sub filter_cfgdir ($$$) {
 		    next;
 		}
 		($key, $value) = ($1, $2);
-		next if $key =~ /ethernet[0-9]+\.addressType/;
-		next if $key =~ /ethernet[0-9]+\.generatedAddress/;
-		next if $key =~ /uuid\.(location|bios)/;
-		if ($key eq "displayName") {
-		    print NEW "displayName = \"$userid/$parcel\"\n";
+		if ($type eq "vmx") {
+		    next if $key =~ /ethernet[0-9]+\.addressType/;
+		    next if $key =~ /ethernet[0-9]+\.generatedAddress/;
+		    next if $key =~ /uuid\.(location|bios)/;
+		    if ($key eq "displayName") {
+			print NEW "displayName = \"$userid/$parcel\"\n";
+		    } else {
+			print NEW $line;
+		    }
 		} else {
+		    next if $key =~ /ddb\.uuid/;
 		    print NEW $line;
 		}
 	    }
