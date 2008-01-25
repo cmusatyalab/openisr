@@ -20,6 +20,8 @@ else
     echo >&2 "openisr: Using the existing group \"$GROUP\" (gid $GID) for device nodes."
 fi
 
+echo "Any user who will use OpenISR must be added to the \"$GROUP\" group."
+
 update-rc.d openisr start 20 S .
 
 if [ -x /sbin/udevcontrol ]; then
