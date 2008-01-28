@@ -119,7 +119,7 @@ sub block_sigtstp ();
 sub mysystem ($);
 sub sys_sync ();
 sub mkdirs (@);
-sub touch ($);
+sub touch ($$);
 sub mktempfile ();
 sub mktempdir ();
 sub err ($);
@@ -651,6 +651,9 @@ sub checkout () {
     # Fetch and parse the config file from the server
     print "Fetching configuration data for $userid/$parcel from server.\n"
 	if $verbose;
+    # Make sure the parcel.cfg will not be world-readable
+    touch("$isrdir/$parcel-parcel.cfg", 0600)
+        or unix_errexit("Could not create file $isrdir/$parcel-parcel.cfg");
     if (srun("getconfig", "-p $parcel", OUTFILE => "$isrdir/$parcel-parcel.cfg")) {
 	unlink("$isrdir/$parcel-parcel.cfg");
 	errexit("Parcel $userid/$parcel does not exist on the server ($server).");
@@ -707,7 +710,7 @@ sub checkout () {
 
     # Set up the client's parcel directory. If anything goes wrong erase 
     # all traces of the parcel on the client and release its lock.
-    if (!mkdirs($parceldir)) {
+    if (!mkdir($parceldir, 0700)) {
 	clean(0);
 	errexit("Unable to create parcel dir $parceldir.");
     }
@@ -1704,7 +1707,7 @@ sub upload () {
     #
     if (!-e $cdcache_file) {
 	copy_dirtychunks();
-	touch($cdcache_file)
+	touch($cdcache_file, 0666)
 	    or unix_errexit("Unable to create dirty cache flag ($cdcache_file)");
     }
     else {
@@ -1814,7 +1817,7 @@ sub clientcommit($) {
     #
     # Note that the local cache is consistent with the server
     #
-    touch($cleancache_file)
+    touch($cleancache_file, 0666)
         or unix_errexit("Unable to create $cleancache_file");
     
     #
@@ -2225,7 +2228,7 @@ sub build_cache () {
     }
     
     # Create the clean-cache flag
-    if (!touch($cleancache_file)) {
+    if (!touch($cleancache_file, 0666)) {
 	unix_err("Unable to create $cleancache_file");
 	return -1;
     }
@@ -2620,12 +2623,14 @@ sub mkdirs (@) {
 }
 
 #
-# touch - Create the specified file.  Returns true on success, false on error.
+# touch - Create the specified file with the given permissions.  Returns true
+#         on success, false on error.
 #
-sub touch ($) {
+sub touch ($$) {
     my $file = shift;
+    my $perms = shift;
     
-    open(FLAG, ">", $file)
+    sysopen(FLAG, $file, O_WRONLY|O_CREAT, $perms)
         or return 0;
     close(FLAG);
     return 1;
