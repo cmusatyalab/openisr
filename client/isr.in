@@ -354,12 +354,20 @@ if ($result == 0) {
 $isrdir = "$ENV{HOME}/.isr";
 
 if (!-e $isrdir) {
-    mkdir($isrdir)
+    mkdir($isrdir, 0700)
 	or unix_errexit("Unable to make $isrdir");
 }
 if (!-d $isrdir) {
     errexit("$isrdir is not a directory");
 }
+
+#
+# Make sure $isrdir is not world-readable.
+# XXX: this is temporary code to fix the permissions on existing client
+# installations, and should go away after a couple releases.
+#
+chmod(0700, $isrdir)
+    or unix_errexit("Couldn't set $isrdir to mode 700");
 
 #
 # Extract the command name
