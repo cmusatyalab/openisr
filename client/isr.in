@@ -125,10 +125,10 @@ sub mktempfile ();
 sub mktempdir ();
 sub err ($);
 sub unix_err ($);
+sub system_err ($);
 sub errexit ($);
 sub unix_errexit ($);
 sub system_errexit ($);
-sub system_err ($);
 sub message ($);
 sub usage ($);
 sub need_parcel ();
@@ -2673,8 +2673,18 @@ sub err ($) {
 sub unix_err ($) {
     my $msg = shift;
 
-    print "[$progname] Warning: $msg ($!)\n";
-    message("Warning: $msg");
+    err("$msg ($!)");
+}
+
+#
+# system_err - Print an error after the system() function fails
+#
+sub system_err ($) {
+    my $msg = shift;
+
+    my $exit_value = $? >> 8;
+
+    err("$msg ($exit_value)");
 }
 
 #
@@ -2694,28 +2704,7 @@ sub errexit ($) {
 sub unix_errexit ($) {
     my $msg = shift;
 
-    print RED, "[$progname] Error: $msg ($!)\n", RESET;
-    message("Error: $msg ($!)");
-    exit 1;
-}
-
-#
-# system_err - Print an error after the system() function fails
-#
-sub system_err ($) {
-    my $msg = shift;
-
-    my $exit_value = $? >> 8;
-
-    # $? is the wait() style return value. $! is strerr[errno]
-    # $exit_value  = $? >> 8;
-    # $signal_num  = $? & 127;
-    # $dumped_core = $? & 128;
-    print RED, "[$progname] Error: $msg\n", RESET;
-    message("Error: $msg");
-    
-    # Pass the exit value back to the caller
-    return $exit_value; 
+    errexit("$msg ($!)");
 }
 
 #
@@ -2723,8 +2712,10 @@ sub system_err ($) {
 #
 sub system_errexit ($) {
     my $msg = shift;
-    
-    exit system_err($msg);
+
+    my $exit_value = $? >> 8;
+
+    errexit("$msg ($exit_value)");
 }
 
 #
