@@ -2732,8 +2732,15 @@ sub message ($) {
     my $file;
 
     if ($uuid) {
-	mktree($logdir)
-	    or unix_errexit("Couldn't make directory $logdir");
+	if (!mktree($logdir)) {
+	    # If we call errexit() we'll recurse forever
+	    print RED, "[$progname] Error: Couldn't make directory $logdir\n", RESET;
+	    # The shutdown handler likewise calls message().  Disable the
+	    # handler, which means that e.g. temporary files won't be cleaned
+	    # up.
+	    $no_shutdown = 1;
+	    exit 1;
+	}
 	push @logs, "$logdir/$uuid";
     } else {
 	# No sense creating the directory, since we won't be writing to
