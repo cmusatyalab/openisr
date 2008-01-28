@@ -162,7 +162,8 @@ int examine_hoard(void)
 again:
 	if (begin(state.db))
 		return 1;
-	query(&qry, state.db, "SELECT count(DISTINCT tag) FROM prev.keys",
+	query(&qry, state.db, "SELECT count(*) FROM "
+				"(SELECT 1 FROM prev.keys GROUP BY tag)",
 				NULL);
 	if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't query previous keyring");
@@ -170,9 +171,8 @@ again:
 	}
 	query_row(qry, "d", &maxchunks);
 	query_free(qry);
-	query(&qry, state.db, "SELECT count(DISTINCT hoard.chunks.tag) "
-				"FROM prev.keys JOIN hoard.chunks "
-				"ON prev.keys.tag == hoard.chunks.tag", NULL);
+	query(&qry, state.db, "SELECT count(*) FROM hoard.refs WHERE "
+				"parcel == ?", "d", state.hoard_ident);
 	if (!query_has_row()) {
 		pk_log_sqlerr("Couldn't query hoard cache");
 		goto bad;
