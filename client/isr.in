@@ -49,7 +49,6 @@ use Sys::Hostname;
 use Getopt::Long;
 use IO::Socket;
 use File::Basename;
-use File::Path;
 use File::Copy;
 use File::stat;
 use File::Spec;
@@ -119,7 +118,7 @@ sub unblock_sigint ($);
 sub block_sigtstp ();
 sub mysystem ($);
 sub sys_sync ();
-sub mktree ($);
+sub mkdirs (@);
 sub touch ($);
 sub mktempfile ();
 sub mktempdir ();
@@ -708,11 +707,11 @@ sub checkout () {
 
     # Set up the client's parcel directory. If anything goes wrong erase 
     # all traces of the parcel on the client and release its lock.
-    if (!mktree($parceldir)) {
+    if (!mkdirs($parceldir)) {
 	clean(0);
 	errexit("Unable to create parcel dir $parceldir.");
     }
-    if (!mktree("$hoarddir/img")) {
+    if (!mkdirs($hoarddir, "$hoarddir/img")) {
 	clean(0);
 	errexit("Unable to create hoard dir $hoarddir/img.");
     }
@@ -1114,7 +1113,7 @@ sub hoard ($) {
 	$parceldir = mktempdir();
     
 	# Fetch metadata from the server
-	mktree("$hoarddir/img")
+	mkdirs($hoarddir, "$hoarddir/img")
 	    or errexit("Unable to make $hoarddir/img");
 	srun("getconfig", "-p $parcel", OUTFILE => "$parceldir/parcel.cfg") == 0
 	    or errexit("Parcel $userid/$parcel does not exist on the server ($server).");
@@ -1651,7 +1650,7 @@ sub copy_dirtychunks () {
     # Build an empty temporary cache directory structure on the client
     #
     mysystem("rm -rf $uploaddir");
-    mktree("$uploaddir/hdk")
+    mkdirs($uploaddir, "$uploaddir/hdk")
 	or errexit("Unable to make temporary directory $uploaddir/hdk");
 
     #
@@ -1806,7 +1805,7 @@ sub clientcommit($) {
     #
     # Move the cfg.tgz.enc and keyring.enc files into the hoard cache
     #
-    mktree("$hoarddir/img")
+    mkdirs($hoarddir, "$hoarddir/img")
 	or errexit("Couldn't make directory $hoarddir/img");
     rename("$uploaddir/cfg.tgz.enc", "$hoarddir/img/$cfg{UUID}.cfg");
     rename("$uploaddir/keyring.enc", "$hoarddir/img/$cfg{UUID}.key");
@@ -2604,16 +2603,19 @@ sub sys_sync () {
 }
 
 #
-# mktree - Make the directory named by the argument, and all of its parents.
-#          Returns true if successful or the directory already exists, false
-#          on error.
+# mkdirs - Make the directories named by the argument list.  Returns true
+#          if, for each argument, the create was successful or the directory
+#          already existed; false otherwise.  The function stops after the
+#          first error.
 #
-sub mktree ($) {
-    my $tree = shift;
+sub mkdirs (@) {
+    my $dir;
     
-    # mkpath() throws a fatal error on failure, so we have to trap it
-    eval {mkpath($tree)};
-    return 0 if $@;
+    while ($dir = shift) {
+	mkdir($dir);
+	return 0
+	    if !-d $dir;
+    }
     return 1;
 }
 
@@ -2740,7 +2742,7 @@ sub message ($) {
     my $file;
 
     if ($uuid) {
-	if (!mktree($logdir)) {
+	if (!mkdirs($logdir)) {
 	    # If we call errexit() we'll recurse forever
 	    print RED, "[$progname] Error: Couldn't make directory $logdir\n", RESET;
 	    # The shutdown handler likewise calls message().  Disable the
