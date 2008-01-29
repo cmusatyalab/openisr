@@ -255,7 +255,7 @@ pk_err_t nexus_init(void)
 	return PK_SUCCESS;
 }
 
-static void log_sysfs_value(char *attr)
+static void log_sysfs_value(const char *attr)
 {
 	char *fname;
 	char buf[32];
@@ -316,7 +316,7 @@ void nexus_shutdown(void)
 	sync();
 }
 
-static int request_is_valid(struct nexus_message *req)
+static int request_is_valid(const struct nexus_message *req)
 {
 	if (req->chunk >= parcel.chunks) {
 		pk_log(LOG_ERROR, "Invalid chunk number %llu received "
@@ -344,7 +344,7 @@ static int request_is_valid(struct nexus_message *req)
 }
 
 /* Returns true if @reply is valid */
-static int process_message(struct nexus_message *request,
+static int process_message(const struct nexus_message *request,
 			struct nexus_message *reply)
 {
 	pk_err_t err;

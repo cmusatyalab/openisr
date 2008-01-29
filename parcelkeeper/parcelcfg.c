@@ -49,7 +49,7 @@ static struct pc_option {
 
 static char *raw_master;
 
-static enum pc_ident pc_find_option(char *key, int line)
+static enum pc_ident pc_find_option(const char *key, int line)
 {
 	struct pc_option *opt;
 

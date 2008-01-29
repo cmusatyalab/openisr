@@ -277,9 +277,9 @@ pk_err_t cleanup_action(sqlite3 *db, const char *sql, enum pk_log_type logtype,
 int is_dir(const char *path);
 int is_file(const char *path);
 int at_eof(int fd);
-pk_err_t parseuint(unsigned *out, char *in, int base);
-enum cryptotype parse_crypto(char *desc);
-enum compresstype parse_compress(char *desc);
+pk_err_t parseuint(unsigned *out, const char *in, int base);
+enum cryptotype parse_crypto(const char *desc);
+enum compresstype parse_compress(const char *desc);
 unsigned crypto_hashlen(enum cryptotype type);
 int crypto_is_valid(enum cryptotype type);
 int compress_is_valid(enum compresstype type);
@@ -300,7 +300,7 @@ pk_err_t acquire_lockfile(void);
 void release_lockfile(void);
 pk_err_t create_pidfile(void);
 void remove_pidfile(void);
-char *form_chunk_path(char *prefix, unsigned chunk);
+char *form_chunk_path(const char *prefix, unsigned chunk);
 pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
 			unsigned len);
 char *format_tag(const void *tag, unsigned len);

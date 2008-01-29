@@ -346,7 +346,7 @@ static enum option pk_getopt(int argc, char *argv[])
 	PARSE_ERROR("unknown option --%s", arg);
 }
 
-static struct pk_mode *parse_mode(char *name)
+static struct pk_mode *parse_mode(const char *name)
 {
 	struct pk_mode *cur;
 
@@ -357,13 +357,13 @@ static struct pk_mode *parse_mode(char *name)
 	return NULL;
 }
 
-static void check_dir(char *dir)
+static void check_dir(const char *dir)
 {
 	if (!is_dir(dir))
 		PARSE_ERROR("%s is not a valid directory", dir);
 }
 
-static char *filepath(char *dir, char *file, int must_exist)
+static char *filepath(const char *dir, const char *file, int must_exist)
 {
 	char *ret;
 	if (asprintf(&ret, "%s/%s", dir, file) == -1)

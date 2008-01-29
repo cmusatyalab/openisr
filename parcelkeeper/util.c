@@ -52,7 +52,7 @@ int at_eof(int fd)
 	return 1;
 }
 
-pk_err_t parseuint(unsigned *out, char *in, int base)
+pk_err_t parseuint(unsigned *out, const char *in, int base)
 {
 	unsigned long val;
 	char *endptr;
@@ -65,7 +65,7 @@ pk_err_t parseuint(unsigned *out, char *in, int base)
 	return PK_SUCCESS;
 }
 
-enum cryptotype parse_crypto(char *desc)
+enum cryptotype parse_crypto(const char *desc)
 {
 	if (!strcmp(desc, "aes-sha1"))
 		return CRY_AES_SHA1;
@@ -74,7 +74,7 @@ enum cryptotype parse_crypto(char *desc)
 	return CRY_UNKNOWN;
 }
 
-enum compresstype parse_compress(char *desc)
+enum compresstype parse_compress(const char *desc)
 {
 	if (!strcmp(desc, "none"))
 		return COMP_NONE;
@@ -441,7 +441,7 @@ pk_err_t fork_and_wait(int *status_fd)
 	return PK_SUCCESS;
 }
 
-char *form_chunk_path(char *prefix, unsigned chunk)
+char *form_chunk_path(const char *prefix, unsigned chunk)
 {
 	char *ret;
 	unsigned dir = chunk / parcel.chunks_per_dir;
