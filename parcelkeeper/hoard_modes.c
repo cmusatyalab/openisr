@@ -550,8 +550,8 @@ again:
 				"refs with dangling tag"))
 		goto bad;
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET referenced = 0 "
-				"WHERE referenced == 1 AND (tag ISNULL OR "
-				"tag NOT IN (SELECT tag FROM hoard.refs))",
+				"WHERE referenced == 1 AND tag NOTNULL AND "
+				"tag NOT IN (SELECT tag FROM hoard.refs)",
 				LOG_ERROR,
 				"chunks with spurious referenced flag"))
 		goto bad;

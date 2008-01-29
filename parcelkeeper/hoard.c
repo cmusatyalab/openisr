@@ -112,6 +112,21 @@ static pk_err_t upgrade_hoard_index(int ver)
 	return PK_SUCCESS;
 }
 
+static pk_err_t create_slot_cache(void)
+{
+	if (query(NULL, state.hoard, "CREATE TEMP TABLE slots ("
+				"tag BLOB UNIQUE, "
+				"offset INTEGER UNIQUE NOT NULL, "
+				"length INTEGER NOT NULL DEFAULT 0, "
+				"crypto INTEGER NOT NULL DEFAULT 0, "
+				"last_access INTEGER NOT NULL DEFAULT 0)",
+				NULL)) {
+		pk_log_sqlerr("Couldn't create slot cache");
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
 static pk_err_t add_chunk_reference(const void *tag)
 {
 	char *ftag;
@@ -134,91 +149,218 @@ static pk_err_t add_chunk_reference(const void *tag)
 	return PK_SUCCESS;
 }
 
+/* Sets the reference flag to zero but doesn't touch the refs table */
+static pk_err_t release_chunk_reference(int offset)
+{
+	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 0 WHERE "
+				"offset == ?", "d", offset)) {
+		pk_log_sqlerr("Couldn't release reference on offset %d",
+					offset);
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
 /* XXX cache chunks of different sizes */
 /* must be within transaction */
-static pk_err_t expand_cache(void)
+static pk_err_t expand_slot_cache(void)
 {
 	struct query *qry;
 	int count;
 	int start;
 	int i;
 	int step = parcel.chunksize >> 9;
+	int hoarded=0;
+	int needed=EXPAND_CHUNKS;
+	int allowed;
 
-	query(&qry, state.hoard, "SELECT count(*), max(offset) FROM chunks",
-				NULL);
-	if (!query_has_row()) {
-		pk_log_sqlerr("Couldn't find maximum hoard cache offset");
+	/* First, try to use existing unallocated slots */
+	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO temp.slots "
+				"(offset) SELECT offset FROM chunks "
+				"WHERE referenced == 0 AND tag ISNULL "
+				"LIMIT ?", "d", needed)) {
+		pk_log_sqlerr("Error reclaiming hoard cache slots");
 		return PK_IOERR;
 	}
-	query_row(qry, "dd", &count, &start);
-	query_free(qry);
-	if (count)
-		start += step;
-	for (i=0; i<EXPAND_CHUNKS; i++) {
-		if (query(NULL, state.hoard, "INSERT INTO chunks (offset) "
-					"VALUES (?)", "d", start + i * step)) {
-			pk_log_sqlerr("Couldn't expand hoard cache to "
-						"offset %d", start + i * step);
+	needed -= sqlite3_changes(state.hoard);
+
+	/* Now try to reclaim existing, unreferenced chunks.  See how many
+	   we're permitted to reclaim. */
+	if (needed > 0 && config.minsize > 0) {
+		query(&qry, state.hoard, "SELECT count(tag) FROM chunks",
+					NULL);
+		if (!query_has_row()) {
+			pk_log_sqlerr("Error finding size of hoard cache");
 			return PK_IOERR;
 		}
+		query_row(qry, "d", &hoarded);
+		query_free(qry);
+		/* XXX assumes 128 KB */
+		allowed=min(hoarded - ((int)config.minsize * 8), needed);
+	} else {
+		allowed=needed;
+	}
+
+	if (allowed > 0) {
+		/* Try to reclaim LRU unreferenced chunks */
+		if (query(NULL, state.hoard, "INSERT OR IGNORE INTO "
+					"temp.slots (offset) "
+					"SELECT offset FROM chunks "
+					"WHERE referenced == 0 "
+					"ORDER BY last_access LIMIT ?", "d",
+					allowed)) {
+			pk_log_sqlerr("Error reclaiming hoard cache slots");
+			return PK_IOERR;
+		}
+		needed -= sqlite3_changes(state.hoard);
+	}
+
+	/* Now expand the hoard cache as necessary to meet our quota */
+	if (needed > 0) {
+		query(&qry, state.hoard, "SELECT count(*), max(offset) "
+					"FROM chunks", NULL);
+		if (!query_has_row()) {
+			pk_log_sqlerr("Couldn't find max hoard cache offset");
+			return PK_IOERR;
+		}
+		query_row(qry, "dd", &count, &start);
+		query_free(qry);
+		if (count)
+			start += step;
+		for (i=0; i<needed; i++) {
+			if (query(NULL, state.hoard, "INSERT INTO chunks "
+						"(offset) VALUES (?)", "d",
+						start + i * step)) {
+				pk_log_sqlerr("Couldn't expand hoard cache to "
+							"offset %d",
+							start + i * step);
+				return PK_IOERR;
+			}
+			if (query(NULL, state.hoard, "INSERT INTO temp.slots "
+						"(offset) VALUES (?)", "d",
+						start + i * step)) {
+				pk_log_sqlerr("Couldn't add offset %d to "
+							"slot cache",
+							start + i * step);
+				return PK_IOERR;
+			}
+		}
+	}
+
+	/* Grab allocations for the slots we've chosen */
+	if (query(NULL, state.hoard, "UPDATE chunks SET tag = NULL, "
+				"length = 0, crypto = 0, last_access = 0, "
+				"referenced = 1 WHERE offset IN "
+				"(SELECT offset FROM temp.slots)", NULL)) {
+		pk_log_sqlerr("Couldn't allocate chunk slots");
+		return PK_IOERR;
 	}
 	return PK_SUCCESS;
 }
 
 /* must be within transaction */
-static pk_err_t allocate_chunk_offset(int *offset)
+static pk_err_t _flush_slot_cache(void)
 {
 	struct query *qry;
 	pk_err_t ret;
-	int hoarded=0;
+	void *tag;
+	int taglen;
+	int offset;
+	int len;
+	int crypto;
+	int last_access;
+
+	for (query(&qry, state.hoard, "SELECT tag, offset, length, crypto, "
+				"last_access FROM temp.slots", NULL);
+				query_has_row(); query_next(qry)) {
+		query_row(qry, "bdddd", &tag, &taglen, &offset, &len, &crypto,
+					&last_access);
+		if (tag != NULL) {
+			query(NULL, state.hoard, "UPDATE chunks SET tag = ?, "
+						"length = ?, crypto = ?, "
+						"last_access = ?, "
+						"referenced = 1 "
+						"WHERE offset = ?", "bdddd",
+						tag, taglen, len, crypto,
+						last_access, offset);
+			if (query_result() == SQLITE_CONSTRAINT) {
+				ret=release_chunk_reference(offset);
+				if (ret)
+					goto bad;
+			} else if (query_ok()) {
+				ret=add_chunk_reference(tag);
+				if (ret)
+					goto bad;
+			} else {
+				pk_log_sqlerr("Couldn't update chunks table "
+							"for offset %d",
+							offset);
+				ret=PK_IOERR;
+				goto bad;
+			}
+		} else {
+			ret=release_chunk_reference(offset);
+			if (ret)
+				goto bad;
+		}
+	}
+	query_free(qry);
+	if (!query_ok()) {
+		pk_log_sqlerr("Couldn't query slot cache");
+		return PK_IOERR;
+	}
+	if (query(NULL, state.hoard, "DELETE FROM temp.slots", NULL)) {
+		pk_log_sqlerr("Couldn't clear slot cache");
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+bad:
+	query_free(qry);
+	return ret;
+}
+
+static void flush_slot_cache(void)
+{
+again:
+	if (begin(state.hoard))
+		return;
+	if (_flush_slot_cache()) {
+		rollback(state.hoard);
+		if (query_retry())
+			goto again;
+		return;
+	}
+	if (commit(state.hoard))
+		rollback(state.hoard);
+}
+
+/* must be within transaction */
+static pk_err_t allocate_slot(int *offset)
+{
+	struct query *qry;
+	pk_err_t ret;
 
 	while (1) {
-		/* First, try to find an unused hoard cache slot */
-		query(&qry, state.hoard, "SELECT offset FROM chunks "
+		/* First, try to find an unused slot in the slot cache */
+		query(&qry, state.hoard, "SELECT offset FROM temp.slots "
 					"WHERE tag ISNULL LIMIT 1", NULL);
 		if (query_has_row()) {
 			query_row(qry, "d", offset);
 			query_free(qry);
 			break;
 		} else if (!query_ok()) {
-			pk_log_sqlerr("Error finding unused hoard cache "
-						"offset");
+			pk_log_sqlerr("Error finding unused hoard cache slot");
 			return PK_IOERR;
 		}
 
-		/* Next, we may want to try reclaiming an existing,
-		   unreferenced chunk.  See if we're permitted to do so. */
-		if (config.minsize > 0) {
-			query(&qry, state.hoard, "SELECT count(tag) "
-						"FROM chunks", NULL);
-			if (!query_has_row()) {
-				pk_log_sqlerr("Error finding size of "
-							"hoard cache");
-				return PK_IOERR;
-			}
-			query_row(qry, "d", &hoarded);
-			query_free(qry);
-		}
+		/* There aren't any, so we have some work to do.  First,
+		   flush the existing slot cache back to the chunks table. */
+		ret=_flush_slot_cache();
+		if (ret)
+			return ret;
 
-		/* XXX assumes 128 KB */
-		if ((unsigned)(hoarded / 8) >= config.minsize) {
-			/* Try to reclaim the LRU unreferenced chunk */
-			query(&qry, state.hoard, "SELECT offset "
-					"FROM chunks WHERE referenced == 0 "
-					"ORDER BY last_access LIMIT 1", NULL);
-			if (query_has_row()) {
-				query_row(qry, "d", offset);
-				query_free(qry);
-				break;
-			} else if (!query_ok()) {
-				pk_log_sqlerr("Error finding reclaimable "
-							"hoard cache offset");
-				return PK_IOERR;
-			}
-		}
-
-		/* Now expand the cache and try again */
-		ret=expand_cache();
+		/* Now populate the slot cache and try again. */
+		ret=expand_slot_cache();
 		if (ret)
 			return ret;
 	}
@@ -288,6 +430,36 @@ again:
 		rollback(state.hoard);
 }
 
+/* Same as _hoard_invalidate_chunk(), but for the slot cache.  We don't
+   need to check that the row being deleted is still valid, since there's no
+   contention for the slot cache. */
+static pk_err_t _hoard_invalidate_slot_chunk(int offset)
+{
+	if (query(NULL, state.hoard, "UPDATE temp.slots SET tag = NULL, "
+				"length = 0, crypto = 0, last_access = 0 "
+				"WHERE offset = ?", "d", offset)) {
+		pk_log_sqlerr("Couldn't deallocate hoard slot at offset %d",
+					offset);
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
+static void hoard_invalidate_slot_chunk(int offset)
+{
+again:
+	if (begin(state.hoard))
+		return;
+	if (_hoard_invalidate_slot_chunk(offset)) {
+		rollback(state.hoard);
+		if (query_retry())
+			goto again;
+		return;
+	}
+	if (commit(state.hoard))
+		rollback(state.hoard);
+}
+
 pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 {
 	struct query *qry;
@@ -295,6 +467,8 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	int offset;
 	int clen;
 	pk_err_t ret;
+	int slot_cache=0;
+	const char *update_timestamp;
 
 	if (config.hoard_dir == NULL)
 		return PK_NOTFOUND;
@@ -304,25 +478,48 @@ again:
 	if (ret)
 		return ret;
 
-	query(&qry, state.hoard, "SELECT offset, length FROM chunks "
-				"WHERE tag == ?", "b", tag, parcel.hashlen);
-	if (query_ok()) {
-		ret=commit(state.hoard);
-		if (ret)
-			goto bad;
-		return PK_NOTFOUND;
-	} else if (!query_has_row()) {
-		pk_log_sqlerr("Couldn't query hoard chunk index");
+	/* First query the slot cache */
+	if (query(&qry, state.hoard, "SELECT offset, length FROM temp.slots "
+				"WHERE tag == ?", "b", tag, parcel.hashlen)) {
+		pk_log_sqlerr("Couldn't query slot cache");
 		ret=PK_IOERR;
 		goto bad;
 	}
-	query_row(qry, "dd", &offset, &clen);
-	query_free(qry);
+	if (query_has_row()) {
+		query_row(qry, "dd", &offset, &clen);
+		query_free(qry);
+		slot_cache=1;
+		update_timestamp="UPDATE temp.slots SET last_access = ? "
+					"WHERE tag == ?";
+	} else {
+		/* Now query the hoard cache */
+		query(&qry, state.hoard, "SELECT offset, length FROM chunks "
+					"WHERE tag == ?", "b", tag,
+					parcel.hashlen);
+		if (query_ok()) {
+			ret=commit(state.hoard);
+			if (ret)
+				goto bad;
+			return PK_NOTFOUND;
+		} else if (!query_has_row()) {
+			pk_log_sqlerr("Couldn't query hoard chunk index");
+			ret=PK_IOERR;
+			goto bad;
+		}
+		query_row(qry, "dd", &offset, &clen);
+		query_free(qry);
+		update_timestamp="UPDATE chunks SET last_access = ? "
+					"WHERE tag == ?";
+	}
 
 	if (offset < 0 || clen <= 0 || (unsigned)clen > parcel.chunksize) {
 		pk_log(LOG_ERROR, "Chunk has unreasonable offset/length "
 					"%d/%d; invalidating", offset, clen);
-		ret=_hoard_invalidate_chunk(offset, tag, parcel.hashlen);
+		if (slot_cache)
+			ret=_hoard_invalidate_slot_chunk(offset);
+		else
+			ret=_hoard_invalidate_chunk(offset, tag,
+						parcel.hashlen);
 		if (ret)
 			goto bad;
 		ret=PK_BADFORMAT;
@@ -331,17 +528,18 @@ again:
 		return ret;
 	}
 
-	if (query(NULL, state.hoard, "UPDATE chunks SET last_access = ? "
-				"WHERE tag == ?", "db", time(NULL), tag,
+	if (query(NULL, state.hoard, update_timestamp, "db", time(NULL), tag,
 				parcel.hashlen)) {
 		/* Not fatal, but if we got SQLITE_BUSY, retry anyway */
 		pk_log_sqlerr("Couldn't update chunk timestamp");
 		if (query_busy())
 			goto bad;
 	}
-	ret=add_chunk_reference(tag);
-	if (ret)
-		goto bad;
+	if (!slot_cache) {
+		ret=add_chunk_reference(tag);
+		if (ret)
+			goto bad;
+	}
 
 	ret=commit(state.hoard);
 	if (ret)
@@ -349,7 +547,10 @@ again:
 
 	if (pread(state.hoard_fd, buf, clen, ((off_t)offset) << 9) != clen) {
 		pk_log(LOG_ERROR, "Couldn't read chunk at offset %d", offset);
-		hoard_invalidate_chunk(offset, tag, parcel.hashlen);
+		if (slot_cache)
+			hoard_invalidate_slot_chunk(offset);
+		else
+			hoard_invalidate_chunk(offset, tag, parcel.hashlen);
 		return PK_IOERR;
 	}
 
@@ -360,7 +561,8 @@ again:
 	   to blindly invalidate the slot because some other data has been
 	   stored there in the interim.  Therefore, _hoard_invalidate_chunk()
 	   checks that the tag/index pair is still present in the chunks
-	   table before invalidating the slot. */
+	   table before invalidating the slot.  If we're working from the
+	   slot cache, this race does not apply. */
 
 	ret=digest(parcel.crypto, calctag, buf, clen);
 	if (ret)
@@ -369,7 +571,10 @@ again:
 		pk_log(LOG_ERROR, "Tag mismatch reading hoard cache at "
 					"offset %d", offset);
 		log_tag_mismatch(tag, calctag, parcel.hashlen);
-		hoard_invalidate_chunk(offset, tag, parcel.hashlen);
+		if (slot_cache)
+			hoard_invalidate_slot_chunk(offset);
+		else
+			hoard_invalidate_chunk(offset, tag, parcel.hashlen);
 		return PK_TAGFAIL;
 	}
 
@@ -396,6 +601,20 @@ again:
 	if (ret)
 		return ret;
 
+	/* See if the tag is already in the slot cache */
+	query(NULL, state.hoard, "SELECT tag FROM temp.slots WHERE tag == ?",
+				"b", tag, parcel.hashlen);
+	if (query_has_row()) {
+		ret=commit(state.hoard);
+		if (ret)
+			goto bad;
+		return PK_SUCCESS;
+	} else if (!query_ok()) {
+		pk_log_sqlerr("Couldn't look up tag in slot cache");
+		goto bad;
+	}
+
+	/* See if the tag is already in the hoard cache */
 	query(NULL, state.hoard, "SELECT tag FROM chunks WHERE tag == ?",
 				"b", tag, parcel.hashlen);
 	if (query_has_row()) {
@@ -411,21 +630,18 @@ again:
 		goto bad;
 	}
 
-	ret=allocate_chunk_offset(&offset);
+	ret=allocate_slot(&offset);
 	if (ret)
 		goto bad;
-	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1, "
-				"tag = ?, length = ?, crypto = ?, "
-				"last_access = ? WHERE offset = ?", "bdddd",
-				tag, parcel.hashlen, len, parcel.crypto,
+	if (query(NULL, state.hoard, "UPDATE temp.slots SET tag = ?, "
+				"length = ?, crypto = ?, last_access = ? "
+				"WHERE offset = ?", "bdddd", tag,
+				parcel.hashlen, len, parcel.crypto,
 				time(NULL), offset)) {
 		pk_log_sqlerr("Couldn't add metadata for hoard cache chunk");
 		ret=PK_IOERR;
 		goto bad;
 	}
-	ret=add_chunk_reference(tag);
-	if (ret)
-		goto bad;
 
 	if (pwrite(state.hoard_fd, buf, len, ((off_t)offset) << 9) !=
 				(int)len) {
@@ -625,6 +841,9 @@ again:
 	}
 	if (ret)
 		goto bad_rollback;
+	ret=create_slot_cache();
+	if (ret)
+		goto bad_rollback;
 	ret=commit(state.hoard);
 	if (ret)
 		goto bad_rollback;
@@ -661,14 +880,30 @@ static pk_err_t hoard_try_cleanup(void)
 
 	pk_log(LOG_INFO, "Cleaning up hoard cache...");
 again:
+	ret=begin(state.hoard);
+	if (ret)
+		goto out;
 	ret=cleanup_action(state.hoard, "DELETE FROM parcels WHERE parcel "
 				"NOT IN (SELECT DISTINCT parcel FROM refs)",
 				LOG_INFO, "dangling parcel records");
-	if (query_retry())
-		goto again;
+	if (ret)
+		goto bad;
+	ret=cleanup_action(state.hoard, "UPDATE chunks SET referenced = 0 "
+				"WHERE referenced == 1 AND tag ISNULL",
+				LOG_INFO, "orphaned cache slots");
+	if (ret)
+		goto bad;
+	ret=commit(state.hoard);
+	if (ret)
+		goto bad;
 out:
 	put_file_lock(state.hoard_fd);
 	return ret;
+bad:
+	rollback(state.hoard);
+	if (query_retry())
+		goto again;
+	goto out;
 }
 
 pk_err_t hoard_init(void)
@@ -720,6 +955,7 @@ bad:
 
 void hoard_shutdown(void)
 {
+	flush_slot_cache();
 	hoard_try_cleanup();
 	close_hoard_index();
 	close(state.hoard_fd);
