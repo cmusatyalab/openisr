@@ -20,6 +20,25 @@
 #define HOARD_INDEX_VERSION 7
 #define EXPAND_CHUNKS 256
 
+/* Generator for an transaction wrapper around a function which expects to be
+   called within a state.hoard transaction.  The wrapper discards errors
+   and must be defined to return void. */
+#define TRANSACTION_WRAPPER				\
+TRANSACTION_DECL					\
+{							\
+again:							\
+	if (begin(state.hoard))				\
+		return;					\
+	if (TRANSACTION_CALL) {				\
+		rollback(state.hoard);			\
+		if (query_retry())			\
+			goto again;			\
+		return;					\
+	}						\
+	if (commit(state.hoard))			\
+		rollback(state.hoard);			\
+}
+
 static pk_err_t create_hoard_index(void)
 {
 	/* XXX auto_vacuum */
@@ -314,20 +333,11 @@ bad:
 	return ret;
 }
 
-static void flush_slot_cache(void)
-{
-again:
-	if (begin(state.hoard))
-		return;
-	if (_flush_slot_cache()) {
-		rollback(state.hoard);
-		if (query_retry())
-			goto again;
-		return;
-	}
-	if (commit(state.hoard))
-		rollback(state.hoard);
-}
+#define TRANSACTION_DECL	static void flush_slot_cache(void)
+#define TRANSACTION_CALL	_flush_slot_cache()
+TRANSACTION_WRAPPER
+#undef TRANSACTION_DECL
+#undef TRANSACTION_CALL
 
 /* must be within transaction */
 static pk_err_t allocate_slot(int *offset)
@@ -410,21 +420,6 @@ static pk_err_t _hoard_invalidate_chunk(int offset, const void *tag,
 	return PK_SUCCESS;
 }
 
-void hoard_invalidate_chunk(int offset, const void *tag, unsigned taglen)
-{
-again:
-	if (begin(state.hoard))
-		return;
-	if (_hoard_invalidate_chunk(offset, tag, taglen)) {
-		rollback(state.hoard);
-		if (query_retry())
-			goto again;
-		return;
-	}
-	if (commit(state.hoard))
-		rollback(state.hoard);
-}
-
 /* Same as _hoard_invalidate_chunk(), but for the slot cache.  We don't
    need to check that the row being deleted is still valid, since there's no
    contention for the slot cache. */
@@ -440,20 +435,19 @@ static pk_err_t _hoard_invalidate_slot_chunk(int offset)
 	return PK_SUCCESS;
 }
 
-static void hoard_invalidate_slot_chunk(int offset)
-{
-again:
-	if (begin(state.hoard))
-		return;
-	if (_hoard_invalidate_slot_chunk(offset)) {
-		rollback(state.hoard);
-		if (query_retry())
-			goto again;
-		return;
-	}
-	if (commit(state.hoard))
-		rollback(state.hoard);
-}
+#define TRANSACTION_DECL	void hoard_invalidate_chunk(int offset, \
+					const void *tag, unsigned taglen)
+#define TRANSACTION_CALL	_hoard_invalidate_chunk(offset, tag, taglen)
+TRANSACTION_WRAPPER
+#undef TRANSACTION_DECL
+#undef TRANSACTION_CALL
+
+#define TRANSACTION_DECL	static void hoard_invalidate_slot_chunk( \
+					int offset)
+#define TRANSACTION_CALL	_hoard_invalidate_slot_chunk(offset)
+TRANSACTION_WRAPPER
+#undef TRANSACTION_DECL
+#undef TRANSACTION_CALL
 
 pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 {
