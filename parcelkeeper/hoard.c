@@ -216,22 +216,20 @@ static pk_err_t expand_slot_cache(void)
 		if (count)
 			start += step;
 		for (i=0; i<needed; i++) {
-			if (query(NULL, state.hoard, "INSERT INTO chunks "
-						"(offset) VALUES (?)", "d",
-						start + i * step)) {
-				pk_log_sqlerr("Couldn't expand hoard cache to "
-							"offset %d",
-							start + i * step);
-				return PK_IOERR;
-			}
 			if (query(NULL, state.hoard, "INSERT INTO temp.slots "
 						"(offset) VALUES (?)", "d",
 						start + i * step)) {
-				pk_log_sqlerr("Couldn't add offset %d to "
+				pk_log_sqlerr("Couldn't add new offset %d to "
 							"slot cache",
 							start + i * step);
 				return PK_IOERR;
 			}
+		}
+		if (query(NULL, state.hoard, "INSERT OR IGNORE INTO chunks "
+					"(offset) SELECT offset FROM "
+					"temp.slots", NULL)) {
+			pk_log_sqlerr("Couldn't expand hoard cache");
+			return PK_IOERR;
 		}
 	}
 
