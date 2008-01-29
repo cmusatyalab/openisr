@@ -35,7 +35,7 @@ static struct query *prepared[CACHE_BUCKETS];
 static __thread int result;  /* set by query() and query_next() */
 static __thread char errmsg[ERRBUFSZ];
 
-static void sqlerr(char *fmt, ...)
+static void sqlerr(const char *fmt, ...)
 {
 	va_list ap;
 
@@ -54,7 +54,7 @@ static unsigned get_bucket(const char *sql)
 	return hash % CACHE_BUCKETS;
 }
 
-static int alloc_query(struct query **new_qry, sqlite3 *db, char *sql)
+static int alloc_query(struct query **new_qry, sqlite3 *db, const char *sql)
 {
 	struct query *qry;
 	int ret;
@@ -81,7 +81,7 @@ static void destroy_query(struct query *qry)
 	free(qry);
 }
 
-static int get_query(struct query **new_qry, sqlite3 *db, char *sql)
+static int get_query(struct query **new_qry, sqlite3 *db, const char *sql)
 {
 	unsigned bucket=get_bucket(sql);
 	int ret;
@@ -104,8 +104,8 @@ static int get_query(struct query **new_qry, sqlite3 *db, char *sql)
 	return ret;
 }
 
-pk_err_t query(struct query **new_qry, sqlite3 *db, char *query, char *fmt,
-			...)
+pk_err_t query(struct query **new_qry, sqlite3 *db, const char *query,
+			const char *fmt, ...)
 {
 	struct query *qry;
 	sqlite3_stmt *stmt;
@@ -207,7 +207,7 @@ const char *query_errmsg(void)
 	return errmsg;
 }
 
-void query_row(struct query *qry, char *fmt, ...)
+void query_row(struct query *qry, const char *fmt, ...)
 {
 	struct sqlite3_stmt *stmt=qry->stmt;
 	va_list ap;
@@ -459,8 +459,8 @@ again:
 	return PK_SUCCESS;
 }
 
-pk_err_t cleanup_action(sqlite3 *db, char *sql, enum pk_log_type logtype,
-			char *desc)
+pk_err_t cleanup_action(sqlite3 *db, const char *sql, enum pk_log_type logtype,
+			const char *desc)
 {
 	int changes;
 

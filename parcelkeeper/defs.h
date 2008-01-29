@@ -239,13 +239,13 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 void sql_init(void);
 void sql_shutdown(void);
 pk_err_t sql_setup_conn(sqlite3 *db);
-pk_err_t query(struct query **new_qry, sqlite3 *db, char *query, char *fmt,
-			...);
+pk_err_t query(struct query **new_qry, sqlite3 *db, const char *query,
+			const char *fmt, ...);
 pk_err_t query_next(struct query *qry);
 int query_result(void);
 const char *query_errmsg(void);
 int query_retry(void);
-void query_row(struct query *qry, char *fmt, ...);
+void query_row(struct query *qry, const char *fmt, ...);
 void query_free(struct query *qry);
 void query_flush(void);
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file);
@@ -256,8 +256,8 @@ pk_err_t _commit(sqlite3 *db, const char *caller);
 pk_err_t _rollback(sqlite3 *db, const char *caller);
 #define rollback(db) _rollback(db, __func__)
 pk_err_t validate_db(sqlite3 *db);
-pk_err_t cleanup_action(sqlite3 *db, char *sql, enum pk_log_type logtype,
-			char *desc);
+pk_err_t cleanup_action(sqlite3 *db, const char *sql, enum pk_log_type logtype,
+			const char *desc);
 #define query_has_row() (query_result() == SQLITE_ROW)
 #define query_ok() (query_result() == SQLITE_OK)
 #define query_busy() (query_result() == SQLITE_BUSY)
