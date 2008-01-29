@@ -149,18 +149,6 @@ static pk_err_t add_chunk_reference(const void *tag)
 	return PK_SUCCESS;
 }
 
-/* Sets the reference flag to zero but doesn't touch the refs table */
-static pk_err_t release_chunk_reference(int offset)
-{
-	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 0 WHERE "
-				"offset == ?", "d", offset)) {
-		pk_log_sqlerr("Couldn't release reference on offset %d",
-					offset);
-		return PK_IOERR;
-	}
-	return PK_SUCCESS;
-}
-
 /* XXX cache chunks of different sizes */
 /* must be within transaction */
 static pk_err_t expand_slot_cache(void)
@@ -271,37 +259,32 @@ static pk_err_t _flush_slot_cache(void)
 	int last_access;
 
 	for (query(&qry, state.hoard, "SELECT tag, offset, length, crypto, "
-				"last_access FROM temp.slots", NULL);
-				query_has_row(); query_next(qry)) {
+				"last_access FROM temp.slots WHERE "
+				"tag NOTNULL", NULL); query_has_row();
+				query_next(qry)) {
 		query_row(qry, "bdddd", &tag, &taglen, &offset, &len, &crypto,
 					&last_access);
-		if (tag != NULL) {
-			query(NULL, state.hoard, "UPDATE chunks SET tag = ?, "
-						"length = ?, crypto = ?, "
-						"last_access = ?, "
-						"referenced = 1 "
-						"WHERE offset = ?", "bdddd",
-						tag, taglen, len, crypto,
-						last_access, offset);
-			if (query_result() == SQLITE_CONSTRAINT) {
-				ret=release_chunk_reference(offset);
-				if (ret)
-					goto bad;
-			} else if (query_ok()) {
-				ret=add_chunk_reference(tag);
-				if (ret)
-					goto bad;
-			} else {
-				pk_log_sqlerr("Couldn't update chunks table "
-							"for offset %d",
-							offset);
+		query(NULL, state.hoard, "UPDATE chunks SET tag = ?, "
+					"length = ?, crypto = ?, "
+					"last_access = ?, referenced = 1 "
+					"WHERE offset = ?", "bdddd", tag,
+					taglen, len, crypto, last_access,
+					offset);
+
+		if (query_result() == SQLITE_CONSTRAINT) {
+			if (query(NULL, state.hoard, "UPDATE chunks "
+						"SET referenced = 0 WHERE "
+						"offset == ?", "d", offset)) {
+				pk_log_sqlerr("Couldn't release reference "
+							"on offset %d", offset);
 				ret=PK_IOERR;
 				goto bad;
 			}
-		} else {
-			ret=release_chunk_reference(offset);
-			if (ret)
-				goto bad;
+		} else if (!query_ok()) {
+			pk_log_sqlerr("Couldn't update chunks table for "
+						"offset %d", offset);
+			ret=PK_IOERR;
+			goto bad;
 		}
 	}
 	query_free(qry);
@@ -309,11 +292,25 @@ static pk_err_t _flush_slot_cache(void)
 		pk_log_sqlerr("Couldn't query slot cache");
 		return PK_IOERR;
 	}
+
+	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO refs (parcel, tag) "
+				"SELECT ?, tag FROM temp.slots "
+				"WHERE tag NOTNULL", "d", state.hoard_ident)) {
+		pk_log_sqlerr("Couldn't add chunk references");
+		return PK_IOERR;
+	}
+	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 0 WHERE "
+				"offset IN (SELECT offset FROM temp.slots "
+				"WHERE tag ISNULL)", NULL)) {
+		pk_log_sqlerr("Couldn't free unused cache slots");
+		return PK_IOERR;
+	}
 	if (query(NULL, state.hoard, "DELETE FROM temp.slots", NULL)) {
 		pk_log_sqlerr("Couldn't clear slot cache");
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
+
 bad:
 	query_free(qry);
 	return ret;
