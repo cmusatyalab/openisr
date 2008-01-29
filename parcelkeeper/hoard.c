@@ -18,7 +18,7 @@
 #include "defs.h"
 
 #define HOARD_INDEX_VERSION 7
-#define EXPAND_CHUNKS 128
+#define EXPAND_CHUNKS 256
 
 static pk_err_t create_hoard_index(void)
 {
