@@ -112,6 +112,28 @@ static pk_err_t upgrade_hoard_index(int ver)
 	return PK_SUCCESS;
 }
 
+static pk_err_t add_chunk_reference(const void *tag)
+{
+	char *ftag;
+
+	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO refs "
+				"(parcel, tag) VALUES (?, ?)", "db",
+				state.hoard_ident, tag, parcel.hashlen)) {
+		ftag=format_tag(tag, parcel.hashlen);
+		pk_log_sqlerr("Couldn't add chunk reference for tag %s", ftag);
+		free(ftag);
+		return PK_IOERR;
+	}
+	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1 "
+				" WHERE tag == ?", "b", tag, parcel.hashlen)) {
+		ftag=format_tag(tag, parcel.hashlen);
+		pk_log_sqlerr("Couldn't set referenced flag for tag %s", ftag);
+		free(ftag);
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
 /* XXX cache chunks of different sizes */
 /* must be within transaction */
 static pk_err_t expand_cache(void)
@@ -199,28 +221,6 @@ static pk_err_t allocate_chunk_offset(int *offset)
 		ret=expand_cache();
 		if (ret)
 			return ret;
-	}
-	return PK_SUCCESS;
-}
-
-static pk_err_t add_chunk_reference(const void *tag)
-{
-	char *ftag;
-
-	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO refs "
-				"(parcel, tag) VALUES (?, ?)", "db",
-				state.hoard_ident, tag, parcel.hashlen)) {
-		ftag=format_tag(tag, parcel.hashlen);
-		pk_log_sqlerr("Couldn't add chunk reference for tag %s", ftag);
-		free(ftag);
-		return PK_IOERR;
-	}
-	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1 "
-				" WHERE tag == ?", "b", tag, parcel.hashlen)) {
-		ftag=format_tag(tag, parcel.hashlen);
-		pk_log_sqlerr("Couldn't set referenced flag for tag %s", ftag);
-		free(ftag);
-		return PK_IOERR;
 	}
 	return PK_SUCCESS;
 }
