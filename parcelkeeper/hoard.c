@@ -194,7 +194,7 @@ static pk_err_t expand_slot_cache(void)
 		if (query(NULL, state.hoard, "INSERT OR IGNORE INTO "
 					"temp.slots (offset) "
 					"SELECT offset FROM chunks "
-					"WHERE referenced == 0 "
+					"WHERE referenced == 0 AND tag NOTNULL "
 					"ORDER BY last_access LIMIT ?", "d",
 					allowed)) {
 			pk_log_sqlerr("Error reclaiming hoard cache slots");
