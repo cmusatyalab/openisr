@@ -67,7 +67,7 @@ static void check_log(void)
 	}
 }
 
-void _pk_log(enum pk_log_type type, char *fmt, const char *func, ...)
+void _pk_log(enum pk_log_type type, const char *fmt, const char *func, ...)
 {
 	va_list ap;
 	char buf[50];
@@ -118,7 +118,7 @@ void log_shutdown(void)
 		close_log();
 }
 
-static pk_err_t parse_logtype(char *name, enum pk_log_type *out)
+static pk_err_t parse_logtype(const char *name, enum pk_log_type *out)
 {
 	if (!strcmp(name, "info"))
 		*out=LOG_INFO;
@@ -140,7 +140,7 @@ static pk_err_t parse_logtype(char *name, enum pk_log_type *out)
 }
 
 /* Cannot call pk_log(), since the logger hasn't started yet */
-pk_err_t logtypes_to_mask(char *list, unsigned *out)
+pk_err_t logtypes_to_mask(const char *list, unsigned *out)
 {
 	char *list_copy;
 	char *tok;
