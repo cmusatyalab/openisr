@@ -22,6 +22,25 @@ _isr_find_word() {
 	echo -1
 }
 
+_isr_find_bareword() {
+	local i cur prev
+	for (( i=$1; $i < ${#COMP_WORDS[@]}; i++ )) ; do
+		cur="${COMP_WORDS[$i]}"
+		prev="${COMP_WORDS[$(($i - 1))]}"
+		# Ignore option arguments
+		if [ "${cur:0:1}" = "-" ] ; then
+			continue
+		fi
+		# Ignore parameters to option arguments
+		if _isr_parameter_takes_option $prev ; then
+			continue
+		fi
+		echo $i
+		return
+	done
+	echo -1
+}
+
 _isr_config_value() {
 	local ret file tmp
 	for file in !!SHAREDIR!!/config !!SYSCONFDIR!!/openisr.conf ~/.openisrrc
@@ -137,38 +156,6 @@ _isr_parameter_takes_option() {
 	return 1
 }
 
-_isr_offer_parcel_parameter() {
-	local i cur prev
-	prev=$1
-
-	# Don't autocomplete if the user is entering an option parameter
-	# rather than a parcel name
-	_isr_parameter_takes_option $prev && return 1
-
-	# Don't autocomplete if there's already a parcel parameter on the
-	# command line.
-	# Ignore "isr" and the subcommand name
-	for (( i=2; $i < ${#COMP_WORDS[@]}; i++ )) ; do
-		cur="${COMP_WORDS[$i]}"
-		prev="${COMP_WORDS[$(($i - 1))]}"
-		# Ignore the argument we're currently editing
-		if [ $i = $COMP_CWORD ] ; then
-			continue
-		fi
-		# Ignore option arguments
-		if [ "${cur:0:1}" = "-" ] ; then
-			continue
-		fi
-		# Ignore parameters to option arguments
-		if _isr_parameter_takes_option $prev ; then
-			continue
-		fi
-		# We found a parcel parameter
-		return 1
-	done
-	return 0
-}
-
 _isr_subcommand_opts() {
 	local short long
 	case $1 in
@@ -224,21 +211,15 @@ _isr_subcommand_opts() {
 }
 
 _isr() {
-	local cmd cur prev server user
-	cmd="${COMP_WORDS[1]}"
+	local cur prev server user cmd_idx parcel_idx cmd
 	cur="$2"
 	prev="$3"
 
-	if [ $COMP_CWORD = 1 ] ; then
-		COMPREPLY=(`compgen -W "auth checkhoard checkin ci checkout co checkp clean deauth discard help hoard ls lshoard passwd resume rmhoard stat sync version" -- $cur`)
-		return
-	fi
-
-	if [ "${cur:0:1}" = "-" ] ; then
-		COMPREPLY=(`_isr_subcommand_opts $cmd $cur`)
-		return
-	fi
-	
+	# Always offer to complete server and user names, even if we haven't
+	# seen a subcommand yet.  We assume that the user knows what they're
+	# doing in this case, because the subcommand they haven't entered yet
+	# may not actually take -s/-u.  (And therefore we don't offer to
+	# complete the options themselves.)
 	if [ "$prev" = "-s" -o "$prev" = "--server" ] ; then
 		COMPREPLY=(`_isr_servers $cur`)
 		return
@@ -248,8 +229,31 @@ _isr() {
 		return
 	fi
 
+	# Figure out what command and parcel we have
+	cmd_idx=`_isr_find_bareword 1`
+	if [ $cmd_idx != -1 ] ; then
+		cmd=${COMP_WORDS[$cmd_idx]}
+		parcel_idx=`_isr_find_bareword $(($cmd_idx + 1))`
+	else
+		parcel_idx=-1
+	fi
+
+	# Offer to complete options whether we know the subcommand or not,
+	# since at least -q/-v always work
+	if [ "${cur:0:1}" = "-" ] ; then
+		COMPREPLY=(`_isr_subcommand_opts "$cmd" $cur`)
+		return
+	fi
+
+	if [ $cmd_idx == -1 -o $cmd_idx == $COMP_CWORD -o \
+				\( $parcel_idx == -1 -a \
+				$COMP_CWORD -lt $cmd_idx \) ] ; then
+		COMPREPLY=(`compgen -W "auth checkhoard checkin ci checkout co checkp clean deauth discard help hoard ls lshoard passwd resume rmhoard stat sync version" -- $cur`)
+		return
+	fi
+
 	# Make sure it's appropriate to offer a parcel parameter here
-	_isr_offer_parcel_parameter $prev || return
+	[ $parcel_idx == -1 -o $parcel_idx == $COMP_CWORD ] || return
 
 	# Determine the server and userid to filter the parcel list against
 	server=`_isr_cur_server`
