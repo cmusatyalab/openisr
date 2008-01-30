@@ -166,6 +166,7 @@ struct pk_state {
 	uint64_t sql_wait_usecs;
 
 	volatile int signal;  /* Last signal received by generic handler */
+	int override_signal;  /* Ignore pending signals in pending_signal() */
 };
 
 extern struct pk_config config;

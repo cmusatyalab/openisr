@@ -247,7 +247,7 @@ int pending_signal(void)
 		warned=1;
 		pk_log(LOG_INFO, "Interrupt");
 	}
-	return state.signal ? 1 : 0;
+	return state.signal && !state.override_signal;
 }
 
 void print_progress_chunks(unsigned chunks, unsigned maxchunks)

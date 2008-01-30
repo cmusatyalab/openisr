@@ -141,6 +141,7 @@ int main(int argc, char **argv)
 	}
 
 shutdown:
+	state.override_signal=1;
 	if (have_nexus)
 		nexus_shutdown();
 	if (have_transport)
