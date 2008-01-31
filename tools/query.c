@@ -43,7 +43,8 @@ typedef enum {
 
 static void sqlerr(char *prefix)
 {
-	fprintf(stderr, "%s: %s\n", prefix, sqlite3_errmsg(db));
+	fprintf(stderr, "%s: %s (%d)\n", prefix, sqlite3_errmsg(db),
+				sqlite3_errcode(db));
 }
 
 static void __attribute__ ((noreturn)) die(char *str, ...)
