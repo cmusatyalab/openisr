@@ -120,7 +120,9 @@ static ret_t attach_dbs(void)
 		if (attached_names[i] == NULL)
 			break;
 		/* A successful ATTACH invalidates prepared statements, so we
-		   have to redo this every iteration */
+		   have to redo this every iteration.  This doesn't seem to
+		   return SQLITE_BUSY, probably because it doesn't look
+		   up any schema information. */
 		if (sqlite3_prepare_v2(db, "ATTACH ?1 as ?2", -1, &stmt,
 					NULL)) {
 			sqlerr("Preparing ATTACH statement");
@@ -254,13 +256,17 @@ static ret_t make_queries(char *str)
 	const char *query;
 	sqlite3_stmt *stmt;
 	ret_t ret;
+	int sret;
 	int ctr;
 	unsigned changes=0;
 	int params=0;  /* Silence compiler warning */
 
 	used_params=0;
 	for (query=str; *query; ) {
-		if (sqlite3_prepare_v2(db, query, -1, &stmt, &query)) {
+		sret=sqlite3_prepare_v2(db, query, -1, &stmt, &query);
+		if (sret == SQLITE_BUSY) {
+			return FAIL_TEMP;
+		} else if (sret) {
 			sqlerr("Preparing query");
 			return FAIL;
 		}
