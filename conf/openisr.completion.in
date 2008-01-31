@@ -88,7 +88,7 @@ _isr_checked_out() {
 
 _isr_query_hoard() {
 	[ -x !!LIBDIR!!/query -a -r ~/.isr/hoard/hoard.idx ] || return
-	!!LIBDIR!!/query ~/.isr/hoard/hoard.idx "$1"
+	!!LIBDIR!!/query ~/.isr/hoard/hoard.idx "$1" 2>/dev/null
 }
 
 _isr_local_parcel() {
