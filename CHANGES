@@ -1,3 +1,53 @@
+====== 0.9.1
+
+------ Client changes
+
+- Major hoard cache performance improvements
+- Performance improvements to lshoard, rmhoard, and stat subcommands
+- Update udev rules to make /dev/loop* and /dev/openisrctl mode 660, group
+  "isrusers".  (The group name can be overridden using the --with-group
+  configure option.)
+- Add -Y/--splice checkp option for use in recovering data from a damaged
+  local cache
+- Automatically run checkp at resume/checkin time if the previous resume
+  terminated abnormally
+- Warn before resuming a parcel with a damaged local cache
+- Show total size of all VMM state, not just the memory image file, in
+  "isr stat"
+- Add bash completion rules for "isr" command
+- Add logtype field to parcel log messages
+- Fix "Couldn't generate tag list" error at checkout/checkin
+- Fix ATTACH error at Parcelkeeper startup
+- Fix keyroot disclosure on multi-user client hosts with world-readable home
+  directories
+- Fix symlink attacks; respect TMPDIR environment variable
+- Fix fcntl locking through libvdisk on 64-bit platforms
+- Error out, rather than displaying a password prompt, when connecting to a
+  server we don't have authentication credentials for
+- Correctly notice the lack of a network connection when there are no active
+  network interfaces
+- Fix "isr hoard" on clients which have never done a checkout
+- Miscellaneous fixes and cleanups
+- Packaging updates
+
+------ Server changes
+
+- Fix checkparcel for parcels whose CHUNKSIZE is not a multiple of CHUNKSPERDIR
+- Fix symlink attacks
+- upgrade-0.9: Fix bug which could cause converted parcels to fail checkparcel
+  validation
+- upgrade-0.9: Refuse to run if the source parcel is checked out
+- upgrade-0.9: Do not fail if the source parcel has never been checked out
+
+------ isr_admin changes
+
+- copyparcel: Fix generation of invalid parcel.cfg files
+- makeparcel: Generate appropriate .vmx and .vmdk files for the new parcel.
+  Add mandatory -m/--memsize option.
+- copyparcel: Prune cfg tarball and update parcel-specific parameters in .vmx
+  file
+- Add delparcel command
+
 ====== 0.9 (2007-12-18)
 
 ------ Client changes
