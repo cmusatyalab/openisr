@@ -186,6 +186,46 @@ sub rewrite_keyring {
 	die if $? != 0;
 }
 
+# When the OpenISR 0.8 client retrieves a chunk whose data is larger than
+# 128 KB, it re-encodes it to be stored uncompressed.  When we convert
+# parcels containing such chunks, both the old and new versions of the
+# chunk convert to the same data.  As a result, we now have two parcel
+# versions with the same keyring entries for a chunk, but where the older
+# version's hdk directories contain a file for the chunk.  To prevent the
+# locksrv's checkparcel module from complaining about these cases, we find
+# them and remove the now-unnecessary chunk files.
+sub prune_chunks {
+	my $prev_ver = shift;
+	my $ver = shift;
+	my $chunk;
+	my $dir;
+	my $file;
+	my $path;
+	my $count = 0;
+	use integer;
+
+	print "Pruning unnecessary chunks for $prev_ver...";
+	open(QRY, "-|", "$bindir/query", "$dst/$ver/keyring", "-a",
+				"prev:$dst/$prev_ver/keyring",
+				"SELECT main.keys.chunk FROM " .
+				"main.keys JOIN prev.keys " .
+				"ON main.keys.chunk == prev.keys.chunk " .
+				"WHERE main.keys.tag == prev.keys.tag") or die;
+	while ($chunk = <QRY>) {
+		chomp $chunk;
+		$dir = sprintf("%04d", $chunk / $parcelcfg{'CHUNKSPERDIR'});
+		$file = sprintf("%04d", $chunk % $parcelcfg{'CHUNKSPERDIR'});
+		$path = "$dst/$prev_ver/hdk/$dir/$file";
+		if (-e $path) {
+			unlink($path) or die "Couldn't unlink $path";
+			$count++;
+		}
+	}
+	close(QRY);
+	die if $? != 0;
+	print " $count pruned\n";
+}
+
 sub finish_version {
 	my $ver = shift;
 	my @files;
@@ -251,6 +291,14 @@ foreach my $ver (@versions) {
 }
 foreach my $ver (@versions) {
 	rewrite_keyring $ver;
+}
+my $prev_ver;
+foreach my $ver (@versions) {
+	prune_chunks $prev_ver, $ver
+		if defined $prev_ver;
+	$prev_ver = $ver;
+}
+foreach my $ver (@versions) {
 	finish_version $ver;
 }
 print "Finishing up...\n";
