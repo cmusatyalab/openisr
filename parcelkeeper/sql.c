@@ -353,9 +353,11 @@ pk_err_t sql_setup_conn(sqlite3 *db)
 	   signal is pending */
 	sqlite3_progress_handler(db, PROGRESS_HANDLER_INTERVAL,
 				progress_handler, db);
+again:
 	if (query(NULL, db, "PRAGMA synchronous = NORMAL", NULL)) {
-		pk_log(LOG_ERROR, "Couldn't set synchronous pragma "
-					"for database");
+		if (query_retry())
+			goto again;
+		pk_log_sqlerr("Couldn't set synchronous pragma for database");
 		return PK_CALLFAIL;
 	}
 	return PK_SUCCESS;
