@@ -41290,9 +41290,13 @@ SQLITE_API int sqlite3_step(sqlite3_stmt *pStmt){
       sqlite3_free(v->zErrMsg);
       if( !db->mallocFailed ){
         v->zErrMsg = sqlite3DbStrDup(db, zErr);
+        if (db->errCode != SQLITE_ERROR)
+          rc = db->errCode;
+        else
+          db->errCode = rc;
       } else {
         v->zErrMsg = 0;
-        v->rc = SQLITE_NOMEM;
+        rc = v->rc = SQLITE_NOMEM;
       }
     }
     rc = sqlite3ApiExit(db, rc);
