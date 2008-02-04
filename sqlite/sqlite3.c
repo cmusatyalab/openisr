@@ -41158,6 +41158,7 @@ SQLITE_API void sqlite3_result_error_nomem(sqlite3_context *pCtx){
 static int sqlite3Step(Vdbe *p){
   sqlite3 *db;
   int rc;
+  char *err = 0;
 
   assert(p);
   if( p->magic!=VDBE_MAGIC_RUN ){
@@ -41230,20 +41231,24 @@ static int sqlite3Step(Vdbe *p){
   }
 #endif
 
-  sqlite3Error(p->db, rc, 0);
+  if( p->zErrMsg ){
+    err = sqlite3DbStrDup(db, p->zErrMsg);
+  }
   p->rc = sqlite3ApiExit(p->db, p->rc);
 end_of_step:
   assert( (rc&0xff)==rc );
   if( p->zSql && (rc&0xff)<SQLITE_ROW ){
     /* This behavior occurs if sqlite3_prepare_v2() was used to build
     ** the prepared statement.  Return error codes directly */
-    sqlite3Error(p->db, p->rc, 0);
-    return p->rc;
-  }else{
-    /* This is for legacy sqlite3_prepare() builds and when the code
-    ** is SQLITE_ROW or SQLITE_DONE */
-    return rc;
+    rc = p->rc;
   }
+  if( err ){
+    sqlite3ValueSetStr(db->pErr,-1,err,SQLITE_UTF8,sqlite3_free);
+    db->errCode = rc;
+  }else{
+    sqlite3Error(p->db, rc, 0);
+  }
+  return rc;
 }
 
 /*
