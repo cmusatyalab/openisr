@@ -369,7 +369,16 @@ int query_retry(void)
 {
 	long time;
 
-	if (query_busy()) {
+	/* ATTACH (and possibly other cases?) sometimes returns SQLITE_ERROR
+	   when it means SQLITE_BUSY.  This is non-trivial to fix within
+	   SQLite, so we examine the error message as a workaround.  If
+	   you find that a locked database results in the errmsg
+	   "SQL logic error or missing database" instead of
+	   "database is locked", your SQLite does not have a fix for ticket
+	   #2371. */
+	if (query_busy() || (query_result() == SQLITE_ERROR &&
+				!strcmp(query_errmsg(),
+				"database is locked"))) {
 		/* The SQLite busy handler is not called when SQLITE_BUSY
 		   results from a failed attempt to promote a shared
 		   lock to reserved.  So we can't just retry after getting
