@@ -138,9 +138,19 @@ static ret_t attach_dbs(void)
 			sqlerr("Binding database name");
 			goto bad;
 		}
-		while ((ret=sqlite3_step(stmt)) == SQLITE_BUSY)
+		ret=sqlite3_step(stmt);
+		/* When executing ATTACH, SQLite can say SQLITE_ERROR
+		   when it means SQLITE_BUSY.  Disambiguate SQLITE_ERROR
+		   using the error string. */
+		if (ret == SQLITE_BUSY || (ret == SQLITE_ERROR &&
+					!strcmp("database is locked",
+					sqlite3_errmsg(db)))) {
 			backoff_delay();
-		if (ret != SQLITE_DONE) {
+			/* Finalize the statement (since we're not allowed
+			   to retry the existing one in the SQLITE_ERROR case)
+			   and try again */
+			i--;
+		} else if (ret != SQLITE_DONE) {
 			sqlerr("Executing ATTACH statement");
 			goto bad;
 		}
