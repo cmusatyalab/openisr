@@ -363,6 +363,17 @@ bad:
 
 int validate_cache(void)
 {
+	int ret=0;
+
+	if (config.flags & WANT_CHECK) {
+		/* Don't actually do any validation; just see where we are */
+		if (cache_test_flag(CA_F_DIRTY))
+			ret |= 2;
+		if (cache_test_flag(CA_F_DAMAGED))
+			ret |= 4;
+		return ret;
+	}
+
 	pk_log(LOG_INFO, "Validating databases");
 	printf("Validating databases...\n");
 	if (validate_db(state.db))

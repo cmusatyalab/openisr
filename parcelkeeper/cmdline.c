@@ -72,7 +72,7 @@ static struct pk_option pk_options[] = {
 	{"log-filter",     OPT_MASK_FILE,      {"comma_separated_list"},                                "Override default list of log types"},
 	{"stderr-filter",  OPT_MASK_STDERR,    {"comma_separated_list"},                                "Override default list of log types"},
 	{"foreground",     OPT_FOREGROUND,     {},                                                      "Don't run in the background"},
-	{"check",          OPT_CHECK,          {},                                                      "Don't download; just return 0 if fully hoarded or 1 otherwise"},
+	{"check",          OPT_CHECK,          {}},
 	{"full",           OPT_FULL,           {},                                                      "Perform full data-integrity check"},
 	{"mode",           OPT_MODE,           {"mode"},                                                "Print detailed usage message about the given mode"},
 	{0}
@@ -107,7 +107,7 @@ mode(HOARD) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         REQUIRED},
 	{OPT_MINSIZE,       OPTIONAL},
-	{OPT_CHECK,         OPTIONAL},
+	{OPT_CHECK,         OPTIONAL, "Don't download; just return 0 if fully hoarded or 1 otherwise"},
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
@@ -126,6 +126,7 @@ mode(EXAMINE) = {
 mode(VALIDATE) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_FULL,          OPTIONAL},
+	{OPT_CHECK,         OPTIONAL, "Don't validate; just set $? & 2 if cache is dirty, $? & 4 if damaged"},
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
