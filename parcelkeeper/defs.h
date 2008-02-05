@@ -58,6 +58,11 @@ enum compresstype {
 	COMP_LZF=3
 };
 
+enum cache_flags {
+	CA_F_DIRTY	= 0x0001,  /* Cache was not closed properly */
+	CA_F_DAMAGED	= 0x0002,  /* Cache has bad chunks */
+};
+
 enum mode {
 	MODE_RUN,
 	MODE_UPLOAD,
@@ -155,6 +160,7 @@ struct pk_state {
 	int hoard_ident;
 
 	unsigned offset;
+	unsigned cache_flags;
 
 	unsigned request_count;
 	unsigned sql_hits;
@@ -203,6 +209,9 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 			enum compresstype compress, unsigned length);
 off64_t cache_chunk_to_offset(unsigned chunk);
+pk_err_t cache_set_flag(unsigned flag);
+pk_err_t cache_clear_flag(unsigned flag);
+int cache_test_flag(unsigned flag);
 
 /* cache_modes.c */
 int copy_for_upload(void);

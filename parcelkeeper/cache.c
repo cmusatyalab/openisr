@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <errno.h>
@@ -29,7 +30,8 @@ struct ca_header {
 	uint32_t magic;
 	uint32_t entries;
 	uint32_t offset;  /* beginning of data, in 512-byte blocks */
-	uint32_t reserved_1[2];
+	uint32_t flags;
+	uint32_t reserved_1;
 	uint8_t version;
 	uint8_t reserved_2[491];
 };
@@ -66,9 +68,11 @@ static pk_err_t create_cache_file(long page_size)
 	   make sure that our header is a multiple of the page size.
 	   We assume that the page size is at least sizeof(hdr) bytes. */
 	state.offset=page_size;
+	state.cache_flags=0;
 	hdr.magic=htonl(CA_MAGIC);
 	hdr.entries=htonl(parcel.chunks);
 	hdr.offset=htonl(state.offset >> 9);
+	hdr.flags=htonl(state.cache_flags);
 	hdr.version=CA_VERSION;
 	if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
 		pk_log(LOG_ERROR, "Couldn't write cache file header");
@@ -114,6 +118,7 @@ static pk_err_t open_cache_file(long page_size)
 					parcel.chunks, ntohl(hdr.entries));
 		return PK_BADFORMAT;
 	}
+	state.cache_flags=ntohl(hdr.flags);
 	state.offset=ntohl(hdr.offset) << 9;
 	if (state.offset % page_size != 0) {
 		/* This may occur with old cache files, or with cache files
@@ -128,6 +133,51 @@ static pk_err_t open_cache_file(long page_size)
 	pk_log(LOG_INFO, "Read cache header");
 	state.cache_fd=fd;
 	return PK_SUCCESS;
+}
+
+static pk_err_t cache_set_flags(unsigned flags)
+{
+	unsigned tmp;
+
+	if (!(config.flags & WANT_LOCK)) {
+		/* Catch misuse of this function */
+		pk_log(LOG_ERROR, "Refusing to set cache flags when lock "
+					"not held");
+		return PK_BUSY;
+	}
+	if (!state.cache_fd) {
+		pk_log(LOG_ERROR, "Cache file not open; can't set flags");
+		return PK_IOERR;
+	}
+
+	tmp=htonl(flags);
+	if (pwrite(state.cache_fd, &tmp, sizeof(tmp),
+				offsetof(struct ca_header, flags))
+				!= sizeof(tmp)) {
+		pk_log(LOG_ERROR, "Couldn't write new flags to cache file");
+		return PK_IOERR;
+	}
+	if (fdatasync(state.cache_fd)) {
+		pk_log(LOG_ERROR, "Couldn't sync cache file");
+		return PK_IOERR;
+	}
+	state.cache_flags=flags;
+	return PK_SUCCESS;
+}
+
+pk_err_t cache_set_flag(unsigned flag)
+{
+	return cache_set_flags(state.cache_flags | flag);
+}
+
+pk_err_t cache_clear_flag(unsigned flag)
+{
+	return cache_set_flags(state.cache_flags & ~flag);
+}
+
+int cache_test_flag(unsigned flag)
+{
+	return ((state.cache_flags & flag) == flag);
 }
 
 static pk_err_t create_cache_index(void)

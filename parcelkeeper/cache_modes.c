@@ -62,6 +62,12 @@ int copy_for_upload(void)
 	int64_t total_modified_bytes;
 	int ret=1;
 
+	if (cache_test_flag(CA_F_DAMAGED)) {
+		pk_log(LOG_ERROR, "Local cache marked as damaged; "
+					"upload disallowed");
+		return 1;
+	}
+
 	pk_log(LOG_INFO, "Copying chunks to upload directory %s",
 				config.dest_dir);
 	if (make_upload_dirs())
@@ -360,16 +366,30 @@ int validate_cache(void)
 	pk_log(LOG_INFO, "Validating databases");
 	printf("Validating databases...\n");
 	if (validate_db(state.db))
-		return 1;
+		goto bad;
 	pk_log(LOG_INFO, "Validating keyring");
 	printf("Validating keyring...\n");
 	if (validate_keyring())
-		return 1;
+		goto bad;
 	pk_log(LOG_INFO, "Checking cache consistency");
 	printf("Checking local cache for internal consistency...\n");
 	if (validate_cachefile())
-		return 1;
+		goto bad;
+	if (cache_test_flag(CA_F_DIRTY)) {
+		if (config.flags & WANT_FULL_CHECK) {
+			cache_clear_flag(CA_F_DIRTY);
+		} else {
+			pk_log(LOG_INFO, "Not clearing dirty flag: full check "
+						"not requested");
+			printf("Not clearing dirty flag: full check "
+						"not requested\n");
+		}
+	}
 	return 0;
+
+bad:
+	cache_set_flag(CA_F_DAMAGED);
+	return 1;
 }
 
 int examine_cache(void)

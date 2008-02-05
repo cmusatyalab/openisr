@@ -141,6 +141,14 @@ pk_err_t nexus_init(void)
 	unsigned protocol_i;
 	struct utsname utsname;
 
+	/* Check for previous unclean shutdown of local cache */
+	if (cache_test_flag(CA_F_DIRTY)) {
+		pk_log(LOG_ERROR, "The local cache was not cleanly shut down.");
+		pk_log(LOG_ERROR, "Will not run this parcel until the cache "
+					"has been validated or discarded.");
+		return PK_BADFORMAT;
+	}
+
 	/* Check Nexus version */
 	if (!is_dir("/sys/class/openisr")) {
 		pk_log(LOG_ERROR, "kernel module not loaded");
@@ -213,10 +221,17 @@ pk_err_t nexus_init(void)
 		}
 	}
 
-	/* Bind the image file to a loop device */
-	ret=loop_bind();
+	/* Set the dirty flag on the local cache */
+	ret=cache_set_flag(CA_F_DIRTY);
 	if (ret)
 		return ret;
+
+	/* Bind the image file to a loop device */
+	ret=loop_bind();
+	if (ret) {
+		cache_clear_flag(CA_F_DIRTY);
+		return ret;
+	}
 
 	/* Register ourselves with the device */
 	memset(&setup, 0, sizeof(setup));
@@ -241,6 +256,7 @@ pk_err_t nexus_init(void)
 		   message */
 		pk_log(LOG_ERROR, "unknown crypto or compression algorithm");
 		ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
+		cache_clear_flag(CA_F_DIRTY);
 		return PK_IOERR;
 	}
 
@@ -248,6 +264,7 @@ pk_err_t nexus_init(void)
 		pk_log(LOG_ERROR, "unable to register with Nexus: %s",
 					strerror(errno));
 		ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
+		cache_clear_flag(CA_F_DIRTY);
 		return PK_IOERR;
 	}
 	state.bdev_index=setup.index;
@@ -314,6 +331,7 @@ void nexus_shutdown(void)
 	sync();
 	sync();
 	sync();
+	cache_clear_flag(CA_F_DIRTY);
 }
 
 static int request_is_valid(const struct nexus_message *req)
