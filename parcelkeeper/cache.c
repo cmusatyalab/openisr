@@ -288,6 +288,8 @@ void cache_shutdown(void)
 static pk_err_t open_cachedir(long page_size)
 {
 	pk_err_t ret;
+	int have_image;
+	int have_index;
 
 	if (sqlite3_open(config.keyring, &state.db)) {
 		pk_log(LOG_ERROR, "Couldn't open keyring %s: %s",
@@ -298,7 +300,10 @@ static pk_err_t open_cachedir(long page_size)
 	ret=sql_setup_conn(state.db);
 	if (ret)
 		return ret;
-	if (is_file(config.cache_file) && is_file(config.cache_index)) {
+
+	have_image=is_file(config.cache_file);
+	have_index=is_file(config.cache_index);
+	if (have_image && have_index) {
 		ret=attach(state.db, "cache", config.cache_index);
 		if (ret)
 			return ret;
@@ -308,20 +313,35 @@ static pk_err_t open_cachedir(long page_size)
 		ret=verify_cache_index();
 		if (ret)
 			return ret;
-	} else if (!is_file(config.cache_file) &&
-				!is_file(config.cache_index)) {
-		ret=attach(state.db, "cache", config.cache_index);
-		if (ret)
-			return ret;
-		ret=create_cache_file(page_size);
-		if (ret)
-			return ret;
+	} else if ((config.flags & WANT_LOCK) && ((have_image && !have_index)
+				|| (!have_image && have_index))) {
+		/* We don't complain about this unless we have the PK lock,
+		   since otherwise we're open to race conditions with another
+		   process that does.  If we don't have the PK lock, we just
+		   treat this case as though neither image nor index exists. */
+		pk_log(LOG_ERROR, "Cache and index in inconsistent state");
+		return PK_IOERR;
+	} else {
+		if (config.flags & WANT_LOCK) {
+			ret=attach(state.db, "cache", config.cache_index);
+			if (ret)
+				return ret;
+			ret=create_cache_file(page_size);
+			if (ret)
+				return ret;
+		} else {
+			/* If we WANT_CACHE but don't WANT_LOCK, we need to
+			   make sure not to create the image and index files
+			   to avoid race conditions.  (Right now this only
+			   affects examine mode.)  Create a fake cache index
+			   to simplify queries elsewhere. */
+			ret=attach(state.db, "cache", ":memory:");
+			if (ret)
+				return ret;
+		}
 		ret=create_cache_index();
 		if (ret)
 			return ret;
-	} else {
-		pk_log(LOG_ERROR, "Cache and index in inconsistent state");
-		return PK_IOERR;
 	}
 	return PK_SUCCESS;
 }
