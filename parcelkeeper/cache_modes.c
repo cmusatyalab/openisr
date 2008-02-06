@@ -399,7 +399,8 @@ int validate_cache(void)
 	return 0;
 
 bad:
-	cache_set_flag(CA_F_DAMAGED);
+	if (cache_set_flag(CA_F_DAMAGED) == PK_SUCCESS)
+		cache_clear_flag(CA_F_DIRTY);
 	return 1;
 }
 
