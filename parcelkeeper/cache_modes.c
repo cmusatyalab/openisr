@@ -374,6 +374,7 @@ bad:
 int validate_cache(void)
 {
 	int ret=0;
+	pk_err_t err;
 
 	if (config.flags & WANT_CHECK) {
 		/* Don't actually do any validation; just see where we are */
@@ -386,16 +387,22 @@ int validate_cache(void)
 
 	pk_log(LOG_INFO, "Validating databases");
 	printf("Validating databases...\n");
-	if (validate_db(state.db))
+	err=validate_db(state.db);
+	if (err)
 		goto bad;
+
 	pk_log(LOG_INFO, "Validating keyring");
 	printf("Validating keyring...\n");
-	if (validate_keyring())
+	err=validate_keyring();
+	if (err)
 		goto bad;
+
 	pk_log(LOG_INFO, "Checking cache consistency");
 	printf("Checking local cache for internal consistency...\n");
-	if (validate_cachefile())
+	err=validate_cachefile();
+	if (err)
 		goto bad;
+
 	if (cache_test_flag(CA_F_DIRTY)) {
 		if (config.flags & WANT_FULL_CHECK) {
 			cache_clear_flag(CA_F_DIRTY);
@@ -409,8 +416,10 @@ int validate_cache(void)
 	return 0;
 
 bad:
-	if (cache_set_flag(CA_F_DAMAGED) == PK_SUCCESS)
-		cache_clear_flag(CA_F_DIRTY);
+	if (err == PK_BADFORMAT || err == PK_INVALID || err == PK_TAGFAIL) {
+		if (cache_set_flag(CA_F_DAMAGED) == PK_SUCCESS)
+			cache_clear_flag(CA_F_DIRTY);
+	}
 	return 1;
 }
 
