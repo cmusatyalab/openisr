@@ -221,10 +221,14 @@ pk_err_t nexus_init(void)
 		}
 	}
 
-	/* Set the dirty flag on the local cache */
-	ret=cache_set_flag(CA_F_DIRTY);
-	if (ret)
-		return ret;
+	/* Set the dirty flag on the local cache.  If the damaged flag is
+	   already set, there's no point in forcing another check if we
+	   crash. */
+	if (!cache_test_flag(CA_F_DAMAGED)) {
+		ret=cache_set_flag(CA_F_DIRTY);
+		if (ret)
+			return ret;
+	}
 
 	/* Bind the image file to a loop device */
 	ret=loop_bind();
