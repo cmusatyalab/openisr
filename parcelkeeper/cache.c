@@ -167,6 +167,8 @@ static pk_err_t cache_set_flags(unsigned flags)
 
 pk_err_t cache_set_flag(unsigned flag)
 {
+	if ((flag & CA_F_DAMAGED) == CA_F_DAMAGED)
+		pk_log(LOG_ERROR, "Setting damaged flag on local cache");
 	return cache_set_flags(state.cache_flags | flag);
 }
 
