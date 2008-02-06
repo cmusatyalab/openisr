@@ -7,8 +7,7 @@
 >>4	belong	x		%u valid chunks,
 >20	byte	1
 >>4	belong	x		%u chunks,
->>12	belong	^1		clean,
->>12	belong	&1		dirty,
+>>12	belong	&1		needs checking,
 >>12	belong	&2		damaged,
 >8	belong	x		header %u sectors
 
