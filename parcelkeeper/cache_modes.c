@@ -67,6 +67,12 @@ int copy_for_upload(void)
 					"upload disallowed");
 		return 1;
 	}
+	if (cache_test_flag(CA_F_DIRTY)) {
+		pk_log(LOG_ERROR, "The local cache was not cleanly shut down.");
+		pk_log(LOG_ERROR, "Will not upload this parcel until the "
+					"cache has been validated.");
+		return 1;
+	}
 
 	pk_log(LOG_INFO, "Copying chunks to upload directory %s",
 				config.dest_dir);
