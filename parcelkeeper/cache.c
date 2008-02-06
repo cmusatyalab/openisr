@@ -274,6 +274,12 @@ static pk_err_t shm_init(void)
 		pk_log(LOG_ERROR, "malloc failed");
 		return PK_NOMEM;
 	}
+	/* If there's a segment by that name, it's leftover and should be
+	   killed.  (Or else we have a UUID collision, which will prevent
+	   Nexus registration from succeeding in any case.)  This is racy
+	   with regard to someone else deleting and recreating the segment,
+	   but we do this under the PK lock so it shouldn't be a problem. */
+	shm_unlink(state.shm_name);
 	fd=shm_open(state.shm_name, O_RDWR|O_CREAT|O_EXCL, 0600);
 	if (fd == -1) {
 		pk_log(LOG_ERROR, "Couldn't create shared memory segment: %s",
