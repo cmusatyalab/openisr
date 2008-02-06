@@ -120,24 +120,24 @@ again:
 		if (chunk > parcel.chunks) {
 			pk_log(LOG_ERROR, "Chunk %u: greater than parcel size "
 						"%u", chunk, parcel.chunks);
-			goto out;
+			goto damaged;
 		}
 		if (taglen != parcel.hashlen) {
 			pk_log(LOG_ERROR, "Chunk %u: expected tag length %u, "
 						"found %u", chunk,
 						parcel.hashlen, taglen);
-			goto out;
+			goto damaged;
 		}
 		if (length == 0) {
 			/* No cache index record */
 			pk_log(LOG_ERROR, "Chunk %u: modified but not present",
 						chunk);
-			goto out;
+			goto damaged;
 		}
 		if (length > parcel.chunksize) {
 			pk_log(LOG_ERROR, "Chunk %u: absurd length %u", chunk,
 						length);
-			goto out;
+			goto damaged;
 		}
 		if (pread(state.cache_fd, buf, length,
 					cache_chunk_to_offset(chunk))
@@ -151,7 +151,7 @@ again:
 			pk_log(LOG_ERROR, "Chunk %u: tag mismatch.  "
 					"Data corruption has occurred", chunk);
 			log_tag_mismatch(tag, calctag, parcel.hashlen);
-			goto out;
+			goto damaged;
 		}
 		path=form_chunk_path(config.dest_dir, chunk);
 		if (path == NULL) {
@@ -196,6 +196,10 @@ bad:
 		pk_log(LOG_STATS, "Copied %u modified chunks, %llu bytes",
 					modified_chunks, modified_bytes);
 	return ret;
+
+damaged:
+	cache_set_flag(CA_F_DAMAGED);
+	goto out;
 }
 
 static pk_err_t validate_keyring(void)
