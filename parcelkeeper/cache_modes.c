@@ -301,6 +301,25 @@ again:
 	query_row(qry, "D", &valid_bytes);
 	query_free(qry);
 
+	for (query(&qry, state.db, "SELECT main.keys.chunk FROM "
+				"main.keys JOIN prev.keys ON "
+				"main.keys.chunk == prev.keys.chunk "
+				"LEFT JOIN cache.chunks ON "
+				"main.keys.chunk == cache.chunks.chunk "
+				"WHERE main.keys.tag != prev.keys.tag AND "
+				"cache.chunks.chunk ISNULL", NULL);
+				query_has_row(); query_next(qry)) {
+		query_row(qry, "d", &chunk);
+		pk_log(LOG_ERROR, "Chunk %u: modified but not present", chunk);
+		ret=PK_INVALID;
+	}
+	query_free(qry);
+	if (!query_ok()) {
+		pk_log_sqlerr("Error checking modified chunks");
+		ret=PK_IOERR;
+		goto bad;
+	}
+
 	for (query(&qry, state.db, "SELECT cache.chunks.chunk, "
 				"cache.chunks.length, keys.tag FROM "
 				"cache.chunks LEFT JOIN keys ON "
@@ -356,17 +375,17 @@ again:
 			}
 		}
 	}
-
-bad:
 	query_free(qry);
-	/* We didn't make any changes; we just need to release the locks */
-	rollback(state.db);
-	if (query_retry())
-		goto again;
 	if (!query_ok()) {
 		pk_log_sqlerr("Error querying cache index");
 		ret=PK_IOERR;
 	}
+
+bad:
+	/* We didn't make any changes; we just need to release the locks */
+	rollback(state.db);
+	if (query_retry())
+		goto again;
 	free(buf);
 	return ret;
 }
