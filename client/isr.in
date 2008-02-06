@@ -106,6 +106,7 @@ sub purge_completion_cache ();
 sub is_fully_hoarded ();
 sub check_for_nexus ();
 sub check_for_old_isrdir ();
+sub check_damaged_cache ();
 sub get_parcelkeeper_pid ();
 sub fetch_parcel_file ($$$$$);
 sub keyroot_pipe ();
@@ -784,7 +785,6 @@ sub run () {
     my $dirname;
     my $cfgfile;  # VMware configuration file
     my $numfiles;
-    my $i;
     my $iters;
     my $sigset;
     my $vmware_opts = "";
@@ -827,6 +827,13 @@ sub run () {
     }
     $cfgfile = $files[0];
     
+    # See whether the parcel is safe to run
+    if (check_damaged_cache()) {
+    	print RED, "The local cache for $parcel is damaged.  You will not be able to check in.\n", RESET;
+	query("Resume the parcel anyway?") eq "y"
+	    or return;
+    }
+
     # Launch Parcelkeeper. 
     print("Launching Parcelkeeper...\n")
 	if $verbose;
@@ -1655,6 +1662,13 @@ sub copy_dirtychunks () {
     mysystem("rm -rf $uploaddir");
     mkdirs($uploaddir, "$uploaddir/hdk")
 	or errexit("Unable to make temporary directory $uploaddir/hdk");
+    
+    #
+    # Make sure it's safe to upload
+    #
+    if (check_damaged_cache()) {
+	errexit("Local cache of $userid/$parcel is damaged; upload disallowed.");
+    }
 
     #
     # Create cfg tarball and encrypt it and the keyring
@@ -2357,6 +2371,40 @@ sub check_for_old_isrdir () {
         closedir(UDIR);
     }
     closedir(IDIR);
+}
+
+#
+# check_damaged_cache - See if the local cache for this parcel is dirty
+#                       (that is, PK was not shut down cleanly) and validate
+#                       it if so.  Returns true if the local cache is damaged
+#                       (and thus checkin will be disallowed by PK), false
+#                       otherwise.
+#
+sub check_damaged_cache () {
+    my $ret;
+    
+    $ret = run_parcelkeeper("validate", "parcel check") >> 8;
+    errexit("Unable to run Parcelkeeper.")
+        if $ret == 1 or $ret > 6;
+    if ($ret & 2) {
+	print "The parcel was previously shut down unexpectedly.  Running consistency check...\n"
+	    if $verbose;
+	# If this fails, then either validation completed with errors or PK
+	# failed for other reasons.  We find out which by running with --check
+	# again.
+	run_parcelkeeper("validate", "parcel full log");
+	$ret = run_parcelkeeper("validate", "parcel check") >> 8;
+	errexit("Unable to run Parcelkeeper.")
+	    if $ret == 1 or $ret > 6;
+	# If the dirty flag is still set, the validation run did not arrive at
+	# a decision.
+	errexit("Unable to check parcel consistency.")
+	    if $ret & 2;
+	# The extra spaces are here to blank out the PK progress bar
+	print "Check complete.             \n"
+	    if $verbose;
+    }
+    return ($ret & 4) == 4;
 }
 
 #
