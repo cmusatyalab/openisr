@@ -86,6 +86,7 @@ enum mode_flags {
 	WANT_CHECK	= 0x0020,
 	WANT_SHM	= 0x0040,
 	WANT_FULL_CHECK	= 0x0080,
+	WANT_SPLICE	= 0x0100,
 };
 
 struct pk_connection;

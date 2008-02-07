@@ -35,6 +35,7 @@ enum option {
 	OPT_FOREGROUND,
 	OPT_CHECK,
 	OPT_FULL,
+	OPT_SPLICE,
 	OPT_MODE,
 	END_OPTS = -1
 };
@@ -74,6 +75,7 @@ static struct pk_option pk_options[] = {
 	{"foreground",     OPT_FOREGROUND,     {},                                                      "Don't run in the background"},
 	{"check",          OPT_CHECK,          {}},
 	{"full",           OPT_FULL,           {},                                                      "Perform full data-integrity check"},
+	{"splice",         OPT_SPLICE,         {},                                                      "Revert chunks that fail tag validation (requires --full)"},
 	{"mode",           OPT_MODE,           {"mode"},                                                "Print detailed usage message about the given mode"},
 	{0}
 };
@@ -126,6 +128,7 @@ mode(EXAMINE) = {
 mode(VALIDATE) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_FULL,          OPTIONAL},
+	{OPT_SPLICE,        OPTIONAL},
 	{OPT_CHECK,         OPTIONAL, "Don't validate; just set $? & 2 if cache is dirty, $? & 4 if damaged"},
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
@@ -454,6 +457,10 @@ enum mode parse_cmdline(int argc, char **argv)
 		case OPT_FULL:
 			/* Abuse of WANT_ flags? */
 			config.flags |= WANT_FULL_CHECK;
+			break;
+		case OPT_SPLICE:
+			/* Abuse of WANT_ flags? */
+			config.flags |= WANT_SPLICE;
 			break;
 		case OPT_MODE:
 			helpmode=parse_mode(optparams[0]);

@@ -268,6 +268,27 @@ again:
 	return ret;
 }
 
+/* Must be within transaction */
+static pk_err_t revert_chunk(int chunk)
+{
+	pk_log(LOG_ERROR, "Reverting chunk %d", chunk);
+	if (query(NULL, state.db, "INSERT OR REPLACE INTO main.keys "
+				"(chunk, tag, key, compression) "
+				"SELECT chunk, tag, key, compression FROM "
+				"prev.keys WHERE chunk == ?", "d", chunk)) {
+		pk_log_sqlerr("Couldn't revert keyring entry for chunk %d",
+					chunk);
+		return PK_IOERR;
+	}
+	if (query(NULL, state.db, "DELETE FROM cache.chunks WHERE chunk == ?",
+				"d", chunk)) {
+		pk_log_sqlerr("Couldn't delete cache entry for chunk %d",
+					chunk);
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
 static pk_err_t validate_cachefile(void)
 {
 	struct query *qry;
@@ -280,6 +301,7 @@ static pk_err_t validate_cachefile(void)
 	int64_t processed_bytes;
 	int64_t valid_bytes;
 	pk_err_t ret;
+	pk_err_t ret2;
 
 	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
@@ -371,6 +393,11 @@ again:
 				pk_log(LOG_ERROR, "Chunk %u: tag check "
 							"failure", chunk);
 				log_tag_mismatch(tag, calctag, taglen);
+				if (config.flags & WANT_SPLICE) {
+					ret=revert_chunk(chunk);
+					if (ret)
+						goto bad;
+				}
 				ret=PK_TAGFAIL;
 			}
 		}
@@ -379,10 +406,17 @@ again:
 	if (!query_ok()) {
 		pk_log_sqlerr("Error querying cache index");
 		ret=PK_IOERR;
+		goto bad;
 	}
+	ret2=commit(state.db);
+	if (ret2) {
+		ret=ret2;
+		goto bad;
+	}
+	free(buf);
+	return ret;
 
 bad:
-	/* We didn't make any changes; we just need to release the locks */
 	rollback(state.db);
 	if (query_retry())
 		goto again;
