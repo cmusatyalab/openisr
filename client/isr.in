@@ -2851,7 +2851,7 @@ sub message ($) {
 	fcntl_lock(\*LOG, F_WRLCK, 1);
 	# We've already seeked to EOF, but it might have moved since the open()
 	seek(LOG, 0, SEEK_END);
-	print LOG "$date $$ $msg\n";
+	print LOG "$date $$ CLIENT: $msg\n";
 	close(LOG);
     }
 }
