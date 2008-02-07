@@ -58,7 +58,7 @@ use Time::HiRes qw(gettimeofday);
 use POSIX qw(strftime);
 use POSIX ":sys_wait_h";
 use POSIX ":signal_h";
-use Fcntl qw(:DEFAULT :seek);
+use Fcntl qw(:DEFAULT :seek :mode);
 use Errno qw(:POSIX);
 use Config;
 require "syscall.ph";
@@ -123,6 +123,7 @@ sub mkdirs (@);
 sub touch ($$);
 sub mktempfile ();
 sub mktempdir ();
+sub dirsize ($);
 sub err ($);
 sub unix_err ($);
 sub system_err ($);
@@ -1233,9 +1234,7 @@ sub checkparcel () {
 # statparcel - Report general statistics about the hoard and local caches
 #
 sub statparcel () {
-    my $memsize;
-
-    my @files = ();
+    my $size;
 
     #
     # Show extra information about the parcel if the user asked for it
@@ -1244,16 +1243,10 @@ sub statparcel () {
         if $longflag;
     
     #
-    # Display the size of the memory image
+    # Display the size of the VMM state (memory image, VM metadata, etc.)
     #
-    opendir(DIR, "$parceldir/cfg") 
-	or unix_errexit("Unable to open $parceldir/cfg.");
-    @files = grep(/\.vmem$/, readdir(DIR));
-    closedir(DIR);
-    if (@files > 0) {
-	$memsize = (stat("$parceldir/cfg/$files[0]")->size)/(1<<20);
-	printf("Memory image: %d MB (uncompressed)\n", $memsize);
-    }
+    $size = dirsize("$parceldir/cfg") >> 11;
+    print "VMM state   : $size MB (uncompressed)\n";
 
     #
     # Display cache stats
@@ -2740,6 +2733,36 @@ sub mktempdir () {
     # Racy, but that's OK
     push @temps, $dir;
     return $dir;
+}
+
+#
+# dirsize - Return the number of 512-byte blocks taken by the contents of the
+#           named directory, and recursively by the contents of its
+#           subdirectories
+#
+sub dirsize ($) {
+    my $dir = shift;
+    
+    my $dh;
+    my $file;
+    my $size = 0;
+    my $stat;
+    
+    opendir($dh, $dir)
+        or unix_errexit("Couldn't open directory $dir");
+    while ($file = readdir($dh)) {
+	next if $file =~ /^\.{1,2}$/;
+	$stat = stat("$dir/$file");
+	unix_errexit("Couldn't stat $dir/$file")
+	    if !$stat;
+	if (S_ISDIR($stat->mode)) {
+	    $size += dirsize("$dir/$file");
+	} elsif (S_ISREG($stat->mode)) {
+	    $size += $stat->blocks;
+	}
+    }
+    closedir($dh);
+    return $size;
 }
 
 ######
