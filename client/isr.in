@@ -170,6 +170,7 @@ my $fullscreen = 1;  # Run VMM in full-screen mode
 my $verbose = 1;     # Verbosity level; by default, we print a few messages
 my $bwlimit;         # Bandwidth limit (KBytes/sec) in ci and sync
 my $forceflag = 0;   # Force release of lock in cleanclient()
+my $do_splice = 0;   # checkp: Restore invalid chunks from prev-keyring
 
 # General global state, mostly about the parcel we are working with
 my $progname;        # $0 without the directory part
@@ -341,6 +342,7 @@ $result = GetOptions(
 		     "s|server=s"     => \$server,
 		     "u|user=s"       => \$userid,
 		     "v|verbose+"     => \$verbose,
+		     "Y|splice"       => \$do_splice,
 		     );
 
 if ($result == 0) {
@@ -1177,6 +1179,9 @@ sub checkparcel () {
     
     if ($remote) {
 	# Ask the server the to check the consistency of the parcel
+	errexit("-Y only makes sense if -e is not specified")
+	    if $do_splice;
+	
 	if ($version) {
 	    $flags .= " -v $version";
 	}
@@ -1194,8 +1199,13 @@ sub checkparcel () {
 	errexit("-r only makes sense if -e is specified")
 	    if $version;
 	
+	# At least for now, -Y implies -c
+	$checkstate = 1
+	    if $do_splice;
 	$flags .= " full"
 	    if $checkstate;
+	$flags .= " splice"
+	    if $do_splice;
 	
 	run_parcelkeeper("validate", "parcel log $flags") == 0
 	    or errexit("Could not validate cache");
@@ -1593,6 +1603,8 @@ sub parcelkeeper_cmd ($$) {
 	    $cmd .= " --check";
 	} elsif ($arg eq "full") {
 	    $cmd .= " --full";
+	} elsif ($arg eq "splice") {
+	    $cmd .= " --splice";
 	} elsif ($arg eq "log") {
 	    $do_log = 1;
 	} else {
@@ -2900,7 +2912,7 @@ sub usage ($) {
 	print "  hoard      Fetch entire virtual disk for improved performance\n";
 	print "  deauth     Remove authentication credentials from your client\n";
 	print "Debugging and maintenance commands:\n";
-	print "  checkp     Check parcel for consistency (-c, -e, -r optional)\n";
+	print "  checkp     Check parcel for consistency (-c, -e, -r, -Y optional)\n";
 	print "  checkhoard Check hoard cache for consistency (-c optional)\n";
 	print "  lshoard    List info about the hoard cache (-l optional)\n";
 	print "  rmhoard    Remove a parcel from the hoard cache\n";
@@ -2920,6 +2932,7 @@ sub usage ($) {
     print "  -s,--server        Server domain name (optional)\n";
     print "  -u,--user          Your ISR user name (defaults to your login name)\n";
     print "  -v,--verbose       Increment verbosity level\n";
+    print "  -Y,--splice        Restore invalid chunks from previous version [checkp]\n";
     print "\n";
     
     exit 0;

@@ -19,7 +19,7 @@ isr \- Internet Suspend/Resume client program
 .B isr 
 .I command
 .RI [ parcel ]
-.RB [ \-bcdeFlqv ]
+.RB [ \-bcdeFlqvY ]
 .RB [ \-r
 .IR version ]
 .RB [ \-s
@@ -214,7 +214,7 @@ before you actually run the parcel.
 
 
 .TP
-.BI "isr checkp " "parcel" " [-e] [-r " "version" "] [-c]"
+.BI "isr checkp " "parcel" " [-e] [-r " "version" "] [-c] [-Y]"
 This is a debugging command that checks a 
 .I parcel 
 for consistency.  By default, this command performs fast sanity checks
@@ -240,6 +240,28 @@ check on the server
 (if 
 .B -e
 is specified) or on the local cache (otherwise).
+
+The
+.B -Y
+option is similar to
+.BR -c ,
+but will additionally revert any inconsistent disk chunks to their state
+at the most recent checkout or sync operation.  This operation will only
+revert chunks whose data does not match the stored hash, as might result
+from an OpenISR or client host crash; it will not correct more exotic
+metadata errors.  The disk image resulting from this operation will be
+inconsistent from the point of view of the guest operating system, but it
+may allow the parcel to be resumed long enough to retrieve data from the
+damaged disk image.  (For example, if a damaged chunk contains filesystem
+metadata, it might be preferable for the guest operating system to read
+obsolete data than to receive I/O errors when trying to read the chunk.)
+If any chunks are reverted using this option, the local cache of the parcel
+will be marked as
+.I damaged
+and subsequent checkin attempts will be disallowed.  The
+.B -Y
+option cannot be used with
+.BR -e .
 
 .TP
 .B "isr checkhoard [-c]"
@@ -557,6 +579,13 @@ option overrides both of these and sets the current ISR userid to
 .TP
 .B -v/--verbose
 Increment the verbosity level. 
+
+.TP
+.B -Y/--splice
+For
+.B checkp
+on a local parcel, revert damaged chunks to their state at the most recent
+checkout or sync.  Disallow checkin if any chunks are reverted.
 
 .SH EXAMPLES
 
