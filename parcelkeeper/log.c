@@ -55,6 +55,27 @@ static pk_err_t parse_logtype(const char *name, enum pk_log_type *out)
 	return PK_SUCCESS;
 }
 
+static const char *log_prefix(enum pk_log_type type)
+{
+	switch (type & ~_LOG_FUNC) {
+	case LOG_INFO:
+		return "INFO";
+	case LOG_CHUNK:
+		return "CHUNK";
+	case LOG_TRANSPORT:
+		return "TRANSPORT";
+	case LOG_QUERY:
+		return "QUERY";
+	case LOG_SLOW_QUERY:
+		return "SLOW";
+	case LOG_WARNING:
+		return "ERROR";
+	case LOG_STATS:
+		return "STATS";
+	}
+	return NULL;
+}
+
 /* Cannot call pk_log(), since the logger hasn't started yet */
 pk_err_t logtypes_to_mask(const char *list, unsigned *out)
 {
@@ -129,7 +150,8 @@ void _pk_log(enum pk_log_type type, const char *fmt, const char *func, ...)
 					FILE_LOCK_WRITE | FILE_LOCK_WAIT);
 		fseek(state.log_fp, 0, SEEK_END);
 		va_start(ap, func);
-		fprintf(state.log_fp, "%s %d ", buf, state.pk_pid);
+		fprintf(state.log_fp, "%s %d %s: ", buf, state.pk_pid,
+					log_prefix(type));
 		if (type & _LOG_FUNC)
 			fprintf(state.log_fp, "%s(): ", func);
 		vfprintf(state.log_fp, fmt, ap);
@@ -141,6 +163,7 @@ void _pk_log(enum pk_log_type type, const char *fmt, const char *func, ...)
 
 	if ((1 << type) & config.log_stderr_mask) {
 		va_start(ap, func);
+		fprintf(stderr, "PK: ");
 		if (type & _LOG_FUNC)
 			fprintf(stderr, "%s(): ", func);
 		vfprintf(stderr, fmt, ap);
