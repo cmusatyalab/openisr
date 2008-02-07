@@ -34,6 +34,54 @@ static void curtime(char *buf, unsigned buflen)
 	strftime(buf, buflen, fmt, &tm);
 }
 
+static pk_err_t parse_logtype(const char *name, enum pk_log_type *out)
+{
+	if (!strcmp(name, "info"))
+		*out=LOG_INFO;
+	else if (!strcmp(name, "chunk"))
+		*out=LOG_CHUNK;
+	else if (!strcmp(name, "transport"))
+		*out=LOG_TRANSPORT;
+	else if (!strcmp(name, "query"))
+		*out=LOG_QUERY;
+	else if (!strcmp(name, "slow"))
+		*out=LOG_SLOW_QUERY;
+	else if (!strcmp(name, "error"))
+		*out=LOG_WARNING;  /* ERROR is just WARNING plus _LOG_FUNC */
+	else if (!strcmp(name, "stats"))
+		*out=LOG_STATS;
+	else
+		return PK_INVALID;
+	return PK_SUCCESS;
+}
+
+/* Cannot call pk_log(), since the logger hasn't started yet */
+pk_err_t logtypes_to_mask(const char *list, unsigned *out)
+{
+	char *list_copy;
+	char *tok;
+	char *initptr;
+	char *saveptr;
+	enum pk_log_type type;
+
+	*out=0;
+	if (strcmp(list, "none")) {
+		/* strtok_r() changes the string, so if we don't make a copy,
+		   we'll change the PK command line as seen by "ps" */
+		initptr=list_copy=strdup(list);
+		if (list_copy == NULL)
+			return PK_NOMEM;
+		while ((tok=strtok_r(initptr, ",", &saveptr)) != NULL) {
+			initptr=NULL;
+			if (parse_logtype(tok, &type))
+				return PK_INVALID;
+			*out |= (1 << type);
+		}
+		free(list_copy);
+	}
+	return PK_SUCCESS;
+}
+
 static void open_log(void)
 {
 	state.log_fp=fopen(config.log_file, "a");
@@ -116,52 +164,4 @@ void log_shutdown(void)
 	pk_log(LOG_INFO, "Parcelkeeper shutting down");
 	if (state.log_fp != NULL)
 		close_log();
-}
-
-static pk_err_t parse_logtype(const char *name, enum pk_log_type *out)
-{
-	if (!strcmp(name, "info"))
-		*out=LOG_INFO;
-	else if (!strcmp(name, "chunk"))
-		*out=LOG_CHUNK;
-	else if (!strcmp(name, "transport"))
-		*out=LOG_TRANSPORT;
-	else if (!strcmp(name, "query"))
-		*out=LOG_QUERY;
-	else if (!strcmp(name, "slow"))
-		*out=LOG_SLOW_QUERY;
-	else if (!strcmp(name, "error"))
-		*out=LOG_WARNING;  /* ERROR is just WARNING plus _LOG_FUNC */
-	else if (!strcmp(name, "stats"))
-		*out=LOG_STATS;
-	else
-		return PK_INVALID;
-	return PK_SUCCESS;
-}
-
-/* Cannot call pk_log(), since the logger hasn't started yet */
-pk_err_t logtypes_to_mask(const char *list, unsigned *out)
-{
-	char *list_copy;
-	char *tok;
-	char *initptr;
-	char *saveptr;
-	enum pk_log_type type;
-
-	*out=0;
-	if (strcmp(list, "none")) {
-		/* strtok_r() changes the string, so if we don't make a copy,
-		   we'll change the PK command line as seen by "ps" */
-		initptr=list_copy=strdup(list);
-		if (list_copy == NULL)
-			return PK_NOMEM;
-		while ((tok=strtok_r(initptr, ",", &saveptr)) != NULL) {
-			initptr=NULL;
-			if (parse_logtype(tok, &type))
-				return PK_INVALID;
-			*out |= (1 << type);
-		}
-		free(list_copy);
-	}
-	return PK_SUCCESS;
 }
