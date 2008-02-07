@@ -1176,6 +1176,8 @@ sub hoard ($) {
 #
 sub checkparcel () {
     my $flags = "";
+    my $result;
+    my $state;
     
     if ($remote) {
 	# Ask the server the to check the consistency of the parcel
@@ -1207,11 +1209,23 @@ sub checkparcel () {
 	$flags .= " splice"
 	    if $do_splice;
 	
-	run_parcelkeeper("validate", "parcel log $flags") == 0
-	    or errexit("Could not validate cache");
+	$result = run_parcelkeeper("validate", "parcel log $flags");
+	$state = run_parcelkeeper("validate", "parcel check") >> 8;
 	
-	print(GREEN, "Success: The parcel $userid/$parcel looks OK.\n", RESET)
-	    if $verbose;
+	if ($result) {
+	    if ($state & 4) {
+		errexit("Cache validation failed.  The parcel is damaged and checkin will be disallowed.");
+	    } else {
+		errexit("Cache validation failed.");
+	    }
+	} else {
+	    if ($state & 4) {
+		errexit("The parcel is damaged.  Checkin will be disallowed.");
+	    } else {
+		print GREEN, "Success: The parcel $userid/$parcel looks OK.\n", RESET
+		    if $verbose;
+	    }
+	}
     }
 }
 
