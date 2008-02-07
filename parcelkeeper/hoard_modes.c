@@ -401,7 +401,8 @@ again:
 			continue;
 		}
 		if (memcmp(tag, calctag, taglen)) {
-			pk_log(LOG_ERROR, "Tag mismatch at offset %d", offset);
+			pk_log(LOG_WARNING, "Tag mismatch at offset %d",
+						offset);
 			log_tag_mismatch(tag, calctag, taglen);
 			hoard_invalidate_chunk(offset, tag, taglen);
 			count++;
@@ -415,7 +416,7 @@ again:
 	if (query(NULL, state.db, "DROP TABLE temp.to_check", NULL))
 		pk_log_sqlerr("Couldn't drop temporary table");
 	if (count)
-		pk_log(LOG_ERROR, "Removed %d invalid chunks", count);
+		pk_log(LOG_WARNING, "Removed %d invalid chunks", count);
 	return ret;
 
 bad:
@@ -470,7 +471,7 @@ again:
 		goto bad;
 	}
 	if (count)
-		pk_log(LOG_ERROR, "Removed %d invalid parcel records", count);
+		pk_log(LOG_WARNING, "Removed %d invalid parcel records", count);
 
 	next_offset=0;
 	for (query(&qry, state.db, "SELECT offset FROM hoard.chunks "
@@ -479,7 +480,7 @@ again:
 		query_row(qry, "d", &offset);
 		if (offset != next_offset) {
 			/* XXX how do we fix this? */
-			pk_log(LOG_ERROR, "Expected offset %d, found %d",
+			pk_log(LOG_WARNING, "Expected offset %d, found %d",
 						next_offset, offset);
 			query_free(qry);
 			goto bad;
@@ -520,7 +521,7 @@ again:
 		goto bad;
 	}
 	if (count)
-		pk_log(LOG_ERROR, "Cleaned %d chunks with invalid "
+		pk_log(LOG_WARNING, "Cleaned %d chunks with invalid "
 					"crypto suite", count);
 
 	/* XXX assumes 128 KB */
@@ -529,36 +530,36 @@ again:
 				"referenced = 0 WHERE length < 0 OR "
 				"length > 131072 OR "
 				"(length == 0 AND tag NOTNULL)",
-				LOG_ERROR,
+				LOG_WARNING,
 				"chunks with invalid length"))
 		goto bad;
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET tag = NULL, "
 				"length = 0, crypto = 0, last_access = 0, "
 				"referenced = 0 WHERE referenced != 0 AND "
 				"referenced != 1",
-				LOG_ERROR,
+				LOG_WARNING,
 				"chunks with invalid referenced flag"))
 		goto bad;
 	if (cleanup_action(state.db, "DELETE FROM hoard.refs WHERE parcel "
 				"NOT IN (SELECT parcel FROM hoard.parcels)",
-				LOG_ERROR,
+				LOG_WARNING,
 				"refs with dangling parcel ID"))
 		goto bad;
 	if (cleanup_action(state.db, "DELETE FROM hoard.refs WHERE tag NOT IN "
 				"(SELECT tag FROM hoard.chunks)",
-				LOG_ERROR,
+				LOG_WARNING,
 				"refs with dangling tag"))
 		goto bad;
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET referenced = 0 "
 				"WHERE referenced == 1 AND tag NOTNULL AND "
 				"tag NOT IN (SELECT tag FROM hoard.refs)",
-				LOG_ERROR,
+				LOG_WARNING,
 				"chunks with spurious referenced flag"))
 		goto bad;
 	if (cleanup_action(state.db, "UPDATE hoard.chunks SET referenced = 1 "
 				"WHERE referenced == 0 AND tag IN "
 				"(SELECT tag FROM hoard.refs)",
-				LOG_ERROR,
+				LOG_WARNING,
 				"chunks with missing referenced flag"))
 		goto bad;
 
@@ -571,8 +572,8 @@ again:
 	}
 	count=sqlite3_changes(state.db);
 	if (count)
-		pk_log(LOG_ERROR, "Repaired %d chunks with timestamps in the "
-					"future", count);
+		pk_log(LOG_WARNING, "Repaired %d chunks with timestamps in "
+					"the future", count);
 
 	/* If we're going to do a FULL_CHECK, then get the necessary metadata
 	   *now* while we still know it's consistent. */

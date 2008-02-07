@@ -63,13 +63,14 @@ int copy_for_upload(void)
 	int ret=1;
 
 	if (cache_test_flag(CA_F_DAMAGED)) {
-		pk_log(LOG_ERROR, "Local cache marked as damaged; "
+		pk_log(LOG_WARNING, "Local cache marked as damaged; "
 					"upload disallowed");
 		return 1;
 	}
 	if (cache_test_flag(CA_F_DIRTY)) {
-		pk_log(LOG_ERROR, "The local cache was not cleanly shut down.");
-		pk_log(LOG_ERROR, "Will not upload this parcel until the "
+		pk_log(LOG_WARNING, "The local cache was not cleanly "
+					"shut down.");
+		pk_log(LOG_WARNING, "Will not upload this parcel until the "
 					"cache has been validated.");
 		return 1;
 	}
@@ -118,25 +119,26 @@ again:
 		query_row(qry, "dbd", &chunk, &tag, &taglen, &length);
 		print_progress_mb(modified_bytes, total_modified_bytes);
 		if (chunk > parcel.chunks) {
-			pk_log(LOG_ERROR, "Chunk %u: greater than parcel size "
-						"%u", chunk, parcel.chunks);
+			pk_log(LOG_WARNING, "Chunk %u: greater than parcel "
+						"size %u", chunk,
+						parcel.chunks);
 			goto damaged;
 		}
 		if (taglen != parcel.hashlen) {
-			pk_log(LOG_ERROR, "Chunk %u: expected tag length %u, "
-						"found %u", chunk,
+			pk_log(LOG_WARNING, "Chunk %u: expected tag length "
+						"%u, found %u", chunk,
 						parcel.hashlen, taglen);
 			goto damaged;
 		}
 		if (length == 0) {
 			/* No cache index record */
-			pk_log(LOG_ERROR, "Chunk %u: modified but not present",
-						chunk);
+			pk_log(LOG_WARNING, "Chunk %u: modified but not "
+						"present", chunk);
 			goto damaged;
 		}
 		if (length > parcel.chunksize) {
-			pk_log(LOG_ERROR, "Chunk %u: absurd length %u", chunk,
-						length);
+			pk_log(LOG_WARNING, "Chunk %u: absurd length %u",
+						chunk, length);
 			goto damaged;
 		}
 		if (pread(state.cache_fd, buf, length,
@@ -148,7 +150,7 @@ again:
 		}
 		digest(parcel.crypto, calctag, buf, length);
 		if (memcmp(tag, calctag, parcel.hashlen)) {
-			pk_log(LOG_ERROR, "Chunk %u: tag mismatch.  "
+			pk_log(LOG_WARNING, "Chunk %u: tag mismatch.  "
 					"Data corruption has occurred", chunk);
 			log_tag_mismatch(tag, calctag, parcel.hashlen);
 			goto damaged;
@@ -220,39 +222,39 @@ again:
 				query_has_row(); query_next(qry)) {
 		query_row(qry, "dnnd", &chunk, &taglen, &keylen, &compress);
 		if (chunk >= parcel.chunks) {
-			pk_log(LOG_ERROR, "Found keyring entry %u greater than"
-						" parcel size %u", chunk,
+			pk_log(LOG_WARNING, "Found keyring entry %u greater "
+						"than parcel size %u", chunk,
 						parcel.chunks);
 			ret=PK_INVALID;
 			continue;
 		}
 		if (chunk < expected_chunk) {
-			pk_log(LOG_ERROR, "Found unexpected keyring entry for "
-						"chunk %u", chunk);
+			pk_log(LOG_WARNING, "Found unexpected keyring entry "
+						"for chunk %u", chunk);
 			ret=PK_INVALID;
 			continue;
 		}
 		while (expected_chunk < chunk) {
-			pk_log(LOG_ERROR, "Missing keyring entry for chunk %u",
-						expected_chunk);
+			pk_log(LOG_WARNING, "Missing keyring entry for chunk "
+						"%u", expected_chunk);
 			ret=PK_INVALID;
 			expected_chunk++;
 		}
 		expected_chunk++;
 		if (taglen != parcel.hashlen) {
-			pk_log(LOG_ERROR, "Chunk %u: expected tag length %u, "
-						"found %u", chunk,
+			pk_log(LOG_WARNING, "Chunk %u: expected tag length "
+						"%u, found %u", chunk,
 						parcel.hashlen, taglen);
 			ret=PK_INVALID;
 		}
 		if (keylen != parcel.hashlen) {
-			pk_log(LOG_ERROR, "Chunk %u: expected key length %u, "
-						"found %u", chunk,
+			pk_log(LOG_WARNING, "Chunk %u: expected key length "
+						"%u, found %u", chunk,
 						parcel.hashlen, keylen);
 			ret=PK_INVALID;
 		}
 		if (!compress_is_valid(compress)) {
-			pk_log(LOG_ERROR, "Chunk %u: invalid or unsupported "
+			pk_log(LOG_WARNING, "Chunk %u: invalid or unsupported "
 						"compression type %u", chunk,
 						compress);
 			ret=PK_INVALID;
@@ -271,7 +273,7 @@ again:
 /* Must be within transaction */
 static pk_err_t revert_chunk(int chunk)
 {
-	pk_log(LOG_ERROR, "Reverting chunk %d", chunk);
+	pk_log(LOG_WARNING, "Reverting chunk %d", chunk);
 	if (query(NULL, state.db, "INSERT OR REPLACE INTO main.keys "
 				"(chunk, tag, key, compression) "
 				"SELECT chunk, tag, key, compression FROM "
@@ -332,7 +334,8 @@ again:
 				"cache.chunks.chunk ISNULL", NULL);
 				query_has_row(); query_next(qry)) {
 		query_row(qry, "d", &chunk);
-		pk_log(LOG_ERROR, "Chunk %u: modified but not present", chunk);
+		pk_log(LOG_WARNING, "Chunk %u: modified but not present",
+					chunk);
 		ret=PK_INVALID;
 	}
 	query_free(qry);
@@ -352,26 +355,26 @@ again:
 		print_progress_mb(processed_bytes, valid_bytes);
 
 		if (chunk > parcel.chunks) {
-			pk_log(LOG_ERROR, "Found chunk %u greater than "
+			pk_log(LOG_WARNING, "Found chunk %u greater than "
 						"parcel size %u", chunk,
 						parcel.chunks);
 			ret=PK_INVALID;
 			continue;
 		}
 		if (chunklen > parcel.chunksize || chunklen == 0) {
-			pk_log(LOG_ERROR, "Chunk %u: absurd size %u",
+			pk_log(LOG_WARNING, "Chunk %u: absurd size %u",
 						chunk, chunklen);
 			ret=PK_INVALID;
 			continue;
 		}
 		if (tag == NULL) {
-			pk_log(LOG_ERROR, "Found valid chunk %u with no "
+			pk_log(LOG_WARNING, "Found valid chunk %u with no "
 						"keyring entry", chunk);
 			ret=PK_INVALID;
 			continue;
 		}
 		if (taglen != parcel.hashlen) {
-			pk_log(LOG_ERROR, "Chunk %u: expected tag length "
+			pk_log(LOG_WARNING, "Chunk %u: expected tag length "
 						"%u, found %u", chunk,
 						parcel.hashlen, taglen);
 			ret=PK_INVALID;
@@ -390,7 +393,7 @@ again:
 			}
 			digest(parcel.crypto, calctag, buf, chunklen);
 			if (memcmp(tag, calctag, taglen)) {
-				pk_log(LOG_ERROR, "Chunk %u: tag check "
+				pk_log(LOG_WARNING, "Chunk %u: tag check "
 							"failure", chunk);
 				log_tag_mismatch(tag, calctag, taglen);
 				if (config.flags & WANT_SPLICE) {

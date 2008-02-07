@@ -143,8 +143,9 @@ pk_err_t nexus_init(void)
 
 	/* Check for previous unclean shutdown of local cache */
 	if (cache_test_flag(CA_F_DIRTY)) {
-		pk_log(LOG_ERROR, "The local cache was not cleanly shut down.");
-		pk_log(LOG_ERROR, "Will not run this parcel until the cache "
+		pk_log(LOG_WARNING, "The local cache was not cleanly shut "
+					"down.");
+		pk_log(LOG_WARNING, "Will not run this parcel until the cache "
 					"has been validated or discarded.");
 		return PK_BADFORMAT;
 	}

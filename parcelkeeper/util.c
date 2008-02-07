@@ -506,7 +506,7 @@ void log_tag_mismatch(const void *expected, const void *found, unsigned len)
 	fmt_expected=format_tag(expected, len);
 	fmt_found=format_tag(found, len);
 	if (fmt_expected != NULL && fmt_found != NULL)
-		pk_log(LOG_ERROR, "Expected %s, found %s", fmt_expected,
+		pk_log(LOG_WARNING, "Expected %s, found %s", fmt_expected,
 					fmt_found);
 	else
 		pk_log(LOG_ERROR, "malloc failure");

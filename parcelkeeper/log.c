@@ -82,7 +82,7 @@ void _pk_log(enum pk_log_type type, const char *fmt, const char *func, ...)
 		fseek(state.log_fp, 0, SEEK_END);
 		va_start(ap, func);
 		fprintf(state.log_fp, "%s %d ", buf, state.pk_pid);
-		if (type == LOG_ERROR)
+		if (type & _LOG_FUNC)
 			fprintf(state.log_fp, "%s(): ", func);
 		vfprintf(state.log_fp, fmt, ap);
 		fprintf(state.log_fp, "\n");
@@ -93,7 +93,7 @@ void _pk_log(enum pk_log_type type, const char *fmt, const char *func, ...)
 
 	if ((1 << type) & config.log_stderr_mask) {
 		va_start(ap, func);
-		if (type == LOG_ERROR)
+		if (type & _LOG_FUNC)
 			fprintf(stderr, "%s(): ", func);
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, "\n");
@@ -131,7 +131,7 @@ static pk_err_t parse_logtype(const char *name, enum pk_log_type *out)
 	else if (!strcmp(name, "slow"))
 		*out=LOG_SLOW_QUERY;
 	else if (!strcmp(name, "error"))
-		*out=LOG_ERROR;
+		*out=LOG_WARNING;  /* ERROR is just WARNING plus _LOG_FUNC */
 	else if (!strcmp(name, "stats"))
 		*out=LOG_STATS;
 	else

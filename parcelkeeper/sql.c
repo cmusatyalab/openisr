@@ -469,7 +469,7 @@ again:
 	res=strcmp(str, "ok");
 	query_free(qry);
 	if (res) {
-		pk_log(LOG_ERROR, "SQLite integrity check failed");
+		pk_log(LOG_WARNING, "SQLite integrity check failed");
 		return PK_BADFORMAT;
 	}
 	return PK_SUCCESS;

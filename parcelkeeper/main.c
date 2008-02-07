@@ -14,8 +14,10 @@
 #include "defs.h"
 
 struct pk_config config = {
-	.log_file_mask = (1 << LOG_INFO) | (1 << LOG_ERROR) | (1 << LOG_STATS),
-	.log_stderr_mask = 1 << LOG_ERROR,
+	/* WARNING implies ERROR */
+	.log_file_mask = (1 << LOG_INFO) | (1 << LOG_WARNING) |
+				(1 << LOG_STATS),
+	.log_stderr_mask = 1 << LOG_WARNING,
 	.compress = COMP_NONE
 };
 struct pk_parcel parcel;

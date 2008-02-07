@@ -41,9 +41,11 @@ enum pk_log_type {
 	LOG_TRANSPORT,
 	LOG_QUERY,
 	LOG_SLOW_QUERY,
-	LOG_ERROR,
+	LOG_WARNING,
 	LOG_STATS
 };
+#define _LOG_FUNC (1<<31)
+#define LOG_ERROR (LOG_WARNING|_LOG_FUNC)
 
 enum cryptotype {
 	CRY_UNKNOWN=0,
