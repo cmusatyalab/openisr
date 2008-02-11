@@ -62,7 +62,7 @@ enum cd_state {
  * @lh_need_tfm          : list head for CB_CRYPTO
  * @table                : pointer to parent &chunkdata_table
  * @cid                  : the chunk number for this chunk
- * @size;                : encrypted size including padding, in bytes
+ * @size                 : encrypted size including padding, in bytes
  * @compression          : compression type
  * @pending              : queue of pending &nexus_io_chunk for this chunk
  * @remaining            : bytes which have not yet completed chunk store I/O
