@@ -7,17 +7,17 @@ if WANT_MODULES
 export KERNELDIR
 
 all-local:
-	@$(MAKE) $(AM_MAKEFLAGS) -f Makefile module
+	@$(MAKE) $(AM_MAKEFLAGS) CC=$(CC) -f Makefile module
 
 clean-local:
-	@$(MAKE) $(AM_MAKEFLAGS) -f Makefile clean
+	@$(MAKE) $(AM_MAKEFLAGS) CC=$(CC) -f Makefile clean
 
 install-exec-local:
-	@$(MAKE) $(AM_MAKEFLAGS) -f Makefile install
+	@$(MAKE) $(AM_MAKEFLAGS) CC=$(CC) -f Makefile install
 
 uninstall-local:
-	@$(MAKE) $(AM_MAKEFLAGS) -f Makefile uninstall
+	@$(MAKE) $(AM_MAKEFLAGS) CC=$(CC) -f Makefile uninstall
 
 installdirs-local:
-	@$(MAKE) $(AM_MAKEFLAGS) -f Makefile installdirs
+	@$(MAKE) $(AM_MAKEFLAGS) CC=$(CC) -f Makefile installdirs
 endif
