@@ -1,7 +1,7 @@
 /*
  * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
  *
- * Copyright (C) 2006-2007 Carnegie Mellon University
+ * Copyright (C) 2006-2008 Carnegie Mellon University
  *
  * This software is distributed under the terms of the Eclipse Public License,
  * Version 1.0 which can be found in the file named LICENSE.Eclipse.  ANY USE,

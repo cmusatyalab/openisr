@@ -1,7 +1,7 @@
 /*
  * libvdisk - LD_PRELOAD library for block device access from finicky VMMs
  * 
- * Copyright (C) 2006 Carnegie Mellon University
+ * Copyright (C) 2006-2008 Carnegie Mellon University
  * 
  * This software is distributed under the terms of the Eclipse Public License, 
  * Version 1.0 which can be found in the file named LICENSE.Eclipse.  ANY USE, 
