@@ -123,7 +123,7 @@ static int nexus_thread(void *data)
 	struct list_head *entry;
 	DEFINE_WAIT(wait);
 	
-	set_freezable();
+	set_nonfreezable();
 	while (!kthread_should_stop()) {
 		spin_lock_irq(&queues.lock);
 		for (type=0; type<NR_CALLBACKS; type++) {
@@ -158,7 +158,7 @@ static int nexus_thread(void *data)
 			schedule();
 		finish_wait(&queues.wq, &wait);
 next:
-		try_to_freeze();
+		barrier();  /* nop to make compiler happy */
 	}
 	return 0;
 }
@@ -201,7 +201,7 @@ static int nexus_io_thread(void *ignored)
 	struct bio *bio;
 	DEFINE_WAIT(wait);
 	
-	set_freezable();
+	set_nonfreezable();
 	while (!kthread_should_stop()) {
 		spin_lock(&pending_io.lock);
 		bio=pending_io.head;
@@ -221,7 +221,6 @@ static int nexus_io_thread(void *ignored)
 				schedule();
 			finish_wait(&pending_io.wq, &wait);
 		}
-		try_to_freeze();
 	}
 	return 0;
 }
@@ -282,7 +281,7 @@ static int nexus_request_thread(void *ignored)
 	struct list_head *entry;
 	DEFINE_WAIT(wait);
 	
-	set_freezable();
+	set_nonfreezable();
 	while (!kthread_should_stop()) {
 		spin_lock_irq(&pending_requests.lock);
 		if (!list_empty(&pending_requests.list)) {
@@ -298,7 +297,6 @@ static int nexus_request_thread(void *ignored)
 				schedule();
 			finish_wait(&pending_requests.wq, &wait);
 		}
-		try_to_freeze();
 	}
 	return 0;
 }

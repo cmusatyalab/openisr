@@ -404,21 +404,6 @@ typedef struct work_struct work_t;
 
 /***** Software suspend ******************************************************/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)
-#include <linux/suspend.h>
-static inline int try_to_freeze(void) {
-	if (current->flags & PF_FREEZE) {
-		refrigerator(PF_FREEZE);
-		return 1;
-	} else {
-		return 0;
-	}
-}
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
-#define try_to_freeze() try_to_freeze(PF_FREEZE)
-#endif
-
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
 /* This used to be in sched.h */
 #include <linux/freezer.h>
@@ -426,8 +411,13 @@ static inline int try_to_freeze(void) {
 
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)
-/* Kernel threads are freezable by default */
-#define set_freezable() do {} while (0)
+static inline void set_nonfreezable(void)
+{
+	current->flags |= PF_NOFREEZE;
+}
+#else
+/* Kernel threads are non-freezable by default */
+#define set_nonfreezable() do {} while (0)
 #endif
 
 /***** cryptoapi *************************************************************/
