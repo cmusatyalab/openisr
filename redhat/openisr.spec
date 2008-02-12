@@ -1,11 +1,11 @@
 ### begin RPM spec
 %define name openisr
-%define version 0.9
+%define version 0.9.1
 
 Summary: 	OpenISR Internet Suspend-Resume client
 Name: 		%name
 Version: 	%version
-Release: 	3%{?redhatvers:.%{redhatvers}}
+Release: 	1%{?redhatvers:.%{redhatvers}}
 Group: 		Applications/Internet
 License:	Eclipse Public License	
 BuildRequires:	curl-devel, openssl-devel, kernel-devel, uuid-devel
@@ -17,8 +17,6 @@ URL:		http://isr.cmu.edu
 Source0: 	http://isr.cmu.edu/software/openisr-%{version}.tar.gz
 Source1:	Makefile.dkms
 Source2:	dkms.conf
-# line below is working around an annoying rpm "feature"
-Provides:	perl(IsrRevision)
 
 %description
  OpenISR is the latest implementation of Internet Suspend/Resume, which
@@ -114,6 +112,12 @@ dkms remove -m openisr -v %{version} --all
 /etc/bash_completion.d/openisr
 
 %changelog
+* Tue Feb 12 2008 Matt Toups <mtoups@cs.cmu.edu> 0.9.1-1
+- new upstream release (see CHANGES):
+  * Various performance improvements
+  * udev rules / group / bash completion (included in previous RPMs)
+- eliminate Provides: perl(IsrRevision) (no longer necessary)
+
 * Fri Jan 25 2008 Matt Toups <mtoups@cs.cmu.edu> 0.9-3
 - create group in post
 - display message directing user to add self to group

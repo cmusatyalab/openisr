@@ -1,3 +1,14 @@
+openisr (0.9.1-1) experimental; urgency=low
+
+  * new upstream release (see CHANGES):
+     * Various performance improvements
+     * add udev rules for loop dev and openisrctl
+     * include bash completion rules
+  * add group 'isrusers' for device access
+  * fix bzip2 depends/build-depends
+
+ -- Matt Toups <mtoups@cs.cmu.edu>  Tue, 12 Feb 2008 14:09:11 -0500
+
 openisr (0.9-1) experimental; urgency=low
 
   * Server changes -- this client can NOT be used with the same server
