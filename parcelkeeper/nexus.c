@@ -369,8 +369,6 @@ static int request_is_valid(const struct nexus_message *req)
 
 static void chunk_error(const struct nexus_message *req)
 {
-	char *expected;
-	char *found;
 	const char *rw;
 	enum nexus_chunk_err err;
 
@@ -382,13 +380,9 @@ static void chunk_error(const struct nexus_message *req)
 					req->chunk);
 		break;
 	case NEXUS_ERR_TAG:
-		expected=format_tag(req->expected, parcel.hashlen);
-		found=format_tag(req->found, parcel.hashlen);
-		pk_log(LOG_WARNING, "Nexus: Tag check error %s chunk %llu: "
-					"expected %s, found %s", rw,
-					req->chunk, expected, found);
-		free(expected);
-		free(found);
+		pk_log(LOG_WARNING, "Nexus: Tag check error %s chunk %llu",
+					rw, req->chunk);
+		log_tag_mismatch(req->expected, req->found, parcel.hashlen);
 		break;
 	case NEXUS_ERR_KEY:
 		/* Don't log keys to the session log! */
