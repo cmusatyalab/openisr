@@ -2406,7 +2406,7 @@ sub check_damaged_cache () {
     errexit("Unable to run Parcelkeeper.")
         if $ret == 1 or $ret > 6;
     if ($ret & 2) {
-	print "The parcel was previously shut down unexpectedly.  Running consistency check...\n"
+	print "The parcel needs to be checked for consistency.  Please wait.\n"
 	    if $verbose;
 	# If this fails, then either validation completed with errors or PK
 	# failed for other reasons.  We find out which by running with --check
