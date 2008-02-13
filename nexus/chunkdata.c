@@ -237,6 +237,74 @@ static void __transition(struct chunkdata *cd, enum cd_state new_state)
 	cd->state_begin=curtime;
 }
 
+#ifdef DEBUG
+/**
+ * format_hash - debug/logging helper to convert a hash to hex representation
+ * @out   : buffer in which to store the hex digits
+ * @in    : hash bytes
+ * @in_len: number of bytes in @in
+ *
+ * @out must be able to store 2 * @in_len + 1 bytes.
+ **/
+static void format_hash(char *out, unsigned char *in, unsigned in_len)
+{
+	int i;
+	for (i=0; i<in_len; i++, in++, out += 2)
+		sprintf(out, "%.2x", *in);
+}
+
+/**
+ * log_chunk_err - log a debug message for an ST_ERROR_USER transition
+ **/
+static void log_chunk_err(struct chunkdata *cd)
+{
+	unsigned hash_len = suite_info(cd->table->dev->suite)->hash_len;
+	char tag[2 * hash_len + 1];
+	char found[2 * hash_len + 1];
+	enum nexus_chunk_err err;
+	const char *rw;
+	
+	err = cd->errtype & ~NEXUS_ERR_IS_WRITE;
+	rw = (cd->errtype & NEXUS_ERR_IS_WRITE) ? "Writing" : "Reading";
+	switch (err) {
+	case NEXUS_ERR_NOERR:
+		BUG();
+		break;
+	case NEXUS_ERR_IO:
+		debug(DBG_ERR, "%s chunk " SECTOR_FORMAT ": I/O error", rw,
+					cd->cid);
+		break;
+	case NEXUS_ERR_TAG:
+		format_hash(tag, cd->tag, hash_len);
+		format_hash(found, cd->found, hash_len);
+		debug(DBG_ERR, "%s chunk " SECTOR_FORMAT ": Expected tag %s, "
+					"found %s", rw, cd->cid, tag, found);
+		break;
+	case NEXUS_ERR_KEY:
+		format_hash(tag, cd->tag, hash_len);
+		debug(DBG_ERR, "%s chunk " SECTOR_FORMAT ": Key doesn't "
+					"match decrypted data for tag %s",
+					rw, cd->cid, tag);
+		break;
+	case NEXUS_ERR_HASH:
+		debug(DBG_ERR, "%s chunk " SECTOR_FORMAT ": Hashing failed",
+					rw, cd->cid);
+		break;
+	case NEXUS_ERR_CRYPT:
+		debug(DBG_ERR, "%s chunk " SECTOR_FORMAT ": Crypto failed",
+					rw, cd->cid);
+		break;
+	case NEXUS_ERR_COMPRESS:
+		format_hash(tag, cd->tag, hash_len);
+		debug(DBG_ERR, "%s chunk " SECTOR_FORMAT ": Compression "
+					"failed, tag %s", rw, cd->cid, tag);
+		break;
+	}
+}
+#else
+#define log_chunk_err(cd) do {} while (0)
+#endif
+
 /**
  * transition - transition @cd to a new non-error state @new_state
  **/
@@ -260,10 +328,12 @@ static void transition_error(struct chunkdata *cd, int error,
 	cd->error=error;
 	cd->errtype=errtype;
 	cd->table->dev->stats.chunk_errors++;
-	if (errtype)
+	if (errtype) {
+		log_chunk_err(cd);
 		__transition(cd, ST_ERROR_USER);
-	else
+	} else {
 		__transition(cd, ST_ERROR);
+	}
 }
 
 /**
@@ -580,21 +650,6 @@ static void issue_chunk_io(struct chunkdata *cd)
 }
 
 /**
- * format_hash - debug/logging helper to convert a hash to hex representation
- * @out   : buffer in which to store the hex digits
- * @in    : hash bytes
- * @in_len: number of bytes in @in
- *
- * @out must be able to store 2 * @in_len + 1 bytes.
- **/
-static void format_hash(char *out, unsigned char *in, unsigned in_len)
-{
-	int i;
-	for (i=0; i<in_len; i++, in++, out += 2)
-		sprintf(out, "%.2x", *in);
-}
-
-/**
  * __chunk_tfm - encode or decode a chunk
  * @ts  : per-CPU transform state buffer
  * @cd  : the chunk in question
@@ -613,72 +668,34 @@ static nexus_err_t __chunk_tfm(struct nexus_tfm_state *ts,
 	const struct tfm_suite_info *info=suite_info(dev->suite);
 	unsigned hash_len=info->hash_len;
 	int do_crypt=(info->cipher_block > 0);
-	/* Buffers for error strings are allocated within their "if" blocks
-	   to conserve stack space in the common case */
 	
 	if (cd->state == ST_DECRYPTING) {
 		debug(DBG_TFM, "Decoding %u bytes for chunk " SECTOR_FORMAT,
 					cd->size, cd->cid);
 		/* Make sure encrypted data matches tag */
-		if (crypto_hash(dev, ts, cd->sg, cd->size, hash)) {
-			log_limit(KERN_ERR, "Decoding chunk " SECTOR_FORMAT
-						": Unable to check tag",
-						cd->cid);
+		if (crypto_hash(dev, ts, cd->sg, cd->size, hash))
 			return NEXUS_ERR_HASH;
-		}
-		if (memcmp(cd->tag, hash, hash_len)) {
-			char expected[2 * hash_len + 1];
-			char found[2 * hash_len + 1];
-			format_hash(expected, cd->tag, hash_len);
-			format_hash(found, hash, hash_len);
-			log_limit(KERN_ERR, "Decoding chunk " SECTOR_FORMAT
-						": Expected tag %s, found %s",
-						cd->cid, expected, found);
+		if (memcmp(cd->tag, hash, hash_len))
 			return NEXUS_ERR_TAG;
-		}
 		if (do_crypt) {
 			ret=crypto_cipher(dev, ts, cd->sg, cd->key, cd->size,
 						READ, cd->compression !=
 						NEXUS_COMPRESS_NONE);
-			if (ret < 0) {
-				char tag[2 * hash_len + 1];
-				format_hash(tag, cd->tag, hash_len);
-				log_limit(KERN_ERR, "Decoding chunk "
-						SECTOR_FORMAT ": Decryption "
-						"failed.  Tag: %s", cd->cid,
-						tag);
+			if (ret < 0)
 				return NEXUS_ERR_CRYPT;
-			}
 			compressed_size=ret;
 			/* Make sure decrypted data matches key */
 			if (crypto_hash(dev, ts, cd->sg, compressed_size,
-						hash)) {
-				log_limit(KERN_ERR, "Decoding chunk "
-						SECTOR_FORMAT ": Unable to "
-						"check key", cd->cid);
+						hash))
 				return NEXUS_ERR_HASH;
-			}
-			if (memcmp(cd->key, hash, hash_len)) {
-				char tag[2 * hash_len + 1];
-				format_hash(tag, cd->tag, hash_len);
-				log_limit(KERN_ERR, "Decoding chunk "
-						SECTOR_FORMAT ": Key doesn't "
-						"match decrypted data, tag %s",
-						cd->cid, tag);
+			if (memcmp(cd->key, hash, hash_len))
 				return NEXUS_ERR_KEY;
-			}
 		} else {
 			compressed_size=cd->size;
 		}
 		if (decompress_chunk(dev, ts, cd->sg, cd->compression,
-					compressed_size)) {
-			char tag[2 * hash_len + 1];
-			format_hash(tag, cd->tag, hash_len);
-			log_limit(KERN_ERR, "Decoding chunk " SECTOR_FORMAT
-						": Decompression failed.  "
-						"Tag: %s", cd->cid, tag);
+					compressed_size))
 			return NEXUS_ERR_COMPRESS;
-		}
 	} else if (cd->state == ST_ENCRYPTING) {
 		/* If compression or encryption errors out, we don't try to
 		   recover the data because the cd will go into ST_ERROR state
@@ -688,9 +705,6 @@ static nexus_err_t __chunk_tfm(struct nexus_tfm_state *ts,
 			compressed_size=dev->chunksize;
 			cd->compression=NEXUS_COMPRESS_NONE;
 		} else if (ret < 0) {
-			log_limit(KERN_ERR, "Encoding chunk " SECTOR_FORMAT
-						": Compression failed",
-						cd->cid);
 			return NEXUS_ERR_COMPRESS|NEXUS_ERR_IS_WRITE;
 		} else {
 			compressed_size=ret;
@@ -701,33 +715,21 @@ static nexus_err_t __chunk_tfm(struct nexus_tfm_state *ts,
 						SECTOR_FORMAT, compressed_size,
 						cd->cid);
 			if (crypto_hash(dev, ts, cd->sg, compressed_size,
-						cd->key)) {
-				log_limit(KERN_ERR, "Encoding chunk "
-						SECTOR_FORMAT ": Unable to "
-						"generate key", cd->cid);
+						cd->key))
 				return NEXUS_ERR_HASH|NEXUS_ERR_IS_WRITE;
-			}
 			ret=crypto_cipher(dev, ts, cd->sg, cd->key,
 						compressed_size, WRITE,
 						cd->compression !=
 						NEXUS_COMPRESS_NONE);
-			if (ret < 0) {
-				log_limit(KERN_ERR, "Encoding chunk "
-						SECTOR_FORMAT ": Encryption "
-						"failed", cd->cid);
+			if (ret < 0)
 				return NEXUS_ERR_CRYPT|NEXUS_ERR_IS_WRITE;
-			}
 			cd->size=ret;
 		} else {
 			memset(cd->key, 0, sizeof(cd->key));
 			cd->size=compressed_size;
 		}
-		if (crypto_hash(dev, ts, cd->sg, cd->size, cd->tag)) {
-			log_limit(KERN_ERR, "Encoding chunk " SECTOR_FORMAT
-						": Unable to generate tag",
-						cd->cid);
+		if (crypto_hash(dev, ts, cd->sg, cd->size, cd->tag))
 			return NEXUS_ERR_HASH|NEXUS_ERR_IS_WRITE;
-		}
 	} else {
 		BUG();
 	}

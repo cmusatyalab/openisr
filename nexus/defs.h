@@ -328,6 +328,7 @@ static inline void mutex_lock_thread(MUTEX *lock)
 #define DBG_CHARDEV	0x00000040	/* Character device */
 #define DBG_CD		0x00000080	/* Chunkdata */
 #define DBG_IO		0x00000100	/* Backing device I/O */
+#define DBG_ERR		0x00000200	/* CHUNK_ERR reports to userspace */
 
 #define log(prio, msg, args...) printk(prio MODULE_NAME ": " msg "\n", ## args)
 #define log_limit(prio, msg, args...) do { \

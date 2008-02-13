@@ -32,6 +32,7 @@ char *bits[]={
 	"chardev",
 	"cd",
 	"io",
+	"err",
 	NULL
 };
 
