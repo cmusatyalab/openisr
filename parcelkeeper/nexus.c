@@ -27,7 +27,7 @@ static const int ignored_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGTSTP, 0};
 static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
 
 #define REQUESTS_PER_SYSCALL 64
-#define MY_INTERFACE_VERSION 7
+#define MY_INTERFACE_VERSION 8
 #define LOOP_UNREGISTER_TRIES 500
 #if MY_INTERFACE_VERSION != NEXUS_INTERFACE_VERSION
 #error This code uses a different interface version than the one defined in nexus.h
@@ -349,6 +349,7 @@ static int request_is_valid(const struct nexus_message *req)
 
 	switch (req->type) {
 	case NEXUS_MSGTYPE_GET_META:
+	case NEXUS_MSGTYPE_CHUNK_ERR:
 		break;
 	case NEXUS_MSGTYPE_UPDATE_META:
 		if (req->length > parcel.chunksize) {
@@ -364,6 +365,53 @@ static int request_is_valid(const struct nexus_message *req)
 		return 0;
 	}
 	return 1;
+}
+
+static void chunk_error(const struct nexus_message *req)
+{
+	char *expected;
+	char *found;
+	const char *rw;
+	enum nexus_chunk_err err;
+
+	rw = (req->err & NEXUS_ERR_IS_WRITE) ? "writing" : "reading";
+	err = req->err & ~NEXUS_ERR_IS_WRITE;
+	switch (err) {
+	case NEXUS_ERR_IO:
+		pk_log(LOG_WARNING, "Nexus: I/O error %s chunk %llu", rw,
+					req->chunk);
+		break;
+	case NEXUS_ERR_TAG:
+		expected=format_tag(req->expected, parcel.hashlen);
+		found=format_tag(req->found, parcel.hashlen);
+		pk_log(LOG_WARNING, "Nexus: Tag check error %s chunk %llu: "
+					"expected %s, found %s", rw,
+					req->chunk, expected, found);
+		free(expected);
+		free(found);
+		break;
+	case NEXUS_ERR_KEY:
+		/* Don't log keys to the session log! */
+		pk_log(LOG_WARNING, "Nexus: Key check error %s chunk %llu",
+					rw, req->chunk);
+		break;
+	case NEXUS_ERR_HASH:
+		pk_log(LOG_WARNING, "Nexus: Hashing failure %s chunk %llu",
+					rw, req->chunk);
+		break;
+	case NEXUS_ERR_CRYPT:
+		pk_log(LOG_WARNING, "Nexus: Crypto failure %s chunk %llu",
+					rw, req->chunk);
+		break;
+	case NEXUS_ERR_COMPRESS:
+		pk_log(LOG_WARNING, "Nexus: Compression failure %s chunk %llu",
+					rw, req->chunk);
+		break;
+	default:
+		pk_log(LOG_ERROR, "Unknown Nexus error (%u) %s chunk %llu",
+					err, rw, req->chunk);
+		break;
+	}
 }
 
 /* Returns true if @reply is valid */
@@ -398,6 +446,9 @@ static int process_message(const struct nexus_message *request,
 		cache_update(request->chunk, request->tag, request->key,
 					nexus_to_compress(request->compression),
 					request->length);
+		break;
+	case NEXUS_MSGTYPE_CHUNK_ERR:
+		chunk_error(request);
 		break;
 	}
 	return 0;
