@@ -4,7 +4,7 @@
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
- * Copyright (C) 2006-2007 Carnegie Mellon University
+ * Copyright (C) 2006-2008 Carnegie Mellon University
  * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -48,6 +48,8 @@ enum cd_state {
 	ST_STORE_DATA,       /* Storing data */
 	ST_DIRTY_META,       /* Metadata is dirty */
 	ST_STORE_META,       /* Storing metadata */
+	ST_ERROR_USER,       /* Error; data not valid; must notify userspace */
+	ST_ERROR_PENDING,    /* Userspace notification queued */
 	ST_ERROR,            /* I/O error occurred; data not valid */
 	NR_STATES
 };
@@ -66,12 +68,14 @@ enum cd_state {
  * @compression          : compression type
  * @pending              : queue of pending &nexus_io_chunk for this chunk
  * @remaining            : bytes which have not yet completed chunk store I/O
- * @error                : error code if in ST_ERROR
+ * @error                : error code if in ST_ERROR/ST_ERROR_*
+ * @errtype              : error type for userspace if in ST_ERROR_*
  * @flags                : CD_ flags
  * @state                : current state in state machine
  * @state_begin          : when we entered @state (usec since epoch)
  * @key                  : key as of last encrypt/decrypt
  * @tag                  : tag as of last encrypt/decrypt
+ * @found                : calculated tag/key if mismatch found
  * @sg                   : scatterlist pointing to chunk contents
  *
  * &struct chunkdata is protected by the dev lock, with a few exceptions.
@@ -93,11 +97,13 @@ struct chunkdata {
 	struct list_head pending;
 	atomic_t remaining;
 	int error;
+	nexus_err_t errtype;
 	unsigned flags;
 	enum cd_state state;
 	u64 state_begin;
 	char key[NEXUS_MAX_HASH_LEN];
 	char tag[NEXUS_MAX_HASH_LEN];
+	char found[NEXUS_MAX_HASH_LEN];
 	struct scatterlist *sg;
 };
 
@@ -237,17 +243,40 @@ static void __transition(struct chunkdata *cd, enum cd_state new_state)
 static void transition(struct chunkdata *cd, enum cd_state new_state)
 {
 	BUG_ON(new_state == ST_ERROR);
+	BUG_ON(new_state == ST_ERROR_USER);
+	BUG_ON(new_state == ST_ERROR_PENDING);
 	__transition(cd, new_state);
 }
 
 /**
- * transition_error - transition @cd into error state, with error code @error
+ * transition_error - transition @cd into error state
+ * @cd     : the chunk
+ * @error  : the POSIX error code to associate with the chunk
+ * @errtype: the &enum nexus_err_t to return to userspace, or 0 if none
  **/
-static void transition_error(struct chunkdata *cd, int error)
+static void transition_error(struct chunkdata *cd, int error,
+			nexus_err_t errtype)
 {
 	cd->error=error;
+	cd->errtype=errtype;
 	cd->table->dev->stats.chunk_errors++;
-	__transition(cd, ST_ERROR);
+	if (errtype)
+		__transition(cd, ST_ERROR_USER);
+	else
+		__transition(cd, ST_ERROR);
+}
+
+/**
+ * transition_error_hash - report tag/key check error to userspace
+ **/
+static void transition_error_hash(struct chunkdata *cd, int error,
+			nexus_err_t errtype, char *found)
+{
+	unsigned hash_len=suite_info(cd->table->dev->suite)->hash_len;
+	
+	BUG_ON(errtype != NEXUS_ERR_TAG && errtype != NEXUS_ERR_KEY);
+	memcpy(cd->found, found, hash_len);
+	transition_error(cd, error, errtype);
 }
 
 /**
@@ -567,20 +596,20 @@ static void format_hash(char *out, unsigned char *in, unsigned in_len)
 
 /**
  * __chunk_tfm - encode or decode a chunk
- * @ts: per-CPU transform state buffer
- * @cd: the chunk in question
+ * @ts  : per-CPU transform state buffer
+ * @cd  : the chunk in question
+ * @hash: output value - found tag/key in case of mismatch
  * 
  * If %ST_DECRYPTING, decrypt/decompress the chunk and check its tag and key.
  * If %ST_ENCRYPTING, compress/encrypt the chunk and generate a new tag, key,
- * and length.  Returns 0 or error, and prints messages to the kernel log
- * on failure.
+ * and length.  Prints messages to the kernel log on failure.
  **/
-static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
+static nexus_err_t __chunk_tfm(struct nexus_tfm_state *ts,
+			struct chunkdata *cd, char hash[])
 {
 	struct nexus_dev *dev=cd->table->dev;
 	unsigned compressed_size;
 	int ret;
-	char hash[NEXUS_MAX_HASH_LEN];
 	const struct tfm_suite_info *info=suite_info(dev->suite);
 	unsigned hash_len=info->hash_len;
 	int do_crypt=(info->cipher_block > 0);
@@ -591,12 +620,11 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 		debug(DBG_TFM, "Decoding %u bytes for chunk " SECTOR_FORMAT,
 					cd->size, cd->cid);
 		/* Make sure encrypted data matches tag */
-		ret=crypto_hash(dev, ts, cd->sg, cd->size, hash);
-		if (ret) {
+		if (crypto_hash(dev, ts, cd->sg, cd->size, hash)) {
 			log_limit(KERN_ERR, "Decoding chunk " SECTOR_FORMAT
 						": Unable to check tag",
 						cd->cid);
-			return ret;
+			return NEXUS_ERR_HASH;
 		}
 		if (memcmp(cd->tag, hash, hash_len)) {
 			char expected[2 * hash_len + 1];
@@ -606,7 +634,7 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 			log_limit(KERN_ERR, "Decoding chunk " SECTOR_FORMAT
 						": Expected tag %s, found %s",
 						cd->cid, expected, found);
-			return -EIO;
+			return NEXUS_ERR_TAG;
 		}
 		if (do_crypt) {
 			ret=crypto_cipher(dev, ts, cd->sg, cd->key, cd->size,
@@ -619,16 +647,16 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 						SECTOR_FORMAT ": Decryption "
 						"failed.  Tag: %s", cd->cid,
 						tag);
-				return ret;
+				return NEXUS_ERR_CRYPT;
 			}
 			compressed_size=ret;
 			/* Make sure decrypted data matches key */
-			ret=crypto_hash(dev, ts, cd->sg, compressed_size, hash);
-			if (ret) {
+			if (crypto_hash(dev, ts, cd->sg, compressed_size,
+						hash)) {
 				log_limit(KERN_ERR, "Decoding chunk "
 						SECTOR_FORMAT ": Unable to "
 						"check key", cd->cid);
-				return ret;
+				return NEXUS_ERR_HASH;
 			}
 			if (memcmp(cd->key, hash, hash_len)) {
 				char tag[2 * hash_len + 1];
@@ -637,20 +665,19 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 						SECTOR_FORMAT ": Key doesn't "
 						"match decrypted data, tag %s",
 						cd->cid, tag);
-				return -EIO;
+				return NEXUS_ERR_KEY;
 			}
 		} else {
 			compressed_size=cd->size;
 		}
-		ret=decompress_chunk(dev, ts, cd->sg, cd->compression,
-					compressed_size);
-		if (ret) {
+		if (decompress_chunk(dev, ts, cd->sg, cd->compression,
+					compressed_size)) {
 			char tag[2 * hash_len + 1];
 			format_hash(tag, cd->tag, hash_len);
 			log_limit(KERN_ERR, "Decoding chunk " SECTOR_FORMAT
 						": Decompression failed.  "
 						"Tag: %s", cd->cid, tag);
-			return ret;
+			return NEXUS_ERR_COMPRESS;
 		}
 	} else if (cd->state == ST_ENCRYPTING) {
 		/* If compression or encryption errors out, we don't try to
@@ -664,7 +691,7 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 			log_limit(KERN_ERR, "Encoding chunk " SECTOR_FORMAT
 						": Compression failed",
 						cd->cid);
-			return ret;
+			return NEXUS_ERR_COMPRESS|NEXUS_ERR_IS_WRITE;
 		} else {
 			compressed_size=ret;
 			cd->compression=dev->default_compression;
@@ -673,12 +700,12 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 			debug(DBG_TFM, "Encoding %u bytes for chunk "
 						SECTOR_FORMAT, compressed_size,
 						cd->cid);
-			ret=crypto_hash(dev, ts, cd->sg, compressed_size, cd->key);
-			if (ret) {
+			if (crypto_hash(dev, ts, cd->sg, compressed_size,
+						cd->key)) {
 				log_limit(KERN_ERR, "Encoding chunk "
 						SECTOR_FORMAT ": Unable to "
 						"generate key", cd->cid);
-				return ret;
+				return NEXUS_ERR_HASH|NEXUS_ERR_IS_WRITE;
 			}
 			ret=crypto_cipher(dev, ts, cd->sg, cd->key,
 						compressed_size, WRITE,
@@ -688,19 +715,18 @@ static int __chunk_tfm(struct nexus_tfm_state *ts, struct chunkdata *cd)
 				log_limit(KERN_ERR, "Encoding chunk "
 						SECTOR_FORMAT ": Encryption "
 						"failed", cd->cid);
-				return ret;
+				return NEXUS_ERR_CRYPT|NEXUS_ERR_IS_WRITE;
 			}
 			cd->size=ret;
 		} else {
 			memset(cd->key, 0, sizeof(cd->key));
 			cd->size=compressed_size;
 		}
-		ret=crypto_hash(dev, ts, cd->sg, cd->size, cd->tag);
-		if (ret) {
+		if (crypto_hash(dev, ts, cd->sg, cd->size, cd->tag)) {
 			log_limit(KERN_ERR, "Encoding chunk " SECTOR_FORMAT
 						": Unable to generate tag",
 						cd->cid);
-			return ret;
+			return NEXUS_ERR_HASH|NEXUS_ERR_IS_WRITE;
 		}
 	} else {
 		BUG();
@@ -721,14 +747,17 @@ void chunk_tfm(struct nexus_tfm_state *ts, struct list_head *entry)
 {
 	struct chunkdata *cd=container_of(entry, struct chunkdata, lh_need_tfm);
 	struct nexus_dev *dev=cd->table->dev;
-	int err;
+	char found[NEXUS_MAX_HASH_LEN];
+	nexus_err_t err;
 	
 	/* The actual crypto is done using per-CPU temporary buffers, without
 	   the dev lock held, so that multiple CPUs can do crypto in parallel */
-	err=__chunk_tfm(ts, cd);
+	err=__chunk_tfm(ts, cd, found);
 	mutex_lock_thread(&dev->lock);
-	if (err)
-		transition_error(cd, -EIO);
+	if (err == NEXUS_ERR_TAG || err == NEXUS_ERR_KEY)
+		transition_error_hash(cd, -EIO, err, found);
+	else if (err)
+		transition_error(cd, -EIO, err);
 	else if (cd->state == ST_ENCRYPTING)
 		transition(cd, ST_DIRTY_ENCRYPTED);
 	else
@@ -751,15 +780,17 @@ void chunkdata_complete_io(struct list_head *entry)
 				lh_pending_completion);
 	struct chunkdata_table *table=cd->table;
 	struct nexus_dev *dev=table->dev;
+	nexus_err_t err;
 	
 	mutex_lock_thread(&dev->lock);
 	if (cd->error) {
 		log_limit(KERN_ERR, "I/O error %s chunk " SECTOR_FORMAT,
 					cd->state == ST_LOAD_DATA ?
 					"reading" : "writing", cd->cid);
-		/* XXX arguably we should report write errors to
-		   userspace */
-		transition_error(cd, cd->error);
+		err=NEXUS_ERR_IO;
+		if (cd->state == ST_STORE_DATA)
+			err |= NEXUS_ERR_IS_WRITE;
+		transition_error(cd, cd->error, err);
 	} else if (cd->state == ST_LOAD_DATA) {
 		transition(cd, ST_ENCRYPTED);
 	} else if (cd->state == ST_STORE_DATA) {
@@ -871,6 +902,13 @@ static void try_start_io(struct nexus_io *io)
 			else
 				transition(cd, ST_DIRTY);
 			break;
+		case ST_ERROR_USER:
+		case ST_ERROR_PENDING:
+			if (chunk->flags & CHUNK_READ)
+				chunk->error=cd->error;
+			else
+				continue;
+			break;
 		case ST_CLEAN:
 			if (io->flags & IO_WRITE)
 				transition(cd, ST_DIRTY);
@@ -885,7 +923,7 @@ static void try_start_io(struct nexus_io *io)
 			chunk->error=-EIO;
 			/* Subsequent reads to this chunk must not be allowed
 			   to return stale data. */
-			transition_error(cd, -EIO);
+			transition_error(cd, -EIO, 0);
 		}
 		
 		if (!(chunk->flags & CHUNK_READ))
@@ -904,7 +942,8 @@ static int queue_for_user(struct chunkdata *cd)
 {
 	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
 	BUG_ON(!list_empty(&cd->lh_user));
-	BUG_ON(cd->state != ST_LOAD_META && cd->state != ST_STORE_META);
+	BUG_ON(cd->state != ST_LOAD_META && cd->state != ST_STORE_META &&
+				cd->state != ST_ERROR_PENDING);
 	if (dev_is_shutdown(cd->table->dev))
 		return -EIO;
 	list_add_tail(&cd->lh_user, &cd->table->user);
@@ -958,6 +997,8 @@ struct chunkdata *next_usermsg(struct nexus_dev *dev, msgtype_t *type)
 			*type=NEXUS_MSGTYPE_GET_META;
 		else if (cd->state == ST_STORE_META)
 			*type=NEXUS_MSGTYPE_UPDATE_META;
+		else if (cd->state == ST_ERROR_PENDING)
+			*type=NEXUS_MSGTYPE_CHUNK_ERR;
 		else
 			BUG();
 		return cd;
@@ -1012,6 +1053,10 @@ void end_usermsg(struct chunkdata *cd)
 		transition(cd, ST_ENCRYPTED);
 		__end_usermsg(cd);
 		break;
+	case ST_ERROR_PENDING:
+		__transition(cd, ST_ERROR);
+		__end_usermsg(cd);
+		break;
 	default:
 		BUG();
 	}
@@ -1033,7 +1078,7 @@ void shutdown_usermsg(struct nexus_dev *dev)
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	BUG_ON(!dev_is_shutdown(dev));
 	list_for_each_entry_safe(cd, next, &dev->chunkdata->user, lh_user) {
-		transition_error(cd, -EIO);
+		transition_error(cd, -EIO, 0);
 		__end_usermsg(cd);
 	}
 }
@@ -1064,6 +1109,27 @@ void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 	*compression=cd->compression;
 	memcpy(key, cd->key, hash_len);
 	memcpy(tag, cd->tag, hash_len);
+}
+
+/**
+ * get_usermsg_get_error - accessor for CHUNK_ERR usermsg fields
+ **/
+void get_usermsg_get_error(struct chunkdata *cd, unsigned long long *cid,
+			nexus_err_t *errtype, char expected[], char found[])
+{
+	unsigned hash_len=suite_info(cd->table->dev->suite)->hash_len;
+	
+	BUG_ON(!mutex_is_locked(&cd->table->dev->lock));
+	BUG_ON(cd->state != ST_ERROR_PENDING);
+	*cid=cd->cid;
+	*errtype=cd->errtype;
+	if (cd->errtype == NEXUS_ERR_TAG) {
+		memcpy(expected, cd->tag, hash_len);
+		memcpy(found, cd->found, hash_len);
+	} else if (cd->errtype == NEXUS_ERR_KEY) {
+		memcpy(expected, cd->key, hash_len);
+		memcpy(found, cd->found, hash_len);
+	}
 }
 
 /**
@@ -1125,7 +1191,7 @@ void set_usermsg_meta_err(struct nexus_dev *dev, chunk_t cid)
 					cid);
 		return;
 	}
-	transition_error(cd, -EIO);
+	transition_error(cd, -EIO, 0);
 	__end_usermsg(cd);
 }
 
@@ -1179,7 +1245,7 @@ again:
 							SECTOR_FORMAT, cd->cid);
 				transition(cd, ST_LOAD_META);
 				if (queue_for_user(cd)) {
-					transition_error(cd, -EIO);
+					transition_error(cd, -EIO, 0);
 					goto again;
 				}
 			} else {
@@ -1249,12 +1315,20 @@ again:
 		   we write out metadata. */
 		transition(cd, ST_STORE_META);
 		if (queue_for_user(cd)) {
-			transition_error(cd, -EIO);
+			transition_error(cd, -EIO, 0);
 			goto again;
 		}
 		break;
 	case ST_STORE_META:
 		break;
+	case ST_ERROR_USER:
+		/* We have an I/O error that needs to be queued for
+		   userspace. */
+		__transition(cd, ST_ERROR_PENDING);
+		if (queue_for_user(cd))
+			__transition(cd, ST_ERROR);
+		/* Fall through */
+	case ST_ERROR_PENDING:
 	case ST_ERROR:
 		/* I/O error occurred; data not valid */
 		if (chunk != NULL)

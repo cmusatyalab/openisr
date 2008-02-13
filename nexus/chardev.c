@@ -4,7 +4,7 @@
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
- * Copyright (C) 2006-2007 Carnegie Mellon University
+ * Copyright (C) 2006-2008 Carnegie Mellon University
  * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -163,6 +163,11 @@ static ssize_t chr_read(struct file *filp, char __user *buf,
 			get_usermsg_update_meta(cd, &msg.chunk, &msg.length,
 						&compress, msg.key, msg.tag);
 			msg.compression=compress;  /* type conversion */
+			do_end=1;
+			break;
+		case NEXUS_MSGTYPE_CHUNK_ERR:
+			get_usermsg_get_error(cd, &msg.chunk, &msg.err,
+						msg.expected, msg.found);
 			do_end=1;
 			break;
 		default:

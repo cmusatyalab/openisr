@@ -4,7 +4,7 @@
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
- * Copyright (C) 2006-2007 Carnegie Mellon University
+ * Copyright (C) 2006-2008 Carnegie Mellon University
  * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -39,7 +39,7 @@
 #define KTHREAD_NAME "kopenisrd"
 #define IOTHREAD_NAME "kopenisriod"
 #define REQTHREAD_NAME "kopenisrblockd"
-#define CD_NR_STATES 14  /* must shadow NR_STATES in chunkdata.c */
+#define CD_NR_STATES 16  /* must shadow NR_STATES in chunkdata.c */
 
 #include <linux/blkdev.h>
 #include <linux/workqueue.h>
@@ -461,6 +461,8 @@ void get_usermsg_get_meta(struct chunkdata *cd, unsigned long long *cid);
 void get_usermsg_update_meta(struct chunkdata *cd, unsigned long long *cid,
 			unsigned *length, enum nexus_compress *compression,
 			char key[], char tag[]);
+void get_usermsg_get_error(struct chunkdata *cd, unsigned long long *cid,
+			nexus_err_t *errtype, char expected[], char found[]);
 void set_usermsg_set_meta(struct nexus_dev *dev, chunk_t cid, unsigned length,
 			enum nexus_compress compression, char key[],
 			char tag[]);

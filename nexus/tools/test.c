@@ -2,7 +2,7 @@
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
- * Copyright (C) 2006-2007 Carnegie Mellon University
+ * Copyright (C) 2006-2008 Carnegie Mellon University
  * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -134,6 +134,41 @@ enum nexus_crypto suite_to_nexus(unsigned ondisk)
 	}
 }
 
+void err_to_string(nexus_err_t err, const char **desc, const char **direction)
+{
+	enum nexus_chunk_err type;
+	
+	if (err & NEXUS_ERR_IS_WRITE)
+		*direction="write";
+	else
+		*direction="read";
+	type = err & ~NEXUS_ERR_IS_WRITE;
+	
+	switch (type) {
+	case NEXUS_ERR_NOERR:
+		*desc="no error";
+		break;
+	case NEXUS_ERR_IO:
+		*desc="I/O error";
+		break;
+	case NEXUS_ERR_TAG:
+		*desc="tag";
+		break;
+	case NEXUS_ERR_KEY:
+		*desc="key";
+		break;
+	case NEXUS_ERR_HASH:
+		*desc="hash failure";
+		break;
+	case NEXUS_ERR_CRYPT:
+		*desc="crypto failure";
+		break;
+	case NEXUS_ERR_COMPRESS:
+		*desc="compression failure";
+		break;
+	}
+};
+
 int setup(struct params *params, char *storefile)
 {
 	int storefd, chunkfd;
@@ -254,6 +289,8 @@ int handle_message(struct chunk *chunk, struct nexus_message *message,
 				unsigned hash_len)
 {
 	enum nexus_compress comp;
+	const char *direction;
+	const char *err;
 	
 	switch (message->type) {
 	case NEXUS_MSGTYPE_GET_META:
@@ -288,6 +325,21 @@ int handle_message(struct chunk *chunk, struct nexus_message *message,
 		received++;
 		received_size += message->length;
 		dirty=1;
+		return 0;
+	case NEXUS_MSGTYPE_CHUNK_ERR:
+		err_to_string(message->err, &err, &direction);
+		if (message->err == NEXUS_ERR_TAG ||
+					message->err == NEXUS_ERR_KEY) {
+			printf("IOERR     chunk %8llu on %s: expected %s ",
+						message->chunk, direction, err);
+			printkey(message->expected, hash_len);
+			printf(" found ");
+			printkey(message->found, hash_len);
+			printf("\n");
+		} else {
+			printf("IOERR     chunk %8llu on %s: %s\n",
+						message->chunk, direction, err);
+		}
 		return 0;
 	default:
 		printf("Unknown message type %x\n", message->type);

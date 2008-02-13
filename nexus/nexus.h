@@ -4,7 +4,7 @@
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
- * Copyright (C) 2006-2007 Carnegie Mellon University
+ * Copyright (C) 2006-2008 Carnegie Mellon University
  * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -32,10 +32,11 @@
 #define NEXUS_IOC_UNREGISTER      _IO(0x1a, 1)
 #define NEXUS_IOC_CONFIG_THREAD   _IO(0x1a, 2)
 
-#define NEXUS_INTERFACE_VERSION 7
+#define NEXUS_INTERFACE_VERSION 8
 
 typedef __u16 compressmask_t;
 typedef __u16 msgtype_t;
+typedef __u8  nexus_err_t;
 
 /* The numeric values of these symbols are not guaranteed to remain constant!
    Don't use them in an on-disk format! */
@@ -52,6 +53,19 @@ enum nexus_compress {
 	NEXUS_COMPRESS_LZF,
 	NEXUS_NR_COMPRESS
 };
+
+/* nexus_err_t is composed of an error code (&enum nexus_chunk_err) and
+   a flag bit (%NEXUS_ERR_IS_WRITE). */
+enum nexus_chunk_err {
+	NEXUS_ERR_NOERR=0,
+	NEXUS_ERR_IO,
+	NEXUS_ERR_TAG,
+	NEXUS_ERR_KEY,
+	NEXUS_ERR_HASH,
+	NEXUS_ERR_CRYPT,
+	NEXUS_ERR_COMPRESS,
+};
+#define NEXUS_ERR_IS_WRITE 0x80
 
 /**
  * struct nexus_setup - information exchanged during NEXUS_IOC_REGISTER
@@ -112,6 +126,9 @@ struct nexus_setup {
  * @compression: compression type for this chunk (&enum nexus_compress)
  * @key        : encryption key
  * @tag        : CAS tag
+ * @err        : &enum nexus_chunk_err with 0x80 set if this is a write error
+ * @expected   : expected tag/key if this is a mismatch error
+ * @found      : found tag/key if this is a mismatch error
  *
  * This structure must have an identical layout on 32-bit and 64-bit systems.
  * We don't use enum types for crypto and compress fields because the compiler
@@ -123,13 +140,18 @@ struct nexus_setup {
  * not need to be in the same order as requests.
  *
  * NEXUS_MSGTYPE_UPDATE_META:
- * Sent from kernel to userspace to report new metadata for a chunk.  All
- * fields are valid.  No reply is necessary.
+ * Sent from kernel to userspace to report new metadata for a chunk.  @chunk,
+ * @length, @compression, @tag, and @key are valid.  No reply is necessary.
+ *
+ * NEXUS_MSGTYPE_CHUNK_ERR:
+ * Sent from kernel to userspace to report an I/O or decoding error for a
+ * chunk.  @chunk and @err are always valid.  @expected and @found are valid
+ * if @err is %NEXUS_ERR_TAG or %NEXUS_ERR_KEY.
  *
  * NEXUS_MSGTYPE_SET_META:
  * Sent from userspace to kernel to supply requested information for a chunk.
  * May only be sent in response to GET_META; unsolicited SET_META is not
- * allowed.  All fields must be valid.
+ * allowed.  @chunk, @length, @compression, @key, and @tag must be valid.
  *
  * NEXUS_MSGTYPE_META_HARDERR:
  * Sent from userspace to kernel to report inability to supply the information
@@ -143,14 +165,24 @@ struct nexus_message {
 	__u64 chunk;
 	__u32 length;
 	msgtype_t type;
-	__u8 compression;
-	__u8 key[NEXUS_MAX_HASH_LEN];
-	__u8 tag[NEXUS_MAX_HASH_LEN];
+	union {
+		__u8 compression;
+		nexus_err_t err;
+	};
+	union {
+		__u8 key[NEXUS_MAX_HASH_LEN];
+		__u8 expected[NEXUS_MAX_HASH_LEN];
+	};
+	union {
+		__u8 tag[NEXUS_MAX_HASH_LEN];
+		__u8 found[NEXUS_MAX_HASH_LEN];
+	};
 };
 
 /* Kernel to user */
 #define NEXUS_MSGTYPE_GET_META     ((msgtype_t) 0x0000)
 #define NEXUS_MSGTYPE_UPDATE_META  ((msgtype_t) 0x0001)
+#define NEXUS_MSGTYPE_CHUNK_ERR    ((msgtype_t) 0x0002)
 /* User to kernel */
 #define NEXUS_MSGTYPE_SET_META     ((msgtype_t) 0x1000)
 #define NEXUS_MSGTYPE_META_HARDERR ((msgtype_t) 0x1001)
