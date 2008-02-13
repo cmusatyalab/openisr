@@ -143,10 +143,9 @@ pk_err_t nexus_init(void)
 
 	/* Check for previous unclean shutdown of local cache */
 	if (cache_test_flag(CA_F_DIRTY)) {
-		pk_log(LOG_WARNING, "The local cache was not cleanly shut "
-					"down.");
-		pk_log(LOG_WARNING, "Will not run this parcel until the cache "
-					"has been validated or discarded.");
+		pk_log(LOG_WARNING, "Local cache marked as dirty");
+		pk_log(LOG_WARNING, "Will not run until the cache has been "
+					"validated or discarded");
 		return PK_BADFORMAT;
 	}
 
@@ -336,7 +335,8 @@ void nexus_shutdown(void)
 	sync();
 	sync();
 	sync();
-	cache_clear_flag(CA_F_DIRTY);
+	if (!state.leave_dirty)
+		cache_clear_flag(CA_F_DIRTY);
 }
 
 static int request_is_valid(const struct nexus_message *req)
@@ -412,6 +412,9 @@ static void chunk_error(const struct nexus_message *req)
 					err, rw, req->chunk);
 		break;
 	}
+	/* Leave the dirty bit set at shutdown, to force the local cache to
+	   be checked */
+	state.leave_dirty=1;
 }
 
 /* Returns true if @reply is valid */

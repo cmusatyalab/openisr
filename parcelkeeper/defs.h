@@ -164,6 +164,7 @@ struct pk_state {
 
 	unsigned offset;
 	unsigned cache_flags;
+	int leave_dirty;
 
 	unsigned request_count;
 	unsigned sql_hits;

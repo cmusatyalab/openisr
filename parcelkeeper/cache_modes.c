@@ -68,10 +68,9 @@ int copy_for_upload(void)
 		return 1;
 	}
 	if (cache_test_flag(CA_F_DIRTY)) {
-		pk_log(LOG_WARNING, "The local cache was not cleanly "
-					"shut down.");
-		pk_log(LOG_WARNING, "Will not upload this parcel until the "
-					"cache has been validated.");
+		pk_log(LOG_WARNING, "Local cache marked as dirty");
+		pk_log(LOG_WARNING, "Will not upload until the cache has "
+					"been validated");
 		return 1;
 	}
 
