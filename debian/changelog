@@ -1,3 +1,9 @@
+openisr (0.9.1-2) experimental; urgency=low
+
+  * Depend on debhelper (for module package build)
+
+ -- Matt Toups <mtoups@cs.cmu.edu>  Fri, 15 Feb 2008 12:33:19 -0500
+
 openisr (0.9.1-1) experimental; urgency=low
 
   * new upstream release (see CHANGES):
