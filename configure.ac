@@ -14,7 +14,7 @@
 AC_PREREQ(2.59)
 AC_INIT([OpenISR], [0.9.1])
 AM_INIT_AUTOMAKE([foreign 1.10])
-AC_COPYRIGHT([Copyright (C) 2007 Carnegie Mellon University])
+AC_COPYRIGHT([Copyright (C) 2007-2008 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([nexus/request.c])
 AC_DISABLE_STATIC
 
