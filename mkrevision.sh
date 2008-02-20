@@ -22,14 +22,14 @@ if [ "$1" = "update" ] ; then
 
 	# git describe will throw a fatal error if there is no predecessor
 	# tag to the current commit
-	REV=`git-describe 2>/dev/null || git-rev-parse --short HEAD`
+	REV=`git describe 2>/dev/null || git rev-parse --short HEAD`
 	# Coda-specific workaround: different Coda clients may see different
 	# stat information for the same files, which can cause a client to
 	# believe the git index is not up-to-date, which could cause the
 	# "-dirty" flag to be added against a clean repository.  So we
 	# refresh the git index before checking it.
-	git-update-index --refresh > /dev/null 2>&1 || true
-	if git-diff-index HEAD | read junk ; then
+	git update-index --refresh > /dev/null 2>&1 || true
+	if git diff-index HEAD | read junk ; then
 		# There are uncommitted changes in the working copy
 		REV="$REV-dirty"
 	fi
