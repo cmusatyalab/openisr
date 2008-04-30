@@ -1083,11 +1083,11 @@ sub usage {
 	print "\n";
 	print RED, "copyparcel - ", RESET, "Create new parcel winxp for existing user bovik in $croot\n";
 	print "using latest version of existing parcel in $croot/gold/goldwinxp\n";
-	print BLUE, "% isr_admin addparcel -u bovik -p winxp -U gold -Pgoldwinxp\n", RESET;
+	print BLUE, "% isr_admin copyparcel -u bovik -p winxp -U gold -Pgoldwinxp\n", RESET;
 	print "\n";
-	print RED, "makeparcel - ", RESET, "Create empty 8 GB parcel debian for existing user bovik\n";
-	print "in $croot\n";
-	print BLUE, "% isr_admin makeparcel -u bovik -p debian -s 8G\n";
+	print RED, "makeparcel - ", RESET, "Create empty parcel debian, with 512 MB memory image and 8 GB\n";
+	print "disk, in $croot for existing user bovik\n";
+	print BLUE, "% isr_admin makeparcel -u bovik -p debian -m 512 -s 8G\n";
 	print "\n";
 	print RED, "delparcel - ", RESET, "Delete all data for parcel winxp belonging to existing user bovik\n";
 	print BLUE, "% isr_admin delparcel -u bovik -p winxp\n";
