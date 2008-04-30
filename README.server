@@ -1,0 +1,38 @@
+INSTALLING THE SERVER
+---------------------
+
+Configure your server system with a web server and SSH daemon.  Then:
+
+./configure --disable-client --enable-server --sysconfdir=/etc
+make
+make install
+
+CONFIGURING THE SERVER
+----------------------
+
+The server reads settings from /etc/openisr/locksrv.conf.  Settings
+are key-value pairs of the form:
+
+key = value
+
+The following keys are supported:
+
+content_root
+	This is the path to your web server's document root, and
+	defaults to /var/www/html.
+
+default_pass
+	The password assigned to user accounts created by isr_admin.
+	The default is "ch@ng3m3".
+
+hostname
+	The hostname by which clients will refer to this server.  The
+	default is the fully-qualified domain name of your server, but
+	you may need to override this if autodetection fails.
+
+ADMINISTERING THE SERVER
+------------------------
+
+The server includes a tool, "isr_admin", which automates creating and
+deleting users and parcels.  For a usage summary, run "isr_admin"
+without arguments.  For examples, run "isr_admin -hh".

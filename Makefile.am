@@ -21,7 +21,7 @@ endif
 SUBDIRS = $(COMMONDIRS) $(CLIENTDIRS) $(SERVERDIRS) $(VDISKDIR) nexus sha1
 dist_noinst_SCRIPTS = mkrevision.sh autogen.sh
 EXTRA_DIST  = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL CHANGES kernel.mk
-EXTRA_DIST += .gitrevision
+EXTRA_DIST += .gitrevision README.server
 
 # dist-gzip appears to rebuild the tarball whenever it is run (though the
 # generated Makefile seems to indicate that this shouldn't happen).  Thus
