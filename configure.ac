@@ -165,14 +165,16 @@ if test z$enable_client = zyes ; then
 				[$with_curl /usr/local /usr])
 	CHECK_CURL_VERSION([$FOUND_PATH], [7.12.3])
 	
+	PKG_CHECK_MODULES([OSSP_UUID], [ossp-uuid])
+fi
+
+if test z$enable_client = zyes -o z$enable_server = zyes ; then
 	FIND_LIBRARY([OpenSSL], [ssl], [EVP_EncryptUpdate],
 				[openssl/ssl.h openssl/evp.h openssl/blowfish.h],
 				[$with_ssl /usr/local/ssl /usr/lib/ssl /usr/ssl /usr/local /usr])
 	
 	FIND_LIBRARY([zlib], [z], [inflate], [zlib.h],
 				[$with_zlib /usr/local /usr])
-	
-	PKG_CHECK_MODULES([OSSP_UUID], [ossp-uuid])
 fi
 
 if test z$enable_libvdisk = zyes ; then
