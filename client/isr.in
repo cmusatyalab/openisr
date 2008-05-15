@@ -1070,7 +1070,8 @@ sub listparcels () {
     # Run the remote ls program on the server.  Pass through server
     # errors without further comment.
     print "Parcels for $userid on server $server:\n";
-    srun("ls", $lsargs, CHECK_AUTH => 1);
+    srun("ls", $lsargs, CHECK_AUTH => 1) == 0
+        or errexit("Couldn't list remote parcels");
 }
 
 #
