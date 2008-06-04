@@ -541,6 +541,7 @@ void free_scatterlist(struct scatterlist *sg, unsigned nbytes)
 BIO_DESTRUCTOR(bio_destructor, bio_pool)
 
 static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error);
+NEXUS_ENDIO_WRAP /* declares a suitable endio wrapper for kernels >= 2.6.24 */
 
 /**
  * bio_create - create a &bio to do I/O to the chunk store
@@ -584,7 +585,7 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 		if (chunk != NULL)
 			bio_set_prio(bio, chunk->parent->prio);
 	}
-	bio->bi_end_io=nexus_endio_func;
+	bio->bi_end_io=NEXUS_ENDIO_FUNC;
 	bio->bi_private=cd;
 	bio_set_destructor(bio, bio_destructor);
 	return bio;

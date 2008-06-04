@@ -331,6 +331,19 @@ static inline void bio_set_destructor(struct bio *bio,
 #define end_that_request_last(req, uptodate) end_that_request_last(req)
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
+/* As of 2.6.24 the bio_endio callback is only called once when all IO
+ * has completed. */
+#define NEXUS_ENDIO_FUNC nexus_endio_func
+#define NEXUS_ENDIO_WRAP
+#else
+#define NEXUS_ENDIO_FUNC nexus_endio
+#define NEXUS_ENDIO_WRAP \
+	static void nexus_endio(struct bio *bio, int error) { \
+		unsigned bytes_done=bio->bi_size; bio->bi_size=0; \
+		nexus_endio_func(bio, bytes_done, error); }
+#endif
+
 /***** Request queue barriers ************************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,12)
