@@ -56,17 +56,17 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	
 	while (soffset >= src->length) {
 		soffset -= src->length;
-		src++;
+		src=sg_next(src);
 	}
 	sleft=src->length - soffset;
-	sbuf=kmap_atomic(src->page, KM_USER0) + src->offset + soffset;
+	sbuf=kmap_atomic(sg_page(src), KM_USER0) + src->offset + soffset;
 	
 	while (doffset >= dst->length) {
 		doffset -= dst->length;
-		dst++;
+		dst=sg_next(dst);
 	}
 	dleft=dst->length - doffset;
-	dbuf=kmap_atomic(dst->page, KM_USER1) + dst->offset + doffset;
+	dbuf=kmap_atomic(sg_page(dst), KM_USER1) + dst->offset + doffset;
 	
 	/* Comment A: We calculate the address to kunmap_atomic() as buf - 1,
 	   since in all cases that we call kunmap_atomic(), we must have
@@ -75,14 +75,14 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 	while (len) {
 		if (sleft == 0) {
 			kunmap_atomic(sbuf - 1, KM_USER0);
-			src++;
-			sbuf=kmap_atomic(src->page, KM_USER0) + src->offset;
+			src=sg_next(src);
+			sbuf=kmap_atomic(sg_page(src), KM_USER0) + src->offset;
 			sleft=src->length;
 		}
 		if (dleft == 0) {
 			kunmap_atomic(dbuf - 1, KM_USER1);
-			dst++;
-			dbuf=kmap_atomic(dst->page, KM_USER1) + dst->offset;
+			dst=sg_next(dst);
+			dbuf=kmap_atomic(sg_page(dst), KM_USER1) + dst->offset;
 			dleft=dst->length;
 		}
 		WARN_ON(sleft > PAGE_SIZE || dleft > PAGE_SIZE);
@@ -300,6 +300,7 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 	io->prio=req_get_prio(req);
 	if (rq_data_dir(req))
 		io->flags |= IO_WRITE;
+	sg_init_table(io->orig_sg, MAX_SEGS_PER_IO);
 	nsegs=blk_rq_map_sg(dev->queue, req, io->orig_sg);
 	debug(DBG_REQUEST, "%d phys segs, %d coalesced segs",
 				req->nr_phys_segments, nsegs);

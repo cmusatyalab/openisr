@@ -344,6 +344,26 @@ static inline void bio_set_destructor(struct bio *bio,
 		nexus_endio_func(bio, bytes_done, error); }
 #endif
 
+/***** Scatterlists **********************************************************/
+
+#include <linux/scatterlist.h>
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
+#define sg_next(sg) ((sg)++)
+#define sg_page(sg) ((sg)->page)
+static inline void sg_init_table(struct scatterlist *sg, unsigned int nents)
+{
+	memset(sg, 0, sizeof(*sg) * nents);
+}
+static inline void sg_set_page(struct scatterlist *sg, struct page *page,
+				unsigned int length, unsigned int offset)
+{
+	sg->page = page;
+	sg->offset = offset;
+	sg->length = length;
+}
+#endif
+
 /***** Request queue barriers ************************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,12)

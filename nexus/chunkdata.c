@@ -484,7 +484,7 @@ void chunkdata_invalidate_all(struct nexus_dev *dev)
 struct scatterlist *alloc_scatterlist(unsigned nbytes)
 {
 	struct scatterlist *sg;
-	struct scatterlist *cur=NULL;  /* initialization to avoid warning */
+	struct page *page;
 	unsigned npages=(nbytes + PAGE_SIZE - 1) / PAGE_SIZE;
 	unsigned residual;
 	int i;
@@ -492,23 +492,22 @@ struct scatterlist *alloc_scatterlist(unsigned nbytes)
 	sg=kmalloc(npages * sizeof(*sg), GFP_KERNEL);
 	if (sg == NULL)
 		return NULL;
+	sg_init_table(sg, npages);
 	for (i=0; i<npages; i++) {
-		cur=&sg[i];
-		cur->page=alloc_page(GFP_KERNEL | __GFP_HIGHMEM);
-		if (cur->page == NULL)
+		page=alloc_page(GFP_KERNEL | __GFP_HIGHMEM);
+		if (page == NULL)
 			goto bad;
-		cur->offset=0;
-		cur->length=PAGE_SIZE;
+		sg_set_page(&sg[i], page, PAGE_SIZE, 0);
 	}
 	/* Possible partial last page */
 	residual=nbytes % PAGE_SIZE;
 	if (residual)
-		cur->length=residual;
+		sg[npages-1].length=residual;
 	return sg;
 	
 bad:
 	while (--i >= 0)
-		__free_page(sg[i].page);
+		__free_page(sg_page(&sg[i]));
 	kfree(sg);
 	return NULL;
 }
@@ -524,7 +523,7 @@ void free_scatterlist(struct scatterlist *sg, unsigned nbytes)
 	if (sg == NULL)
 		return;
 	for (cur=sg; nbytes > 0; cur++) {
-		__free_page(cur->page);
+		__free_page(sg_page(cur));
 		nbytes -= cur->length;
 	}
 	kfree(sg);
@@ -633,7 +632,7 @@ static void issue_chunk_io(struct chunkdata *cd)
 	while (offset < dev->chunksize) {
 		if (bio == NULL)
 			bio=bio_create(cd, dir, offset/512);
-		if (bio_add_page(bio, cd->sg[i].page,
+		if (bio_add_page(bio, sg_page(&cd->sg[i]),
 					cd->sg[i].length,
 					cd->sg[i].offset)) {
 			offset += cd->sg[i].length;

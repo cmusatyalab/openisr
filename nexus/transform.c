@@ -113,7 +113,7 @@ static void scatterlist_transfer(struct scatterlist *sg, void *buf,
 	WARN_ON(in_interrupt());
 	for (total=0; total < nbytes; sg++) {
 		count=min(sg->length, nbytes - total);
-		page=kmap_atomic(sg->page, KM_USER0);
+		page=kmap_atomic(sg_page(sg), KM_USER0);
 		if (dir == READ)
 			memcpy(buf + total, page + sg->offset, count);
 		else
@@ -144,7 +144,7 @@ static void scatterlist_zero(struct scatterlist *sg, unsigned start,
 		sg++;
 	}
 	while (nbytes > 0) {
-		page=kmap_atomic(sg->page, KM_USER0);
+		page=kmap_atomic(sg_page(sg), KM_USER0);
 		count=min(nbytes, sg->length - start);
 		memset(page + sg->offset + start, 0, count);
 		kunmap_atomic(page, KM_USER0);
@@ -155,17 +155,21 @@ static void scatterlist_zero(struct scatterlist *sg, unsigned start,
 }
 
 /**
- * scatterlist_flip - swap page pointers between @s1 and @s2
+ * scatterlist_flip - swap pages between @s1 and @s2
  **/
 static void scatterlist_flip(struct scatterlist *s1, struct scatterlist *s2,
 			unsigned npages)
 {
-	struct page *tmp;
+	struct page *page;
+	unsigned int length;
+	unsigned int offset;
 	
 	for (; npages > 0; npages--, s1++, s2++) {
-		tmp=s1->page;
-		s1->page=s2->page;
-		s2->page=tmp;
+		page=sg_page(s1);
+		length=s1->length;
+		offset=s1->offset;
+		sg_set_page(s1, sg_page(s2), s2->length, s2->offset);
+		sg_set_page(s2, page, length, offset);
 	}
 }
 
@@ -213,12 +217,12 @@ static unsigned crypto_pad(struct nexus_dev *dev, struct scatterlist *sg,
 		sg++;
 	}
 	offset += sg->offset;
-	page=kmap_atomic(sg->page, KM_USER0);
+	page=kmap_atomic(sg_page(sg), KM_USER0);
 	for (i=0; i<padlen; i++) {
 		if (offset >= sg->offset + sg->length) {
 			kunmap_atomic(page, KM_USER0);
 			sg++;
-			page=kmap_atomic(sg->page, KM_USER0);
+			page=kmap_atomic(sg_page(sg), KM_USER0);
 			offset=sg->offset;
 		}
 		page[offset++]=padlen;
@@ -255,7 +259,7 @@ static int crypto_unpad(struct nexus_dev *dev, struct scatterlist *sg, int len)
 		sg++;
 	}
 	offset += sg->offset;
-	page=kmap_atomic(sg->page, KM_USER0);
+	page=kmap_atomic(sg_page(sg), KM_USER0);
 	padlen=page[offset--];
 	if (padlen == 0 || padlen > cipher_block || padlen > len)
 		goto out;
@@ -264,7 +268,7 @@ static int crypto_unpad(struct nexus_dev *dev, struct scatterlist *sg, int len)
 		if (offset < sg->offset) {
 			kunmap_atomic(page, KM_USER0);
 			sg--;
-			page=kmap_atomic(sg->page, KM_USER0);
+			page=kmap_atomic(sg_page(sg), KM_USER0);
 			offset=sg->offset + sg->length - 1;
 		}
 		if (page[offset--] != padlen)
@@ -329,13 +333,13 @@ static int compress_chunk_zlib(struct nexus_dev *dev,
 	   try to keep scheduling latency down, even though this may cause
 	   some unnecessary TLB misses for output pages. */
 	do {
-		from=kmap_atomic(sg[i].page, KM_USER0);
+		from=kmap_atomic(sg_page(&sg[i]), KM_USER0);
 		strm.next_in=from + sg[i].offset;
 		strm.avail_in=sg[i].length;
 		flush = (i == chunk_pages(dev) - 1) ? Z_FINISH : 0;
 		i++;
 		do {
-			to=kmap_atomic(out_sg->page, KM_USER1);
+			to=kmap_atomic(sg_page(out_sg), KM_USER1);
 			strm.next_out=to + out_sg->offset + out_offset;
 			strm.avail_out=out_sg->length - out_offset;
 			ret=zlib_deflate(&strm, flush);
@@ -404,14 +408,14 @@ static int decompress_chunk_zlib(struct nexus_dev *dev,
 	   page, we'd be repeatedly mapping and unmapping the same input
 	   page, leading to lots of unnecessary TLB misses. */
 	do {
-		from=kmap_atomic(in_sg->page, KM_USER0);
+		from=kmap_atomic(sg_page(in_sg), KM_USER0);
 		strm.next_in=from + in_sg->offset;
 		strm.avail_in=min(len, in_sg->length);
 		len -= strm.avail_in;
 		in_sg++;
 		do {
 			if (strm.total_out < dev->chunksize) {
-				to=kmap_atomic(out_sg->page, KM_USER1);
+				to=kmap_atomic(sg_page(out_sg), KM_USER1);
 				strm.next_out=to + out_sg->offset + out_offset;
 				strm.avail_out=out_sg->length - out_offset;
 			} else {
