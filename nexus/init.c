@@ -361,7 +361,7 @@ static struct block_device *nexus_open_bdev(struct nexus_dev *dev,
 	err=path_lookup(devpath, LOOKUP_FOLLOW, &nd);
 	if (err)
 		goto bad;
-	inode=nd.dentry->d_inode;
+	inode=nd_path_dentry(nd)->d_inode;
 	err=permission(inode, MAY_READ|MAY_WRITE, &nd);
 	if (err)
 		goto bad_release;

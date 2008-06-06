@@ -435,6 +435,13 @@ typedef struct work_struct work_t;
 	int name(struct file *filp, fl_owner_t ignored)
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
+#define nd_path_dentry(nd) (nd).dentry
+#else
+#define nd_path_dentry(nd) (nd).path.dentry
+#define path_release(ndp) path_put(&(ndp)->path);
+#endif
+
 /***** Software suspend ******************************************************/
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
