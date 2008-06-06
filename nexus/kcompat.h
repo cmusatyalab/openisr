@@ -344,6 +344,19 @@ static inline void bio_set_destructor(struct bio *bio,
 		nexus_endio_func(bio, bytes_done, error); }
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
+static inline __blk_end_request(struct request *req, int error, int nr_bytes)
+{
+	int uptodate = (error == 0) ? 1 : (error == -EIO) ? 0 : error;
+	int nr_sectors = (nr_bytes+511)>>9;
+	if (end_that_request_first(req, uptodate, nr_sectors))
+		return 1;
+	end_that_request_last(req, uptodate);
+	return 0;
+}
+#endif
+
+
 /***** Scatterlists **********************************************************/
 
 #include <linux/scatterlist.h>

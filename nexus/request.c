@@ -99,22 +99,20 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 }
 
 /**
- * __end_that_request - report completion of blockdev I/O to the block layer
+ * __nexus_end_request - report completion of blockdev I/O to the block layer
  *
- * Call end_that_request_first() and, if this completes the entire request,
- * end_that_request_last().  This must be called with the queue lock held and
+ * Calls __blk_end_request() and the restarts the queue to avoid a CFQ io
+ * scheduler deadlock. This must be called with the queue lock held and
  * interrupts disabled.
  **/
-static int __end_that_request(struct request *req, int uptodate, int nr_sectors)
+static int __nexus_end_request(struct request *req, int error, int nr_bytes)
 {
 	int ret;
 	struct request_queue *q=req->q;
 	
 	BUG_ON(!list_empty(&req->queuelist));
-	ret=end_that_request_first(req, uptodate, nr_sectors);
-	debug(DBG_REQUEST, "Ending %d sectors, done=%d", nr_sectors, !ret);
-	if (!ret) {
-		end_that_request_last(req, uptodate);
+	ret=__blk_end_request(req, error, nr_bytes);
+	if (ret == 0) {
 		/* XXX Arrange for our request function to be called again.
 		   If this isn't here, we'll wedge in under a minute when
 		   using the CFQ I/O scheduler: our request function won't be
@@ -128,12 +126,11 @@ static int __end_that_request(struct request *req, int uptodate, int nr_sectors)
 }
 
 /**
- * end_that_request - report completion of blockdev I/O to the block layer
+ * nexus_end_request - report completion of blockdev I/O to the block layer
  *
- * After taking the queue lock, call end_that_request_first() and, if this
- * completes the entire request, end_that_request_last().
+ * After taking the queue lock, call __nexus_end_request().
  **/
-static int end_that_request(struct request *req, int uptodate, int nr_sectors)
+static int nexus_end_request(struct request *req, int error, int nr_bytes)
 {
 	spinlock_t *lock=req->q->queue_lock;
 	int ret;
@@ -142,9 +139,9 @@ static int end_that_request(struct request *req, int uptodate, int nr_sectors)
 	   interrupts are disabled */
 	WARN_ON(irqs_disabled());
 	/* This could be _bh except for the blk_start_queue() call in
-	   __end_that_request() */
+	   __nexus_end_request() */
 	spin_lock_irq(lock);
-	ret=__end_that_request(req, uptodate, nr_sectors);
+	ret=__nexus_end_request(req, error, nr_bytes);
 	spin_unlock_irq(lock);
 	return ret;
 }
@@ -180,11 +177,9 @@ static void nexus_complete_chunk(struct nexus_io_chunk *chunk)
 			continue;
 		if (!(chunk->flags & CHUNK_COMPLETED))
 			return;
-		debug(DBG_REQUEST, "end_that_request for chunk " SECTOR_FORMAT,
+		debug(DBG_REQUEST, "nexus_end_request for chunk " SECTOR_FORMAT,
 					chunk->cid);
-		end_that_request(io->orig_req,
-					chunk->error ? chunk->error : 1,
-					chunk->len / 512);
+		nexus_end_request(io->orig_req, chunk->error, chunk->len);
 		chunk->flags |= CHUNK_DEAD;
 		/* We only unreserve the chunk after endio, to make absolutely
 		   sure the user never sees out-of-order completions of the same
@@ -277,7 +272,7 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 	BUG_ON(req->nr_phys_segments > MAX_SEGS_PER_IO);
 	
 	if (dev_is_shutdown(dev)) {
-		end_that_request(req, 0, req->nr_sectors);
+		nexus_end_request(req, -EIO, req->hard_nr_sectors<<9);
 		return -ENXIO;
 	}
 	
@@ -438,7 +433,7 @@ void nexus_run_requests(struct list_head *entry)
 		} else {
 			/* XXX */
 			debug(DBG_REQUEST, "Skipping non-fs request");
-			end_that_request(req, 0, req->nr_sectors);
+			nexus_end_request(req, -EIO, req->data_len);
 		}
 		cond_resched();
 		spin_lock_bh(&dev->requests_lock);
@@ -468,11 +463,14 @@ void nexus_request(struct request_queue *q)
 	struct nexus_dev *dev=q->queuedata;
 	struct request *req;
 	int need_queue=0;
+	int nr_bytes;
 	
 	while ((req = elv_next_request(q)) != NULL) {
 		blkdev_dequeue_request(req);
 		if (dev_is_shutdown(dev)) {
-			__end_that_request(req, 0, req->nr_sectors);
+			nr_bytes=blk_fs_request(req) ?
+				req->hard_nr_sectors << 9 : req->data_len;
+			__nexus_end_request(req, -EIO, nr_bytes);
 		} else {
 			/* We don't use _bh or _irq variants since irqs are
 			   already disabled */
