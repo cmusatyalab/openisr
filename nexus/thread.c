@@ -792,7 +792,7 @@ int __init thread_start(void)
 	   cpu_callback().)  As a result, we may get a callback before we
 	   actually start any threads. */
 	register_hotcpu_notifier(&cpu_notifier);
-	lock_cpu_hotplug();
+	get_online_cpus();
 	mutex_lock(&threads.lock);
 	for_each_online_cpu(cpu) {
 		ret=cpu_start(cpu);
@@ -800,7 +800,7 @@ int __init thread_start(void)
 			break;
 	}
 	mutex_unlock(&threads.lock);
-	unlock_cpu_hotplug();
+	put_online_cpus();
 	if (ret)
 		goto bad;
 	

@@ -432,6 +432,12 @@ typedef struct work_struct work_t;
 #define unregister_hotcpu_notifier(nb) unregister_cpu_notifier(nb)
 #endif
 
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
+#define get_online_cpus() lock_cpu_hotplug()
+#define put_online_cpus() unlock_cpu_hotplug()
+#endif
+
 /***** file_operations methods ***********************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)
