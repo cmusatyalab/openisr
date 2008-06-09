@@ -533,7 +533,7 @@ bad_cache:
 /**
  * request_shutdown - module de-initialization for request processing code
  **/
-void __exit request_shutdown(void)
+void request_shutdown(void)
 {
 	mempool_destroy(io_pool);
 	kmem_cache_destroy(io_cache);

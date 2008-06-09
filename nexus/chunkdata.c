@@ -1586,7 +1586,7 @@ int __init chunkdata_start(void)
 /**
  * chunkdata_shutdown - module de-initialization for chunkdata
  **/
-void __exit chunkdata_shutdown(void)
+void chunkdata_shutdown(void)
 {
 	bioset_free(bio_pool);
 }
