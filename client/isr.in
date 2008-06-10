@@ -61,7 +61,6 @@ use POSIX ":signal_h";
 use Fcntl qw(:DEFAULT :seek :mode);
 use Errno qw(:POSIX);
 use Config;
-require "syscall.ph";
 use strict;
 use warnings;
 
@@ -2661,15 +2660,18 @@ sub mysystem ($) {
 # sys_sync - Call sync(2)
 #
 sub sys_sync () {
-    if ($Config{'myarchname'} =~ /i.86-linux/ and SYS_sync() == 162) {
-	# On Ubuntu Feisty on 32-bit x86, SYS_sync() reports the syscall number
-	# for sync() on the AMD64 architecture, which is not the same number.
-	# In this case syscall(&SYS_sync) is actually a call to nanosleep()
-	# with garbage arguments, which hangs forever.  So we hardcode the
-	# syscall number for this case.
+    # The approved way to do this is to require syscall.ph and pull the
+    # syscall numbers from there, but several distributions ship with .ph
+    # files that are broken in various ways.  So, we hardcode the syscall
+    # numbers for architectures we recognize, and fall back on system("sync")
+    # otherwise.
+    if ($Config{'myarchname'} =~ /i.86-linux/) {
 	syscall(36);
+    } elsif ($Config{'myarchname'} =~ /x86_64-linux/) {
+	syscall(162);
     } else {
-	syscall(&SYS_sync);
+	mysystem("sync") == 0
+	    or system_err("Couldn't call sync");
     }
 }
 
