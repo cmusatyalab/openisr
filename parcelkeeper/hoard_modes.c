@@ -62,7 +62,7 @@ int hoard(void)
 {
 	struct query *qry;
 	void *buf;
-	size_t chunklen;
+	unsigned chunklen;
 	int chunk;
 	void *tag;
 	unsigned taglen;

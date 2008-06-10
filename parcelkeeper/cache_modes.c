@@ -195,7 +195,8 @@ bad:
 	free(buf);
 	if (ret == 0)
 		pk_log(LOG_STATS, "Copied %u modified chunks, %llu bytes",
-					modified_chunks, modified_bytes);
+					modified_chunks,
+					(unsigned long long) modified_bytes);
 	return ret;
 
 damaged:

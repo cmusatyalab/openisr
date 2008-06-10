@@ -312,7 +312,8 @@ void sql_shutdown(void)
 				state.sql_busy_timeouts);
 	pk_log(LOG_STATS, "%u SQL retries; %llu ms spent in backoffs",
 				state.sql_retries,
-				state.sql_wait_usecs / 1000);
+				(unsigned long long) state.sql_wait_usecs
+				/ 1000);
 }
 
 static int busy_handler(void *db, int count)

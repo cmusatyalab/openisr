@@ -277,8 +277,8 @@ void print_progress_mb(off64_t bytes, off64_t max_bytes)
 	static time_t last_timestamp;
 	time_t cur_timestamp;
 	unsigned percent;
-	off64_t mb = bytes >> 20;
-	off64_t max_mb = max_bytes >> 20;
+	unsigned long long mb = bytes >> 20;
+	unsigned long long max_mb = max_bytes >> 20;
 
 	if (max_mb)
 		percent=mb*100/max_mb;
