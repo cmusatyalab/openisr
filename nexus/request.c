@@ -99,18 +99,24 @@ static void scatterlist_copy(struct scatterlist *src, struct scatterlist *dst,
 }
 
 /**
- * __nexus_end_request - report completion of blockdev I/O to the block layer
+ * nexus_end_request - report completion of blockdev I/O to the block layer
  *
  * Calls __blk_end_request() and the restarts the queue to avoid a CFQ io
- * scheduler deadlock. This must be called with the queue lock held and
- * interrupts disabled.
+ * scheduler deadlock.
  **/
-static int __nexus_end_request(struct request *req, int error, int nr_bytes)
+static int nexus_end_request(struct request *req, int error, int nr_bytes)
 {
-	int ret;
 	struct request_queue *q=req->q;
+	spinlock_t *lock=q->queue_lock;
+	int ret;
 	
-	BUG_ON(!list_empty(&req->queuelist));
+	/* We don't use irqsave.  We can't BUG_ON because, by definition,
+	   interrupts are disabled */
+	WARN_ON(irqs_disabled());
+	WARN_ON(!list_empty(&req->queuelist));
+
+	/* This could be _bh except for the blk_start_queue() call */
+	spin_lock_irq(lock);
 	ret=__blk_end_request(req, error, nr_bytes);
 	if (ret == 0) {
 		/* XXX Arrange for our request function to be called again.
@@ -122,26 +128,6 @@ static int __nexus_end_request(struct request *req, int error, int nr_bytes)
 		   convinced it makes sense.  -BG */
 		blk_start_queue(q);
 	}
-	return ret;
-}
-
-/**
- * nexus_end_request - report completion of blockdev I/O to the block layer
- *
- * After taking the queue lock, call __nexus_end_request().
- **/
-static int nexus_end_request(struct request *req, int error, int nr_bytes)
-{
-	spinlock_t *lock=req->q->queue_lock;
-	int ret;
-	
-	/* We don't use irqsave.  We can't BUG_ON because, by definition,
-	   interrupts are disabled */
-	WARN_ON(irqs_disabled());
-	/* This could be _bh except for the blk_start_queue() call in
-	   __nexus_end_request() */
-	spin_lock_irq(lock);
-	ret=__nexus_end_request(req, error, nr_bytes);
 	spin_unlock_irq(lock);
 	return ret;
 }
@@ -270,11 +256,6 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 	int i;
 	
 	BUG_ON(req->nr_phys_segments > MAX_SEGS_PER_IO);
-	
-	if (dev_is_shutdown(dev)) {
-		nexus_end_request(req, -EIO, req->hard_nr_sectors<<9);
-		return -ENXIO;
-	}
 	
 	/* mempool_alloc() always calls the underlying allocator with
 	   __GFP_WAIT masked out.  If the call fails, the pool is empty, and
@@ -406,10 +387,9 @@ void nexus_run_requests(struct list_head *entry)
 		spin_unlock_bh(&dev->requests_lock);
 		if (need_put)
 			nexus_dev_put(dev, 0);
-		if (blk_fs_request(req)) {
+		if (!dev_is_shutdown(dev)) {
 			switch (nexus_setup_io(dev, req)) {
 			case 0:
-			case -ENXIO:
 				break;
 			case -ENOMEM:
 				spin_lock_bh(&dev->requests_lock);
@@ -431,9 +411,7 @@ void nexus_run_requests(struct list_head *entry)
 				BUG();
 			}
 		} else {
-			/* XXX */
-			debug(DBG_REQUEST, "Skipping non-fs request");
-			nexus_end_request(req, -EIO, req->data_len);
+			nexus_end_request(req, -EIO, req->hard_nr_sectors << 9);
 		}
 		cond_resched();
 		spin_lock_bh(&dev->requests_lock);
@@ -463,14 +441,14 @@ void nexus_request(struct request_queue *q)
 	struct nexus_dev *dev=q->queuedata;
 	struct request *req;
 	int need_queue=0;
-	int nr_bytes;
 	
 	while ((req = elv_next_request(q)) != NULL) {
 		blkdev_dequeue_request(req);
-		if (dev_is_shutdown(dev)) {
-			nr_bytes=blk_fs_request(req) ?
-				req->hard_nr_sectors << 9 : req->data_len;
-			__nexus_end_request(req, -EIO, nr_bytes);
+		if (!blk_fs_request(req)) {
+			debug(DBG_REQUEST, "Skipping non-fs request");
+			__blk_end_request(req, -EIO, req->data_len);
+		} else if (dev_is_shutdown(dev)) {
+			__blk_end_request(req, -EIO, req->hard_nr_sectors << 9);
 		} else {
 			/* We don't use _bh or _irq variants since irqs are
 			   already disabled */
