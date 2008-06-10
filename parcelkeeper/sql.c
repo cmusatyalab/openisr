@@ -436,10 +436,11 @@ pk_err_t _rollback(sqlite3 *db, const char *caller)
 	pk_err_t ret=PK_SUCCESS;
 
 again:
-	/* SQLITE_INTERRUPT implies that a rollback has already occurred.
-	   Try anyway, just to be safe, but don't report an error if we
-	   fail. */
-	if (query(NULL, db, "ROLLBACK", NULL) && saved != SQLITE_INTERRUPT) {
+	/* Several SQLite errors *sometimes* result in an automatic rollback.
+	   Always try to roll back, just to be safe, but don't report an error
+	   if no transaction is active afterward, even if the rollback claimed
+	   to fail. */
+	if (query(NULL, db, "ROLLBACK", NULL) && !sqlite3_get_autocommit(db)) {
 		if (query_busy())
 			goto again;
 		pk_log_sqlerr("Couldn't roll back transaction on behalf of "
