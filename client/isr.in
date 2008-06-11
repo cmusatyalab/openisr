@@ -1116,7 +1116,9 @@ sub hoard ($) {
     # the parcel directory (e.g., checkin and clean).  If the parcel lock
     # is taken, so that checkin and clean cannot run, then $safe can be set
     # to true.  Note that if $safe is true, the caller should take care of
-    # obtaining the hoard lock.
+    # obtaining the hoard lock.  Note that if $safe is true, we don't refetch
+    # the keyring on hoard failure, since we assume that we already hold the
+    # parcel lock on the server.
     #
     if (!$safe) {
 	print "Fetching configuration data for $userid/$parcel from server.\n"
@@ -1136,23 +1138,26 @@ sub hoard ($) {
 	# We couldn't acquire the hoard lock during startup, because we didn't
 	# know the UUID.  Now we can.
 	acquire_lock("hoard-$uuid", "Hoard cache", 0);
-	acquire_lock("image-$uuid", "Hoard image", 1);
-	fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0, undef) == 0
-	    or errexit("Unable to fetch keyring.enc");
-    
-	# Decrypt the keyring
-	decrypt_keyring("$parceldir/prev-keyring") == 0
-	    or errexit("Unable to decrypt keyring.enc");
-	release_lock("Hoard image");
     }
-
-    # Ask Parcelkeeper to hoard all hdk blocks into local store. If the
-    # hoard operation returns an error, then either the network
-    # connection is down, the server is down, a chunk in the hoard
-    # somehow got corrupted, or a concurrent checkin created a new
-    # version on the server while the hoard was underway. In any case,
-    # we will restart the hoard operation until it succeeds.
+    
     while (1) {
+	if (!$safe) {
+	    acquire_lock("image-$uuid", "Hoard image", 1);
+	    fetch_parcel_file("keyring.enc", "$imgbase.key", "keyring", 0, undef) == 0
+		or errexit("Unable to fetch keyring.enc");
+	    decrypt_keyring("$parceldir/prev-keyring") == 0
+		or errexit("Unable to decrypt keyring.enc");
+	    release_lock("Hoard image");
+	}
+
+	# Ask Parcelkeeper to hoard all hdk blocks into local store. If the
+	# hoard operation returns an error, then either the network
+	# connection is down, the server is down, a chunk in the hoard
+	# somehow got corrupted, or a concurrent checkin created a new
+	# version on the server while the hoard was underway. In any case,
+	# we will restart the hoard operation until it succeeds.  We refetch
+	# the keyring as part of a restart (if the parcel lock is not held) to
+	# ensure that we properly handle concurrent checkins.
 	print("Hoarding any missing disk blocks from the server...\n")
 	    if $verbose;
 	
