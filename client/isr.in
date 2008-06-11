@@ -1694,6 +1694,12 @@ sub copy_dirtychunks () {
 	errexit("Local cache of $userid/$parcel is damaged; upload disallowed.");
     }
 
+    # 
+    # Copy any dirty hdk chunks to the temporary cache directory
+    #
+    run_parcelkeeper("upload", "parcel dest hoard minsize log") == 0
+    	or errexit("Unable to copy chunks to temporary cache dir");
+
     #
     # Create cfg tarball and encrypt it and the keyring
     #
@@ -1709,14 +1715,6 @@ sub copy_dirtychunks () {
 	message(sprintf("Upload: $target.enc: %d", 
 			stat("$uploaddir/$target.enc")->size));
     }
-
-    # 
-    # Copy any dirty hdk chunks to the temporary cache directory
-    #
-    print("Collecting modified disk state...\n")
-	if $verbose;
-    run_parcelkeeper("upload", "parcel dest hoard minsize log") == 0
-    	or errexit("Unable to copy chunks to temporary cache dir");
 }
 
 #
