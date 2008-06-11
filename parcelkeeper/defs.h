@@ -269,6 +269,7 @@ pk_err_t _commit(sqlite3 *db, const char *caller);
 #define commit(db) _commit(db, __func__)
 pk_err_t _rollback(sqlite3 *db, const char *caller);
 #define rollback(db) _rollback(db, __func__)
+pk_err_t vacuum(sqlite3 *db);
 pk_err_t validate_db(sqlite3 *db);
 pk_err_t cleanup_action(sqlite3 *db, const char *sql, enum pk_log_type logtype,
 			const char *desc);

@@ -443,6 +443,44 @@ again:
 	return ret;
 }
 
+pk_err_t vacuum(sqlite3 *db)
+{
+	pk_err_t ret;
+
+again_vacuum:
+	ret=query(NULL, db, "VACUUM", NULL);
+	if (ret) {
+		pk_log_sqlerr("Couldn't vacuum database");
+		if (query_retry())
+			goto again_vacuum;
+		else
+			return ret;
+	}
+
+again_trans:
+	/* VACUUM flushes the connection's schema cache.  Perform a dummy
+	   transaction on the connection to reload the cache; otherwise,
+	   the next transaction on the connection would unexpectedly take
+	   a lock on all attached databases. */
+	ret=begin(db);
+	if (ret)
+		return ret;
+	ret=query(NULL, db, "SELECT * FROM sqlite_master LIMIT 1", NULL);
+	if (ret) {
+		pk_log_sqlerr("Couldn't query sqlite_master");
+		goto bad_trans;
+	}
+	ret=commit(db);
+	if (ret)
+		goto bad_trans;
+
+bad_trans:
+	rollback(db);
+	if (query_retry())
+		goto again_trans;
+	return ret;
+}
+
 /* This validates both the primary and attached databases */
 pk_err_t validate_db(sqlite3 *db)
 {

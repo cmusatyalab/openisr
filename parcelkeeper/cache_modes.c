@@ -80,12 +80,16 @@ int copy_for_upload(void)
 		return 1;
 	if (hoard_sync_refs(1))
 		return 1;
+	printf("Vacuuming keyring...\n");
+	if (vacuum(state.db))
+		return 1;
 	buf=malloc(parcel.chunksize);
 	if (buf == NULL) {
 		pk_log(LOG_ERROR, "malloc failed");
 		return 1;
 	}
 
+	printf("Collecting modified disk state...\n");
 again:
 	modified_chunks=0;
 	modified_bytes=0;
