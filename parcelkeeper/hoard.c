@@ -856,7 +856,10 @@ bad:
 /* Releases the hoard_fd lock before returning, including on error */
 static pk_err_t hoard_try_cleanup(void)
 {
+	struct query *qry;
 	pk_err_t ret;
+	int changes;
+	int ident;
 
 	ret=get_file_lock(state.hoard_fd, FILE_LOCK_WRITE);
 	if (ret == PK_BUSY) {
@@ -872,16 +875,51 @@ again:
 	ret=begin(state.hoard);
 	if (ret)
 		goto out;
-	ret=cleanup_action(state.hoard, "DELETE FROM parcels WHERE parcel "
-				"NOT IN (SELECT DISTINCT parcel FROM refs)",
-				LOG_INFO, "dangling parcel records");
-	if (ret)
+
+	/* This was originally "DELETE FROM parcels WHERE parcel NOT IN
+	   (SELECT DISTINCT parcel FROM refs)".  But the parcels table is
+	   small and the refs table is large, and that query walked the entire
+	   refs_constraint index.  Given the size of parcels table, the
+	   below approach is much more efficient. */
+	for (ret=query(&qry, state.hoard, "SELECT parcel FROM parcels", NULL),
+				changes=0; query_has_row();
+				ret=query_next(qry)) {
+		query_row(qry, "d", &ident);
+		ret=query(NULL, state.hoard, "SELECT parcel FROM refs WHERE "
+					"parcel == ? LIMIT 1", "d", ident);
+		if (ret) {
+			pk_log_sqlerr("Couldn't query refs table");
+			query_free(qry);
+			goto bad;
+		}
+		if (!query_has_row()) {
+			ret=query(NULL, state.hoard, "DELETE FROM parcels "
+						"WHERE parcel == ?", "d",
+						ident);
+			if (ret) {
+				pk_log_sqlerr("Couldn't delete unused parcel "
+						"from hoard cache index");
+				query_free(qry);
+				goto bad;
+			}
+			changes++;
+		}
+	}
+	query_free(qry);
+	if (!query_ok()) {
+		pk_log_sqlerr("Couldn't query parcels table");
 		goto bad;
+	}
+	if (changes > 0)
+		pk_log(LOG_INFO, "Cleaned %d dangling parcel records",
+					changes);
+
 	ret=cleanup_action(state.hoard, "UPDATE chunks SET referenced = 0 "
 				"WHERE referenced == 1 AND tag ISNULL",
 				LOG_INFO, "orphaned cache slots");
 	if (ret)
 		goto bad;
+
 	ret=commit(state.hoard);
 	if (ret)
 		goto bad;
