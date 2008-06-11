@@ -27,6 +27,7 @@ AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 AC_PROG_LIBTOOL
+PKG_PROG_PKG_CONFIG()
 
 # Checks for optional features.
 AC_ARG_ENABLE([client], [AS_HELP_STRING([--enable-client],
@@ -139,8 +140,8 @@ AC_ARG_WITH([zlib], [AS_HELP_STRING([--with-zlib=DIR],
 AC_ARG_WITH([curl], [AS_HELP_STRING([--with-curl=DIR],
 			[look for curl in DIR])])
 
-# We need this for the kernel modules and for Vulpes (since it grabs loop.h
-# from the kernel source tree)
+# We need this for the kernel modules and for Parcelkeeper (since it grabs
+# loop.h from the kernel source tree)
 if test z$enable_client = zyes -o z$enable_modules = zyes ; then
 	AC_MSG_CHECKING([for kernel source])
 	# KERNELDIR is set to the argument passed to --with-kernel, if set.
