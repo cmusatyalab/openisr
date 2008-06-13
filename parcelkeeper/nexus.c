@@ -23,8 +23,8 @@
 #include "nexus.h"
 #include "defs.h"
 
-static const int ignored_signals[]={SIGUSR1, SIGUSR2, SIGHUP, SIGTSTP, 0};
-static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, 0};
+static const int ignored_signals[]={SIGUSR1, SIGUSR2, SIGTSTP, SIGTTOU, 0};
+static const int caught_signals[]={SIGINT, SIGQUIT, SIGTERM, SIGHUP, 0};
 
 #define REQUESTS_PER_SYSCALL 64
 #define MY_INTERFACE_VERSION 8
