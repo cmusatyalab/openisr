@@ -1,5 +1,5 @@
 include Files.mk
-EXTRA_DIST = Makefile $(NEXUS_OBJS:.o=.c) $(NEXUS_HDRS)
+EXTRA_DIST = Makefile HACKING $(NEXUS_OBJS:.o=.c) $(NEXUS_HDRS)
 
 if WANT_CLIENT
 SUBDIRS = . tools
