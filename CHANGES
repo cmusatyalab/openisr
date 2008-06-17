@@ -1,3 +1,24 @@
+====== 0.9.2
+
+------ Client changes
+
+- Add support for 2.6.24 and 2.6.25 kernels
+- Fix long delay at Parcelkeeper shutdown when hoard cache is large
+- Nexus now reports I/O errors to Parcelkeeper for inclusion in the parcel log
+- Prevent parcel checkin if I/O errors have occurred
+- Fix spurious "cannot rollback - no transaction active" messages
+- Remove dependency on syscall.ph
+- Fix hoard failures when hoarding during a checkin
+- Always print an error on "isr ls" failure
+- Vacuum keyring before checkin to improve access times
+- Various minor fixes
+
+------ Server changes
+
+- Add basic documentation on installing and running a server
+- Properly check for OpenSSL and zlib in configure script
+- Minor fixes to isr_admin usage message
+
 ====== 0.9.1 (2008-02-12)
 
 ------ Client changes
