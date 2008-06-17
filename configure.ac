@@ -100,15 +100,17 @@ if test z$enable_libvdisk = zyes ; then
 		if test z$have_option = zyes ; then
 			build_32=yes
 			FIND_DIR([32-bit system libraries],
-						[/usr/lib32 /usr/lib],
-						[LIBVDISK_DIRPATH_32])
+					[$LIBVDISK_PATH32 /usr/lib32 /usr/lib],
+					[LIBVDISK_DIRPATH_32])
 		else
 			AC_MSG_WARN([cannot build 32-bit libvdisk; building only 64-bit version])
 		fi
-		FIND_DIR([64-bit system libraries], [/usr/lib64 /usr/lib],
+		FIND_DIR([64-bit system libraries],
+					[$LIBVDISK_PATH /usr/lib64 /usr/lib],
 					[LIBVDISK_DIRPATH])
 	else
-		FIND_DIR([system libraries], [/usr/lib], [LIBVDISK_DIRPATH])
+		FIND_DIR([system libraries], [$LIBVDISK_PATH /usr/lib],
+					[LIBVDISK_DIRPATH])
 	fi
 	
 	# Check for old hd_driveid definition that doesn't know about
@@ -121,6 +123,8 @@ if test z$enable_libvdisk = zyes ; then
 				[Define if struct hd_driveid in <linux/hdreg.h> contains an lba_capacity_2 member.])
 fi
 AM_CONDITIONAL([LIBVDISK_BUILD_32], [test z$build_32 = zyes])
+AC_ARG_VAR([LIBVDISK_PATH], [destination directory for native libvdisk])
+AC_ARG_VAR([LIBVDISK_PATH32], [destination directory for 32-bit libvdisk (if built)])
 
 # Checks for programs.
 AC_PATH_PROG([PERL], [perl], [no])
