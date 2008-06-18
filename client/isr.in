@@ -596,7 +596,7 @@ elsif ($command eq "version") {
     # just the user interface.
     print <<END;
 
-Copyright (C) 2000-2007 Carnegie Mellon University and others
+Copyright (C) 2000-2008 Carnegie Mellon University and others
 The OpenISR system comes with ABSOLUTELY NO WARRANTY.  Different parts of
 this software are distributed under different licenses, including the
 Eclipse Public License, version 1.0; the GNU General Public License, version 2;
