@@ -92,7 +92,7 @@ static pk_err_t loop_bind(void) {
 			pk_log(LOG_ERROR, "malloc failure opening loop device");
 			continue;
 		}
-		fd=open(state.loopdev_name, O_RDWR|O_SYNC);
+		fd=open(state.loopdev_name, O_RDWR);
 		if (fd == -1) {
 			pk_log(LOG_ERROR, "Couldn't open loop device");
 			return PK_IOERR;

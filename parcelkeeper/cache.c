@@ -473,7 +473,7 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 	} else {
 		pk_log(LOG_CHUNK, "Fetched chunk %u from hoard cache", chunk);
 	}
-	count=pwrite(state.loopdev_fd, buf, len, cache_chunk_to_offset(chunk));
+	count=pwrite(state.cache_fd, buf, len, cache_chunk_to_offset(chunk));
 	free(buf);
 	if (count != (int)len) {
 		pk_log(LOG_ERROR, "Couldn't write chunk %u to backing store",
