@@ -345,7 +345,8 @@ static inline void bio_set_destructor(struct bio *bio,
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
-static inline __blk_end_request(struct request *req, int error, int nr_bytes)
+static inline int __blk_end_request(struct request *req, int error,
+			int nr_bytes)
 {
 	int uptodate = (error == 0) ? 1 : (error == -EIO) ? 0 : error;
 	int nr_sectors = (nr_bytes+511)>>9;
