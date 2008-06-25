@@ -339,8 +339,30 @@ static int progress_handler(void *db)
 	return pending_signal();
 }
 
+static pk_err_t sql_setup_db(sqlite3 *db, const char *name)
+{
+	char *str;
+
+	/* SQLite won't let us use a prepared statement parameter here. */
+	if (asprintf(&str, "PRAGMA %s.synchronous = NORMAL", name) == -1)
+		return PK_NOMEM;
+again:
+	if (query(NULL, db, str, NULL)) {
+		if (query_retry())
+			goto again;
+		free(str);
+		pk_log_sqlerr("Couldn't set synchronous pragma for "
+					"%s database", name);
+		return PK_CALLFAIL;
+	}
+	free(str);
+	return PK_SUCCESS;
+}
+
 pk_err_t sql_setup_conn(sqlite3 *db)
 {
+	pk_err_t ret;
+
 	if (sqlite3_extended_result_codes(db, 1)) {
 		pk_log(LOG_ERROR, "Couldn't enable extended result codes "
 					"for database");
@@ -354,13 +376,9 @@ pk_err_t sql_setup_conn(sqlite3 *db)
 	   signal is pending */
 	sqlite3_progress_handler(db, PROGRESS_HANDLER_INTERVAL,
 				progress_handler, db);
-again:
-	if (query(NULL, db, "PRAGMA synchronous = NORMAL", NULL)) {
-		if (query_retry())
-			goto again;
-		pk_log_sqlerr("Couldn't set synchronous pragma for database");
-		return PK_CALLFAIL;
-	}
+	ret=sql_setup_db(db, "main");
+	if (ret)
+		return ret;
 	return PK_SUCCESS;
 }
 
@@ -386,12 +404,24 @@ int query_retry(void)
 
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
 {
+	pk_err_t ret;
+
 again:
 	if (query(NULL, db, "ATTACH ? AS ?", "ss", file, handle)) {
 		if (query_retry())
 			goto again;
 		pk_log_sqlerr("Couldn't attach %s", file);
 		return PK_IOERR;
+	}
+	ret=sql_setup_db(db, handle);
+	if (ret) {
+again_detach:
+		if (query(NULL, db, "DETACH ?", "s", handle)) {
+			if (query_retry())
+				goto again_detach;
+			pk_log_sqlerr("Couldn't detach %s", handle);
+		}
+		return ret;
 	}
 	return PK_SUCCESS;
 }
