@@ -2365,7 +2365,7 @@ sub check_for_old_isrdir () {
         or errexit("Couldn't read $isrdir");
     while ($ientry = readdir(IDIR)) {
         next if valid_uuid($ientry);
-        next if ! -d "$isrdir/$ientry" or $ientry =~ /^\.{1,2}$/;
+        next if ! -d "$isrdir/$ientry" or $ientry =~ /^\.{1,2}|lost\+found$/;
         opendir(UDIR, "$isrdir/$ientry")
             or errexit("Couldn't read $isrdir/$ientry");
         while ($uentry = readdir(UDIR)) {
