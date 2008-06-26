@@ -106,11 +106,9 @@ sub print_one {
     #
     # Determine the last time this parcel was acquired or released
     #
-    system("rm -f $userdir/entry");
-    $unlocked = system("isr_runserv lock -u $username -p $parcel -Vc > $userdir/entry");
-    $logentry = `cat $userdir/entry`;
+    $logentry = `isr_runserv lock -u $username -p $parcel -Vc`;
+    $unlocked = $?;
     chomp($logentry);
-    system("rm -f $userdir/entry");
     
     #
     # Determine it's present state
