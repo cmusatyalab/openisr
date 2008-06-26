@@ -115,6 +115,12 @@ static pk_err_t loop_bind(void) {
 			}
 			snprintf((char*)info.lo_file_name, LO_NAME_SIZE, "%s",
 						config.cache_file);
+			/* Set LO_FLAGS_AUTOCLEAR, which unbinds the loop
+			   device after the last fd to it is closed.  This
+			   flag should ensure that the device is properly
+			   unbound if we crash, but is ignored on kernels
+			   < 2.6.25. */
+			info.lo_flags |= 4;
 			if (ioctl(fd, LOOP_SET_STATUS64, &info)) {
 				pk_log(LOG_ERROR, "Couldn't configure "
 							"loop device");
