@@ -24652,7 +24652,7 @@ static int zeroJournalHdr(Pager *pPager, int doTruncate){
     }else{
       rc = sqlite3OsWrite(pPager->jfd, zeroHdr, sizeof(zeroHdr), 0);
     }
-    if( rc==SQLITE_OK ){
+    if( rc==SQLITE_OK && !pPager->noSync ){
       rc = sqlite3OsSync(pPager->jfd, SQLITE_SYNC_DATAONLY|pPager->sync_flags);
     }
   }
