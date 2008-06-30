@@ -171,6 +171,7 @@ my $verbose = 1;     # Verbosity level; by default, we print a few messages
 my $bwlimit;         # Bandwidth limit (KBytes/sec) in ci and sync
 my $forceflag = 0;   # Force release of lock in cleanclient()
 my $do_splice = 0;   # checkp: Restore invalid chunks from prev-keyring
+my $unsafe_mode;     # Tell PK not to force database updates to disk
 
 # General global state, mostly about the parcel we are working with
 my $progname;        # $0 without the directory part
@@ -342,6 +343,8 @@ $result = GetOptions(
 		     "s|server=s"     => \$server,
 		     "u|user=s"       => \$userid,
 		     "v|verbose+"     => \$verbose,
+		     "x|no-sync"      => \$unsafe_mode,
+		     "X|sync"         => sub { $unsafe_mode = 0 },
 		     "Y|splice"       => \$do_splice,
 		     );
 
@@ -381,6 +384,29 @@ if (@ARGV > 2) {
     usage("Extraneous parameters on command line");
 }
 $command = $ARGV[0];
+
+#
+# Figure out whether to use unsafe mode with PK
+#
+if (defined $unsafe_mode) {
+    print YELLOW, "Running in no-sync mode.  Data corruption more likely on OS crash.\n", RESET
+        if $verbose and $unsafe_mode;
+} else {
+    if ($syscfg{'no_sync'} eq 'off') {
+	$unsafe_mode = 0;
+    } elsif ($syscfg{'no_sync'} eq 'resume') {
+	$unsafe_mode = ($command eq 'resume');
+    } elsif ($syscfg{'no_sync'} eq 'all') {
+	$unsafe_mode = 1;
+    } else {
+	err('Unrecognized no_sync config value; defaulting to "off"');
+	$unsafe_mode = 0;
+    }
+    if ($unsafe_mode) {
+	print YELLOW, "Running in no-sync mode due to configuration option.  (Override with -X.)\n";
+	print "Data corruption more likely on OS crash.\n", RESET;
+    }
+}
 
 #
 # Figure out what we know about the specified parcel.
@@ -1628,6 +1654,9 @@ sub parcelkeeper_cmd ($$) {
 	$cmd .= " --log $logfile --log-filter $syscfg{logmask} --stderr-filter $syscfg{console_logmask}";
     } else {
 	$cmd .= " --stderr-filter $syscfg{console_logmask}";
+    }
+    if ($unsafe_mode) {
+	$cmd .= " --unsafe";
     }
     message("Running Parcelkeeper: $cmd");
     return $cmd;
@@ -2942,23 +2971,23 @@ sub usage ($) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR server (once per X session only)\n";
 	print "  ls         List info about your parcels (parcel, -lL optional)\n";
- 	print "  resume     Checkout (if necessary) and run a parcel (-cdFr optional)\n";
-	print "  checkin    Sync parcel to server and check it in (-b optional)\n";
+ 	print "  resume     Checkout (if necessary) and run a parcel (-cdFrxX optional)\n";
+	print "  checkin    Sync parcel to server and check it in (-bxX optional)\n";
 	print "  passwd     Change your ISR password on the server\n";
 	print "  help       Print help message\n";
 	print "Advanced commands:\n";
-	print "  stat       Display information about local state for a parcel (-l optional)\n";
-	print "  checkout   Checkout parcel without running it (-cdr optional)\n";
-	print "  sync       Sync parcel to server without checking it in (-b optional)\n";
+	print "  stat       Display information about local state for a parcel (-lxX optional)\n";
+	print "  checkout   Checkout parcel without running it (-cdrxX optional)\n";
+	print "  sync       Sync parcel to server without checking it in (-bxX optional)\n";
 	print "  discard    Discard all local changes to parcel since last checkout or sync\n";
 	print "  clean      Remove parcel from client and release its lock (-f optional)\n";
-	print "  hoard      Fetch entire virtual disk for improved performance\n";
+	print "  hoard      Fetch entire virtual disk for improved performance (-xX optional)\n";
 	print "  deauth     Remove authentication credentials from your client\n";
 	print "Debugging and maintenance commands:\n";
-	print "  checkp     Check parcel for consistency (-cerY optional)\n";
-	print "  checkhoard Check hoard cache for consistency (-c optional)\n";
-	print "  lshoard    List info about the hoard cache (-l optional)\n";
-	print "  rmhoard    Remove a parcel from the hoard cache\n";
+	print "  checkp     Check parcel for consistency (-cerxXY optional)\n";
+	print "  checkhoard Check hoard cache for consistency (-cxX optional)\n";
+	print "  lshoard    List info about the hoard cache (-lxX optional)\n";
+	print "  rmhoard    Remove a parcel from the hoard cache (-xX optional)\n";
 	print "  version    Print OpenISR version\n";
     }
     print "Options:\n";
@@ -2975,6 +3004,8 @@ sub usage ($) {
     print "  -s,--server        Server domain name (optional)\n";
     print "  -u,--user          Your ISR user name (defaults to your login name)\n";
     print "  -v,--verbose       Increment verbosity level\n";
+    print "  -x,--no-sync       Reduce safety but improve speed [most commands]\n";
+    print "  -X,--sync          Override --no-sync when it is the default [most commands]\n";
     print "  -Y,--splice        Restore invalid chunks from previous version [checkp]\n";
     print "\n";
     

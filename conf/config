@@ -44,3 +44,9 @@ hoard_minsize = 0
 # Debug option: set to 1 to force the client to ignore cached keyrings and
 # memory images, always re-downloading them from the server
 disable_lookaside = 0
+
+# Don't call fsync() after updating SQLite databases.  This will likely cause
+# corruption of the hoard and local caches after a host OS crash, but will
+# improve performance.  Possible values are "off", "resume" (to disable fsync
+# only on "isr resume"), or "all" (to always disable fsync).
+no_sync = off
