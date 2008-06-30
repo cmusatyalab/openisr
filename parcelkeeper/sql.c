@@ -299,6 +299,9 @@ void sql_init(void)
 	if (strcmp(SQLITE_VERSION, sqlite3_version))
 		pk_log(LOG_INFO, "Warning: built against version "
 					SQLITE_VERSION);
+	pk_log(LOG_INFO, "Using %s SQLite writes",
+				(config.flags & WANT_UNSAFE) ?
+				"unsafe" : "safe");
 	srandom(time(NULL));
 }
 
@@ -341,10 +344,13 @@ static int progress_handler(void *db)
 
 static pk_err_t sql_setup_db(sqlite3 *db, const char *name)
 {
+	char *mode;
 	char *str;
 
-	/* SQLite won't let us use a prepared statement parameter here. */
-	if (asprintf(&str, "PRAGMA %s.synchronous = NORMAL", name) == -1)
+	mode = (config.flags & WANT_UNSAFE) ? "OFF" : "NORMAL";
+	/* SQLite won't let us use a prepared statement parameter for the
+	   database name. */
+	if (asprintf(&str, "PRAGMA %s.synchronous = %s", name, mode) == -1)
 		return PK_NOMEM;
 again:
 	if (query(NULL, db, str, NULL)) {
