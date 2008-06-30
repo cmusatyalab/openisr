@@ -39640,7 +39640,7 @@ static int vdbeCommit(sqlite3 *db){
     ** doing this the directory is synced again before any individual
     ** transaction files are deleted.
     */
-    rc = sqlite3OsDelete(pVfs, zMaster, 1);
+    rc = sqlite3OsDelete(pVfs, zMaster, needSync);
     sqlite3_free(zMaster);
     zMaster = 0;
     if( rc ){
