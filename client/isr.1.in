@@ -19,7 +19,7 @@ isr \- Internet Suspend/Resume client program
 .B isr 
 .I command
 .RI [ parcel ]
-.RB [ \-bcdeFlqvY ]
+.RB [ \-bcdeFlqvxXY ]
 .RB [ \-r
 .IR version ]
 .RB [ \-s
@@ -139,7 +139,7 @@ to avoid having to keep typing your ISR password.
 
 
 .TP
-.BI "isr checkin(ci) " parcel " [-b " "KBytes/s" "]"
+.BI "isr checkin(ci) " parcel " [-b " "KBytes/s" "] [-x] [-X]"
 Checkin a 
 .I parcel 
 to the server. This command creates a new checkpointed version
@@ -159,7 +159,7 @@ meaning that it can be safely interrupted with ctrl-c and rerun until
 it successfully completes.
 
 .TP
-.BI "isr checkout(co) " "parcel" " [-c] [-d] [-r " "oldversion" "]"
+.BI "isr checkout(co) " "parcel" " [-c] [-d] [-r " "oldversion" "] [-x] [-X]"
 Download  a 
 .I parcel 
 from the server without running it.  This command acquires a lock on the
@@ -214,7 +214,7 @@ before you actually run the parcel.
 
 
 .TP
-.BI "isr checkp " "parcel" " [-e] [-r " "version" "] [-c] [-Y]"
+.BI "isr checkp " "parcel" " [-e] [-r " "version" "] [-c] [-x] [-X] [-Y]"
 This is a debugging command that checks a 
 .I parcel 
 for consistency.  By default, this command performs fast sanity checks
@@ -264,7 +264,7 @@ option cannot be used with
 .BR -e .
 
 .TP
-.B "isr checkhoard [-c]"
+.B "isr checkhoard [-c] [-x] [-X]"
 This is a debugging command that checks the hoard cache for consistency
 and repairs any problems it finds.  By default, this command performs
 fast checks on the hoard cache indexes.  The
@@ -326,7 +326,7 @@ command.
 Display a brief usage summary.
 
 .TP
-.BI "isr hoard " "parcel"
+.BI "isr hoard " "parcel" " [-x] [-X]"
 Fetch the parcel's entire virtual disk into the hoard cache
 on the client. This command
 fetches only the blocks that are missing on the client. You can kill
@@ -362,7 +362,7 @@ option is similar, printing information for some
 small default number of the most recent versions.
 
 .TP
-.B isr lshoard [-l]
+.B isr lshoard [-l] [-x] [-X]
 List information about the parcels currently in the hoard cache.  The
 .B -l
 option causes additional information to be displayed, including parcel
@@ -381,7 +381,7 @@ account on your client host. (Use the local
 command for that.)  
 
 .TP
-.BI "isr resume " "parcel" " [-r " "oldversion" "] [-c] [-d] [-F]"
+.BI "isr resume " "parcel" " [-r " "oldversion" "] [-c] [-d] [-F] [-x] [-X]"
 Checkout a 
 .I parcel
 (if necessary) and then run it. Any additional state that the parcel
@@ -421,7 +421,7 @@ full-screen mode, which can be useful for configuring the virtual
 machine monitor or for running multiple parcels at once.
 
 .TP
-.BI "isr rmhoard " parcel
+.BI "isr rmhoard " parcel " [-x] [-X]"
 Remove hoarded state for
 .I parcel
 from the client.  If
@@ -434,7 +434,7 @@ UUID can be obtained with the
 command.
 
 .TP
-.BI "isr stat " parcel " [-l]"
+.BI "isr stat " parcel " [-l] [-x] [-X]"
 Display information about the local state of a 
 .IR parcel ,
 such as the amount of state demand-paged from the server,
@@ -450,7 +450,7 @@ must be checked out in order to use the
 command.
 
 .TP
-.BI "isr sync " parcel " [-b " "KBytes/s" "]"
+.BI "isr sync " parcel " [-b " "KBytes/s" "] [-x] [-X]"
 Save a new checkpointed version of 
 .I parcel 
 on the server, without releasing the lock or 
@@ -579,6 +579,18 @@ option overrides both of these and sets the current ISR userid to
 .TP
 .B -v/--verbose
 Increment the verbosity level. 
+
+.TP
+.B -x/--no-sync
+When updating local or hoard cache metadata, do not ensure data integrity
+by forcing the updates to disk.  This option improves performance but increases
+the chance of data corruption after a crash of the client host.
+
+.TP
+.B -X/--sync
+When updating local or hoard cache metadata, ensure data integrity by forcing
+the updates to disk.  This option can be used to override a no_sync value
+specified in a configuration file.
 
 .TP
 .B -Y/--splice
