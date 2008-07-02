@@ -1,0 +1,131 @@
+#!!!PERLPATH!!
+#
+# dirtometer - Shows present and dirty chunks in a parcel's local cache
+#
+# Copyright (C) 2008 Carnegie Mellon University
+#
+# This software is distributed under the terms of the Eclipse Public
+# License, Version 1.0 which can be found in the file named LICENSE.Eclipse.
+# ANY USE, REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES
+# RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT
+#
+
+use Gtk2 -init;
+use Glib;
+use File::stat;
+use strict;
+use warnings;
+
+my $img;
+my $width;
+my $height;
+my $uuid;
+my $numchunks;
+
+sub init {
+	my $wd;
+	my $geo;
+	my $file = "/dev/shm/openisr-chunkmap-$uuid";
+
+	if (! -e $file) {
+		print "Parcel $uuid is not currently running\n";
+		exit 1;
+	}
+	open(SHM, "<", $file)
+		or die "Couldn't open $file";
+	$wd = Gtk2::Window->new('toplevel');
+	$wd->set_title("Dirtometer for parcel $uuid");
+	$img = Gtk2::Image->new;
+	$wd->add($img);
+	$wd->show_all;
+	$wd->signal_connect(configure_event => *configure);
+	$wd->signal_connect(destroy => sub {Gtk2->main_quit});
+
+	$numchunks = stat(*SHM)->size;
+	$width = 200;
+	$height = ($numchunks + $width - 1) / $width;
+	$wd->resize($width, $height);
+	$geo = Gtk2::Gdk::Geometry->new;
+	$geo->min_height(10);
+	$geo->min_width(10);
+	$wd->set_geometry_hints($img, $geo, 'min-size');
+}
+
+sub configure {
+	my $widget = shift;
+	my $event = shift;
+
+	($width, $height) = ($event->width, $event->height);
+	update_img();
+	return 0;
+}
+
+my $last_width;
+my $last_height;
+my $last_states = "";
+my $pixdata;
+my $pixdata_padded;
+sub update_img {
+	my @pix;
+	my @chunks;
+	my $chunk;
+	my $i;
+	my $states;
+	my $pixbuf;
+	my $updated = 0;
+
+	Gtk2->main_quit
+		unless stat(*SHM)->nlink;
+
+	seek(SHM, 0, 0);
+	local $/;   # slurp
+	$states = <SHM>;
+
+	# This is somewhat expensive, so we don't run it if nothing changed
+	if ($states ne $last_states) {
+		@chunks = unpack('C*', $states);
+		foreach $chunk (@chunks) {
+			if ($chunk & 0x8) {
+				# Dirtied this session
+				push(@pix, 0xff0000ff);
+			} elsif ($chunk & 0x4) {
+				# Accessed this session
+				push(@pix, 0xffffffff);
+			} elsif ($chunk & 0x2) {
+				# Dirty
+				push(@pix, 0x800000ff);
+			} elsif ($chunk & 0x1) {
+				# Present
+				push(@pix, 0xa0a0a0ff);
+			} else {
+				# Not present
+				push(@pix, 0x707070ff);
+			}
+		}
+		$pixdata = pack('N*', @pix);
+		$last_states = $states;
+		$updated = 1;
+	}
+	if ($updated || $width != $last_width || $height != $last_height) {
+		($last_width, $last_height) = ($width, $height);
+		$pixdata_padded = $pixdata . pack('N', 0x000000ff) x
+					($width * $height - $numchunks);
+		$pixbuf = Gtk2::Gdk::Pixbuf->new_from_data($pixdata_padded,
+					'rgb', 1, 8, $width, $height,
+					$width * 4);
+		$img->set_from_pixbuf($pixbuf);
+	}
+	return 1;
+}
+
+if (@ARGV != 1) {
+	print "Usage: $0 <parcel-uuid>\n";
+	exit 1;
+}
+$uuid = $ARGV[0];
+
+init;
+update_img;
+Glib::Timeout->add(500, *update_img);
+Gtk2->main;
+exit 0;

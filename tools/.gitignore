@@ -1,5 +1,6 @@
 convert-chunks
 convert-keyring
+dirtometer
 openisr-config
 openisr-config.8
 upgrade-0.9.pl

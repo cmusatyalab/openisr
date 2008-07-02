@@ -2,7 +2,7 @@ AM_CPPFLAGS = -I$(top_srcdir)/sqlite -D_GNU_SOURCE
 AM_CFLAGS = -W -Wall -Wstrict-prototypes -I..
 AM_LDFLAGS = -L$(top_srcdir)/sqlite -lsqlite
 
-GEN = openisr-config openisr-config.8 upgrade-0.9.pl
+GEN = openisr-config openisr-config.8 upgrade-0.9.pl dirtometer
 
 if WANT_SERVER
 SERVER_PROGS = zlib convert-chunks convert-keyring
@@ -11,6 +11,7 @@ endif
 
 if WANT_CLIENT
 sbin_SCRIPTS = openisr-config
+pkgdata_SCRIPTS = dirtometer
 man_MANS = openisr-config.8
 endif
 
