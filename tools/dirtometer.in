@@ -11,19 +11,25 @@
 #
 
 use Gtk2 -init;
+use Gtk2::Gdk::Keysyms;
 use Glib;
 use File::stat;
 use strict;
 use warnings;
 
+my $wd;
 my $img;
+
 my $width;
 my $height;
 my $uuid;
 my $numchunks;
 
+sub optimal_height {
+	return ($numchunks + $width - 1) / $width;
+}
+
 sub init {
-	my $wd;
 	my $geo;
 	my $file = "/dev/shm/openisr-chunkmap-$uuid";
 
@@ -40,10 +46,11 @@ sub init {
 	$wd->show_all;
 	$wd->signal_connect(configure_event => *configure);
 	$wd->signal_connect(destroy => sub {Gtk2->main_quit});
+	$wd->signal_connect(key_press_event => *keypress);
 
 	$numchunks = stat(*SHM)->size;
 	$width = 200;
-	$height = ($numchunks + $width - 1) / $width;
+	$height = optimal_height;
 	$wd->resize($width, $height);
 	$geo = Gtk2::Gdk::Geometry->new;
 	$geo->min_height(10);
@@ -57,6 +64,22 @@ sub configure {
 
 	($width, $height) = ($event->width, $event->height);
 	update_img();
+	return 0;
+}
+
+sub keypress {
+	my $widget = shift;
+	my $event = shift;
+
+	if ($event->keyval == $Gtk2::Gdk::Keysyms{Escape} or
+				$event->keyval == $Gtk2::Gdk::Keysyms{q}) {
+		Gtk2->main_quit;
+		return 1;
+	}
+	if ($event->keyval == $Gtk2::Gdk::Keysyms{space}) {
+		$wd->resize($width, optimal_height);
+		return 1;
+	}
 	return 0;
 }
 
