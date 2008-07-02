@@ -78,6 +78,10 @@ sub build_source () {
 		or fail "Couldn't install kernel modules";
 	system("depmod") == 0
 		or fail "Couldn't run depmod";
+	
+	# If our working directory is inside $topdir when we exit, some
+	# versions of File::Tree will fail when trying to delete $topdir
+	chdir("/");
 }
 
 sub build_debian () {
