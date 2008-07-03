@@ -24,6 +24,7 @@ my $width;
 my $height;
 my $uuid;
 my $numchunks;
+my $keep_above = 1;
 
 sub optimal_height {
 	return ($numchunks + $width - 1) / $width;
@@ -41,6 +42,7 @@ sub init {
 		or die "Couldn't open $file";
 	$wd = Gtk2::Window->new('toplevel');
 	$wd->set_title("Dirtometer for parcel $uuid");
+	$wd->set_keep_above($keep_above);
 	$img = Gtk2::Image->new;
 	$wd->add($img);
 	$wd->show_all;
@@ -80,6 +82,11 @@ sub keypress {
 		$wd->resize($width, optimal_height);
 		return 1;
 	}
+	if ($event->keyval == $Gtk2::Gdk::Keysyms{Tab}) {
+		$keep_above = ! $keep_above;
+		$wd->set_keep_above($keep_above);
+		return 1;
+	}
 	return 0;
 }
 
@@ -92,7 +99,6 @@ sub update_img {
 	my @pix;
 	my @chunks;
 	my $chunk;
-	my $i;
 	my $states;
 	my $pixbuf;
 	my $updated = 0;
