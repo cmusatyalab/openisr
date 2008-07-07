@@ -100,36 +100,30 @@ AC_DEFUN([CHECK_CURL_VERSION], [
 ])
 
 
-# CHECK_COMPILE([MESSAGE], [TEST_PROGRAM], [DEFINE_IF_SUCCEEDS],
-#               [DEFINE_DESCRIPTION])
-# --------------------------------------------------------------
-AC_DEFUN([CHECK_COMPILE], [
-	AC_MSG_CHECKING($1)
-	AC_COMPILE_IFELSE([$2], [result=ok], [result=bad])
-	if test z$result = zok ; then
+# RUN_TEST([TYPE], [MESSAGE], [TEST_PROGRAM])
+# Run test of type TYPE against TEST_PROGRAM, and set $success to "yes" or
+# "no" depending on whether it succeeds.  Print MESSAGE beforehand and result
+# afterward.  TYPE can be [COMPILE], [LINK], or [RUN].
+# ---------------------------------------------------------------------------
+AC_DEFUN([RUN_TEST], [
+	AC_MSG_CHECKING($2)
+	AC_$1_IFELSE([$3], [success=yes], [success=no])
+	if test z$success = zyes ; then
 		AC_MSG_RESULT([yes])
-		AC_DEFINE([$3], 1, [$4])
 	else
 		AC_MSG_RESULT([no])
 	fi
 ])
 
 
-# CHECK_COMPILER_OPTION_VAR([OPTION])
-# If the compiler supports the command line option OPTION, set $have_option
-# to "yes".  Otherwise, set $have_option to "no".
-# -------------------------------------------------------------------------
-AC_DEFUN([CHECK_COMPILER_OPTION_VAR], [
-	AC_MSG_CHECKING([if compiler supports $1])
+# CHECK_COMPILER_OPTION([OPTION])
+# If the compiler supports the command line option OPTION, set $success
+# to "yes".  Otherwise, set $success to "no".
+# ---------------------------------------------------------------------
+AC_DEFUN([CHECK_COMPILER_OPTION], [
 	saved_cflags="$CFLAGS"
 	CFLAGS="$saved_cflags $1"
-	AC_COMPILE_IFELSE([AC_LANG_SOURCE([])], [have_option=yes],
-				[have_option=no])
-	if test z$have_option = zyes ; then
-		AC_MSG_RESULT([yes])
-	else
-		AC_MSG_RESULT([no])
-	fi
+	RUN_TEST([COMPILE], [if compiler supports $1], [AC_LANG_SOURCE([])])
 	CFLAGS="$saved_cflags"
 ])
 

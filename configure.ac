@@ -96,8 +96,8 @@ if test z$enable_libvdisk = zyes ; then
 	# See if we're on an x86_64 system with multilib support.  If so, build
 	# both 32-bit and 64-bit versions of libvdisk.
 	if test z$host_cpu = zx86_64; then
-		CHECK_COMPILER_OPTION_VAR([-m32])
-		if test z$have_option = zyes ; then
+		CHECK_COMPILER_OPTION([-m32])
+		if test z$success = zyes ; then
 			build_32=yes
 			FIND_DIR([32-bit system libraries],
 					[$LIBVDISK_PATH32 /usr/lib32 /usr/lib],
@@ -115,12 +115,14 @@ if test z$enable_libvdisk = zyes ; then
 	
 	# Check for old hd_driveid definition that doesn't know about
 	# 48-bit LBA
-	CHECK_COMPILE([for lba_capacity_2 in hd_driveid],
+	RUN_TEST([COMPILE], [for lba_capacity_2 in hd_driveid],
 				[AC_LANG_PROGRAM([#include <linux/hdreg.h>], 
 				[struct hd_driveid id;
-				unsigned long long cap=id.lba_capacity_2;])],
-				HAVE_LBA_CAPACITY_2,
-				[Define if struct hd_driveid in <linux/hdreg.h> contains an lba_capacity_2 member.])
+				unsigned long long cap=id.lba_capacity_2;])])
+	if test z$success = zyes ; then
+		AC_DEFINE([HAVE_LBA_CAPACITY_2], 1,
+					[Define if struct hd_driveid in <linux/hdreg.h> contains an lba_capacity_2 member.])
+	fi
 fi
 AM_CONDITIONAL([LIBVDISK_BUILD_32], [test z$build_32 = zyes])
 AC_ARG_VAR([LIBVDISK_PATH], [destination directory for native libvdisk])
