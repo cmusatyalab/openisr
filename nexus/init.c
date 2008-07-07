@@ -33,7 +33,6 @@
 
 static struct class *class;
 int blk_major;
-GLOBAL_QUEUE_LOCK(queue_lock);
 
 /**
  * struct state - singleton tracking global, modifiable state
@@ -625,7 +624,15 @@ struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 	dev->chunks=chunk_of(dev, capacity);
 	
 	debug(DBG_CTR, "Allocating queue");
-	dev->queue=init_request_queue(nexus_request, &queue_lock);
+	/* The CFQ I/O scheduler can hold request queue references for a very
+	   long time: if a process (e.g. kblockd) has ever done I/O to a block
+	   device, the process will hold a reference to its queue until it
+	   exits.  At that time, the request queue spinlock will be locked,
+	   which means we can't have freed the lock while shutting down the
+	   block device.  Passing a NULL spinlock pointer to blk_init_queue()
+	   allocates a spinlock along with the request queue structure, thus
+	   maintaining these lifetime rules. */
+	dev->queue=blk_init_queue(nexus_request, NULL);
 	if (dev->queue == NULL) {
 		log(KERN_ERR, "couldn't allocate request queue");
 		ret=-ENOMEM;
@@ -740,7 +747,6 @@ static int __init nexus_init(void)
 	spin_lock_init(&state.lock);
 	INIT_LIST_HEAD(&state.devs);
 	INIT_LIST_HEAD(&state.all_devs);
-	INIT_QUEUE_LOCK(&queue_lock);
 	
 	debug(DBG_INIT, "Initializing request handler");
 	ret=request_start();
@@ -814,7 +820,6 @@ bad_request:
 }
 module_init(nexus_init);
 
-#ifndef NEXUS_NO_UNLOAD   /* defined by kcompat.h */
 /**
  * nexus_shutdown - module de-initialization function
  **/
@@ -836,7 +841,6 @@ static void __exit nexus_shutdown(void)
 	request_shutdown();
 }
 module_exit(nexus_shutdown);
-#endif
 
 MODULE_AUTHOR("Benjamin Gilbert <bgilbert@cs.cmu.edu>");
 MODULE_DESCRIPTION("OpenISR virtual block device");

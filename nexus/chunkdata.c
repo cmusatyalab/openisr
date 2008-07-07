@@ -1576,10 +1576,10 @@ int __init chunkdata_start(void)
 	   to have enough headroom. */
 	/* XXX further io could still block in bio_create(), preventing
 	   completed requests from being processed by the worker thread */
-	bio_pool=bioset_create_wrapper(4 * MIN_CONCURRENT_REQS,
+	bio_pool=bioset_create(4 * MIN_CONCURRENT_REQS,
 				4 * MIN_CONCURRENT_REQS);
-	if (IS_ERR(bio_pool))
-		return PTR_ERR(bio_pool);
+	if (bio_pool == NULL)
+		return -ENOMEM;
 	
 	return 0;
 }
