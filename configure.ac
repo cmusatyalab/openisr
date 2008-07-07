@@ -112,17 +112,6 @@ if test z$enable_libvdisk = zyes ; then
 		FIND_DIR([system libraries], [$LIBVDISK_PATH /usr/lib],
 					[LIBVDISK_DIRPATH])
 	fi
-	
-	# Check for old hd_driveid definition that doesn't know about
-	# 48-bit LBA
-	RUN_TEST([COMPILE], [for lba_capacity_2 in hd_driveid],
-				[AC_LANG_PROGRAM([#include <linux/hdreg.h>], 
-				[struct hd_driveid id;
-				unsigned long long cap=id.lba_capacity_2;])])
-	if test z$success = zyes ; then
-		AC_DEFINE([HAVE_LBA_CAPACITY_2], 1,
-					[Define if struct hd_driveid in <linux/hdreg.h> contains an lba_capacity_2 member.])
-	fi
 fi
 AM_CONDITIONAL([LIBVDISK_BUILD_32], [test z$build_32 = zyes])
 AC_ARG_VAR([LIBVDISK_PATH], [destination directory for native libvdisk])
@@ -136,6 +125,27 @@ fi
 AC_SUBST([PERL])
 AC_ARG_VAR([PERL], [path to Perl])
 
+# Checks for kernel features.
+if test z$enable_client = zyes ; then
+	RUN_TEST([COMPILE], [whether loop.h is usable],
+				[AC_LANG_PROGRAM([#include <linux/loop.h>], 
+				[unsigned get=LOOP_GET_STATUS64;
+				unsigned set=LOOP_SET_STATUS64;])])
+	if test z$success = zno ; then
+		AC_MSG_ERROR([kernel headers in /usr/include/linux are too old])
+	fi
+fi
+
+if test z$enable_libvdisk = zyes ; then
+	RUN_TEST([COMPILE], [for lba_capacity_2 in hd_driveid],
+				[AC_LANG_PROGRAM([#include <linux/hdreg.h>], 
+				[struct hd_driveid id;
+				unsigned long long cap=id.lba_capacity_2;])])
+	if test z$success = zno ; then
+		AC_MSG_ERROR([kernel headers in /usr/include/linux are too old])
+	fi
+fi
+
 # Checks for libraries.
 AC_ARG_WITH([kernel], [AS_HELP_STRING([--with-kernel=DIR],
 			[look for configured kernel source tree in DIR])])
@@ -146,9 +156,7 @@ AC_ARG_WITH([zlib], [AS_HELP_STRING([--with-zlib=DIR],
 AC_ARG_WITH([curl], [AS_HELP_STRING([--with-curl=DIR],
 			[look for curl in DIR])])
 
-# We need this for the kernel modules and for Parcelkeeper (since it grabs
-# loop.h from the kernel source tree)
-if test z$enable_client = zyes -o z$enable_modules = zyes ; then
+if test z$enable_modules = zyes ; then
 	AC_MSG_CHECKING([for kernel source])
 	# KERNELDIR is set to the argument passed to --with-kernel, if set.
 	# Otherwise, it's the value of the KERNELDIR environment variable,
