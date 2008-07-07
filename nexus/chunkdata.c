@@ -25,6 +25,7 @@
 #include <linux/timer.h>
 #include <linux/time.h>
 #include <linux/wait.h>
+#include <linux/scatterlist.h>
 #include "defs.h"
 
 enum cd_bits {

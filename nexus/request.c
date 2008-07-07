@@ -26,6 +26,7 @@
 #include <linux/interrupt.h>
 #include <linux/fs.h>
 #include <linux/mempool.h>
+#include <linux/scatterlist.h>
 #include "defs.h"
 
 static kmem_cache *io_cache;

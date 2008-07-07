@@ -331,6 +331,7 @@ static inline void bio_set_destructor(struct bio *bio,
 #define end_that_request_last(req, uptodate) end_that_request_last(req)
 #endif
 
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
 /* As of 2.6.24 the bio_endio callback is only called once when all IO
  * has completed. */
@@ -343,6 +344,7 @@ static inline void bio_set_destructor(struct bio *bio,
 		unsigned bytes_done=bio->bi_size; bio->bi_size=0; \
 		nexus_endio_func(bio, bytes_done, error); }
 #endif
+
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
 static inline int __blk_end_request(struct request *req, int error,
@@ -357,18 +359,17 @@ static inline int __blk_end_request(struct request *req, int error,
 }
 #endif
 
-
 /***** Scatterlists **********************************************************/
-
-#include <linux/scatterlist.h>
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
 #define sg_next(sg) ((sg) + 1)
 #define sg_page(sg) ((sg)->page)
+
 static inline void sg_init_table(struct scatterlist *sg, unsigned int nents)
 {
 	memset(sg, 0, sizeof(*sg) * nents);
 }
+
 static inline void sg_set_page(struct scatterlist *sg, struct page *page,
 				unsigned int length, unsigned int offset)
 {

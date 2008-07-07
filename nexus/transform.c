@@ -23,6 +23,7 @@
 #include <linux/interrupt.h>
 #include <linux/crypto.h>
 #include <linux/zlib.h>
+#include <linux/scatterlist.h>
 #include "defs.h"
 #include "lzf.h"
 
