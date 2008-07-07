@@ -490,12 +490,18 @@ struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 	}
 	
 	debug(DBG_CTR, "Allocating class device");
-	dev->class_dev=create_class_dev(class, nexus_dev_dtr,
+	dev->class_dev=class_device_create(class, NULL, 0, NULL,
 				DEVICE_NAME "%c", 'a' + devnum);
 	if (IS_ERR(dev->class_dev)) {
 		ret=PTR_ERR(dev->class_dev);
 		goto early_fail_classdev;
 	}
+	/* The classdev release function pointer is stored in both the class
+	   and the classdev, with the one in the classdev used preferentially.
+	   *Both* pointers are automatically set to the default release
+	   function, for reasons passing understanding, so we have to set the
+	   one in the classdev. */
+	dev->class_dev->release=nexus_dev_dtr;
 	class_set_devdata(dev->class_dev, dev);
 	
 	/* Now we have refcounting, so all further errors should deallocate
@@ -754,7 +760,7 @@ static int __init nexus_init(void)
 		goto bad_request;
 	
 	debug(DBG_INIT, "Creating class");
-	class=create_class(DEVICE_NAME, nexus_dev_dtr);
+	class=class_create(THIS_MODULE, DEVICE_NAME);
 	if (IS_ERR(class)) {
 		ret=PTR_ERR(class);
 		log(KERN_ERR, "couldn't create class");
