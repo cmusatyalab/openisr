@@ -35,51 +35,6 @@
 
 /***** Memory allocation *****************************************************/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14)
-typedef unsigned gfp_t;
-#endif
-
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14)
-#include <linux/types.h>
-static inline void *kzalloc(size_t size, gfp_t gfp)
-{
-	void *ptr=kmalloc(size, gfp);
-	if (ptr != NULL)
-		memset(ptr, 0, size);
-	return ptr;
-}
-#endif
-
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
-static inline char *kstrdup(const char *str, gfp_t flags)
-{
-	size_t len;
-	char *new;
-	
-	if (str == NULL)
-		return NULL;
-	len=strlen(str);
-	new=kmalloc(len + 1, flags);
-	if (new == NULL)
-		return NULL;
-	memcpy(new, str, len + 1);
-	return new;
-}
-#endif
-
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
-/* This is struct kmem_cache_s up to 2.6.14 and struct kmem_cache thereafter.
-   "#define kmem_cache kmem_cache_s" would pick up every instance of that
-   string, not just the struct names, so we don't do it. */
-typedef kmem_cache_t kmem_cache;
-#else
-typedef struct kmem_cache kmem_cache;
-#endif
-
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)
 #define kmem_cache_create(name, size, align, flags, ctor) \
 			kmem_cache_create(name, size, align, flags, ctor, NULL)
@@ -117,24 +72,6 @@ static inline int mutex_is_locked(MUTEX *lock)
 #endif
 
 /***** Device model/sysfs ****************************************************/
-
-/**
- * read_refcount_debug - return the current refcount of @kobj
- *
- * This is for debug use only.
- **/
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
-static inline int read_refcount_debug(struct kobject *kobj)
-{
-	return atomic_read(&kobj->refcount);
-}
-#else
-static inline int read_refcount_debug(struct kobject *kobj)
-{
-	return atomic_read(&kobj->kref.refcount);
-}
-#endif
-
 
 /* As of 2.6.18, there are three cases.  There are expected to be more in
    the future.
@@ -301,32 +238,6 @@ static inline struct bio_set *bioset_create_wrapper(int bio_cnt, int bvec_cnt)
 #endif
 
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,13)
-/* I/O priorities appear to be unimplemented */
-#define bio_set_prio(bio, prio) do {} while (0)
-#define req_get_prio(req) (0)
-#else
-#define req_get_prio(req) (req->ioprio)
-#endif
-
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14)
-#define BIO_DESTRUCTOR(name, bioset)
-/* The default destructor handles this, since struct bio has a bi_set member
-   which points to the bioset into which the bio should be freed. */
-#define bio_set_destructor(bio, dtr) do {} while (0)
-#else
-#define BIO_DESTRUCTOR(name, bioset) \
-		static void name(struct bio *bio) {bio_free(bio, bioset);}
-
-static inline void bio_set_destructor(struct bio *bio,
-			void (*dtr)(struct bio *bio))
-{
-	bio->bi_destructor=dtr;
-}
-#endif
-
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
 #define end_that_request_last(req, uptodate) end_that_request_last(req)
 #endif
@@ -381,27 +292,11 @@ static inline void sg_set_page(struct scatterlist *sg, struct page *page,
 
 /***** Request queue barriers ************************************************/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,12)
-/* XXX blk_queue_ordered() flags */
-#endif
-
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
 /* XXX barrier request handling changes */
 #endif
 
 /***** Callbacks/deferred work ***********************************************/
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
-static inline void setup_timer(struct timer_list *timer,
-			void (*func)(unsigned long), unsigned long data)
-{
-	init_timer(timer);
-	timer->function=func;
-	timer->data=data;
-}
-#endif
-
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
 typedef void work_t;
@@ -412,13 +307,6 @@ typedef struct work_struct work_t;
 #endif
 
 /***** CPU hotplug ***********************************************************/
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,10)
-/* CPU_DOWN_PREPARE callback doesn't exist.  Define the constant anyway, such
-   that all plausible comparisons to it return false. */
-#define CPU_DOWN_PREPARE 0xbadda7a
-#endif
-
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,17)
 /* for_each_possible_cpu() was added in the middle of the 2.6.16 stable
@@ -441,13 +329,6 @@ typedef struct work_struct work_t;
 #endif
 
 /***** file_operations methods ***********************************************/
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)
-/* XXX do we need to register a compatibility shim for old-style ioctls to
-   work on mixed-mode systems? */
-/* XXX implicit cast when converting from old ioctl on 64-bit systems? */
-#endif
-
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
 #define fops_flush_method(name, filp) int name(struct file *filp)
@@ -484,13 +365,6 @@ static inline void set_nonfreezable(void)
 /***** cryptoapi *************************************************************/
 
 #include <linux/crypto.h>
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14)
-/* Older kernels just check for in_softirq() or in_atomic(), so no flag needs
-   to be set */
-#define CRYPTO_TFM_REQ_MAY_SLEEP 0
-#endif
-
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
 #define crypto_blkcipher crypto_tfm

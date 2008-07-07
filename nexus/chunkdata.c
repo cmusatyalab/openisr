@@ -531,14 +531,14 @@ void free_scatterlist(struct scatterlist *sg, unsigned nbytes)
 }
 
 /**
- * bio_destructor - free a bio into its bio_pool
+ * bio_destructor - free a bio into the bio_pool
  * 
  * This is called by the block layer when a &bio's refcount hits zero.
- * 
- * Older kernels do not support bio_pools.  This is a kcompat macro which
- * generates the destructor only on kernels that support it.
  **/
-BIO_DESTRUCTOR(bio_destructor, bio_pool)
+static void bio_destructor(struct bio *bio)
+{
+	bio_free(bio, bio_pool);
+}
 
 static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error);
 NEXUS_ENDIO_WRAP /* declares a suitable endio wrapper for kernels >= 2.6.24 */
@@ -587,7 +587,7 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 	}
 	bio->bi_end_io=NEXUS_ENDIO_FUNC;
 	bio->bi_private=cd;
-	bio_set_destructor(bio, bio_destructor);
+	bio->bi_destructor=bio_destructor;
 	return bio;
 }
 

@@ -113,8 +113,9 @@ static struct task_struct *request_thread;
  * priority.
  * 
  * nexus_thread() will always run on the specific processor to which it is
- * bound, *except* during hot-unplug of that CPU (or in a corner case on
- * <= 2.6.9), when it will run on an arbitrary processor.
+ * bound, *except* during hot-unplug of that CPU (or in a corner case which
+ * should never happen; see cpu_callback()), when it will run on an arbitrary
+ * processor.
  **/
 static int nexus_thread(void *data)
 {
@@ -689,7 +690,6 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 			log(KERN_ERR, "Failed to start thread for CPU %d", cpu);
 		break;
 	case CPU_DOWN_PREPARE:
-		/* This is only called for >= 2.6.10 */
 		if (threads.count == 1 && threads.task[cpu] != NULL) {
 			log(KERN_ERR, "Refusing to stop CPU %d: it is running "
 						"our last worker thread", cpu);
@@ -700,8 +700,8 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 	case CPU_DEAD:
 		/* CPU is already down */
 		if (threads.count == 1) {
-			/* CPU_DOWN_PREPARE will prevent this for kernels
-			   >= 2.6.10. */
+			/* CPU_DOWN_PREPARE should prevent this, but be
+			   paranoid */
 			log(KERN_NOTICE, "Disabled CPU %d, which was running "
 						"our last worker thread", cpu);
 			log(KERN_NOTICE, "Leaving "KTHREAD_NAME"/%d running "

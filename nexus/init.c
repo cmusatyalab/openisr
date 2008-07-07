@@ -66,7 +66,7 @@ MODULE_PARM_DESC(debug_mask, "initial bitmask for debug messages");
 void nexus_dev_get(struct nexus_dev *dev)
 {
 	debug(DBG_REFCOUNT, "dev_get, refs %d",
-				read_refcount_debug(&dev->class_dev->kobj));
+			atomic_read(&dev->class_dev->kobj.kref.refcount));
 	if (class_device_get(dev->class_dev) == NULL)
 		BUG();
 }
@@ -81,8 +81,8 @@ void nexus_dev_get(struct nexus_dev *dev)
 void nexus_dev_put(struct nexus_dev *dev, int unlink)
 {
 	debug(DBG_REFCOUNT, "dev_put, refs %d, unlink %d",
-				read_refcount_debug(&dev->class_dev->kobj),
-				unlink);
+			atomic_read(&dev->class_dev->kobj.kref.refcount),
+			unlink);
 	BUG_ON(in_atomic());
 	if (unlink)
 		class_device_unregister(dev->class_dev);

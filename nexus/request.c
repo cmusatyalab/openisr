@@ -29,7 +29,7 @@
 #include <linux/scatterlist.h>
 #include "defs.h"
 
-static kmem_cache *io_cache;
+static struct kmem_cache *io_cache;
 static mempool_t *io_pool;
 
 /**
@@ -274,7 +274,7 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 	io->flags=0;
 	io->first_cid=chunk_of(dev, req->sector);
 	io->last_cid=chunk_of(dev, req->sector + req->nr_sectors - 1);
-	io->prio=req_get_prio(req);
+	io->prio=req->ioprio;
 	if (rq_data_dir(req))
 		io->flags |= IO_WRITE;
 	sg_init_table(io->orig_sg, MAX_SEGS_PER_IO);

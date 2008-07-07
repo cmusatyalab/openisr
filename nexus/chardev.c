@@ -337,17 +337,6 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 }
 
 /**
- * chr_old_ioctl - wrapper for old-style ioctl call
- * 
- * This is called with the BKL held.  Kernels >= 2.6.11 will never call this.
- **/
-static int chr_old_ioctl(struct inode *ino, struct file *filp, unsigned cmd,
-			unsigned long arg)
-{
-	return chr_ioctl(filp, cmd, arg);
-}
-
-/**
  * chr_poll - select()/poll() support for chardev
  **/
 static unsigned chr_poll(struct file *filp, poll_table *wait)
@@ -381,13 +370,8 @@ static struct file_operations nexus_char_ops = {
 	.release =		chr_release,
 	.llseek =		no_llseek,
 	.poll =			chr_poll,
-	.ioctl =		chr_old_ioctl,
-#ifdef HAVE_UNLOCKED_IOCTL
 	.unlocked_ioctl =	chr_ioctl,
-#endif
-#ifdef HAVE_COMPAT_IOCTL
 	.compat_ioctl =		chr_ioctl,
-#endif
 	/* XXX AIO? */
 };
 
