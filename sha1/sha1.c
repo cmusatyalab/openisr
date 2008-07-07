@@ -157,9 +157,7 @@ static struct crypto_alg alg = {
 	.cra_blocksize	=	SHA1_DATA_SIZE,
 	.cra_ctxsize	=	sizeof(struct sha1_ctx),
 	.cra_module	=	THIS_MODULE,
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,12)
 	.cra_alignmask	=	3,
-#endif
 	.cra_list	=	LIST_HEAD_INIT(alg.cra_list),
 	.cra_u		=	{ .digest = {
 	.dia_digestsize	=	SHA1_DIGEST_SIZE,
