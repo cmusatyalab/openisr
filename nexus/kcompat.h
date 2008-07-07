@@ -363,7 +363,7 @@ static inline int __blk_end_request(struct request *req, int error,
 #include <linux/scatterlist.h>
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
-#define sg_next(sg) ((sg)++)
+#define sg_next(sg) ((sg) + 1)
 #define sg_page(sg) ((sg)->page)
 static inline void sg_init_table(struct scatterlist *sg, unsigned int nents)
 {
