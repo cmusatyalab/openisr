@@ -26,8 +26,8 @@
 
 /***** Supported-version checks **********************************************/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,8)
-#error Kernels older than 2.6.8 are not supported
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
+#error Kernels older than 2.6.15 are not supported
 #endif
 
 /* We (optimistically) don't check for kernel releases that are too new; the
