@@ -495,8 +495,7 @@ int __init request_start(void)
 		ret=-ENOMEM;
 		goto bad_cache;
 	}
-	io_pool=mempool_create(MIN_CONCURRENT_REQS, mempool_alloc_slab,
-				mempool_free_slab, io_cache);
+	io_pool=mempool_create_slab_pool(MIN_CONCURRENT_REQS, io_cache);
 	if (io_pool == NULL) {
 		ret=-ENOMEM;
 		goto bad_mempool;

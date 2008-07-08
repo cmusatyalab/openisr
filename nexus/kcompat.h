@@ -35,6 +35,16 @@
 
 /***** Memory allocation *****************************************************/
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,17)
+static inline mempool_t *mempool_create_slab_pool(int min_nr,
+			struct kmem_cache *cache)
+{
+	return mempool_create(min_nr, mempool_alloc_slab, mempool_free_slab,
+				cache);
+}
+#endif
+
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)
 #define kmem_cache_create(name, size, align, flags, ctor) \
 			kmem_cache_create(name, size, align, flags, ctor, NULL)
