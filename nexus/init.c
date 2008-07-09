@@ -65,8 +65,8 @@ MODULE_PARM_DESC(debug_mask, "initial bitmask for debug messages");
 void nexus_dev_get(struct nexus_dev *dev)
 {
 	debug(DBG_REFCOUNT, "dev_get, refs %d",
-			atomic_read(&dev->class_dev->kobj.kref.refcount));
-	if (class_device_get(dev->class_dev) == NULL)
+			atomic_read(&dev->kdevice->kobj.kref.refcount));
+	if (kdevice_get(dev->kdevice) == NULL)
 		BUG();
 }
 
@@ -80,13 +80,13 @@ void nexus_dev_get(struct nexus_dev *dev)
 void nexus_dev_put(struct nexus_dev *dev, int unlink)
 {
 	debug(DBG_REFCOUNT, "dev_put, refs %d, unlink %d",
-			atomic_read(&dev->class_dev->kobj.kref.refcount),
+			atomic_read(&dev->kdevice->kobj.kref.refcount),
 			unlink);
 	BUG_ON(in_atomic());
 	if (unlink)
-		class_device_unregister(dev->class_dev);
+		kdevice_unregister(dev->kdevice);
 	else
-		class_device_put(dev->class_dev);
+		kdevice_put(dev->kdevice);
 }
 
 /**
@@ -185,19 +185,19 @@ static int class_populate(void)
 }
 
 /**
- * class_device_populate - add standard attributes to a class device
+ * kdevice_populate - add standard attributes to a kdevice
  * 
  * On failure, the device may be semi-populated, but that will be cleaned up
  * when the device is deleted.  All attributes will be deleted when the
- * classdev is unregistered.
+ * kdevice is unregistered.
  **/
-static int class_device_populate(struct class_device *class_dev)
+static int kdevice_populate(kdevice_t *kdevice)
 {
 	int i;
 	int err;
 	
-	for (i=0; class_dev_attrs[i].attr.name != NULL; i++) {
-		err=class_device_create_file(class_dev, &class_dev_attrs[i]);
+	for (i=0; kdevice_attrs[i].attr.name != NULL; i++) {
+		err=kdevice_create_file(kdevice, &kdevice_attrs[i]);
 		if (err)
 			return err;
 	}
@@ -399,15 +399,14 @@ bad_close:
 /**
  * nexus_dev_dtr - tear down an existing Nexus device
  *
- * This is called by the release callback of the &struct class_device
- * embedded in &struct nexus_dev, when the device's reference count goes
- * to zero.  It must be able to handle the case that the device was not
- * fully initialized, if the constructor errored out after refcounting
- * was set up.
+ * This is called by the release callback of the &kdevice_t embedded in
+ * &struct nexus_dev, when the device's reference count goes to zero.  It
+ * must be able to handle the case that the device was not fully initialized,
+ * if the constructor errored out after refcounting was set up.
  **/
-static void nexus_dev_dtr(struct class_device *class_dev)
+static void nexus_dev_dtr(kdevice_t *kdevice)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	
 	debug(DBG_CTR, "Dtr called");
 	BUG_ON(!dev_is_shutdown(dev));
@@ -431,7 +430,7 @@ static void nexus_dev_dtr(struct class_device *class_dev)
 	state.cache_pages -= dev->cachesize * chunk_pages(dev);
 	spin_unlock(&state.lock);
 	free_devnum(dev->devnum);
-	kfree(dev->class_dev);
+	kfree(dev->kdevice);
 	kfree(dev->ident);
 	kfree(dev);
 	module_put(THIS_MODULE);
@@ -489,20 +488,14 @@ struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 		goto early_fail_devalloc;
 	}
 	
-	debug(DBG_CTR, "Allocating class device");
-	dev->class_dev=class_device_create(class, NULL, 0, NULL,
-				DEVICE_NAME "%c", 'a' + devnum);
-	if (IS_ERR(dev->class_dev)) {
-		ret=PTR_ERR(dev->class_dev);
-		goto early_fail_classdev;
+	debug(DBG_CTR, "Allocating kdevice");
+	dev->kdevice=kdevice_create(class, DEVICE_NAME "%c", 'a' + devnum);
+	if (IS_ERR(dev->kdevice)) {
+		ret=PTR_ERR(dev->kdevice);
+		goto early_fail_kdevice;
 	}
-	/* The classdev release function pointer is stored in both the class
-	   and the classdev, with the one in the classdev used preferentially.
-	   *Both* pointers are automatically set to the default release
-	   function, for reasons passing understanding, so we have to set the
-	   one in the classdev. */
-	dev->class_dev->release=nexus_dev_dtr;
-	class_set_devdata(dev->class_dev, dev);
+	dev->kdevice->release=nexus_dev_dtr;
+	kdevice_set_data(dev->kdevice, dev);
 	
 	/* Now we have refcounting, so all further errors should deallocate
 	   through the destructor */
@@ -692,7 +685,7 @@ struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 	dev->gendisk->major=blk_major;
 	dev->gendisk->first_minor=devnum*MINORS_PER_DEVICE;
 	dev->gendisk->minors=MINORS_PER_DEVICE;
-	sprintf(dev->gendisk->disk_name, "%s", dev->class_dev->class_id);
+	sprintf(dev->gendisk->disk_name, "%s", kdevice_get_name(dev->kdevice));
 	dev->gendisk->fops=&nexus_ops;
 	dev->gendisk->queue=dev->queue;
 	dev->gendisk->private_data=dev;
@@ -702,7 +695,7 @@ struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 	   now safe to populate the sysfs directory (i.e., the attributes
 	   will be valid) */
 	debug(DBG_CTR, "Populating sysfs attributes");
-	ret=class_device_populate(dev->class_dev);
+	ret=kdevice_populate(dev->kdevice);
 	if (ret) {
 		log(KERN_ERR, "couldn't add sysfs attributes");
 		goto bad;
@@ -730,7 +723,7 @@ bad:
 	nexus_dev_put(dev, 1);
 	return ERR_PTR(ret);
 	/* Until we have a refcount, we can't fail through the destructor */
-early_fail_classdev:
+early_fail_kdevice:
 	kfree(dev);
 early_fail_devalloc:
 	free_devnum(devnum);

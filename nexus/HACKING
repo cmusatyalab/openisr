@@ -119,7 +119,7 @@ the rest of the kernel, lines should never exceed column 80.
 
 === Refcounting
 
-Each nexus_dev has two reference counts.  The one embedded in dev->class_dev
+Each nexus_dev has two reference counts.  The one embedded in dev->kdevice
 includes references held by chardev fds, blockdev fds, sysfs attribute fds,
 and chunkdata thread callbacks.  This refcount governs deallocation of the
 nexus_dev structures; when it reaches zero, the dtr is called.
@@ -140,7 +140,7 @@ to be unloadable while any nexus_dev exists.
 
 === Device setup and teardown
 
-The device constructor initializes the class_dev refcount as soon as possible.
+The device constructor initializes the kdevice refcount as soon as possible.
 After the refcount is available, device shutdown occurs through the destructor
 even if the shutdown is due to an error occurring later on in the constructor.
 This means that all teardown code called from the dtr must be able to handle

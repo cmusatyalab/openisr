@@ -143,7 +143,7 @@ struct nexus_tfm_state {
  * @lh_devs              : list head for list of active devices (state.lock)
  * @lh_all_devs          : list head for list of all devices (state.lock)
  * @lh_run_requests      : list head for request thread (queues.lock)
- * @class_dev            : for device model
+ * @kdevice              : for device model
  * @gendisk              : for block layer
  * @queue                : request queue for our block device (*)
  * @queue_lock           : spinlock associated with @queue
@@ -180,7 +180,7 @@ struct nexus_dev {
 	struct list_head lh_all_devs;
 	struct list_head lh_run_requests;
 	
-	struct class_device *class_dev;
+	kdevice_t *kdevice;
 	struct gendisk *gendisk;
 	struct request_queue *queue;
 	struct block_device *chunk_bdev;
@@ -509,7 +509,7 @@ void wake_all_threads(void);
 
 /* sysfs.c */
 extern struct class_attribute class_attrs[];
-extern struct class_device_attribute class_dev_attrs[];
+extern kdevice_attribute_t kdevice_attrs[];
 
 /* revision.c */
 extern char *isr_release;

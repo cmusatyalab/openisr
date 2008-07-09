@@ -83,7 +83,55 @@ static inline int mutex_is_locked(MUTEX *lock)
 
 /***** Device model/sysfs ****************************************************/
 
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
+typedef struct class_device kdevice_t;
+typedef struct class_device_attribute kdevice_attribute_t;
+#define kdevice_create(cls, fmt, args...) \
+	class_device_create(cls, NULL, 0, NULL, fmt, ## args)
+#define kdevice_get(kdevice) \
+	class_device_get(kdevice)
+#define kdevice_put(kdevice) \
+	class_device_put(kdevice)
+#define kdevice_unregister(kdevice) \
+	class_device_unregister(kdevice)
+#define kdevice_get_name(kdevice) \
+	(kdevice->class_id)
+#define kdevice_get_data(kdevice) \
+	class_get_devdata(kdevice)
+#define kdevice_set_data(kdevice, data) \
+	class_set_devdata(kdevice, data)
+#define kdevice_create_file(kdevice, attr) \
+	class_device_create_file(kdevice, attr)
+#define declare_kdevice_show(name, kdevice_p, buf_p) \
+	ssize_t name(kdevice_t *kdevice_p, char *buf_p)
+#define declare_kdevice_store(name, kdevice_p, buf_p, len_p) \
+	ssize_t name(kdevice_t *kdevice_p, const char *buf_p, size_t len_p)
+#else
+typedef struct device kdevice_t;
+typedef struct device_attribute kdevice_attribute_t;
+#define kdevice_create(cls, fmt, args...) \
+	device_create(cls, NULL, 0, fmt, ## args)
+#define kdevice_get(kdevice) \
+	get_device(kdevice)
+#define kdevice_put(kdevice) \
+	put_device(kdevice)
+#define kdevice_unregister(kdevice) \
+	device_unregister(kdevice)
+#define kdevice_get_name(kdevice) \
+	(kdevice->bus_id)
+#define kdevice_get_data(kdevice) \
+	dev_get_drvdata(kdevice)
+#define kdevice_set_data(kdevice, data) \
+	dev_set_drvdata(kdevice, data)
+#define kdevice_create_file(kdevice, attr) \
+	device_create_file(kdevice, attr)
+#define declare_kdevice_show(name, kdevice_p, buf_p) \
+	ssize_t name(kdevice_t *kdevice_p, kdevice_attribute_t *attr, \
+				char *buf_p)
+#define declare_kdevice_store(name, kdevice_p, buf_p, len_p) \
+	ssize_t name(kdevice_t *kdevice_p, kdevice_attribute_t *attr, \
+				const char *buf_p, size_t len_p)
+#endif
 
 /***** Request queue/bio *****************************************************/
 

@@ -74,44 +74,43 @@ struct class_attribute class_attrs[] = {
 
 
 
-/* For these functions, the caller holds a reference to the class device,
-   so we know the nexus_dev is valid.  These functions cannot run until
-   after device initialization has finished, but may run before the gendisk
-   is live. */
+/* For these functions, the caller holds a reference to the kdevice, so we
+   know the nexus_dev is valid.  These functions cannot run until after device
+   initialization has finished, but may run before the gendisk is live. */
 
-static ssize_t dev_show_ident(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_ident, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%s\n", dev->ident);
 }
 
-static ssize_t dev_show_owner(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_owner, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->owner);
 }
 
-static ssize_t dev_show_chunksize(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_chunksize, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->chunksize);
 }
 
-static ssize_t dev_show_cachesize(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_cachesize, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->cachesize);
 }
 
-static ssize_t dev_show_offset(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_offset, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%llu\n", (u64)dev->offset << 9);
 }
 
-static ssize_t dev_show_states(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_states, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	int i;
 	int count=0;
 	
@@ -127,9 +126,9 @@ static ssize_t dev_show_states(struct class_device *class_dev, char *buf)
 	return count;
 }
 
-static ssize_t dev_show_state_times(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_state_times, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	int i;
 	int count=0;
 	unsigned time;
@@ -149,10 +148,9 @@ static ssize_t dev_show_state_times(struct class_device *class_dev, char *buf)
 	return count;
 }
 
-static ssize_t dev_store_state_times(struct class_device *class_dev,
-			const char *buf, size_t len)
+static declare_kdevice_store(dev_store_state_times, kdevice, buf, len)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	int i;
 	
 	/* -ERESTARTSYS doesn't work here */
@@ -165,60 +163,60 @@ static ssize_t dev_store_state_times(struct class_device *class_dev,
 	return len;
 }
 
-static ssize_t dev_show_suite(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_suite, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%s\n",
 				suite_info(dev->suite)->user_name);
 }
 
-static ssize_t dev_show_compression(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_compression, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%s\n",
 			compress_info(dev->default_compression)->user_name);
 }
 
-static ssize_t dev_show_cache_hits(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_cache_hits, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.cache_hits);
 }
 
-static ssize_t dev_show_cache_misses(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_cache_misses, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.cache_misses);
 }
 
-static ssize_t dev_show_cache_fails(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_cache_fails, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 				dev->stats.cache_alloc_failures);
 }
 
-static ssize_t dev_show_chunk_errors(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_chunk_errors, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.chunk_errors);
 }
 
-static ssize_t dev_show_chunk_reads(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_chunk_reads, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.chunk_reads);
 }
 
-static ssize_t dev_show_chunk_writes(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_chunk_writes, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.chunk_writes);
 }
 
-static ssize_t dev_show_comp_ratio(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_comp_ratio, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	u64 bytes;
 	unsigned writes;
 	unsigned scaled_pct;
@@ -237,34 +235,33 @@ static ssize_t dev_show_comp_ratio(struct class_device *class_dev, char *buf)
 				scaled_pct % 10);
 }
 
-static ssize_t dev_show_whole_writes(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_whole_writes, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.whole_chunk_updates);
 }
 
-static ssize_t dev_show_discards(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_discards, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.encrypted_discards);
 }
 
-static ssize_t dev_show_sect_read(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_sect_read, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.sectors_read);
 }
 
-static ssize_t dev_show_sect_written(struct class_device *class_dev, char *buf)
+static declare_kdevice_show(dev_show_sect_written, kdevice, buf)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	return snprintf(buf, PAGE_SIZE, "%u\n", dev->stats.sectors_written);
 }
 
-static ssize_t dev_store_action(struct class_device *class_dev,
-			const char *buf, size_t len)
+static declare_kdevice_store(dev_store_action, kdevice, buf, len)
 {
-	struct nexus_dev *dev=class_get_devdata(class_dev);
+	struct nexus_dev *dev=kdevice_get_data(kdevice);
 	int ret;
 	
 	if (!strcmp(buf, "kick-cache\n")) {
@@ -303,7 +300,7 @@ static ssize_t dev_store_action(struct class_device *class_dev,
 	return len;
 }
 
-struct class_device_attribute class_dev_attrs[] = {
+kdevice_attribute_t kdevice_attrs[] = {
 	__ATTR(ident, S_IRUGO, dev_show_ident, NULL),
 	__ATTR(owner, S_IRUGO, dev_show_owner, NULL),
 	__ATTR(chunk_size, S_IRUGO, dev_show_chunksize, NULL),
