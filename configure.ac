@@ -184,8 +184,8 @@ if test z$enable_client = zyes ; then
 fi
 
 if test z$enable_client = zyes -o z$enable_server = zyes ; then
-	FIND_LIBRARY([OpenSSL], [ssl], [EVP_EncryptUpdate],
-				[openssl/ssl.h openssl/evp.h openssl/blowfish.h],
+	FIND_LIBRARY([OpenSSL], [crypto], [EVP_EncryptUpdate],
+				[openssl/evp.h openssl/blowfish.h],
 				[$with_ssl /usr/local/ssl /usr/lib/ssl /usr/ssl /usr/local /usr])
 	
 	FIND_LIBRARY([zlib], [z], [inflate], [zlib.h],
