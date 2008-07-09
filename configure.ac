@@ -150,11 +150,11 @@ fi
 AC_ARG_WITH([kernel], [AS_HELP_STRING([--with-kernel=DIR],
 			[look for configured kernel source tree in DIR])])
 AC_ARG_WITH([ssl], [AS_HELP_STRING([--with-ssl=DIR],
-			[look for OpenSSL in DIR])])
+			[look for OpenSSL libraries in DIR])])
 AC_ARG_WITH([zlib], [AS_HELP_STRING([--with-zlib=DIR],
 			[look for zlib in DIR])])
 AC_ARG_WITH([curl], [AS_HELP_STRING([--with-curl=DIR],
-			[look for curl in DIR])])
+			[look for libcurl in DIR])])
 
 if test z$enable_modules = zyes ; then
 	AC_MSG_CHECKING([for kernel source])
@@ -176,7 +176,7 @@ if test z$enable_modules = zyes ; then
 fi
 
 if test z$enable_client = zyes ; then
-	FIND_LIBRARY([curl], [curl], [curl_easy_init], [curl/curl.h],
+	FIND_LIBRARY([libcurl], [curl], [curl_easy_init], [curl/curl.h],
 				[$with_curl /usr/local /usr])
 	CHECK_CURL_VERSION([$FOUND_PATH], [7.12.3])
 	
@@ -184,7 +184,7 @@ if test z$enable_client = zyes ; then
 fi
 
 if test z$enable_client = zyes -o z$enable_server = zyes ; then
-	FIND_LIBRARY([OpenSSL], [crypto], [EVP_EncryptUpdate],
+	FIND_LIBRARY([libcrypto], [crypto], [EVP_EncryptUpdate],
 				[openssl/evp.h openssl/blowfish.h],
 				[$with_ssl /usr/local/ssl /usr/lib/ssl /usr/ssl /usr/local /usr])
 	
