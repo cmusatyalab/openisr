@@ -540,8 +540,15 @@ static void bio_destructor(struct bio *bio)
 	bio_free(bio, bio_pool);
 }
 
-static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error);
-NEXUS_ENDIO_WRAP /* declares a suitable endio wrapper for kernels >= 2.6.24 */
+static void nexus_endio(struct bio *bio, unsigned nbytes, int error, int done);
+
+/**
+ * nexus_endio_func - register completion of @bio
+ *
+ * This is a kernel-version-specific wrapper for nexus_endio(), and is called
+ * by the block layer upon completion of a single &bio to the chunk store.
+ */
+NEXUS_ENDIO_FUNC
 
 /**
  * bio_create - create a &bio to do I/O to the chunk store
@@ -585,7 +592,7 @@ static struct bio *bio_create(struct chunkdata *cd, int dir, unsigned offset)
 		if (chunk != NULL)
 			bio_set_prio(bio, chunk->parent->prio);
 	}
-	bio->bi_end_io=NEXUS_ENDIO_FUNC;
+	bio->bi_end_io=nexus_endio_func;
 	bio->bi_private=cd;
 	bio->bi_destructor=bio_destructor;
 	return bio;
@@ -806,16 +813,20 @@ void chunkdata_complete_io(struct list_head *entry)
 }
 
 /**
- * nexus_endio_func - register completion of @bio
+ * nexus_endio - register completion of @bio
  * 
- * This is called by the block layer upon completion of a single &bio to the
- * chunk store.  Depending on the device driver for the chunk store, it may
- * be called in hardirq context.  Arranges for chunkdata_complete_io()
- * callback to be called once all of the I/O for the chunk has completed.
+ * The block layer calls nexus_endio_func() upon completion of a single &bio
+ * to the chunk store.  nexus_endio_func(), in turn, is a kernel-version-
+ * specific wrapper for this function.  Depending on the device driver for
+ * the chunk store, this may be called in hardirq context.  Arranges for
+ * chunkdata_complete_io() callback to be called once all of the I/O for the
+ * chunk has completed.
  **/
-static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error)
+static void nexus_endio(struct bio *bio, unsigned nbytes, int error, int done)
 {
 	struct chunkdata *cd=bio->bi_private;
+	
+	debug(DBG_IO, "Completed bio: %u bytes, error %d", nbytes, error);
 	if (error && !cd->error) {
 		/* Racy, but who cares */
 		cd->error=error;
@@ -825,9 +836,8 @@ static int nexus_endio_func(struct bio *bio, unsigned nbytes, int error)
 		WARN_ON(!list_empty(&cd->lh_pending_completion));
 		schedule_callback(CB_COMPLETE_IO, &cd->lh_pending_completion);
 	}
-	if (bio->bi_size == 0)
+	if (done)
 		bio_put(bio);
-	return 0;
 }
 
 /**

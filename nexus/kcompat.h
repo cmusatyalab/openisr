@@ -100,16 +100,26 @@ static inline int mutex_is_locked(MUTEX *lock)
 
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
+#define NEXUS_ENDIO_FUNC \
+	static int nexus_endio_func(struct bio *bio, unsigned nbytes, \
+				int error) \
+	{ \
+		nexus_endio(bio, nbytes, error, bio->bi_size == 0); \
+		return 0; \
+	}
+#else
 /* As of 2.6.24 the bio_endio callback is only called once when all IO
  * has completed. */
-#define NEXUS_ENDIO_FUNC nexus_endio_func
-#define NEXUS_ENDIO_WRAP
-#else
-#define NEXUS_ENDIO_FUNC nexus_endio
-#define NEXUS_ENDIO_WRAP \
-	static void nexus_endio(struct bio *bio, int error) { \
-		unsigned bytes_done=bio->bi_size; bio->bi_size=0; \
-		nexus_endio_func(bio, bytes_done, error); }
+#define NEXUS_ENDIO_FUNC \
+	static void nexus_endio_func(struct bio *bio, int error) \
+	{ \
+		struct bio_vec *bvec; \
+		int i; \
+		unsigned bytes_done=0; \
+		__bio_for_each_segment(bvec, bio, i, 0) \
+			bytes_done += bvec->bv_len; \
+		nexus_endio(bio, bytes_done, error, 1); \
+	}
 #endif
 
 
