@@ -78,6 +78,7 @@ int copy_for_upload(void)
 				config.dest_dir);
 	if (make_upload_dirs())
 		return 1;
+	printf("Updating hoard cache...\n");
 	if (hoard_sync_refs(1))
 		return 1;
 	printf("Vacuuming keyring...\n");
