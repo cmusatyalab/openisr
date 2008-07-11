@@ -1,0 +1,83 @@
+#!!!PERLPATH!!
+
+BEGIN {
+	do "!!SHAREDIR!!/vmm.pm";
+	die "Couldn't load vmm.pm: $!\n"
+		if $!;
+	die "Couldn't parse vmm.pm: $@\n"
+		if $@;
+	import vmm;
+}
+
+use strict;
+use warnings;
+
+my $program;
+my $vmx;
+
+sub check_runnable {
+	my $dent;
+
+	fail "Cannot resume: parcel already suspended with $SUSPENDED"
+		if $SUSPENDED ne "no" and $SUSPENDED ne "vmware";
+	if (defined $COMMAND) {
+		$program = $COMMAND;
+		fail "$program invalid or not executable"
+			unless have_program $program;
+	} else {
+		foreach my $prog ('vmplayer', 'vmware') {
+			if (have_program $prog) {
+				$program = $prog;
+				last;
+			}
+		}
+		fail "VMware not found"
+			unless defined $program;
+	}
+	undef $vmx;
+	opendir DIR, $CFGDIR
+		or fail "Couldn't read cfg directory";
+	while ($dent = readdir(DIR)) {
+		next if $dent !~ /\.vmx$/;
+		fail "Too many VMX files in $CFGDIR"
+			if defined $vmx;
+		$vmx = "$CFGDIR/$dent";
+	}
+	closedir DIR;
+	fail "No VMX files in $CFGDIR"
+		unless defined $vmx;
+}
+
+sub info {
+	$VMNAME = "VMware";
+	check_runnable;
+}
+
+sub run {
+	my $ret;
+	my $opts;
+
+	$opts = ($FULLSCREEN eq "yes" ? "-X" : "");
+	check_runnable;
+	{
+		local $ENV{'LD_PRELOAD'} = "libvdisk.so.0";
+		local $ENV{'VDISK_DEVICE'} = $DISK;
+		$ret = run_program("$program $opts $vmx");
+	}
+	fail "Couldn't run $program"
+		if $ret == -1;
+
+	$SUSPENDED = "vmware";
+	opendir DIR, $CFGDIR
+		or fail "Couldn't read cfg directory";
+	if (grep(/\.vmem$/, readdir(DIR))) {
+		$SUSPENDED = "vmware";
+	} else {
+		$SUSPENDED = "no";
+	}
+	closedir DIR;
+	fail "$program returned $ret"
+		if $ret;
+}
+
+main;

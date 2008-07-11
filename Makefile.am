@@ -1,5 +1,5 @@
 if WANT_CLIENT
-CLIENTDIRS = client parcelkeeper conf
+CLIENTDIRS = client parcelkeeper conf vmm
 endif
 
 if WANT_SERVER

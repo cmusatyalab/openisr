@@ -210,5 +210,6 @@ AC_CONFIG_FILES([Makefile
                  parcelkeeper/Makefile
                  sqlite/Makefile
                  sha1/GNUmakefile
-                 tools/Makefile])
+                 tools/Makefile
+                 vmm/Makefile])
 AC_OUTPUT

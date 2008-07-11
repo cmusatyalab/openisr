@@ -1,0 +1,54 @@
+#!!!PERLPATH!!
+
+BEGIN {
+	do "!!SHAREDIR!!/vmm.pm";
+	die "Couldn't load vmm.pm: $!\n"
+		if $!;
+	die "Couldn't parse vmm.pm: $@\n"
+		if $@;
+	import vmm;
+}
+
+use Cwd qw/realpath/;
+use strict;
+use warnings;
+
+my $program;
+
+sub check_runnable {
+	if (defined $COMMAND) {
+		$program = $COMMAND;
+		fail "$program invalid or not executable"
+			unless have_program $program;
+	} else {
+		foreach my $prog ('bash', 'sh') {
+			if (have_program $prog) {
+				$program = $prog;
+				last;
+			}
+		}
+		fail "No executable shell found"
+			unless defined $program;
+	}
+}
+
+sub info {
+	$VMNAME = "shell";
+	check_runnable;
+}
+
+sub run {
+	my $dev;
+	my $ret;
+
+	check_runnable;
+
+	$dev = realpath($DISK);
+	print STDERR "Block device: $dev\n";
+
+	$ret = run_program($program);
+	fail "$program returned $ret"
+		if $ret;
+}
+
+main;

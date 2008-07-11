@@ -145,6 +145,7 @@ sub release_lock ($);
 sub release_locks ();
 sub exit_handler ($);
 sub srun ($$%);
+sub run_vmm ($$);
 sub parcelkeeper_cmd ($$);
 sub run_parcelkeeper ($$);
 sub upload ();
@@ -173,6 +174,7 @@ my $bwlimit;         # Bandwidth limit (KBytes/sec) in ci and sync
 my $forceflag = 0;   # Force release of lock in cleanclient()
 my $do_splice = 0;   # checkp: Restore invalid chunks from prev-keyring
 my $unsafe_opt;      # Does the user want us to disable fsync() in PK?
+my $vmm;             # Override default VMM driver
 
 # General global state, mostly about the parcel we are working with
 my $progname;        # $0 without the directory part
@@ -340,6 +342,7 @@ $result = GetOptions(
 		     "F|no-fullscreen"=> sub { $fullscreen = 0 },
 		     "l|long"         => \$longflag,
 		     "L|longvers=i"   => \$longvers,
+		     "m|vmm=s"        => \$vmm,
 		     "q|quiet"        => sub { $verbose = 0 },
 		     "r|rollback=i"   => \$version,
 		     "s|server=s"     => \$server,
@@ -801,19 +804,18 @@ sub checkout () {
 # run - Execute a parcel on the client
 #
 sub run () {
-    my $target;
-    my @files;
-    my $dirname;
-    my $cfgfile;  # VMware configuration file
-    my $numfiles;
     my $iters;
-    my $sigset;
-    my $vmware_opts = "";
     my $pk_pid;
     my $dirtometer_pid;
     my $devnode;
+    my %results;
+    my $vmname;
+    my $err;
+    my $memtype;
     
+    my $driver = (defined $vmm) ? $vmm : $cfg{'VMM'};
     my $pkcmd = LIBDIR . "/parcelkeeper";
+    my $suspflag = "$parceldir/cfg/suspended";
 
     # Block receipt of the SIGTSTP (ctrl-z)
     block_sigtstp();
@@ -834,21 +836,35 @@ sub run () {
     # Reset the consistent dirty cache flag, since any temporary dirty
     # cache directory is about to become inconsistent with the local cache.
     unlink($cdcache_file);
+    
+    # Find out what memory image type we have.
+    if (-e $suspflag) {
+	open(SUSP, $suspflag)
+	    or unix_errexit("Couldn't read $suspflag");
+	$memtype = <SUSP>;
+	chomp $memtype;
+	close SUSP;
+    } else {
+	# Compatibility with old versions of OpenISR
+	$memtype = "vmware";
+    }
+
+    # See if the VMM plugin thinks the parcel is runnable.
+    {
+	local $ENV{'UUID'} = $cfg{'UUID'};
+	local $ENV{'CFGDIR'} = "$parceldir/cfg";
+	local $ENV{'SUSPENDED'} = $memtype;
+	%results = run_vmm($driver, 'info');
+    }
+    $vmname = $results{'VMM'} ? $results{'VMM'} : "UnknownVMM";
+    $err = $results{'RUNNABLE_REASON'} ? $results{'RUNNABLE_REASON'} :
+    			"Unknown error";
+    errexit("$vmname not runnable: $err")
+        if !defined $results{'RUNNABLE'} or $results{'RUNNABLE'} ne "yes";
 
     print("Running disconnected...\n")
 	if $disconnected and $verbose;
 
-    # Make sure there is exactly one VMware config file
-    opendir(DIR, "$parceldir/cfg")
-	or unix_errexit("Unable to open $parceldir/cfg");
-    @files = grep(/\.vmx$/, readdir(DIR));
-    closedir(DIR);
-    $numfiles = @files;
-    if ($numfiles != 1) {
-	errexit("Found $numfiles virtual machine config files, but expected exactly one.");
-    }
-    $cfgfile = $files[0];
-    
     # See whether the parcel is safe to run
     if (check_damaged_cache()) {
     	print RED, "The local cache for $parcel is damaged.  You will not be able to check in.\n", RESET;
@@ -898,18 +914,36 @@ sub run () {
 	} 
     }
 
-    # Launch VMware
-    print "Launching VMware...\n"
+    # Launch VMM
+    print "Launching $vmname...\n"
 	if $verbose;
-    if ($fullscreen) {
-        $vmware_opts .= " -X";
+    {
+	local $ENV{'UUID'} = $cfg{'UUID'};
+	local $ENV{'CFGDIR'} = "$parceldir/cfg";
+	local $ENV{'DISK'} = $devnode;
+	local $ENV{'MEM'} = $cfg{'MEM'}
+	    if exists $cfg{'MEM'};
+	local $ENV{'FULLSCREEN'} = $fullscreen ? "yes" : "no";
+	local $ENV{'SUSPENDED'} = $memtype;
+	local $ENV{'COMMAND'} = $syscfg{"$driver.command"}
+	    if exists $syscfg{"$driver.command"};
+	%results = run_vmm($driver, 'run');
     }
-    mysystem("LD_PRELOAD=libvdisk.so.0 VDISK_DEVICE=$devnode $syscfg{vmcommand} $vmware_opts $parceldir/cfg/$cfgfile") == 0
-	or system_errexit("VMware terminated abnormally.");
 
-    # Wait here until the user suspends VMware
-    print "Shutting down VMware.\n"
+    # Wait here until the VMM exits
+    print "Shutting down $vmname.\n"
 	if $verbose;
+    $err = $results{'ERROR'} ? $results{'ERROR'} : "Unknown error";
+    err("$vmname returned error: $err")
+        if defined $results{'SUCCESS'} and $results{'SUCCESS'} ne "yes";
+    
+    # Write out the new memory image type
+    if (defined $results{'SUSPENDED'} and open(SUSP, ">", $suspflag)) {
+	print SUSP $results{'SUSPENDED'} . "\n";
+	close SUSP;
+    } else {
+	err("Couldn't save new memory image type");
+    }
     
     # Signal Parcelkeeper to shut down and wait until it is gone
     print "Shutting down Parcelkeeper (pid=$pk_pid)"
@@ -1951,6 +1985,36 @@ sub srun ($$%) {
     return $ret;
 }
 
+#
+# run_vmm - Run the VMM driver
+#
+sub run_vmm ($$) {
+    my $driver = shift;
+    my $mode = shift;
+
+    my $cmd = SHAREDIR . "/vmm/$driver";
+    my %results;
+    my $key;
+    my $value;
+
+    errexit("Couldn't find driver for VMM '$driver'")
+        unless -x $cmd;
+
+    open(VMM, '-|', $cmd, $mode)
+        or errexit("Couldn't launch driver for VMM '$driver'");
+    while (<VMM>) {
+	($key, $value) = split /=/;
+	next unless defined $value;
+	chomp $value;
+	$results{$key} = $value;
+    }
+    close VMM;
+
+    errexit("VMM driver '$driver' returned $?")
+        if $?;
+    return %results;
+}
+
 sub fcntl_lock ($$$) {
     my $fh = shift;
     my $type = shift;
@@ -2291,11 +2355,6 @@ sub parse_parcelcfg ($) {
         errexit("Parcel server/userid/name doesn't match parcel.cfg for parcel $userid/$parcel.");
     }
     
-    # Make sure we support this VMM
-    unless (exists $cfg{VMM} and $cfg{VMM} eq "vmware") {
-	errexit("Unknown or missing VMM type in parcel.cfg for parcel $userid/$parcel.");
-    }
-
     # Every read and write path gets appended with the userid and parcel
     $cfg{RPATH} .= "/$userid/$parcel";
     $cfg{WPATH} .= "/$userid/$parcel";
@@ -3008,7 +3067,7 @@ sub usage ($) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR server (once per X session only)\n";
 	print "  ls         List info about your parcels (parcel, -lL optional)\n";
- 	print "  resume     Checkout (if necessary) and run a parcel (-cdFrxX optional)\n";
+ 	print "  resume     Checkout (if necessary) and run a parcel (-cdFmrxX optional)\n";
 	print "  checkin    Sync parcel to server and check it in (-bxX optional)\n";
 	print "  passwd     Change your ISR password on the server\n";
 	print "  help       Print help message\n";
@@ -3034,9 +3093,10 @@ sub usage ($) {
     print "  -d,--disconnected  Run disconnected (after hoarding) [checkout, resume]\n";
     print "  -e,--remote        Perform action on server rather than client [checkp]\n";
     print "  -f,--force         Release parcel lock even if we don't hold it [clean]\n";
-    print "  -F,--no-fullscreen Start VMware in windowed mode [resume]\n";
+    print "  -F,--no-fullscreen Start VMM in windowed mode [resume]\n";
     print "  -l,--long          Long listing [ls, lshoard, stat]\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls]\n";
+    print "  -m,--vmm           Override default VMM for this parcel\n";
     print "  -q,--quiet         Run silently (except if things go wrong)\n";
     print "  -r,--rollback      Rollback to or check version [checkout, checkp, resume]\n";
     print "  -s,--server        Server domain name (optional)\n";

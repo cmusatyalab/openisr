@@ -12,9 +12,8 @@ server = endurance.isr.cs.cmu.edu
 # login name
 userid = 
 
-# VMware command (could be 'vmware' or 'vmplayer' or some other VMM)
-# might have different flags for different versions
-vmcommand = vmplayer
+# To override the default command used to start a particular VMM, provide an
+# entry of the form "<vmm>.command = <command>".
 
 # Vulpes logging mask
 logmask = info,error,stats,slow
