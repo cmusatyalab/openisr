@@ -50,11 +50,8 @@ sub deluser ($);
 sub init_parceldir ($$);
 sub finalize_parceldir ($$);
 sub gen_uuid ();
-sub gen_vmx ($$$);
-sub gen_vmdk ($$$);
-sub filter_cfgdir ($$$);
 sub copyparcel ($$$$);
-sub makeparcel ($$$$);
+sub makeparcel ($$$$$);
 sub delparcel ($$);
 sub prune ($$$);
 sub getusage ();
@@ -85,6 +82,7 @@ my $retain;
 my $version;
 my $size;
 my $memsize;
+my $vmm;
 
 # Server configuration
 my %config = get_config();
@@ -96,6 +94,7 @@ Getopt::Long::Configure("no_ignore_case", "bundling_override");
 $result = GetOptions(
                      "h|help+"         => \$help,
                      "m|memsize=i"     => \$memsize,
+                     "M|vmm=s"         => \$vmm,
                      "p|parcel=s"      => \$parcel,
                      "P|srcparcel=s"   => \$srcparcel,
                      "r|retain=i"      => \$retain,
@@ -179,6 +178,8 @@ if ($command eq "makeparcel") {
         if (!$memsize);
     usage("Missing parcel size (-s)")
         if (!$size);
+    usage("Missing VMM type (-M)")
+        if (!$vmm);
 }
 
 if ($command eq "delparcel") {
@@ -226,7 +227,7 @@ elsif ($command eq "copyparcel") {
     copyparcel($userid, $parcel, $srcuserid, $srcparcel);
 }
 elsif ($command eq "makeparcel") {
-    makeparcel($userid, $parcel, $size, $memsize);
+    makeparcel($userid, $parcel, $size, $memsize, $vmm);
 }
 elsif ($command eq "delparcel") {
     delparcel($userid, $parcel);
@@ -542,137 +543,6 @@ sub gen_uuid () {
 }
 
 #
-# gen_vmx - Generate a new VMware VMX file given some information about it
-#
-sub gen_vmx ($$$) {
-    my $path = shift;
-    my $name = shift;
-    my $mem = shift;
-    
-    open(VMX, ">", $path)
-        or unix_errexit("Unable to write to $path");
-    print VMX <<EOF;
-config.version = "7"
-virtualHW.version = "6"
-displayName = "$name"
-guestOS = "other26xlinux"
-memsize = "$mem"
-ide0:0.present = "TRUE"
-ide0:0.fileName = "parcel.vmdk"
-ide0:0.deviceType = "rawDisk"
-ide0:1.present = "TRUE"
-ide0:1.deviceType = "cdrom-raw"
-ide0:1.autodetect = "TRUE"
-floppy0.present = "FALSE"
-Ethernet0.present = "TRUE"
-Ethernet0.connectionType = "nat"
-sound.present = "TRUE"
-sound.autodetect = "TRUE"
-usb.present = "TRUE"
-ehci.present = "TRUE"
-tools.remindInstall = "TRUE"
-undopoint.disableSnapshots = "TRUE"
-uuid.action = "keep"
-EOF
-    close(VMX);
-}
-
-#
-# gen_vmdk - Generate a new VMDK file given some information about it
-#
-sub gen_vmdk ($$$) {
-    my $path = shift;
-    my $diskpath = shift;
-    my $sectors = shift;
-    
-    my $cid = sprintf("%x", int(rand(0xffffffff)));
-    # Always round down
-    my $cyls = int($sectors / (16 * 63));
-    my $bioscyls = int($sectors / (255 * 63));
-    $cyls = 16383 if $cyls > 16383;
-    $bioscyls = 1024 if $bioscyls > 1024;
-    
-    open(VMDK, ">", $path)
-        or unix_errexit("Unable to write to $path");
-    print VMDK <<EOF;
-version=1
-CID=$cid
-parentCID=ffffffff
-createType="fullDevice"
-
-RW $sectors FLAT "$diskpath" 0
-
-ddb.virtualHWVersion = "6"
-ddb.geometry.cylinders = "$cyls"
-ddb.geometry.heads = "16"
-ddb.geometry.sectors = "63"
-ddb.geometry.biosCylinders = "$bioscyls"
-ddb.geometry.biosHeads = "255"
-ddb.geometry.biosSectors = "63"
-ddb.adapterType = "ide"
-EOF
-    close(VMDK);
-}
-
-#
-# filter_cfgdir - Clean up cloned cfg directory for newly-created parcel
-#
-sub filter_cfgdir ($$$) {
-    my $userid = shift;
-    my $parcel = shift;
-    my $path = shift;
-    
-    my $file;
-    my $line;
-    my $key;
-    my $value;
-    my $type;
-    
-    opendir(CFGDIR, $path)
-        or unix_errexit("Can't open directory $path");
-    while ($file = readdir(CFGDIR)) {
-	next if $file =~ /^\.{1,2}$/;
-	if ($file =~ /\.(WRITELOCK|lck|log)$|^vmware-core\.gz$/) {
-	    system("rm -rf $path/$file") == 0
-	        or system_errexit("Couldn't remove $path/$file");
-	    next;
-	}
-	if ($file =~ /\.(vmx|vmdk)$/) {
-	    $type = $1;
-	    open(OLD, "<", "$path/$file")
-	        or unix_errexit("Couldn't read $path/$file");
-	    open(NEW, ">", "$path/$file.new")
-	        or unix_errexit("Couldn't write $path/$file.new");
-	    while ($line = <OLD>) {
-		if ($line !~ /^([^=\s]+)\s*=\s*([^\n]+)\n$/) {
-		    print NEW $line;
-		    next;
-		}
-		($key, $value) = ($1, $2);
-		if ($type eq "vmx") {
-		    next if $key =~ /ethernet[0-9]+\.addressType/;
-		    next if $key =~ /ethernet[0-9]+\.generatedAddress/;
-		    next if $key =~ /uuid\.(location|bios)/;
-		    if ($key eq "displayName") {
-			print NEW "displayName = \"$userid/$parcel\"\n";
-		    } else {
-			print NEW $line;
-		    }
-		} else {
-		    next if $key =~ /ddb\.uuid/;
-		    print NEW $line;
-		}
-	    }
-	    close(OLD);
-	    close(NEW);
-	    rename("$path/$file.new", "$path/$file")
-	        or unix_errexit("Couldn't replace $path/$file");
-	}
-    }
-    closedir(CFGDIR);
-}
-
-#
 # copyparcel - Create a new parcel based on an existing one
 #             
 sub copyparcel ($$$$) {
@@ -688,7 +558,6 @@ sub copyparcel ($$$$) {
     my $dstkeyroot;
     my $uuid;
     my $umask;
-    my $tmpdir;
     my @files;
 
     my $srcpath = "$config{content_root}/$srcuserid/$srcparcel";
@@ -711,17 +580,10 @@ sub copyparcel ($$$$) {
     system("cp -R $srcpath/$lastver $parceldir/000001") == 0
 	or errexit("Unable to copy $srcpath/$lastver to $parceldir/000001");
 
-    # Update the cfg tarball and re-encrypt the destination with a new keyroot
-    $tmpdir = tempdir("cfg-XXXXXXXX", TMPDIR => 1, CLEANUP => 1)
-        or errexit("Couldn't create temporary directory");
+    # Re-encrypt the cfg tarball with a new keyroot
     $srckeyroot = get_value($srcparcelcfg, "KEYROOT");
     $dstkeyroot = keygen(KEYROOT_BYTES);
     decrypt($userid, $parcel, 1, $srckeyroot);
-    system("tar xzf $parceldir/000001/cfg.tgz -C $tmpdir") == 0
-        or errexit("Couldn't unpack cfg tarball");
-    filter_cfgdir($userid, $parcel, "$tmpdir/cfg");
-    system("tar czf $parceldir/000001/cfg.tgz -C $tmpdir cfg") == 0
-        or errexit("Couldn't repack cfg tarball");
     encrypt($userid, $parcel, 1, $dstkeyroot);
     
     # Write out the new parcel.cfg
@@ -757,11 +619,12 @@ sub copyparcel ($$$$) {
 #
 # makeparcel - Create a new, empty parcel
 #
-sub makeparcel ($$$$) {
+sub makeparcel ($$$$$) {
     my $userid = shift;      # Destination user id
     my $parcel = shift;      # Destination parcel name
     my $size = shift;        # Parcel size
     my $memsize = shift;     # Memory image size
+    my $vmm = shift;         # VMM type
 
     my $parcelcfg;
     my $parceldir;
@@ -872,9 +735,10 @@ sub makeparcel ($$$$) {
 	system("cp -r /etc/openisr/skel/* $parcelverdir/cfg") == 0
 	    or errexit("Couldn't copy /etc/openisr/skel");
     }
-    gen_vmdk("$parcelverdir/cfg/parcel.vmdk", "/dev/hdk",
-	        $numchunks * ($chunksize >> 9));
-    gen_vmx("$parcelverdir/cfg/parcel.vmx", "$userid/$parcel", $memsize);
+    open(SUSP, ">", "$parcelverdir/cfg/suspended")
+        or errexit("Couldn't create suspended flag");
+    print SUSP "no\n";
+    close SUSP;
     system("tar czf $parcelverdir/cfg.tgz -C $parcelverdir cfg") == 0
         or errexit("Couldn't generate cfg tarball");
     system("rm -rf $parcelverdir/cfg") == 0
@@ -894,7 +758,7 @@ sub makeparcel ($$$$) {
     print OUT <<EOF;
 VERSION = 3
 UUID = $uuid
-VMM = vmware
+VMM = $vmm
 CRYPTO = aes-sha1
 COMPRESS = zlib,lzf
 KEYROOT = $keyroot
@@ -908,6 +772,7 @@ MAXKB = $maxkb
 CHUNKSIZE = $chunksize
 NUMCHUNKS = $numchunks
 CHUNKSPERDIR = $chunksperdir
+MEM = $memsize
 EOF
     close OUT;
     umask($umask);
@@ -1065,7 +930,7 @@ sub usage {
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u).\n";
     print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P).\n";
-    print "  makeparcel Create an empty parcel from scratch (-u, -p, -m, -s).\n";
+    print "  makeparcel Create an empty parcel from scratch (-u, -p, -m, -s, -M).\n";
     print "  delparcel  Delete parcel from system (-u, -p).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
     print "  encrypt    Encrypt parcel version (-u, -p, -v).\n";
@@ -1077,6 +942,7 @@ sub usage {
     print "Options:\n";
     print "  -h,--help         Print help message (Try '-hh' for some concrete examples).\n";
     print "  -m,--memsize      Size of the parcel's memory image in MB.\n";
+    print "  -M,--vmm          Default VMM for the parcel.\n";
     print "  -p,--parcel       Parcel name (e.g., winxp).\n";
     print "  -P,--srcparcel    Source parcel name.\n";
     print "  -r,--retain       How many of the most recent versions to retain when pruning.\n";
@@ -1099,8 +965,8 @@ sub usage {
 	print BLUE, "# isr_admin copyparcel -u bovik -p winxp -U gold -Pgoldwinxp\n", RESET;
 	print "\n";
 	print RED, "makeparcel - ", RESET, "Create empty parcel debian, with 512 MB memory image and 8 GB\n";
-	print "disk, in $croot for existing user bovik\n";
-	print BLUE, "# isr_admin makeparcel -u bovik -p debian -m 512 -s 8G\n";
+	print "disk, using VMware as the VMM, in $croot for existing user bovik\n";
+	print BLUE, "# isr_admin makeparcel -u bovik -p debian -m 512 -s 8G -M vmware\n";
 	print "\n";
 	print RED, "delparcel - ", RESET, "Delete all data for parcel winxp belonging to existing user bovik\n";
 	print BLUE, "# isr_admin delparcel -u bovik -p winxp\n";
