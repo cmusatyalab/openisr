@@ -24,6 +24,8 @@ isr \- Internet Suspend/Resume client program
 .IR version ]
 .RB [ \-s
 .IR server ]
+.RB [ \-m
+.IR vmm ]
 .RB [ \-u
 .IR userid ]
 .RB [ \-L
@@ -381,7 +383,7 @@ account on your client host. (Use the local
 command for that.)  
 
 .TP
-.BI "isr resume " "parcel" " [-r " "oldversion" "] [-c] [-d] [-F] [-x] [-X]"
+.BI "isr resume " "parcel" " [-r " "oldversion" "] [-m " "vmm" "] [-c] [-d] [-F] [-x] [-X]"
 Checkout a 
 .I parcel
 (if necessary) and then run it. Any additional state that the parcel
@@ -418,7 +420,15 @@ command.  The
 .B -F 
 option causes the parcel to be resumed in a window rather than in
 full-screen mode, which can be useful for configuring the virtual
-machine monitor or for running multiple parcels at once.
+machine monitor or for running multiple parcels at once.  This option
+may be unavailable if the VMM does not support it.
+
+The
+.B -m
+option allows you to resume using a virtual machine monitor other than the
+default VMM for this parcel.  This will fail if the parcel includes a memory
+image written by an incompatible VMM, if the VMM is not properly installed
+on the client host, or if the guest OS does not support the target VMM.
 
 .TP
 .BI "isr rmhoard " parcel " [-x] [-X]"
@@ -567,6 +577,11 @@ Use the server
 overriding the default.
 .I name
 can be a fully qualified domain name or an IP address.
+
+.TP
+.BI -m/--vmm " vmm"
+Resume a parcel using a virtual machine monitor other than the parcel's
+default.
 
 .TP
 .BI -u/--user " userid"
