@@ -44,13 +44,186 @@ sub check_runnable {
 		$vmx = "$CFGDIR/$dent";
 	}
 	closedir DIR;
-	fail "No VMX files in $CFGDIR"
-		unless defined $vmx;
 }
 
 sub info {
 	$VMNAME = "VMware";
 	check_runnable;
+}
+
+sub new_vmdata {
+	# Old parcels don't have a MEM key in their parcel.cfgs.
+	# Pick a default.
+	$MEM = 512 unless defined $MEM;
+
+	my $cid = sprintf("%x", int(rand(0xffffffff)));
+	# Always round down
+	my $cyls = int($SECTORS / (16 * 63));
+	my $bioscyls = int($SECTORS / (255 * 63));
+	$cyls = 16383 if $cyls > 16383;
+	$bioscyls = 1024 if $bioscyls > 1024;
+
+	open(VMDK, ">", "$CFGDIR/vmware.vmdk")
+		or fail "Unable to write to $CFGDIR/vmware.vmdk";
+	print VMDK <<EOF;
+version=1
+CID=$cid
+parentCID=ffffffff
+createType="fullDevice"
+
+RW $SECTORS FLAT "/dev/hdk" 0
+
+ddb.virtualHWVersion = "6"
+ddb.geometry.cylinders = "$cyls"
+ddb.geometry.heads = "16"
+ddb.geometry.sectors = "63"
+ddb.geometry.biosCylinders = "$bioscyls"
+ddb.geometry.biosHeads = "255"
+ddb.geometry.biosSectors = "63"
+ddb.adapterType = "ide"
+EOF
+	close(VMDK);
+
+	open(VMX, ">", "$CFGDIR/vmware.vmx")
+		or fail "Unable to write to $CFGDIR/vmware.vmx";
+	print VMX <<EOF;
+config.version = "7"
+virtualHW.version = "6"
+displayName = "$NAME"
+guestOS = "other26xlinux"
+memsize = "$MEM"
+ide0:0.present = "TRUE"
+ide0:0.fileName = "vmware.vmdk"
+ide0:0.deviceType = "rawDisk"
+ide0:1.present = "TRUE"
+ide0:1.deviceType = "cdrom-raw"
+ide0:1.autodetect = "TRUE"
+floppy0.present = "FALSE"
+Ethernet0.present = "TRUE"
+Ethernet0.connectionType = "nat"
+sound.present = "TRUE"
+sound.autodetect = "TRUE"
+usb.present = "TRUE"
+ehci.present = "TRUE"
+tools.remindInstall = "TRUE"
+undopoint.disableSnapshots = "TRUE"
+uuid.action = "keep"
+EOF
+	close(VMX);
+	$vmx = "$CFGDIR/vmware.vmx";
+}
+
+sub new_uuid {
+	my $vmdk;
+	my $line;
+	my $key;
+	my $value;
+
+	open(OLD, "<", $vmx)
+		or fail "Couldn't read $vmx";
+	open(NEW, ">", "$vmx.new")
+		or fail "Couldn't write $vmx.new";
+	while ($line = <OLD>) {
+		if ($line !~ /^([^=\s]+)\s*=\s*([^\n]+)\n$/) {
+			print NEW $line;
+			next;
+		}
+		($key, $value) = ($1, $2);
+		next if $key =~ /ethernet[0-9]+\.addressType/;
+		next if $key =~ /ethernet[0-9]+\.generatedAddress/;
+		next if $key =~ /uuid\.(location|bios)/;
+		if ($key =~ /fileName$/ and $value =~ /.vmdk"$/) {
+			fail "Parcel associated with more than one VMDK; "
+						. "bailing out"
+				if defined $vmdk;
+			$vmdk = $value;
+			$vmdk =~ s/"//g;
+			$vmdk = "$CFGDIR/$vmdk";
+		}
+		if ($key eq "displayName") {
+			print NEW "displayName = \"$NAME\"\n";
+		} else {
+			print NEW $line;
+		}
+	}
+	close(OLD);
+	close(NEW);
+	rename("$vmx.new", $vmx)
+		or fail "Couldn't update $vmx";
+
+	open(OLD, "<", $vmdk)
+		or fail "Couldn't read $vmdk";
+	open(NEW, ">", "$vmdk.new")
+		or fail "Couldn't write $vmdk.new";
+	while ($line = <OLD>) {
+		if ($line !~ /^([^=\s]+)\s*=\s*([^\n]+)\n$/) {
+			print NEW $line;
+			next;
+		}
+		($key, $value) = ($1, $2);
+		next if $key =~ /ddb\.uuid/;
+		print NEW $line;
+	}
+	close(OLD);
+	close(NEW);
+	rename("$vmdk.new", $vmdk)
+		or fail "Couldn't update $vmdk";
+}
+
+sub update_cfg {
+	my $need_refresh = 0;
+	my $refreshed = 0;
+	my $old_id;
+	my $uufile = "$CFGDIR/uuid.vmware";
+
+	# First, some house-cleaning: remove old core files and logs
+	opendir(CDIR, $CFGDIR)
+		or fail "Can't read directory $CFGDIR";
+	foreach my $file (grep(/^(vmware(-core\.gz|.*\.log))|core$/,
+				readdir(CDIR))) {
+		unlink "$CFGDIR/$file"
+			or fail "Couldn't remove $CFGDIR/$file";
+	}
+	closedir(CDIR);
+
+	if (!defined $vmx) {
+		# This parcel has no VMX file.  Create a VMX and VMDK.
+		new_vmdata;
+		$refreshed = 1;
+	} elsif (-e $uufile) {
+		# This parcel has a UUID file.  Make sure it matches the
+		# current parcel's UUID.  If not, the parcel has been cloned,
+		# and we need to clean out unique identifiers in the VMX
+		# and VMDK.
+		open(UUFILE, $uufile)
+			or fail "Couldn't read $uufile";
+		$old_id = <UUFILE>;
+		chomp $old_id;
+		close UUFILE;
+		$need_refresh = 1
+			if $old_id ne $UUID;
+	} else {
+		# This parcel has no UUID file, which means it has only been
+		# used with older versions of OpenISR.  Update the VMware
+		# unique identifiers just to be safe.  (This used to be done
+		# in isr_admin copyparcel, but newer versions don't do this,
+		# and the parcel may have been cloned by newer versions.
+		# Also, older versions of isr_admin didn't do this either, so
+		# old parcels may have non-unique identifiers that we need
+		# to correct.)
+		$need_refresh = 1;
+	}
+
+	if ($need_refresh) {
+		new_uuid;
+		$refreshed = 1;
+	}
+	if ($refreshed) {
+		open(UUFILE, ">", $uufile)
+			or fail "Couldn't write $uufile";
+		print UUFILE "$UUID\n";
+		close UUFILE;
+	}
 }
 
 sub run {
@@ -59,6 +232,7 @@ sub run {
 
 	$opts = ($FULLSCREEN eq "yes" ? "-X" : "");
 	check_runnable;
+	update_cfg;
 	{
 		local $ENV{'LD_PRELOAD'} = "libvdisk.so.0";
 		local $ENV{'VDISK_DEVICE'} = $DISK;

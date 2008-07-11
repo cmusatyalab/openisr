@@ -918,9 +918,11 @@ sub run () {
     print "Launching $vmname...\n"
 	if $verbose;
     {
+	local $ENV{'NAME'} = "$userid/$parcel";
 	local $ENV{'UUID'} = $cfg{'UUID'};
 	local $ENV{'CFGDIR'} = "$parceldir/cfg";
 	local $ENV{'DISK'} = $devnode;
+	local $ENV{'SECTORS'} = ($cfg{'CHUNKSIZE'} / 512) * $cfg{'NUMCHUNKS'};
 	local $ENV{'MEM'} = $cfg{'MEM'}
 	    if exists $cfg{'MEM'};
 	local $ENV{'FULLSCREEN'} = $fullscreen ? "yes" : "no";
