@@ -1037,10 +1037,13 @@ sub discard () {
     mysystem("rm -rf $parceldir/cfg");
     unlink("$parceldir/keyring");
     
-    # Delete the local cache (which may not exist) and complain if we can't.
-    unlink("$parceldir/disk", "$parceldir/disk.idx");
-    errexit("Can't remove disk image")
-        if -e "$parceldir/disk" or -e "$parceldir/disk.idx";
+    # Delete the local cache and SQLite journals (if they exist) and complain
+    # if we can't.
+    foreach my $file (qw/keyring-journal disk disk.idx disk.idx-journal/) {
+	unlink("$parceldir/$file");
+	errexit("Can't remove parcel data")
+            if -e "$parceldir/$file";
+    }
 
     # Recreate the keyring and cfg directory
     build_cache() == 0
