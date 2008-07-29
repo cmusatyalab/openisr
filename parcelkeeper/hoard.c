@@ -664,7 +664,7 @@ pk_err_t hoard_sync_refs(int from_cache)
 		return PK_SUCCESS;
 
 again:
-	ret=begin(state.db);
+	ret=begin_immediate(state.db);
 	if (ret)
 		return ret;
 	if (from_cache)

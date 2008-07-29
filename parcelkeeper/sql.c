@@ -432,10 +432,10 @@ again_detach:
 	return PK_SUCCESS;
 }
 
-pk_err_t _begin(sqlite3 *db, const char *caller)
+pk_err_t _begin(sqlite3 *db, const char *caller, int immediate)
 {
 again:
-	if (query(NULL, db, "BEGIN", NULL)) {
+	if (query(NULL, db, immediate ? "BEGIN IMMEDIATE" : "BEGIN", NULL)) {
 		if (query_busy())
 			goto again;
 		pk_log_sqlerr("Couldn't begin transaction on behalf of %s()",
