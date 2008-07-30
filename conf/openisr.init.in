@@ -4,6 +4,7 @@
 # Required-Start:	$local_fs $remote_fs
 # Required-Stop:	$local_fs $remote_fs
 # Default-Start:	S
+# Default-Stop:		
 # Short-Description:	Load kernel modules for the OpenISR system
 ### END INIT INFO
 # chkconfig: 2345 20 20
