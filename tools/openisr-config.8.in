@@ -8,7 +8,7 @@
 .\" REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES RECIPIENT'S
 .\" ACCEPTANCE OF THIS AGREEMENT
 .\"
-.TH OPENISR-CONFIG 8 "October 24, 2007" "OpenISR !!VERSION!!" "Administrative Commands"
+.TH OPENISR-CONFIG 8 "" "OpenISR !!VERSION!!" "Administrative Commands"
 
 .SH NAME
 openisr-config - build and install the OpenISR kernel modules
