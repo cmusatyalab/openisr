@@ -817,6 +817,7 @@ sub run () {
     my $sigset;
     my $vmware_opts = "";
     my $pk_pid;
+    my $dirtometer_pid;
     my $devnode;
     
     my $pkcmd = LIBDIR . "/parcelkeeper";
@@ -885,6 +886,24 @@ sub run () {
 	errexit("Timed out waiting for creation of device node $devnode")
 	    if (++$iters == 150);
     };
+    
+    # Run dirtometer, if requested
+    if ($syscfg{'dirtometer'}) {
+	print "Launching dirtometer...\n"
+	    if $verbose;
+	$dirtometer_pid = fork();
+	if (defined $dirtometer_pid) {
+	    if ($dirtometer_pid == 0) {
+		$no_shutdown = 1;
+		exec(SHAREDIR . "/dirtometer $cfg{UUID}")
+		    or unix_errexit("Unable to exec dirtometer");
+	    }
+	    # We never reap.  Eventually we'll exit and init will reap the
+	    # zombie.
+	} else {
+	    unix_err("Unable to fork for dirtometer");
+	} 
+    }
 
     # Launch VMware
     print "Launching VMware...\n"
