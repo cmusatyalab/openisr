@@ -10,6 +10,7 @@ To run:
 - Development headers for your Linux kernel version
 - libcurl >= 7.12.3 and curl command-line utility
 - Perl
+- gtk2-perl, if dirtometer will be used
 - OpenSSL libraries and command-line utility
 - OSSP uuid library (see note below)
 - udev
