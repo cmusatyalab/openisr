@@ -86,7 +86,7 @@ sub build_source () {
 
 sub build_debian () {
 	status "Building and installing kernel modules...";
-	system("module-assistant auto-install openisr") == 0
+	system("module-assistant auto-install -t openisr") == 0
 		or fail "Couldn't build and install kernel modules";
 }
 
