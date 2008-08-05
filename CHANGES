@@ -1,3 +1,23 @@
+====== 0.9.3 (2008-08-05)
+
+------ Client changes
+
+- Drop support for kernels older than 2.6.15
+- Drop support for distributions with pre-2.6 headers in /usr/include/linux
+- Add support for 2.6.26 kernel
+- Add configuration and command-line options to disable fsync() calls
+- Add dirtometer (needs gtk2-perl)
+- Add configuration option to automatically start dirtometer at resume time
+- Fix openisr-config on newer distributions when installing from source
+- Change shared memory interface to mark chunks dirtied by previous sessions
+- Minor runtime performance optimizations
+- Improve documentation of installation requirements
+- Various minor fixes
+
+------ Server changes
+
+- Fix "isr ls" when $content_root/$userid directory is not writable
+
 ====== 0.9.2 (2008-06-20)
 
 ------ Client changes
