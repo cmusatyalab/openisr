@@ -9,10 +9,11 @@ To run:
 - Linux kernel (versions 2.6.15 through 2.6.26 supported)
 - Development headers for your Linux kernel version
 - libcurl >= 7.12.3 and curl command-line utility
+- OpenSSL libraries and command-line utility
+- zlib
+- OSSP uuid library (see note below)
 - Perl
 - gtk2-perl, if dirtometer will be used
-- OpenSSL libraries and command-line utility
-- OSSP uuid library (see note below)
 - udev
 - ssh
 - rsync
@@ -24,7 +25,7 @@ To run:
 
 To build from a source tarball:
 - All of the above, plus:
-- Development headers for glibc, libcurl, OpenSSL, and the OSSP uuid library
+- Development headers for glibc, libcurl, OpenSSL, zlib, and libossp-uuid
 - pkg-config
 
 To build from the Git repository:
