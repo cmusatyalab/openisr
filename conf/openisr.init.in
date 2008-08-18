@@ -6,6 +6,7 @@
 # Default-Start:	S
 # Default-Stop:		
 # Short-Description:	Load kernel modules for the OpenISR system
+# Description:		Load kernel modules for the OpenISR system
 ### END INIT INFO
 # chkconfig: 2345 20 20
 # description: Load kernel modules for the OpenISR system
