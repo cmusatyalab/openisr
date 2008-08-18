@@ -53,6 +53,25 @@ probe_module() {
 	return 0
 }
 
+status_module() {
+	local name="$1"
+	local builtin_file="$2"
+	local ret
+
+	if lsmod | grep -q "^$name " ; then
+		result="Loaded"
+		ret=0
+	elif [ -n "$builtin_file" ] && grep -q "$name" $builtin_file ; then
+		result="Built-in"
+		ret=0
+	else
+		result="Unloaded"
+		ret=1
+	fi
+	printf "Module %-10s: %s\n" "$name" "$result"
+	return $ret
+}
+
 do_start() {
 	local ret=0
 	
@@ -85,6 +104,16 @@ do_stop() {
 	return $ret
 }
 
+do_status() {
+	local ret=0
+	
+	status_module openisr || ret=1
+	status_module loop /proc/devices || ret=1
+	[ "$arch" != "none" ] && status_module "aes_$arch" /proc/crypto
+	[ "$arch" != "none" ] && status_module "sha1_$arch" /proc/crypto
+	return $ret
+}
+
 arch=`get_mod_arch`
 case "$1" in
 	start)
@@ -97,8 +126,11 @@ case "$1" in
 		do_stop || exit 1
 		do_start || exit 1
 		;;
+	status)
+		do_status || exit 3
+		;;
 	*)
-		echo "Usage: $SCRIPTNAME {start|stop|restart|force-reload}" >&2
+		echo "Usage: $SCRIPTNAME {start|stop|restart|force-reload|status}" >&2
 		exit 1
 		;;
 esac
