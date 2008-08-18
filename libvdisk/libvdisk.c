@@ -31,17 +31,6 @@
 #undef DEBUG
 #define MAXPATHLEN 512
 
-static int (*open_real)(const char *pathname, int flags, ...);
-static int (*ioctl_real)(int fd, int request, ...);
-static int (*close_real)(int fd);
-static int (*dup_real)(int oldfd);
-static int (*dup2_real)(int oldfd, int newfd);
-static int (*fcntl_real)(int fd, int cmd, ...);
-static int (*__xstat_real)(int ver, const char *filename, struct stat *buf);
-static int (*__xstat64_real)(int ver, const char *filename, struct stat *buf);
-static int (*__lxstat_real)(int ver, const char *filename, struct stat *buf);
-static int (*__lxstat64_real)(int ver, const char *filename, struct stat *buf);
-
 static struct {
 	unsigned *map;
 	unsigned words;
@@ -66,13 +55,11 @@ static int verbose=0;
 
 static void _get_symbol(void **dest, char *name)
 {
+	if (*dest != NULL)
+		return;
 	*dest=dlsym(RTLD_NEXT, name);
-	if (*dest == NULL) {
+	if (*dest == NULL)
 		warn("Failed to get symbol: %s: %s", name, dlerror());
-		/* Cut our losses, since we're just going to fail horribly
-		   later on */
-		exit(-1);
-	}
 }
 #define GET_SYMBOL(foo) _get_symbol((void**)&foo ## _real, #foo)
 
@@ -86,16 +73,6 @@ static void __attribute__((constructor)) libvdisk_init(void)
 	
 	if (verbose)
 		warn("Initializing, revision " RCS_REVISION);
-	GET_SYMBOL(open);
-	GET_SYMBOL(ioctl);
-	GET_SYMBOL(close);
-	GET_SYMBOL(dup);
-	GET_SYMBOL(dup2);
-	GET_SYMBOL(fcntl);
-	GET_SYMBOL(__xstat);
-	GET_SYMBOL(__xstat64);
-	GET_SYMBOL(__lxstat);
-	GET_SYMBOL(__lxstat64);
 	
 	tmp=getenv("VDISK_DEVICE");
 	if (tmp != NULL) {
@@ -199,7 +176,10 @@ static int remap(const char **pathname)
 
 static int open_wrapper(const char *pathname, int flags, mode_t mode)
 {
+	static int (*open_real)(const char *pathname, int flags, ...);
 	int ret, err, remapped;
+	
+	GET_SYMBOL(open);
 	remapped=remap(&pathname);
 	ret=open_real(pathname, flags, mode);
 	err=errno;
@@ -220,24 +200,37 @@ enum stat_type {
 static int stat_wrapper(int ver, const char *filename, void *buf,
 			enum stat_type type)
 {
+	static int (*__xstat_real)(int ver, const char *filename,
+				struct stat *buf);
+	static int (*__xstat64_real)(int ver, const char *filename,
+				struct stat *buf);
+	static int (*__lxstat_real)(int ver, const char *filename,
+				struct stat *buf);
+	static int (*__lxstat64_real)(int ver, const char *filename,
+				struct stat *buf);
 	int ret, err;
 	char *typename;
+	
 	remap(&filename);
 	switch (type) {
 	case STAT:
 		typename="stat";
+		GET_SYMBOL(__xstat);
 		ret=__xstat_real(ver, filename, buf);
 		break;
 	case STAT64:
 		typename="stat64";
+		GET_SYMBOL(__xstat64);
 		ret=__xstat64_real(ver, filename, buf);
 		break;
 	case LSTAT:
 		typename="lstat";
+		GET_SYMBOL(__lxstat);
 		ret=__lxstat_real(ver, filename, buf);
 		break;
 	case LSTAT64:
 		typename="lstat64";
+		GET_SYMBOL(__lxstat64);
 		ret=__lxstat64_real(ver, filename, buf);
 		break;
 	default:
@@ -324,7 +317,10 @@ int open64(const char *pathname, int flags, ...)
 
 int close(int fd)
 {
+	static int (*close_real)(int fd);
 	int ret, err;
+
+	GET_SYMBOL(close);
 	ret=close_real(fd);
 	err=errno;
 	debug("Closing %d => %d", fd, ret);
@@ -337,7 +333,10 @@ int close(int fd)
 
 int dup(int oldfd)
 {
+	static int (*dup_real)(int oldfd);
 	int ret, err;
+
+	GET_SYMBOL(dup);
 	ret=dup_real(oldfd);
 	err=errno;
 	debug("dup %d => %d", oldfd, ret);
@@ -349,7 +348,10 @@ int dup(int oldfd)
 
 int dup2(int oldfd, int newfd)
 {
+	static int (*dup2_real)(int oldfd, int newfd);
 	int ret, err;
+
+	GET_SYMBOL(dup2);
 	ret=dup2_real(oldfd, newfd);
 	err=errno;
 	debug("dup2 %d => %d", oldfd, ret);
@@ -361,8 +363,11 @@ int dup2(int oldfd, int newfd)
 
 int fcntl(int fd, int cmd, ...)
 {
+	static int (*fcntl_real)(int fd, int cmd, ...);
 	unsigned long arg;
 	int ret, err;
+
+	GET_SYMBOL(fcntl);
 	get_last_arg(cmd, unsigned long, arg);
 	ret=fcntl_real(fd, cmd, arg);
 	err=errno;
@@ -401,12 +406,14 @@ int __lxstat64(int ver, const char *filename, struct stat64 *buf)
 /* native CD-ROM driver fails without fd tracking */
 int ioctl(int fd, unsigned long request, ...)
 {
+	static int (*ioctl_real)(int fd, int request, ...);
 	void *arg;
 	int ret, err=0;
 	char *name;
 	char buf[12];
 	uint64_t size;  /* bytes */
 	
+	GET_SYMBOL(ioctl);
 	get_last_arg(request, void *, arg);
 	if (!fd_active(fd))
 		return ioctl_real(fd, request, arg);
