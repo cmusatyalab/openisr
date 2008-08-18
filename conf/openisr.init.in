@@ -32,9 +32,9 @@ get_mod_arch() {
 }
 
 probe_module() {
-	name="$1"
-	direction="$2"
-	required="$3"
+	local name="$1"
+	local direction="$2"
+	local required="$3"
 	
 	[ "$direction" = "remove" ] && flags="-r" || flags=""
 	if modprobe $flags "$name" 2>/dev/null ; then
@@ -53,8 +53,7 @@ probe_module() {
 }
 
 do_start() {
-	arch=`get_mod_arch`
-	ret=0
+	local ret=0
 	
 	echo -n "Loading OpenISR kernel modules:"
 	if probe_module openisr insert required
@@ -70,8 +69,7 @@ do_start() {
 }
 
 do_stop() {
-	arch=`get_mod_arch`
-	ret=0
+	local ret=0
 	
 	echo -n "Unloading OpenISR kernel modules:"
 	if probe_module openisr remove required
@@ -86,6 +84,7 @@ do_stop() {
 	return $ret
 }
 
+arch=`get_mod_arch`
 case "$1" in
 	start)
 		do_start || exit 1
