@@ -23,9 +23,51 @@ my $img;
 my %config;
 my $uuid;
 my $numchunks;
+my $confdir = "$ENV{'HOME'}/.isr/dirtometer";
+my $conffile;
 
 sub optimal_height {
 	return ($numchunks + $config{'width'} - 1) / $config{'width'};
+}
+
+sub read_config {
+	my $key;
+	my $value;
+
+	open(CONF, "<", $conffile)
+		or return 0;
+	while (<CONF>) {
+		chomp;
+		($key, $value) = split /=/;
+		if (!defined $value) {
+			undef %config;
+			print "Error parsing config file\n";
+			return 0;
+		}
+		$config{$key} = $value;
+	}
+	close CONF;
+	return 1;
+}
+
+sub write_config {
+	my $key;
+
+	if (! -d $confdir and ! mkdir $confdir) {
+		print "Couldn't create directory $confdir\n";
+		return;
+	}
+	unless (open(CONF, ">", $conffile)) {
+		print "Couldn't write config file\n";
+		return;
+	}
+	foreach $key (sort keys %config) {
+		print CONF "$key=$config{$key}\n";
+	}
+	unless (close CONF) {
+		print "Couldn't write config file\n";
+		return;
+	}
 }
 
 sub init {
@@ -40,8 +82,6 @@ sub init {
 		or die "Couldn't open $file";
 	$wd = Gtk2::Window->new('toplevel');
 	$wd->set_title("Dirtometer for parcel $uuid");
-	$config{'keep_above'} = 1;
-	$wd->set_keep_above($config{'keep_above'});
 	$img = Gtk2::Image->new;
 	$wd->add($img);
 	$wd->show_all;
@@ -50,8 +90,13 @@ sub init {
 	$wd->signal_connect(key_press_event => *keypress);
 
 	$numchunks = stat(*SHM)->size;
-	$config{'width'} = 200;
-	$config{'height'} = optimal_height;
+	if (!read_config) {
+		# Set defaults
+		$config{'width'} = 200;
+		$config{'height'} = optimal_height;
+		$config{'keep_above'} = 1;
+	}
+	$wd->set_keep_above($config{'keep_above'});
 	$wd->resize($config{'width'}, $config{'height'});
 	$geo = Gtk2::Gdk::Geometry->new;
 	$geo->min_height(10);
@@ -155,9 +200,11 @@ if (@ARGV != 1) {
 	exit 1;
 }
 $uuid = $ARGV[0];
+$conffile = "$confdir/$uuid";
 
 init;
 update_img;
 Glib::Timeout->add(500, *update_img);
 Gtk2->main;
+write_config;
 exit 0;
