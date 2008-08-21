@@ -35,19 +35,28 @@ sub read_config {
 	my $value;
 
 	open(CONF, "<", $conffile)
-		or return 0;
+		or return;
 	while (<CONF>) {
 		chomp;
 		($key, $value) = split /=/;
 		if (!defined $value) {
 			undef %config;
 			print "Error parsing config file\n";
-			return 0;
+			last;
 		}
 		$config{$key} = $value;
 	}
 	close CONF;
-	return 1;
+}
+
+sub init_config {
+	read_config;
+	$config{'width'} = 200
+		unless defined $config{'width'};
+	$config{'height'} = optimal_height
+		unless defined $config{'height'};
+	$config{'keep_above'} = 1
+		unless defined $config{'keep_above'};
 }
 
 sub write_config {
@@ -90,12 +99,7 @@ sub init {
 	$wd->signal_connect(key_press_event => *keypress);
 
 	$numchunks = stat(*SHM)->size;
-	if (!read_config) {
-		# Set defaults
-		$config{'width'} = 200;
-		$config{'height'} = optimal_height;
-		$config{'keep_above'} = 1;
-	}
+	init_config;
 	$wd->set_keep_above($config{'keep_above'});
 	$wd->resize($config{'width'}, $config{'height'});
 	$geo = Gtk2::Gdk::Geometry->new;
