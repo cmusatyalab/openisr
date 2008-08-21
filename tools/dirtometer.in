@@ -91,6 +91,7 @@ sub init {
 		or die "Couldn't open $file";
 	$wd = Gtk2::Window->new('toplevel');
 	$wd->set_title("Dirtometer for parcel $uuid");
+	$wd->set_gravity('static');
 	$img = Gtk2::Image->new;
 	$wd->add($img);
 	$wd->show_all;
@@ -100,6 +101,8 @@ sub init {
 
 	$numchunks = stat(*SHM)->size;
 	init_config;
+	$wd->move($config{'x'}, $config{'y'})
+		if defined $config{'x'} and defined $config{'y'};
 	$wd->set_keep_above($config{'keep_above'});
 	$wd->resize($config{'width'}, $config{'height'});
 	$geo = Gtk2::Gdk::Geometry->new;
@@ -113,6 +116,7 @@ sub configure {
 	my $event = shift;
 
 	($config{'width'}, $config{'height'}) = ($event->width, $event->height);
+	($config{'x'}, $config{'y'}) = ($event->x, $event->y);
 	update_img();
 	return 0;
 }
