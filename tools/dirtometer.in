@@ -20,14 +20,12 @@ use warnings;
 my $wd;
 my $img;
 
-my $width;
-my $height;
+my %config;
 my $uuid;
 my $numchunks;
-my $keep_above = 1;
 
 sub optimal_height {
-	return ($numchunks + $width - 1) / $width;
+	return ($numchunks + $config{'width'} - 1) / $config{'width'};
 }
 
 sub init {
@@ -42,7 +40,8 @@ sub init {
 		or die "Couldn't open $file";
 	$wd = Gtk2::Window->new('toplevel');
 	$wd->set_title("Dirtometer for parcel $uuid");
-	$wd->set_keep_above($keep_above);
+	$config{'keep_above'} = 1;
+	$wd->set_keep_above($config{'keep_above'});
 	$img = Gtk2::Image->new;
 	$wd->add($img);
 	$wd->show_all;
@@ -51,9 +50,9 @@ sub init {
 	$wd->signal_connect(key_press_event => *keypress);
 
 	$numchunks = stat(*SHM)->size;
-	$width = 200;
-	$height = optimal_height;
-	$wd->resize($width, $height);
+	$config{'width'} = 200;
+	$config{'height'} = optimal_height;
+	$wd->resize($config{'width'}, $config{'height'});
 	$geo = Gtk2::Gdk::Geometry->new;
 	$geo->min_height(10);
 	$geo->min_width(10);
@@ -64,7 +63,7 @@ sub configure {
 	my $widget = shift;
 	my $event = shift;
 
-	($width, $height) = ($event->width, $event->height);
+	($config{'width'}, $config{'height'}) = ($event->width, $event->height);
 	update_img();
 	return 0;
 }
@@ -79,12 +78,12 @@ sub keypress {
 		return 1;
 	}
 	if ($event->keyval == $Gtk2::Gdk::Keysyms{space}) {
-		$wd->resize($width, optimal_height);
+		$wd->resize($config{'width'}, optimal_height);
 		return 1;
 	}
 	if ($event->keyval == $Gtk2::Gdk::Keysyms{Tab}) {
-		$keep_above = ! $keep_above;
-		$wd->set_keep_above($keep_above);
+		$config{'keep_above'} = ! $config{'keep_above'};
+		$wd->set_keep_above($config{'keep_above'});
 		return 1;
 	}
 	return 0;
@@ -135,13 +134,17 @@ sub update_img {
 		$last_states = $states;
 		$updated = 1;
 	}
-	if ($updated || $width != $last_width || $height != $last_height) {
-		($last_width, $last_height) = ($width, $height);
+	if ($updated || $config{'width'} != $last_width ||
+				$config{'height'} != $last_height) {
+		($last_width, $last_height) = ($config{'width'},
+					$config{'height'});
 		$pixdata_padded = $pixdata . pack('N', 0x000000ff) x
-					($width * $height - $numchunks);
+					($config{'width'} * $config{'height'}
+					- $numchunks);
 		$pixbuf = Gtk2::Gdk::Pixbuf->new_from_data($pixdata_padded,
-					'rgb', 1, 8, $width, $height,
-					$width * 4);
+					'rgb', 1, 8, $config{'width'},
+					$config{'height'},
+					$config{'width'} * 4);
 		$img->set_from_pixbuf($pixbuf);
 	}
 	return 1;
