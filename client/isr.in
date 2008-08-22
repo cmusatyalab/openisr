@@ -895,7 +895,7 @@ sub run () {
 	if (defined $dirtometer_pid) {
 	    if ($dirtometer_pid == 0) {
 		$no_shutdown = 1;
-		exec(SHAREDIR . "/dirtometer $cfg{UUID}")
+		exec(SHAREDIR . "/dirtometer -n $userid/$parcel $uuid")
 		    or unix_errexit("Unable to exec dirtometer");
 	    }
 	    # We never reap.  Eventually we'll exit and init will reap the
