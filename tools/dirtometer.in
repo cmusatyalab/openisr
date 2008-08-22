@@ -13,6 +13,7 @@
 use Gtk2 -init;
 use Gtk2::Gdk::Keysyms;
 use Glib;
+use Getopt::Long;
 use File::stat;
 use strict;
 use warnings;
@@ -22,6 +23,7 @@ my $img;
 
 my %config;
 my $uuid;
+my $name;
 my $numchunks;
 my $confdir = "$ENV{'HOME'}/.isr/dirtometer";
 my $conffile;
@@ -90,7 +92,7 @@ sub init {
 	open(SHM, "<", $file)
 		or die "Couldn't open $file";
 	$wd = Gtk2::Window->new('toplevel');
-	$wd->set_title("Dirtometer for parcel $uuid");
+	$wd->set_title("Dirtometer: $name");
 	$wd->set_gravity('static');
 	$img = Gtk2::Image->new;
 	$wd->add($img);
@@ -203,11 +205,18 @@ sub update_img {
 	return 1;
 }
 
-if (@ARGV != 1) {
-	print "Usage: $0 <parcel-uuid>\n";
+sub usage {
+	print "Usage: $0 [-n <parcel-name>] <parcel-uuid>\n";
 	exit 1;
 }
+
+GetOptions(
+	'n=s' => \$name
+) or usage;
+usage if @ARGV != 1;
 $uuid = $ARGV[0];
+$name = $uuid
+	unless defined $name;
 $conffile = "$confdir/$uuid";
 
 init;
