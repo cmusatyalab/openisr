@@ -447,6 +447,7 @@ sub deluser ($) {
 	if ($reply eq "y") {
 	    print "Removing $userid...\n";
 	    system("/usr/sbin/userdel -r $userid");
+	    system("rm -rf $config{content_root}/$userid");
 	} else {
 	    print "Did not delete the account for $userid.\n";
 	}
