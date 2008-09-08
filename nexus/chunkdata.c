@@ -844,8 +844,7 @@ static void nexus_endio(struct bio *bio, unsigned nbytes, int error, int done)
  * io_has_reservation - returns true if @io is ready to be processed
  * 
  * Returns true if all chunks in the io are either at the front of their
- * pending queues or have already been unreserved, or false if at least one
- * chunk is not at head-of-queue.
+ * pending queues or have already been completed, false otherwise.
  **/
 static int io_has_reservation(struct nexus_io *io)
 {
@@ -856,10 +855,7 @@ static int io_has_reservation(struct nexus_io *io)
 	BUG_ON(!mutex_is_locked(&io->dev->lock));
 	for (i=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
-		/* CHUNK_STARTED is an optimization: if set, we know it's
-		   head-of-queue so we don't need to do the lookup */
-		if ((chunk->flags & CHUNK_DEAD) ||
-					(chunk->flags & CHUNK_STARTED))
+		if (chunk->flags & CHUNK_COMPLETED)
 			continue;
 		cd=chunkdata_find(io->dev->chunkdata, chunk->cid);
 		if (cd == NULL || !pending_head_is(cd, chunk))
@@ -876,9 +872,8 @@ static int io_has_reservation(struct nexus_io *io)
  * write-ordering for multiple requests on the same chunk.)  Otherwise, for
  * each &nexus_io_chunk in @io which has not already been processed, if the
  * &chunkdata is in a state such that we can perform the requisite read or
- * write, we mark the &nexus_io_chunk "started" and call into the request-queue
- * interface code to perform the actual copy.  Once all chunks in @io have
- * been completed, we free the io.
+ * write, we call into the request-queue interface code to perform the actual
+ * copy.  Once all chunks in @io have finished processing, we free the io.
  **/
 static void try_start_io(struct nexus_io *io)
 {
@@ -899,8 +894,7 @@ static void try_start_io(struct nexus_io *io)
 		chunk=&io->chunks[i];
 		if (chunk->flags & CHUNK_DEAD)
 			dead++;
-		if ((chunk->flags & CHUNK_DEAD) ||
-					(chunk->flags & CHUNK_STARTED))
+		if (chunk->flags & CHUNK_COMPLETED)
 			continue;
 		cd=chunkdata_find(dev->chunkdata, chunk->cid);
 		BUG_ON(cd == NULL);
@@ -945,7 +939,6 @@ static void try_start_io(struct nexus_io *io)
 		
 		if (!(chunk->flags & CHUNK_READ))
 			dev->stats.whole_chunk_updates++;
-		chunk->flags |= CHUNK_STARTED;
 		nexus_process_chunk(&io->chunks[i], cd->sg);
 		if (chunk->flags & CHUNK_DEAD)
 			dead++;
