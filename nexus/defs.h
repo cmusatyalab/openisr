@@ -441,6 +441,7 @@ void nexus_request(struct request_queue *q);
 void nexus_run_requests(struct list_head *entry);
 void nexus_process_chunk(struct nexus_io_chunk *chunk,
 			struct scatterlist *chunk_sg);
+void nexus_free_io(struct nexus_io *io);
 void oom_timer_fn(unsigned long data);
 
 /* chardev.c */

@@ -145,8 +145,6 @@ static int nexus_end_request(struct request *req, int error, int nr_bytes)
  * reporting a completion to the block layer, we unreserve the chunk in
  * chunkdata (even if the whole &nexus_io hasn't finished yet), since there
  * can no longer be ordering issues with that chunk wrt this io.
- *
- * If all chunks in this &nexus_io have been completed, we free the io.
  **/
 static void nexus_complete_chunk(struct nexus_io_chunk *chunk)
 {
@@ -173,8 +171,6 @@ static void nexus_complete_chunk(struct nexus_io_chunk *chunk)
 		   chunk. */
 		unreserve_chunk(chunk);
 	}
-	/* All chunks in this io are completed. */
-	mempool_free(io, io_pool);
 }
 
 /**
@@ -314,11 +310,21 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 		/* Couldn't allocate chunkdata for this io, so we have to
 		   tear the whole thing down */
 		mutex_unlock(&dev->lock);
-		mempool_free(io, io_pool);
+		nexus_free_io(io);
 		return -ENOMEM;
 	}
 	mutex_unlock(&dev->lock);
 	return 0;
+}
+
+/**
+ * nexus_free_io - free an io structure
+ *
+ * Free a &nexus_io structure back into its mempool.
+ **/
+void nexus_free_io(struct nexus_io *io)
+{
+	mempool_free(io, io_pool);
 }
 
 /**

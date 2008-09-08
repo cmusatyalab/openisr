@@ -877,7 +877,8 @@ static int io_has_reservation(struct nexus_io *io)
  * each &nexus_io_chunk in @io which has not already been processed, if the
  * &chunkdata is in a state such that we can perform the requisite read or
  * write, we mark the &nexus_io_chunk "started" and call into the request-queue
- * interface code to perform the actual copy.
+ * interface code to perform the actual copy.  Once all chunks in @io have
+ * been completed, we free the io.
  **/
 static void try_start_io(struct nexus_io *io)
 {
@@ -885,6 +886,7 @@ static void try_start_io(struct nexus_io *io)
 	struct nexus_io_chunk *chunk;
 	struct chunkdata *cd;
 	int i;
+	int dead;
 	
 	BUG_ON(!mutex_is_locked(&dev->lock));
 	
@@ -893,8 +895,10 @@ static void try_start_io(struct nexus_io *io)
 		return;
 	
 	/* Start any chunks which can run and haven't been started yet. */
-	for (i=0; i<io_chunks(io); i++) {
+	for (i=0, dead=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
+		if (chunk->flags & CHUNK_DEAD)
+			dead++;
 		if ((chunk->flags & CHUNK_DEAD) ||
 					(chunk->flags & CHUNK_STARTED))
 			continue;
@@ -943,7 +947,11 @@ static void try_start_io(struct nexus_io *io)
 			dev->stats.whole_chunk_updates++;
 		chunk->flags |= CHUNK_STARTED;
 		nexus_process_chunk(&io->chunks[i], cd->sg);
+		if (chunk->flags & CHUNK_DEAD)
+			dead++;
 	}
+	if (io_chunks(io) == dead)
+		nexus_free_io(io);
 }
 
 /**
