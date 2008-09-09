@@ -1,0 +1,109 @@
+#!!!PERLPATH!!
+
+BEGIN {
+	do "!!SHAREDIR!!/vmm.pm";
+	die "Couldn't load vmm.pm: $!\n"
+		if $!;
+	die "Couldn't parse vmm.pm: $@\n"
+		if $@;
+	import vmm;
+}
+
+use strict;
+use warnings;
+
+my $program;
+
+# Return true if the specified program is KVM and not something else (e.g.,
+# QEMU without KVM support)
+sub prog_is_kvm {
+	my $prog = shift;
+	my $help;
+	local $/;
+
+	open(PROG, "-|", "$prog -h")
+		or fail "Couldn't execute $prog";
+	$help = <PROG>;
+	close PROG;
+	return ($help =~ /-no-kvm/);
+}
+
+sub check_runnable {
+	fail "Cannot resume: parcel already suspended with $SUSPENDED"
+		if $SUSPENDED ne "no" and $SUSPENDED ne "kvm";
+	if (defined $COMMAND) {
+		$program = $COMMAND;
+		fail "$program invalid or not executable"
+			unless have_program $program;
+		fail "$program is not a KVM binary"
+			unless prog_is_kvm $program;
+	} else {
+		# Binary packages call the program "kvm".  Source installs
+		# call it "qemu-system-x86_64", but so does vanilla qemu, so
+		# we have to check for KVM support.
+		foreach my $prog ('kvm', 'qemu-system-x86_64') {
+			if (have_program $prog and prog_is_kvm $prog) {
+				$program = $prog;
+				last;
+			}
+		}
+		fail "KVM not found"
+			unless defined $program;
+	}
+}
+
+sub get_config {
+	my $file = "$CFGDIR/kvm.cfg";
+	my $conf = "";
+	my $default;
+
+	if (! -e $file) {
+		($default = <<EOF) =~ s/^\s+//gm;
+			-net nic
+			-net user
+			-soundhw all
+			-usb
+			-usbdevice tablet
+			-no-quit
+EOF
+		open(KCONF, ">", $file)
+			or fail "Couldn't write $file";
+		print KCONF $default;
+		close KCONF;
+	}
+
+	open(KCONF, $file)
+		or fail "Couldn't read $file";
+	while (<KCONF>) {
+		next if /^\s*#/;
+		chomp;
+		$conf .= " $_";
+	}
+	close KCONF;
+	return $conf;
+}
+
+sub info {
+	$VMNAME = "KVM";
+	check_runnable;
+}
+
+sub run {
+	my $ret;
+	my $opts;
+
+	check_runnable;
+	$opts = "-name \"$NAME\" -hda $DISK -m $MEM";
+	$opts .= get_config;
+	$opts .= " -full-screen"
+		if $FULLSCREEN eq "yes";
+	$ret = run_program("$program $opts");
+	fail "Couldn't run $program"
+		if $ret == -1;
+
+	$SUSPENDED = "no";
+	fail "$program returned $ret"
+		if $ret;
+}
+
+main;

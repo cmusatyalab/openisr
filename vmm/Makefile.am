@@ -1,4 +1,4 @@
-GEN = shell vmware
+GEN = shell vmware kvm
 vmmdir = $(pkgdatadir)/vmm
 vmm_SCRIPTS = $(GEN)
 dist_pkgdata_DATA = vmm.pm
