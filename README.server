@@ -36,3 +36,30 @@ ADMINISTERING THE SERVER
 The server includes a tool, "isr_admin", which automates creating and
 deleting users and parcels.  For a usage summary, run "isr_admin"
 without arguments.  For examples, run "isr_admin -hh".
+
+SERVER SECURITY
+---------------
+
+Keep in mind that ISR users have shell access to the server.
+
+You should disable directory indexes in your web server configuration.  By
+default, most web servers allow browsing the contents of any directory which
+does not have an "index.html" page; therefore, unless this feature is disabled,
+anyone (including search engines) can see what users and parcels exist on your
+server.  (The data is stored encrypted, so the parcels are not compromised by
+leaving this feature enabled, but it is an information disclosure.)
+
+To disable directory indexes in Apache, find the stanza in your Apache
+configuration which looks like this:
+
+<Directory /var/www/html>
+	...
+</Directory>
+
+where "/var/www/html" is the path to your web server's content root.  If the
+stanza contains an Options line, add "-Indexes" to the list of options;
+otherwise, add the following line to the stanza:
+
+	Options -Indexes
+
+Then restart Apache.
