@@ -854,6 +854,8 @@ sub run () {
 	local $ENV{'UUID'} = $cfg{'UUID'};
 	local $ENV{'CFGDIR'} = "$parceldir/cfg";
 	local $ENV{'SUSPENDED'} = $memtype;
+	local $ENV{'COMMAND'} = $syscfg{"$driver.command"}
+	    if exists $syscfg{"$driver.command"};
 	%results = run_vmm($driver, 'info');
     }
     $vmname = $results{'VMM'} ? $results{'VMM'} : "UnknownVMM";
