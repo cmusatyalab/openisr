@@ -37,6 +37,8 @@ use constant {
 	LIBDIR => "!!LIBDIR!!",
 	CHUNKSIZE => 131072,
 	CHUNKSPERDIR => 512,
+	KEYROOT_BYTES => 15,
+	PASSWORD_BYTES => 9,
 };
 
 # Function prototypes
@@ -56,7 +58,7 @@ sub makeparcel ($$$$);
 sub delparcel ($$);
 sub prune ($$$);
 sub getusage ();
-sub keygen ();
+sub keygen ($);
 sub query ($);
 
 #########################
@@ -207,7 +209,7 @@ elsif ($command eq "decrypt") {
     decrypt($userid, $parcel, $version, $keyroot);
 }
 elsif ($command eq "keygen") {
-    $result = keygen();
+    $result = keygen(KEYROOT_BYTES);
     print "$result\n";
 }
 elsif ($command eq "getkeyroot") {
@@ -364,10 +366,12 @@ sub decrypt ($$$$) {
 }
 
 #
-# keygen - Generate a keyroot
+# keygen - Generate the specified number of random bytes, base64-encoded
 #
-sub keygen () {
-    my $keyroot = `openssl rand -rand /dev/urandom -base64 15 2>/dev/null`;
+sub keygen ($) {
+    my $bytes = shift;
+    
+    my $keyroot = `openssl rand -rand /dev/urandom -base64 $bytes 2>/dev/null`;
     $? == 0
         or errexit("Couldn't generate keyroot");
     chomp($keyroot);
@@ -393,6 +397,7 @@ sub adduser ($) {
 
     my $sshdir = "/home/$userid/.ssh";
     my $isrdir = "/home/$userid/.isr";
+    my $passwd;
 
     # Create the user's account 
     print "Adding $userid...\n";
@@ -400,7 +405,10 @@ sub adduser ($) {
 	or err("Unable to create new account for $userid");
 
     # Change the password
-    system("echo \"$userid:$config{default_pass}\" | chpasswd -m") == 0
+    $passwd = $config{'default_pass'};
+    $passwd = keygen(PASSWORD_BYTES)
+        unless defined $passwd;
+    system("echo \"$userid:$passwd\" | chpasswd -m") == 0
 	or errexit("Unable to change password for $userid");
     if (!-d $isrdir) {
 	mkdir("$isrdir")
@@ -428,6 +436,7 @@ sub adduser ($) {
 	or errexit("Unable to chown key files to $userid");
 
     print "Success: $userid added to server\n";
+    print "Password: $passwd\n";
 }
 
 #
@@ -703,7 +712,7 @@ sub copyparcel ($$$$) {
     $tmpdir = tempdir("cfg-XXXXXXXX", TMPDIR => 1, CLEANUP => 1)
         or errexit("Couldn't create temporary directory");
     $srckeyroot = get_value($srcparcelcfg, "KEYROOT");
-    $dstkeyroot = keygen();
+    $dstkeyroot = keygen(KEYROOT_BYTES);
     decrypt($userid, $parcel, 1, $srckeyroot);
     system("tar xzf $parceldir/000001/cfg.tgz -C $tmpdir") == 0
         or errexit("Couldn't unpack cfg tarball");
@@ -870,7 +879,7 @@ sub makeparcel ($$$$) {
     
     # Encrypt the parcel with a new keyroot
     print "Encrypting metadata...\n";
-    $keyroot = keygen();
+    $keyroot = keygen(KEYROOT_BYTES);
     encrypt($userid, $parcel, 1, $keyroot);
     
     # Write out the new parcel.cfg

@@ -150,7 +150,7 @@ sub get_config {
 	content_root => "/var/www/html",
 	
 	# Default password
-	default_pass => 'ch@ng3m3',
+	default_pass => undef,
 	
 	# Fully-qualified server hostname
 	hostname => (gethostbyname(hostname()))[0],
