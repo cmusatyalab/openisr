@@ -408,8 +408,11 @@ sub adduser ($) {
     $passwd = $config{'default_pass'};
     $passwd = keygen(PASSWORD_BYTES)
         unless defined $passwd;
-    system("echo \"$userid:$passwd\" | chpasswd -m") == 0
-	or errexit("Unable to change password for $userid");
+    open(CHP, '|-', 'chpasswd -m')
+        or unix_errexit("Unable to change password for $userid");
+    print CHP "$userid:$passwd\n";
+    close CHP
+	or system_errexit("Unable to change password for $userid");
     if (!-d $isrdir) {
 	mkdir("$isrdir")
 	    or unix_errexit("Unable to make .isr directory for $userid");
