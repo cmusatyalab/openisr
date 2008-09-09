@@ -23,7 +23,7 @@ content_root
 
 default_pass
 	The password assigned to user accounts created by isr_admin.
-	The default is "ch@ng3m3".
+	The default is to randomly generate a password.
 
 hostname
 	The hostname by which clients will refer to this server.  The
