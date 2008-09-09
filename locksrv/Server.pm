@@ -153,7 +153,7 @@ sub get_config {
 	default_pass => undef,
 	
 	# Fully-qualified server hostname
-	hostname => (gethostbyname(hostname()))[0],
+	hostname => lc((gethostbyname(hostname()))[0]),
     );
     
     if (-r "/etc/openisr/locksrv.conf") {
