@@ -62,6 +62,8 @@ sub get_config {
 			-net nic
 			-net user
 			-soundhw all
+			-serial none
+			-parallel none
 			-usb
 			-usbdevice tablet
 			-no-quit
