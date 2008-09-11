@@ -9,6 +9,8 @@ BEGIN {
 	import vmm;
 }
 
+use IO::Socket::UNIX;
+use Term::ANSIColor qw/:constants/;
 use strict;
 use warnings;
 
@@ -90,20 +92,152 @@ sub info {
 	check_runnable;
 }
 
+# Variant of fail() for use by a forked child, which should not be writing
+# key-value pairs to stdout (as happens when vmm::main() catches "die")
+sub fail_child {
+	my $msg = shift;
+
+	print STDERR "$msg\n";
+	exit 255;
+}
+
+sub send_cmd {
+	my $sock = shift;
+	my $cmd = shift;
+	my $buf = '';
+	my $ret;
+
+	# Wait for prompt indicating that the previous command has completed.
+	# If we don't do this, "quit" may be processed before "migrate" has
+	# finished and we'll end up with an incomplete memory image.
+	do {
+		sysread($sock, $ret, 32)
+			or return;
+		$buf .= $ret;
+	} while $buf !~ /\(qemu\)/;
+	# Send command
+	print $sock "$cmd\n";
+}
+
 sub run {
 	my $ret;
 	my $opts;
+	my $pid;
+	my $rdin;
+	my $rdout;
+	my $piperd;
+	my $pipewr;
+	my $lsock;
+	my $sock;
+	my $buf;
+	my $sockpath = "$CFGDIR/kvm.ctl";
+	my $loadmem = 0;
 
 	check_runnable;
-	$opts = "-name \"$NAME\" -hda $DISK -m $MEM";
+
+	# First, some housecleaning
+	unlink("$CFGDIR/kvm.mem.old", $sockpath);
+
+	# Calculate command-line options
+	$opts  = "-name \"$NAME\" -hda $DISK -m $MEM";
+	$opts .= " -monitor unix:$sockpath";
 	$opts .= get_config;
 	$opts .= " -full-screen"
 		if $FULLSCREEN eq "yes";
-	$ret = run_program("$program $opts");
-	fail "Couldn't run $program"
-		if $ret == -1;
+	if ($SUSPENDED eq "kvm" and -e "$CFGDIR/kvm.mem") {
+		$opts .= " -incoming file://$CFGDIR/kvm.mem.old";
+		$loadmem = 1;
+	}
 
+	# Set up file descriptors
+	$lsock = IO::Socket::UNIX->new(
+			Local => $sockpath,
+			Listen => 16
+		) or fail "Couldn't create listening socket";
+	pipe($piperd, $pipewr)
+		or fail "Couldn't create signal pipe";
+
+	# Commit to using the memory image.  Failures after this point will
+	# invalidate the memory image.
 	$SUSPENDED = "no";
+	rename("$CFGDIR/kvm.mem", "$CFGDIR/kvm.mem.old")
+		if $loadmem;
+
+	# Fork, and run KVM in the child
+	local $SIG{'CHLD'} = sub {syswrite($pipewr, 'a')};
+	$pid = fork;
+	fail "Couldn't fork"
+		unless defined $pid;
+	if (!$pid) {
+		# Make sure we don't interfere with the key-value pairs on
+		# the parent's stdout
+		open(STDOUT, ">&", *STDERR)
+			or fail_child "Couldn't reopen stdout";
+		exec("$program $opts")
+			or fail_child "Couldn't exec $program";
+	}
+
+	# Wait for the Unix socket connection to arrive from KVM, or for KVM
+	# to die.
+	$rdin = '';
+	vec($rdin, fileno $piperd, 1) = 1;
+	vec($rdin, fileno $lsock, 1) = 1;
+	select($rdout = $rdin, undef, undef, undef);
+	unlink $sockpath;
+	if (vec($rdout, fileno $piperd, 1)) {
+		# Child exited
+		close $lsock;
+		goto 'out';
+	}
+	if (vec($rdout, fileno $lsock, 1)) {
+		# Connection on listening socket
+		$sock = $lsock->accept
+			or fail "Couldn't accept socket connection";
+		close $lsock;
+	}
+
+	# Resume virtual machine if we loaded a memory image
+	send_cmd $sock, "cont"
+		if $loadmem;
+
+	# Wait for KVM to die or the user to request suspend
+	print STDERR YELLOW, "Hit Enter to suspend your parcel.\n", RESET;
+	$rdin = '';
+	vec($rdin, fileno STDIN, 1) = 1;
+	vec($rdin, fileno $piperd, 1) = 1;
+	while (1) {
+		select($rdout = $rdin, undef, undef, undef);
+		if (vec($rdout, fileno $piperd, 1)) {
+			# Child exited
+			close $sock;
+			last;
+		}
+		if (vec($rdout, fileno STDIN, 1) and
+					(sysread(STDIN, $buf, 128) == 0
+					or $buf =~ /\n/)) {
+			# User suspend request
+			print STDERR "Suspending...\n";
+			send_cmd $sock, "migrate_set_speed 1g";
+			send_cmd $sock, "stop";
+			send_cmd $sock, "migrate file://$CFGDIR/kvm.mem";
+			send_cmd $sock, "quit";
+			close $sock;
+			last;
+		}
+	}
+
+out:
+	# Wait for KVM to exit
+	waitpid($pid, 0) == $pid
+		or fail "Couldn't obtain exit status of $program";
+	$ret = $?;
+
+	# Remove old memory image; determine if we have a new memory image
+	unlink "$CFGDIR/kvm.mem.old";
+	$SUSPENDED = "kvm"
+		if -e "$CFGDIR/kvm.mem";
+
+	# Check KVM exit status
 	fail "$program returned $ret"
 		if $ret;
 }
