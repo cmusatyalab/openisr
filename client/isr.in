@@ -611,6 +611,11 @@ elsif ($command eq "clean") {
         if $uuid;
     cleanclient();
 }
+elsif ($command eq "uuid") {
+    need_parcel();
+    need_checked_out();
+    print "$uuid\n";
+}
 elsif ($command eq "help") {
     need_not_parcel();
     usage("");
@@ -2986,8 +2991,8 @@ sub usage ($) {
 
     print RED, "Usage: $progname command [parcel] [options...]\n", RESET;
     print BLUE, "Commands: auth, checkhoard, checkin (ci), checkout (co), checkp, clean, deauth,\n", RESET;
-    print BLUE, "          discard, help, hoard, ls, lshoard, passwd, resume, rmhoard,\n", RESET;
-    print BLUE, "          stat, sync, version\n", RESET;
+    print BLUE, "          discard, help, hoard, ls, lshoard, passwd, resume, rmhoard, stat,\n", RESET;
+    print BLUE, "          sync, uuid, version\n", RESET;
     print BLUE, "Parcel is required for most commands\n", RESET;
     if (!$msg) {
 	print "Basic commands:\n";
@@ -3010,6 +3015,7 @@ sub usage ($) {
 	print "  checkhoard Check hoard cache for consistency (-cxX optional)\n";
 	print "  lshoard    List info about the hoard cache (-lxX optional)\n";
 	print "  rmhoard    Remove a parcel from the hoard cache (-xX optional)\n";
+	print "  uuid       Print the UUID for a parcel\n";
 	print "  version    Print OpenISR version\n";
     }
     print "Options:\n";

@@ -30,7 +30,7 @@ isr \- Internet Suspend/Resume client program
 .IR count ]
 
 .I Commands: 
-.B auth, checkin (ci), checkout (co), checkhoard, checkp, clean, deauth, discard, help, hoard, ls, lshoard, passwd, resume, rmhoard, stat, sync, version
+.B auth, checkin (ci), checkout (co), checkhoard, checkp, clean, deauth, discard, help, hoard, ls, lshoard, passwd, resume, rmhoard, stat, sync, uuid, version
 
 .SH DESCRIPTION
 An Internet Suspend/Resume\*R (ISR) system is a collection of
@@ -473,6 +473,11 @@ command is
 meaning that it can be safely interrupted with ctrl-c and rerun until
 it successfully completes.
 
+.TP
+.BI "isr uuid " parcel
+Display the universally unique identifier (UUID) for the specified
+.IR parcel ,
+which must be checked out.
 
 .TP
 .BI "isr version"
