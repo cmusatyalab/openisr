@@ -731,10 +731,6 @@ sub makeparcel ($$$$$) {
     # Generate the cfg tarball
     mkdir("$parcelverdir/cfg")
         or errexit("Couldn't create cfg directory");
-    if (-d "/etc/openisr/skel") {
-	system("cp -r /etc/openisr/skel/* $parcelverdir/cfg") == 0
-	    or errexit("Couldn't copy /etc/openisr/skel");
-    }
     open(SUSP, ">", "$parcelverdir/cfg/suspended")
         or errexit("Couldn't create suspended flag");
     print SUSP "no\n";
