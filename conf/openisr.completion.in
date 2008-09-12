@@ -176,8 +176,8 @@ _isr_subcommand_opts() {
 		long="--checkstate --disconnected --rollback --server --user"
 		;;
 	checkp)
-		short="-c -e -r -s -u"
-		long="--checkstate --remote --rollback --server --user"
+		short="-c -e -r -s -u -Y"
+		long="--checkstate --remote --rollback --server --user --splice"
 		;;
 	clean)
 		short="-f -s -u"
@@ -200,8 +200,8 @@ _isr_subcommand_opts() {
 		long="--long --server --user"
 		;;
 	esac
-	short="-q -v $short"
-	long="--quiet --verbose $long"
+	short="-q -v -x -X $short"
+	long="--quiet --verbose --sync --no-sync $long"
 
 	if [ "${2:1:1}" = "-" ] ; then
 		compgen -W "$long" -- $2
