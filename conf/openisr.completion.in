@@ -196,8 +196,8 @@ _isr_subcommand_opts() {
 		long="--checkstate --disconnected --no-fullscreen --rollback --server --user"
 		;;
 	stat)
-		short="-l -s -u"
-		long="--long --server --user"
+		short="-s -u"
+		long="--server --user"
 		;;
 	esac
 	short="-q -v -x -X $short"

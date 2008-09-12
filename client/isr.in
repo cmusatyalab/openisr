@@ -1295,12 +1295,6 @@ sub statparcel () {
     my $size;
 
     #
-    # Show extra information about the parcel if the user asked for it
-    #
-    print "UUID        : $uuid\n"
-        if $longflag;
-    
-    #
     # Display the size of the VMM state (memory image, VM metadata, etc.)
     #
     $size = dirsize("$parceldir/cfg") >> 11;
@@ -3003,7 +2997,7 @@ sub usage ($) {
 	print "  passwd     Change your ISR password on the server\n";
 	print "  help       Print help message\n";
 	print "Advanced commands:\n";
-	print "  stat       Display information about local state for a parcel (-lxX optional)\n";
+	print "  stat       Display information about local state for a parcel (-xX optional)\n";
 	print "  checkout   Checkout parcel without running it (-cdrxX optional)\n";
 	print "  sync       Sync parcel to server without checking it in (-bxX optional)\n";
 	print "  discard    Discard all local changes to parcel since last checkout or sync\n";
