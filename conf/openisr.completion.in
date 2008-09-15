@@ -159,29 +159,33 @@ _isr_parameter_takes_option() {
 _isr_subcommand_opts() {
 	local short long
 	case $1 in
-	auth|discard|hoard|passwd)
+	auth|discard|passwd)
 		short="-s -u"
 		long="--server --user"
 		;;
 	checkhoard)
-		short="-c"
-		long="--checkstate"
+		short="-c -x -X"
+		long="--checkstate --sync --no-sync"
 		;;
 	checkin|ci|sync)
-		short="-b -s -u"
-		long="--bwlimit --server --user"
+		short="-b -s -u -x -X"
+		long="--bwlimit --server --user --sync --no-sync"
 		;;
 	checkout|co)
-		short="-c -d -r -s -u"
-		long="--checkstate --disconnected --rollback --server --user"
+		short="-c -d -r -s -u -x -X"
+		long="--checkstate --disconnected --rollback --server --user --sync --no-sync"
 		;;
 	checkp)
-		short="-c -e -r -s -u -Y"
-		long="--checkstate --remote --rollback --server --user --splice"
+		short="-c -e -r -s -u -x -X -Y"
+		long="--checkstate --remote --rollback --server --user --splice --sync --no-sync"
 		;;
 	clean)
 		short="-f -s -u"
 		long="--force --server --user"
+		;;
+	hoard|stat)
+		short="-s -u -x -X"
+		long="--server --user --sync --no-sync"
 		;;
 	ls)
 		short="-l -L -s -u"
@@ -192,16 +196,16 @@ _isr_subcommand_opts() {
 		long="--long"
 		;;
 	resume)
-		short="-c -d -F -r -s -u"
-		long="--checkstate --disconnected --no-fullscreen --rollback --server --user"
+		short="-c -d -F -r -s -u -x -X"
+		long="--checkstate --disconnected --no-fullscreen --rollback --server --user --sync --no-sync"
 		;;
-	stat)
-		short="-s -u"
-		long="--server --user"
+	rmhoard)
+		short="-x -X"
+		long="--sync --no-sync"
 		;;
 	esac
-	short="-q -v -x -X $short"
-	long="--quiet --verbose --sync --no-sync $long"
+	short="-q -v $short"
+	long="--quiet --verbose $long"
 
 	if [ "${2:1:1}" = "-" ] ; then
 		compgen -W "$long" -- $2

@@ -362,7 +362,7 @@ option is similar, printing information for some
 small default number of the most recent versions.
 
 .TP
-.B isr lshoard [-l] [-x] [-X]
+.B isr lshoard [-l]
 List information about the parcels currently in the hoard cache.  The
 .B -l
 option causes additional information to be displayed, including parcel
