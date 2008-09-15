@@ -6,7 +6,7 @@ REQUIREMENTS
 ------------
 
 To run:
-- Linux kernel (versions 2.6.15 through 2.6.26 supported)
+- Linux kernel (versions 2.6.15 through 2.6.27 supported)
 - Development headers for your Linux kernel version
 - libcurl >= 7.12.3 and curl command-line utility
 - OpenSSL libraries and command-line utility
