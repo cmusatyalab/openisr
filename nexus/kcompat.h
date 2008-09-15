@@ -109,8 +109,17 @@ typedef struct class_device_attribute kdevice_attribute_t;
 #else
 typedef struct device kdevice_t;
 typedef struct device_attribute kdevice_attribute_t;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
 #define kdevice_create(cls, fmt, args...) \
 	device_create(cls, NULL, 0, fmt, ## args)
+#else
+/* We don't create device attributes until later in the ctr, so we're not
+   subject to the race which atomic create-device-and-set-drvdata is trying
+   to prevent.  It's cleaner to continue to set drvdata separately than to add
+   drvdata-setting wrappers for older kernels. */
+#define kdevice_create(cls, fmt, args...) \
+	device_create(cls, NULL, 0, NULL, fmt, ## args)
+#endif
 #define kdevice_get(kdevice) \
 	get_device(kdevice)
 #define kdevice_put(kdevice) \
@@ -251,11 +260,19 @@ typedef struct work_struct work_t;
 	int name(struct file *filp, fl_owner_t ignored)
 #endif
 
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
 #define nd_path_dentry(nd) (nd).dentry
 #else
 #define nd_path_dentry(nd) (nd).path.dentry
 #define path_release(ndp) path_put(&(ndp)->path);
+#endif
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
+#define check_inode_permission(inode, mask, nd) permission(inode, mask, nd)
+#else
+#define check_inode_permission(inode, mask, nd) inode_permission(inode, mask)
 #endif
 
 /***** Software suspend ******************************************************/

@@ -361,7 +361,7 @@ static struct block_device *nexus_open_bdev(struct nexus_dev *dev,
 	if (err)
 		goto bad;
 	inode=nd_path_dentry(nd)->d_inode;
-	err=permission(inode, MAY_READ|MAY_WRITE, &nd);
+	err=check_inode_permission(inode, MAY_READ|MAY_WRITE, &nd);
 	if (err)
 		goto bad_release;
 	/* Prevent symlink attack from char device to block device */
