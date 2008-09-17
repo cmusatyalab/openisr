@@ -178,7 +178,11 @@ fi
 if test z$enable_client = zyes ; then
 	FIND_LIBRARY([libcurl], [curl], [curl_easy_init], [curl/curl.h],
 				[$with_curl /usr/local /usr])
-	CHECK_CURL_VERSION([$FOUND_PATH], [7.12.3])
+	if test ! -x $FOUND_PATH/bin/curl-config ; then
+		AC_MSG_ERROR([cannot find curl-config])
+	fi
+	ver=`$FOUND_PATH/bin/curl-config --version | cut -f2 -d\  `
+	CHECK_VERSION_VAL([curl], [$ver], [7.12.3])
 	
 	PKG_CHECK_MODULES([OSSP_UUID], [ossp-uuid])
 fi

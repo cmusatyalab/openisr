@@ -59,23 +59,17 @@ AC_DEFUN([FIND_LIBRARY], [
 ])
 
 
-# CHECK_CURL_VERSION([CURL_PATH], [MINIMUM_VERSION])
-# --------------------------------------------------
-AC_DEFUN([CHECK_CURL_VERSION], [
-	AC_MSG_CHECKING([for curl >= $2])
+# CHECK_VERSION_VAL([PACKAGE], [FOUND], [MINIMUM])
+# ------------------------------------------------
+AC_DEFUN([CHECK_VERSION_VAL], [
+	AC_MSG_CHECKING([for $1 >= $3])
 	
-	if test ! -x $1/bin/curl-config ; then
-		AC_MSG_RESULT([curl-config not found])
-		AC_MSG_ERROR([cannot verify curl version])
-	fi
-	
-	ver=`$1/bin/curl-config --version | cut -f2 -d\  `
-	found_major=`echo "$ver" | cut -f1 -d.`
-	found_minor=`echo "$ver" | cut -f2 -d.`
-	found_rev=`echo "$ver" | cut -f3 -d.`
-	want_major=`echo $2 | cut -f1 -d.`
-	want_minor=`echo $2 | cut -f2 -d.`
-	want_rev=`echo $2 | cut -f3 -d.`
+	found_major=`echo $2 | cut -f1 -d.`
+	found_minor=`echo $2 | cut -f2 -d.`
+	found_rev=`echo $2 | cut -f3 -d.`
+	want_major=`echo $3 | cut -f1 -d.`
+	want_minor=`echo $3 | cut -f2 -d.`
+	want_rev=`echo $3 | cut -f3 -d.`
 	
 	if test z$found_rev = z ; then
 		found_rev=0
@@ -84,18 +78,18 @@ AC_DEFUN([CHECK_CURL_VERSION], [
 		want_rev=0
 	fi
 	
-	AC_MSG_RESULT([$ver])
+	AC_MSG_RESULT([$2])
 	
 	if test $found_major -eq $want_major ; then
 		if test $found_minor -eq $want_minor ; then
 			if test $found_rev -lt $want_rev ; then
-				AC_MSG_ERROR([curl too old])
+				AC_MSG_ERROR([$1 too old])
 			fi
 		elif test $found_minor -lt $want_minor ; then
-			AC_MSG_ERROR([curl too old])
+			AC_MSG_ERROR([$1 too old])
 		fi
 	elif test $found_major -lt $want_major ; then
-		AC_MSG_ERROR([curl too old])
+		AC_MSG_ERROR([$1 too old])
 	fi
 ])
 
