@@ -2,7 +2,7 @@ GEN = shell vmware kvm virtualbox
 vmmdir = $(pkgdatadir)/vmm
 vmm_SCRIPTS = $(GEN)
 dist_pkgdata_DATA = vmm.pm vmm.py
-CLEANFILES = $(GEN)
+CLEANFILES = $(GEN) vmm.pyc
 EXTRA_DIST = $(GEN:=.in)
 
 SUBDIRS = . xpcom
