@@ -125,6 +125,17 @@ fi
 AC_SUBST([PERL])
 AC_ARG_VAR([PERL], [path to Perl])
 
+if test z$enable_client = zyes ; then
+	AC_PATH_PROG([PYTHON], [python], [no])
+	if test z$PYTHON = zno ; then
+		AC_MSG_ERROR([Python not found])
+	fi
+	AC_SUBST([PYTHON])
+	AC_ARG_VAR([PYTHON], [path to Python])
+	ver=`$PYTHON -V 2>&1 | cut -f2 -d\  `
+	CHECK_VERSION_VAL([python], [$ver], [2.4])
+fi
+
 # Checks for kernel features.
 if test z$enable_client = zyes ; then
 	RUN_TEST([COMPILE], [whether loop.h is usable],
