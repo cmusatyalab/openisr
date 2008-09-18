@@ -226,5 +226,6 @@ AC_CONFIG_FILES([Makefile
                  sqlite/Makefile
                  sha1/GNUmakefile
                  tools/Makefile
-                 vmm/Makefile])
+                 vmm/Makefile
+                 vmm/xpcom/Makefile])
 AC_OUTPUT

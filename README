@@ -257,6 +257,12 @@ SQLite
 	distribution.  It can be found in the "sqlite" directory of the source
 	tree and is in the public domain.
 
+VirtualBox Python XPCOM bindings
+	The Python XPCOM bindings from the VirtualBox SDK are included in
+	the OpenISR distribution.  They can be found in the "xpcom"
+	subdirectory of the "vmm" directory and are licensed under the GNU
+	General Public License, version 2.
+
 ACKNOWLEDGMENTS
 ----------------
 
