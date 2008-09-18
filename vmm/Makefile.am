@@ -1,4 +1,4 @@
-GEN = shell vmware kvm
+GEN = shell vmware kvm virtualbox
 vmmdir = $(pkgdatadir)/vmm
 vmm_SCRIPTS = $(GEN)
 dist_pkgdata_DATA = vmm.pm vmm.py

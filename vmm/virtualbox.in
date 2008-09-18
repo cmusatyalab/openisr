@@ -1,0 +1,27 @@
+#!!!PYTHONPATH!!
+
+import sys
+sys.path.insert(1, '!!SHAREDIR!!')
+import vmm
+from vmm import *
+
+def check_runnable():
+	if 'COMMAND' in dir(vmm):
+		program = vmm.COMMAND
+		if not have_program(program):
+			raise VmmError(program + ' invalid or not executable')
+	else:
+		program = 'VirtualBox'
+		if not have_program(program):
+			raise VmmError('VirtualBox not found')
+	return program
+
+def info():
+	vmm.VMNAME = 'VirtualBox'
+	check_runnable()
+
+def run():
+	program = check_runnable()
+	raise VmmError('function not implemented')
+
+main()
