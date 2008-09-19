@@ -7,7 +7,7 @@ use warnings;
 BEGIN {
 	my @import = (qw/NAME CFGDIR UUID DISK SECTORS MEM FULLSCREEN/,
 				qw/SUSPENDED COMMAND/);
-	our @EXPORT = qw/main fail have_program run_program $VMNAME/;
+	our @EXPORT = qw/main fail find_program run_program $VMNAME/;
 	our $VMNAME = "UnknownVMM";
 	foreach my $var (@import) {
 		push(@EXPORT, "\$$var");
@@ -65,20 +65,21 @@ sub fail {
 	die "$str\n";
 }
 
-# Returns true if $1 is executable (directly if absolute path, via PATH if
-# not)
-sub have_program {
+# If $1 is an absolute path and executable, return it.  If it is a relative
+# path and executable via PATH, return the absolute path to the executable.
+# If no executable is found, return undef.
+sub find_program {
 	my $prog = shift;
 
 	my $dir;
 
-	return -x $prog
-		if $prog =~ m:/:;
+	return (-x $prog ? $prog : undef)
+		if $prog =~ m:^/:;
 	foreach $dir (File::Spec->path()) {
-		return 1
+		return "$dir/$prog"
 			if -x "$dir/$prog";
 	}
-	return 0;
+	return undef;
 }
 
 # Wrapper for system() that temporarily redirects stdout to stderr, so that

@@ -17,15 +17,11 @@ my $program;
 
 sub check_runnable {
 	if (defined $COMMAND) {
-		$program = $COMMAND;
-		fail "$program invalid or not executable"
-			unless have_program $program;
+		fail "$COMMAND invalid or not executable"
+			unless defined ($program = find_program $COMMAND);
 	} else {
 		foreach my $prog ('bash', 'sh') {
-			if (have_program $prog) {
-				$program = $prog;
-				last;
-			}
+			last if defined ($program = find_program $prog);
 		}
 		fail "No executable shell found"
 			unless defined $program;

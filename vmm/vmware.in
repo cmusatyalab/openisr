@@ -21,15 +21,11 @@ sub check_runnable {
 	fail "Cannot resume: parcel already suspended with $SUSPENDED"
 		if $SUSPENDED ne "no" and $SUSPENDED ne "vmware";
 	if (defined $COMMAND) {
-		$program = $COMMAND;
-		fail "$program invalid or not executable"
-			unless have_program $program;
+		fail "$COMMAND invalid or not executable"
+			unless defined ($program = find_program $COMMAND);
 	} else {
 		foreach my $prog ('vmplayer', 'vmware') {
-			if (have_program $prog) {
-				$program = $prog;
-				last;
-			}
+			last if defined ($program = find_program $prog);
 		}
 		fail "VMware not found"
 			unless defined $program;

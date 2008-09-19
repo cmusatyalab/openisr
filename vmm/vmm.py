@@ -4,7 +4,7 @@ import subprocess
 import stat
 import __main__
 
-__all__ = 'VmmError', 'main', 'have_program', 'run_program'
+__all__ = 'VmmError', 'main', 'find_program', 'run_program'
 
 class VmmError(Exception):
 	def __init__(self, message):
@@ -59,15 +59,19 @@ def _executable(path):
 		return False
 	return st[stat.ST_MODE] & stat.S_IXUSR|stat.S_IXGRP|stat.S_IXOTH > 0
 
-# Returns true if prog is executable (directly if absolute path, via PATH if
-# not)
-def have_program(prog):
+# If prog is an absolute path and executable, return it.  If it is a relative
+# path and executable via PATH, return the absolute path to the executable.
+# If no executable is found, return false.
+def find_program(prog):
 	if prog[0] == '/':
-		return _executable(prog)
+		if _executable(prog):
+			return prog
+		else:
+			return False
 	for dirname in os.environ['PATH'].split(':'):
 		path = dirname + '/' + prog
 		if _executable(path):
-			return True
+			return path
 	return False
 
 # Run a process and wait for it to complete, redirecting its stdout to stderr
