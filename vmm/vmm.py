@@ -23,6 +23,14 @@ def _init():
 			exec('global ' + var + ';' + var + ' = "' + \
 						os.environ[var] + '"')
 
+def _exception_msg(inst):
+	if DEBUG:
+		traceback.print_exc()
+	if inst.__class__ == VmmError:
+		return str(inst)
+	else:
+		return "%s: %s" % (inst.__class__.__name__, inst)
+
 def main():
 	if len(sys.argv) <= 1:
 		print >>sys.stderr, "No mode specified"
@@ -31,12 +39,9 @@ def main():
 		try:
 			__main__.info()
 		except Exception, inst:
-			if DEBUG:
-				traceback.print_exc()
 			print "VMM=%s" % VMNAME
 			print "RUNNABLE=no"
-			print "RUNNABLE_REASON=%s: %s" % \
-						(inst.__class__.__name__, inst)
+			print "RUNNABLE_REASON=%s" % _exception_msg(inst)
 		else:
 			print "VMM=%s" % VMNAME
 			print "RUNNABLE=yes"
@@ -44,11 +49,9 @@ def main():
 		try:
 			__main__.run()
 		except Exception, inst:
-			if DEBUG:
-				traceback.print_exc()
 			print "SUSPENDED=%s" % SUSPENDED
 			print "SUCCESS=no"
-			print "ERROR=%s: %s" % (inst.__class__.__name__, inst)
+			print "ERROR=%s" % _exception_msg(inst)
 		else:
 			print "SUSPENDED=%s" % SUSPENDED
 			print "SUCCESS=yes"
