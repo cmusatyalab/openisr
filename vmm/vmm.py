@@ -2,9 +2,13 @@ import os
 import sys
 import subprocess
 import stat
+import traceback
 import __main__
 
 __all__ = 'VmmError', 'main', 'find_program', 'run_program'
+
+VMNAME = "UnknownVMM"
+DEBUG = False
 
 class VmmError(Exception):
 	def __init__(self, message):
@@ -13,9 +17,6 @@ class VmmError(Exception):
 		return self.message
 
 def _init():
-	global VMNAME
-
-	VMNAME = "UnknownVMM"
 	for var in 'NAME', 'CFGDIR', 'UUID', 'DISK', 'SECTORS', 'MEM', \
 				'FULLSCREEN', 'SUSPENDED', 'COMMAND':
 		if os.environ.has_key(var):
@@ -30,6 +31,8 @@ def main():
 		try:
 			__main__.info()
 		except Exception, inst:
+			if DEBUG:
+				traceback.print_exc()
 			print "VMM=%s" % VMNAME
 			print "RUNNABLE=no"
 			print "RUNNABLE_REASON=%s: %s" % \
@@ -41,6 +44,8 @@ def main():
 		try:
 			__main__.run()
 		except Exception, inst:
+			if DEBUG:
+				traceback.print_exc()
 			print "SUSPENDED=%s" % SUSPENDED
 			print "SUCCESS=no"
 			print "ERROR=%s: %s" % (inst.__class__.__name__, inst)
