@@ -13,7 +13,7 @@ CLASS_SESN = '@virtualbox.org/Session;1'
 MIN_VERSION = '2.0.0'
 vmm.DEBUG = True
 
-def do_imports(libdir):
+def load_xpcom(libdir):
 	global xpcom, ifaces
 	sys.path.append(libdir)
 	__import__('xpcom.vboxxpcom')
@@ -21,13 +21,23 @@ def do_imports(libdir):
 	xpcom.components = __import__('xpcom.components', None, None, 'xpcom')
 	ifaces = xpcom.components.interfaces
 
+def version_to_int(ver):
+	parts = map(int, ver.split('.'))
+	if len(parts) != 3:
+		raise VmmError("Couldn't parse version: " + ver)
+	return parts[0] * 10000 + parts[1] * 100 + parts[2]
+
 def new_instance(name):
 	return xpcom.components.classes[name].createInstance()
 
 def check_runnable():
+	# See if the parcel is suspended with a compatible VMM
 	if vmm.SUSPENDED != 'no' and vmm.SUSPENDED != 'virtualbox':
 		raise VmmError('Cannot resume: parcel already suspended ' + \
 					'with ' + vmm.SUSPENDED)
+
+	# Locate the VirtualBox program, then use its location to find the
+	# path to the Python bindings library
 	if 'COMMAND' in dir(vmm):
 		program = find_program(vmm.COMMAND)
 		if not program:
@@ -36,13 +46,18 @@ def check_runnable():
 		program = find_program('VirtualBox')
 		if not program:
 			raise VmmError('VirtualBox not found')
-	return program
+	libdir = '/'.join(os.path.normpath(program).split('/')[:-2]) + \
+				'/lib/virtualbox'
+	if not os.path.isdir(libdir):
+		raise VmmError(libdir + ' does not exist')
 
-def version_to_int(ver):
-	parts = map(int, ver.split('.'))
-	if len(parts) != 3:
-		raise VmmError("Couldn't parse version: " + ver)
-	return parts[0] * 10000 + parts[1] * 100 + parts[2]
+	# Load the XPCOM bindings and check the VirtualBox version
+	load_xpcom(libdir)
+	vbox = new_instance(CLASS_VBOX)
+	if version_to_int(vbox.version) < version_to_int(MIN_VERSION):
+		raise VmmError("VirtualBox >= %s required (found %s)" % \
+				(MIN_VERSION, vbox.version))
+	return vbox
 
 def create_disk(path):
 	# Always round down
@@ -130,13 +145,7 @@ def info():
 	check_runnable()
 
 def run():
-	program = check_runnable()
-	do_imports(os.path.dirname(os.path.dirname(program)) + \
-				'/lib/virtualbox')
-	vbox = new_instance(CLASS_VBOX)
-	if version_to_int(vbox.version) < version_to_int(MIN_VERSION):
-		raise VmmError("VirtualBox >= %s required (found %s)" % \
-				(MIN_VERSION, vbox.version))
+	vbox = check_runnable()
 	disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
 	create_disk(disk_path)
 	vm = create_machine(vbox)
