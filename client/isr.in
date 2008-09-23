@@ -2007,7 +2007,7 @@ sub run_vmm ($$) {
     open(VMM, '-|', $cmd, $mode)
         or errexit("Couldn't launch driver for VMM '$driver'");
     while (<VMM>) {
-	($key, $value) = split /=/;
+	($key, $value) = split /=/, $_, 2;
 	next unless defined $value;
 	chomp $value;
 	$results{$key} = $value;
