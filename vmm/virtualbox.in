@@ -1,11 +1,33 @@
 #!!!PYTHONPATH!!
 
+import os
 import sys
+import time
+import random
 sys.path.insert(1, '!!SHAREDIR!!')
 import vmm
 from vmm import *
 
+CLASS_VBOX = '@virtualbox.org/VirtualBox;1'
+CLASS_SESN = '@virtualbox.org/Session;1'
+MIN_VERSION = '2.0.0'
+vmm.DEBUG = True
+
+def do_imports(libdir):
+	global xpcom, ifaces
+	sys.path.append(libdir)
+	__import__('xpcom.vboxxpcom')
+	xpcom = __import__('xpcom')
+	xpcom.components = __import__('xpcom.components', None, None, 'xpcom')
+	ifaces = xpcom.components.interfaces
+
+def new_instance(name):
+	return xpcom.components.classes[name].createInstance()
+
 def check_runnable():
+	if vmm.SUSPENDED != 'no' and vmm.SUSPENDED != 'virtualbox':
+		raise VmmError('Cannot resume: parcel already suspended ' + \
+					'with ' + vmm.SUSPENDED)
 	if 'COMMAND' in dir(vmm):
 		program = find_program(vmm.COMMAND)
 		if not program:
@@ -16,12 +38,110 @@ def check_runnable():
 			raise VmmError('VirtualBox not found')
 	return program
 
+def version_to_int(ver):
+	parts = map(int, ver.split('.'))
+	if len(parts) != 3:
+		raise VmmError("Couldn't parse version: " + ver)
+	return parts[0] * 10000 + parts[1] * 100 + parts[2]
+
+def create_disk(path):
+	# Always round down
+	cyls = min(int(vmm.SECTORS) / (16 * 63), 16383)
+	bioscyls = min(int(vmm.SECTORS) / (255 * 63), 1024)
+	cid = '%x' % random.randint(0, 0xffffffff)
+
+	f = file(path, 'w')
+	f.write('''# Disk DescriptorFile
+version=1
+CID=%s
+parentCID=ffffffff
+createType="fullDevice"
+
+RW %s FLAT "%s" 0
+
+ddb.geometry.cylinders = "%s"
+ddb.geometry.heads = "16"
+ddb.geometry.sectors = "63"
+ddb.geometry.biosCylinders = "%s"
+ddb.geometry.biosHeads = "255"
+ddb.geometry.biosSectors = "63"
+ddb.adapterType = "ide"
+''' % (cid, vmm.SECTORS, vmm.DISK, cyls, bioscyls))
+	f.close()
+
+def create_machine(vbox):
+	vmname = 'openisr-' + vmm.NAME.replace('/', '-')
+	vm = vbox.createMachine(vmm.CFGDIR, vmname, vmm.UUID)
+	vm.memorySize = vmm.MEM
+	vm.snapshotFolder = vmm.CFGDIR # need to update on every register
+	vm.audioAdapter.enabled = True
+	vm.audioAdapter.audioDriver = ifaces.AudioDriverType.ALSA
+	if vm.USBController != None:
+		vm.USBController.enabled = True
+		vm.USBController.enabledEhci = True
+	if vm.SATAController != None:
+		vm.SATAController.enabled = True
+	net = vm.getNetworkAdapter(0)
+	net.adapterType = ifaces.NetworkAdapterType.I82543GC
+	net.attachToNAT()
+	net.enabled = True
+	vm.saveSettings()
+	return vm
+
+def register_machine(vbox, vm, disk_path):
+	disk = vbox.openHardDisk(disk_path)
+	vbox.registerHardDisk(disk)
+	vbox.registerMachine(vm)
+	sesn = new_instance(CLASS_SESN)
+	vbox.openSession(sesn, vm.id)
+	# Now use the mutable Machine object
+	vm = sesn.machine
+	vm.attachHardDisk(disk.id, ifaces.StorageBus.IDE, 0, 0)
+	vm.saveSettings()
+	sesn.close()
+	return disk.id
+
+def unregister_machine(vbox, vmid, diskid):
+	sesn = new_instance(CLASS_SESN)
+	vbox.openSession(sesn, vmid)
+	vm = sesn.machine
+	vm.detachHardDisk(ifaces.StorageBus.IDE, 0, 0)
+	vm.saveSettings()
+	sesn.close()
+	vbox.unregisterHardDisk(diskid)
+	vbox.unregisterMachine(vmid)
+
+def run_machine(vbox, vmid, diskid):
+	sesn = new_instance(CLASS_SESN)
+	progress = vbox.openRemoteSession(sesn, vmid, 'gui', None)
+	progress.waitForCompletion(-1)
+	sesn.close()
+	# It would be better to use IVirtualBoxCallback to wait for a
+	# session state change, but it's not clear how to do that from Python.
+	# We could loop reading sesn.state, but that deadlocks at session
+	# shutdown.  So we close the remote session and loop reading
+	# vm.sessionState.
+	vm = vbox.getMachine(vmid)
+	while vm.sessionState != ifaces.SessionState.Closed:
+		time.sleep(0.5)
+
 def info():
 	vmm.VMNAME = 'VirtualBox'
 	check_runnable()
 
 def run():
 	program = check_runnable()
-	raise VmmError('function not implemented')
+	do_imports(os.path.dirname(os.path.dirname(program)) + \
+				'/lib/virtualbox')
+	vbox = new_instance(CLASS_VBOX)
+	if version_to_int(vbox.version) < version_to_int(MIN_VERSION):
+		raise VmmError("VirtualBox >= %s required (found %s)" % \
+				(MIN_VERSION, vbox.version))
+	disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
+	create_disk(disk_path)
+	vm = create_machine(vbox)
+	diskid = register_machine(vbox, vm, disk_path)
+	run_machine(vbox, vm.id, diskid)
+	unregister_machine(vbox, vm.id, diskid)
 
 main()
