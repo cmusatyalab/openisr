@@ -84,10 +84,11 @@ ddb.adapterType = "ide"
 ''' % (cid, vmm.SECTORS, vmm.DISK, cyls, bioscyls))
 	f.close()
 
-def create_machine(vbox):
+def create_machine(vbox, path):
 	vmname = 'openisr-' + vmm.NAME.replace('/', '-')
 	vm = vbox.createMachine(vmm.CFGDIR, vmname, vmm.UUID)
 	vm.memorySize = vmm.MEM
+	vm.VRAMSize = 16
 	vm.snapshotFolder = vmm.CFGDIR # need to update on every register
 	vm.audioAdapter.enabled = True
 	vm.audioAdapter.audioDriver = ifaces.AudioDriverType.ALSA
@@ -101,27 +102,27 @@ def create_machine(vbox):
 	net.attachToNAT()
 	net.enabled = True
 	vm.saveSettings()
-	return vm
+	del vm
+	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), path)
+	os.rmdir('%s/%s' % (vmm.CFGDIR, vmname))
 
-def register_machine(vbox, vm, disk_path):
+def register_machine(vbox, vm_path, disk_path):
 	disk = vbox.openHardDisk(disk_path)
+	vm = vbox.openMachine(vm_path)
 	vbox.registerHardDisk(disk)
 	vbox.registerMachine(vm)
 	sesn = new_instance(CLASS_SESN)
 	vbox.openSession(sesn, vm.id)
-	# Now use the mutable Machine object
-	vm = sesn.machine
-	vm.attachHardDisk(disk.id, ifaces.StorageBus.IDE, 0, 0)
-	vm.saveSettings()
+	sesn.machine.attachHardDisk(disk.id, ifaces.StorageBus.IDE, 0, 0)
+	sesn.machine.saveSettings()
 	sesn.close()
-	return disk.id
+	return [vm.id, disk.id]
 
 def unregister_machine(vbox, vmid, diskid):
 	sesn = new_instance(CLASS_SESN)
 	vbox.openSession(sesn, vmid)
-	vm = sesn.machine
-	vm.detachHardDisk(ifaces.StorageBus.IDE, 0, 0)
-	vm.saveSettings()
+	sesn.machine.detachHardDisk(ifaces.StorageBus.IDE, 0, 0)
+	sesn.machine.saveSettings()
 	sesn.close()
 	vbox.unregisterHardDisk(diskid)
 	vbox.unregisterMachine(vmid)
@@ -146,11 +147,14 @@ def info():
 
 def run():
 	vbox = check_runnable()
+	vm_path = vmm.CFGDIR + '/virtualbox.xml'
 	disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
-	create_disk(disk_path)
-	vm = create_machine(vbox)
-	diskid = register_machine(vbox, vm, disk_path)
-	run_machine(vbox, vm.id, diskid)
-	unregister_machine(vbox, vm.id, diskid)
+	if not os.path.isfile(disk_path):
+		create_disk(disk_path)
+	if not os.path.isfile(vm_path):
+		create_machine(vbox, vm_path)
+	[vmid, diskid] = register_machine(vbox, vm_path, disk_path)
+	run_machine(vbox, vmid, diskid)
+	unregister_machine(vbox, vmid, diskid)
 
 main()
