@@ -90,7 +90,7 @@ def create_machine(vbox, path):
 	vm = vbox.createMachine(vmm.CFGDIR, vmname, vmm.UUID)
 	vm.memorySize = vmm.MEM
 	vm.VRAMSize = 16
-	vm.snapshotFolder = vmm.CFGDIR # need to update on every register
+	vm.snapshotFolder = '.'
 	vm.audioAdapter.enabled = True
 	vm.audioAdapter.audioDriver = ifaces.AudioDriverType.ALSA
 	if vm.USBController != None:
