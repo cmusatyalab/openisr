@@ -96,8 +96,6 @@ def create_machine(vbox, path):
 	if vm.USBController != None:
 		vm.USBController.enabled = True
 		vm.USBController.enabledEhci = True
-	if vm.SATAController != None:
-		vm.SATAController.enabled = True
 	net = vm.getNetworkAdapter(0)
 	net.adapterType = ifaces.NetworkAdapterType.I82543GC
 	net.attachToNAT()
