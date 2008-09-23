@@ -2,6 +2,7 @@
 
 import os
 import sys
+import shutil
 import time
 import random
 sys.path.insert(1, '!!SHAREDIR!!')
@@ -106,7 +107,7 @@ def create_machine(vbox, path):
 	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), path)
 	os.rmdir('%s/%s' % (vmm.CFGDIR, vmname))
 
-def register_machine(vbox, vm_path, disk_path):
+def register_machine(vbox, vm_path, disk_path, saved_path):
 	disk = vbox.openHardDisk(disk_path)
 	vm = vbox.openMachine(vm_path)
 	vbox.registerHardDisk(disk)
@@ -115,12 +116,20 @@ def register_machine(vbox, vm_path, disk_path):
 	vbox.openSession(sesn, vm.id)
 	sesn.machine.attachHardDisk(disk.id, ifaces.StorageBus.IDE, 0, 0)
 	sesn.machine.saveSettings()
+	if os.path.isfile(saved_path):
+		sesn.console.adoptSavedState(saved_path)
 	sesn.close()
 	return [vm.id, disk.id]
 
-def unregister_machine(vbox, vmid, diskid):
+def unregister_machine(vbox, vmid, diskid, saved_path):
 	sesn = new_instance(CLASS_SESN)
 	vbox.openSession(sesn, vmid)
+	if sesn.machine.state == ifaces.MachineState.Saved:
+		shutil.copyfile(sesn.machine.stateFilePath, saved_path)
+		sesn.console.discardSavedState()
+		vmm.SUSPENDED = 'virtualbox'
+	else:
+		vmm.SUSPENDED = 'no'
 	sesn.machine.detachHardDisk(ifaces.StorageBus.IDE, 0, 0)
 	sesn.machine.saveSettings()
 	sesn.close()
@@ -129,6 +138,7 @@ def unregister_machine(vbox, vmid, diskid):
 
 def run_machine(vbox, vmid, diskid):
 	sesn = new_instance(CLASS_SESN)
+	vmm.SUSPENDED = 'virtualbox'
 	progress = vbox.openRemoteSession(sesn, vmid, 'gui', None)
 	progress.waitForCompletion(-1)
 	sesn.close()
@@ -149,12 +159,13 @@ def run():
 	vbox = check_runnable()
 	vm_path = vmm.CFGDIR + '/virtualbox.xml'
 	disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
+	saved_path = vmm.CFGDIR + '/virtualbox.sav'
 	if not os.path.isfile(disk_path):
 		create_disk(disk_path)
 	if not os.path.isfile(vm_path):
 		create_machine(vbox, vm_path)
-	[vmid, diskid] = register_machine(vbox, vm_path, disk_path)
+	[vmid, diskid] = register_machine(vbox, vm_path, disk_path, saved_path)
 	run_machine(vbox, vmid, diskid)
-	unregister_machine(vbox, vmid, diskid)
+	unregister_machine(vbox, vmid, diskid, saved_path)
 
 main()
