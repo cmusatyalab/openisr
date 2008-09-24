@@ -240,4 +240,8 @@ out:
 		if $ret;
 }
 
+sub cleanup {
+	unlink("$CFGDIR/kvm.mem.old", "$CFGDIR/kvm.ctl");
+}
+
 main;

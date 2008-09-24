@@ -49,6 +49,18 @@ EOF
 				SUCCESS=yes
 EOF
 		}
+	} elsif (@ARGV and $ARGV[0] eq "cleanup") {
+		eval {main::cleanup()};
+		if ($@) {
+			($msg = <<EOF) =~ s/^\s+//gm;
+				SUCCESS=no
+				ERROR=$@
+EOF
+		} else {
+			($msg = <<EOF) =~ s/^\s+//gm;
+				SUCCESS=yes
+EOF
+		}
 	} else {
 		print STDERR "Unknown or no mode specified\n";
 		exit 1;

@@ -47,4 +47,6 @@ sub run {
 		if $ret;
 }
 
+sub cleanup {}
+
 main;

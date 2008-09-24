@@ -55,6 +55,14 @@ def main():
 		else:
 			print "SUSPENDED=%s" % SUSPENDED
 			print "SUCCESS=yes"
+	elif sys.argv[1] == "cleanup":
+		try:
+			__main__.cleanup()
+		except Exception, inst:
+			print "SUCCESS=no"
+			print "ERROR=%s" % _exception_msg(inst)
+		else:
+			print "SUCCESS=yes"
 	else:
 		print >>sys.stderr, "Unknown mode specified"
 		sys.exit(1)

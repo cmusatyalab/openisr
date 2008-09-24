@@ -166,4 +166,7 @@ def run():
 	run_machine(vbox, vmid, diskid)
 	unregister_machine(vbox, vmid, diskid, saved_path)
 
+def cleanup():
+	shutil.rmtree(vmm.CFGDIR + '/Logs', True)
+
 main()

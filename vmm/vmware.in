@@ -172,16 +172,6 @@ sub update_cfg {
 	my $old_id;
 	my $uufile = "$CFGDIR/uuid.vmware";
 
-	# First, some house-cleaning: remove old core files and logs
-	opendir(CDIR, $CFGDIR)
-		or fail "Can't read directory $CFGDIR";
-	foreach my $file (grep(/^(vmware(-core\.gz|.*\.log))|core$/,
-				readdir(CDIR))) {
-		unlink "$CFGDIR/$file"
-			or fail "Couldn't remove $CFGDIR/$file";
-	}
-	closedir(CDIR);
-
 	if (!defined $vmx) {
 		# This parcel has no VMX file.  Create a VMX and VMDK.
 		new_vmdata;
@@ -248,6 +238,17 @@ sub run {
 	closedir DIR;
 	fail "$program returned $ret"
 		if $ret;
+}
+
+sub cleanup {
+	opendir(CDIR, $CFGDIR)
+		or fail "Can't read directory $CFGDIR";
+	foreach my $file (grep(/^(vmware(-core\.gz|.*\.log))|core$/,
+				readdir(CDIR))) {
+		unlink "$CFGDIR/$file"
+			or fail "Couldn't remove $CFGDIR/$file";
+	}
+	closedir(CDIR);
 }
 
 main;

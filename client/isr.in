@@ -146,6 +146,7 @@ sub release_locks ();
 sub exit_handler ($);
 sub srun ($$%);
 sub run_vmm ($$);
+sub vmm_cleanup ();
 sub parcelkeeper_cmd ($$);
 sub run_parcelkeeper ($$);
 sub upload ();
@@ -1005,6 +1006,9 @@ sub sync ($) {
     my $bwflag = "";
     my $i;
 
+    # Tidy up the cfg directory
+    vmm_cleanup();
+
     # Do an early check to make sure we still have the parcel lock
     srun("lock", "-p $parcel -C $sessionid") == 0
 	or errexit("Parcel lock no longer held; aborting");
@@ -1077,6 +1081,10 @@ sub discard () {
 
     # This operation should not be interrupted by the user
     block_sigint();
+    
+    # Even though we're about to delete the cfg directory, we still need to
+    # run VMM cleanup because the VMM might need to clean up external state
+    vmm_cleanup();
 
     # Reset the consistent dirty cache flag, since any temporary dirty
     # cache directory can no longer be consistent with an empty local cache.
@@ -1990,7 +1998,7 @@ sub srun ($$%) {
 }
 
 #
-# run_vmm - Run the VMM driver
+# run_vmm - Run the VMM driver (low-level routine)
 #
 sub run_vmm ($$) {
     my $driver = shift;
@@ -2017,6 +2025,29 @@ sub run_vmm ($$) {
     errexit("VMM driver '$driver' returned $?")
         if $?;
     return %results;
+}
+
+#
+# vmm_cleanup - Ask each VMM driver in turn to tidy up the cfg directory
+#
+sub vmm_cleanup () {
+    my $vmmdir = SHAREDIR . "/vmm";
+    my $vmm;
+    my %results;
+
+    opendir(DRVS, $vmmdir)
+        or unix_errexit("Couldn't read $vmmdir");
+    foreach $vmm (readdir(DRVS)) {
+	next if $vmm =~ /^\.{1,2}$/;
+	local $ENV{'NAME'} = "$userid/$parcel";
+	local $ENV{'UUID'} = $uuid;
+	local $ENV{'CFGDIR'} = "$parceldir/cfg";
+	%results = run_vmm($vmm, "cleanup");
+	if (! exists $results{'SUCCESS'} or $results{'SUCCESS'} ne 'yes') {
+	    err("$vmm could not run cleanup: $results{ERROR}");
+	}
+    }
+    closedir(DRVS);
 }
 
 sub fcntl_lock ($$$) {
@@ -2123,6 +2154,11 @@ sub clean ($) {
     # If we don't know the parcel UUID, we can't remove the parceldir
     # because we don't know what it's called.
     if ($uuid) {
+	# Even though we're about to delete the cfg directory, we still need
+	# to run VMM cleanup because the VMM might need to clean up external
+	# state
+	vmm_cleanup();
+
 	# Make sure we cannot be interrupted, since once the parcel.cfg
 	# is gone, another call to "isr clean" won't remove the rest of
 	# the parceldir.
