@@ -113,6 +113,11 @@ def register_machine(vbox, vm_path, disk_path, saved_path):
 	sesn = new_instance(CLASS_SESN)
 	vbox.openSession(sesn, vm.id)
 	sesn.machine.attachHardDisk(disk.id, ifaces.StorageBus.IDE, 0, 0)
+	if vmm.FULLSCREEN == 'yes':
+		fullscreen = 'on'
+	else:
+		fullscreen = 'off'
+	sesn.machine.setExtraData('GUI/Fullscreen', fullscreen)
 	sesn.machine.saveSettings()
 	if os.path.isfile(saved_path):
 		sesn.console.adoptSavedState(saved_path)
