@@ -5,6 +5,7 @@ import sys
 import shutil
 import time
 import random
+import xml.dom.minidom
 sys.path.insert(1, '!!SHAREDIR!!')
 import vmm
 from vmm import *
@@ -30,6 +31,9 @@ def version_to_int(ver):
 
 def new_instance(name):
 	return xpcom.components.classes[name].createInstance()
+
+def parcelname():
+	return 'openisr-' + vmm.NAME.replace('/', '-')
 
 def check_runnable():
 	# See if the parcel is suspended with a compatible VMM
@@ -86,7 +90,7 @@ ddb.adapterType = "ide"
 	f.close()
 
 def create_machine(vbox, path):
-	vmname = 'openisr-' + vmm.NAME.replace('/', '-')
+	vmname = parcelname()
 	vm = vbox.createMachine(vmm.CFGDIR, vmname, vmm.UUID)
 	vm.memorySize = vmm.MEM
 	vm.VRAMSize = 16
@@ -104,6 +108,56 @@ def create_machine(vbox, path):
 	del vm
 	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), path)
 	os.rmdir('%s/%s' % (vmm.CFGDIR, vmname))
+
+# See if this parcel has been cloned.  If so, update all unique identifiers
+# associated with the VM.
+def update_uuid(vbox, vm_path, disk_path):
+	new_vm_path = vm_path + '.new'
+	new_disk_path = disk_path + '.new'
+	uuid = '{' + vmm.UUID + '}'
+
+	# We don't want to openMachine() until we know that the UUID is
+	# unique on this system.  The VBox API doesn't provide for updating
+	# the UUID, so we have to directly update the XML file.  While we're
+	# at it, update the VM name as well.
+	dom = xml.dom.minidom.parse(vm_path)
+	vbs = dom.getElementsByTagName('VirtualBox')
+	assert len(vbs) == 1
+	machs = vbs[0].getElementsByTagName('Machine')
+	assert len(machs) == 1
+	if machs[0].getAttribute('uuid') == uuid:
+		dom.unlink()
+		return
+	machs[0].setAttribute('name', unicode(parcelname()))
+	machs[0].setAttribute('uuid', unicode(uuid))
+	ofd = file(new_vm_path, 'w')
+	dom.writexml(ofd, encoding = 'UTF-8')
+	ofd.close()
+	os.rename(new_vm_path, vm_path)
+	dom.unlink()
+
+	# Generate new MAC addresses for the VM's Ethernet cards
+	vm = vbox.openMachine(vm_path)
+	for i in range(vbox.systemProperties.networkAdapterCount):
+		vm.getNetworkAdapter(i).MACAddress = None
+	vm.saveSettings()
+
+	# Update the path to the Nexus virtual disk, and strip UUIDs from
+	# the VMDK so that VBox will regenerate them
+	ifd = file(disk_path)
+	ofd = file(new_disk_path, 'w')
+	for line in ifd:
+		if line.startswith('RW '):
+			parts = line.split(' ')
+			parts[3] = '"' + vmm.DISK + '"'
+			ofd.write(' '.join(parts))
+		elif line.startswith('ddb.uuid'):
+			pass
+		else:
+			ofd.write(line)
+	ifd.close()
+	ofd.close()
+	os.rename(new_disk_path, disk_path)
 
 def register_machine(vbox, vm_path, disk_path, saved_path):
 	disk = vbox.openHardDisk(disk_path)
@@ -167,6 +221,7 @@ def run():
 		create_disk(disk_path)
 	if not os.path.isfile(vm_path):
 		create_machine(vbox, vm_path)
+	update_uuid(vbox, vm_path, disk_path)
 	[vmid, diskid] = register_machine(vbox, vm_path, disk_path, saved_path)
 	run_machine(vbox, vmid, diskid)
 	unregister_machine(vbox, vmid, diskid, saved_path)
