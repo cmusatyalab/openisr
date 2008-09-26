@@ -144,3 +144,9 @@ AC_DEFUN([FIND_DIR], [
 		AC_MSG_ERROR([not found in $2])
 	fi
 ])
+
+
+# WANT_VMM([DRIVER])
+# Set $? to true (0) if DRIVER is enabled, false (1) otherwise.
+# -------------------------------------------------------------
+AC_DEFUN([WANT_VMM], [echo " $vmms " | grep -Fq " $1 "])

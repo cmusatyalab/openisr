@@ -35,9 +35,6 @@ AC_ARG_ENABLE([client], [AS_HELP_STRING([--enable-client],
 AC_ARG_ENABLE([vmm-drivers], [AS_HELP_STRING([--enable-vmm-drivers=<list>],
 			[build VMM drivers [$client]])],,
 			[enable_vmm_drivers=${enable_client}])
-AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--enable-libvdisk],
-			[build libvdisk [$client]])],,
-			[enable_libvdisk=${enable_client}])
 AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules],
 			[build kernel modules [$client]])],,
 			[enable_modules=${enable_client}])
@@ -53,8 +50,6 @@ AC_ARG_WITH([group], [AS_HELP_STRING([--with-group=GROUP],
 
 PROCESS_ENABLE_VAR([$enable_client], [WANT_CLIENT],
 			[whether we should build the client])
-PROCESS_ENABLE_VAR([$enable_libvdisk], [WANT_LIBVDISK],
-			[whether we should build libvdisk])
 PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
 			[whether we should build the kernel modules])
 PROCESS_ENABLE_VAR([$enable_server], [WANT_SERVER],
@@ -76,7 +71,8 @@ if test -n "$vmms" ; then
 else
 	AC_MSG_RESULT([none])
 fi
-AM_CONDITIONAL([WANT_VBOX_XPCOM], [echo " $vmms " | grep -Fq " virtualbox "])
+AM_CONDITIONAL([WANT_VBOX_XPCOM], [WANT_VMM([virtualbox])])
+AM_CONDITIONAL([WANT_LIBVDISK], [WANT_VMM([vmware])])
 
 if test z$enable_client = zyes ; then
 	AC_MSG_CHECKING([group for OpenISR device nodes])
@@ -111,7 +107,7 @@ if test z$enable_modules = zyes ; then
 fi
 
 build_32=no
-if test z$enable_libvdisk = zyes ; then
+if WANT_VMM([vmware]) ; then
 	# See if we're on an x86_64 system with multilib support.  If so, build
 	# both 32-bit and 64-bit versions of libvdisk.
 	if test z$host_cpu = zx86_64; then
@@ -144,7 +140,7 @@ fi
 AC_SUBST([PERL])
 AC_ARG_VAR([PERL], [path to Perl])
 
-if echo " $vmms " | grep -Fq " virtualbox " ; then
+if WANT_VMM([virtualbox]) ; then
 	AC_PATH_PROG([PYTHON], [python], [no])
 	if test z$PYTHON = zno ; then
 		AC_MSG_ERROR([Python not found])
@@ -166,7 +162,7 @@ if test z$enable_client = zyes ; then
 	fi
 fi
 
-if test z$enable_libvdisk = zyes ; then
+if WANT_VMM([vmware]) ; then
 	RUN_TEST([COMPILE], [for lba_capacity_2 in hd_driveid],
 				[AC_LANG_PROGRAM([#include <linux/hdreg.h>], 
 				[struct hd_driveid id;
@@ -226,7 +222,7 @@ if test z$enable_client = zyes -o z$enable_server = zyes ; then
 				[$with_zlib /usr/local /usr])
 fi
 
-if test z$enable_libvdisk = zyes ; then
+if WANT_VMM([vmware]) ; then
 	# We don't provide a --with-dl=DIR option because this is supposed
 	# to be a system function.
 	FIND_LIBRARY([libdl], [dl], [dlopen], [dlfcn.h], [/usr])
