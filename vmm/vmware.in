@@ -170,7 +170,7 @@ sub update_cfg {
 	my $need_refresh = 0;
 	my $refreshed = 0;
 	my $old_id;
-	my $uufile = "$CFGDIR/uuid.vmware";
+	my $uufile = "$CFGDIR/vmware.uuid";
 
 	if (!defined $vmx) {
 		# This parcel has no VMX file.  Create a VMX and VMDK.
