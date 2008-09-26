@@ -237,7 +237,6 @@ AC_SUBST([initexecdir], [\$\(sysconfdir\)/init.d])
 AC_CONFIG_FILES([Makefile
                  conf/Makefile
                  client/Makefile
-                 libvdisk/Makefile
                  locksrv/Makefile
                  nexus/GNUmakefile
                  nexus/tools/Makefile
@@ -246,5 +245,6 @@ AC_CONFIG_FILES([Makefile
                  sha1/GNUmakefile
                  tools/Makefile
                  vmm/Makefile
+                 vmm/libvdisk/Makefile
                  vmm/xpcom/Makefile])
 AC_OUTPUT
