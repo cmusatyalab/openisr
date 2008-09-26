@@ -32,6 +32,9 @@ PKG_PROG_PKG_CONFIG()
 # Checks for optional features.
 AC_ARG_ENABLE([client], [AS_HELP_STRING([--enable-client],
 			[build client code [yes]])],, [enable_client=yes])
+AC_ARG_ENABLE([vmm-drivers], [AS_HELP_STRING([--enable-vmm-drivers=<list>],
+			[build VMM drivers [$client]])],,
+			[enable_vmm_drivers=${enable_client}])
 AC_ARG_ENABLE([libvdisk], [AS_HELP_STRING([--enable-libvdisk],
 			[build libvdisk [$client]])],,
 			[enable_libvdisk=${enable_client}])
@@ -58,6 +61,22 @@ PROCESS_ENABLE_VAR([$enable_server], [WANT_SERVER],
 			[whether we should build the server])
 AM_CONDITIONAL([WANT_COMMON],
 			[test z$enable_client = zyes -o z$enable_server = zyes])
+
+AC_MSG_CHECKING([which VMM drivers to build])
+REQUESTED_VMMS=`echo "$enable_vmm_drivers" | sed -e 's/,/ /g'`
+AC_SUBST([REQUESTED_VMMS])
+export REQUESTED_VMMS
+vmms=`$am_make -f $srcdir/vmm.mk list_chosen_vmms`
+unknown_vmms=`$am_make -f $srcdir/vmm.mk list_invalid_vmms`
+if test -n "$unknown_vmms" ; then
+	AC_MSG_ERROR([unknown VMM drivers requested: $unknown_vmms])
+fi
+if test -n "$vmms" ; then
+	AC_MSG_RESULT([$vmms])
+else
+	AC_MSG_RESULT([none])
+fi
+AM_CONDITIONAL([WANT_VBOX_XPCOM], [echo " $vmms " | grep -Fq " virtualbox "])
 
 if test z$enable_client = zyes ; then
 	AC_MSG_CHECKING([group for OpenISR device nodes])
@@ -125,7 +144,7 @@ fi
 AC_SUBST([PERL])
 AC_ARG_VAR([PERL], [path to Perl])
 
-if test z$enable_client = zyes ; then
+if echo " $vmms " | grep -Fq " virtualbox " ; then
 	AC_PATH_PROG([PYTHON], [python], [no])
 	if test z$PYTHON = zno ; then
 		AC_MSG_ERROR([Python not found])
