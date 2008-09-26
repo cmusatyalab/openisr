@@ -13,11 +13,29 @@ use strict;
 use warnings;
 
 my $program;
-my $vmx;
 
-sub check_runnable {
+sub find_vmx {
+	my $vmx;
 	my $dent;
 
+	# New canonical location
+	return "vmware.vmx"
+		if -f "$CFGDIR/vmware.vmx";
+
+	# Search the cfg directory for legacy VMXes
+	opendir DIR, $CFGDIR
+		or fail "Couldn't read cfg directory";
+	while ($dent = readdir(DIR)) {
+		next if $dent !~ /\.vmx$/;
+		fail "Too many VMX files in $CFGDIR"
+			if defined $vmx;
+		$vmx = $dent;
+	}
+	closedir DIR;
+	return $vmx;
+}
+
+sub check_runnable {
 	fail "Cannot resume: parcel already suspended with $SUSPENDED"
 		if $SUSPENDED ne "no" and $SUSPENDED ne "vmware";
 	if (defined $COMMAND) {
@@ -30,16 +48,8 @@ sub check_runnable {
 		fail "VMware not found"
 			unless defined $program;
 	}
-	undef $vmx;
-	opendir DIR, $CFGDIR
-		or fail "Couldn't read cfg directory";
-	while ($dent = readdir(DIR)) {
-		next if $dent !~ /\.vmx$/;
-		fail "Too many VMX files in $CFGDIR"
-			if defined $vmx;
-		$vmx = "$CFGDIR/$dent";
-	}
-	closedir DIR;
+	# Make sure we can locate a specific VMX file to run
+	find_vmx;
 }
 
 sub info {
@@ -106,10 +116,88 @@ undopoint.disableSnapshots = "TRUE"
 uuid.action = "keep"
 EOF
 	close(VMX);
-	$vmx = "$CFGDIR/vmware.vmx";
+}
+
+sub new_filenames {
+	my $vmx = shift;
+
+	my $vmdk;
+	my $vmxf;
+	my $base;
+	my $ext;
+	my $line;
+	my $key;
+	my $value;
+	my @files;
+	my $file;
+
+	open(OLD, "<", "$CFGDIR/$vmx")
+		or fail "Couldn't read $vmx";
+	open(NEW, ">", "$CFGDIR/vmware.vmx")
+		or fail "Couldn't write new vmware.vmx";
+	while ($line = <OLD>) {
+		if ($line !~ /^([^=\s]+)\s*=\s*([^\n]+)\n$/) {
+			print NEW $line;
+			next;
+		}
+		($key, $value) = ($1, $2);
+		if ($key =~ /fileName$/ and $value =~ /.vmdk"$/) {
+			fail "Parcel associated with more than one VMDK; "
+						. "bailing out"
+				if defined $vmdk;
+			($vmdk = $value) =~ s/"//g;
+			print NEW "$key = \"vmware.vmdk\"\n";
+		} elsif ($key eq "extendedConfigFile") {
+			($vmxf = $value) =~ s/"//g;
+			print NEW "extendedConfigFile = \"vmware.vmxf\"\n";
+		} else {
+			print NEW $line;
+		}
+	}
+	close(OLD);
+	close(NEW);
+	unlink "$CFGDIR/$vmx"
+		or fail "Couldn't unlink $vmx";
+
+	if ($vmdk ne "vmware.vmdk") {
+		fail "vmware.vmdk already exists; will not overwrite"
+			if -e "$CFGDIR/vmware.vmdk";
+		rename("$CFGDIR/$vmdk", "$CFGDIR/vmware.vmdk")
+			or fail "Couldn't rename $CFGDIR/$vmdk";
+	}
+
+	if (defined $vmxf and $vmxf ne "vmware.vmxf") {
+		fail "vmware.vmxf already exists; will not overwrite"
+			if -e "$CFGDIR/vmware.vmxf";
+		open(OLD, "<", "$CFGDIR/$vmxf")
+			or fail "Couldn't read $vmxf";
+		open(NEW, ">", "$CFGDIR/vmware.vmxf")
+			or fail "Couldn't write new vmware.vmxf";
+		while ($line = <OLD>) {
+			$line =~ s/$vmx/vmware.vmx/g
+				if $line =~ /vmxPathName/;
+			print NEW $line;
+		}
+		close OLD;
+		close NEW;
+		unlink "$CFGDIR/$vmxf"
+			or fail "Couldn't unlink $vmxf";
+	}
+
+	($base = $vmx) =~ s/\.vmx$//;
+	opendir DIR, $CFGDIR
+		or fail "Couldn't read cfg directory";
+	@files = grep /^$base\./, readdir(DIR);
+	closedir DIR;
+	foreach $file (@files) {
+		($ext = $file) =~ s/^$base\.//;
+		rename("$CFGDIR/$base.$ext", "$CFGDIR/vmware.$ext")
+			or fail "Couldn't rename $base.$ext";
+	}
 }
 
 sub new_uuid {
+	my $vmx = "$CFGDIR/vmware.vmx";
 	my $vmdk;
 	my $line;
 	my $key;
@@ -171,7 +259,11 @@ sub update_cfg {
 	my $refreshed = 0;
 	my $old_id;
 	my $uufile = "$CFGDIR/vmware.uuid";
+	my $vmx;
 
+	$vmx = find_vmx;
+	new_filenames $vmx
+		if defined $vmx and $vmx ne "vmware.vmx";
 	if (!defined $vmx) {
 		# This parcel has no VMX file.  Create a VMX and VMDK.
 		new_vmdata;
@@ -222,7 +314,7 @@ sub run {
 	{
 		local $ENV{'LD_PRELOAD'} = "libvdisk.so.0";
 		local $ENV{'VDISK_DEVICE'} = $DISK;
-		$ret = run_program("$program $opts $vmx");
+		$ret = run_program("$program $opts $CFGDIR/vmware.vmx");
 	}
 	fail "Couldn't run $program"
 		if $ret == -1;
