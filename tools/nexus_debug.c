@@ -1,6 +1,5 @@
-/* 
- * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
- *         system
+/*
+ * nexus_debug - List, query, and set Nexus debug flags
  * 
  * Copyright (C) 2006-2007 Carnegie Mellon University
  * 

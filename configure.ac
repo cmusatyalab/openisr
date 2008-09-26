@@ -235,7 +235,6 @@ AC_CONFIG_FILES([Makefile
                  client/Makefile
                  locksrv/Makefile
                  nexus/GNUmakefile
-                 nexus/tools/Makefile
                  parcelkeeper/Makefile
                  sqlite/Makefile
                  sha1/GNUmakefile

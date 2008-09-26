@@ -1,6 +1,5 @@
-/* 
- * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
- *         system
+/*
+ * nextest - Simple keyring manager for testing Nexus
  * 
  * Copyright (C) 2006-2008 Carnegie Mellon University
  * 

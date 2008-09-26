@@ -1,6 +1,5 @@
-/* 
- * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
- *         system
+/*
+ * readstats - Format and display Nexus state statistics
  * 
  * Copyright (C) 2006-2008 Carnegie Mellon University
  * 
