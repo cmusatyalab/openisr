@@ -179,6 +179,10 @@ sub new_filenames {
 		} elsif ($key eq "extendedConfigFile") {
 			$vmxf = $value;
 			print NEW "extendedConfigFile = \"vmware.vmxf\"\n";
+		} elsif ($key eq "checkpoint.vmState") {
+			# This key does not appear to be respected by
+			# current VMware, and misleadingly gives a filename
+			# for the VMSS file.  Drop the line.
 		} elsif ($key eq "nvram") {
 			$nvram = $value;
 			print NEW "nvram = \"vmware.nvram\"\n";
