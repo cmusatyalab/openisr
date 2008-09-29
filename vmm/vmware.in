@@ -130,8 +130,19 @@ ehci.present = "TRUE"
 tools.remindInstall = "TRUE"
 undopoint.disableSnapshots = "TRUE"
 uuid.action = "keep"
+nvram = "vmware.nvram"
 EOF
 	close(VMX);
+}
+
+sub try_rename {
+	my $from = shift;
+	my $to = shift;
+
+	fail "$to already exists; will not overwrite"
+		if -e "$CFGDIR/$to";
+	rename("$CFGDIR/$from", "$CFGDIR/$to")
+		or fail "Couldn't rename $CFGDIR/$from";
 }
 
 sub new_filenames {
@@ -139,6 +150,7 @@ sub new_filenames {
 
 	my $vmdk;
 	my $vmxf;
+	my $nvram;
 	my $base;
 	my $ext;
 	my $line;
@@ -157,30 +169,37 @@ sub new_filenames {
 			next;
 		}
 		($key, $value) = ($1, $2);
-		if ($key =~ /fileName$/ and $value =~ /.vmdk"$/) {
+		$value =~ s/"//g;
+		if ($key =~ /fileName$/ and $value =~ /.vmdk$/) {
 			fail "Parcel associated with more than one VMDK; "
 						. "bailing out"
 				if defined $vmdk;
-			($vmdk = $value) =~ s/"//g;
+			$vmdk = $value;
 			print NEW "$key = \"vmware.vmdk\"\n";
 		} elsif ($key eq "extendedConfigFile") {
-			($vmxf = $value) =~ s/"//g;
+			$vmxf = $value;
 			print NEW "extendedConfigFile = \"vmware.vmxf\"\n";
+		} elsif ($key eq "nvram") {
+			$nvram = $value;
+			print NEW "nvram = \"vmware.nvram\"\n";
 		} else {
 			print NEW $line;
 		}
+	}
+	unless (defined $nvram) {
+		$nvram = "nvram";
+		print NEW "nvram = \"vmware.nvram\"\n";
 	}
 	close(OLD);
 	close(NEW);
 	unlink "$CFGDIR/$vmx"
 		or fail "Couldn't unlink $vmx";
 
-	if ($vmdk ne "vmware.vmdk") {
-		fail "vmware.vmdk already exists; will not overwrite"
-			if -e "$CFGDIR/vmware.vmdk";
-		rename("$CFGDIR/$vmdk", "$CFGDIR/vmware.vmdk")
-			or fail "Couldn't rename $CFGDIR/$vmdk";
-	}
+	try_rename $vmdk, "vmware.vmdk"
+		if $vmdk ne "vmware.vmdk";
+
+	try_rename $nvram, "vmware.nvram"
+		if $nvram ne "vmware.nvram" and -e "$CFGDIR/$nvram";
 
 	if (defined $vmxf and $vmxf ne "vmware.vmxf") {
 		fail "vmware.vmxf already exists; will not overwrite"
@@ -207,8 +226,7 @@ sub new_filenames {
 	closedir DIR;
 	foreach $file (@files) {
 		($ext = $file) =~ s/^$base\.//;
-		rename("$CFGDIR/$base.$ext", "$CFGDIR/vmware.$ext")
-			or fail "Couldn't rename $base.$ext";
+		try_rename "$base.$ext", "vmware.$ext";
 	}
 }
 
