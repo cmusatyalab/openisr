@@ -226,6 +226,12 @@ sub new_filenames {
 	closedir DIR;
 	foreach $file (@files) {
 		($ext = $file) =~ s/^$base\.//;
+		# If the file is of a type which requires it to be explicitly
+		# listed in the VMX file, then we don't want to rename it
+		# here: we've already found the canonical copy and renamed it,
+		# so despite its basename the file we've found here is not
+		# really associated with the VM.
+		next if $ext =~ /^vmdk|vmxf|nvram$/;
 		try_rename "$base.$ext", "vmware.$ext";
 	}
 }
