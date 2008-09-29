@@ -120,6 +120,7 @@ def create_machine(vbox, path):
 	net.adapterType = ifaces.NetworkAdapterType.I82543GC
 	net.attachToNAT()
 	net.enabled = True
+	vm.setExtraData('GUI/LastCloseAction', 'save')
 	vm.saveSettings()
 	del vm
 	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), path)
