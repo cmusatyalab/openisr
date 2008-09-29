@@ -35,9 +35,6 @@ AC_ARG_ENABLE([client], [AS_HELP_STRING([--enable-client],
 AC_ARG_ENABLE([vmm-drivers], [AS_HELP_STRING([--enable-vmm-drivers=<list>],
 			[build VMM drivers [$client]])],,
 			[enable_vmm_drivers=${enable_client}])
-AC_ARG_ENABLE([modules], [AS_HELP_STRING([--enable-modules],
-			[build kernel modules [$client]])],,
-			[enable_modules=${enable_client}])
 AC_ARG_ENABLE([server], [AS_HELP_STRING([--enable-server],
 			[build server code [no]])],, [enable_server=no])
 AC_ARG_WITH([kbuild-wrapper],
@@ -50,8 +47,6 @@ AC_ARG_WITH([group], [AS_HELP_STRING([--with-group=GROUP],
 
 PROCESS_ENABLE_VAR([$enable_client], [WANT_CLIENT],
 			[whether we should build the client])
-PROCESS_ENABLE_VAR([$enable_modules], [WANT_MODULES],
-			[whether we should build the kernel modules])
 PROCESS_ENABLE_VAR([$enable_server], [WANT_SERVER],
 			[whether we should build the server])
 AM_CONDITIONAL([WANT_COMMON],
@@ -78,9 +73,7 @@ if test z$enable_client = zyes ; then
 	AC_MSG_CHECKING([group for OpenISR device nodes])
 	AC_MSG_RESULT([$with_group])
 	AC_SUBST([ISRGROUP], [$with_group])
-fi
 
-if test z$enable_client = zyes -o z$enable_modules = zyes ; then
 	AC_MSG_CHECKING([how to build kernel modules])
 	if test x$with_kbuild_wrapper = xnone ; then
 		AC_MSG_RESULT([source])
@@ -88,21 +81,9 @@ if test z$enable_client = zyes -o z$enable_modules = zyes ; then
 	elif test x$with_kbuild_wrapper = xdebian -o x$with_kbuild_wrapper = xdkms
 	then
 		AC_MSG_RESULT([$with_kbuild_wrapper])
-		if test z$enable_modules = zyes ; then
-			AC_MSG_ERROR([--enable-modules cannot be used with a kbuild wrapper])
-		fi
 		AC_SUBST([KBUILDTYPE], [$with_kbuild_wrapper])
 	else
 		AC_MSG_ERROR([unknown kbuild wrapper $with_kbuild_wrapper])
-	fi
-fi
-AM_CONDITIONAL([WANT_MODULE_SOURCE], [test z$enable_client = zyes -a \
-			z$with_kbuild_wrapper = znone])
-
-if test z$enable_modules = zyes ; then
-	if test z$srcdir != z. ; then
-		AC_MSG_ERROR([cannot build outside source tree when --enable-modules is set])
-		# ...because Kbuild doesn't support it
 	fi
 fi
 
@@ -182,25 +163,6 @@ AC_ARG_WITH([zlib], [AS_HELP_STRING([--with-zlib=DIR],
 AC_ARG_WITH([curl], [AS_HELP_STRING([--with-curl=DIR],
 			[look for libcurl in DIR])])
 
-if test z$enable_modules = zyes ; then
-	AC_MSG_CHECKING([for kernel source])
-	# KERNELDIR is set to the argument passed to --with-kernel, if set.
-	# Otherwise, it's the value of the KERNELDIR environment variable,
-	# if set.  Otherwise, we produce a default from uname -r.
-	if test z$with_kernel != z ; then
-		KERNELDIR=$with_kernel
-	elif test z$KERNELDIR = z ; then
-		KERNELDIR=/lib/modules/`uname -r`/build
-	fi
-	AC_MSG_RESULT([$KERNELDIR])
-	
-	if test ! -f $KERNELDIR/include/linux/version.h ; then
-		AC_MSG_ERROR([$KERNELDIR is not a configured kernel source tree])
-	fi
-	AC_SUBST([KERNELDIR])
-	AC_ARG_VAR([KERNELDIR], [location of configured kernel source (equivalent to --with-kernel)])
-fi
-
 if test z$enable_client = zyes ; then
 	FIND_LIBRARY([libcurl], [curl], [curl_easy_init], [curl/curl.h],
 				[$with_curl /usr/local /usr])
@@ -234,8 +196,6 @@ AC_CONFIG_FILES([Makefile
                  conf/Makefile
                  client/Makefile
                  kernel/Makefile
-                 kernel/nexus/GNUmakefile
-                 kernel/sha1/GNUmakefile
                  locksrv/Makefile
                  parcelkeeper/Makefile
                  sqlite/Makefile

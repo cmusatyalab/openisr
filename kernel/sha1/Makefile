@@ -13,6 +13,6 @@ endif
 else
 
 KMODS := sha1-i586.ko sha1-x86_64.ko
-include ../kernel.mk
+include ../common.mk
 
 endif

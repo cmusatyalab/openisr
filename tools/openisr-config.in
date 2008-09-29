@@ -16,7 +16,7 @@ use POSIX;
 use File::Temp qw/tempdir/;
 use Term::ANSIColor;
 use constant {
-	SRC => "!!SHAREDIR!!/openisr.tar.gz",
+	SRC => "!!SHAREDIR!!/openisr-modules.tar.gz",
 	INITSCRIPT => "!!INITDIR!!/openisr",
 	VERSION => "!!VERSION!!",
 	KBUILDTYPE => "!!KBUILDTYPE!!",
@@ -43,31 +43,29 @@ sub status ($) {
 
 sub build_source () {
 	my $topdir;
-	my @files;
-	my $subdir;
+	my $found_version = 0;
 	
 	status "Unpacking kernel module source...";
 	$topdir= tempdir("openisr-config-XXXXXXXX", TMPDIR => 1, CLEANUP => 1)
 		or fail "Couldn't create temporary directory";
-	system("tar xzf " . SRC . " -C $topdir") == 0
+	system("tar xzof " . SRC . " -C $topdir --no-same-permissions") == 0
 		or fail "Couldn't unpack kernel sources";
-	opendir(DIR, $topdir)
-		or fail "Couldn't read temporary directory";
-	@files = grep(/^openisr-/, readdir(DIR));
-	closedir(DIR);
-	@files == 1
-		or fail "Problem unpacking temporary directory";
-	$subdir = "$topdir/$files[0]";
-	$subdir =~ /openisr-([0-9a-zA-Z.-]+)$/
-		or fail "Couldn't parse source directory name";
-	$1 eq VERSION
-		or warning "Expected module version " . VERSION . ", found $1";
-	chdir($subdir)
+	chdir("$topdir/openisr-modules")
 		or fail "Couldn't chdir";
-	
-	status "Configuring kernel module source...";
-	system("./configure --disable-client --enable-modules") == 0
-		or fail "Couldn't configure kernel source";
+	open(CFGH, "config.h")
+		or fail "Couldn't read config.h";
+	while (<CFGH>) {
+		next unless /^#define\s+([^\s]+)\s+"([^"]+)"$/;
+		if ($1 eq "VERSION") {
+			$found_version = 1;
+			warning "Expected module version " . VERSION .
+						", found $2"
+				if $2 ne VERSION;
+		}
+	}
+	close CFGH;
+	warning "Unknown module version"
+		unless $found_version;
 	
 	status "Building kernel modules...";
 	system("make") == 0

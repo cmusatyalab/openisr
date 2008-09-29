@@ -34,10 +34,6 @@ install: check_config module
 uninstall: check_config
 	@rm -f $(foreach mod,$(KMODS),$(DESTDIR)/lib/modules/$(KERN_RELEASE)/openisr/$(mod))
 
-.PHONY: installdirs
-installdirs: check_config
-	@mkdir -p $(DESTDIR)/lib/modules/$(KERN_RELEASE)/openisr
-
 .PHONY: check_config
 check_config:
 ifeq ($(KERN_RELEASE),)
