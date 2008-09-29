@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir)/nexus -I$(top_srcdir)/sqlite
+AM_CPPFLAGS = -I$(top_srcdir)/kernel/nexus -I$(top_srcdir)/sqlite
 AM_CPPFLAGS += -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
 AM_CFLAGS = -W -Wall -Wstrict-prototypes -Wno-missing-field-initializers
 AM_CFLAGS += $(OSSP_UUID_CFLAGS)

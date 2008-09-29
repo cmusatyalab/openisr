@@ -12,12 +12,11 @@ endif
 
 # Unconditionally descend into kernel directories: even if we didn't, the
 # GNUmakefiles there would still need to condition their calls into Kbuild
-# on WANT_MODULES or else distclean would break for VPATH builds.  Also, Nexus
-# has tools it may want to build even if !WANT_MODULES.
-SUBDIRS = $(COMMONDIRS) $(CLIENTDIRS) $(SERVERDIRS) nexus sha1 vmm
+# on WANT_MODULES or else distclean would break for VPATH builds.
+SUBDIRS = $(COMMONDIRS) $(CLIENTDIRS) $(SERVERDIRS) kernel vmm
 dist_noinst_SCRIPTS = mkrevision.sh autogen.sh
-EXTRA_DIST  = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL CHANGES kernel.mk
-EXTRA_DIST += .gitrevision README.server
+EXTRA_DIST  = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL CHANGES README.server
+EXTRA_DIST += .gitrevision
 
 # dist-gzip appears to rebuild the tarball whenever it is run (though the
 # generated Makefile seems to indicate that this shouldn't happen).  Thus

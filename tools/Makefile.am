@@ -1,4 +1,5 @@
-AM_CPPFLAGS = -I$(top_srcdir)/nexus -I$(top_srcdir)/sqlite -I.. -D_GNU_SOURCE
+AM_CPPFLAGS = -I$(top_srcdir)/kernel/nexus -I$(top_srcdir)/sqlite -I..
+AM_CPPFLAGS += -D_GNU_SOURCE
 AM_CFLAGS = -W -Wall -Wstrict-prototypes
 SQLITE_LIBFLAGS = -L$(top_srcdir)/sqlite -lsqlite
 

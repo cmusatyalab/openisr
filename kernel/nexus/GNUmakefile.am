@@ -1,4 +1,4 @@
 include Files.mk
 EXTRA_DIST = Makefile HACKING $(NEXUS_OBJS:.o=.c) $(NEXUS_HDRS)
 
-include $(top_srcdir)/autokernel.mk
+include $(srcdir)/../autokernel.mk

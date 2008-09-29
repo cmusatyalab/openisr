@@ -15,7 +15,7 @@ AC_PREREQ(2.59)
 AC_INIT([OpenISR], [0.9.3])
 AM_INIT_AUTOMAKE([foreign 1.10])
 AC_COPYRIGHT([Copyright (C) 2007-2008 Carnegie Mellon University])
-AC_CONFIG_SRCDIR([nexus/request.c])
+AC_CONFIG_SRCDIR([parcelkeeper/nexus.c])
 AC_DISABLE_STATIC
 
 # Generating a config.h prevents the introduction of several lines' worth of
@@ -233,11 +233,12 @@ AC_SUBST([initexecdir], [\$\(sysconfdir\)/init.d])
 AC_CONFIG_FILES([Makefile
                  conf/Makefile
                  client/Makefile
+                 kernel/Makefile
+                 kernel/nexus/GNUmakefile
+                 kernel/sha1/GNUmakefile
                  locksrv/Makefile
-                 nexus/GNUmakefile
                  parcelkeeper/Makefile
                  sqlite/Makefile
-                 sha1/GNUmakefile
                  tools/Makefile
                  vmm/Makefile
                  vmm/libvdisk/Makefile

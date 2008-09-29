@@ -6,7 +6,8 @@ openisr-objs := $(NEXUS_OBJS) revision.o
 
 else
 
-include ../mkrevision.mk
+top_srcdir := ../..
+include ../../mkrevision.mk
 
 MOD_DEPENDS := revision.c
 KMODS := openisr.ko
