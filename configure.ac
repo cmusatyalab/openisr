@@ -154,8 +154,6 @@ if WANT_VMM([vmware]) ; then
 fi
 
 # Checks for libraries.
-AC_ARG_WITH([kernel], [AS_HELP_STRING([--with-kernel=DIR],
-			[look for configured kernel source tree in DIR])])
 AC_ARG_WITH([ssl], [AS_HELP_STRING([--with-ssl=DIR],
 			[look for OpenSSL libraries in DIR])])
 AC_ARG_WITH([zlib], [AS_HELP_STRING([--with-zlib=DIR],
