@@ -1,16 +1,8 @@
 # Top-level Makefile for kernel source tarball
 
 SUBDIRS = nexus sha1
-SUBMAKE = @$(foreach dir,$(SUBDIRS),make -C $(dir) $(1) && ) true
+TARGETS = module clean install
 
-.PHONY: module
-module:
-	$(call SUBMAKE,module)
-
-.PHONY: clean
-clean:
-	$(call SUBMAKE,clean)
-
-.PHONY: install
-install:
-	$(call SUBMAKE,install)
+.PHONY: $(TARGETS)
+$(TARGETS):
+	@$(foreach dir,$(SUBDIRS),make -C $(dir) $@ && ) true
