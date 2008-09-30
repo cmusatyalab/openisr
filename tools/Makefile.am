@@ -13,6 +13,7 @@ endif
 if WANT_CLIENT
 CLIENTPROGS = readstats nexus_debug
 CLIENTSCRIPTS = dirtometer
+dist_pkgdata_DATA = modbuild.pm
 sbin_SCRIPTS = openisr-config
 man_MANS = openisr-config.8
 endif

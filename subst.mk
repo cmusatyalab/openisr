@@ -11,7 +11,6 @@ $(GEN): %: %.in Makefile $(REVISION_DEPENDS)
 				-e "s=!!INITDIR!!=$(initexecdir)=g" \
 				-e "s=!!PERLPATH!!=$(PERL)=g" \
 				-e "s=!!PYTHONPATH!!=$(PYTHON)=g" \
-				-e "s=!!KBUILDTYPE!!=$(KBUILDTYPE)=g" \
 				-e "s=!!ISRGROUP!!=$(ISRGROUP)=g" \
 				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" \
 				-e "s=!!REVISION!!=$(RCS_REVISION)=g" $< > $@

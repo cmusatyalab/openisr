@@ -37,10 +37,6 @@ AC_ARG_ENABLE([vmm-drivers], [AS_HELP_STRING([--enable-vmm-drivers=<list>],
 			[enable_vmm_drivers=${enable_client}])
 AC_ARG_ENABLE([server], [AS_HELP_STRING([--enable-server],
 			[build server code [no]])],, [enable_server=no])
-AC_ARG_WITH([kbuild-wrapper],
-			[AS_HELP_STRING([--with-kbuild-wrapper={none|debian|dkms}],
-			[for use by packaging scripts only])],,
-			[with_kbuild_wrapper=none])
 AC_ARG_WITH([group], [AS_HELP_STRING([--with-group=GROUP],
 			[group for device node access [isrusers]])],,
 			[with_group=isrusers])
@@ -73,18 +69,6 @@ if test z$enable_client = zyes ; then
 	AC_MSG_CHECKING([group for OpenISR device nodes])
 	AC_MSG_RESULT([$with_group])
 	AC_SUBST([ISRGROUP], [$with_group])
-
-	AC_MSG_CHECKING([how to build kernel modules])
-	if test x$with_kbuild_wrapper = xnone ; then
-		AC_MSG_RESULT([source])
-		AC_SUBST([KBUILDTYPE], [source])
-	elif test x$with_kbuild_wrapper = xdebian -o x$with_kbuild_wrapper = xdkms
-	then
-		AC_MSG_RESULT([$with_kbuild_wrapper])
-		AC_SUBST([KBUILDTYPE], [$with_kbuild_wrapper])
-	else
-		AC_MSG_ERROR([unknown kbuild wrapper $with_kbuild_wrapper])
-	fi
 fi
 
 build_32=no
