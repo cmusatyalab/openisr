@@ -52,8 +52,8 @@ AC_MSG_CHECKING([which VMM drivers to build])
 REQUESTED_VMMS=`echo "$enable_vmm_drivers" | sed -e 's/,/ /g'`
 AC_SUBST([REQUESTED_VMMS])
 export REQUESTED_VMMS
-vmms=`$am_make -f $srcdir/vmm.mk list_chosen_vmms`
-unknown_vmms=`$am_make -f $srcdir/vmm.mk list_invalid_vmms`
+vmms=`$am_make -f $srcdir/vmm.mk --no-print-directory list_chosen_vmms`
+unknown_vmms=`$am_make -f $srcdir/vmm.mk --no-print-directory list_invalid_vmms`
 if test -n "$unknown_vmms" ; then
 	AC_MSG_ERROR([unknown VMM drivers requested: $unknown_vmms])
 fi

@@ -15,6 +15,10 @@ dist_noinst_SCRIPTS = mkrevision.sh autogen.sh
 EXTRA_DIST  = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL CHANGES README.server
 EXTRA_DIST += .gitrevision
 
+# "make distcheck" should check as much as possible, but not the VMware
+# driver, because libvdisk installs into an absolute path
+DISTCHECK_CONFIGURE_FLAGS = --enable-server --enable-vmm-drivers=all,-vmware
+
 # This is marked PHONY so that it will run unconditionally during "make dist";
 # otherwise, we might distribute an obsolete .gitrevision.
 .PHONY: .gitrevision

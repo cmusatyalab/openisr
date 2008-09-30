@@ -10,5 +10,6 @@ parcelkeeper_SOURCES  = cmdline.c main.c log.c cache.c cache_modes.c
 parcelkeeper_SOURCES += hoard.c hoard_modes.c nexus.c util.c parcelcfg.c
 parcelkeeper_SOURCES += transport.c sql.c defs.h
 nodist_parcelkeeper_SOURCES = revision.c
+CLEANFILES = revision.c
 
 include $(top_srcdir)/mkrevision.mk
