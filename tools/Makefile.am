@@ -1,7 +1,7 @@
 AM_CPPFLAGS = -I$(top_srcdir)/kernel/nexus -I$(top_srcdir)/sqlite -I..
 AM_CPPFLAGS += -D_GNU_SOURCE
 AM_CFLAGS = -W -Wall -Wstrict-prototypes
-SQLITE_LIBFLAGS = -L$(top_srcdir)/sqlite -lsqlite
+SQLITE_LIBFLAGS = -L$(top_builddir)/sqlite -lsqlite
 
 GEN = openisr-config openisr-config.8 upgrade-0.9.pl dirtometer
 

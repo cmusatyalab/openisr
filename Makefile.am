@@ -19,4 +19,4 @@ EXTRA_DIST += .gitrevision
 # otherwise, we might distribute an obsolete .gitrevision.
 .PHONY: .gitrevision
 .gitrevision:
-	$(top_srcdir)/mkrevision.sh update
+	$(top_srcdir)/mkrevision.sh $(top_builddir) update

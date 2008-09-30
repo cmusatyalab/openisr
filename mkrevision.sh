@@ -2,7 +2,7 @@
 #
 # mkrevision.sh - generate revision headers from Git and Autoconf metadata
 #
-# Copyright (C) 2006-2007 Carnegie Mellon University
+# Copyright (C) 2006-2008 Carnegie Mellon University
 #
 # This software is distributed under the terms of the Eclipse Public
 # License, Version 1.0 which can be found in the file named LICENSE.Eclipse.
@@ -13,23 +13,25 @@
 set -e
 
 BASEDIR=`dirname $0`
+BUILDDIR="$1"
 REVFILE="$BASEDIR/.gitrevision"
 
-if [ "$1" = "update" ] ; then
+if [ "$2" = "update" ] ; then
 	if [ ! -d $BASEDIR/.git ] ; then
 		exit 0
 	fi
+	GIT="git --git-dir=$BASEDIR/.git"
 
 	# git describe will throw a fatal error if there is no predecessor
 	# tag to the current commit
-	REV=`git describe 2>/dev/null || git rev-parse --short HEAD`
+	REV=`$GIT describe 2>/dev/null || $GIT rev-parse --short HEAD`
 	# Coda-specific workaround: different Coda clients may see different
 	# stat information for the same files, which can cause a client to
 	# believe the git index is not up-to-date, which could cause the
 	# "-dirty" flag to be added against a clean repository.  So we
 	# refresh the git index before checking it.
-	git update-index --refresh > /dev/null 2>&1 || true
-	if git diff-index HEAD | read junk ; then
+	$GIT update-index --refresh > /dev/null 2>&1 || true
+	if $GIT diff-index HEAD | read junk ; then
 		# There are uncommitted changes in the working copy
 		REV="$REV-dirty"
 	fi
@@ -47,13 +49,13 @@ fi
 
 REV=`cat $REVFILE`
 REL=`awk 'BEGIN { FS="\"" } /#define PACKAGE_VERSION/ { print $2 }' \
-			$BASEDIR/config.h`
+			$BUILDDIR/config.h`
 
 # It's better to use a separate object file for the revision data,
-# since "svn update" will then force a relink but not a recompile.
+# since "git pull" will then force a relink but not a recompile.
 # However, we shouldn't do this for shared libraries, because then
 # "rcs_revision" becomes part of the library's ABI.
-case $1 in
+case $2 in
 object)
 	cat > revision.c <<- EOF
 		const char *isr_release = "$REL";
@@ -73,7 +75,7 @@ header)
 	EOF
 	;;
 *)
-	echo "Usage: $0 {update|object|header}" >&2
+	echo "Usage: $0 <build_dir> {update|object|header}" >&2
 	exit 1
 	;;
 esac
