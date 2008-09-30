@@ -30,10 +30,6 @@ install: check_config module
 		rm -f $(DESTDIR)/lib/modules/$(KERN_RELEASE)/modules.* || true
 
 
-.PHONY: uninstall
-uninstall: check_config
-	@rm -f $(foreach mod,$(KMODS),$(DESTDIR)/lib/modules/$(KERN_RELEASE)/openisr/$(mod))
-
 .PHONY: check_config
 check_config:
 ifeq ($(KERN_RELEASE),)

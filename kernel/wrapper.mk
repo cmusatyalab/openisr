@@ -14,7 +14,3 @@ clean:
 .PHONY: install
 install:
 	$(call SUBMAKE,install)
-
-.PHONY: uninstall
-uninstall:
-	$(call SUBMAKE,uninstall)
