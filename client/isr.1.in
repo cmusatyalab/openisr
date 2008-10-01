@@ -10,7 +10,6 @@
 .\" ==========================================================================
 .\"
 .TH ISR 1 "" "OpenISR !!VERSION!!" "User Commands"
-.LO 1
 
 .SH NAME
 isr \- Internet Suspend/Resume client program
