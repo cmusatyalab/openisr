@@ -18,6 +18,6 @@ top_srcdir := ../..
 # If we just included mkrevision.mk, don't (incorrectly) redefine the rule
 # for building revision.c.  If we didn't, we need a rule.
 $(if $(REVISION_DEPENDS),dummy,revision.c): ../.gitrevision ../config.h
-	../mkrevision.sh object
+	../mkrevision.sh .. object
 
 endif
