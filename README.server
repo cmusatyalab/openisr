@@ -7,6 +7,10 @@ Configure your server system with a web server and SSH daemon.  Then:
 make
 make install
 
+The server software does not include any persistent daemons, so there is
+nothing to launch.  ISR clients interact with the server by fetching data
+from it via HTTP and by running commands on it via SSH.
+
 CONFIGURING THE SERVER
 ----------------------
 
@@ -36,6 +40,10 @@ ADMINISTERING THE SERVER
 The server includes a tool, "isr_admin", which automates creating and
 deleting users and parcels.  For a usage summary, run "isr_admin"
 without arguments.  For examples, run "isr_admin -hh".
+
+An ISR account on the server is just a regular user account with some extra
+configuration, which is performed automatically when the account is created
+with "isr_admin adduser".
 
 SERVER SECURITY
 ---------------
