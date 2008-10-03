@@ -14,23 +14,27 @@ To run:
 - OSSP uuid library (see note below)
 - Perl
 - gtk2-perl, if dirtometer will be used
-- Python >= 2.4
 - udev
 - ssh
 - rsync
 - pv (available from <http://www.ivarch.com/programs/pv.shtml>)
-- On 64-bit systems: 32-bit glibc (if you are building libvdisk)
 - ssh-agent running in your X session (most systems provide this by default)
-- VMware or VMware Player (other VMMs to follow)
+- VirtualBox, KVM, VMware Workstation, or VMware Player
 - An accessible OpenISR 0.9-series server
 
+Additional requirements for the virtualbox driver:
+- Python >= 2.4
+
+Additional requirements for the vmware driver:
+- On 64-bit systems: 32-bit glibc
+
 To build from a source tarball:
-- All of the above, plus:
+- All of the requirements for running the OpenISR system, plus:
 - Development headers for glibc, libcurl, OpenSSL, zlib, and libossp-uuid
 - pkg-config
 
 To build from the Git repository:
-- All of the above, plus:
+- All of the requirements for building the OpenISR system, plus:
 - Autoconf >= 2.59
 - Automake >= 1.10
 - libtool
@@ -55,6 +59,39 @@ make
 make install
 Follow the directions in "POST-INSTALLATION", below
 
+VIRTUAL MACHINE MONITORS
+------------------------
+
+The OpenISR system currently includes drivers for the following virtual
+machine monitors.  The name of the driver is listed in parentheses.
+
+- VirtualBox >= 2.0.0 (virtualbox)
+
+- KVM (kvm)
+
+- VMware Workstation and VMware Player (vmware)
+	Newly created parcels for these VMMs require VMware Workstation 6.0
+	or greater, or VMware Player 2.0 or greater.  Legacy parcels may work
+	with older versions of VMware.
+
+	This driver includes libvdisk, a wrapper library that is preloaded
+	into VMware to enable support for the OpenISR virtual disk.  It is
+	installed setuid root so that it may be preloaded into the vmware-vmx
+	executable which is itself setuid root.  Due to the LD_PRELOAD rules
+	for setuid programs, libvdisk is installed in DESTDIR/usr/lib
+	regardless of the setting of libdir.  On 64-bit systems, a 64-bit
+	version of libvdisk is installed in DESTDIR/usr/lib64 or
+	DESTDIR/usr/lib, depending on your Linux distribution, and a 32-bit
+	version is installed in DESTDIR/usr/lib32 or DESTDIR/usr/lib.  See
+	the ld.so(8) man page for details on the LD_PRELOAD setuid rules.
+
+- Shell (shell)
+	This is a stub VMM driver that merely launches a shell.  It can be
+	used for debugging, or to run a VMM for which a VMM driver does not
+	currently exist.  This driver is always built and installed unless
+	--disable-client is specified to configure, and is not affected
+	by the setting of --enable-vmm-drivers.
+
 CONFIGURE OPTIONS
 -----------------
 
@@ -65,43 +102,29 @@ following command line options:
 	Overrides the name of the group which will be permitted to access
 	the OpenISR device nodes.  The default is "isrusers".
 
---with-kernel=DIR
 --with-ssl=DIR
 --with-zlib=DIR
 --with-curl=DIR
-	Specifies an additional search path for, respectively, the kernel
-	source, OpenSSL, zlib, or curl.  In addition to the specified paths,
-	configure will check a set of default paths for each component.
+	Specifies an additional search path for, respectively, OpenSSL, zlib,
+	or curl.  In addition to the specified paths, configure will check a
+	set of default paths for each component.
 
 --disable-client
 	Do not build or install components that are only used by the OpenISR
 	client.
 
---enable-libvdisk
---disable-libvdisk
-	Do, or do not, build and install the libvdisk LD_PRELOAD library.  The
-	default is to build and install libvdisk unless --disable-client is
-	specified.  libvdisk is installed setuid root so that it can be
-	preloaded into virtual machine monitors that are themselves setuid
-	root.  Due to the LD_PRELOAD rules for setuid programs, libvdisk is
-	installed in DESTDIR/usr/lib regardless of the setting of libdir.
-	On 64-bit systems, a 64-bit version of libvdisk is installed in
-	DESTDIR/usr/lib64 or DESTDIR/usr/lib, depending on your Linux
-	distribution, and a 32-bit version is installed in DESTDIR/usr/lib32
-	or DESTDIR/usr/lib.  See the ld.so(8) man page for details on the
-	LD_PRELOAD setuid rules.
-
---enable-modules
---disable-modules
-	Do, or do not, build and install the OpenISR kernel modules.  The
-	default is to build and install these modules unless --disable-client
-	is specified.  If --with-kernel=DIR is specified, the modules are built
-	against the configured kernel source tree specified by DIR; otherwise,
-	configure attempts to locate the source tree corresponding to the
-	running kernel.  If you are using a kernel provided by your Linux
-	distribution, you must install the kernel-headers package corresponding
-	to that kernel or the modules will not build successfully.  The OpenISR
-	kernel modules must be loaded for the client to function.
+--enable-vmm-drivers=<list>
+--disable-vmm-drivers
+	List of VMM drivers to build and install, or --disable-vmm-drivers
+	not to build any.  The default is to build and install all supported
+	VMM drivers unless --disable-client is specified, in which case no
+	drivers are built.  <list> is a comma-separated list of VMM driver
+	names (virtualbox, kvm, etc.).  The special driver name "all" enables
+	all supported VMM drivers.  A driver name may be prefixed with the "-"
+	character to prevent building that driver; for example,
+	--enable-vmm-drivers=all,-vmware will build every driver except vmware.
+	The "shell" driver is always built and installed unless
+	--disable-client is specified, and is not affected by this option.
 
 --enable-server
 	Build and install components that are used by the OpenISR server.
@@ -140,15 +163,6 @@ reduced performance.
 INSTALLATION PATHS
 ------------------
 
-"make install" will install several components outside the directories
-specified on the configure command line.  Kernel modules will always be
-installed in the /lib/modules subdirectory corresponding to the kernel
-source you chose.  libvdisk will always be installed in the appropriate
-/usr/lib* directories and marked setuid root; see the documentation on
---disable-libvdisk (above) for details.  If the --disable-libvdisk and
---disable-modules options are both passed to configure, files will be
-installed only in the configured directories.
-
 By default, the OpenISR init script, udev rules, and bash completion rules
 are installed in subdirectories of $prefix/etc.  However, most systems only
 look for these files in subdirectories of /etc.  To solve this problem, you
@@ -162,6 +176,12 @@ different directory, though ISR will not work if it is run directly from
 there.  (You might want to do this while building a binary package, for
 example.)  To install to an alternate directory, set the DESTDIR environment
 variable to its absolute path when running "make install".
+
+If the vmware driver is enabled at configure time, "make install" will
+install the libvdisk library in the appropriate /usr/lib* directories and
+mark it setuid root, regardless of the installation directories specified on
+the configure command line.  See the documentation on the vmware driver (above)
+for details.
 
 POST-INSTALLATION
 -----------------
@@ -178,12 +198,12 @@ client
 - Configure your system to start the "openisr" init script at boot, probably
 in the "S" runlevel
 
-- Run "/etc/init.d/openisr start" to load the kernel modules
+- Run "openisr-config" as root to build, install, and load the OpenISR kernel
+modules
 
 If you upgrade your kernel after installing the OpenISR client, you will
-need to rebuild the OpenISR kernel modules.  You can do this by re-running
-"configure", "make", "make install", and "depmod", or you can run
-"openisr-config" as root to do all of this for you.
+need to rebuild the OpenISR kernel modules by running "openisr-config" as
+root.
 
 SUSPENDING THE HOST
 -------------------
@@ -214,14 +234,6 @@ Parcelkeeper
 	by the user interface code when necessary; most users will never need
 	to start it directly.  Parcelkeeper is licensed under the Eclipse
 	Public License, version 1.0.
-
-libvdisk
-	This is a small LD_PRELOAD shim which works around restrictions placed
-	by some virtual machine monitors on the names and properties of block
-	devices that are accessed from within a virtual machine.  It is only
-	necessary when such a VMM is in use; the list of such VMMs currently
-	includes VMware and VMware Player.  libvdisk is licensed under the
-	Eclipse Public License, version 1.0.
 
 Nexus
 	This is the kernel half of the virtual disk.  Nexus exports virtual
@@ -256,6 +268,21 @@ SQLite
 	The third-party SQLite embedded database is included in the OpenISR
 	distribution.  It can be found in the "sqlite" directory of the source
 	tree and is in the public domain.
+
+VMM drivers and support code
+	These are driver programs and associated support code which allow the
+	OpenISR client to interact with specific virtual machine monitors.
+	They are found in the "vmm" directory of the source tree, and are
+	licensed under the GNU General Public License, version 2.
+
+libvdisk
+	This is a small LD_PRELOAD shim which works around VMM-enforced
+	restrictions on the names and properties of block devices that are
+	accessed from within a virtual machine.  It is only built and
+	installed when the vmware driver is enabled at configure time.
+	libvdisk is found in the "libvdisk" subdirectory of the "vmm"
+	directory, and is licensed under the Eclipse Public License,
+	version 1.0.
 
 VirtualBox Python XPCOM bindings
 	The Python XPCOM bindings from the VirtualBox SDK are included in
