@@ -400,10 +400,14 @@ sub adduser ($) {
     my $isrdir = "/home/$userid/.isr";
     my $passwd;
 
+    # Make sure the account doesn't already exist
+    errexit("User $userid exists.")
+        if defined getpwnam($userid);
+
     # Create the user's account 
     print "Adding $userid...\n";
     system("/usr/sbin/useradd -d /home/$userid -m $userid") == 0
-	or err("Unable to create new account for $userid");
+	or errexit("Unable to create new account for $userid");
 
     # Change the password
     $passwd = $config{'default_pass'};
