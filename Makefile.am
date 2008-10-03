@@ -6,11 +6,15 @@ if WANT_SERVER
 SERVERDIRS = locksrv
 endif
 
+if WANT_VMMS
+VMMDIRS = vmm
+endif
+
 if WANT_COMMON
 COMMONDIRS = sqlite tools
 endif
 
-SUBDIRS = $(COMMONDIRS) $(CLIENTDIRS) $(SERVERDIRS) vmm
+SUBDIRS = $(COMMONDIRS) $(CLIENTDIRS) $(SERVERDIRS) $(VMMDIRS)
 dist_noinst_SCRIPTS = mkrevision.sh autogen.sh
 EXTRA_DIST  = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL CHANGES README.server
 EXTRA_DIST += .gitrevision

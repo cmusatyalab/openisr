@@ -62,6 +62,7 @@ if test -n "$vmms" ; then
 else
 	AC_MSG_RESULT([none])
 fi
+AM_CONDITIONAL([WANT_VMMS], [test -n "$vmms" || test z$enable_client = zyes])
 AM_CONDITIONAL([WANT_VBOX_XPCOM], [WANT_VMM([virtualbox])])
 AM_CONDITIONAL([WANT_LIBVDISK], [WANT_VMM([vmware])])
 
