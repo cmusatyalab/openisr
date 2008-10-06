@@ -2042,6 +2042,8 @@ sub vmm_cleanup () {
 	local $ENV{'NAME'} = "$userid/$parcel";
 	local $ENV{'UUID'} = $uuid;
 	local $ENV{'CFGDIR'} = "$parceldir/cfg";
+	local $ENV{'COMMAND'} = $syscfg{"$vmm.command"}
+	    if exists $syscfg{"$vmm.command"};
 	%results = run_vmm($vmm, "cleanup");
 	if (! exists $results{'SUCCESS'} or $results{'SUCCESS'} ne 'yes') {
 	    err("$vmm could not run cleanup: $results{ERROR}");
