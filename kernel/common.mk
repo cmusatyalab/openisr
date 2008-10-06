@@ -1,9 +1,7 @@
 # Makefile fragment for non-Kbuild part of kernel makefiles
 
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
-# utsrelease.h for >= 2.6.18, version.h for < 2.6.18
 KERN_RELEASE := $(shell grep -s UTS_RELEASE \
-		$(KERNELDIR)/include/linux/version.h \
 		$(KERNELDIR)/include/linux/utsrelease.h | cut -f2 -d\")
 
 .PHONY: module
