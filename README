@@ -6,7 +6,7 @@ REQUIREMENTS
 ------------
 
 To run:
-- Linux kernel (versions 2.6.15 through 2.6.27 supported)
+- Linux kernel (versions 2.6.18 through 2.6.27 supported)
 - Development headers for your Linux kernel version
 - libcurl >= 7.12.3 and curl command-line utility
 - OpenSSL libraries and command-line utility
@@ -154,11 +154,6 @@ built-in or as modules) in order to use the OpenISR system:
 zlib is a hidden option which cannot be selected directly from the
 configuration menus.  The easiest way to enable it is to enable "Deflate
 compression algorithm" under "Cryptographic options" (CONFIG_CRYPTO_DEFLATE).
-
-If you are using kernel 2.6.15 or older, and the SHA-1 CryptoAPI module is
-compiled into your kernel (CONFIG_CRYPTO_SHA1=y), you will not be able to load
-the SHA1 Accelerator.  The OpenISR system will still work, but you will receive
-reduced performance.
 
 INSTALLATION PATHS
 ------------------
