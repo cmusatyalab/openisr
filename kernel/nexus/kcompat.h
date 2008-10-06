@@ -35,16 +35,6 @@
 
 /***** Memory allocation *****************************************************/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,17)
-static inline mempool_t *mempool_create_slab_pool(int min_nr,
-			struct kmem_cache *cache)
-{
-	return mempool_create(min_nr, mempool_alloc_slab, mempool_free_slab,
-				cache);
-}
-#endif
-
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23)
 #define kmem_cache_create(name, size, align, flags, ctor) \
 			kmem_cache_create(name, size, align, flags, ctor, NULL)
@@ -144,11 +134,6 @@ typedef struct device_attribute kdevice_attribute_t;
 
 /***** Request queue/bio *****************************************************/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
-#define end_that_request_last(req, uptodate) end_that_request_last(req)
-#endif
-
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
 /* For consistency across kernel versions, set the "scale" parameter high
    enough that no scaling will take place. */
@@ -213,12 +198,6 @@ static inline void sg_set_page(struct scatterlist *sg, struct page *page,
 }
 #endif
 
-/***** Request queue barriers ************************************************/
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
-/* XXX barrier request handling changes */
-#endif
-
 /***** Callbacks/deferred work ***********************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
@@ -230,21 +209,6 @@ typedef struct work_struct work_t;
 #endif
 
 /***** CPU hotplug ***********************************************************/
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,17)
-/* for_each_possible_cpu() was added in the middle of the 2.6.16 stable
-   series */
-#ifndef for_each_possible_cpu
-#define for_each_possible_cpu(cpu) for_each_cpu(cpu)
-#endif
-#endif
-
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
-#define register_hotcpu_notifier(nb) register_cpu_notifier(nb)
-#define unregister_hotcpu_notifier(nb) unregister_cpu_notifier(nb)
-#endif
-
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
 #define get_online_cpus() lock_cpu_hotplug()
@@ -421,27 +385,15 @@ static inline int cryptoapi_hash(struct crypto_hash *tfm,
 #define SHA1_ACCEL_ARCH "unknown"
 /* No optimized implementation exists */
 #define sha1_impl_is_suboptimal(tfm) (0)
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
-static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
-{
-	/* There's no driver name field, but optimized sha1 can never be
-	   compiled into the kernel, so we look at struct module */
-	if (tfm->__crt_alg->cra_module == NULL)
-		return 1;
-	return strcmp(tfm->__crt_alg->cra_module->name, "sha1_" SHA1_ACCEL_ARCH)
-				? 1 : 0;
-}
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
 static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
 {
-	/* There's a driver name field we can look at */
 	return strcmp(tfm->__crt_alg->cra_driver_name, "sha1-" SHA1_ACCEL_ARCH)
 				? 1 : 0;
 }
 #else
 static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
 {
-	/* We need to extract the crypto_tfm from the crypto_hash */
 	return strcmp(crypto_hash_tfm(tfm)->__crt_alg->cra_driver_name,
 				"sha1-" SHA1_ACCEL_ARCH) ? 1 : 0;
 }
@@ -466,10 +418,6 @@ static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
 #ifndef AES_ACCEL_ARCH
 #define AES_ACCEL_ARCH "unknown"
 /* No sufficiently-optimized implementation exists */
-#define aes_impl_is_suboptimal(info, tfm) (0)
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
-/* For architectures with optimized AES, Kconfig does not offer to build the
-   generic version.  If we have AES, it's optimized. */
 #define aes_impl_is_suboptimal(info, tfm) (0)
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
 static inline int aes_impl_is_suboptimal(const struct tfm_suite_info *info,
