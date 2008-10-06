@@ -38,7 +38,7 @@
  * @compress_users: number of devs holding a reference to each compress alg
  **/
 static struct threads {
-	MUTEX lock;
+	struct mutex lock;
 	struct task_struct *task[NR_CPUS];
 	int count;
 	struct nexus_tfm_state ts[NR_CPUS];

@@ -190,7 +190,7 @@ struct nexus_dev {
 	spinlock_t requests_lock;
 	struct timer_list requests_oom_timer;
 	
-	MUTEX lock;
+	struct mutex lock;
 	char *ident;
 	unsigned chunksize;
 	unsigned cachesize;
@@ -304,7 +304,7 @@ enum callback {
  * the load average.  So from thread context, we do an interruptible sleep
  * with no provision for catching signals.
  **/
-static inline void mutex_lock_thread(MUTEX *lock)
+static inline void mutex_lock_thread(struct mutex *lock)
 {
 	if (mutex_lock_interruptible(lock))
 		BUG();

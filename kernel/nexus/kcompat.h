@@ -40,30 +40,6 @@
 			kmem_cache_create(name, size, align, flags, ctor, NULL)
 #endif
 
-/***** Mutexes ***************************************************************/
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)
-#include <asm/semaphore.h>
-#define MUTEX struct semaphore
-#define mutex_init(lock) init_MUTEX(lock)
-#define mutex_lock(lock) down(lock)
-#define mutex_lock_interruptible(lock) down_interruptible(lock)
-#define mutex_unlock(lock) up(lock)
-#define mutex_trylock(lock) (!down_trylock(lock))
-
-static inline int mutex_is_locked(MUTEX *lock)
-{
-	if (down_trylock(lock)) {
-		return 1;
-	} else {
-		up(lock);
-		return 0;
-	}
-}
-#else
-#define MUTEX struct mutex
-#endif
-
 /***** Linked lists **********************************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
