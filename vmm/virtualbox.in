@@ -32,7 +32,7 @@ MIN_VERSION = '2.0.0'
 vmm.DEBUG = True
 
 def vbox_init():
-	global xpcom, ifaces
+	global xpcom, ifaces, vbox
 
 	# Locate the VirtualBox program, then use its location to find the
 	# path to the Python bindings library
@@ -61,7 +61,6 @@ def vbox_init():
 	if version_to_int(vbox.version) < version_to_int(MIN_VERSION):
 		raise VmmError("VirtualBox >= %s required (found %s)" % \
 				(MIN_VERSION, vbox.version))
-	return vbox
 
 def version_to_int(ver):
 	parts = map(int, ver.split('.'))
@@ -80,13 +79,13 @@ def check_runnable():
 		raise VmmError('Cannot resume: parcel already suspended ' + \
 					'with ' + vmm.SUSPENDED)
 
-def create_disk(path):
+def create_disk():
 	# Always round down
 	cyls = min(int(vmm.SECTORS) / (16 * 63), 16383)
 	bioscyls = min(int(vmm.SECTORS) / (255 * 63), 1024)
 	cid = '%x' % random.randint(0, 0xffffffff)
 
-	f = file(path, 'w')
+	f = file(disk_path, 'w')
 	f.write('''# Disk DescriptorFile
 version=1
 CID=%s
@@ -105,7 +104,7 @@ ddb.adapterType = "ide"
 ''' % (cid, vmm.SECTORS, vmm.DISK, cyls, bioscyls))
 	f.close()
 
-def create_machine(vbox, path):
+def create_machine():
 	vmname = parcelname()
 	vm = vbox.createMachine(vmm.CFGDIR, vmname, vmm.UUID)
 	vm.memorySize = vmm.MEM
@@ -123,12 +122,12 @@ def create_machine(vbox, path):
 	vm.setExtraData('GUI/LastCloseAction', 'save')
 	vm.saveSettings()
 	del vm
-	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), path)
+	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), vm_path)
 	os.rmdir('%s/%s' % (vmm.CFGDIR, vmname))
 
 # See if this parcel has been cloned.  If so, update all unique identifiers
 # associated with the VM.
-def update_uuid(vbox, vm_path, disk_path):
+def update_uuid():
 	new_vm_path = vm_path + '.new'
 	new_disk_path = disk_path + '.new'
 	uuid = '{' + vmm.UUID + '}'
@@ -176,7 +175,7 @@ def update_uuid(vbox, vm_path, disk_path):
 	ofd.close()
 	os.rename(new_disk_path, disk_path)
 
-def register_machine(vbox, vm_path, disk_path, saved_path):
+def register_machine():
 	disk = vbox.openHardDisk(disk_path)
 	vm = vbox.openMachine(vm_path)
 	vbox.registerHardDisk(disk)
@@ -195,7 +194,7 @@ def register_machine(vbox, vm_path, disk_path, saved_path):
 	sesn.close()
 	return [vm.id, disk.id]
 
-def unregister_machine(vbox, vmid, diskid, saved_path):
+def unregister_machine(vmid, diskid):
 	sesn = new_instance(CLASS_SESN)
 	vbox.openSession(sesn, vmid)
 	if sesn.machine.state == ifaces.MachineState.Saved:
@@ -215,7 +214,7 @@ def unregister_machine(vbox, vmid, diskid, saved_path):
 	vbox.unregisterHardDisk(diskid)
 	vbox.unregisterMachine(vmid)
 
-def run_machine(vbox, vmid, diskid):
+def run_machine(vmid, diskid):
 	sesn = new_instance(CLASS_SESN)
 	vmm.SUSPENDED = 'virtualbox'
 	progress = vbox.openRemoteSession(sesn, vmid, 'gui', None)
@@ -239,20 +238,20 @@ def info():
 
 def run():
 	check_runnable()
-	vbox = vbox_init()
-	vm_path = vmm.CFGDIR + '/virtualbox.xml'
-	disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
-	saved_path = vmm.CFGDIR + '/virtualbox.sav'
+	vbox_init()
 	if not os.path.isfile(disk_path):
-		create_disk(disk_path)
+		create_disk()
 	if not os.path.isfile(vm_path):
-		create_machine(vbox, vm_path)
-	update_uuid(vbox, vm_path, disk_path)
-	[vmid, diskid] = register_machine(vbox, vm_path, disk_path, saved_path)
-	run_machine(vbox, vmid, diskid)
-	unregister_machine(vbox, vmid, diskid, saved_path)
+		create_machine()
+	update_uuid()
+	[vmid, diskid] = register_machine()
+	run_machine(vmid, diskid)
+	unregister_machine(vmid, diskid)
 
 def cleanup():
 	shutil.rmtree(vmm.CFGDIR + '/Logs', True)
 
+vm_path = vmm.CFGDIR + '/virtualbox.xml'
+disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
+saved_path = vmm.CFGDIR + '/virtualbox.sav'
 main()
