@@ -76,7 +76,7 @@ static void chr_unconfig_thread(void)
 /**
  * chr_flush - clean up after an individual thread closes a chardev fd
  **/
-static fops_flush_method(chr_flush, filp)
+static int chr_flush(struct file *filp, fl_owner_t ignored)
 {
 	debug(DBG_CHARDEV, "Running chr_flush");
 	chr_unconfig_thread();
