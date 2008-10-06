@@ -199,8 +199,13 @@ def unregister_machine(vbox, vmid, diskid, saved_path):
 	sesn = new_instance(CLASS_SESN)
 	vbox.openSession(sesn, vmid)
 	if sesn.machine.state == ifaces.MachineState.Saved:
-		shutil.copyfile(sesn.machine.stateFilePath, saved_path)
+		# The stateFilePath may be equal to the saved_path if the VM
+		# was never started successfully, so we rename through a
+		# temporary file
+		temp_path = saved_path + '.temp'
+		os.rename(sesn.machine.stateFilePath, temp_path)
 		sesn.console.discardSavedState()
+		os.rename(temp_path, saved_path)
 		vmm.SUSPENDED = 'virtualbox'
 	else:
 		vmm.SUSPENDED = 'no'
