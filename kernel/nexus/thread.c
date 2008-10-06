@@ -723,7 +723,6 @@ static struct notifier_block cpu_notifier = {
 };
 
 #if !defined(CONFIG_HOTPLUG_CPU) && \
-			LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18) && \
 			LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,19)
 /* 2.6.18 and 2.6.19 have a bug with !CONFIG_HOTPLUG_CPU that causes the
    compiler to complain that cpu_notifier is unused.  Avoid the warning. */
