@@ -192,12 +192,10 @@ def register_machine():
 	if os.path.isfile(saved_path):
 		sesn.console.adoptSavedState(saved_path)
 	sesn.close()
-	return [vm.id, disk.id]
 
-def unregister_machine(vmid, diskid):
-	sesn = new_instance(CLASS_SESN)
-	vbox.openSession(sesn, vmid)
-	if sesn.machine.state == ifaces.MachineState.Saved:
+def unregister_state(sesn, do_save):
+	have_state = (sesn.machine.state == ifaces.MachineState.Saved)
+	if do_save and have_state:
 		# The stateFilePath may be equal to the saved_path if the VM
 		# was never started successfully, so we rename through a
 		# temporary file
@@ -207,17 +205,41 @@ def unregister_machine(vmid, diskid):
 		os.rename(temp_path, saved_path)
 		vmm.SUSPENDED = 'virtualbox'
 	else:
+		if have_state:
+			sesn.console.discardSavedState()
 		vmm.SUSPENDED = 'no'
-	sesn.machine.detachHardDisk(ifaces.StorageBus.IDE, 0, 0)
-	sesn.machine.saveSettings()
-	sesn.close()
-	vbox.unregisterHardDisk(diskid)
-	vbox.unregisterMachine(vmid)
 
-def run_machine(vmid, diskid):
+def unregister_machine(do_save = True):
+	try:
+		vm = vbox.getMachine(vmm.UUID)
+	except:
+		pass
+	else:
+		sesn = new_instance(CLASS_SESN)
+		vbox.openSession(sesn, vm.id)
+		unregister_state(sesn, do_save)
+		try:
+			sesn.machine.getHardDisk(ifaces.StorageBus.IDE, 0, 0)
+		except:
+			pass
+		else:
+			sesn.machine.detachHardDisk(ifaces.StorageBus.IDE, \
+						0, 0)
+		sesn.machine.saveSettings()
+		sesn.close()
+		vbox.unregisterMachine(vm.id)
+
+	try:
+		disk = vbox.findHardDisk(disk_path)
+	except:
+		pass
+	else:
+		vbox.unregisterHardDisk(disk.id)
+
+def run_machine():
 	sesn = new_instance(CLASS_SESN)
 	vmm.SUSPENDED = 'virtualbox'
-	progress = vbox.openRemoteSession(sesn, vmid, 'gui', None)
+	progress = vbox.openRemoteSession(sesn, vmm.UUID, 'gui', None)
 	progress.waitForCompletion(-1)
 	sesn.close()
 	# It would be better to use IVirtualBoxCallback to wait for a
@@ -225,7 +247,7 @@ def run_machine(vmid, diskid):
 	# We could loop reading sesn.state, but that deadlocks at session
 	# shutdown.  So we close the remote session and loop reading
 	# vm.sessionState.
-	vm = vbox.getMachine(vmid)
+	vm = vbox.getMachine(vmm.UUID)
 	while vm.sessionState != ifaces.SessionState.Closed:
 		time.sleep(0.5)
 
@@ -244,12 +266,20 @@ def run():
 	if not os.path.isfile(vm_path):
 		create_machine()
 	update_uuid()
-	[vmid, diskid] = register_machine()
-	run_machine(vmid, diskid)
-	unregister_machine(vmid, diskid)
+	# Make sure there's not a leftover registration from a previous crash
+	unregister_machine()
+	register_machine()
+	run_machine()
+	unregister_machine()
 
 def cleanup():
 	shutil.rmtree(vmm.CFGDIR + '/Logs', True)
+	try:
+		vbox_init()
+	except:
+		# Fail silently if VirtualBox isn't installed
+		return
+	unregister_machine(do_save = False)
 
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
 disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
