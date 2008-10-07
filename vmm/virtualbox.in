@@ -182,16 +182,19 @@ def register_machine():
 	vbox.registerMachine(vm)
 	sesn = new_instance(CLASS_SESN)
 	vbox.openSession(sesn, vm.id)
-	sesn.machine.attachHardDisk(disk.id, ifaces.StorageBus.IDE, 0, 0)
-	if vmm.FULLSCREEN == 'yes':
-		fullscreen = 'on'
-	else:
-		fullscreen = 'off'
-	sesn.machine.setExtraData('GUI/Fullscreen', fullscreen)
-	sesn.machine.saveSettings()
-	if os.path.isfile(saved_path):
-		sesn.console.adoptSavedState(saved_path)
-	sesn.close()
+	try:
+		sesn.machine.attachHardDisk(disk.id, ifaces.StorageBus.IDE, \
+					0, 0)
+		if vmm.FULLSCREEN == 'yes':
+			fullscreen = 'on'
+		else:
+			fullscreen = 'off'
+		sesn.machine.setExtraData('GUI/Fullscreen', fullscreen)
+		sesn.machine.saveSettings()
+		if os.path.isfile(saved_path):
+			sesn.console.adoptSavedState(saved_path)
+	finally:
+		sesn.close()
 
 def unregister_state(sesn, do_save):
 	have_state = (sesn.machine.state == ifaces.MachineState.Saved)
@@ -209,6 +212,15 @@ def unregister_state(sesn, do_save):
 			sesn.console.discardSavedState()
 		vmm.SUSPENDED = 'no'
 
+def detach_disk(sesn):
+	try:
+		sesn.machine.getHardDisk(ifaces.StorageBus.IDE, 0, 0)
+	except:
+		pass
+	else:
+		sesn.machine.detachHardDisk(ifaces.StorageBus.IDE, 0, 0)
+		sesn.machine.saveSettings()
+
 def unregister_machine(do_save = True):
 	try:
 		vm = vbox.getMachine(vmm.UUID)
@@ -217,16 +229,11 @@ def unregister_machine(do_save = True):
 	else:
 		sesn = new_instance(CLASS_SESN)
 		vbox.openSession(sesn, vm.id)
-		unregister_state(sesn, do_save)
 		try:
-			sesn.machine.getHardDisk(ifaces.StorageBus.IDE, 0, 0)
-		except:
-			pass
-		else:
-			sesn.machine.detachHardDisk(ifaces.StorageBus.IDE, \
-						0, 0)
-		sesn.machine.saveSettings()
-		sesn.close()
+			unregister_state(sesn, do_save)
+			detach_disk(sesn)
+		finally:
+			sesn.close()
 		vbox.unregisterMachine(vm.id)
 
 	try:
