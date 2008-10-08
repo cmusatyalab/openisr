@@ -841,12 +841,7 @@ sub run () {
 
     # See if the VMM plugin thinks the parcel is runnable.
     {
-	local $ENV{'UUID'} = $cfg{'UUID'};
-	local $ENV{'CFGDIR'} = "$parceldir/cfg";
 	local $ENV{'SUSPENDED'} = $memtype;
-	local $ENV{'COMMAND'} = $syscfg{"$driver.command"}
-	    if exists $syscfg{"$driver.command"};
-        local $ENV{'VERBOSE'} = $verbose > 1 ? "yes" : "no";
 	%results = run_vmm($driver, 'info');
     }
     $vmname = $results{'VMM'} ? $results{'VMM'} : "UnknownVMM";
@@ -911,18 +906,12 @@ sub run () {
     print "Launching $vmname...\n"
 	if $verbose;
     {
-	local $ENV{'NAME'} = "$userid/$parcel";
-	local $ENV{'UUID'} = $cfg{'UUID'};
-	local $ENV{'CFGDIR'} = "$parceldir/cfg";
 	local $ENV{'DISK'} = $devnode;
 	local $ENV{'SECTORS'} = ($cfg{'CHUNKSIZE'} / 512) * $cfg{'NUMCHUNKS'};
 	local $ENV{'MEM'} = $cfg{'MEM'}
 	    if exists $cfg{'MEM'};
 	local $ENV{'FULLSCREEN'} = $fullscreen ? "yes" : "no";
 	local $ENV{'SUSPENDED'} = $memtype;
-	local $ENV{'COMMAND'} = $syscfg{"$driver.command"}
-	    if exists $syscfg{"$driver.command"};
-        local $ENV{'VERBOSE'} = $verbose > 1 ? "yes" : "no";
 	%results = run_vmm($driver, 'run');
     }
 
@@ -2003,6 +1992,14 @@ sub run_vmm ($$) {
     errexit("Couldn't find driver for VMM '$driver'")
         unless -x $cmd;
 
+    # Set input variables common to all VMM driver modes
+    local $ENV{'NAME'} = "$userid/$parcel";
+    local $ENV{'UUID'} = $cfg{'UUID'};
+    local $ENV{'CFGDIR'} = "$parceldir/cfg";
+    local $ENV{'COMMAND'} = $syscfg{"$driver.command"}
+	if exists $syscfg{"$driver.command"};
+    local $ENV{'VERBOSE'} = $verbose > 1 ? "yes" : "no";
+
     open(VMM, '-|', $cmd, $mode)
         or errexit("Couldn't launch driver for VMM '$driver'");
     while (<VMM>) {
@@ -2029,12 +2026,6 @@ sub vmm_cleanup () {
         or unix_errexit("Couldn't read " . VMMDIR);
     foreach $vmm (readdir(DRVS)) {
 	next if $vmm =~ /^\.{1,2}$/;
-	local $ENV{'NAME'} = "$userid/$parcel";
-	local $ENV{'UUID'} = $uuid;
-	local $ENV{'CFGDIR'} = "$parceldir/cfg";
-	local $ENV{'COMMAND'} = $syscfg{"$vmm.command"}
-	    if exists $syscfg{"$vmm.command"};
-        local $ENV{'VERBOSE'} = $verbose > 1 ? "yes" : "no";
 	%results = run_vmm($vmm, "cleanup");
 	if (! exists $results{'SUCCESS'} or $results{'SUCCESS'} ne 'yes') {
 	    err("$vmm could not run cleanup: $results{ERROR}");
