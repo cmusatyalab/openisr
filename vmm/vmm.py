@@ -17,6 +17,7 @@
 
 import os
 import sys
+import signal
 import subprocess
 import stat
 import traceback
@@ -109,8 +110,17 @@ def find_program(prog):
 	return False
 
 # Run a process and wait for it to complete, redirecting its stdout to stderr
-# so that the child can't write key-value pairs back to our calling process
+# so that the child can't write key-value pairs back to our calling process.
+# Ignore SIGINT and SIGQUIT while the child is running.
 def run_program(*args):
-	return subprocess.call(args, stdout = sys.stderr)
+	restore = {}
+	try:
+		for sig in signal.SIGINT, signal.SIGQUIT:
+			restore[sig] = signal.signal(sig, lambda x, y: None)
+		ret = subprocess.call(args, stdout = sys.stderr)
+	finally:
+		for sig in restore.keys():
+			signal.signal(sig, restore[sig])
+	return ret
 
 _init()

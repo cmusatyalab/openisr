@@ -912,6 +912,8 @@ sub run () {
 	    if exists $cfg{'MEM'};
 	local $ENV{'FULLSCREEN'} = $fullscreen ? "yes" : "no";
 	local $ENV{'SUSPENDED'} = $memtype;
+	# Ignore SIGINT in a way that will not be inherited by the VMM driver
+	local $SIG{'INT'} = sub {};
 	%results = run_vmm($driver, 'run');
     }
 

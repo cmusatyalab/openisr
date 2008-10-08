@@ -112,7 +112,8 @@ sub find_program {
 }
 
 # Wrapper for system() that temporarily redirects stdout to stderr, so that
-# the child can't write key-value pairs back to our calling process
+# the child can't write key-value pairs back to our calling process.  system()
+# ignores SIGINT and SIGQUIT while the child is running.
 sub run_program {
 	my $cmd = shift;
 
