@@ -18,6 +18,7 @@
 
 import os
 import sys
+import signal
 import shutil
 import time
 import random
@@ -72,6 +73,10 @@ def new_instance(name):
 
 def parcelname():
 	return 'openisr-' + vmm.NAME.replace('/', '-')
+
+def handle_signal(sig, frame):
+	global signaled
+	signaled = True
 
 def check_runnable():
 	if vmm.SUSPENDED != 'no' and vmm.SUSPENDED != 'virtualbox':
@@ -243,18 +248,30 @@ def unregister_machine(do_save = True):
 		vbox.unregisterHardDisk(disk.id)
 
 def run_machine():
+	global signaled
+
 	sesn = new_instance(CLASS_SESN)
 	vmm.SUSPENDED = 'virtualbox'
 	progress = vbox.openRemoteSession(sesn, vmm.UUID, 'gui', None)
 	progress.waitForCompletion(-1)
-	sesn.close()
 	# It would be better to use IVirtualBoxCallback to wait for a
 	# session state change, but it's not clear how to do that from Python.
 	# We could loop reading sesn.state, but that deadlocks at session
-	# shutdown.  So we close the remote session and loop reading
-	# vm.sessionState.
+	# shutdown.  So we loop reading vm.sessionState.  Note that the
+	# remote session automatically closes once the direct session closes,
+	# so we don't need to do it ourselves.
 	vm = vbox.getMachine(vmm.UUID)
 	while vm.sessionState != ifaces.SessionState.Closed:
+		if signaled:
+			signaled = False
+			print >>sys.stderr, 'Suspending parcel...',
+			try:
+				progress = sesn.console.saveState()
+				progress.waitForCompletion(-1)
+			except:
+				print >>sys.stderr, 'failed'
+			else:
+				print >>sys.stderr, 'done'
 		time.sleep(0.5)
 
 def info():
@@ -265,6 +282,7 @@ def info():
 	vbox_init()
 
 def run():
+	signal.signal(signal.SIGINT, handle_signal)
 	check_runnable()
 	vbox_init()
 	if not os.path.isfile(disk_path):
@@ -291,4 +309,5 @@ vmm.DEBUG = (vmm.VERBOSE == "yes")
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
 disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
 saved_path = vmm.CFGDIR + '/virtualbox.sav'
+signaled = False
 main()
