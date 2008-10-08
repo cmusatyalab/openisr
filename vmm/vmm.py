@@ -35,7 +35,8 @@ class VmmError(Exception):
 
 def _init():
 	for var in 'NAME', 'CFGDIR', 'UUID', 'DISK', 'SECTORS', 'MEM', \
-				'FULLSCREEN', 'SUSPENDED', 'COMMAND':
+				'FULLSCREEN', 'SUSPENDED', 'COMMAND', \
+				'VERBOSE':
 		if os.environ.has_key(var):
 			exec('global ' + var + ';' + var + ' = "' + \
 						os.environ[var] + '"')

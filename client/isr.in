@@ -846,6 +846,7 @@ sub run () {
 	local $ENV{'SUSPENDED'} = $memtype;
 	local $ENV{'COMMAND'} = $syscfg{"$driver.command"}
 	    if exists $syscfg{"$driver.command"};
+        local $ENV{'VERBOSE'} = $verbose > 1 ? "yes" : "no";
 	%results = run_vmm($driver, 'info');
     }
     $vmname = $results{'VMM'} ? $results{'VMM'} : "UnknownVMM";
@@ -921,6 +922,7 @@ sub run () {
 	local $ENV{'SUSPENDED'} = $memtype;
 	local $ENV{'COMMAND'} = $syscfg{"$driver.command"}
 	    if exists $syscfg{"$driver.command"};
+        local $ENV{'VERBOSE'} = $verbose > 1 ? "yes" : "no";
 	%results = run_vmm($driver, 'run');
     }
 
@@ -2032,6 +2034,7 @@ sub vmm_cleanup () {
 	local $ENV{'CFGDIR'} = "$parceldir/cfg";
 	local $ENV{'COMMAND'} = $syscfg{"$vmm.command"}
 	    if exists $syscfg{"$vmm.command"};
+        local $ENV{'VERBOSE'} = $verbose > 1 ? "yes" : "no";
 	%results = run_vmm($vmm, "cleanup");
 	if (! exists $results{'SUCCESS'} or $results{'SUCCESS'} ne 'yes') {
 	    err("$vmm could not run cleanup: $results{ERROR}");

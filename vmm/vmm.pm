@@ -23,7 +23,7 @@ use warnings;
 
 BEGIN {
 	my @import = (qw/NAME CFGDIR UUID DISK SECTORS MEM FULLSCREEN/,
-				qw/SUSPENDED COMMAND/);
+				qw/SUSPENDED COMMAND VERBOSE/);
 	our @EXPORT = qw/main fail find_program run_program $VMNAME/;
 	our $VMNAME = "UnknownVMM";
 	foreach my $var (@import) {
