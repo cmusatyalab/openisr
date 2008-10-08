@@ -29,7 +29,6 @@ from vmm import *
 CLASS_VBOX = '@virtualbox.org/VirtualBox;1'
 CLASS_SESN = '@virtualbox.org/Session;1'
 MIN_VERSION = '2.0.0'
-vmm.DEBUG = True
 
 def vbox_init():
 	global xpcom, ifaces, vbox
@@ -288,6 +287,7 @@ def cleanup():
 		return
 	unregister_machine(do_save = False)
 
+vmm.DEBUG = (vmm.VERBOSE == "yes")
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
 disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
 saved_path = vmm.CFGDIR + '/virtualbox.sav'
