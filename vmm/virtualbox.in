@@ -292,9 +292,11 @@ def run():
 	update_uuid()
 	# Make sure there's not a leftover registration from a previous crash
 	unregister_machine()
-	register_machine()
-	run_machine()
-	unregister_machine()
+	try:
+		register_machine()
+		run_machine()
+	finally:
+		unregister_machine()
 
 def cleanup():
 	shutil.rmtree(vmm.CFGDIR + '/Logs', True)
