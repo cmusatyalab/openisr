@@ -25,6 +25,7 @@ BEGIN {
 	import vmm;
 }
 
+use POSIX;
 use IO::Socket::UNIX;
 use Term::ANSIColor qw/:constants/;
 use strict;
@@ -137,8 +138,7 @@ sub run {
 	my $ret;
 	my $opts;
 	my $pid;
-	my $rdin;
-	my $rdout;
+	my $rdmask;
 	my $piperd;
 	my $pipewr;
 	my $lsock;
@@ -178,11 +178,15 @@ sub run {
 		if $loadmem;
 
 	# Fork, and run KVM in the child
-	local $SIG{'CHLD'} = sub {syswrite($pipewr, 'a')};
+	local $SIG{'CHLD'} = sub {syswrite($pipewr, 'C')};
 	$pid = fork;
 	fail "Couldn't fork"
 		unless defined $pid;
 	if (!$pid) {
+		# KVM apparently installs a SIGINT handler, so we have to
+		# block SIGINT rather than ignoring it
+		sigprocmask(SIG_BLOCK, POSIX::SigSet->new(SIGINT))
+			or fail_child "Couldn't block SIGINT";
 		# Make sure we don't interfere with the key-value pairs on
 		# the parent's stdout
 		open(STDOUT, ">&", *STDERR)
@@ -193,17 +197,17 @@ sub run {
 
 	# Wait for the Unix socket connection to arrive from KVM, or for KVM
 	# to die.
-	$rdin = '';
-	vec($rdin, fileno $piperd, 1) = 1;
-	vec($rdin, fileno $lsock, 1) = 1;
-	select($rdout = $rdin, undef, undef, undef);
+	$rdmask = '';
+	vec($rdmask, fileno $piperd, 1) = 1;
+	vec($rdmask, fileno $lsock, 1) = 1;
+	select($rdmask, undef, undef, undef);
 	unlink $sockpath;
-	if (vec($rdout, fileno $piperd, 1)) {
+	if (vec($rdmask, fileno $piperd, 1)) {
 		# Child exited
 		close $lsock;
 		goto 'out';
 	}
-	if (vec($rdout, fileno $lsock, 1)) {
+	if (vec($rdmask, fileno $lsock, 1)) {
 		# Connection on listening socket
 		$sock = $lsock->accept
 			or fail "Couldn't accept socket connection";
@@ -215,30 +219,21 @@ sub run {
 		if $loadmem;
 
 	# Wait for KVM to die or the user to request suspend
-	print STDERR YELLOW, "Hit Enter to suspend your parcel.\n", RESET;
-	$rdin = '';
-	vec($rdin, fileno STDIN, 1) = 1;
-	vec($rdin, fileno $piperd, 1) = 1;
-	while (1) {
-		select($rdout = $rdin, undef, undef, undef);
-		if (vec($rdout, fileno $piperd, 1)) {
-			# Child exited
-			close $sock;
-			last;
-		}
-		if (vec($rdout, fileno STDIN, 1) and
-					(sysread(STDIN, $buf, 128) == 0
-					or $buf =~ /\n/)) {
-			# User suspend request
-			print STDERR "Suspending...\n";
-			send_cmd $sock, "migrate_set_speed 1g";
-			send_cmd $sock, "stop";
-			send_cmd $sock, "migrate file://$CFGDIR/kvm.mem";
-			send_cmd $sock, "quit";
-			close $sock;
-			last;
-		}
+	local $SIG{'INT'} = sub {syswrite($pipewr, 'I')};
+	print STDERR YELLOW, "Hit Ctrl-C to suspend your parcel.\n", RESET;
+	# For some reason Perl is squashing the EINTR error code, so on
+	# interrupt we get an undef return with $! set to 0, which is an
+	# invalid combination.  Ignore error returns.
+	until (sysread($piperd, $buf, 1)) {};
+	if ($buf eq "I") {
+		# User suspend request
+		print STDERR "Suspending parcel...\n";
+		send_cmd $sock, "migrate_set_speed 1g";
+		send_cmd $sock, "stop";
+		send_cmd $sock, "migrate file://$CFGDIR/kvm.mem";
+		send_cmd $sock, "quit";
 	}
+	close $sock;
 
 out:
 	# Wait for KVM to exit
