@@ -78,6 +78,15 @@ def handle_signal(sig, frame):
 	global signaled
 	signaled = True
 
+# Use this from a finally block to ignore exceptions when attempting to close
+# a session, so that they do not overwrite any exception that was generated
+# in the corresponding try block.
+def try_close(sesn):
+	try:
+		sesn.close()
+	except:
+		pass
+
 def check_runnable():
 	if vmm.SUSPENDED != 'no' and vmm.SUSPENDED != 'virtualbox':
 		raise VmmError('Cannot resume: parcel already suspended ' + \
@@ -198,7 +207,7 @@ def register_machine():
 		if os.path.isfile(saved_path):
 			sesn.console.adoptSavedState(saved_path)
 	finally:
-		sesn.close()
+		try_close(sesn)
 
 def unregister_state(sesn, do_save):
 	have_state = (sesn.machine.state == ifaces.MachineState.Saved)
@@ -237,7 +246,7 @@ def unregister_machine(do_save = True):
 			unregister_state(sesn, do_save)
 			detach_disk(sesn)
 		finally:
-			sesn.close()
+			try_close(sesn)
 		vbox.unregisterMachine(vm.id)
 
 	try:
@@ -292,11 +301,19 @@ def run():
 	update_uuid()
 	# Make sure there's not a leftover registration from a previous crash
 	unregister_machine()
+	success = False
 	try:
 		register_machine()
 		run_machine()
+		success = True
 	finally:
-		unregister_machine()
+		# Make sure unregister exceptions don't clobber an exception
+		# raised in the try block, since the latter is more important
+		try:
+			unregister_machine()
+		except:
+			if success:
+				raise
 
 def cleanup():
 	shutil.rmtree(vmm.CFGDIR + '/Logs', True)
