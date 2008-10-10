@@ -63,7 +63,7 @@ def vbox_init():
 				(MIN_VERSION, vbox.version))
 
 def version_to_int(ver):
-	parts = map(int, ver.split('.'))
+	parts = map(int, ver.replace('_OSE', '').split('.'))
 	if len(parts) != 3:
 		raise VmmError("Couldn't parse version: " + ver)
 	return parts[0] * 10000 + parts[1] * 100 + parts[2]
@@ -125,11 +125,18 @@ def create_machine():
 	vm.snapshotFolder = '.'
 	vm.audioAdapter.enabled = True
 	vm.audioAdapter.audioDriver = ifaces.AudioDriverType.ALSA
-	if vm.USBController != None:
+	try:
+		# Not supported with VirtualBox OSE
 		vm.USBController.enabled = True
 		vm.USBController.enabledEhci = True
+	except:
+		pass
 	net = vm.getNetworkAdapter(0)
-	net.adapterType = ifaces.NetworkAdapterType.I82543GC
+	try:
+		# Not supported with VirtualBox OSE
+		net.adapterType = ifaces.NetworkAdapterType.I82543GC
+	except:
+		pass
 	net.attachToNAT()
 	net.enabled = True
 	vm.setExtraData('GUI/LastCloseAction', 'save')
