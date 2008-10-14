@@ -653,10 +653,6 @@ sub makeparcel ($$$$$) {
     my $tmp1 = mktempfile();
     my $tmp2 = mktempfile();
 
-    # Create new content directory for this user and parcel
-    ($parceldir, $parcelcfg) = init_parceldir($userid, $parcel);
-    $parcelverdir = "$parceldir/000001";
-
     # Calculate parcel size
     unless ($size =~ /^([0-9]+)([KMG])$/) {
 	errexit("Can't parse specified parcel size '$size'");
@@ -673,6 +669,14 @@ sub makeparcel ($$$$$) {
     $numdirs = int(($numchunks + $chunksperdir - 1) / $chunksperdir);
     $maxkb = ($chunksize >> 10) * $numchunks * 2;
     
+    # Validate memory image size
+    errexit("Invalid memory image size '$memsize'")
+        unless $memsize > 0;
+    
+    # Create new content directory for this user and parcel
+    ($parceldir, $parcelcfg) = init_parceldir($userid, $parcel);
+    $parcelverdir = "$parceldir/000001";
+
     # Generate a single, zeroed chunk
     print "Generating chunk directories...\n";
     system("dd if=/dev/zero bs=$chunksize count=1 2> /dev/null| " .
