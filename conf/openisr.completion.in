@@ -147,9 +147,15 @@ _isr_users() {
 	compgen -W "$ret" -- $1
 }
 
+_isr_vmms() {
+	local ret
+	ret=`find !!SHAREDIR!!/vmm -type f -printf "%f\n"`
+	compgen -W "$ret" -- $1
+}
+
 _isr_parameter_takes_option() {
 	case $1 in
-	-b|--bwlimit|-L|--longvers|-r|--rollback|-s|--server|-u|--user)
+	-b|--bwlimit|-L|--longvers|-m|--vmm|-r|--rollback|-s|--server|-u|--user)
 		return 0
 		;;
 	esac
@@ -196,8 +202,8 @@ _isr_subcommand_opts() {
 		long="--long"
 		;;
 	resume)
-		short="-c -d -F -r -s -u -x -X"
-		long="--checkstate --disconnected --no-fullscreen --rollback --server --user --sync --no-sync"
+		short="-c -d -F -m -r -s -u -x -X"
+		long="--checkstate --disconnected --no-fullscreen --rollback --server --user --sync --no-sync --vmm"
 		;;
 	rmhoard)
 		short="-x -X"
@@ -219,17 +225,21 @@ _isr() {
 	cur="$2"
 	prev="$3"
 
-	# Always offer to complete server and user names, even if we haven't
-	# seen a subcommand yet.  We assume that the user knows what they're
-	# doing in this case, because the subcommand they haven't entered yet
-	# may not actually take -s/-u.  (And therefore we don't offer to
-	# complete the options themselves.)
+	# Always offer to complete server, user, and VMM names, even if we
+	# haven't seen a subcommand yet.  We assume that the user knows what
+	# they're doing in this case, because the subcommand they haven't
+	# entered yet may not actually take -s/-u/-m.  (And therefore we don't
+	# offer to complete the options themselves.)
 	if [ "$prev" = "-s" -o "$prev" = "--server" ] ; then
 		COMPREPLY=(`_isr_servers $cur`)
 		return
 	fi
 	if [ "$prev" = "-u" -o "$prev" = "--user" ] ; then
 		COMPREPLY=(`_isr_users $cur`)
+		return
+	fi
+	if [ "$prev" = "-m" -o "$prev" = "--vmm" ] ; then
+		COMPREPLY=(`_isr_vmms $cur`)
 		return
 	fi
 
