@@ -834,9 +834,11 @@ sub run () {
 	$memtype = <SUSP>;
 	chomp $memtype;
 	close SUSP;
-    } else {
+    } elsif ($cfg{'VMM'} eq "vmware") {
 	# Compatibility with old versions of OpenISR
 	$memtype = "vmware";
+    } else {
+	$memtype = "no";
     }
 
     # See if the VMM plugin thinks the parcel is runnable.
