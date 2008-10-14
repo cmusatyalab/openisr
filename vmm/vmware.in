@@ -74,10 +74,6 @@ sub info {
 }
 
 sub new_vmdata {
-	# Old parcels don't have a MEM key in their parcel.cfgs.
-	# Pick a default.
-	$MEM = 512 unless defined $MEM;
-
 	my $cid = sprintf("%x", int(rand(0xffffffff)));
 	# Always round down
 	my $cyls = int($SECTORS / (16 * 63));

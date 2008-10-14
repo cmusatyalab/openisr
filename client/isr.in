@@ -908,8 +908,9 @@ sub run () {
     {
 	local $ENV{'DISK'} = $devnode;
 	local $ENV{'SECTORS'} = ($cfg{'CHUNKSIZE'} / 512) * $cfg{'NUMCHUNKS'};
-	local $ENV{'MEM'} = $cfg{'MEM'}
-	    if exists $cfg{'MEM'};
+	# Old parcels don't have a MEM key in their parcel.cfg, so we pick a
+	# default
+	local $ENV{'MEM'} = exists $cfg{'MEM'} ? $cfg{'MEM'} : 512;
 	local $ENV{'FULLSCREEN'} = $fullscreen ? "yes" : "no";
 	local $ENV{'SUSPENDED'} = $memtype;
 	# Ignore SIGINT in a way that will not be inherited by the VMM driver
