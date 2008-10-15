@@ -1,3 +1,42 @@
+====== 0.9.4 (2008-10-15)
+
+------ General changes
+
+- Add support for VPATH builds
+- Build system cleanups
+- Simplify configure script command-line options
+- Documentation updates
+
+------ Client changes
+
+- Add VMM agnosticism support via VMM-specific drivers
+- Add VMM drivers for VMware, VirtualBox, and KVM
+- Add support for 2.6.27 kernel
+- Drop support for kernels older than 2.6.18
+- Add "isr uuid" command to print the UUID of a parcel
+- Remove obscure "-l" option to "isr stat"
+- No longer build kernel modules along with the client
+- Greatly reduce installed size on disk
+- Assign new parcel MAC addresses on first resume of pre-0.9.4 parcels
+- Depend on Python if VirtualBox driver is installed
+- Fix segmentation fault with VMware when SELinux is enabled
+- Fix rare BUG_ON() in Nexus under heavy parcel I/O
+- Remove VMM logs and core files from memory image directory before uploading
+- Save and restore dirtometer window location and settings across runs
+- Show parcel name in dirtometer window title if started by client
+- Bring bash completions up-to-date with current isr command-line options
+- Various minor fixes and cleanups
+
+------ isr_admin changes
+
+- Add support for specifying default VMM driver in makeparcel
+- Remove VMware-specific memory image handling (done on the client now)
+- Generate random passwords in adduser unless default_pass is set
+- Remember to delete parcel data in deluser
+- Fail adduser if the account already exists
+- Force default server hostname to lower case
+- Remove support for /etc/openisr/skel
+
 ====== 0.9.3 (2008-08-05)
 
 ------ Client changes
