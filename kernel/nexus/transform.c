@@ -693,7 +693,8 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 	ts->cipher[suite]=cipher;
 	ts->hash[suite]=hash;
 	
-	if (!have_warned_aes && !strcmp("aes", info->cipher_name) &&
+	if (!have_warned_aes && cipher != NULL &&
+				!strcmp("aes", info->cipher_name) &&
 				aes_impl_is_suboptimal(info, cipher)) {
 		/* Actually, the presence of the optimized AES module only
 		   matters when the tfm is first allocated.  Does anyone have
