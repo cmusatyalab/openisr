@@ -40,10 +40,16 @@ probe_module() {
 	[ "$direction" = "remove" ] && flags="-r" || flags=""
 	if modprobe $flags "$name" 2>/dev/null ; then
 		echo -n " $name"
+	# We might be trying to unload a module whose module file no longer
+	# exists, so modprobe won't know about it.  Try rmmod.  (This will
+	# still fail if the module use count is nonzero, whereas modprobe
+	# knows how to unload reverse dependencies.)
+	elif [ "$direction" = "remove" ] && rmmod "$name" 2>/dev/null ; then
+		echo -n " $name"
 	elif [ "$required" = "required" ] ; then
 		if [ "$direction" = "remove" ] ; then
 			# We might be here because modprobe has never heard
-			# of this module, even though it isn't loaded.  Call
+			# of this module and it isn't loaded at all.  Call
 			# this success.
 			lsmod | grep -q "^$name " || return 0
 		fi
