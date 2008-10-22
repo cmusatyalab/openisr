@@ -11,7 +11,7 @@ To run:
 - libcurl >= 7.12.3 and curl command-line utility
 - OpenSSL libraries and command-line utility
 - zlib
-- OSSP uuid library (see note below)
+- libuuid from e2fsprogs
 - Perl
 - gtk2-perl, if dirtometer will be used
 - udev
@@ -38,14 +38,6 @@ To build from the Git repository:
 - Autoconf >= 2.59
 - Automake >= 1.10
 - libtool
-
-The OSSP uuid library should be installed using your Linux distribution's
-packaging system, not from source.  The source distribution of OSSP uuid uses
-a different pkg-config package name than do the binary packages shipped by
-Fedora- and Debian-derived Linux distributions, and the configure script
-expects the name provided by those binary packages.  If you must install
-OSSP uuid from a source release, you will need to override OpenISR's configure
-tests by manually setting OSSP_UUID_CFLAGS and OSSP_UUID_LIBS.
 
 This release ships with an updated version of the ISR-3 server software.
 Future releases will include a completely new server implementation.

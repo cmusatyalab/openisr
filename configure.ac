@@ -155,7 +155,7 @@ if test z$enable_client = zyes ; then
 	ver=`$FOUND_PATH/bin/curl-config --version | cut -f2 -d\  `
 	CHECK_VERSION_VAL([curl], [$ver], [7.12.3])
 	
-	PKG_CHECK_MODULES([OSSP_UUID], [ossp-uuid])
+	PKG_CHECK_MODULES([libuuid], [uuid])
 fi
 
 if test z$enable_client = zyes -o z$enable_server = zyes ; then

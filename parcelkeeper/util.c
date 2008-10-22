@@ -21,8 +21,10 @@
 #include <errno.h>
 #include <time.h>
 #include <openssl/evp.h>
-#include <uuid.h>
+#include <uuid/uuid.h>
 #include "defs.h"
+
+#define UUID_STR_LEN 36  /* not including trailing NUL */
 
 int is_dir(const char *path)
 {
@@ -518,32 +520,15 @@ void log_tag_mismatch(const void *expected, const void *found, unsigned len)
 
 pk_err_t canonicalize_uuid(const char *in, char **out)
 {
-	uuid_t *uuid;
-	uuid_rc_t uurc;
-	pk_err_t ret;
+	uuid_t uuid;
 
-	uurc=uuid_create(&uuid);
-	if (uurc) {
-		pk_log(LOG_ERROR, "Can't create UUID object: %s",
-					uuid_error(uurc));
-		return PK_NOMEM;
-	}
-	if (uuid_import(uuid, UUID_FMT_STR, in, strlen(in) + 1)) {
+	if (uuid_parse(in, uuid)) {
 		pk_log(LOG_ERROR, "Invalid UUID");
-		ret=PK_INVALID;
-		goto out;
+		return PK_INVALID;
 	}
 	if (out != NULL) {
-		uurc=uuid_export(uuid, UUID_FMT_STR, (void *)out, NULL);
-		if (uurc) {
-			pk_log(LOG_ERROR, "Can't format UUID: %s",
-						uuid_error(uurc));
-			ret=PK_NOMEM;
-			goto out;
-		}
+		*out=malloc(UUID_STR_LEN + 1);
+		uuid_unparse_lower(uuid, *out);
 	}
-	ret=PK_SUCCESS;
-out:
-	uuid_destroy(uuid);
-	return ret;
+	return PK_SUCCESS;
 }
