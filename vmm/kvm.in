@@ -56,10 +56,11 @@ sub check_runnable {
 		fail "$program is not a KVM binary"
 			unless prog_is_kvm $program;
 	} else {
-		# Binary packages call the program "kvm".  Source installs
-		# call it "qemu-system-x86_64", but so does vanilla qemu, so
-		# we have to check for KVM support.
-		foreach my $prog ('kvm', 'qemu-system-x86_64') {
+		# Debian packages call the program "kvm".  Fedora calls it
+		# "qemu-kvm".  Source installs call it "qemu-system-x86_64",
+		# but so does vanilla qemu, so we have to check for KVM
+		# support.
+		foreach my $prog ('kvm', 'qemu-kvm', 'qemu-system-x86_64') {
 			$program = find_program $prog;
 			last if defined $program and prog_is_kvm $program;
 			undef $program;
