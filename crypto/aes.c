@@ -27,6 +27,7 @@
  */
 
 #include "tomcrypt.h"
+#include "aes_tab.h"
 
 #define SETUP    rijndael_setup
 #define ECB_ENC  rijndael_ecb_encrypt
@@ -52,8 +53,6 @@ const struct ltc_cipher_descriptor aes_desc =
     SETUP, ECB_ENC, ECB_DEC, ECB_TEST, ECB_DONE, ECB_KS,
     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
 };
-
-#include "aes_tab.c"
 
 static ulong32 setup_mix(ulong32 temp)
 {
