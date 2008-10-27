@@ -9,6 +9,7 @@
  * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.com
  */
 
+#include <stdint.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -24,7 +25,7 @@
 enum isrcry_result isrcry_blowfish_init(const unsigned char *key, int keylen,
                    struct isrcry_blowfish_key *skey)
 {
-   ulong32 x, y, z, A;
+   uint32_t x, y, z, A;
    unsigned char B[8];
 
    if (key == NULL || skey == NULL)
@@ -36,8 +37,8 @@ enum isrcry_result isrcry_blowfish_init(const unsigned char *key, int keylen,
    for (x = y = 0; x < 18; x++) {
        A = 0;
        for (z = 0; z < 4; z++) {
-           A = (A << 8) | ((ulong32)key[y++] & 255);
-           if (y == (ulong32)keylen) { 
+           A = (A << 8) | ((uint32_t)key[y++] & 255);
+           if (y == (uint32_t)keylen) { 
               y = 0; 
            }
        }
@@ -94,7 +95,7 @@ enum isrcry_result isrcry_blowfish_init(const unsigned char *key, int keylen,
 enum isrcry_result _isrcry_blowfish_encrypt(const unsigned char *in,
 			unsigned char *out, struct isrcry_blowfish_key *skey)
 {
-   ulong32 L, R;
+   uint32_t L, R;
    int r;
 
    if (in == NULL || out == NULL || skey == NULL)
@@ -127,7 +128,7 @@ enum isrcry_result _isrcry_blowfish_encrypt(const unsigned char *in,
 int blowfish_ecb_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
 {
     int err = _blowfish_ecb_encrypt(pt, ct, skey);
-    burn_stack(sizeof(ulong32) * 2 + sizeof(int));
+    burn_stack(sizeof(uint32_t) * 2 + sizeof(int));
     return err;
 }
 #endif
@@ -142,7 +143,7 @@ int blowfish_ecb_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_k
 enum isrcry_result _isrcry_blowfish_decrypt(const unsigned char *in,
 			unsigned char *out, struct isrcry_blowfish_key *skey)
 {
-   ulong32 L, R;
+   uint32_t L, R;
    int r;
 
    if (in == NULL || out == NULL || skey == NULL)
@@ -174,7 +175,7 @@ enum isrcry_result _isrcry_blowfish_decrypt(const unsigned char *in,
 int blowfish_ecb_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
 {
     int err = _blowfish_ecb_decrypt(ct, pt, skey);
-    burn_stack(sizeof(ulong32) * 2 + sizeof(int));
+    burn_stack(sizeof(uint32_t) * 2 + sizeof(int));
     return err;
 }
 #endif

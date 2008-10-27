@@ -26,12 +26,13 @@
 ---
  */
 
+#include <stdint.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
 #include "aes_tab.h"
 
-static ulong32 setup_mix(ulong32 temp)
+static uint32_t setup_mix(uint32_t temp)
 {
    return (Te4_3[byte(temp, 2)]) ^
           (Te4_2[byte(temp, 1)]) ^
@@ -50,8 +51,8 @@ enum isrcry_result isrcry_aes_init(const unsigned char *key, int keylen,
 			struct isrcry_aes_key *skey)
 {
     int i, j;
-    ulong32 temp, *rk;
-    ulong32 *rrk;
+    uint32_t temp, *rk;
+    uint32_t *rrk;
     
     if (key == NULL || skey == NULL)
 	    return ISRCRY_INVALID_ARGUMENT;
@@ -185,7 +186,7 @@ enum isrcry_result isrcry_aes_init(const unsigned char *key, int keylen,
 enum isrcry_result _isrcry_aes_encrypt(const unsigned char *in,
 			unsigned char *out, struct isrcry_aes_key *skey)
 {
-    ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
+    uint32_t s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
     
     if (in == NULL || out == NULL || skey == NULL)
@@ -319,7 +320,7 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
 enum isrcry_result _isrcry_aes_decrypt(const unsigned char *in,
 			unsigned char *out, struct isrcry_aes_key *skey)
 {
-    ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
+    uint32_t s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
 
     if (in == NULL || out == NULL || skey == NULL)

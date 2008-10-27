@@ -9,7 +9,7 @@
  * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.com
  */
 
-static const ulong32 ORIG_P[16 + 2] = {
+static const uint32_t ORIG_P[16 + 2] = {
         0x243F6A88UL, 0x85A308D3UL, 0x13198A2EUL, 0x03707344UL,
         0xA4093822UL, 0x299F31D0UL, 0x082EFA98UL, 0xEC4E6C89UL,
         0x452821E6UL, 0x38D01377UL, 0xBE5466CFUL, 0x34E90C6CUL,
@@ -17,7 +17,7 @@ static const ulong32 ORIG_P[16 + 2] = {
         0x9216D5D9UL, 0x8979FB1BUL
 };
 
-static const ulong32 ORIG_S[4][256] = {
+static const uint32_t ORIG_S[4][256] = {
     {   0xD1310BA6UL, 0x98DFB5ACUL, 0x2FFD72DBUL, 0xD01ADFB7UL,
         0xB8E1AFEDUL, 0x6A267E96UL, 0xBA7C9045UL, 0xF12C7F99UL,
         0x24A19947UL, 0xB3916CF7UL, 0x0801F2E2UL, 0x858EFC16UL,

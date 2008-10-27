@@ -1,6 +1,8 @@
 #ifndef LIBISRCRYPTO_H
 #define LIBISRCRYPTO_H
 
+#include <stdint.h>
+
 enum isrcry_result {
 	ISRCRY_OK			= 0,
 	ISRCRY_INVALID_ARGUMENT		= 1,
@@ -10,13 +12,13 @@ enum isrcry_result {
 #define ISRCRY_BLOWFISH_BLOCKSIZE 8
 
 struct isrcry_aes_key {
-	ulong32 eK[60], dK[60];
+	uint32_t eK[60], dK[60];
 	int Nr;
 };
 
 struct isrcry_blowfish_key {
-	ulong32 S[4][256];
-	ulong32 K[18];
+	uint32_t S[4][256];
+	uint32_t K[18];
 };
 
 #define CIPHER(alg, mode, direction) \
