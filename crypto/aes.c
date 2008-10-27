@@ -42,20 +42,19 @@ static ulong32 setup_mix(ulong32 temp)
     @param key The symmetric key you wish to pass
     @param keylen The key length in bytes
     @param skey The key in as scheduled by this function.
-    @return CRYPT_OK if successful
+    @return ISRCRY_OK if successful
  */
-int isrcry_aes_init(const unsigned char *key, int keylen,
+enum isrcry_result isrcry_aes_init(const unsigned char *key, int keylen,
 			struct isrcry_aes_key *skey)
 {
     int i, j;
     ulong32 temp, *rk;
     ulong32 *rrk;
-    LTC_ARGCHK(key  != NULL);
-    LTC_ARGCHK(skey != NULL);
-  
-    if (keylen != 16 && keylen != 24 && keylen != 32) {
-       return CRYPT_INVALID_KEYSIZE;
-    }
+    
+    if (key == NULL || skey == NULL)
+	    return ISRCRY_INVALID_ARGUMENT;
+    if (keylen != 16 && keylen != 24 && keylen != 32)
+	    return ISRCRY_INVALID_ARGUMENT;
     
     skey->Nr = 10 + ((keylen/8)-2)*2;
         
@@ -119,8 +118,7 @@ int isrcry_aes_init(const unsigned char *key, int keylen,
             rk += 8;
         }
     } else {
-       /* this can't happen */
-       return CRYPT_ERROR;
+       assert(0);
     }
 
     /* setup the inverse key now */
@@ -172,7 +170,7 @@ int isrcry_aes_init(const unsigned char *key, int keylen,
     *rk++ = *rrk++;
     *rk   = *rrk;
 
-    return CRYPT_OK;   
+    return ISRCRY_OK;   
 }
 
 /**
@@ -180,17 +178,16 @@ int isrcry_aes_init(const unsigned char *key, int keylen,
   @param in The input plaintext (16 bytes)
   @param out The output ciphertext (16 bytes)
   @param skey The key as scheduled
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-int _isrcry_aes_encrypt(const unsigned char *in, unsigned char *out,
-			struct isrcry_aes_key *skey)
+enum isrcry_result _isrcry_aes_encrypt(const unsigned char *in,
+			unsigned char *out, struct isrcry_aes_key *skey)
 {
     ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
-   
-    LTC_ARGCHK(in != NULL);
-    LTC_ARGCHK(out != NULL);
-    LTC_ARGCHK(skey != NULL);
+    
+    if (in == NULL || out == NULL || skey == NULL)
+	    return ISRCRY_INVALID_ARGUMENT;
     
     Nr = skey->Nr;
     rk = skey->eK;
@@ -298,7 +295,7 @@ int _isrcry_aes_encrypt(const unsigned char *in, unsigned char *out,
         rk[3];
     STORE32H(s3, out+12);
 
-    return CRYPT_OK;
+    return ISRCRY_OK;
 }
 
 #if 0
@@ -315,17 +312,16 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
   @param in The input ciphertext (16 bytes)
   @param out The output plaintext (16 bytes)
   @param skey The key as scheduled 
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-int _isrcry_aes_decrypt(const unsigned char *in, unsigned char *out,
-			struct isrcry_aes_key *skey)
+enum isrcry_result _isrcry_aes_decrypt(const unsigned char *in,
+			unsigned char *out, struct isrcry_aes_key *skey)
 {
     ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
 
-    LTC_ARGCHK(in != NULL);
-    LTC_ARGCHK(out != NULL);
-    LTC_ARGCHK(skey != NULL);
+    if (in == NULL || out == NULL || skey == NULL)
+	    return ISRCRY_INVALID_ARGUMENT;
     
     Nr = skey->Nr;
     rk = skey->dK;
@@ -435,7 +431,7 @@ int _isrcry_aes_decrypt(const unsigned char *in, unsigned char *out,
         rk[3];
     STORE32H(s3, out+12);
 
-    return CRYPT_OK;
+    return ISRCRY_OK;
 }
 
 

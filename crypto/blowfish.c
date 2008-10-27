@@ -17,21 +17,18 @@
     @param key The symmetric key you wish to pass
     @param keylen The key length in bytes
     @param skey The key in as scheduled by this function.
-    @return CRYPT_OK if successful
+    @return ISRCRY_OK if successful
  */
-int isrcry_blowfish_init(const unsigned char *key, int keylen,
+enum isrcry_result isrcry_blowfish_init(const unsigned char *key, int keylen,
                    struct isrcry_blowfish_key *skey)
 {
    ulong32 x, y, z, A;
    unsigned char B[8];
 
-   LTC_ARGCHK(key != NULL);
-   LTC_ARGCHK(skey != NULL);
-
-   /* check key length */
-   if (keylen < 8 || keylen > 56) {
-      return CRYPT_INVALID_KEYSIZE;
-   }
+   if (key == NULL || skey == NULL)
+	   return ISRCRY_INVALID_ARGUMENT;
+   if (keylen < 8 || keylen > 56)
+	   return ISRCRY_INVALID_ARGUMENT;
 
    /* load in key bytes (Supplied by David Hopwood) */
    for (x = y = 0; x < 18; x++) {
@@ -80,7 +77,7 @@ int isrcry_blowfish_init(const unsigned char *key, int keylen,
    zeromem(B, sizeof(B));
 #endif
 
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 #define F(x) ((skey->S[0][byte(x,3)] + skey->S[1][byte(x,2)]) ^ skey->S[2][byte(x,1)]) + skey->S[3][byte(x,0)]
@@ -90,17 +87,16 @@ int isrcry_blowfish_init(const unsigned char *key, int keylen,
   @param in The input plaintext (8 bytes)
   @param out The output ciphertext (8 bytes)
   @param skey The key as scheduled
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-int _isrcry_blowfish_encrypt(const unsigned char *in, unsigned char *out,
-			struct isrcry_blowfish_key *skey)
+enum isrcry_result _isrcry_blowfish_encrypt(const unsigned char *in,
+			unsigned char *out, struct isrcry_blowfish_key *skey)
 {
    ulong32 L, R;
    int r;
 
-    LTC_ARGCHK(in   != NULL);
-    LTC_ARGCHK(out  != NULL);
-    LTC_ARGCHK(skey != NULL);
+   if (in == NULL || out == NULL || skey == NULL)
+	   return ISRCRY_INVALID_ARGUMENT;
 
    /* load it */
    LOAD32H(L, &in[0]);
@@ -122,7 +118,7 @@ int _isrcry_blowfish_encrypt(const unsigned char *in, unsigned char *out,
    STORE32H(R, &out[0]);
    STORE32H(L, &out[4]);
 
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 #if 0
@@ -139,17 +135,16 @@ int blowfish_ecb_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_k
   @param in The input ciphertext (8 bytes)
   @param out The output plaintext (8 bytes)
   @param skey The key as scheduled 
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-int _isrcry_blowfish_decrypt(const unsigned char *in, unsigned char *out,
-			struct isrcry_blowfish_key *skey)
+enum isrcry_result _isrcry_blowfish_decrypt(const unsigned char *in,
+			unsigned char *out, struct isrcry_blowfish_key *skey)
 {
    ulong32 L, R;
    int r;
 
-    LTC_ARGCHK(in   != NULL);
-    LTC_ARGCHK(out  != NULL);
-    LTC_ARGCHK(skey != NULL);
+   if (in == NULL || out == NULL || skey == NULL)
+	   return ISRCRY_INVALID_ARGUMENT;
     
    /* load it */
    LOAD32H(R, &in[0]);
@@ -170,7 +165,7 @@ int _isrcry_blowfish_decrypt(const unsigned char *in, unsigned char *out,
    /* store */
    STORE32H(L, &out[0]);
    STORE32H(R, &out[4]);
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 #if 0

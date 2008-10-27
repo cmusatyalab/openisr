@@ -18,27 +18,23 @@
   @param key      Key
   @param iv       [in/out] Initialization vector
   @param blocklen The block size
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-int _isrcry_cbc_encrypt(const unsigned char *in, unsigned long len,
-			unsigned char *out, cipher_fn *encrypt,
-			unsigned blocklen, void *key, unsigned char *iv)
+enum isrcry_result _isrcry_cbc_encrypt(const unsigned char *in,
+			unsigned long len, unsigned char *out,
+			cipher_fn *encrypt, unsigned blocklen, void *key,
+			unsigned char *iv)
 {
-   int x, err;
+   int x;
+   enum isrcry_result err;
 
-   LTC_ARGCHK(in != NULL);
-   LTC_ARGCHK(out != NULL);
-   LTC_ARGCHK(key != NULL);
-   LTC_ARGCHK(iv != NULL);
-
-   /* is blocklen valid? */
-   if (blocklen < 1 || len % cbc->blocklen) {
-      return CRYPT_INVALID_ARG;
-   }
+   if (in == NULL || out == NULL || key == NULL || iv == NULL)
+	   return ISRCRY_INVALID_ARGUMENT;
+   if (blocklen < 1 || len % cbc->blocklen)
+	   return ISRCRY_INVALID_ARGUMENT;
 #ifdef LTC_FAST
-   if (cbc->blocklen % sizeof(LTC_FAST_TYPE)) {   
-      return CRYPT_INVALID_ARG;
-   }
+   if (cbc->blocklen % sizeof(LTC_FAST_TYPE))
+	   return ISRCRY_INVALID_ARGUMENT;
 #endif
 
    while (len) {
@@ -54,7 +50,7 @@ int _isrcry_cbc_encrypt(const unsigned char *in, unsigned long len,
 #endif
 
        /* encrypt */
-      if ((err = encrypt(iv, out, key)) != CRYPT_OK) {
+      if ((err = encrypt(iv, out, key)) != ISRCRY_OK) {
 	  return err;
       }
 
@@ -73,7 +69,7 @@ int _isrcry_cbc_encrypt(const unsigned char *in, unsigned long len,
       in  += blocklen;
       len -= blocklen;
    }
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
@@ -84,13 +80,15 @@ int _isrcry_cbc_encrypt(const unsigned char *in, unsigned long len,
   @param key      Key
   @param iv       [in/out] Initialization vector
   @param blocklen The block size
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-int _isrcry_cbc_decrypt(const unsigned char *in, unsigned long len,
-			unsigned char *out, cipher_fn *decrypt,
-			unsigned blocklen, void *key, unsigned char *iv)
+enum isrcry_result _isrcry_cbc_decrypt(const unsigned char *in,
+			unsigned long len, unsigned char *out,
+			cipher_fn *decrypt, unsigned blocklen, void *key,
+			unsigned char *iv)
 {
-   int x, err;
+   int x;
+   enum isrcry_result err;
    unsigned char tmp[16];
 #ifdef LTC_FAST
    LTC_FAST_TYPE tmpy;
@@ -98,26 +96,19 @@ int _isrcry_cbc_decrypt(const unsigned char *in, unsigned long len,
    unsigned char tmpy;
 #endif         
 
-   LTC_ARGCHK(in  != NULL);
-   LTC_ARGCHK(out != NULL);
-   LTC_ARGCHK(key != NULL);
-   LTC_ARGCHK(iv != NULL);
-
-   /* is blocklen valid? */
-   if (blocklen < 1 || len % cbc->blocklen) {
-      return CRYPT_INVALID_ARG;
-   }
+   if (in == NULL || out == NULL || key == NULL || iv == NULL)
+	   return ISRCRY_INVALID_ARGUMENT;
+   if (blocklen < 1 || len % cbc->blocklen)
+	   return ISRCRY_INVALID_ARGUMENT;
 #ifdef LTC_FAST
-   if (cbc->blocklen % sizeof(LTC_FAST_TYPE)) {   
-      return CRYPT_INVALID_ARG;
-   }
+   if (cbc->blocklen % sizeof(LTC_FAST_TYPE))
+	   return ISRCRY_INVALID_ARGUMENT;
 #endif
    
     while (len) {
        /* decrypt */
-       if ((err = decrypt(in, tmp, key)) != CRYPT_OK) {
-          return err;
-       }
+       if ((err = decrypt(in, tmp, key)) != ISRCRY_OK)
+	       return err;
 
        /* xor IV against plaintext */
 #if defined(LTC_FAST)
@@ -138,5 +129,5 @@ int _isrcry_cbc_decrypt(const unsigned char *in, unsigned long len,
        out += cbc->blocklen;
        len -= cbc->blocklen;
    }
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
