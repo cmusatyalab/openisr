@@ -177,19 +177,19 @@ int isrcry_aes_init(const unsigned char *key, int keylen,
 
 /**
   Encrypts a block of text with AES
-  @param pt The input plaintext (16 bytes)
-  @param ct The output ciphertext (16 bytes)
+  @param in The input plaintext (16 bytes)
+  @param out The output ciphertext (16 bytes)
   @param skey The key as scheduled
   @return CRYPT_OK if successful
 */
-int _isrcry_aes_encrypt(const unsigned char *pt, unsigned char *ct,
+int _isrcry_aes_encrypt(const unsigned char *in, unsigned char *out,
 			struct isrcry_aes_key *skey)
 {
     ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
    
-    LTC_ARGCHK(pt != NULL);
-    LTC_ARGCHK(ct != NULL);
+    LTC_ARGCHK(in != NULL);
+    LTC_ARGCHK(out != NULL);
     LTC_ARGCHK(skey != NULL);
     
     Nr = skey->Nr;
@@ -199,10 +199,10 @@ int _isrcry_aes_encrypt(const unsigned char *pt, unsigned char *ct,
      * map byte array block to cipher state
      * and add initial round key:
      */
-    LOAD32H(s0, pt      ); s0 ^= rk[0];
-    LOAD32H(s1, pt  +  4); s1 ^= rk[1];
-    LOAD32H(s2, pt  +  8); s2 ^= rk[2];
-    LOAD32H(s3, pt  + 12); s3 ^= rk[3];
+    LOAD32H(s0, in      ); s0 ^= rk[0];
+    LOAD32H(s1, in  +  4); s1 ^= rk[1];
+    LOAD32H(s2, in  +  8); s2 ^= rk[2];
+    LOAD32H(s3, in  + 12); s3 ^= rk[3];
 
     /*
      * Nr - 1 full rounds:
@@ -275,28 +275,28 @@ int _isrcry_aes_encrypt(const unsigned char *pt, unsigned char *ct,
         (Te4_1[byte(t2, 1)]) ^
         (Te4_0[byte(t3, 0)]) ^
         rk[0];
-    STORE32H(s0, ct);
+    STORE32H(s0, out);
     s1 =
         (Te4_3[byte(t1, 3)]) ^
         (Te4_2[byte(t2, 2)]) ^
         (Te4_1[byte(t3, 1)]) ^
         (Te4_0[byte(t0, 0)]) ^
         rk[1];
-    STORE32H(s1, ct+4);
+    STORE32H(s1, out+4);
     s2 =
         (Te4_3[byte(t2, 3)]) ^
         (Te4_2[byte(t3, 2)]) ^
         (Te4_1[byte(t0, 1)]) ^
         (Te4_0[byte(t1, 0)]) ^
         rk[2];
-    STORE32H(s2, ct+8);
+    STORE32H(s2, out+8);
     s3 =
         (Te4_3[byte(t3, 3)]) ^
         (Te4_2[byte(t0, 2)]) ^
         (Te4_1[byte(t1, 1)]) ^
         (Te4_0[byte(t2, 0)]) ^ 
         rk[3];
-    STORE32H(s3, ct+12);
+    STORE32H(s3, out+12);
 
     return CRYPT_OK;
 }
@@ -312,19 +312,19 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
 
 /**
   Decrypts a block of text with AES
-  @param ct The input ciphertext (16 bytes)
-  @param pt The output plaintext (16 bytes)
+  @param in The input ciphertext (16 bytes)
+  @param out The output plaintext (16 bytes)
   @param skey The key as scheduled 
   @return CRYPT_OK if successful
 */
-int _isrcry_aes_decrypt(const unsigned char *ct, unsigned char *pt,
+int _isrcry_aes_decrypt(const unsigned char *in, unsigned char *out,
 			struct isrcry_aes_key *skey)
 {
     ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
 
-    LTC_ARGCHK(pt != NULL);
-    LTC_ARGCHK(ct != NULL);
+    LTC_ARGCHK(in != NULL);
+    LTC_ARGCHK(out != NULL);
     LTC_ARGCHK(skey != NULL);
     
     Nr = skey->Nr;
@@ -334,10 +334,10 @@ int _isrcry_aes_decrypt(const unsigned char *ct, unsigned char *pt,
      * map byte array block to cipher state
      * and add initial round key:
      */
-    LOAD32H(s0, ct      ); s0 ^= rk[0];
-    LOAD32H(s1, ct  +  4); s1 ^= rk[1];
-    LOAD32H(s2, ct  +  8); s2 ^= rk[2];
-    LOAD32H(s3, ct  + 12); s3 ^= rk[3];
+    LOAD32H(s0, in      ); s0 ^= rk[0];
+    LOAD32H(s1, in  +  4); s1 ^= rk[1];
+    LOAD32H(s2, in  +  8); s2 ^= rk[2];
+    LOAD32H(s3, in  + 12); s3 ^= rk[3];
 
     /*
      * Nr - 1 full rounds:
@@ -412,28 +412,28 @@ int _isrcry_aes_decrypt(const unsigned char *ct, unsigned char *pt,
         (Td4[byte(t2, 1)] & 0x0000ff00) ^
         (Td4[byte(t1, 0)] & 0x000000ff) ^
         rk[0];
-    STORE32H(s0, pt);
+    STORE32H(s0, out);
     s1 =
         (Td4[byte(t1, 3)] & 0xff000000) ^
         (Td4[byte(t0, 2)] & 0x00ff0000) ^
         (Td4[byte(t3, 1)] & 0x0000ff00) ^
         (Td4[byte(t2, 0)] & 0x000000ff) ^
         rk[1];
-    STORE32H(s1, pt+4);
+    STORE32H(s1, out+4);
     s2 =
         (Td4[byte(t2, 3)] & 0xff000000) ^
         (Td4[byte(t1, 2)] & 0x00ff0000) ^
         (Td4[byte(t0, 1)] & 0x0000ff00) ^
         (Td4[byte(t3, 0)] & 0x000000ff) ^
         rk[2];
-    STORE32H(s2, pt+8);
+    STORE32H(s2, out+8);
     s3 =
         (Td4[byte(t3, 3)] & 0xff000000) ^
         (Td4[byte(t2, 2)] & 0x00ff0000) ^
         (Td4[byte(t1, 1)] & 0x0000ff00) ^
         (Td4[byte(t0, 0)] & 0x000000ff) ^
         rk[3];
-    STORE32H(s3, pt+12);
+    STORE32H(s3, out+12);
 
     return CRYPT_OK;
 }

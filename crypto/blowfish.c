@@ -87,24 +87,24 @@ int isrcry_blowfish_init(const unsigned char *key, int keylen,
 
 /**
   Encrypts a block of text with Blowfish
-  @param pt The input plaintext (8 bytes)
-  @param ct The output ciphertext (8 bytes)
+  @param in The input plaintext (8 bytes)
+  @param out The output ciphertext (8 bytes)
   @param skey The key as scheduled
   @return CRYPT_OK if successful
 */
-int _isrcry_blowfish_encrypt(const unsigned char *pt, unsigned char *ct,
+int _isrcry_blowfish_encrypt(const unsigned char *in, unsigned char *out,
 			struct isrcry_blowfish_key *skey)
 {
    ulong32 L, R;
    int r;
 
-    LTC_ARGCHK(pt   != NULL);
-    LTC_ARGCHK(ct   != NULL);
+    LTC_ARGCHK(in   != NULL);
+    LTC_ARGCHK(out  != NULL);
     LTC_ARGCHK(skey != NULL);
 
    /* load it */
-   LOAD32H(L, &pt[0]);
-   LOAD32H(R, &pt[4]);
+   LOAD32H(L, &in[0]);
+   LOAD32H(R, &in[4]);
 
    /* do 16 rounds */
    for (r = 0; r < 16; ) {
@@ -119,8 +119,8 @@ int _isrcry_blowfish_encrypt(const unsigned char *pt, unsigned char *ct,
    L ^= skey->K[16];
 
    /* store */
-   STORE32H(R, &ct[0]);
-   STORE32H(L, &ct[4]);
+   STORE32H(R, &out[0]);
+   STORE32H(L, &out[4]);
 
    return CRYPT_OK;
 }
@@ -136,24 +136,24 @@ int blowfish_ecb_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_k
 
 /**
   Decrypts a block of text with Blowfish
-  @param ct The input ciphertext (8 bytes)
-  @param pt The output plaintext (8 bytes)
+  @param in The input ciphertext (8 bytes)
+  @param out The output plaintext (8 bytes)
   @param skey The key as scheduled 
   @return CRYPT_OK if successful
 */
-int _isrcry_blowfish_decrypt(const unsigned char *ct, unsigned char *pt,
+int _isrcry_blowfish_decrypt(const unsigned char *in, unsigned char *out,
 			struct isrcry_blowfish_key *skey)
 {
    ulong32 L, R;
    int r;
 
-    LTC_ARGCHK(pt   != NULL);
-    LTC_ARGCHK(ct   != NULL);
+    LTC_ARGCHK(in   != NULL);
+    LTC_ARGCHK(out  != NULL);
     LTC_ARGCHK(skey != NULL);
     
    /* load it */
-   LOAD32H(R, &ct[0]);
-   LOAD32H(L, &ct[4]);
+   LOAD32H(R, &in[0]);
+   LOAD32H(L, &in[4]);
 
    /* undo last keying */
    R ^= skey->K[17];
@@ -168,8 +168,8 @@ int _isrcry_blowfish_decrypt(const unsigned char *ct, unsigned char *pt,
    }
 
    /* store */
-   STORE32H(L, &pt[0]);
-   STORE32H(R, &pt[4]);
+   STORE32H(L, &out[0]);
+   STORE32H(R, &out[4]);
    return CRYPT_OK;
 }
 
