@@ -26,7 +26,9 @@
 ---
  */
 
-#include "tomcrypt.h"
+#include "isrcrypto.h"
+#define LIBISRCRYPTO_INTERNAL
+#include "internal.h"
 #include "aes_tab.h"
 
 static ulong32 setup_mix(ulong32 temp)

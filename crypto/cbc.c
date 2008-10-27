@@ -8,7 +8,10 @@
  *
  * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.com
  */
-#include "tomcrypt.h"
+
+#include "isrcrypto.h"
+#define LIBISRCRYPTO_INTERNAL
+#include "internal.h"
 
 /**
   CBC encrypt

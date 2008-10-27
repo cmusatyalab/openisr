@@ -30,4 +30,9 @@ CIPHER(aes, cbc, decrypt)
 CIPHER(blowfish, cbc, encrypt)
 CIPHER(blowfish, cbc, decrypt)
 
+enum isrcry_result isrcry_aes_init(const unsigned char *key, int keylen,
+			struct isrcry_aes_key *skey);
+enum isrcry_result isrcry_blowfish_init(const unsigned char *key, int keylen,
+			struct isrcry_blowfish_key *skey);
+
 #endif
