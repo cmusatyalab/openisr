@@ -251,28 +251,28 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
     r = Nr >> 1;
     for (;;) {
         t0 =
-            Te0(byte(s0, 3)) ^
-            Te1(byte(s1, 2)) ^
-            Te2(byte(s2, 1)) ^
-            Te3(byte(s3, 0)) ^
+            Te0[byte(s0, 3)] ^
+            Te1[byte(s1, 2)] ^
+            Te2[byte(s2, 1)] ^
+            Te3[byte(s3, 0)] ^
             rk[4];
         t1 =
-            Te0(byte(s1, 3)) ^
-            Te1(byte(s2, 2)) ^
-            Te2(byte(s3, 1)) ^
-            Te3(byte(s0, 0)) ^
+            Te0[byte(s1, 3)] ^
+            Te1[byte(s2, 2)] ^
+            Te2[byte(s3, 1)] ^
+            Te3[byte(s0, 0)] ^
             rk[5];
         t2 =
-            Te0(byte(s2, 3)) ^
-            Te1(byte(s3, 2)) ^
-            Te2(byte(s0, 1)) ^
-            Te3(byte(s1, 0)) ^
+            Te0[byte(s2, 3)] ^
+            Te1[byte(s3, 2)] ^
+            Te2[byte(s0, 1)] ^
+            Te3[byte(s1, 0)] ^
             rk[6];
         t3 =
-            Te0(byte(s3, 3)) ^
-            Te1(byte(s0, 2)) ^
-            Te2(byte(s1, 1)) ^
-            Te3(byte(s2, 0)) ^
+            Te0[byte(s3, 3)] ^
+            Te1[byte(s0, 2)] ^
+            Te2[byte(s1, 1)] ^
+            Te3[byte(s2, 0)] ^
             rk[7];
 
         rk += 8;
@@ -281,28 +281,28 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
         }
 
         s0 =
-            Te0(byte(t0, 3)) ^
-            Te1(byte(t1, 2)) ^
-            Te2(byte(t2, 1)) ^
-            Te3(byte(t3, 0)) ^
+            Te0[byte(t0, 3)] ^
+            Te1[byte(t1, 2)] ^
+            Te2[byte(t2, 1)] ^
+            Te3[byte(t3, 0)] ^
             rk[0];
         s1 =
-            Te0(byte(t1, 3)) ^
-            Te1(byte(t2, 2)) ^
-            Te2(byte(t3, 1)) ^
-            Te3(byte(t0, 0)) ^
+            Te0[byte(t1, 3)] ^
+            Te1[byte(t2, 2)] ^
+            Te2[byte(t3, 1)] ^
+            Te3[byte(t0, 0)] ^
             rk[1];
         s2 =
-            Te0(byte(t2, 3)) ^
-            Te1(byte(t3, 2)) ^
-            Te2(byte(t0, 1)) ^
-            Te3(byte(t1, 0)) ^
+            Te0[byte(t2, 3)] ^
+            Te1[byte(t3, 2)] ^
+            Te2[byte(t0, 1)] ^
+            Te3[byte(t1, 0)] ^
             rk[2];
         s3 =
-            Te0(byte(t3, 3)) ^
-            Te1(byte(t0, 2)) ^
-            Te2(byte(t1, 1)) ^
-            Te3(byte(t2, 0)) ^
+            Te0[byte(t3, 3)] ^
+            Te1[byte(t0, 2)] ^
+            Te2[byte(t1, 1)] ^
+            Te3[byte(t2, 0)] ^
             rk[3];
     }
 
@@ -390,28 +390,28 @@ int ECB_DEC(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
     for (;;) {
 
         t0 =
-            Td0(byte(s0, 3)) ^
-            Td1(byte(s3, 2)) ^
-            Td2(byte(s2, 1)) ^
-            Td3(byte(s1, 0)) ^
+            Td0[byte(s0, 3)] ^
+            Td1[byte(s3, 2)] ^
+            Td2[byte(s2, 1)] ^
+            Td3[byte(s1, 0)] ^
             rk[4];
         t1 =
-            Td0(byte(s1, 3)) ^
-            Td1(byte(s0, 2)) ^
-            Td2(byte(s3, 1)) ^
-            Td3(byte(s2, 0)) ^
+            Td0[byte(s1, 3)] ^
+            Td1[byte(s0, 2)] ^
+            Td2[byte(s3, 1)] ^
+            Td3[byte(s2, 0)] ^
             rk[5];
         t2 =
-            Td0(byte(s2, 3)) ^
-            Td1(byte(s1, 2)) ^
-            Td2(byte(s0, 1)) ^
-            Td3(byte(s3, 0)) ^
+            Td0[byte(s2, 3)] ^
+            Td1[byte(s1, 2)] ^
+            Td2[byte(s0, 1)] ^
+            Td3[byte(s3, 0)] ^
             rk[6];
         t3 =
-            Td0(byte(s3, 3)) ^
-            Td1(byte(s2, 2)) ^
-            Td2(byte(s1, 1)) ^
-            Td3(byte(s0, 0)) ^
+            Td0[byte(s3, 3)] ^
+            Td1[byte(s2, 2)] ^
+            Td2[byte(s1, 1)] ^
+            Td3[byte(s0, 0)] ^
             rk[7];
 
         rk += 8;
@@ -421,28 +421,28 @@ int ECB_DEC(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
 
 
         s0 =
-            Td0(byte(t0, 3)) ^
-            Td1(byte(t3, 2)) ^
-            Td2(byte(t2, 1)) ^
-            Td3(byte(t1, 0)) ^
+            Td0[byte(t0, 3)] ^
+            Td1[byte(t3, 2)] ^
+            Td2[byte(t2, 1)] ^
+            Td3[byte(t1, 0)] ^
             rk[0];
         s1 =
-            Td0(byte(t1, 3)) ^
-            Td1(byte(t0, 2)) ^
-            Td2(byte(t3, 1)) ^
-            Td3(byte(t2, 0)) ^
+            Td0[byte(t1, 3)] ^
+            Td1[byte(t0, 2)] ^
+            Td2[byte(t3, 1)] ^
+            Td3[byte(t2, 0)] ^
             rk[1];
         s2 =
-            Td0(byte(t2, 3)) ^
-            Td1(byte(t1, 2)) ^
-            Td2(byte(t0, 1)) ^
-            Td3(byte(t3, 0)) ^
+            Td0[byte(t2, 3)] ^
+            Td1[byte(t1, 2)] ^
+            Td2[byte(t0, 1)] ^
+            Td3[byte(t3, 0)] ^
             rk[2];
         s3 =
-            Td0(byte(t3, 3)) ^
-            Td1(byte(t2, 2)) ^
-            Td2(byte(t1, 1)) ^
-            Td3(byte(t0, 0)) ^
+            Td0[byte(t3, 3)] ^
+            Td1[byte(t2, 2)] ^
+            Td2[byte(t1, 1)] ^
+            Td3[byte(t0, 0)] ^
             rk[3];
     }
 

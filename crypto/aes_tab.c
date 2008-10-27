@@ -24,7 +24,7 @@ Td3[x] = Si[x].[09, 0d, 0b, 0e];
 Td4[x] = Si[x].[01, 01, 01, 01];
 */
 
-static const ulong32 TE0[256] = {
+static const ulong32 Te0[256] = {
     0xc66363a5UL, 0xf87c7c84UL, 0xee777799UL, 0xf67b7b8dUL,
     0xfff2f20dUL, 0xd66b6bbdUL, 0xde6f6fb1UL, 0x91c5c554UL,
     0x60303050UL, 0x02010103UL, 0xce6767a9UL, 0x562b2b7dUL,
@@ -158,7 +158,7 @@ static const ulong32 Te4[256] = {
     0xb0b0b0b0UL, 0x54545454UL, 0xbbbbbbbbUL, 0x16161616UL,
 };
 
-static const ulong32 TD0[256] = {
+static const ulong32 Td0[256] = {
     0x51f4a750UL, 0x7e416553UL, 0x1a17a4c3UL, 0x3a275e96UL,
     0x3bab6bcbUL, 0x1f9d45f1UL, 0xacfa58abUL, 0x4be30393UL,
     0x2030fa55UL, 0xad766df6UL, 0x88cc7691UL, 0xf5024c25UL,
@@ -292,17 +292,7 @@ static const ulong32 Td4[256] = {
     0x55555555UL, 0x21212121UL, 0x0c0c0c0cUL, 0x7d7d7d7dUL,
 };
 
-#define Te0(x) TE0[x]
-#define Te1(x) TE1[x]
-#define Te2(x) TE2[x]
-#define Te3(x) TE3[x]
-
-#define Td0(x) TD0[x]
-#define Td1(x) TD1[x]
-#define Td2(x) TD2[x]
-#define Td3(x) TD3[x]
-
-static const ulong32 TE1[256] = {
+static const ulong32 Te1[256] = {
     0xa5c66363UL, 0x84f87c7cUL, 0x99ee7777UL, 0x8df67b7bUL,
     0x0dfff2f2UL, 0xbdd66b6bUL, 0xb1de6f6fUL, 0x5491c5c5UL,
     0x50603030UL, 0x03020101UL, 0xa9ce6767UL, 0x7d562b2bUL,
@@ -368,7 +358,8 @@ static const ulong32 TE1[256] = {
     0xc3824141UL, 0xb0299999UL, 0x775a2d2dUL, 0x111e0f0fUL,
     0xcb7bb0b0UL, 0xfca85454UL, 0xd66dbbbbUL, 0x3a2c1616UL,
 };
-static const ulong32 TE2[256] = {
+
+static const ulong32 Te2[256] = {
     0x63a5c663UL, 0x7c84f87cUL, 0x7799ee77UL, 0x7b8df67bUL,
     0xf20dfff2UL, 0x6bbdd66bUL, 0x6fb1de6fUL, 0xc55491c5UL,
     0x30506030UL, 0x01030201UL, 0x67a9ce67UL, 0x2b7d562bUL,
@@ -434,8 +425,8 @@ static const ulong32 TE2[256] = {
     0x41c38241UL, 0x99b02999UL, 0x2d775a2dUL, 0x0f111e0fUL,
     0xb0cb7bb0UL, 0x54fca854UL, 0xbbd66dbbUL, 0x163a2c16UL,
 };
-static const ulong32 TE3[256] = {
 
+static const ulong32 Te3[256] = {
     0x6363a5c6UL, 0x7c7c84f8UL, 0x777799eeUL, 0x7b7b8df6UL,
     0xf2f20dffUL, 0x6b6bbdd6UL, 0x6f6fb1deUL, 0xc5c55491UL,
     0x30305060UL, 0x01010302UL, 0x6767a9ceUL, 0x2b2b7d56UL,
@@ -642,7 +633,7 @@ static const ulong32 Te4_3[] = {
 0x41000000UL, 0x99000000UL, 0x2d000000UL, 0x0f000000UL, 0xb0000000UL, 0x54000000UL, 0xbb000000UL, 0x16000000UL
 };
 
-static const ulong32 TD1[256] = {
+static const ulong32 Td1[256] = {
     0x5051f4a7UL, 0x537e4165UL, 0xc31a17a4UL, 0x963a275eUL,
     0xcb3bab6bUL, 0xf11f9d45UL, 0xabacfa58UL, 0x934be303UL,
     0x552030faUL, 0xf6ad766dUL, 0x9188cc76UL, 0x25f5024cUL,
@@ -708,7 +699,8 @@ static const ulong32 TD1[256] = {
     0x7139a801UL, 0xde080cb3UL, 0x9cd8b4e4UL, 0x906456c1UL,
     0x617bcb84UL, 0x70d532b6UL, 0x74486c5cUL, 0x42d0b857UL,
 };
-static const ulong32 TD2[256] = {
+
+static const ulong32 Td2[256] = {
     0xa75051f4UL, 0x65537e41UL, 0xa4c31a17UL, 0x5e963a27UL,
     0x6bcb3babUL, 0x45f11f9dUL, 0x58abacfaUL, 0x03934be3UL,
     0xfa552030UL, 0x6df6ad76UL, 0x769188ccUL, 0x4c25f502UL,
@@ -774,7 +766,8 @@ static const ulong32 TD2[256] = {
     0x017139a8UL, 0xb3de080cUL, 0xe49cd8b4UL, 0xc1906456UL,
     0x84617bcbUL, 0xb670d532UL, 0x5c74486cUL, 0x5742d0b8UL,
 };
-static const ulong32 TD3[256] = {
+
+static const ulong32 Td3[256] = {
     0xf4a75051UL, 0x4165537eUL, 0x17a4c31aUL, 0x275e963aUL,
     0xab6bcb3bUL, 0x9d45f11fUL, 0xfa58abacUL, 0xe303934bUL,
     0x30fa5520UL, 0x766df6adUL, 0xcc769188UL, 0x024c25f5UL,
