@@ -41,11 +41,11 @@ static ulong32 setup_mix(ulong32 temp)
     Initialize the AES (Rijndael) block cipher
     @param key The symmetric key you wish to pass
     @param keylen The key length in bytes
-    @param num_rounds The number of rounds desired (0 for default)
     @param skey The key in as scheduled by this function.
     @return CRYPT_OK if successful
  */
-int isrcry_aes_init(const unsigned char *key, int keylen, int num_rounds, symmetric_key *skey)
+int isrcry_aes_init(const unsigned char *key, int keylen,
+			struct isrcry_aes_key *skey)
 {
     int i, j;
     ulong32 temp, *rk;
@@ -57,15 +57,11 @@ int isrcry_aes_init(const unsigned char *key, int keylen, int num_rounds, symmet
        return CRYPT_INVALID_KEYSIZE;
     }
     
-    if (num_rounds != 0 && num_rounds != (10 + ((keylen/8)-2)*2)) {
-       return CRYPT_INVALID_ROUNDS;
-    }
-    
-    skey->rijndael.Nr = 10 + ((keylen/8)-2)*2;
+    skey->Nr = 10 + ((keylen/8)-2)*2;
         
     /* setup the forward key */
     i                 = 0;
-    rk                = skey->rijndael.eK;
+    rk                = skey->eK;
     LOAD32H(rk[0], key     );
     LOAD32H(rk[1], key +  4);
     LOAD32H(rk[2], key +  8);
@@ -128,8 +124,8 @@ int isrcry_aes_init(const unsigned char *key, int keylen, int num_rounds, symmet
     }
 
     /* setup the inverse key now */
-    rk   = skey->rijndael.dK;
-    rrk  = skey->rijndael.eK + j - 4; 
+    rk   = skey->dK;
+    rrk  = skey->eK + j - 4; 
     
     /* apply the inverse MixColumn transform to all round keys but the first and the last: */
     /* copy first */
@@ -139,7 +135,7 @@ int isrcry_aes_init(const unsigned char *key, int keylen, int num_rounds, symmet
     *rk   = *rrk;
     rk -= 3; rrk -= 3;
     
-    for (i = 1; i < skey->rijndael.Nr; i++) {
+    for (i = 1; i < skey->Nr; i++) {
         rrk -= 4;
         rk  += 4;
         temp = rrk[0];
@@ -186,7 +182,8 @@ int isrcry_aes_init(const unsigned char *key, int keylen, int num_rounds, symmet
   @param skey The key as scheduled
   @return CRYPT_OK if successful
 */
-int _isrcry_aes_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
+int _isrcry_aes_encrypt(const unsigned char *pt, unsigned char *ct,
+			struct isrcry_aes_key *skey)
 {
     ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
@@ -195,8 +192,8 @@ int _isrcry_aes_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_ke
     LTC_ARGCHK(ct != NULL);
     LTC_ARGCHK(skey != NULL);
     
-    Nr = skey->rijndael.Nr;
-    rk = skey->rijndael.eK;
+    Nr = skey->Nr;
+    rk = skey->eK;
     
     /*
      * map byte array block to cipher state
@@ -320,7 +317,8 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
   @param skey The key as scheduled 
   @return CRYPT_OK if successful
 */
-int _isrcry_aes_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
+int _isrcry_aes_decrypt(const unsigned char *ct, unsigned char *pt,
+			struct isrcry_aes_key *skey)
 {
     ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
@@ -329,8 +327,8 @@ int _isrcry_aes_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_ke
     LTC_ARGCHK(ct != NULL);
     LTC_ARGCHK(skey != NULL);
     
-    Nr = skey->rijndael.Nr;
-    rk = skey->rijndael.dK;
+    Nr = skey->Nr;
+    rk = skey->dK;
 
     /*
      * map byte array block to cipher state

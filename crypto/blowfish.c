@@ -16,12 +16,11 @@
     Initialize the Blowfish block cipher
     @param key The symmetric key you wish to pass
     @param keylen The key length in bytes
-    @param num_rounds The number of rounds desired (0 for default)
     @param skey The key in as scheduled by this function.
     @return CRYPT_OK if successful
  */
-int isrcry_blowfish_init(const unsigned char *key, int keylen, int num_rounds,
-                   symmetric_key *skey)
+int isrcry_blowfish_init(const unsigned char *key, int keylen,
+                   struct isrcry_blowfish_key *skey)
 {
    ulong32 x, y, z, A;
    unsigned char B[8];
@@ -34,11 +33,6 @@ int isrcry_blowfish_init(const unsigned char *key, int keylen, int num_rounds,
       return CRYPT_INVALID_KEYSIZE;
    }
 
-   /* check rounds */
-   if (num_rounds != 0 && num_rounds != 16) {
-      return CRYPT_INVALID_ROUNDS;
-   }   
-
    /* load in key bytes (Supplied by David Hopwood) */
    for (x = y = 0; x < 18; x++) {
        A = 0;
@@ -48,13 +42,13 @@ int isrcry_blowfish_init(const unsigned char *key, int keylen, int num_rounds,
               y = 0; 
            }
        }
-       skey->blowfish.K[x] = ORIG_P[x] ^ A;
+       skey->K[x] = ORIG_P[x] ^ A;
    }
 
    /* copy sboxes */
    for (x = 0; x < 4; x++) {
        for (y = 0; y < 256; y++) {
-           skey->blowfish.S[x][y] = ORIG_S[x][y];
+           skey->S[x][y] = ORIG_S[x][y];
        }
    }
 
@@ -67,8 +61,8 @@ int isrcry_blowfish_init(const unsigned char *key, int keylen, int num_rounds,
        /* encrypt it */
        blowfish_ecb_encrypt(B, B, skey);
        /* copy it */
-       LOAD32H(skey->blowfish.K[x], &B[0]);
-       LOAD32H(skey->blowfish.K[x+1], &B[4]);
+       LOAD32H(skey->K[x], &B[0]);
+       LOAD32H(skey->K[x+1], &B[4]);
    }
 
    /* encrypt S array */
@@ -77,8 +71,8 @@ int isrcry_blowfish_init(const unsigned char *key, int keylen, int num_rounds,
           /* encrypt it */
           blowfish_ecb_encrypt(B, B, skey);
           /* copy it */
-          LOAD32H(skey->blowfish.S[x][y], &B[0]);
-          LOAD32H(skey->blowfish.S[x][y+1], &B[4]);
+          LOAD32H(skey->S[x][y], &B[0]);
+          LOAD32H(skey->S[x][y+1], &B[4]);
        }
    }
 
@@ -89,7 +83,7 @@ int isrcry_blowfish_init(const unsigned char *key, int keylen, int num_rounds,
    return CRYPT_OK;
 }
 
-#define F(x) ((skey->blowfish.S[0][byte(x,3)] + skey->blowfish.S[1][byte(x,2)]) ^ skey->blowfish.S[2][byte(x,1)]) + skey->blowfish.S[3][byte(x,0)]
+#define F(x) ((skey->S[0][byte(x,3)] + skey->S[1][byte(x,2)]) ^ skey->S[2][byte(x,1)]) + skey->S[3][byte(x,0)]
 
 /**
   Encrypts a block of text with Blowfish
@@ -98,7 +92,8 @@ int isrcry_blowfish_init(const unsigned char *key, int keylen, int num_rounds,
   @param skey The key as scheduled
   @return CRYPT_OK if successful
 */
-int _isrcry_blowfish_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
+int _isrcry_blowfish_encrypt(const unsigned char *pt, unsigned char *ct,
+			struct isrcry_blowfish_key *skey)
 {
    ulong32 L, R;
    int r;
@@ -113,15 +108,15 @@ int _isrcry_blowfish_encrypt(const unsigned char *pt, unsigned char *ct, symmetr
 
    /* do 16 rounds */
    for (r = 0; r < 16; ) {
-      L ^= skey->blowfish.K[r++];  R ^= F(L);
-      R ^= skey->blowfish.K[r++];  L ^= F(R);
-      L ^= skey->blowfish.K[r++];  R ^= F(L);
-      R ^= skey->blowfish.K[r++];  L ^= F(R);
+      L ^= skey->K[r++];  R ^= F(L);
+      R ^= skey->K[r++];  L ^= F(R);
+      L ^= skey->K[r++];  R ^= F(L);
+      R ^= skey->K[r++];  L ^= F(R);
    }
 
    /* last keying */
-   R ^= skey->blowfish.K[17];
-   L ^= skey->blowfish.K[16];
+   R ^= skey->K[17];
+   L ^= skey->K[16];
 
    /* store */
    STORE32H(R, &ct[0]);
@@ -146,7 +141,8 @@ int blowfish_ecb_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_k
   @param skey The key as scheduled 
   @return CRYPT_OK if successful
 */
-int _isrcry_blowfish_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
+int _isrcry_blowfish_decrypt(const unsigned char *ct, unsigned char *pt,
+			struct isrcry_blowfish_key *skey)
 {
    ulong32 L, R;
    int r;
@@ -160,15 +156,15 @@ int _isrcry_blowfish_decrypt(const unsigned char *ct, unsigned char *pt, symmetr
    LOAD32H(L, &ct[4]);
 
    /* undo last keying */
-   R ^= skey->blowfish.K[17];
-   L ^= skey->blowfish.K[16];
+   R ^= skey->K[17];
+   L ^= skey->K[16];
 
    /* do 16 rounds */
    for (r = 15; r > 0; ) {
-      L ^= F(R); R ^= skey->blowfish.K[r--];
-      R ^= F(L); L ^= skey->blowfish.K[r--];
-      L ^= F(R); R ^= skey->blowfish.K[r--];
-      R ^= F(L); L ^= skey->blowfish.K[r--];
+      L ^= F(R); R ^= skey->K[r--];
+      R ^= F(L); L ^= skey->K[r--];
+      L ^= F(R); R ^= skey->K[r--];
+      R ^= F(L); L ^= skey->K[r--];
    }
 
    /* store */
