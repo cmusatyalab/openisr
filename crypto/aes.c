@@ -201,11 +201,7 @@ int SETUP(const unsigned char *key, int keylen, int num_rounds, symmetric_key *s
   @param skey The key as scheduled
   @return CRYPT_OK if successful
 */
-#ifdef LTC_CLEAN_STACK
-static int _rijndael_ecb_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_key *skey) 
-#else
 int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
-#endif
 {
     ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
@@ -323,7 +319,7 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
     return CRYPT_OK;
 }
 
-#ifdef LTC_CLEAN_STACK
+#if 0
 int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey) 
 {
    int err = _rijndael_ecb_encrypt(pt, ct, skey);
@@ -339,11 +335,7 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
   @param skey The key as scheduled 
   @return CRYPT_OK if successful
 */
-#ifdef LTC_CLEAN_STACK
-static int _rijndael_ecb_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *skey) 
-#else
 int ECB_DEC(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
-#endif
 {
     ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
@@ -464,7 +456,7 @@ int ECB_DEC(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
 }
 
 
-#ifdef LTC_CLEAN_STACK
+#if 0
 int ECB_DEC(const unsigned char *ct, unsigned char *pt, symmetric_key *skey) 
 {
    int err = _rijndael_ecb_decrypt(ct, pt, skey);
