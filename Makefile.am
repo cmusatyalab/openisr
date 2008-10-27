@@ -11,7 +11,7 @@ VMMDIRS = vmm
 endif
 
 if WANT_COMMON
-COMMONDIRS = sqlite tools
+COMMONDIRS = crypto sqlite tools
 endif
 
 SUBDIRS = $(COMMONDIRS) $(CLIENTDIRS) $(SERVERDIRS) $(VMMDIRS)

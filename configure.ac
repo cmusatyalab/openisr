@@ -180,6 +180,7 @@ AC_SUBST([initexecdir], [\$\(sysconfdir\)/init.d])
 AC_CONFIG_FILES([Makefile
                  conf/Makefile
                  client/Makefile
+                 crypto/Makefile
                  kernel/Makefile
                  locksrv/Makefile
                  parcelkeeper/Makefile
