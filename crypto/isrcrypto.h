@@ -11,16 +11,4 @@ struct isrcry_blowfish_key {
    ulong32 K[18];
 };
 
-/** A block cipher CBC structure */
-typedef struct {
-   /** The index of the cipher chosen */
-   int                 cipher, 
-   /** The block size of the given cipher */                        
-                       blocklen;
-   /** The current IV */
-   unsigned char       IV[MAXBLOCKSIZE];
-   /** The scheduled key */
-   symmetric_key       key;
-} symmetric_CBC;
-
 #endif
