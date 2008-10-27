@@ -20,7 +20,7 @@
     @param skey The key in as scheduled by this function.
     @return CRYPT_OK if successful
  */
-int blowfish_setup(const unsigned char *key, int keylen, int num_rounds,
+int isrcry_blowfish_init(const unsigned char *key, int keylen, int num_rounds,
                    symmetric_key *skey)
 {
    ulong32 x, y, z, A;
@@ -102,7 +102,7 @@ int blowfish_setup(const unsigned char *key, int keylen, int num_rounds,
   @param skey The key as scheduled
   @return CRYPT_OK if successful
 */
-int blowfish_ecb_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
+int _isrcry_blowfish_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
 {
    ulong32 L, R;
    int r;
@@ -160,7 +160,7 @@ int blowfish_ecb_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_k
   @param skey The key as scheduled 
   @return CRYPT_OK if successful
 */
-int blowfish_ecb_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
+int _isrcry_blowfish_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
 {
    ulong32 L, R;
    int r;

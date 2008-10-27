@@ -29,13 +29,6 @@
 #include "tomcrypt.h"
 #include "aes_tab.h"
 
-#define SETUP    rijndael_setup
-#define ECB_ENC  rijndael_ecb_encrypt
-#define ECB_DEC  rijndael_ecb_decrypt
-#define ECB_DONE rijndael_done
-#define ECB_TEST rijndael_test
-#define ECB_KS   rijndael_keysize
-
 static ulong32 setup_mix(ulong32 temp)
 {
    return (Te4_3[byte(temp, 2)]) ^
@@ -52,7 +45,7 @@ static ulong32 setup_mix(ulong32 temp)
     @param skey The key in as scheduled by this function.
     @return CRYPT_OK if successful
  */
-int SETUP(const unsigned char *key, int keylen, int num_rounds, symmetric_key *skey)
+int isrcry_aes_init(const unsigned char *key, int keylen, int num_rounds, symmetric_key *skey)
 {
     int i, j;
     ulong32 temp, *rk;
@@ -201,7 +194,7 @@ int SETUP(const unsigned char *key, int keylen, int num_rounds, symmetric_key *s
   @param skey The key as scheduled
   @return CRYPT_OK if successful
 */
-int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
+int _isrcry_aes_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
 {
     ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
@@ -335,7 +328,7 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
   @param skey The key as scheduled 
   @return CRYPT_OK if successful
 */
-int ECB_DEC(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
+int _isrcry_aes_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
 {
     ulong32 s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
