@@ -36,24 +36,6 @@
 #define ECB_TEST rijndael_test
 #define ECB_KS   rijndael_keysize
 
-const struct ltc_cipher_descriptor rijndael_desc =
-{
-    "rijndael",
-    6,
-    16, 32, 16, 10,
-    SETUP, ECB_ENC, ECB_DEC, ECB_TEST, ECB_DONE, ECB_KS,
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
-};
-
-const struct ltc_cipher_descriptor aes_desc =
-{
-    "aes",
-    6,
-    16, 32, 16, 10,
-    SETUP, ECB_ENC, ECB_DEC, ECB_TEST, ECB_DONE, ECB_KS,
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
-};
-
 static ulong32 setup_mix(ulong32 temp)
 {
    return (Te4_3[byte(temp, 2)]) ^
@@ -490,26 +472,3 @@ int ECB_DEC(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
    return err;
 }
 #endif
-
-/**
-  Gets suitable key size
-  @param keysize [in/out] The length of the recommended key (in bytes).  This function will store the suitable size back in this variable.
-  @return CRYPT_OK if the input key size is acceptable.
-*/
-int ECB_KS(int *keysize)
-{
-   LTC_ARGCHK(keysize != NULL);
-
-   if (*keysize < 16)
-      return CRYPT_INVALID_KEYSIZE;
-   if (*keysize < 24) {
-      *keysize = 16;
-      return CRYPT_OK;
-   } else if (*keysize < 32) {
-      *keysize = 24;
-      return CRYPT_OK;
-   } else {
-      *keysize = 32;
-      return CRYPT_OK;
-   }
-}

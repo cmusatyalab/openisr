@@ -12,20 +12,6 @@
 #include "tomcrypt.h"
 #include "blowfish_tab.h"
 
-const struct ltc_cipher_descriptor blowfish_desc =
-{
-    "blowfish",
-    0,
-    8, 56, 8, 16,
-    &blowfish_setup,
-    &blowfish_ecb_encrypt,
-    &blowfish_ecb_decrypt,
-    &blowfish_test,
-    &blowfish_done,
-    &blowfish_keysize,
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
-};
-
  /**
     Initialize the Blowfish block cipher
     @param key The symmetric key you wish to pass
@@ -231,21 +217,3 @@ int blowfish_ecb_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_k
     return err;
 }
 #endif
-
-
-/**
-  Gets suitable key size
-  @param keysize [in/out] The length of the recommended key (in bytes).  This function will store the suitable size back in this variable.
-  @return CRYPT_OK if the input key size is acceptable.
-*/
-int blowfish_keysize(int *keysize)
-{
-   LTC_ARGCHK(keysize != NULL);
-
-   if (*keysize < 8) {
-      return CRYPT_INVALID_KEYSIZE;
-   } else if (*keysize > 56) {
-      *keysize = 56;
-   }
-   return CRYPT_OK;
-}
