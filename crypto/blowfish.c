@@ -89,11 +89,7 @@ int isrcry_blowfish_init(const unsigned char *key, int keylen, int num_rounds,
    return CRYPT_OK;
 }
 
-#ifndef __GNUC__
-#define F(x) ((S1[byte(x,3)] + S2[byte(x,2)]) ^ S3[byte(x,1)]) + S4[byte(x,0)]
-#else
 #define F(x) ((skey->blowfish.S[0][byte(x,3)] + skey->blowfish.S[1][byte(x,2)]) ^ skey->blowfish.S[2][byte(x,1)]) + skey->blowfish.S[3][byte(x,0)]
-#endif
 
 /**
   Encrypts a block of text with Blowfish
@@ -106,20 +102,10 @@ int _isrcry_blowfish_encrypt(const unsigned char *pt, unsigned char *ct, symmetr
 {
    ulong32 L, R;
    int r;
-#ifndef __GNUC__
-   ulong32 *S1, *S2, *S3, *S4;
-#endif
 
     LTC_ARGCHK(pt   != NULL);
     LTC_ARGCHK(ct   != NULL);
     LTC_ARGCHK(skey != NULL);
-
-#ifndef __GNUC__
-    S1 = skey->blowfish.S[0];
-    S2 = skey->blowfish.S[1];
-    S3 = skey->blowfish.S[2];
-    S4 = skey->blowfish.S[3];
-#endif
 
    /* load it */
    LOAD32H(L, &pt[0]);
@@ -164,21 +150,11 @@ int _isrcry_blowfish_decrypt(const unsigned char *ct, unsigned char *pt, symmetr
 {
    ulong32 L, R;
    int r;
-#ifndef __GNUC__
-   ulong32 *S1, *S2, *S3, *S4;
-#endif
 
     LTC_ARGCHK(pt   != NULL);
     LTC_ARGCHK(ct   != NULL);
     LTC_ARGCHK(skey != NULL);
     
-#ifndef __GNUC__
-    S1 = skey->blowfish.S[0];
-    S2 = skey->blowfish.S[1];
-    S3 = skey->blowfish.S[2];
-    S4 = skey->blowfish.S[3];
-#endif
-
    /* load it */
    LOAD32H(R, &ct[0]);
    LOAD32H(L, &ct[4]);

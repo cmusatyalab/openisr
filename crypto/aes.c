@@ -88,11 +88,7 @@ int isrcry_aes_init(const unsigned char *key, int keylen, int num_rounds, symmet
         LOAD32H(rk[4], key + 16);
         LOAD32H(rk[5], key + 20);
         for (;;) {
-        #ifdef _MSC_VER
-            temp = skey->rijndael.eK[rk - skey->rijndael.eK + 5]; 
-        #else
             temp = rk[5];
-        #endif
             rk[ 6] = rk[ 0] ^ setup_mix(temp) ^ rcon[i];
             rk[ 7] = rk[ 1] ^ rk[ 6];
             rk[ 8] = rk[ 2] ^ rk[ 7];
@@ -111,11 +107,7 @@ int isrcry_aes_init(const unsigned char *key, int keylen, int num_rounds, symmet
         LOAD32H(rk[6], key + 24);
         LOAD32H(rk[7], key + 28);
         for (;;) {
-        #ifdef _MSC_VER
-            temp = skey->rijndael.eK[rk - skey->rijndael.eK + 7]; 
-        #else
             temp = rk[7];
-        #endif
             rk[ 8] = rk[ 0] ^ setup_mix(temp) ^ rcon[i];
             rk[ 9] = rk[ 1] ^ rk[ 8];
             rk[10] = rk[ 2] ^ rk[ 9];
