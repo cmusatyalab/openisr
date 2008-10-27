@@ -8,7 +8,9 @@
  *
  * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.com
  */
-#include "tomcrypt.h"
+
+#include <string.h>
+#include "isrcrypto.h"
 
 /**
    Burn some stack memory
@@ -16,8 +18,19 @@
 */
 void burn_stack(unsigned long len)
 {
-   unsigned char buf[32];
-   zeromem(buf, sizeof(buf));
-   if (len > (unsigned long)sizeof(buf))
-      burn_stack(len - sizeof(buf));
+	unsigned char buf[32];
+	memset(buf, 0, sizeof(buf));
+	if (len > (unsigned long)sizeof(buf))
+		burn_stack(len - sizeof(buf));
+}
+
+const char *isrcry_strerror(enum isrcry_result result)
+{
+	switch (result) {
+	case ISRCRY_OK:
+		return "Success";
+	case ISRCRY_INVALID_ARGUMENT:
+		return "Invalid argument";
+	}
+	return "Unknown error";
 }
