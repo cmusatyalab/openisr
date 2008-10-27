@@ -9,6 +9,7 @@
  * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.com
  */
 
+#include <stdlib.h>
 #include <stdint.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
@@ -59,7 +60,7 @@ enum isrcry_result isrcry_blowfish_init(const unsigned char *key, int keylen,
    
    for (x = 0; x < 18; x += 2) {
        /* encrypt it */
-       blowfish_ecb_encrypt(B, B, skey);
+       _isrcry_blowfish_encrypt(B, B, skey);
        /* copy it */
        LOAD32H(skey->K[x], &B[0]);
        LOAD32H(skey->K[x+1], &B[4]);
@@ -69,7 +70,7 @@ enum isrcry_result isrcry_blowfish_init(const unsigned char *key, int keylen,
    for (x = 0; x < 4; x++) {
        for (y = 0; y < 256; y += 2) {
           /* encrypt it */
-          blowfish_ecb_encrypt(B, B, skey);
+          _isrcry_blowfish_encrypt(B, B, skey);
           /* copy it */
           LOAD32H(skey->S[x][y], &B[0]);
           LOAD32H(skey->S[x][y+1], &B[4]);

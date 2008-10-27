@@ -4,15 +4,14 @@
 
 #define WRAPPER(alg, mode, direction, blocksize) \
 	enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## direction ( \
-				const unsigned char *in, unsigned long len,
+				const unsigned char *in, unsigned long len, \
 				unsigned char *out, \
-				struct isrcry_ ## mode ## _key *skey, \
+				struct isrcry_ ## alg ## _key *skey, \
 				unsigned char *iv) { \
 		return _isrcry_cbc_encrypt(in, len, out, \
-					_isrcry_ ## alg ## _ ## direction, \
-					blocksize, skey, iv); \
+					(cipher_fn *) _isrcry_ ## alg ## _ \
+					## direction, blocksize, skey, iv); \
 	}
-}
 
 WRAPPER(aes, cbc, encrypt, ISRCRY_AES_BLOCKSIZE)
 WRAPPER(aes, cbc, decrypt, ISRCRY_AES_BLOCKSIZE)

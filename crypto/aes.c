@@ -26,7 +26,9 @@
 ---
  */
 
+#include <stdlib.h>
 #include <stdint.h>
+#include <assert.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"

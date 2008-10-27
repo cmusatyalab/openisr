@@ -5,7 +5,8 @@
 #error This header is for internal use by libisrcrypto
 #endif
 
-int (cipher_fn)(const unsigned char *in, unsigned char *out, void *skey)
+typedef int (cipher_fn)(const unsigned char *in, unsigned char *out,
+			void *skey);
 
 enum isrcry_result _isrcry_cbc_encrypt(const unsigned char *in,
 			unsigned long len, unsigned char *out,

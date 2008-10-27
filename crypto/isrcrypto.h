@@ -23,7 +23,7 @@ struct isrcry_blowfish_key {
 
 #define CIPHER(alg, mode, direction) \
 	enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## direction ( \
-				const unsigned char *in, unsigned long len,
+				const unsigned char *in, unsigned long len, \
 				unsigned char *out, \
 				struct isrcry_ ## alg ## _key *skey, \
 				unsigned char *iv);
