@@ -11,13 +11,6 @@
 #include "tomcrypt.h"
 
 /**
-   @file cbc_getiv.c
-   CBC implementation, get IV, Tom St Denis
-*/
-
-#ifdef LTC_CBC_MODE
-
-/**
    Get the current initial vector
    @param IV   [out] The destination of the initial vector
    @param len  [in/out]  The max size and resulting size of the initial vector
@@ -38,9 +31,3 @@ int cbc_getiv(unsigned char *IV, unsigned long *len, symmetric_CBC *cbc)
 
    return CRYPT_OK;
 }
-
-#endif
-
-/* $Source: /cvs/libtom/libtomcrypt/src/modes/cbc/cbc_getiv.c,v $ */
-/* $Revision: 1.6 $ */
-/* $Date: 2006/06/29 01:46:46 $ */

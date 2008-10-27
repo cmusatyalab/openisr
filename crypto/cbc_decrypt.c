@@ -11,14 +11,6 @@
 #include "tomcrypt.h"
 
 /**
-   @file cbc_decrypt.c
-   CBC implementation, encrypt block, Tom St Denis
-*/
-
-
-#ifdef LTC_CBC_MODE
-
-/**
   CBC decrypt
   @param ct     Ciphertext
   @param pt     [out] Plaintext
@@ -89,9 +81,3 @@ int cbc_decrypt(const unsigned char *ct, unsigned char *pt, unsigned long len, s
    }
    return CRYPT_OK;
 }
-
-#endif
-
-/* $Source: /cvs/libtom/libtomcrypt/src/modes/cbc/cbc_decrypt.c,v $ */
-/* $Revision: 1.15 $ */
-/* $Date: 2006/11/21 00:18:23 $ */

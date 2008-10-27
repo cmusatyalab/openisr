@@ -10,13 +10,6 @@
  */
 #include "tomcrypt.h"
 
-/**
-   @file cbc_done.c
-   CBC implementation, finish chain, Tom St Denis
-*/
-
-#ifdef LTC_CBC_MODE
-
 /** Terminate the chain
   @param cbc    The CBC chain to terminate
   @return CRYPT_OK on success
@@ -32,11 +25,3 @@ int cbc_done(symmetric_CBC *cbc)
    cipher_descriptor[cbc->cipher].done(&cbc->key);
    return CRYPT_OK;
 }
-
-   
-
-#endif
-
-/* $Source: /cvs/libtom/libtomcrypt/src/modes/cbc/cbc_done.c,v $ */
-/* $Revision: 1.6 $ */
-/* $Date: 2006/06/29 01:46:46 $ */

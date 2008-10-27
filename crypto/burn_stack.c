@@ -11,11 +11,6 @@
 #include "tomcrypt.h"
 
 /**
-   @file burn_stack.c
-   Burn stack, Tom St Denis
-*/
-
-/**
    Burn some stack memory
    @param len amount of stack to burn in bytes
 */
@@ -26,9 +21,3 @@ void burn_stack(unsigned long len)
    if (len > (unsigned long)sizeof(buf))
       burn_stack(len - sizeof(buf));
 }
-
-
-
-/* $Source: /cvs/libtom/libtomcrypt/src/misc/burn_stack.c,v $ */
-/* $Revision: 1.4 $ */
-/* $Date: 2006/03/31 14:15:35 $ */

@@ -11,13 +11,6 @@
 #include "tomcrypt.h"
 
 /**
-   @file cbc_start.c
-   CBC implementation, start chain, Tom St Denis
-*/
-
-#ifdef LTC_CBC_MODE
-
-/**
    Initialize a CBC context
    @param cipher      The index of the cipher desired
    @param IV          The initial vector
@@ -54,9 +47,3 @@ int cbc_start(int cipher, const unsigned char *IV, const unsigned char *key,
    }
    return CRYPT_OK;
 }
-
-#endif
-
-/* $Source: /cvs/libtom/libtomcrypt/src/modes/cbc/cbc_start.c,v $ */
-/* $Revision: 1.5 $ */
-/* $Date: 2006/06/29 01:46:46 $ */

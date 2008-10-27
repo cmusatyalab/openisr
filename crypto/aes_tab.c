@@ -8,6 +8,7 @@
  *
  * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.com
  */
+
 /* The precomputed tables for AES */
 /*
 Te0[x] = S [x].[02, 01, 01, 03];
@@ -23,10 +24,6 @@ Td3[x] = Si[x].[09, 0d, 0b, 0e];
 Td4[x] = Si[x].[01, 01, 01, 01];
 */
 
-/**
-  @file aes_tab.c
-  AES tables
-*/  
 static const ulong32 TE0[256] = {
     0xc66363a5UL, 0xf87c7c84UL, 0xee777799UL, 0xf67b7b8dUL,
     0xfff2f20dUL, 0xd66b6bbdUL, 0xde6f6fb1UL, 0x91c5c554UL,
@@ -94,7 +91,6 @@ static const ulong32 TE0[256] = {
     0x7bb0b0cbUL, 0xa85454fcUL, 0x6dbbbbd6UL, 0x2c16163aUL,
 };
 
-#ifndef PELI_TAB
 static const ulong32 Te4[256] = {
     0x63636363UL, 0x7c7c7c7cUL, 0x77777777UL, 0x7b7b7b7bUL,
     0xf2f2f2f2UL, 0x6b6b6b6bUL, 0x6f6f6f6fUL, 0xc5c5c5c5UL,
@@ -161,9 +157,6 @@ static const ulong32 Te4[256] = {
     0x41414141UL, 0x99999999UL, 0x2d2d2d2dUL, 0x0f0f0f0fUL,
     0xb0b0b0b0UL, 0x54545454UL, 0xbbbbbbbbUL, 0x16161616UL,
 };
-#endif
-
-#ifndef ENCRYPT_ONLY
 
 static const ulong32 TD0[256] = {
     0x51f4a750UL, 0x7e416553UL, 0x1a17a4c3UL, 0x3a275e96UL,
@@ -298,27 +291,6 @@ static const ulong32 Td4[256] = {
     0xe1e1e1e1UL, 0x69696969UL, 0x14141414UL, 0x63636363UL,
     0x55555555UL, 0x21212121UL, 0x0c0c0c0cUL, 0x7d7d7d7dUL,
 };
-
-#endif /* ENCRYPT_ONLY */
-
-#ifdef LTC_SMALL_CODE
-
-#define Te0(x) TE0[x]
-#define Te1(x) RORc(TE0[x], 8)
-#define Te2(x) RORc(TE0[x], 16)
-#define Te3(x) RORc(TE0[x], 24)
-
-#define Td0(x) TD0[x]
-#define Td1(x) RORc(TD0[x], 8)
-#define Td2(x) RORc(TD0[x], 16)
-#define Td3(x) RORc(TD0[x], 24)
-
-#define Te4_0 0x000000FF & Te4
-#define Te4_1 0x0000FF00 & Te4
-#define Te4_2 0x00FF0000 & Te4
-#define Te4_3 0xFF000000 & Te4
-
-#else
 
 #define Te0(x) TE0[x]
 #define Te1(x) TE1[x]
@@ -530,7 +502,6 @@ static const ulong32 TE3[256] = {
     0xb0b0cb7bUL, 0x5454fca8UL, 0xbbbbd66dUL, 0x16163a2cUL,
 };
 
-#ifndef PELI_TAB
 static const ulong32 Te4_0[] = {
 0x00000063UL, 0x0000007cUL, 0x00000077UL, 0x0000007bUL, 0x000000f2UL, 0x0000006bUL, 0x0000006fUL, 0x000000c5UL, 
 0x00000030UL, 0x00000001UL, 0x00000067UL, 0x0000002bUL, 0x000000feUL, 0x000000d7UL, 0x000000abUL, 0x00000076UL, 
@@ -670,9 +641,6 @@ static const ulong32 Te4_3[] = {
 0x8c000000UL, 0xa1000000UL, 0x89000000UL, 0x0d000000UL, 0xbf000000UL, 0xe6000000UL, 0x42000000UL, 0x68000000UL, 
 0x41000000UL, 0x99000000UL, 0x2d000000UL, 0x0f000000UL, 0xb0000000UL, 0x54000000UL, 0xbb000000UL, 0x16000000UL
 };
-#endif /* pelimac */
-
-#ifndef ENCRYPT_ONLY
 
 static const ulong32 TD1[256] = {
     0x5051f4a7UL, 0x537e4165UL, 0xc31a17a4UL, 0x963a275eUL,
@@ -1013,16 +981,8 @@ static const ulong32 Tks3[] = {
 0x79b492a7UL, 0x70b999a9UL, 0x6bae84bbUL, 0x62a38fb5UL, 0x5d80be9fUL, 0x548db591UL, 0x4f9aa883UL, 0x4697a38dUL
 };
 
-#endif /* ENCRYPT_ONLY */
-
-#endif /* SMALL CODE */
-
 static const ulong32 rcon[] = {
     0x01000000UL, 0x02000000UL, 0x04000000UL, 0x08000000UL,
     0x10000000UL, 0x20000000UL, 0x40000000UL, 0x80000000UL,
     0x1B000000UL, 0x36000000UL, /* for 128-bit blocks, Rijndael never uses more than 10 rcon values */
 };
-
-/* $Source: /cvs/libtom/libtomcrypt/src/ciphers/aes/aes_tab.c,v $ */
-/* $Revision: 1.5 $ */
-/* $Date: 2006/04/02 13:19:09 $ */

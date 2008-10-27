@@ -25,16 +25,8 @@
   * @author Paulo Barreto <paulo.barreto@terra.com.br>
 ---
  */
-/**
-  @file aes.c
-  Implementation of AES
-*/   
 
 #include "tomcrypt.h"
-
-#ifdef RIJNDAEL
-
-#ifndef ENCRYPT_ONLY 
 
 #define SETUP    rijndael_setup
 #define ECB_ENC  rijndael_ecb_encrypt
@@ -61,33 +53,6 @@ const struct ltc_cipher_descriptor aes_desc =
     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
 };
 
-#else
-
-#define SETUP    rijndael_enc_setup
-#define ECB_ENC  rijndael_enc_ecb_encrypt
-#define ECB_KS   rijndael_enc_keysize
-#define ECB_DONE rijndael_enc_done
-
-const struct ltc_cipher_descriptor rijndael_enc_desc =
-{
-    "rijndael",
-    6,
-    16, 32, 16, 10,
-    SETUP, ECB_ENC, NULL, NULL, ECB_DONE, ECB_KS,
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
-};
-
-const struct ltc_cipher_descriptor aes_enc_desc =
-{
-    "aes",
-    6,
-    16, 32, 16, 10,
-    SETUP, ECB_ENC, NULL, NULL, ECB_DONE, ECB_KS,
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
-};
-
-#endif
-
 #include "aes_tab.c"
 
 static ulong32 setup_mix(ulong32 temp)
@@ -97,18 +62,6 @@ static ulong32 setup_mix(ulong32 temp)
           (Te4_1[byte(temp, 0)]) ^
           (Te4_0[byte(temp, 3)]);
 }
-
-#ifndef ENCRYPT_ONLY
-#ifdef LTC_SMALL_CODE
-static ulong32 setup_mix2(ulong32 temp)
-{
-   return Td0(255 & Te4[byte(temp, 3)]) ^
-          Td1(255 & Te4[byte(temp, 2)]) ^
-          Td2(255 & Te4[byte(temp, 1)]) ^
-          Td3(255 & Te4[byte(temp, 0)]);
-}
-#endif
-#endif
 
  /**
     Initialize the AES (Rijndael) block cipher
@@ -122,9 +75,7 @@ int SETUP(const unsigned char *key, int keylen, int num_rounds, symmetric_key *s
 {
     int i, j;
     ulong32 temp, *rk;
-#ifndef ENCRYPT_ONLY
     ulong32 *rrk;
-#endif    
     LTC_ARGCHK(key  != NULL);
     LTC_ARGCHK(skey != NULL);
   
@@ -210,7 +161,6 @@ int SETUP(const unsigned char *key, int keylen, int num_rounds, symmetric_key *s
        return CRYPT_ERROR;
     }
 
-#ifndef ENCRYPT_ONLY    
     /* setup the inverse key now */
     rk   = skey->rijndael.dK;
     rrk  = skey->rijndael.eK + j - 4; 
@@ -226,16 +176,6 @@ int SETUP(const unsigned char *key, int keylen, int num_rounds, symmetric_key *s
     for (i = 1; i < skey->rijndael.Nr; i++) {
         rrk -= 4;
         rk  += 4;
-    #ifdef LTC_SMALL_CODE        
-        temp = rrk[0];
-        rk[0] = setup_mix2(temp);
-        temp = rrk[1];
-        rk[1] = setup_mix2(temp);
-        temp = rrk[2];
-        rk[2] = setup_mix2(temp);
-        temp = rrk[3];
-        rk[3] = setup_mix2(temp);
-     #else
         temp = rrk[0];
         rk[0] =
             Tks0[byte(temp, 3)] ^
@@ -260,8 +200,6 @@ int SETUP(const unsigned char *key, int keylen, int num_rounds, symmetric_key *s
             Tks1[byte(temp, 2)] ^
             Tks2[byte(temp, 1)] ^
             Tks3[byte(temp, 0)];
-      #endif            
-     
     }
 
     /* copy last */
@@ -271,7 +209,6 @@ int SETUP(const unsigned char *key, int keylen, int num_rounds, symmetric_key *s
     *rk++ = *rrk++;
     *rk++ = *rrk++;
     *rk   = *rrk;
-#endif /* ENCRYPT_ONLY */
 
     return CRYPT_OK;   
 }
@@ -307,43 +244,6 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
     LOAD32H(s1, pt  +  4); s1 ^= rk[1];
     LOAD32H(s2, pt  +  8); s2 ^= rk[2];
     LOAD32H(s3, pt  + 12); s3 ^= rk[3];
-
-#ifdef LTC_SMALL_CODE
-
-    for (r = 0; ; r++) {
-        rk += 4;
-        t0 =
-            Te0(byte(s0, 3)) ^
-            Te1(byte(s1, 2)) ^
-            Te2(byte(s2, 1)) ^
-            Te3(byte(s3, 0)) ^
-            rk[0];
-        t1 =
-            Te0(byte(s1, 3)) ^
-            Te1(byte(s2, 2)) ^
-            Te2(byte(s3, 1)) ^
-            Te3(byte(s0, 0)) ^
-            rk[1];
-        t2 =
-            Te0(byte(s2, 3)) ^
-            Te1(byte(s3, 2)) ^
-            Te2(byte(s0, 1)) ^
-            Te3(byte(s1, 0)) ^
-            rk[2];
-        t3 =
-            Te0(byte(s3, 3)) ^
-            Te1(byte(s0, 2)) ^
-            Te2(byte(s1, 1)) ^
-            Te3(byte(s2, 0)) ^
-            rk[3];
-        if (r == Nr-2) { 
-           break;
-        }
-        s0 = t0; s1 = t1; s2 = t2; s3 = t3;
-    }
-    rk += 4;
-
-#else
 
     /*
      * Nr - 1 full rounds:
@@ -406,8 +306,6 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
             rk[3];
     }
 
-#endif
-
     /*
      * apply last round and
      * map cipher state to byte array block:
@@ -453,8 +351,6 @@ int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
 }
 #endif
 
-#ifndef ENCRYPT_ONLY 
-
 /**
   Decrypts a block of text with AES
   @param ct The input ciphertext (16 bytes)
@@ -486,42 +382,6 @@ int ECB_DEC(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
     LOAD32H(s1, ct  +  4); s1 ^= rk[1];
     LOAD32H(s2, ct  +  8); s2 ^= rk[2];
     LOAD32H(s3, ct  + 12); s3 ^= rk[3];
-
-#ifdef LTC_SMALL_CODE
-    for (r = 0; ; r++) {
-        rk += 4;
-        t0 =
-            Td0(byte(s0, 3)) ^
-            Td1(byte(s3, 2)) ^
-            Td2(byte(s2, 1)) ^
-            Td3(byte(s1, 0)) ^
-            rk[0];
-        t1 =
-            Td0(byte(s1, 3)) ^
-            Td1(byte(s0, 2)) ^
-            Td2(byte(s3, 1)) ^
-            Td3(byte(s2, 0)) ^
-            rk[1];
-        t2 =
-            Td0(byte(s2, 3)) ^
-            Td1(byte(s1, 2)) ^
-            Td2(byte(s0, 1)) ^
-            Td3(byte(s3, 0)) ^
-            rk[2];
-        t3 =
-            Td0(byte(s3, 3)) ^
-            Td1(byte(s2, 2)) ^
-            Td2(byte(s1, 1)) ^
-            Td3(byte(s0, 0)) ^
-            rk[3];
-        if (r == Nr-2) {
-           break; 
-        }
-        s0 = t0; s1 = t1; s2 = t2; s3 = t3;
-    }
-    rk += 4;
-
-#else       
 
     /*
      * Nr - 1 full rounds:
@@ -585,7 +445,6 @@ int ECB_DEC(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
             Td3(byte(t0, 0)) ^
             rk[3];
     }
-#endif
 
     /*
      * apply last round and
@@ -634,102 +493,6 @@ int ECB_DEC(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
 #endif
 
 /**
-  Performs a self-test of the AES block cipher
-  @return CRYPT_OK if functional, CRYPT_NOP if self-test has been disabled
-*/
-int ECB_TEST(void)
-{
- #ifndef LTC_TEST
-    return CRYPT_NOP;
- #else    
- int err;
- static const struct {
-     int keylen;
-     unsigned char key[32], pt[16], ct[16];
- } tests[] = {
-    { 16,
-      { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 
-        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f }, 
-      { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
-        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff },
-      { 0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30, 
-        0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4, 0xc5, 0x5a }
-    }, { 
-      24,
-      { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 
-        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17 },
-      { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
-        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff },
-      { 0xdd, 0xa9, 0x7c, 0xa4, 0x86, 0x4c, 0xdf, 0xe0, 
-        0x6e, 0xaf, 0x70, 0xa0, 0xec, 0x0d, 0x71, 0x91 }
-    }, {
-      32,
-      { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 
-        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 
-        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f },
-      { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
-        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff },
-      { 0x8e, 0xa2, 0xb7, 0xca, 0x51, 0x67, 0x45, 0xbf, 
-        0xea, 0xfc, 0x49, 0x90, 0x4b, 0x49, 0x60, 0x89 }
-    }
- };
- 
- symmetric_key key;
- unsigned char tmp[2][16];
- int i, y;
- 
- for (i = 0; i < (int)(sizeof(tests)/sizeof(tests[0])); i++) {
-    zeromem(&key, sizeof(key));
-    if ((err = rijndael_setup(tests[i].key, tests[i].keylen, 0, &key)) != CRYPT_OK) { 
-       return err;
-    }
-  
-    rijndael_ecb_encrypt(tests[i].pt, tmp[0], &key);
-    rijndael_ecb_decrypt(tmp[0], tmp[1], &key);
-    if (XMEMCMP(tmp[0], tests[i].ct, 16) || XMEMCMP(tmp[1], tests[i].pt, 16)) { 
-#if 0
-       printf("\n\nTest %d failed\n", i);
-       if (XMEMCMP(tmp[0], tests[i].ct, 16)) {
-          printf("CT: ");
-          for (i = 0; i < 16; i++) {
-             printf("%02x ", tmp[0][i]);
-          }
-          printf("\n");
-       } else {
-          printf("PT: ");
-          for (i = 0; i < 16; i++) {
-             printf("%02x ", tmp[1][i]);
-          }
-          printf("\n");
-       }
-#endif       
-        return CRYPT_FAIL_TESTVECTOR;
-    }
-
-      /* now see if we can encrypt all zero bytes 1000 times, decrypt and come back where we started */
-      for (y = 0; y < 16; y++) tmp[0][y] = 0;
-      for (y = 0; y < 1000; y++) rijndael_ecb_encrypt(tmp[0], tmp[0], &key);
-      for (y = 0; y < 1000; y++) rijndael_ecb_decrypt(tmp[0], tmp[0], &key);
-      for (y = 0; y < 16; y++) if (tmp[0][y] != 0) return CRYPT_FAIL_TESTVECTOR;
- }       
- return CRYPT_OK;
- #endif
-}
-
-#endif /* ENCRYPT_ONLY */
-
-
-/** Terminate the context 
-   @param skey    The scheduled key
-*/
-void ECB_DONE(symmetric_key *skey)
-{
-}
-
-
-/**
   Gets suitable key size
   @param keysize [in/out] The length of the recommended key (in bytes).  This function will store the suitable size back in this variable.
   @return CRYPT_OK if the input key size is acceptable.
@@ -751,10 +514,3 @@ int ECB_KS(int *keysize)
       return CRYPT_OK;
    }
 }
-
-#endif
-
-
-/* $Source: /cvs/libtom/libtomcrypt/src/ciphers/aes/aes.c,v $ */
-/* $Revision: 1.14 $ */
-/* $Date: 2006/11/08 23:01:06 $ */

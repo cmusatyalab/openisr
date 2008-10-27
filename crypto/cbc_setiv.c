@@ -11,14 +11,6 @@
 #include "tomcrypt.h"
 
 /**
-   @file cbc_setiv.c
-   CBC implementation, set IV, Tom St Denis
-*/
-
-
-#ifdef LTC_CBC_MODE
-
-/**
    Set an initial vector
    @param IV   The initial vector
    @param len  The length of the vector (in octets)
@@ -35,10 +27,3 @@ int cbc_setiv(const unsigned char *IV, unsigned long len, symmetric_CBC *cbc)
    XMEMCPY(cbc->IV, IV, len);
    return CRYPT_OK;
 }
-
-#endif 
-
-
-/* $Source: /cvs/libtom/libtomcrypt/src/modes/cbc/cbc_setiv.c,v $ */
-/* $Revision: 1.5 $ */
-/* $Date: 2006/06/29 01:46:46 $ */
