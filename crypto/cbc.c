@@ -29,7 +29,7 @@ enum isrcry_result _isrcry_cbc_encrypt(const unsigned char *in,
 			cipher_fn *encrypt, unsigned blocklen, void *key,
 			unsigned char *iv)
 {
-   int x;
+   unsigned x;
    enum isrcry_result err;
 
    if (in == NULL || out == NULL || key == NULL || iv == NULL)
@@ -91,7 +91,7 @@ enum isrcry_result _isrcry_cbc_decrypt(const unsigned char *in,
 			cipher_fn *decrypt, unsigned blocklen, void *key,
 			unsigned char *iv)
 {
-   int x;
+   unsigned x;
    enum isrcry_result err;
    unsigned char tmp[16];
 #ifdef LTC_FAST
