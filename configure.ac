@@ -98,6 +98,19 @@ AM_CONDITIONAL([LIBVDISK_BUILD_32], [test z$build_32 = zyes])
 AC_ARG_VAR([LIBVDISK_PATH], [destination directory for native libvdisk])
 AC_ARG_VAR([LIBVDISK_PATH32], [destination directory for 32-bit libvdisk (if built)])
 
+# Checks for compiler/host CPU characteristics.
+# Autoconf quadrigraphs: @<:@ is a literal '['; @:>@ is a literal ']'
+case $host_cpu in
+i@<:@456@:>@86)
+	AC_DEFINE([HAVE_X86_32], [1], [Define to 1 if you have a 486 or better IA32 processor.])
+	;;
+x86_64)
+	AC_DEFINE([HAVE_X86_64], [1], [Define to 1 if you have an AMD64 processor.])
+	;;
+esac
+AM_CONDITIONAL([HAVE_X86_32], [echo $host_cpu | grep -q '^i@<:@456@:>@86$'])
+AM_CONDITIONAL([HAVE_X86_64], [test z$host_cpu = zx86_64])
+
 # Checks for programs.
 AC_PATH_PROG([PERL], [perl], [no])
 if test z$PERL = zno ; then
