@@ -36,6 +36,7 @@ enum isrcry_result _isrcry_blowfish_decrypt(const unsigned char *in,
 #define byte(x, n) (((x) >> (8 * (n))) & 255)
 
 #if defined(HAVE_X86_32) || defined(HAVE_X86_64)
+#define ISRCRY_FAST_TYPE unsigned long
 #define STORE32H(x, y)           \
 asm __volatile__ (               \
    "bswapl %0     \n\t"          \

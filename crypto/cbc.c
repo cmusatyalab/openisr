@@ -36,18 +36,18 @@ enum isrcry_result _isrcry_cbc_encrypt(const unsigned char *in,
 	   return ISRCRY_INVALID_ARGUMENT;
    if (blocklen < 1 || len % blocklen)
 	   return ISRCRY_INVALID_ARGUMENT;
-#ifdef LTC_FAST
-   if (blocklen % sizeof(LTC_FAST_TYPE))
+#ifdef ISRCRY_FAST_TYPE
+   if (blocklen % sizeof(ISRCRY_FAST_TYPE))
 	   return ISRCRY_INVALID_ARGUMENT;
 #endif
 
    while (len) {
       /* xor IV against plaintext */
-#if defined(LTC_FAST)
-      for (x = 0; x < blocklen; x += sizeof(LTC_FAST_TYPE)) {
-	  *((LTC_FAST_TYPE*)(iv + x)) ^= *((LTC_FAST_TYPE*)(in + x));
+#ifdef ISRCRY_FAST_TYPE
+      for (x = 0; x < blocklen; x += sizeof(ISRCRY_FAST_TYPE)) {
+	  *((ISRCRY_FAST_TYPE*)(iv + x)) ^= *((ISRCRY_FAST_TYPE*)(in + x));
       }
-#else 
+#else
       for (x = 0; x < blocklen; x++) {
           iv[x] ^= in[x];
       }
@@ -59,11 +59,11 @@ enum isrcry_result _isrcry_cbc_encrypt(const unsigned char *in,
       }
 
       /* store IV [ciphertext] for a future block */
-#if defined(LTC_FAST)
-      for (x = 0; x < blocklen; x += sizeof(LTC_FAST_TYPE)) {
-	  *((LTC_FAST_TYPE*)((unsigned char *)iv + x)) = *((LTC_FAST_TYPE*)((unsigned char *)out + x));
+#ifdef ISRCRY_FAST_TYPE
+      for (x = 0; x < blocklen; x += sizeof(ISRCRY_FAST_TYPE)) {
+	  *((ISRCRY_FAST_TYPE*)((unsigned char *)iv + x)) = *((ISRCRY_FAST_TYPE*)((unsigned char *)out + x));
       }
-#else 
+#else
       for (x = 0; x < blocklen; x++) {
 	  iv[x] = out[x];
       }
@@ -94,8 +94,8 @@ enum isrcry_result _isrcry_cbc_decrypt(const unsigned char *in,
    unsigned x;
    enum isrcry_result err;
    unsigned char tmp[16];
-#ifdef LTC_FAST
-   LTC_FAST_TYPE tmpy;
+#ifdef ISRCRY_FAST_TYPE
+   ISRCRY_FAST_TYPE tmpy;
 #else
    unsigned char tmpy;
 #endif         
@@ -104,8 +104,8 @@ enum isrcry_result _isrcry_cbc_decrypt(const unsigned char *in,
 	   return ISRCRY_INVALID_ARGUMENT;
    if (blocklen < 1 || len % blocklen)
 	   return ISRCRY_INVALID_ARGUMENT;
-#ifdef LTC_FAST
-   if (blocklen % sizeof(LTC_FAST_TYPE))
+#ifdef ISRCRY_FAST_TYPE
+   if (blocklen % sizeof(ISRCRY_FAST_TYPE))
 	   return ISRCRY_INVALID_ARGUMENT;
 #endif
    
@@ -115,11 +115,11 @@ enum isrcry_result _isrcry_cbc_decrypt(const unsigned char *in,
 	       return err;
 
        /* xor IV against plaintext */
-#if defined(LTC_FAST)
-      for (x = 0; x < blocklen; x += sizeof(LTC_FAST_TYPE)) {
-          tmpy = *((LTC_FAST_TYPE*)(iv + x)) ^ *((LTC_FAST_TYPE*)(tmp + x));
-          *((LTC_FAST_TYPE*)(iv + x)) = *((LTC_FAST_TYPE*)(in + x));
-          *((LTC_FAST_TYPE*)(out + x)) = tmpy;
+#ifdef ISRCRY_FAST_TYPE
+      for (x = 0; x < blocklen; x += sizeof(ISRCRY_FAST_TYPE)) {
+          tmpy = *((ISRCRY_FAST_TYPE*)(iv + x)) ^ *((ISRCRY_FAST_TYPE*)(tmp + x));
+          *((ISRCRY_FAST_TYPE*)(iv + x)) = *((ISRCRY_FAST_TYPE*)(in + x));
+          *((ISRCRY_FAST_TYPE*)(out + x)) = tmpy;
       }
 #else 
       for (x = 0; x < blocklen; x++) {
