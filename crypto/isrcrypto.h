@@ -37,4 +37,6 @@ enum isrcry_result isrcry_aes_init(const unsigned char *key, int keylen,
 enum isrcry_result isrcry_blowfish_init(const unsigned char *key, int keylen,
 			struct isrcry_blowfish_key *skey);
 
+const char *isrcry_strerror(enum isrcry_result result);
+
 #endif
