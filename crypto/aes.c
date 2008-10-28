@@ -34,6 +34,8 @@
 #include "internal.h"
 #include "aes_tab.h"
 
+#define RORc(x, y) ( ((((unsigned long)(x)&0xFFFFFFFFUL)>>(unsigned long)((y)&31)) | ((unsigned long)(x)<<(unsigned long)(32-((y)&31)))) & 0xFFFFFFFFUL)
+
 static uint32_t setup_mix(uint32_t temp)
 {
    return (Te4_3[byte(temp, 2)]) ^
