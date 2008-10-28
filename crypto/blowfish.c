@@ -77,10 +77,6 @@ enum isrcry_result isrcry_blowfish_init(const unsigned char *key, int keylen,
        }
    }
 
-#ifdef LTC_CLEAN_STACK
-   zeromem(B, sizeof(B));
-#endif
-
    return ISRCRY_OK;
 }
 
@@ -125,15 +121,6 @@ enum isrcry_result _isrcry_blowfish_encrypt(const unsigned char *in,
    return ISRCRY_OK;
 }
 
-#if 0
-int blowfish_ecb_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_key *skey)
-{
-    int err = _blowfish_ecb_encrypt(pt, ct, skey);
-    burn_stack(sizeof(uint32_t) * 2 + sizeof(int));
-    return err;
-}
-#endif
-
 /**
   Decrypts a block of text with Blowfish
   @param in The input ciphertext (8 bytes)
@@ -171,12 +158,3 @@ enum isrcry_result _isrcry_blowfish_decrypt(const unsigned char *in,
    STORE32H(R, &out[4]);
    return ISRCRY_OK;
 }
-
-#if 0
-int blowfish_ecb_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *skey)
-{
-    int err = _blowfish_ecb_decrypt(ct, pt, skey);
-    burn_stack(sizeof(uint32_t) * 2 + sizeof(int));
-    return err;
-}
-#endif

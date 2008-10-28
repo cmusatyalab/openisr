@@ -305,15 +305,6 @@ enum isrcry_result _isrcry_aes_encrypt(const unsigned char *in,
     return ISRCRY_OK;
 }
 
-#if 0
-int ECB_ENC(const unsigned char *pt, unsigned char *ct, symmetric_key *skey) 
-{
-   int err = _rijndael_ecb_encrypt(pt, ct, skey);
-   burn_stack(sizeof(unsigned long)*8 + sizeof(unsigned long*) + sizeof(int)*2);
-   return err;
-}
-#endif
-
 /**
   Decrypts a block of text with AES
   @param in The input ciphertext (16 bytes)
@@ -440,13 +431,3 @@ enum isrcry_result _isrcry_aes_decrypt(const unsigned char *in,
 
     return ISRCRY_OK;
 }
-
-
-#if 0
-int ECB_DEC(const unsigned char *ct, unsigned char *pt, symmetric_key *skey) 
-{
-   int err = _rijndael_ecb_decrypt(ct, pt, skey);
-   burn_stack(sizeof(unsigned long)*8 + sizeof(unsigned long*) + sizeof(int)*2);
-   return err;
-}
-#endif
