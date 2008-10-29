@@ -176,17 +176,17 @@ POST-INSTALLATION
 If you install the OpenISR client from source, you should perform several
 additional steps to complete the installation:
 
-- Run "ldconfig; depmod" as root
-
 - Create the "isrusers" group (or the group specified using --with-group, if
 different) and add to it the users who should be able to run the OpenISR
 client
 
-- Configure your system to start the "openisr" init script at boot, probably
-in the "S" runlevel
+- Run "ldconfig; depmod; udevcontrol reload_rules" as root
 
 - Run "openisr-config" as root to build, install, and load the OpenISR kernel
 modules
+
+- Configure your system to start the "openisr" init script at boot, probably
+in the "S" runlevel
 
 If you upgrade your kernel after installing the OpenISR client, you will
 need to rebuild the OpenISR kernel modules by running "openisr-config" as
