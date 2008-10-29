@@ -19,12 +19,9 @@
  * MA 02111-1307, USA.
  */
 
-#include <stdlib.h>
-#include <string.h>
-
-#include "sha.h"
-
-#include "macros.h"
+#include "isrcrypto.h"
+#define LIBISRCRYPTO_INTERNAL
+#include "internal.h"
 
 /* A block, treated as a sequence of 32-bit words. */
 #define SHA1_DATA_LENGTH 16
@@ -88,9 +85,7 @@ _nettle_sha1_compress(uint32_t *state, const uint8_t *input)
   int i;
 
   for (i = 0; i < 16; i++, input+= 4)
-    {
-      data[i] = READ_UINT32(input);
-    }
+    LOAD32H(data[i], input);
 
   /* Set up first buffer and local data buffer */
   A = state[0];
