@@ -107,6 +107,6 @@ exported void isrcry_sha1_final(struct isrcry_sha1_ctx *ctx,
 	
 	_isrcry_sha1_compress(ctx->digest, ctx->block);
 	
-	for (i = 0; i < SHA1_DIGEST_SIZE / 4; i++, digest += 4)
+	for (i = 0; i < ISRCRY_SHA1_DIGEST_SIZE / 4; i++, digest += 4)
 		STORE32H(ctx->digest[i], digest);
 }
