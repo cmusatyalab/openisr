@@ -1,21 +1,17 @@
-/* sha1-compress.c
+/*
+ * sha1-compress - SHA1 compression function (generic version)
  *
- * The compression function of the sha1 hash function.
- */
-
-/* nettle, low-level cryptographics library
- *
- * Copyright (C) 2001, 2004 Peter Gutmann, Andrew Kuchling, Niels M�ller
+ * Copyright (C) 2001, 2004 Peter Gutmann, Andrew Kuchling, Niels Möller
  *  
- * The nettle library is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2.1 of the License, or (at your
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by the
+ * Free Software Foundation; either version 2.1 of the License, or (at your
  * option) any later version.
  * 
- * The nettle library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
- * License for more details.
+ * This library is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
  * 
  * You should have received a copy of the GNU Lesser General Public License
  * along with the nettle library; see the file COPYING.LIB.  If not, write to
@@ -23,35 +19,6 @@
  * MA 02111-1307, USA.
  */
 
-/* Here's the first paragraph of Peter Gutmann's posting,
- * <30ajo5$oe8@ccu2.auckland.ac.nz>: 
- *
- * The following is my SHA (FIPS 180) code updated to allow use of the "fixed"
- * SHA, thanks to Jim Gillogly and an anonymous contributor for the information on
- * what's changed in the new version.  The fix is a simple change which involves
- * adding a single rotate in the initial expansion function.  It is unknown
- * whether this is an optimal solution to the problem which was discovered in the
- * SHA or whether it's simply a bandaid which fixes the problem with a minimum of
- * effort (for example the reengineering of a great many Capstone chips).
- */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
-
-#ifndef SHA1_DEBUG
-# define SHA1_DEBUG 0
-#endif
-
-#if SHA1_DEBUG
-# include <stdio.h>
-# define DEBUG(i) \
-  fprintf(stderr, "%2d: %8x %8x %8x %8x %8x\n", i, A, B, C, D ,E)
-#else
-# define DEBUG(i)
-#endif
-
-#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -66,10 +33,8 @@
    save one boolean operation each - thanks to Rich Schroeppel,
    rcs@cs.arizona.edu for discovering this */
 
-/* #define f1(x,y,z) ( ( x & y ) | ( ~x & z ) )            Rounds  0-19 */
 #define f1(x,y,z)   ( z ^ ( x & ( y ^ z ) ) )           /* Rounds  0-19 */
 #define f2(x,y,z)   ( x ^ y ^ z )                       /* Rounds 20-39 */
-/* #define f3(x,y,z) ( ( x & y ) | ( x & z ) | ( y & z ) ) Rounds 40-59 */
 #define f3(x,y,z)   ( ( x & y ) | ( z & ( x | y ) ) )   /* Rounds 40-59 */
 #define f4(x,y,z)   ( x ^ y ^ z )                       /* Rounds 60-79 */
 
@@ -92,11 +57,7 @@
 
    This implementation generates these values on the fly in a circular
    buffer - thanks to Colin Plumb, colin@nyx10.cs.du.edu for this
-   optimization.
-
-   The updated SHA changes the expanding function by adding a rotate of 1
-   bit.  Thanks to Jim Gillogly, jim@rand.org, and an anonymous contributor
-   for this information */
+   optimization. */
 
 #define expand(W,i) ( W[ i & 15 ] = \
 		      ROTL( 1, ( W[ i & 15 ] ^ W[ (i - 14) & 15 ] ^ \
@@ -119,11 +80,6 @@
 #define subRound(a, b, c, d, e, f, k, data) \
     ( e += ROTL( 5, a ) + f( b, c, d ) + k + data, b = ROTL( 30, b ) )
 
-/* Perform the SHA transformation.  Note that this code, like MD5, seems to
-   break some optimizing compilers due to the complexity of the expressions
-   and the size of the basic block.  It may be necessary to split it into
-   sections, e.g. based on the four subrounds. */
-
 void
 _nettle_sha1_compress(uint32_t *state, const uint8_t *input)
 {
@@ -143,10 +99,9 @@ _nettle_sha1_compress(uint32_t *state, const uint8_t *input)
   D = state[3];
   E = state[4];
 
-  DEBUG(-1);
   /* Heavy mangling, in 4 sub-rounds of 20 interations each. */
-  subRound( A, B, C, D, E, f1, K1, data[ 0] ); DEBUG(0);
-  subRound( E, A, B, C, D, f1, K1, data[ 1] ); DEBUG(1);
+  subRound( A, B, C, D, E, f1, K1, data[ 0] );
+  subRound( E, A, B, C, D, f1, K1, data[ 1] );
   subRound( D, E, A, B, C, f1, K1, data[ 2] );
   subRound( C, D, E, A, B, f1, K1, data[ 3] );
   subRound( B, C, D, E, A, f1, K1, data[ 4] );
@@ -160,14 +115,14 @@ _nettle_sha1_compress(uint32_t *state, const uint8_t *input)
   subRound( D, E, A, B, C, f1, K1, data[12] );
   subRound( C, D, E, A, B, f1, K1, data[13] );
   subRound( B, C, D, E, A, f1, K1, data[14] );
-  subRound( A, B, C, D, E, f1, K1, data[15] ); DEBUG(15);
-  subRound( E, A, B, C, D, f1, K1, expand( data, 16 ) ); DEBUG(16);
-  subRound( D, E, A, B, C, f1, K1, expand( data, 17 ) ); DEBUG(17);
-  subRound( C, D, E, A, B, f1, K1, expand( data, 18 ) ); DEBUG(18);
-  subRound( B, C, D, E, A, f1, K1, expand( data, 19 ) ); DEBUG(19);
+  subRound( A, B, C, D, E, f1, K1, data[15] );
+  subRound( E, A, B, C, D, f1, K1, expand( data, 16 ) );
+  subRound( D, E, A, B, C, f1, K1, expand( data, 17 ) );
+  subRound( C, D, E, A, B, f1, K1, expand( data, 18 ) );
+  subRound( B, C, D, E, A, f1, K1, expand( data, 19 ) );
 
-  subRound( A, B, C, D, E, f2, K2, expand( data, 20 ) ); DEBUG(20);
-  subRound( E, A, B, C, D, f2, K2, expand( data, 21 ) ); DEBUG(21);
+  subRound( A, B, C, D, E, f2, K2, expand( data, 20 ) );
+  subRound( E, A, B, C, D, f2, K2, expand( data, 21 ) );
   subRound( D, E, A, B, C, f2, K2, expand( data, 22 ) );
   subRound( C, D, E, A, B, f2, K2, expand( data, 23 ) );
   subRound( B, C, D, E, A, f2, K2, expand( data, 24 ) );
@@ -184,11 +139,11 @@ _nettle_sha1_compress(uint32_t *state, const uint8_t *input)
   subRound( A, B, C, D, E, f2, K2, expand( data, 35 ) );
   subRound( E, A, B, C, D, f2, K2, expand( data, 36 ) );
   subRound( D, E, A, B, C, f2, K2, expand( data, 37 ) );
-  subRound( C, D, E, A, B, f2, K2, expand( data, 38 ) ); DEBUG(38);
-  subRound( B, C, D, E, A, f2, K2, expand( data, 39 ) ); DEBUG(39);
+  subRound( C, D, E, A, B, f2, K2, expand( data, 38 ) );
+  subRound( B, C, D, E, A, f2, K2, expand( data, 39 ) );
 
-  subRound( A, B, C, D, E, f3, K3, expand( data, 40 ) ); DEBUG(40);
-  subRound( E, A, B, C, D, f3, K3, expand( data, 41 ) ); DEBUG(41);
+  subRound( A, B, C, D, E, f3, K3, expand( data, 40 ) );
+  subRound( E, A, B, C, D, f3, K3, expand( data, 41 ) );
   subRound( D, E, A, B, C, f3, K3, expand( data, 42 ) );
   subRound( C, D, E, A, B, f3, K3, expand( data, 43 ) );
   subRound( B, C, D, E, A, f3, K3, expand( data, 44 ) );
@@ -205,11 +160,11 @@ _nettle_sha1_compress(uint32_t *state, const uint8_t *input)
   subRound( A, B, C, D, E, f3, K3, expand( data, 55 ) );
   subRound( E, A, B, C, D, f3, K3, expand( data, 56 ) );
   subRound( D, E, A, B, C, f3, K3, expand( data, 57 ) );
-  subRound( C, D, E, A, B, f3, K3, expand( data, 58 ) ); DEBUG(58);
-  subRound( B, C, D, E, A, f3, K3, expand( data, 59 ) ); DEBUG(59);
+  subRound( C, D, E, A, B, f3, K3, expand( data, 58 ) );
+  subRound( B, C, D, E, A, f3, K3, expand( data, 59 ) );
 
-  subRound( A, B, C, D, E, f4, K4, expand( data, 60 ) ); DEBUG(60);
-  subRound( E, A, B, C, D, f4, K4, expand( data, 61 ) ); DEBUG(61);
+  subRound( A, B, C, D, E, f4, K4, expand( data, 60 ) );
+  subRound( E, A, B, C, D, f4, K4, expand( data, 61 ) );
   subRound( D, E, A, B, C, f4, K4, expand( data, 62 ) );
   subRound( C, D, E, A, B, f4, K4, expand( data, 63 ) );
   subRound( B, C, D, E, A, f4, K4, expand( data, 64 ) );
@@ -226,8 +181,8 @@ _nettle_sha1_compress(uint32_t *state, const uint8_t *input)
   subRound( A, B, C, D, E, f4, K4, expand( data, 75 ) );
   subRound( E, A, B, C, D, f4, K4, expand( data, 76 ) );
   subRound( D, E, A, B, C, f4, K4, expand( data, 77 ) );
-  subRound( C, D, E, A, B, f4, K4, expand( data, 78 ) ); DEBUG(78);
-  subRound( B, C, D, E, A, f4, K4, expand( data, 79 ) ); DEBUG(79);
+  subRound( C, D, E, A, B, f4, K4, expand( data, 78 ) );
+  subRound( B, C, D, E, A, f4, K4, expand( data, 79 ) );
 
   /* Build message digest */
   state[0] += A;
@@ -235,9 +190,4 @@ _nettle_sha1_compress(uint32_t *state, const uint8_t *input)
   state[2] += C;
   state[3] += D;
   state[4] += E;
-
-#if SHA1_DEBUG
-  fprintf(stderr, "99: %8x %8x %8x %8x %8x\n",
-	  state[0], state[1], state[2], state[3], state[4]);
-#endif
 }
