@@ -7,6 +7,12 @@
 
 #include "config.h"
 
+#ifdef HAVE_VISIBILITY
+#define exported __attribute__ ((visibility ("default")))
+#else
+#define exported
+#endif
+
 typedef int (cipher_fn)(const unsigned char *in, unsigned char *out,
 			void *skey);
 

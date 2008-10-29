@@ -51,8 +51,8 @@ static uint32_t setup_mix(uint32_t temp)
     @param skey The key in as scheduled by this function.
     @return ISRCRY_OK if successful
  */
-enum isrcry_result isrcry_aes_init(const unsigned char *key, int keylen,
-			struct isrcry_aes_key *skey)
+exported enum isrcry_result isrcry_aes_init(const unsigned char *key,
+			int keylen, struct isrcry_aes_key *skey)
 {
     int i, j;
     uint32_t temp, *rk;

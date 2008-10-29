@@ -23,8 +23,8 @@
     @param skey The key in as scheduled by this function.
     @return ISRCRY_OK if successful
  */
-enum isrcry_result isrcry_blowfish_init(const unsigned char *key, int keylen,
-                   struct isrcry_blowfish_key *skey)
+exported enum isrcry_result isrcry_blowfish_init(const unsigned char *key,
+			int keylen, struct isrcry_blowfish_key *skey)
 {
    uint32_t x, y, z, A;
    unsigned char B[8];

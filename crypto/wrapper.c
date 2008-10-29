@@ -3,9 +3,9 @@
 #include "internal.h"
 
 #define WRAPPER(alg, mode, direction, blocksize) \
-	enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## direction ( \
-				const unsigned char *in, unsigned long len, \
-				unsigned char *out, \
+	exported enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## \
+				direction (const unsigned char *in, \
+				unsigned long len, unsigned char *out, \
 				struct isrcry_ ## alg ## _key *skey, \
 				unsigned char *iv) { \
 		return _isrcry_cbc_encrypt(in, len, out, \

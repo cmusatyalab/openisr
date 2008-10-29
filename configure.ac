@@ -111,6 +111,12 @@ esac
 AM_CONDITIONAL([HAVE_X86_32], [echo $host_cpu | grep -q '^i@<:@456@:>@86$'])
 AM_CONDITIONAL([HAVE_X86_64], [test z$host_cpu = zx86_64])
 
+CHECK_COMPILER_OPTION([-fvisibility=hidden], [HAVE_VISIBILITY])
+if test z$success = zyes ; then
+	AC_DEFINE([HAVE_VISIBILITY], [1], [Define to 1 if your compiler supports the -fvisibility=hidden option.])
+fi
+AM_CONDITIONAL([HAVE_VISIBILITY], [test z$success = zyes])
+
 # Checks for programs.
 AC_PATH_PROG([PERL], [perl], [no])
 if test z$PERL = zno ; then
