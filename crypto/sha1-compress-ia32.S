@@ -19,6 +19,8 @@
  * for more details.
  */
 
+#include "config.h"
+
 /* Register usage */
 #define SA	%eax
 #define SB	%ebx
@@ -126,6 +128,9 @@
 .text
 .align 4
 .globl _isrcry_sha1_compress
+#ifdef HAVE_VISIBILITY
+.hidden _isrcry_sha1_compress
+#endif
 _isrcry_sha1_compress:
 	/* save all registers that need to be saved */
 	pushl	%ebx		/* 80(%esp) */

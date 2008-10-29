@@ -20,6 +20,8 @@
  * for more details.
  */
 
+#include "config.h"
+
 /* Register usage.  r12-15 must be saved if they will be used.  Accessing
    r8-r15 takes an extra instruction byte. */
 #define P_STATE	%rdi			/* Pointer parameter */
@@ -134,6 +136,9 @@
 .text
 .align 4
 .globl _isrcry_sha1_compress
+#ifdef HAVE_VISIBILITY
+.hidden _isrcry_sha1_compress
+#endif
 _isrcry_sha1_compress:
 	push	%rbx
 	push	%rbp
