@@ -46,10 +46,6 @@
 	bswap	register;					\
 	movl	register, OFFSET(index)(DATA)
 
-/* Sets the workspace word at the given index to TMP. */
-#define CLEAR(index)						\
-	movl	TMP, OFFSET(index)(DATA)
-
 /*
  * expand(i) is the expansion function
  *
@@ -264,13 +260,6 @@ _isrcry_sha1_compress:
 	addl	SC, 8(TMP) 
 	addl	SD, 12(TMP) 
 	addl	SE, 16(TMP)
-
-	/* Clear the workspace for security */
-	xorl	TMP, TMP
-	CLEAR( 0); CLEAR( 1); CLEAR( 2); CLEAR( 3);
-	CLEAR( 4); CLEAR( 5); CLEAR( 6); CLEAR( 7);
-	CLEAR( 8); CLEAR( 9); CLEAR(10); CLEAR(11);
-	CLEAR(12); CLEAR(13); CLEAR(14); CLEAR(15);
 
 	addl	$68, %esp
 	popl	%edi

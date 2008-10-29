@@ -52,10 +52,6 @@
 	bswap	register;					\
 	movl	register, OFFSET(index)(DATA)
 
-/* Sets the workspace eightbyte at the given index to QTMP. */
-#define CLEAR(index)						\
-	movq	QTMP, OFFSET(index)(DATA)
-
 /*
  * expand(i) is the expansion function
  *
@@ -265,11 +261,6 @@ _isrcry_sha1_compress:
 	addl	SC, 8(STATE) 
 	addl	SD, 12(STATE) 
 	addl	SE, 16(STATE)
-
-	/* Clear the workspace for security */
-	xorq	QTMP, QTMP
-	CLEAR( 0); CLEAR( 2); CLEAR( 4); CLEAR( 6);
-	CLEAR( 8); CLEAR(10); CLEAR(12); CLEAR(14);
 
 	addq	$64, %rsp
 	pop	%rbp

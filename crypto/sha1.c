@@ -109,7 +109,4 @@ exported void isrcry_sha1_final(struct isrcry_sha1_ctx *ctx,
 	
 	for (i = 0; i < SHA1_DIGEST_SIZE / 4; i++, digest += 4)
 		STORE32H(ctx->digest[i], digest);
-	
-	/* Wipe context */
-	memset(ctx, 0, sizeof(*ctx));
 }
