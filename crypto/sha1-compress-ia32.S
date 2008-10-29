@@ -126,11 +126,11 @@
 	addl	TMP, e;						\
 	roll	$30, b;
 
-/* sha1_compress(u32 *state, u8 *data) */
+/* _isrcry_sha1_compress(u32 *state, u8 *data) */
 .text
 .align 4
-.globl sha1_compress
-sha1_compress:
+.globl _isrcry_sha1_compress
+_isrcry_sha1_compress:
 	/* save all registers that need to be saved */
 	pushl	%ebx		/* 80(%esp) */
 	pushl	%ebp		/* 76(%esp) */

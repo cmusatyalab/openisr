@@ -77,8 +77,7 @@
 #define subRound(a, b, c, d, e, f, k, data) \
     ( e += ROTL( 5, a ) + f( b, c, d ) + k + data, b = ROTL( 30, b ) )
 
-void
-_nettle_sha1_compress(uint32_t *state, const uint8_t *input)
+void _isrcry_sha1_compress(uint32_t *state, const uint8_t *input)
 {
   uint32_t data[16];
   uint32_t A, B, C, D, E;     /* Local vars */

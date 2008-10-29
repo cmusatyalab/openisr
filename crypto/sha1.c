@@ -28,10 +28,6 @@
 
 #define SHA1_DATA_SIZE 64
 
-/* Compression function. @state points to 5 u32 words, and @data points to
-   64 bytes of input data, possibly unaligned. */
-void sha1_compress(uint32_t *state, const uint8_t *data);
-
 exported void isrcry_sha1_init(struct isrcry_sha1_ctx *ctx)
 {
 	/* Set the h-vars to their initial values */
@@ -60,14 +56,14 @@ exported void isrcry_sha1_update(struct isrcry_sha1_ctx *ctx,
 			return;	/* Finished */
 		} else {
 			memcpy(ctx->block + ctx->index, buffer, left);
-			sha1_compress(ctx->digest, ctx->block);
+			_isrcry_sha1_compress(ctx->digest, ctx->block);
 			ctx->count++;
 			buffer += left;
 			length -= left;
 		}
 	}
 	while (length >= SHA1_DATA_SIZE) {
-		sha1_compress(ctx->digest, buffer);
+		_isrcry_sha1_compress(ctx->digest, buffer);
 		ctx->count++;
 		buffer += SHA1_DATA_SIZE;
 		length -= SHA1_DATA_SIZE;
@@ -94,7 +90,7 @@ exported void isrcry_sha1_final(struct isrcry_sha1_ctx *ctx,
 		/* No room for length in this block. Process it and
 		   pad with another one */
 		memset(ctx->block + i, 0, SHA1_DATA_SIZE - i);
-		sha1_compress(ctx->digest, ctx->block);
+		_isrcry_sha1_compress(ctx->digest, ctx->block);
 		i = 0;
 	}
 	if (i < (SHA1_DATA_SIZE - 8))
@@ -109,7 +105,7 @@ exported void isrcry_sha1_final(struct isrcry_sha1_ctx *ctx,
 	STORE32H(bitcount >> 32, ctx->block + (SHA1_DATA_SIZE - 8));
 	STORE32H(bitcount, ctx->block + (SHA1_DATA_SIZE - 4));
 	
-	sha1_compress(ctx->digest, ctx->block);
+	_isrcry_sha1_compress(ctx->digest, ctx->block);
 	
 	for (i = 0; i < SHA1_DIGEST_SIZE / 4; i++, digest += 4)
 		STORE32H(ctx->digest[i], digest);

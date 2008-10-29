@@ -36,6 +36,10 @@ enum isrcry_result _isrcry_blowfish_encrypt(const unsigned char *in,
 enum isrcry_result _isrcry_blowfish_decrypt(const unsigned char *in,
 			unsigned char *out, struct isrcry_blowfish_key *skey);
 
+/* Compression function. @state points to 5 u32 words, and @data points to
+   64 bytes of input data, possibly unaligned. */
+void _isrcry_sha1_compress(uint32_t *state, const uint8_t *data);
+
 /* libtomcrypt helper defines */
 
 /* Extract a byte portably */
