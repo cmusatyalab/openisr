@@ -272,3 +272,8 @@ _isrcry_sha1_compress:
 	popl	%ebp
 	popl	%ebx
 	ret
+
+/* Mark this object file as not needing an executable stack */
+#if defined(__linux__) && defined(__ELF__)
+.section .note.GNU-stack,"",%progbits
+#endif
