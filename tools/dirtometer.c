@@ -270,20 +270,12 @@ gboolean keypress(GtkWidget *widget, GdkEventKey *event, void *data) {
 	}
 }
 
-void init(void)
+void init_files(void)
 {
-	GError *err1 = NULL;
-	GError *err2 = NULL;
+	GError *err = NULL;
 	char *path;
 	char *linkdest;
 	char **linkparts;
-	char *title;
-	int x;
-	int y;
-	GdkGeometry hints = {
-		.min_width = 10,
-		.min_height = 10,
-	};
 
 	path = g_strdup_printf("/dev/shm/openisr-chunkmap-%s", uuid);
 	state_fd = open(path, O_RDONLY);
@@ -302,14 +294,27 @@ void init(void)
 	g_free(path);
 
 	path = g_strdup_printf("/dev/disk/by-id/openisr-%s", uuid);
-	linkdest = g_file_read_link(path, &err1);
-	if (err1)
-		die("Couldn't read link %s: %s", path, err1->message);
+	linkdest = g_file_read_link(path, &err);
+	if (err)
+		die("Couldn't read link %s: %s", path, err->message);
 	linkparts = g_strsplit(linkdest, "/", 0);
 	statsdir = g_strdup_printf("/sys/class/openisr/%s",
 				linkparts[g_strv_length(linkparts) - 1]);
 	g_strfreev(linkparts);
 	g_free(path);
+}
+
+void init_window(void)
+{
+	GError *err1 = NULL;
+	GError *err2 = NULL;
+	char *title;
+	int x;
+	int y;
+	GdkGeometry hints = {
+		.min_width = 10,
+		.min_height = 10,
+	};
 
 	title = g_strdup_printf("Dirtometer: %s", name);
 	wd = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -323,7 +328,6 @@ void init(void)
 	g_signal_connect(wd, "delete-event", G_CALLBACK(destroy), NULL);
 	g_signal_connect(wd, "key-press-event", G_CALLBACK(keypress), wd);
 
-	read_config();
 	x = g_key_file_get_integer(config, CONFIG_GROUP, "x", &err1);
 	y = g_key_file_get_integer(config, CONFIG_GROUP, "y", &err2);
 	if (err1 == NULL && err2 == NULL)
@@ -361,7 +365,9 @@ int main(int argc, char **argv)
 	confdir = g_strdup_printf("%s/.isr/dirtometer", getenv("HOME"));
 	conffile = g_strdup_printf("%s/%s", confdir, uuid);
 
-	init();
+	init_files();
+	read_config();
+	init_window();
 	update_stats();
 	update_img();
 	g_timeout_add(100, update_event, NULL);
