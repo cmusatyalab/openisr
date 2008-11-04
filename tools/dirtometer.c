@@ -47,8 +47,6 @@ GKeyFile *config;
 int state_fd;
 char *states;
 uint64_t numchunks;
-uint32_t *pixels;
-uint64_t numpixels;
 
 struct stats {
 	long sectors_read;
@@ -175,8 +173,15 @@ void update_stats(void)
 				cur_stats.cache_misses);
 }
 
+void free_pixels(unsigned char *pixels, void *data)
+{
+	g_free(pixels);
+}
+
 void update_img(void)
 {
+	uint32_t *pixels;
+	uint64_t numpixels;
 	GdkPixbuf *pixbuf;
 	uint64_t i;
 	int width;
@@ -185,10 +190,8 @@ void update_img(void)
 	width = g_key_file_get_integer(config, CONFIG_GROUP, "width", NULL);
 	height = g_key_file_get_integer(config, CONFIG_GROUP, "height", NULL);
 
-	if (numpixels < max(height * width, numchunks)) {
-		numpixels = max(height * width, numchunks);
-		pixels = g_realloc(pixels, 4 * numpixels);
-	}
+	numpixels = max(height * width, numchunks);
+	pixels = g_malloc(4 * numpixels);
 	for (i = 0; i < numchunks; i++) {
 		if (states[i] & 0x8) {
 			/* Dirtied this session */
@@ -210,7 +213,8 @@ void update_img(void)
 	for (i = numchunks; i < numpixels; i++)
 		pixels[i] = htonl(0x000000ff);
 	pixbuf = gdk_pixbuf_new_from_data((guchar *)pixels, GDK_COLORSPACE_RGB,
-				TRUE, 8, width, height,	width * 4, NULL, NULL);
+				TRUE, 8, width, height,	width * 4, free_pixels,
+				NULL);
 	gtk_image_set_from_pixbuf(GTK_IMAGE(img), pixbuf);
 	g_object_unref(pixbuf);
 }
