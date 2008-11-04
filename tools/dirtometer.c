@@ -255,9 +255,9 @@ void init(void)
 	img = gtk_image_new();
 	gtk_container_add(GTK_CONTAINER(wd), img);
 	gtk_widget_show_all(GTK_WIDGET(wd));
-	g_signal_connect(wd, "configure_event", G_CALLBACK(configure), wd);
-	g_signal_connect(wd, "destroy_event", G_CALLBACK(destroy), NULL);
-	g_signal_connect(wd, "key_press_event", G_CALLBACK(keypress), wd);
+	g_signal_connect(wd, "configure-event", G_CALLBACK(configure), wd);
+	g_signal_connect(wd, "delete-event", G_CALLBACK(destroy), NULL);
+	g_signal_connect(wd, "key-press-event", G_CALLBACK(keypress), wd);
 
 	config.height = optimal_height();
 	read_config();
