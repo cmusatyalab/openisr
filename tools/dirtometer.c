@@ -277,7 +277,6 @@ void init(void)
 	char *path;
 	char *linkdest;
 	char **linkparts;
-	int state_fd;
 	char *title;
 	int x;
 	int y;
