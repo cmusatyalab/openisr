@@ -180,19 +180,29 @@ void free_pixels(unsigned char *pixels, void *data)
 
 void update_img(void)
 {
+	static char *prev_states;
+	static int last_width;
+	static int last_height;
 	uint32_t *pixels;
 	int numpixels;
 	GdkPixbuf *pixbuf;
 	int i;
 	int width;
 	int height;
+	int changed = 0;
 
 	width = g_key_file_get_integer(config, CONFIG_GROUP, "width", NULL);
 	height = g_key_file_get_integer(config, CONFIG_GROUP, "height", NULL);
 
+	if (prev_states == NULL)
+		prev_states = g_malloc(numchunks);
 	numpixels = max(height * width, numchunks);
 	pixels = g_malloc(4 * numpixels);
 	for (i = 0; i < numchunks; i++) {
+		if (states[i] != prev_states[i]) {
+			prev_states[i] = states[i];
+			changed = 1;
+		}
 		if (states[i] & 0x8) {
 			/* Dirtied this session */
 			pixels[i] = htonl(0xff0000ff);
@@ -212,11 +222,19 @@ void update_img(void)
 	}
 	for (i = numchunks; i < numpixels; i++)
 		pixels[i] = htonl(0x000000ff);
-	pixbuf = gdk_pixbuf_new_from_data((guchar *)pixels, GDK_COLORSPACE_RGB,
-				TRUE, 8, width, height,	width * 4, free_pixels,
-				NULL);
-	gtk_image_set_from_pixbuf(GTK_IMAGE(img), pixbuf);
-	g_object_unref(pixbuf);
+	/* These calls are expensive for large buffers, so we only invoke them
+	   if the image has changed */
+	if (changed || width != last_width || height != last_height) {
+		pixbuf = gdk_pixbuf_new_from_data((guchar *)pixels,
+					GDK_COLORSPACE_RGB, TRUE, 8, width,
+					height,	width * 4, free_pixels, NULL);
+		gtk_image_set_from_pixbuf(GTK_IMAGE(img), pixbuf);
+		g_object_unref(pixbuf);
+		last_width = width;
+		last_height = height;
+	} else {
+		g_free(pixels);
+	}
 }
 
 gboolean update_event(void *data)
