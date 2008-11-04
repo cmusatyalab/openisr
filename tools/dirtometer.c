@@ -41,6 +41,7 @@ const char *uuid;
 const char *name;
 const char *confdir;
 const char *conffile;
+const char *statsdir;
 
 GKeyFile *config;
 int state_fd;
@@ -48,6 +49,15 @@ char *states;
 uint64_t numchunks;
 uint32_t *pixels;
 uint64_t numpixels;
+
+struct stats {
+	long sectors_read;
+	long sectors_written;
+	long chunk_reads;
+	long chunk_writes;
+	long cache_hits;
+	long cache_misses;
+} last_stats;
 
 void die(char *fmt, ...)
 {
@@ -124,18 +134,53 @@ void write_config(void)
 	g_free(contents);
 }
 
+long read_stat(char *attr)
+{
+	char *path;
+	char *data;
+	char *end;
+	gboolean ok;
+	long ret;
+
+	path = g_strdup_printf("%s/%s", statsdir, attr);
+	ok = g_file_get_contents(path, &data, NULL, NULL);
+	g_free(path);
+	if (!ok)
+		return -1;
+	g_strchomp(data);
+	ret = strtol(data, &end, 10);
+	if (data[0] == 0 || end[0] != 0)
+		ret = -1;
+	g_free(data);
+	return ret;
+}
+
+void update_stats(void)
+{
+	struct stats cur_stats = {
+		.sectors_read = read_stat("sectors_read"),
+		.sectors_written = read_stat("sectors_written"),
+		.chunk_reads = read_stat("chunk_reads"),
+		.chunk_writes = read_stat("chunk_writes"),
+		.cache_hits = read_stat("cache_hits"),
+		.cache_misses = read_stat("cache_misses"),
+	};
+
+	printf("sectors %ld %ld chunks %ld %ld cache %ld %ld\n",
+				cur_stats.sectors_read,
+				cur_stats.sectors_written,
+				cur_stats.chunk_reads,
+				cur_stats.chunk_writes,
+				cur_stats.cache_hits,
+				cur_stats.cache_misses);
+}
+
 void update_img(void)
 {
 	GdkPixbuf *pixbuf;
-	struct stat st;
 	uint64_t i;
 	int width;
 	int height;
-
-	if (fstat(state_fd, &st))
-		die("fstat failed");
-	if (st.st_nlink == 0)
-		gtk_main_quit();
 
 	width = g_key_file_get_integer(config, CONFIG_GROUP, "width", NULL);
 	height = g_key_file_get_integer(config, CONFIG_GROUP, "height", NULL);
@@ -170,8 +215,15 @@ void update_img(void)
 	g_object_unref(pixbuf);
 }
 
-gboolean update_img_event(void *data)
+gboolean update_event(void *data)
 {
+	struct stat st;
+
+	if (fstat(state_fd, &st))
+		die("fstat failed");
+	if (st.st_nlink == 0)
+		gtk_main_quit();
+	update_stats();
 	update_img();
 	return TRUE;
 }
@@ -222,7 +274,9 @@ void init(void)
 {
 	GError *err1 = NULL;
 	GError *err2 = NULL;
-	char *file;
+	char *path;
+	char *linkdest;
+	char **linkparts;
 	int state_fd;
 	char *title;
 	int x;
@@ -232,13 +286,13 @@ void init(void)
 		.min_height = 10,
 	};
 
-	file = g_strdup_printf("/dev/shm/openisr-chunkmap-%s", uuid);
-	state_fd = open(file, O_RDONLY);
+	path = g_strdup_printf("/dev/shm/openisr-chunkmap-%s", uuid);
+	state_fd = open(path, O_RDONLY);
 	if (state_fd == -1) {
 		if (errno == ENOENT)
 			die("Parcel %s is not currently running", uuid);
 		else
-			die("Couldn't open %s", file);
+			die("Couldn't open %s", path);
 	}
 	numchunks = lseek(state_fd, 0, SEEK_END);
 	if (numchunks == -1)
@@ -246,7 +300,17 @@ void init(void)
 	states = mmap(NULL, numchunks, PROT_READ, MAP_SHARED, state_fd, 0);
 	if (states == MAP_FAILED)
 		die("mmap failed");
-	g_free(file);
+	g_free(path);
+
+	path = g_strdup_printf("/dev/disk/by-id/openisr-%s", uuid);
+	linkdest = g_file_read_link(path, &err1);
+	if (err1)
+		die("Couldn't read link %s: %s", path, err1->message);
+	linkparts = g_strsplit(linkdest, "/", 0);
+	statsdir = g_strdup_printf("/sys/class/openisr/%s",
+				linkparts[g_strv_length(linkparts) - 1]);
+	g_strfreev(linkparts);
+	g_free(path);
 
 	title = g_strdup_printf("Dirtometer: %s", name);
 	wd = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -299,8 +363,9 @@ int main(int argc, char **argv)
 	conffile = g_strdup_printf("%s/%s", confdir, uuid);
 
 	init();
+	update_stats();
 	update_img();
-	g_timeout_add(100, update_img_event, NULL);
+	g_timeout_add(100, update_event, NULL);
 	gtk_main();
 	write_config();
 	return 0;
