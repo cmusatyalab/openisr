@@ -269,28 +269,21 @@ void init(void)
 				GDK_HINT_MIN_SIZE);
 }
 
-void usage(char *argv0)
-{
-	die("Usage: %s [-n <parcel-name>] <parcel-uuid>", argv0);
-}
+const GOptionEntry options[] = {
+	{"name", 'n', 0, G_OPTION_ARG_STRING, &name, "Parcel name", "NAME"},
+	{0}
+};
 
 int main(int argc, char **argv)
 {
-	int arg;
+	GError *err = NULL;
 
-	gtk_init(&argc, &argv);
-	while ((arg = getopt(argc, argv, "n:")) != -1) {
-		switch (arg) {
-		case 'n':
-			name = optarg;
-			break;
-		default:
-			usage(argv[0]);
-		}
-	}
-	if (optind != argc - 1)
-		usage(argv[0]);
-	uuid = argv[optind];
+	if (!gtk_init_with_args(&argc, &argv, "<parcel-uuid>", options, NULL,
+				&err))
+		die("%s", err->message);
+	if (argc != 2)
+		die("Missing parcel UUID");
+	uuid = argv[1];
 	if (name == NULL)
 		name = uuid;
 	confdir = g_strdup_printf("%s/.isr/dirtometer", getenv("HOME"));
