@@ -46,7 +46,7 @@ const char *statsdir;
 GKeyFile *config;
 int state_fd;
 char *states;
-uint64_t numchunks;
+int numchunks;
 
 struct stats {
 	long sectors_read;
@@ -181,9 +181,9 @@ void free_pixels(unsigned char *pixels, void *data)
 void update_img(void)
 {
 	uint32_t *pixels;
-	uint64_t numpixels;
+	int numpixels;
 	GdkPixbuf *pixbuf;
-	uint64_t i;
+	int i;
 	int width;
 	int height;
 
@@ -349,9 +349,9 @@ void init_window(void)
 				GDK_HINT_MIN_SIZE);
 }
 
-const GOptionEntry options[] = {
+GOptionEntry options[] = {
 	{"name", 'n', 0, G_OPTION_ARG_STRING, &name, "Parcel name", "NAME"},
-	{0}
+	{NULL, 0, 0, 0, NULL, NULL, NULL}
 };
 
 int main(int argc, char **argv)
