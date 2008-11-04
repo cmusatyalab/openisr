@@ -32,6 +32,8 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
 
+#define CONFIG_GROUP "dirtometer"
+
 GtkWidget *wd;
 GtkWidget *img;
 
@@ -40,24 +42,12 @@ const char *name;
 const char *confdir;
 const char *conffile;
 
+GKeyFile *config;
 int state_fd;
 char *states;
 uint64_t numchunks;
 uint32_t *pixels;
 uint64_t numpixels;
-
-struct {
-	int height;
-	int width;
-	int x;
-	int y;
-	gboolean keep_above;
-} config = {
-	.width = 200,
-	.x = -1,
-	.y = -1,
-	.keep_above = TRUE,
-};
 
 void die(char *fmt, ...)
 {
@@ -75,68 +65,63 @@ void die(char *fmt, ...)
 
 int optimal_height(void)
 {
-	return (numchunks + config.width - 1) / config.width;
+	int width;
+
+	width = g_key_file_get_integer(config, CONFIG_GROUP, "width", NULL);
+	return (numchunks + width - 1) / width;
 }
 
 void read_config(void)
 {
-	FILE *fp;
-	char buf[256];
-	char *bufp;
-	size_t len;
+	GError *err = NULL;
 
-	fp = fopen(conffile, "r");
-	if (fp == NULL)
-		return;
-	while (fgets(buf, sizeof(buf), fp) != NULL) {
-		len = strlen(buf);
-		if (buf[len-1] == '\n')
-			buf[len-1] = 0;
-		bufp = buf;
-		strsep(&bufp, "=");
-		if (bufp == NULL) {
-			fprintf(stderr, "Error parsing config file\n");
-			break;
-		}
-		if (!strcmp("height", buf))
-			config.height = atoi(bufp);
-		else if (!strcmp("width", buf))
-			config.width = atoi(bufp);
-		else if (!strcmp("x", buf))
-			config.x = atoi(bufp);
-		else if (!strcmp("y", buf))
-			config.y = atoi(bufp);
-		else if (!strcmp("keep_above", buf))
-			config.keep_above = atoi(bufp);
+	config = g_key_file_new();
+	g_key_file_load_from_file(config, conffile, 0, NULL);
+
+	g_key_file_get_integer(config, CONFIG_GROUP, "width", &err);
+	if (err) {
+		g_clear_error(&err);
+		g_key_file_set_integer(config, CONFIG_GROUP, "width", 200);
 	}
-	fclose(fp);
+
+	g_key_file_get_integer(config, CONFIG_GROUP, "height", &err);
+	if (err) {
+		g_clear_error(&err);
+		g_key_file_set_integer(config, CONFIG_GROUP, "height",
+					optimal_height());
+	}
+
+	g_key_file_get_boolean(config, CONFIG_GROUP, "keep_above", &err);
+	if (err) {
+		g_clear_error(&err);
+		g_key_file_set_boolean(config, CONFIG_GROUP, "keep_above",
+					TRUE);
+	}
 }
 
-void write_config(void) {
-	FILE *fp;
-	struct stat st;
+void write_config(void)
+{
+	GError *err = NULL;
+	char *contents;
+	gsize length;
 
-	if (stat(confdir, &st) || !S_ISDIR(st.st_mode)) {
-		if (mkdir(confdir, 0777)) {
-			fprintf(stderr, "Couldn't create directory %s\n",
-						confdir);
-			return;
-		}
-	}
-	fp = fopen(conffile, "w");
-	if (fp == NULL) {
-		fprintf(stderr, "Couldn't write config file\n");
+	if (!g_file_test(confdir, G_FILE_TEST_IS_DIR) &&
+				mkdir(confdir, 0777)) {
+		fprintf(stderr, "Couldn't create directory %s\n", confdir);
 		return;
 	}
-	fprintf(fp, "width=%d\n", config.width);
-	fprintf(fp, "height=%d\n", config.height);
-	fprintf(fp, "x=%d\n", config.x);
-	fprintf(fp, "y=%d\n", config.y);
-	fprintf(fp, "keep_above=%d\n", config.keep_above);
-	if (fclose(fp)) {
-		fprintf(stderr, "Couldn't write config file\n");
+	contents = g_key_file_to_data(config, &length, &err);
+	if (err) {
+		fprintf(stderr, "Couldn't write config file: %s\n",
+					err->message);
+		g_clear_error(&err);
 		return;
 	}
+	if (!g_file_set_contents(conffile, contents, length, &err))
+		fprintf(stderr, "Couldn't write config file: %s\n",
+					err->message);
+	g_clear_error(&err);
+	g_free(contents);
 }
 
 void update_img(void)
@@ -144,14 +129,19 @@ void update_img(void)
 	GdkPixbuf *pixbuf;
 	struct stat st;
 	uint64_t i;
+	int width;
+	int height;
 
 	if (fstat(state_fd, &st))
 		die("fstat failed");
 	if (st.st_nlink == 0)
 		gtk_main_quit();
 
-	if (numpixels < max(config.height * config.width, numchunks)) {
-		numpixels = max(config.height * config.width, numchunks);
+	width = g_key_file_get_integer(config, CONFIG_GROUP, "width", NULL);
+	height = g_key_file_get_integer(config, CONFIG_GROUP, "height", NULL);
+
+	if (numpixels < max(height * width, numchunks)) {
+		numpixels = max(height * width, numchunks);
 		pixels = g_realloc(pixels, 4 * numpixels);
 	}
 	for (i = 0; i < numchunks; i++) {
@@ -175,8 +165,7 @@ void update_img(void)
 	for (i = numchunks; i < numpixels; i++)
 		pixels[i] = htonl(0x000000ff);
 	pixbuf = gdk_pixbuf_new_from_data((guchar *)pixels, GDK_COLORSPACE_RGB,
-				TRUE, 8, config.width, config.height,
-				config.width * 4, NULL, NULL);
+				TRUE, 8, width, height,	width * 4, NULL, NULL);
 	gtk_image_set_from_pixbuf(GTK_IMAGE(img), pixbuf);
 	g_object_unref(pixbuf);
 }
@@ -189,10 +178,10 @@ gboolean update_img_event(void *data)
 
 gboolean configure(GtkWidget *widget, GdkEventConfigure *event, void *data)
 {
-	config.width = event->width;
-	config.height = event->height;
-	config.x = event->x;
-	config.y = event->y;
+	g_key_file_set_integer(config, CONFIG_GROUP, "width", event->width);
+	g_key_file_set_integer(config, CONFIG_GROUP, "height", event->height);
+	g_key_file_set_integer(config, CONFIG_GROUP, "x", event->x);
+	g_key_file_set_integer(config, CONFIG_GROUP, "y", event->y);
 	update_img();
 	return 0;
 }
@@ -204,18 +193,25 @@ gboolean destroy(GtkWidget *widget, GdkEvent *event, void *data)
 }
 
 gboolean keypress(GtkWidget *widget, GdkEventKey *event, void *data) {
+	gboolean keep_above;
+
 	switch (event->keyval) {
 	case GDK_Escape:
 	case GDK_q:
 		gtk_main_quit();
 		return TRUE;
 	case GDK_space:
-		gtk_window_resize(GTK_WINDOW(wd), config.width,
+		gtk_window_resize(GTK_WINDOW(wd),
+					g_key_file_get_integer(config,
+					CONFIG_GROUP, "width", NULL),
 					optimal_height());
 		return TRUE;
 	case GDK_Tab:
-		config.keep_above = !config.keep_above;
-		gtk_window_set_keep_above(GTK_WINDOW(wd), config.keep_above);
+		keep_above = !g_key_file_get_boolean(config, CONFIG_GROUP,
+					"keep_above", NULL);
+		g_key_file_set_boolean(config, CONFIG_GROUP, "keep_above",
+					keep_above);
+		gtk_window_set_keep_above(GTK_WINDOW(wd), keep_above);
 		return TRUE;
 	default:
 		return TRUE;
@@ -224,9 +220,13 @@ gboolean keypress(GtkWidget *widget, GdkEventKey *event, void *data) {
 
 void init(void)
 {
+	GError *err1 = NULL;
+	GError *err2 = NULL;
 	char *file;
 	int state_fd;
 	char *title;
+	int x;
+	int y;
 	GdkGeometry hints = {
 		.min_width = 10,
 		.min_height = 10,
@@ -260,12 +260,20 @@ void init(void)
 	g_signal_connect(wd, "delete-event", G_CALLBACK(destroy), NULL);
 	g_signal_connect(wd, "key-press-event", G_CALLBACK(keypress), wd);
 
-	config.height = optimal_height();
 	read_config();
-	if (config.x >= 0 && config.y >= 0)
-		gtk_window_move(GTK_WINDOW(wd), config.x, config.y);
-	gtk_window_set_keep_above(GTK_WINDOW(wd), config.keep_above);
-	gtk_window_resize(GTK_WINDOW(wd), config.width, config.height);
+	x = g_key_file_get_integer(config, CONFIG_GROUP, "x", &err1);
+	y = g_key_file_get_integer(config, CONFIG_GROUP, "y", &err2);
+	if (err1 == NULL && err2 == NULL)
+		gtk_window_move(GTK_WINDOW(wd), x, y);
+	g_clear_error(&err1);
+	g_clear_error(&err2);
+	gtk_window_set_keep_above(GTK_WINDOW(wd),
+				g_key_file_get_boolean(config, CONFIG_GROUP,
+				"keep_above", NULL));
+	gtk_window_resize(GTK_WINDOW(wd), g_key_file_get_integer(config,
+				CONFIG_GROUP, "width", NULL),
+				g_key_file_get_integer(config, CONFIG_GROUP,
+				"height", NULL));
 	gtk_window_set_geometry_hints(GTK_WINDOW(wd), img, &hints,
 				GDK_HINT_MIN_SIZE);
 }
