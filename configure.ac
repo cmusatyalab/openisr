@@ -155,6 +155,8 @@ if test z$enable_client = zyes ; then
 	ver=`$FOUND_PATH/bin/curl-config --version | cut -f2 -d\  `
 	CHECK_VERSION_VAL([curl], [$ver], [7.12.3])
 	
+	PKG_CHECK_MODULES([gtk], [gtk+-2.0 >= 2.8])
+	PKG_CHECK_MODULES([glib], [glib-2.0 >= 2.12])
 	PKG_CHECK_MODULES([libuuid], [uuid])
 fi
 
