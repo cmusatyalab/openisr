@@ -257,7 +257,7 @@ gboolean configure(GtkWidget *widget, GdkEventConfigure *event, void *data)
 	g_key_file_set_integer(config, CONFIG_GROUP, "x", event->x);
 	g_key_file_set_integer(config, CONFIG_GROUP, "y", event->y);
 	update_img();
-	return 0;
+	return FALSE;
 }
 
 gboolean destroy(GtkWidget *widget, GdkEvent *event, void *data)
