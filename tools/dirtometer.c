@@ -57,6 +57,17 @@ enum stats_labels {
 	NR_STATS
 };
 
+const char *stats_tips[] = {
+	"Data read by guest OS this session (MB)",
+	"Data written by guest OS this session (MB)",
+	"Chunk data read by Nexus this session (MB)",
+	"Chunk data written by Nexus this session (MB)",
+	"Chunks accessed this session (MB)",
+	"Chunks dirtied this session (MB)",
+	"Nexus chunk cache hit rate",
+	NULL
+};
+
 typedef long stats_array[NR_STATS][2];
 stats_array last_stats;
 GtkWidget *ebox[NR_STATS];
@@ -416,6 +427,7 @@ void init_window(void)
 	GtkWidget *vbox;
 	GtkWidget *hbox;
 	GtkWidget *table;
+	GtkTooltips *tips;
 	char *title;
 	const char **header;
 	int x;
@@ -436,6 +448,7 @@ void init_window(void)
 	expander = gtk_expander_new("Map");
 	table = gtk_table_new(2, NR_STATS, TRUE);
 	img = gtk_image_new();
+	tips = gtk_tooltips_new();
 	gtk_container_add(GTK_CONTAINER(wd), vbox);
 	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
 	gtk_box_pack_end(GTK_BOX(vbox), img, TRUE, TRUE, 0);
@@ -451,6 +464,7 @@ void init_window(void)
 		label[i] = gtk_label_new(NULL);
 		gtk_container_add(GTK_CONTAINER(ebox[i]), label[i]);
 		gtk_misc_set_alignment(GTK_MISC(label[i]), 1, 0.5);
+		gtk_tooltips_set_tip(tips, ebox[i], stats_tips[i], NULL);
 		gtk_table_attach(GTK_TABLE(table), ebox[i], i, i + 1, 1, 2,
 					GTK_FILL, 0, 3, 2);
 	}
