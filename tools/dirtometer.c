@@ -59,6 +59,7 @@ enum stats_labels {
 
 typedef long stats_array[NR_STATS][2];
 stats_array last_stats;
+GtkWidget *ebox[NR_STATS];
 GtkWidget *label[NR_STATS];
 
 GtkWidget *wd;
@@ -177,8 +178,8 @@ void update_stats(void)
 {
 	const GdkColor busy = {
 		.red = 65535,
-		.green = 0,
-		.blue = 0
+		.green = 16384,
+		.blue = 16384
 	};
 	stats_array cur_stats = {{0}};
 	int i;
@@ -231,10 +232,10 @@ void update_stats(void)
 		gtk_label_set_label(GTK_LABEL(label[i]), str);
 		g_free(str);
 		if (last_stats[i][0] == cur_stats[i][0] || cur_stats[i][1])
-			gtk_widget_modify_fg(label[i], GTK_STATE_NORMAL,
+			gtk_widget_modify_bg(ebox[i], GTK_STATE_NORMAL,
 						NULL);
 		else
-			gtk_widget_modify_fg(label[i],	GTK_STATE_NORMAL,
+			gtk_widget_modify_bg(ebox[i], GTK_STATE_NORMAL,
 						&busy);
 		for (j = 0; j < 2; j++)
 			last_stats[i][j] = cur_stats[i][j];
@@ -446,9 +447,11 @@ void init_window(void)
 	for (header = stats_headings_single; *header != NULL; header++, i++)
 		table_add_header(GTK_TABLE(table), *header, i, 1);
 	for (i = 0; i < NR_STATS; i++) {
+		ebox[i] = gtk_event_box_new();
 		label[i] = gtk_label_new(NULL);
+		gtk_container_add(GTK_CONTAINER(ebox[i]), label[i]);
 		gtk_misc_set_alignment(GTK_MISC(label[i]), 1, 0.5);
-		gtk_table_attach(GTK_TABLE(table), label[i], i, i + 1, 1, 2,
+		gtk_table_attach(GTK_TABLE(table), ebox[i], i, i + 1, 1, 2,
 					GTK_FILL, 0, 3, 2);
 	}
 	gtk_widget_show_all(GTK_WIDGET(wd));
