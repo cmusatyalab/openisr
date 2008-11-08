@@ -26,7 +26,7 @@ EXTRA_DIST = $(GEN:=.in)
 convert_chunks_LDFLAGS = $(SQLITE_LIBFLAGS) -lcrypto -lz
 convert_keyring_LDFLAGS = $(SQLITE_LIBFLAGS)
 dirtometer_CFLAGS = $(AM_CFLAGS) $(gtk_CFLAGS) $(glib_CFLAGS)
-dirtometer_CFLAGS += -Wno-unused-parameter
+dirtometer_CFLAGS += -Wno-unused-parameter -Wno-missing-field-initializers
 dirtometer_LDFLAGS = $(gtk_LIBS) $(glib_LIBS)
 query_LDFLAGS = $(SQLITE_LIBFLAGS)
 nextest_LDFLAGS = -lcrypto

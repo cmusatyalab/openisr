@@ -33,45 +33,30 @@
 #include <glib.h>
 
 #define CONFIG_GROUP "dirtometer"
+#define NOUTPUTS 2
 
-const char *stats_headings_double[] = {
-	"Guest",
-	"Nexus",
-	"State",
-	NULL
+struct stat_values {
+	long i[NOUTPUTS];
+	double f;
 };
 
-const char *stats_headings_single[] = {
-	"Hit",
-	NULL
+struct stat_output {
+	const char *tooltip;
+	char *(*format)(struct stat_values *values, int which);
+	gboolean (*changed)(struct stat_values *prev, struct stat_values *cur,
+				int which);
+	GtkWidget *ebox;
+	GtkWidget *label;
 };
 
-enum stats_labels {
-	SECTORS_READ,
-	SECTORS_WRITTEN,
-	CHUNK_READS,
-	CHUNK_WRITES,
-	CHUNKS_ACCESSED,
-	CHUNKS_DIRTIED,
-	CACHE_HIT_RATE,
-	NR_STATS
+struct stats {
+	const char *heading;
+	const char *attrs[NOUTPUTS];
+	gboolean (*fetch)(struct stats *);
+	struct stat_output output[NOUTPUTS];
+	struct stat_values cur;
+	struct stat_values prev;
 };
-
-const char *stats_tips[] = {
-	"Data read by guest OS this session (MB)",
-	"Data written by guest OS this session (MB)",
-	"Chunk data read by Nexus this session (MB)",
-	"Chunk data written by Nexus this session (MB)",
-	"Chunks accessed this session (MB)",
-	"Chunks dirtied this session (MB)",
-	"Nexus chunk cache hit rate",
-	NULL
-};
-
-typedef long stats_array[NR_STATS][2];
-stats_array last_stats;
-GtkWidget *ebox[NR_STATS];
-GtkWidget *label[NR_STATS];
 
 GtkWidget *wd;
 GtkWidget *img;
@@ -164,93 +149,200 @@ void write_config(void)
 	g_free(contents);
 }
 
-long read_stat(char *attr)
+char *get_attr(const char *attr)
 {
 	char *path;
 	char *data;
-	char *end;
 	gboolean ok;
-	long ret;
 
 	path = g_strdup_printf("%s/%s", statsdir, attr);
 	ok = g_file_get_contents(path, &data, NULL, NULL);
 	g_free(path);
 	if (!ok)
-		return -1;
+		return NULL;
 	g_strchomp(data);
-	ret = strtol(data, &end, 10);
-	if (data[0] == 0 || end[0] != 0)
-		ret = -1;
-	g_free(data);
-	return ret;
+	return data;
 }
 
-void update_stats(void)
+gboolean get_ints(struct stats *st)
+{
+	char *data;
+	char *end;
+	int i;
+	gboolean success = TRUE;
+
+	for (i = 0; i < NOUTPUTS; i++) {
+		if (st->attrs[i] == NULL)
+			continue;
+		data = get_attr(st->attrs[i]);
+		if (data == NULL)
+			return FALSE;
+		st->cur.i[i] = strtol(data, &end, 10);
+		if (data[0] == 0 || end[0] != 0)
+			success = FALSE;
+		g_free(data);
+	}
+	return success;
+}
+
+gboolean get_float(struct stats *st)
+{
+	char *data;
+	char *end;
+	gboolean success = TRUE;
+
+	data = get_attr(st->attrs[0]);
+	if (data == NULL)
+		return FALSE;
+	st->cur.f = strtod(data, &end);
+	if (data[0] == 0 || end[0] != 0)
+		success = FALSE;
+	g_free(data);
+	return success;
+}
+
+gboolean get_chunkstats(struct stats *st)
+{
+	int i;
+
+	st->cur.i[0] = 0;
+	st->cur.i[1] = 0;
+	for (i = 0; i < numchunks; i++) {
+		if (states[i] & 0x4) {
+			/* Accessed this session */
+			st->cur.i[0]++;
+		}
+		if (states[i] & 0x8) {
+			/* Dirtied this session */
+			st->cur.i[1]++;
+		}
+	}
+	return TRUE;
+}
+
+char *format_sectors(struct stat_values *values, int which)
+{
+	return g_strdup_printf("%.1f", 1.0 * values->i[which] / (1 << 11));
+}
+
+char *format_chunks(struct stat_values *values, int which)
+{
+	return g_strdup_printf("%.1f", 1.0 * values->i[which] /
+						chunks_per_mb);
+}
+
+char *format_compression(struct stat_values *values, int which)
+{
+	return g_strdup_printf("%.1f%%", 100 - values->f);
+}
+
+char *format_hit_rate(struct stat_values *values, int which)
+{
+	long hits = values->i[0];
+	long misses = values->i[1];
+	return g_strdup_printf("%.1f%%", 100.0 * hits / (hits + misses));
+}
+
+gboolean int_changed(struct stat_values *prev, struct stat_values *cur,
+				int which)
+{
+	return prev->i[which] != cur->i[which];
+}
+
+struct stats statistics[] = {
+	{
+		"Guest",
+		{"sectors_read", "sectors_written"},
+		get_ints,
+		{{"Data read by guest OS this session (MB)",
+			format_sectors, int_changed},
+		{"Data written by guest OS this session (MB)",
+			format_sectors, int_changed}}
+	}, {
+		"Nexus",
+		{"chunk_reads", "chunk_writes"},
+		get_ints,
+		{{"Chunk data read by Nexus this session (MB)",
+			format_chunks, int_changed},
+		{"Chunk data written by Nexus this session (MB)",
+			format_chunks, int_changed}}
+	}, {
+		"State",
+		{NULL},
+		get_chunkstats,
+		{{"Chunks accessed this session (MB)",
+			format_chunks, int_changed},
+		{"Chunks dirtied this session (MB)",
+			format_chunks, int_changed}}
+	}, {
+		"Savings",
+		{"compression_ratio_pct"},
+		get_float,
+		{{NULL},
+		{"Average compression savings from chunks written this session",
+			format_compression, NULL}}
+	}, {
+		"Hit",
+		{"cache_hits", "cache_misses"},
+		get_ints,
+		{{NULL},
+		{"Nexus chunk cache hit rate",
+			format_hit_rate, NULL}}
+	}, {0}
+};
+
+void update_stat_valid(struct stats *st)
 {
 	const GdkColor busy = {
 		.red = 65535,
 		.green = 16384,
 		.blue = 16384
 	};
-	stats_array cur_stats = {{0}};
+	struct stat_output *output;
 	int i;
-	int j;
 	char *str;
 
-	cur_stats[SECTORS_READ][0] = read_stat("sectors_read");
-	cur_stats[SECTORS_WRITTEN][0] = read_stat("sectors_written");
-	cur_stats[CHUNK_READS][0] = read_stat("chunk_reads");
-	cur_stats[CHUNK_WRITES][0] = read_stat("chunk_writes");
-	cur_stats[CACHE_HIT_RATE][0] = read_stat("cache_hits");
-	cur_stats[CACHE_HIT_RATE][1] = cur_stats[CACHE_HIT_RATE][0] +
-				read_stat("cache_misses");
-	cur_stats[CHUNKS_ACCESSED][0] = 0;
-	cur_stats[CHUNKS_DIRTIED][0] = 0;
-	for (i = 0; i < numchunks; i++) {
-		if (states[i] & 0x8)
-			cur_stats[CHUNKS_DIRTIED][0]++;
-		if (states[i] & 0x4)
-			cur_stats[CHUNKS_ACCESSED][0]++;
-	}
-
-	/* If one or more of the stats were invalid, don't bother updating. */
-	for (i = 0; i < NR_STATS; i++)
-		for (j = 0; j < 2; j++)
-			if (cur_stats[i][j] == -1)
-				return;
-
-	for (i = 0; i < NR_STATS; i++) {
-		switch (i) {
-		case SECTORS_READ:
-		case SECTORS_WRITTEN:
-			str = g_strdup_printf("%.1f", 1.0 * cur_stats[i][0] /
-						(1 << 11));
-			break;
-		case CHUNK_READS:
-		case CHUNK_WRITES:
-		case CHUNKS_ACCESSED:
-		case CHUNKS_DIRTIED:
-			str = g_strdup_printf("%.1f", 1.0 * cur_stats[i][0] /
-						chunks_per_mb);
-			break;
-		case CACHE_HIT_RATE:
-			str = g_strdup_printf("%.1f%%", 100.0 * cur_stats[i][0]
-						/ cur_stats[i][1]);
-			break;
-		default:
-			str = g_strdup_printf("unknown");
-		}
-		gtk_label_set_label(GTK_LABEL(label[i]), str);
+	for (i = 0; i < NOUTPUTS; i++) {
+		output = &st->output[i];
+		if (output->format == NULL)
+			continue;
+		str = output->format(&st->cur, i);
+		gtk_label_set_label(GTK_LABEL(output->label), str);
 		g_free(str);
-		if (last_stats[i][0] == cur_stats[i][0] || cur_stats[i][1])
-			gtk_widget_modify_bg(ebox[i], GTK_STATE_NORMAL,
-						NULL);
-		else
-			gtk_widget_modify_bg(ebox[i], GTK_STATE_NORMAL,
-						&busy);
-		for (j = 0; j < 2; j++)
-			last_stats[i][j] = cur_stats[i][j];
+		if (output->changed != NULL) {
+			if (output->changed(&st->prev, &st->cur, i))
+				gtk_widget_modify_bg(output->ebox,
+						GTK_STATE_NORMAL, &busy);
+			else
+				gtk_widget_modify_bg(output->ebox,
+						GTK_STATE_NORMAL, NULL);
+			st->prev = st->cur;
+		}
 	}
+}
+
+void update_stat_invalid(struct stats *st)
+{
+	struct stat_output *output;
+	int i;
+
+	for (i = 0; i < NOUTPUTS; i++) {
+		output = &st->output[i];
+		if (output->changed != NULL)
+			gtk_widget_modify_bg(output->ebox, GTK_STATE_NORMAL,
+						NULL);
+	}
+}
+
+void update_stats(void)
+{
+	struct stats *st;
+
+	for (st = statistics; st->heading != NULL; st++)
+		if (st->fetch(st))
+			update_stat_valid(st);
+		else
+			update_stat_invalid(st);
 }
 
 void free_pixels(unsigned char *pixels, void *data)
@@ -378,6 +470,8 @@ void init_files(void)
 	char *path;
 	char *linkdest;
 	char **linkparts;
+	char *val;
+	char *end;
 
 	path = g_strdup_printf("/dev/shm/openisr-chunkmap-%s", uuid);
 	state_fd = open(path, O_RDONLY);
@@ -405,19 +499,13 @@ void init_files(void)
 	g_strfreev(linkparts);
 	g_free(path);
 
-	chunks_per_mb = read_stat("chunk_size");
-	if (chunks_per_mb == -1)
+	val = get_attr("chunk_size");
+	if (val == NULL)
 		die("Couldn't get parcel chunk size");
-	chunks_per_mb = (1 << 20) / chunks_per_mb;
-}
-
-void table_add_header(GtkTable *table, const char *str, int col, int span)
-{
-	GtkWidget *lbl;
-
-	lbl = gtk_label_new(str);
-	gtk_misc_set_alignment(GTK_MISC(lbl), 0.5, 0.5);
-	gtk_table_attach(table, lbl, col, col + span, 0, 1, GTK_FILL, 0, 0, 0);
+	chunks_per_mb = (1 << 20) / strtol(val, &end, 10);
+	if (val[0] == 0 || end[0] != 0)
+		die("Couldn't parse parcel chunk size");
+	g_free(val);
 }
 
 void init_window(void)
@@ -427,12 +515,15 @@ void init_window(void)
 	GtkWidget *vbox;
 	GtkWidget *hbox;
 	GtkWidget *table;
+	GtkWidget *lbl;
 	GtkTooltips *tips;
+	struct stats *st;
+	struct stat_output *output;
 	char *title;
-	const char **header;
 	int x;
 	int y;
 	int i;
+	int j;
 	GdkGeometry hints = {
 		.min_width = 10,
 		.min_height = 10,
@@ -446,7 +537,8 @@ void init_window(void)
 	vbox = gtk_vbox_new(FALSE, 5);
 	hbox = gtk_hbox_new(FALSE, 5);
 	expander = gtk_expander_new("Map");
-	table = gtk_table_new(2, NR_STATS, TRUE);
+	for (i = 0; statistics[i].heading != NULL; i++);
+	table = gtk_table_new(i, 3, TRUE);
 	img = gtk_image_new();
 	tips = gtk_tooltips_new();
 	gtk_container_add(GTK_CONTAINER(wd), vbox);
@@ -454,19 +546,27 @@ void init_window(void)
 	gtk_box_pack_end(GTK_BOX(vbox), img, TRUE, TRUE, 0);
 	gtk_box_pack_start(GTK_BOX(hbox), table, FALSE, FALSE, 0);
 	gtk_box_pack_end(GTK_BOX(hbox), expander, FALSE, FALSE, 0);
-	for (i = 0, header = stats_headings_double; *header != NULL; header++,
-				i += 2)
-		table_add_header(GTK_TABLE(table), *header, i, 2);
-	for (header = stats_headings_single; *header != NULL; header++, i++)
-		table_add_header(GTK_TABLE(table), *header, i, 1);
-	for (i = 0; i < NR_STATS; i++) {
-		ebox[i] = gtk_event_box_new();
-		label[i] = gtk_label_new(NULL);
-		gtk_container_add(GTK_CONTAINER(ebox[i]), label[i]);
-		gtk_misc_set_alignment(GTK_MISC(label[i]), 1, 0.5);
-		gtk_tooltips_set_tip(tips, ebox[i], stats_tips[i], NULL);
-		gtk_table_attach(GTK_TABLE(table), ebox[i], i, i + 1, 1, 2,
-					GTK_FILL, 0, 3, 2);
+	for (i = 0; statistics[i].heading != NULL; i++) {
+		st = &statistics[i];
+		lbl = gtk_label_new(st->heading);
+		gtk_misc_set_alignment(GTK_MISC(lbl), 0, 0.5);
+		gtk_table_attach(GTK_TABLE(table), lbl, 0, 1, i, i + 1,
+					GTK_FILL, 0, 0, 0);
+		for (j = 0; j < NOUTPUTS; j++) {
+			output = &st->output[j];
+			if (output->format == NULL)
+				continue;
+			output->ebox = gtk_event_box_new();
+			output->label = gtk_label_new("--");
+			gtk_container_add(GTK_CONTAINER(output->ebox),
+						output->label);
+			gtk_misc_set_alignment(GTK_MISC(output->label), 1, 0.5);
+			gtk_tooltips_set_tip(tips, output->ebox,
+						output->tooltip, NULL);
+			gtk_table_attach(GTK_TABLE(table), output->ebox,
+						j + 1, j + 2, i, i + 1,
+						GTK_FILL, 0, 3, 2);
+		}
 	}
 	gtk_widget_show_all(GTK_WIDGET(wd));
 	g_signal_connect(wd, "configure-event", G_CALLBACK(configure), wd);
