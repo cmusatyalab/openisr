@@ -187,6 +187,41 @@ struct nexus_message {
 #define NEXUS_MSGTYPE_SET_META     ((msgtype_t) 0x1000)
 #define NEXUS_MSGTYPE_META_HARDERR ((msgtype_t) 0x1001)
 
+/* The names of the states in the chunkdata state machine.  These can be used
+   to interpret the "states" and "state_times" attributes in sysfs. */
+#define NEXUS_STATES \
+	/* No key or data */						\
+	NEXUS_STATE(INVALID)						\
+	/* Loading metadata */						\
+	NEXUS_STATE(LOAD_META)						\
+	/* Have metadata but not data */				\
+	NEXUS_STATE(META)						\
+	/* Loading data */						\
+	NEXUS_STATE(LOAD_DATA)						\
+	/* Have metadata and clean, encrypted data */			\
+	NEXUS_STATE(ENCRYPTED)						\
+	/* Decrypting data */						\
+	NEXUS_STATE(DECRYPTING)						\
+	/* Have metadata and data */					\
+	NEXUS_STATE(CLEAN)						\
+	/* Data is dirty */						\
+	NEXUS_STATE(DIRTY)						\
+	/* Encrypting data */						\
+	NEXUS_STATE(ENCRYPTING)						\
+	/* Data is dirty and encryption has finished */			\
+	NEXUS_STATE(DIRTY_ENCRYPTED)					\
+	/* Storing data */						\
+	NEXUS_STATE(STORE_DATA)						\
+	/* Metadata is dirty */						\
+	NEXUS_STATE(DIRTY_META)						\
+	/* Storing metadata */						\
+	NEXUS_STATE(STORE_META)						\
+	/* Error; data not valid; must notify userspace */		\
+	NEXUS_STATE(ERROR_USER)						\
+	/* Userspace notification queued */				\
+	NEXUS_STATE(ERROR_PENDING)					\
+	/* I/O error occurred; data not valid */			\
+	NEXUS_STATE(ERROR)            
 
 #ifdef __KERNEL__
 static inline void __nexus_h_sanity_check(void)

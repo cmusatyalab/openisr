@@ -35,25 +35,12 @@ enum cd_bits {
 
 #define CD_USER         (1 << __CD_USER)
 
+#define NEXUS_STATE(x) ST_ ## x,
 enum cd_state {
-	ST_INVALID,          /* No key or data */
-	ST_LOAD_META,        /* Loading metadata */
-	ST_META,             /* Have metadata but not data */
-	ST_LOAD_DATA,        /* Loading data */
-	ST_ENCRYPTED,        /* Have metadata and clean, encrypted data */
-	ST_DECRYPTING,       /* Decrypting data */
-	ST_CLEAN,            /* Have metadata and data */
-	ST_DIRTY,            /* Data is dirty */
-	ST_ENCRYPTING,       /* Encrypting data */
-	ST_DIRTY_ENCRYPTED,  /* Data is dirty and encryption has finished */
-	ST_STORE_DATA,       /* Storing data */
-	ST_DIRTY_META,       /* Metadata is dirty */
-	ST_STORE_META,       /* Storing metadata */
-	ST_ERROR_USER,       /* Error; data not valid; must notify userspace */
-	ST_ERROR_PENDING,    /* Userspace notification queued */
-	ST_ERROR,            /* I/O error occurred; data not valid */
+	NEXUS_STATES
 	NR_STATES
 };
+#undef NEXUS_STATE
 
 /**
  * struct chunkdata - one chunk in the chunkdata cache/state machine
