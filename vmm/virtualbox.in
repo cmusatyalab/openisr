@@ -157,15 +157,17 @@ def update_uuid():
 	# the UUID, so we have to directly update the XML file.  While we're
 	# at it, update the VM name as well.
 	dom = xml.dom.minidom.parse(vm_path)
-	vbs = dom.getElementsByTagName('VirtualBox')
-	assert len(vbs) == 1
-	machs = vbs[0].getElementsByTagName('Machine')
-	assert len(machs) == 1
-	if machs[0].getAttribute('uuid') == uuid:
+	tbl = dom
+	for el in 'VirtualBox', 'Machine':
+		tbl = tbl.getElementsByTagName(el)
+		assert len(tbl) == 1
+		tbl = tbl[0]
+	mach = tbl
+	if mach.getAttribute('uuid') == uuid:
 		dom.unlink()
 		return
-	machs[0].setAttribute('name', unicode(parcelname()))
-	machs[0].setAttribute('uuid', unicode(uuid))
+	mach.setAttribute('name', unicode(parcelname()))
+	mach.setAttribute('uuid', unicode(uuid))
 	ofd = file(new_vm_path, 'w')
 	dom.writexml(ofd, encoding = 'UTF-8')
 	ofd.close()
