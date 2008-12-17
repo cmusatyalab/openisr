@@ -31,6 +31,7 @@
 #include <gdk/gdkkeysyms.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
+#include "nexus.h"
 
 #define CONFIG_GROUP "dirtometer"
 #define NOUTPUTS 2
@@ -58,8 +59,16 @@ struct stats {
 	struct stat_values prev;
 };
 
+#define NEXUS_STATE(x) #x,
+char *state_names[]={
+	NEXUS_STATES
+};
+#undef NEXUS_STATE
+#define NR_STATES ((int)(sizeof(state_names) / sizeof(state_names[0])))
+
 GtkWidget *wd;
 GtkWidget *img;
+GtkWidget *state_lbl[NR_STATES];
 
 const char *uuid;
 const char *name;
@@ -344,6 +353,23 @@ void update_stats(void)
 			update_stat_invalid(st);
 }
 
+void update_states(void)
+{
+	char *data;
+	char **vals;
+	int i;
+
+	data = get_attr("states");
+	if (data == NULL)
+		return;
+	vals = g_strsplit(data, " ", 0);
+	if (g_strv_length(vals) == NR_STATES)
+		for (i = 0; i < NR_STATES; i++)
+			gtk_label_set_label(GTK_LABEL(state_lbl[i]), vals[i]);
+	g_strfreev(vals);
+	g_free(data);
+}
+
 void free_pixels(unsigned char *pixels, void *data)
 {
 	g_free(pixels);
@@ -417,6 +443,7 @@ gboolean update_event(void *data)
 	if (st.st_nlink == 0)
 		gtk_main_quit();
 	update_stats();
+	update_states();
 	update_img();
 	return TRUE;
 }
@@ -512,7 +539,8 @@ void init_window(void)
 	GError *err1 = NULL;
 	GError *err2 = NULL;
 	GtkWidget *vbox;
-	GtkWidget *table;
+	GtkWidget *stats_table;
+	GtkWidget *state_table;
 	GtkWidget *lbl;
 	GtkTooltips *tips;
 	struct stats *st;
@@ -534,17 +562,19 @@ void init_window(void)
 	gtk_window_set_gravity(GTK_WINDOW(wd), GDK_GRAVITY_STATIC);
 	vbox = gtk_vbox_new(FALSE, 5);
 	for (i = 0; statistics[i].heading != NULL; i++);
-	table = gtk_table_new(i, 3, TRUE);
+	stats_table = gtk_table_new(i, 3, TRUE);
+	state_table = gtk_table_new(NR_STATES, 2, FALSE);
 	img = gtk_image_new();
 	tips = gtk_tooltips_new();
 	gtk_container_add(GTK_CONTAINER(wd), vbox);
-	gtk_box_pack_start(GTK_BOX(vbox), table, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(vbox), stats_table, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(vbox), state_table, FALSE, FALSE, 0);
 	gtk_box_pack_end(GTK_BOX(vbox), img, TRUE, TRUE, 0);
 	for (i = 0; statistics[i].heading != NULL; i++) {
 		st = &statistics[i];
 		lbl = gtk_label_new(st->heading);
 		gtk_misc_set_alignment(GTK_MISC(lbl), 0, 0.5);
-		gtk_table_attach(GTK_TABLE(table), lbl, 0, 1, i, i + 1,
+		gtk_table_attach(GTK_TABLE(stats_table), lbl, 0, 1, i, i + 1,
 					GTK_FILL, 0, 0, 0);
 		for (j = 0; j < NOUTPUTS; j++) {
 			output = &st->output[j];
@@ -557,10 +587,22 @@ void init_window(void)
 			gtk_misc_set_alignment(GTK_MISC(output->label), 1, 0.5);
 			gtk_tooltips_set_tip(tips, output->ebox,
 						output->tooltip, NULL);
-			gtk_table_attach(GTK_TABLE(table), output->ebox,
+			gtk_table_attach(GTK_TABLE(stats_table), output->ebox,
 						j + 1, j + 2, i, i + 1,
 						GTK_FILL, 0, 3, 2);
 		}
+	}
+	for (i = 0; i < NR_STATES; i++) {
+		lbl = gtk_label_new(state_names[i]);
+		gtk_misc_set_alignment(GTK_MISC(lbl), 0, 0.5);
+		gtk_table_attach(GTK_TABLE(state_table), lbl, 0, 1, i, i + 1,
+					GTK_FILL, 0, 0, 0);
+		lbl = gtk_label_new("--");
+		gtk_label_set_width_chars(GTK_LABEL(lbl), 5);
+		gtk_misc_set_alignment(GTK_MISC(lbl), 1, 0.5);
+		gtk_table_attach(GTK_TABLE(state_table), lbl, 1, 2, i, i + 1,
+					GTK_FILL, 0, 0, 2);
+		state_lbl[i] = lbl;
 	}
 	gtk_widget_show_all(GTK_WIDGET(wd));
 	g_signal_connect(wd, "configure-event", G_CALLBACK(configure), wd);
@@ -608,6 +650,7 @@ int main(int argc, char **argv)
 	read_config();
 	init_window();
 	update_stats();
+	update_states();
 	update_img();
 	g_timeout_add(100, update_event, NULL);
 	gtk_main();
