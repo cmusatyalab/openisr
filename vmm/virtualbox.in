@@ -197,9 +197,71 @@ def update_uuid():
 	ofd.close()
 	os.rename(new_disk_path, disk_path)
 
+def check_invalid_images(vm_path):
+	# openMachine() will fail if the machine refers to a disk image that
+	# does not exist.  So we manually check and clean the XML beforehand.
+	modified = False
+	dom = xml.dom.minidom.parse(vm_path)
+	tbl = dom
+	for el in 'VirtualBox', 'Machine', 'Hardware':
+		tbl = tbl.getElementsByTagName(el)
+		assert len(tbl) == 1
+		tbl = tbl[0]
+	hw = tbl
+
+	types = ('CD', 'DVDDrive', vbox.getDVDImage), \
+		('floppy', 'FloppyDrive', vbox.getFloppyImage)
+	for name, el, getFunc in types:
+		for drive in hw.getElementsByTagName(el):
+			img = drive.getElementsByTagName('Image')
+			assert len(img) < 2
+			if len(img) == 0:
+				continue
+			uuid = img[0].getAttribute('uuid')
+			try:
+				getFunc(str(uuid))
+			except:
+				print >>sys.stderr, 'Unbinding nonexistent', \
+							name, 'image', uuid
+				drive.removeChild(img[0])
+				modified = True
+	if modified:
+		new_vm_path = vm_path + '.new'
+		ofd = file(new_vm_path, 'w')
+		dom.writexml(ofd, encoding = 'UTF-8')
+		ofd.close()
+		os.rename(new_vm_path, vm_path)
+	dom.unlink()
+
+def check_inaccessible_devices(vm):
+	modified = False
+	types = ('CD', vm.DVDDrive), \
+		('floppy', vm.FloppyDrive)
+	for name, drive in types:
+		if drive.state == ifaces.DriveState.ImageMounted:
+			image = drive.getImage()
+			if not image.accessible:
+				print >>sys.stderr, \
+					'Unbinding inaccessible', name, \
+							'image', image.filePath
+				drive.unmount()
+				modified = True
+		elif drive.state == ifaces.DriveState.HostDriveCaptured:
+			path = drive.getHostDrive().name
+			if not os.access(path, os.R_OK):
+				print >>sys.stderr, \
+					'Unbinding inaccessible host', name, \
+					'drive', path
+				drive.unmount()
+				modified = True
+	if modified:
+		vm.saveSettings()
+
 def register_machine():
+	check_invalid_images(vm_path)
 	disk = vbox.openHardDisk(disk_path)
 	vm = vbox.openMachine(vm_path)
+	check_inaccessible_devices(vm)
 	vbox.registerHardDisk(disk)
 	vbox.registerMachine(vm)
 	sesn = new_instance(CLASS_SESN)
