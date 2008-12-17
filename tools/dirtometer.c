@@ -60,7 +60,6 @@ struct stats {
 
 GtkWidget *wd;
 GtkWidget *img;
-GtkWidget *expander;
 
 const char *uuid;
 const char *name;
@@ -513,7 +512,6 @@ void init_window(void)
 	GError *err1 = NULL;
 	GError *err2 = NULL;
 	GtkWidget *vbox;
-	GtkWidget *hbox;
 	GtkWidget *table;
 	GtkWidget *lbl;
 	GtkTooltips *tips;
@@ -535,17 +533,13 @@ void init_window(void)
 	g_free(title);
 	gtk_window_set_gravity(GTK_WINDOW(wd), GDK_GRAVITY_STATIC);
 	vbox = gtk_vbox_new(FALSE, 5);
-	hbox = gtk_hbox_new(FALSE, 5);
-	expander = gtk_expander_new("Map");
 	for (i = 0; statistics[i].heading != NULL; i++);
 	table = gtk_table_new(i, 3, TRUE);
 	img = gtk_image_new();
 	tips = gtk_tooltips_new();
 	gtk_container_add(GTK_CONTAINER(wd), vbox);
-	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(vbox), table, FALSE, FALSE, 0);
 	gtk_box_pack_end(GTK_BOX(vbox), img, TRUE, TRUE, 0);
-	gtk_box_pack_start(GTK_BOX(hbox), table, FALSE, FALSE, 0);
-	gtk_box_pack_end(GTK_BOX(hbox), expander, FALSE, FALSE, 0);
 	for (i = 0; statistics[i].heading != NULL; i++) {
 		st = &statistics[i];
 		lbl = gtk_label_new(st->heading);
