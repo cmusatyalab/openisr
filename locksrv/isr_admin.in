@@ -821,8 +821,7 @@ sub getusage () {
     my $logentry;
     my $logdate;
     my $logstatus;
-    my $lastcmd;
-    my $lastdate;
+    my $laststr;
     my $lastlog;
     my $msg;
     
@@ -862,16 +861,16 @@ sub getusage () {
 		$lastlog = `egrep 'Running\ [^ ]+\$' $sessionlog | tail -n 1`;
 		chomp($lastlog);
 		if ($lastlog =~ /^(([^ ]+ ){3}[^ ]+) [0-9]+ (CLIENT: )?Running ([a-zA-Z]+)$/) {
-		    ($lastdate, $lastcmd) = ($1, $4);
+		    $laststr = "$4 $1";
 		} else {
-		    $lastdate = $lastcmd = "Unknown";
+		    $laststr = "Unknown";
 		}
 	    } else {
-		$lastdate = $lastcmd = "Never";
+		$laststr = "Never";
 	    }
 	    
 	    # Now print the message
-	    $msg = "$userid/$parcel $logdate [$lastcmd $lastdate]\n";
+	    $msg = "$userid/$parcel $logdate [$laststr]\n";
 	    if ($logstatus eq "released") {
 		print GREEN, $msg, RESET;
 	    } elsif ($logstatus eq "acquired") {
