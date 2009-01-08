@@ -108,7 +108,7 @@ typedef struct device_attribute kdevice_attribute_t;
 				const char *buf_p, size_t len_p)
 #endif
 
-/***** Request queue/bio *****************************************************/
+/***** Block layer ***********************************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
 /* For consistency across kernel versions, set the "scale" parameter high
@@ -152,6 +152,34 @@ static inline int __blk_end_request(struct request *req, int error,
 	end_that_request_last(req, uptodate);
 	return 0;
 }
+#endif
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28)
+#define block_open_method(name, handle) \
+	int name(struct inode *handle, struct file *unused)
+#define block_open_get_dev(handle) (handle->i_bdev->bd_disk->private_data)
+#define block_release_method(name, handle) \
+	int name(struct inode *handle, struct file *unused)
+#define block_release_get_dev(handle) (handle->i_bdev->bd_disk->private_data)
+#else
+#define block_open_method(name, handle) \
+	int name(struct block_device *handle, fmode_t unused)
+#define block_open_get_dev(handle) (handle->bd_disk->private_data)
+#define block_release_method(name, handle) \
+	int name(struct gendisk *handle, fmode_t unused)
+#define block_release_get_dev(handle) (handle->private_data)
+#endif
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28)
+static inline struct block_device *open_bdev_exclusive(const char *path,
+			mode_t mode, void *holder)
+{
+	int flags = (mode & FMODE_WRITE) ? 0 : MS_RDONLY;
+	return open_bdev_excl(path, flags, holder);
+}
+#define close_bdev_exclusive(bdev, mode) close_bdev_excl(bdev)
 #endif
 
 /***** Scatterlists **********************************************************/

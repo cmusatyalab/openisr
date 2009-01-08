@@ -238,14 +238,14 @@ static int ident_exists(char *ident)
  * We fail the request if the corresponding character device has already been
  * shut down.
  **/
-static int nexus_open(struct inode *ino, struct file *filp)
+static block_open_method(nexus_open, handle)
 {
 	struct nexus_dev *dev;
 	int found=0;
 	
 	spin_lock(&state.lock);
 	list_for_each_entry(dev, &state.devs, lh_devs) {
-		if (dev == ino->i_bdev->bd_disk->private_data) {
+		if (dev == block_open_get_dev(handle)) {
 			found=1;
 			/* Since it's still in the devs list, we know that
 			   chardev still holds a reference. */
@@ -273,9 +273,9 @@ static int nexus_open(struct inode *ino, struct file *filp)
  * The kernel guarantees that calls to nexus_release() will always be paired
  * with calls to nexus_open().
  **/
-static int nexus_release(struct inode *ino, struct file *filp)
+static block_release_method(nexus_release, handle)
 {
-	struct nexus_dev *dev=ino->i_bdev->bd_disk->private_data;
+	struct nexus_dev *dev=block_release_get_dev(handle);
 	
 	debug(DBG_CTR, "nexus_release");
 	/* Our return value is ignored, so we must use the uninterruptible
@@ -336,10 +336,10 @@ static void nexus_add_disk(work_t *work_struct)
 /**
  * nexus_open_bdev - bind a block device to a &nexus_dev given its path
  * 
- * open_bdev_excl() doesn't check permissions on the device node it's opening,
- * so we have to do it ourselves, here.  In order to prevent a symlink attack,
- * we save the dev_t from the permission check and verify that the device node
- * we eventually open matches that value.
+ * open_bdev_exclusive() doesn't check permissions on the device node it's
+ * opening, so we have to do it ourselves, here.  In order to prevent a
+ * symlink attack, we save the dev_t from the permission check and verify that
+ * the device node we eventually open matches that value.
  **/
 static struct block_device *nexus_open_bdev(struct nexus_dev *dev,
 			char *devpath)
@@ -351,8 +351,8 @@ static struct block_device *nexus_open_bdev(struct nexus_dev *dev,
 	int err;
 	
 	/* path_lookup() is apparently willing to look up a zero-length
-	   path.  open_bdev_excl() would catch this later, but that doesn't
-	   seem like a good idea. */
+	   path.  open_bdev_exclusive() would catch this later, but that
+	   doesn't seem like a good idea. */
 	if (devpath[0] == 0) {
 		err=-EINVAL;
 		goto bad;
@@ -372,15 +372,15 @@ static struct block_device *nexus_open_bdev(struct nexus_dev *dev,
 	devt=inode->i_rdev;
 	path_release(&nd);
 	
-	bdev=open_bdev_excl(devpath, 0, dev);
+	bdev=open_bdev_exclusive(devpath, FMODE_READ|FMODE_WRITE, dev);
 	if (IS_ERR(bdev)) {
 		err=PTR_ERR(bdev);
 		goto bad;
 	}
 	if (bdev->bd_dev != devt) {
 		/* The device node at the given path changed between the
-		   permission check and the open_bdev_excl().  We could loop,
-		   but it's probably better to just fail. */
+		   permission check and the open_bdev_exclusive().  We could
+		   loop, but it's probably better to just fail. */
 		err=-EAGAIN;
 		goto bad_close;
 	}
@@ -392,7 +392,7 @@ bad_release:
 	path_release(&nd);
 	goto bad;
 bad_close:
-	close_bdev_excl(bdev);
+	close_bdev_exclusive(bdev, FMODE_READ|FMODE_WRITE);
 	goto bad;
 }
 
@@ -424,7 +424,7 @@ static void nexus_dev_dtr(kdevice_t *kdevice)
 	if (dev->queue)
 		blk_cleanup_queue(dev->queue);
 	if (dev->chunk_bdev)
-		close_bdev_excl(dev->chunk_bdev);
+		close_bdev_exclusive(dev->chunk_bdev, FMODE_READ|FMODE_WRITE);
 	spin_lock(&state.lock);
 	list_del(&dev->lh_all_devs);
 	state.cache_pages -= dev->cachesize * chunk_pages(dev);
