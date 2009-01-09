@@ -31,6 +31,32 @@ CLASS_VBOX = '@virtualbox.org/VirtualBox;1'
 CLASS_SESN = '@virtualbox.org/Session;1'
 MIN_VERSION = '2.0.0'
 
+class MachineFile:
+	def __init__(self, vm_path):
+		self.path = vm_path
+		self.new_path = vm_path + '.new'
+		self.dom = xml.dom.minidom.parse(vm_path)
+
+	def descend(self, *elements):
+		tbl = self.dom
+		for el in elements:
+			tbl = tbl.getElementsByTagName(el)
+			assert len(tbl) == 1
+			tbl = tbl[0]
+		return tbl
+
+	def write(self):
+		ofd = file(self.new_path, 'w')
+		self.dom.writexml(ofd, encoding = 'UTF-8')
+		ofd.close()
+		os.rename(self.new_path, self.path)
+
+	def close(self):
+		"""Must be called when done with the MachineFile to ensure
+		that the data structures are properly cleaned up."""
+		self.dom.unlink()
+		del self.dom
+
 def vbox_init():
 	global xpcom, ifaces, vbox
 
@@ -148,7 +174,6 @@ def create_machine():
 # See if this parcel has been cloned.  If so, update all unique identifiers
 # associated with the VM.
 def update_uuid():
-	new_vm_path = vm_path + '.new'
 	new_disk_path = disk_path + '.new'
 	uuid = '{' + vmm.UUID + '}'
 
@@ -156,23 +181,15 @@ def update_uuid():
 	# unique on this system.  The VBox API doesn't provide for updating
 	# the UUID, so we have to directly update the XML file.  While we're
 	# at it, update the VM name as well.
-	dom = xml.dom.minidom.parse(vm_path)
-	tbl = dom
-	for el in 'VirtualBox', 'Machine':
-		tbl = tbl.getElementsByTagName(el)
-		assert len(tbl) == 1
-		tbl = tbl[0]
-	mach = tbl
+	mf = MachineFile(vm_path)
+	mach = mf.descend('VirtualBox', 'Machine')
 	if mach.getAttribute('uuid') == uuid:
-		dom.unlink()
+		mf.close()
 		return
 	mach.setAttribute('name', unicode(parcelname()))
 	mach.setAttribute('uuid', unicode(uuid))
-	ofd = file(new_vm_path, 'w')
-	dom.writexml(ofd, encoding = 'UTF-8')
-	ofd.close()
-	os.rename(new_vm_path, vm_path)
-	dom.unlink()
+	mf.write()
+	mf.close()
 
 	# Generate new MAC addresses for the VM's Ethernet cards
 	vm = vbox.openMachine(vm_path)
@@ -201,13 +218,8 @@ def check_invalid_images(vm_path):
 	# openMachine() will fail if the machine refers to a disk image that
 	# does not exist.  So we manually check and clean the XML beforehand.
 	modified = False
-	dom = xml.dom.minidom.parse(vm_path)
-	tbl = dom
-	for el in 'VirtualBox', 'Machine', 'Hardware':
-		tbl = tbl.getElementsByTagName(el)
-		assert len(tbl) == 1
-		tbl = tbl[0]
-	hw = tbl
+	mf = MachineFile(vm_path)
+	hw = mf.descend('VirtualBox', 'Machine', 'Hardware')
 
 	types = ('CD', 'DVDDrive', vbox.getDVDImage), \
 		('floppy', 'FloppyDrive', vbox.getFloppyImage)
@@ -226,12 +238,8 @@ def check_invalid_images(vm_path):
 				drive.removeChild(img[0])
 				modified = True
 	if modified:
-		new_vm_path = vm_path + '.new'
-		ofd = file(new_vm_path, 'w')
-		dom.writexml(ofd, encoding = 'UTF-8')
-		ofd.close()
-		os.rename(new_vm_path, vm_path)
-	dom.unlink()
+		mf.write()
+	mf.close()
 
 def check_inaccessible_devices(vm):
 	modified = False
