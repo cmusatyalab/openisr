@@ -29,7 +29,7 @@ from vmm import *
 
 CLASS_VBOX = '@virtualbox.org/VirtualBox;1'
 CLASS_SESN = '@virtualbox.org/Session;1'
-MIN_VERSION = '2.0.0'
+MIN_VERSION = (2,0,0)
 
 class MachineFile:
 	def __init__(self, vm_path):
@@ -84,15 +84,18 @@ def vbox_init():
 
 	# Get a VirtualBox instance and check the VirtualBox version
 	vbox = new_instance(CLASS_VBOX)
-	if version_to_int(vbox.version) < version_to_int(MIN_VERSION):
+	if parse_version(vbox.version) < MIN_VERSION:
 		raise VmmError("VirtualBox >= %s required (found %s)" % \
-				(MIN_VERSION, vbox.version))
+				(format_version(MIN_VERSION), vbox.version))
 
-def version_to_int(ver):
+def parse_version(ver):
 	parts = map(int, ver.replace('_OSE', '').split('.'))
 	if len(parts) != 3:
 		raise VmmError("Couldn't parse version: " + ver)
-	return parts[0] * 10000 + parts[1] * 100 + parts[2]
+	return tuple(parts)
+
+def format_version(parts):
+	return '.'.join(map(lambda x: str(x), parts))
 
 def new_instance(name):
 	return xpcom.components.classes[name].createInstance()
@@ -214,7 +217,7 @@ def update_uuid():
 	ofd.close()
 	os.rename(new_disk_path, disk_path)
 
-def check_invalid_images(vm_path):
+def check_invalid_images():
 	# openMachine() will fail if the machine refers to a disk image that
 	# does not exist.  So we manually check and clean the XML beforehand.
 	modified = False
@@ -266,7 +269,7 @@ def check_inaccessible_devices(vm):
 		vm.saveSettings()
 
 def register_machine():
-	check_invalid_images(vm_path)
+	check_invalid_images()
 	disk = vbox.openHardDisk(disk_path)
 	vm = vbox.openMachine(vm_path)
 	check_inaccessible_devices(vm)
