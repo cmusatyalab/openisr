@@ -174,9 +174,12 @@ def create_machine():
 	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), vm_path)
 	os.rmdir('%s/%s' % (vmm.CFGDIR, vmname))
 
-# See if this parcel has been cloned.  If so, update all unique identifiers
-# associated with the VM.
-def update_uuid():
+def fixup_uuid_1(mf):
+	"""See if this parcel has been cloned.  If so, we need to update all
+	unique identifiers associated with the VM.  If necessary, do the
+	by-hand fixups and return True.  If this returns True, the Main API
+	fixups need to happen later."""
+
 	new_disk_path = disk_path + '.new'
 	uuid = '{' + vmm.UUID + '}'
 
@@ -184,21 +187,11 @@ def update_uuid():
 	# unique on this system.  The VBox API doesn't provide for updating
 	# the UUID, so we have to directly update the XML file.  While we're
 	# at it, update the VM name as well.
-	mf = MachineFile(vm_path)
 	mach = mf.descend('VirtualBox', 'Machine')
 	if mach.getAttribute('uuid') == uuid:
-		mf.close()
-		return
+		return False
 	mach.setAttribute('name', unicode(parcelname()))
 	mach.setAttribute('uuid', unicode(uuid))
-	mf.write()
-	mf.close()
-
-	# Generate new MAC addresses for the VM's Ethernet cards
-	vm = vbox.openMachine(vm_path)
-	for i in range(vbox.systemProperties.networkAdapterCount):
-		vm.getNetworkAdapter(i).MACAddress = None
-	vm.saveSettings()
 
 	# Update the path to the Nexus virtual disk, and strip UUIDs from
 	# the VMDK so that VBox will regenerate them
@@ -217,11 +210,22 @@ def update_uuid():
 	ofd.close()
 	os.rename(new_disk_path, disk_path)
 
-def check_invalid_images():
-	# openMachine() will fail if the machine refers to a disk image that
-	# does not exist.  So we manually check and clean the XML beforehand.
+	return True
+
+def fixup_uuid_2(vm):
+	"""Do Main API fixups to change unique identifiers after a parcel
+	has been cloned."""
+
+	# Generate new MAC addresses for the VM's Ethernet cards
+	for i in range(vbox.systemProperties.networkAdapterCount):
+		vm.getNetworkAdapter(i).MACAddress = None
+
+def fixup_invalid_images(mf):
+	"""openMachine() will fail if the machine refers to a disk image that
+	does not exist.  Manually check and clean the XML to prevent this.
+	Return True if we changed something."""
+
 	modified = False
-	mf = MachineFile(vm_path)
 	hw = mf.descend('VirtualBox', 'Machine', 'Hardware')
 
 	types = ('CD', 'DVDDrive', vbox.getDVDImage), \
@@ -240,11 +244,12 @@ def check_invalid_images():
 							name, 'image', uuid
 				drive.removeChild(img[0])
 				modified = True
-	if modified:
-		mf.write()
-	mf.close()
+	return modified
 
-def check_inaccessible_devices(vm):
+def fixup_inaccessible_devices(vm):
+	"""Unbind inaccessible devices which will prevent the VM from starting.
+	Return True if we have done so."""
+
 	modified = False
 	types = ('CD', vm.DVDDrive), \
 		('floppy', vm.FloppyDrive)
@@ -265,14 +270,31 @@ def check_inaccessible_devices(vm):
 					'drive', path
 				drive.unmount()
 				modified = True
-	if modified:
+	return modified
+
+def fixup_machine():
+	"""Fix the machine configuration prior to running it."""
+
+	# First do the fixups that modify the machine files directly, since
+	# otherwise openMachine() may fail.
+	mf = MachineFile(vm_path)
+	did_uuid = fixup_uuid_1(mf)
+	did_invalid = fixup_invalid_images(mf)
+	if did_uuid or did_invalid:
+		mf.write()
+	mf.close()
+
+	# Now do the fixups that use the Main API.
+	vm = vbox.openMachine(vm_path)
+	if did_uuid:
+		fixup_uuid_2(vm)
+	did_inaccessible = fixup_inaccessible_devices(vm)
+	if did_uuid or did_inaccessible:
 		vm.saveSettings()
 
 def register_machine():
-	check_invalid_images()
 	disk = vbox.openHardDisk(disk_path)
 	vm = vbox.openMachine(vm_path)
-	check_inaccessible_devices(vm)
 	vbox.registerHardDisk(disk)
 	vbox.registerMachine(vm)
 	sesn = new_instance(CLASS_SESN)
@@ -380,7 +402,7 @@ def run():
 		create_disk()
 	if not os.path.isfile(vm_path):
 		create_machine()
-	update_uuid()
+	fixup_machine()
 	# Make sure there's not a leftover registration from a previous crash
 	unregister_machine()
 	success = False
