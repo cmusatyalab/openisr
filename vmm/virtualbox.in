@@ -30,6 +30,7 @@ from vmm import *
 CLASS_VBOX = '@virtualbox.org/VirtualBox;1'
 CLASS_SESN = '@virtualbox.org/Session;1'
 MIN_VERSION = (2,0,0)
+SETTINGS_VERSIONS = ((1,3), (1,5))
 
 class MachineFile:
 	def __init__(self, vm_path):
@@ -94,6 +95,9 @@ def parse_version(ver):
 		raise VmmError("Couldn't parse version: " + ver)
 	return tuple(parts)
 
+def parse_settings_version(ver):
+	return tuple(map(int, ver.split('-')[0].split('.')))
+
 def format_version(parts):
 	return '.'.join(map(lambda x: str(x), parts))
 
@@ -117,9 +121,28 @@ def try_close(sesn):
 		pass
 
 def check_runnable():
+	"""Determine whether there are any conditions which would prevent us
+	from resuming this machine."""
+
+	# Check that we're suspended with the right VMM
 	if vmm.SUSPENDED != 'no' and vmm.SUSPENDED != 'virtualbox':
 		raise VmmError('Cannot resume: parcel already suspended ' + \
 					'with ' + vmm.SUSPENDED)
+
+	# Check against minimum settings version.  If the settings version
+	# is newer than what this VirtualBox can understand, we won't even
+	# be able to do an openMachine() to check it, so we have to read
+	# the XML.
+	want_cfg_ver = parse_settings_version(vbox.settingsFormatVersion)
+	mf = MachineFile(vm_path)
+	found_cfg_ver = mf.descend('VirtualBox').getAttribute('version')
+	found_cfg_ver = parse_settings_version(found_cfg_ver)
+	mf.close()
+	if want_cfg_ver < found_cfg_ver:
+		raise VmmError('VirtualBox too old to run this parcel ' \
+					'(settings version %s, max %s)' % \
+					(format_version(found_cfg_ver),
+					format_version(want_cfg_ver)))
 
 def create_disk():
 	# Always round down
@@ -173,6 +196,38 @@ def create_machine():
 	del vm
 	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), vm_path)
 	os.rmdir('%s/%s' % (vmm.CFGDIR, vmname))
+
+def fixup_upgrade_settings(mf):
+	"""See if this VM has the most recent settings format.  If not, ask
+	the user whether to continue.  Return True if upgrade is required.
+	This must run during the first pass rather than the second one:
+	otherwise, it could leave a UUID conversion half-done if the user
+	decides to abort."""
+
+	cfg_ver = mf.descend('VirtualBox').getAttribute('version')
+	if cfg_ver == vbox.settingsFormatVersion:
+		return False
+	print >>sys.stderr, '\nThis parcel is configured for an older', \
+				'version of VirtualBox.'
+	print >>sys.stderr, 'If you resume the parcel, it will be upgraded', \
+				'and will no longer be usable'
+	print >>sys.stderr, 'with older versions of VirtualBox.\n'
+	cfg_ver = parse_settings_version(vbox.settingsFormatVersion)
+	if cfg_ver not in SETTINGS_VERSIONS:
+		print >>sys.stderr, 'NOTE: This version of OpenISR does', \
+				'not recognize this version of VirtualBox.'
+		print >>sys.stderr, 'Resuming this parcel will likely break', \
+				'it.  You may continue anyway, but you'
+		print >>sys.stderr, 'should be prepared to "isr discard"', \
+				'if it fails.\n'
+	resp = ''
+	while resp != 'y' and resp != 'n':
+		sys.stderr.write('Resume parcel? (y/n) ')
+		resp = sys.stdin.readline().strip()
+	print >>sys.stderr
+	if resp != 'y':
+		raise VmmError('User declined to upgrade parcel')
+	return True
 
 def fixup_uuid_1(mf):
 	"""See if this parcel has been cloned.  If so, we need to update all
@@ -278,6 +333,9 @@ def fixup_machine():
 	# First do the fixups that modify the machine files directly, since
 	# otherwise openMachine() may fail.
 	mf = MachineFile(vm_path)
+	# NOTE: fixup_upgrade_settings() runs during the first pass but
+	# commits during the second one!
+	did_upgrade = fixup_upgrade_settings(mf)
 	did_uuid = fixup_uuid_1(mf)
 	did_invalid = fixup_invalid_images(mf)
 	if did_uuid or did_invalid:
@@ -289,8 +347,8 @@ def fixup_machine():
 	if did_uuid:
 		fixup_uuid_2(vm)
 	did_inaccessible = fixup_inaccessible_devices(vm)
-	if did_uuid or did_inaccessible:
-		vm.saveSettings()
+	if did_uuid or did_inaccessible or did_upgrade:
+		vm.saveSettingsWithBackup()
 
 def register_machine():
 	disk = vbox.openHardDisk(disk_path)
@@ -389,15 +447,13 @@ def run_machine():
 
 def info():
 	vmm.VMNAME = 'VirtualBox'
-	check_runnable()
-	# We don't actually need XPCOM, but we have to make sure that we can
-	# load it successfully
 	vbox_init()
+	check_runnable()
 
 def run():
 	signal.signal(signal.SIGINT, handle_signal)
-	check_runnable()
 	vbox_init()
+	check_runnable()
 	if not os.path.isfile(disk_path):
 		create_disk()
 	if not os.path.isfile(vm_path):
