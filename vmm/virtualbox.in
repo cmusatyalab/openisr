@@ -134,15 +134,17 @@ def check_runnable():
 	# is newer than what this VirtualBox can understand, we won't even
 	# be able to do an openMachine() to check it, so we have to read
 	# the XML.
-	want_cfg_ver = parse_settings_version(vbox.settingsFormatVersion)
-	mf = MachineFile(vm_path)
-	found_cfg_ver = mf.descend('VirtualBox').getAttribute('version')
-	found_cfg_ver = parse_settings_version(found_cfg_ver)
-	mf.close()
-	if want_cfg_ver < found_cfg_ver:
-		raise VmmError('VirtualBox too old to run this parcel ' \
-					'(settings version %s, max %s)' % \
-					(format_version(found_cfg_ver),
+	if os.path.isfile(vm_path):
+		want_cfg_ver = parse_settings_version( \
+				vbox.settingsFormatVersion)
+		mf = MachineFile(vm_path)
+		found_cfg_ver = parse_settings_version(mf. \
+				descend('VirtualBox').getAttribute('version'))
+		mf.close()
+		if want_cfg_ver < found_cfg_ver:
+			raise VmmError('VirtualBox too old to run this ' \
+					'parcel (settings version %s, max %s)' \
+					% (format_version(found_cfg_ver), \
 					format_version(want_cfg_ver)))
 
 def create_disk():
