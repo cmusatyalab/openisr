@@ -18,6 +18,7 @@
 
 import os
 import sys
+import re
 import signal
 import shutil
 import time
@@ -476,13 +477,23 @@ def run():
 				raise
 
 def cleanup():
-	shutil.rmtree(vmm.CFGDIR + '/Logs', True)
+	# Try to unregister the machine if it's still registered.  Fail
+	# silently if VirtualBox isn't installed.
 	try:
 		vbox_init()
 	except:
-		# Fail silently if VirtualBox isn't installed
-		return
-	unregister_machine(do_save = False)
+		pass
+	else:
+		unregister_machine(do_save = False)
+
+	# Remove logs
+	shutil.rmtree(vmm.CFGDIR + '/Logs', True)
+
+	# Remove backup files left by saveSettingsWithBackup()
+	regexp = re.escape(os.path.basename(vm_path)) + '\..+\.bak(\.[0-9]+)?$'
+	for name in os.listdir(vmm.CFGDIR):
+		if re.match(regexp, name):
+			os.remove(vmm.CFGDIR + '/' + name)
 
 vmm.DEBUG = (vmm.VERBOSE == "yes")
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
