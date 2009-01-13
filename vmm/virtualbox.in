@@ -405,6 +405,11 @@ def unregister_machine(do_save = True):
 	else:
 		sesn = new_instance(CLASS_SESN)
 		vbox.openSession(sesn, vm.id)
+		if sesn.machine.settingsFileVersion != \
+					vbox.settingsFormatVersion:
+			print >>sys.stderr, 'Warning: Auto-converting VM', \
+					'settings file during unregistration'
+			sesn.machine.saveSettingsWithBackup()
 		try:
 			unregister_state(sesn, do_save)
 			detach_disk(sesn)
@@ -455,13 +460,13 @@ def run():
 	signal.signal(signal.SIGINT, handle_signal)
 	vbox_init()
 	check_runnable()
+	# Make sure there's not a leftover registration from a previous crash
+	unregister_machine()
 	if not os.path.isfile(disk_path):
 		create_disk()
 	if not os.path.isfile(vm_path):
 		create_machine()
 	fixup_machine()
-	# Make sure there's not a leftover registration from a previous crash
-	unregister_machine()
 	success = False
 	try:
 		register_machine()
