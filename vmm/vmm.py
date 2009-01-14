@@ -17,6 +17,7 @@
 
 import os
 import sys
+import errno
 import signal
 import subprocess
 import stat
@@ -109,18 +110,32 @@ def find_program(prog):
 			return path
 	return False
 
-# Run a process and wait for it to complete, redirecting its stdout to stderr
-# so that the child can't write key-value pairs back to our calling process.
-# Ignore SIGINT and SIGQUIT while the child is running.
-def run_program(*args):
-	restore = {}
+# Run a program and wait for it to exit, redirecting its stdout to stderr so
+# that the child can't write key-value pairs back to our calling process.
+# sigint_handler specifies a function to be called if we receive SIGINT;
+# it takes the pid of the child as its first argument.  If sigint_handler is
+# not specified, we ignore SIGINT while the child is running.
+def run_program(args, sigint_handler = lambda pid: None):
+	restore = None
+	proc = None
+	def handle_signal(sig, frame):
+		if proc is not None:
+			sigint_handler(proc.pid)
 	try:
-		for sig in signal.SIGINT, signal.SIGQUIT:
-			restore[sig] = signal.signal(sig, lambda x, y: None)
-		ret = subprocess.call(args, stdout = sys.stderr)
+		restore = signal.signal(signal.SIGINT, handle_signal)
+		proc = subprocess.Popen(args, stdout = sys.stderr)
+		while True:
+			try:
+				proc.wait()
+			except OSError, e:
+				if e.errno == errno.EINTR:
+					continue
+				raise
+			else:
+				break
 	finally:
-		for sig in restore.keys():
-			signal.signal(sig, restore[sig])
-	return ret
+		if restore is not None:
+			signal.signal(signal.SIGINT, restore)
+	return proc.returncode
 
 _init()

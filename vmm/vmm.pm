@@ -111,24 +111,41 @@ sub find_program {
 	return undef;
 }
 
-# Wrapper for system() that temporarily redirects stdout to stderr, so that
-# the child can't write key-value pairs back to our calling process.  system()
-# ignores SIGINT and SIGQUIT while the child is running.
+# Run a program and wait for it to exit, redirecting its stdout to stderr so
+# that the child can't write key-value pairs back to our calling process.
+# The second parameter specifies a subroutine to be called if we receive
+# SIGINT; it takes the pid of the child as its first argument.  If the second
+# parameter is undefined, we ignore SIGINT while the child is running.
 sub run_program {
 	my $cmd = shift;
+	my $sigint_sub = shift;
 
-	my $ret;
-	my $saved;
+	my $pid;
 
-	open($saved, ">&", *STDOUT)
-		or fail "Couldn't dup stdout";
-	open(STDOUT, ">&", *STDERR)
-		or fail "Couldn't reopen stdout";
-	$ret = system($cmd);
-	open(STDOUT, ">&", $saved)
-		or fail "Couldn't restore stdout";
-	close($saved);
-	return $ret;
+	local $SIG{'INT'};
+	if (defined $sigint_sub) {
+		$SIG{'INT'} = sub { &$sigint_sub($pid) };
+	} else {
+		$SIG{'INT'} = sub {}
+	}
+
+	defined ($pid = fork)
+		or return -1;
+	if (!$pid) {
+		open(STDOUT, ">&", *STDERR)
+			or fail "Couldn't reopen stdout";
+		exec $cmd
+			or fail "Couldn't exec $cmd";
+	}
+	WAIT: {
+		if (waitpid($pid, 0) == -1) {
+			# Perl seems to return EBADF when it means EINTR.
+			redo WAIT
+				if $!{EBADF} or $!{EINTR};
+			return -1;
+		}
+	}
+	return $?;
 }
 
 1;
