@@ -58,7 +58,7 @@ sub run {
 	$dev = realpath($DISK);
 	print STDERR "Block device: $dev\n";
 
-	$ret = run_program($program);
+	$ret = run_program($program, sub { kill 'HUP', shift });
 	fail "Couldn't run $program"
 		if $ret == -1;
 }
