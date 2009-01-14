@@ -915,8 +915,6 @@ sub run () {
 	local $ENV{'MEM'} = exists $cfg{'MEM'} ? $cfg{'MEM'} : 512;
 	local $ENV{'FULLSCREEN'} = $fullscreen ? "yes" : "no";
 	local $ENV{'SUSPENDED'} = $memtype;
-	# Ignore SIGINT in a way that will not be inherited by the VMM driver
-	local $SIG{'INT'} = sub {};
 	%results = run_vmm($driver, 'run');
     }
 
@@ -1993,6 +1991,7 @@ sub run_vmm ($$) {
     my %results;
     my $key;
     my $value;
+    my $pid;
 
     errexit("Couldn't find driver for VMM '$driver'")
         unless -x $cmd;
@@ -2005,13 +2004,17 @@ sub run_vmm ($$) {
 	if exists $syscfg{"$driver.command"};
     local $ENV{'VERBOSE'} = $verbose > 1 ? "yes" : "no";
 
-    open(VMM, '-|', $cmd, $mode)
-        or errexit("Couldn't launch driver for VMM '$driver'");
-    while (<VMM>) {
-	($key, $value) = split /=/, $_, 2;
-	next unless defined $value;
-	chomp $value;
-	$results{$key} = $value;
+    # While the driver is running, redirect SIGINT to the driver
+    {
+	local $SIG{'INT'} = sub { kill('INT', $pid) if $pid };
+	$pid = open(VMM, '-|', $cmd, $mode)
+	    or errexit("Couldn't launch driver for VMM '$driver'");
+	while (<VMM>) {
+	    ($key, $value) = split /=/, $_, 2;
+	    next unless defined $value;
+	    chomp $value;
+	    $results{$key} = $value;
+	}
     }
     close VMM;
 
