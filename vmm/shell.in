@@ -59,8 +59,8 @@ sub run {
 	print STDERR "Block device: $dev\n";
 
 	$ret = run_program($program);
-	fail "$program returned $ret"
-		if $ret;
+	fail "Couldn't run $program"
+		if $ret == -1;
 }
 
 sub cleanup {}
