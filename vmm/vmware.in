@@ -25,6 +25,7 @@ BEGIN {
 	import vmm;
 }
 
+use Cwd qw/abs_path/;
 use strict;
 use warnings;
 
@@ -344,6 +345,42 @@ sub update_cfg {
 	}
 }
 
+# When we run VMware, our immediate child is not the binary itself, but a
+# shell script which runs the binary and which ignores SIGINT.  To ask VMware
+# to exit, we need to send SIGINT to the child *of the shell script*.
+sub kill_vmware {
+	my $pid = shift;
+
+	my $child_bin;
+	my $shell_path;
+	my $cur;
+	my $ppid;
+
+	# Get the binary being run by our child, and compare it to /bin/sh.
+	# /bin/sh may be a symlink, so we need to canonicalize it.
+	$child_bin = readlink "/proc/$pid/exe"
+		or return;
+	$shell_path = abs_path "/bin/sh";
+	if ($child_bin ne $shell_path) {
+		# Our child is not a shell, so just signal it directly.
+		kill 'INT', $pid;
+		return;
+	}
+	# Send SIGINT to all children of $pid.
+	opendir(PROC, "/proc")
+		or return;
+	foreach $cur (readdir PROC) {
+		next if $cur !~ /^[0-9]+$/;
+		open(STAT, "/proc/$cur/stat")
+			or next;
+		$ppid = (split ' ', <STAT>)[3];
+		close STAT;
+		kill 'INT', $cur
+			if $ppid == $pid;
+	}
+	closedir PROC;
+}
+
 sub run {
 	my $ret;
 	my $opts;
@@ -354,7 +391,8 @@ sub run {
 	{
 		local $ENV{'LD_PRELOAD'} = "libvdisk.so.0";
 		local $ENV{'VDISK_DEVICE'} = $DISK;
-		$ret = run_program("$program $opts $CFGDIR/vmware.vmx");
+		$ret = run_program("$program $opts $CFGDIR/vmware.vmx",
+					\&kill_vmware);
 	}
 	fail "Couldn't run $program"
 		if $ret == -1;
