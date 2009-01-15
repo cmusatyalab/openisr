@@ -114,8 +114,10 @@ def find_program(prog):
 # that the child can't write key-value pairs back to our calling process.
 # sigint_handler specifies a function to be called if we receive SIGINT;
 # it takes the pid of the child as its first argument.  If sigint_handler is
-# not specified, we ignore SIGINT while the child is running.
-def run_program(args, sigint_handler = lambda pid: None):
+# not specified, we ignore SIGINT while the child is running.  If new_pgrp
+# is True, we run the child in its own process group and redirect its stdin/
+# stdout/stderr to /dev/null.
+def run_program(args, sigint_handler = lambda pid: None, new_pgrp = False):
 	restore = None
 	proc = None
 	def handle_signal(sig, frame):
@@ -123,7 +125,16 @@ def run_program(args, sigint_handler = lambda pid: None):
 			sigint_handler(proc.pid)
 	try:
 		restore = signal.signal(signal.SIGINT, handle_signal)
-		proc = subprocess.Popen(args, stdout = sys.stderr)
+		if new_pgrp:
+			proc = subprocess.Popen(args, \
+					stdin = file("/dev/null", "r"), \
+					stdout = file("/dev/null", "w"), \
+					stderr = file("/dev/null", "w"), \
+					preexec_fn = os.setpgrp)
+		else:
+			fd = os.dup(sys.stderr.fileno())
+			proc = subprocess.Popen(args, stdout = fd)
+			os.close(fd)
 		while True:
 			try:
 				proc.wait()

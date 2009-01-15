@@ -18,6 +18,7 @@
 package vmm;
 use File::Spec;
 use Exporter qw/import/;
+use POSIX qw/setpgid/;
 use strict;
 use warnings;
 
@@ -115,10 +116,13 @@ sub find_program {
 # that the child can't write key-value pairs back to our calling process.
 # The second parameter specifies a subroutine to be called if we receive
 # SIGINT; it takes the pid of the child as its first argument.  If the second
-# parameter is undefined, we ignore SIGINT while the child is running.
+# parameter is undefined, we ignore SIGINT while the child is running.  If
+# the third parameter is true, we run the child in its own process group
+# and redirect its stdin/stdout/stderr to /dev/null.
 sub run_program {
 	my $cmd = shift;
 	my $sigint_sub = shift;
+	my $new_pgroup = shift;
 
 	my $pid;
 
@@ -132,8 +136,19 @@ sub run_program {
 	defined ($pid = fork)
 		or return -1;
 	if (!$pid) {
-		open(STDOUT, ">&", *STDERR)
-			or fail "Couldn't reopen stdout";
+		if ($new_pgroup) {
+			open(STDIN, "/dev/null")
+				or fail "Couldn't reopen stdin";
+			open(STDOUT, ">", "/dev/null")
+				or fail "Couldn't reopen stdout";
+			open(STDERR, ">", "/dev/null")
+				or fail "Couldn't reopen stderr";
+			setpgid(0, 0)
+				or fail "Couldn't set process group";
+		} else {
+			open(STDOUT, ">&", *STDERR)
+				or fail "Couldn't reopen stdout";
+		}
 		exec $cmd
 			or fail "Couldn't exec $cmd";
 	}
