@@ -348,6 +348,7 @@ sub update_cfg {
 # When we run VMware, our immediate child is not the binary itself, but a
 # shell script which runs the binary and which ignores SIGINT.  To ask VMware
 # to exit, we need to send SIGINT to the child *of the shell script*.
+my $signaled = 0;
 sub kill_vmware {
 	my $pid = shift;
 
@@ -356,6 +357,9 @@ sub kill_vmware {
 	my $cur;
 	my $ppid;
 
+	return if $signaled;
+	$signaled = 1;
+	print STDERR "Suspending parcel...\n";
 	# Get the binary being run by our child, and compare it to /bin/sh.
 	# /bin/sh may be a symlink, so we need to canonicalize it.
 	$child_bin = readlink "/proc/$pid/exe"
@@ -392,7 +396,7 @@ sub run {
 		local $ENV{'LD_PRELOAD'} = "libvdisk.so.0";
 		local $ENV{'VDISK_DEVICE'} = $DISK;
 		$ret = run_program("$program $opts $CFGDIR/vmware.vmx",
-					\&kill_vmware);
+					\&kill_vmware, ($VERBOSE ne "yes"));
 	}
 	fail "Couldn't run $program"
 		if $ret == -1;
