@@ -69,6 +69,7 @@ char *state_names[]={
 GtkWidget *wd;
 GtkWidget *img;
 GtkWidget *state_lbl[NR_STATES];
+GtkWidget *always_on_top;
 
 const char *uuid;
 const char *name;
@@ -464,30 +465,50 @@ gboolean destroy(GtkWidget *widget, GdkEvent *event, void *data)
 	return TRUE;
 }
 
-gboolean keypress(GtkWidget *widget, GdkEventKey *event, void *data) {
-	gboolean keep_above;
-
+gboolean keypress(GtkWidget *widget, GdkEventKey *event, void *data)
+{
 	switch (event->keyval) {
-	case GDK_Escape:
-	case GDK_q:
-		gtk_main_quit();
-		return TRUE;
-	case GDK_space:
-		gtk_window_resize(GTK_WINDOW(wd),
-					g_key_file_get_integer(config,
-					CONFIG_GROUP, "width", NULL),
-					optimal_height());
-		return TRUE;
 	case GDK_Tab:
-		keep_above = !g_key_file_get_boolean(config, CONFIG_GROUP,
-					"keep_above", NULL);
-		g_key_file_set_boolean(config, CONFIG_GROUP, "keep_above",
-					keep_above);
-		gtk_window_set_keep_above(GTK_WINDOW(wd), keep_above);
+		/* GTK won't let us install an accelerator for this, so we
+		   have to do it by hand. */
+		gtk_widget_activate(always_on_top);
 		return TRUE;
 	default:
-		return TRUE;
+		return FALSE;
 	}
+}
+
+gboolean menu_popup(GtkWidget *widget, GdkEventButton *event, GtkWidget *menu)
+{
+	if (event->type != GDK_BUTTON_PRESS || event->button != 3)
+		return FALSE;
+	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, event->button,
+				event->time);
+	return TRUE;
+}
+
+gboolean menu_autoresize(GtkMenuItem *item, void *data)
+{
+	gtk_window_resize(GTK_WINDOW(wd), g_key_file_get_integer(config,
+				CONFIG_GROUP, "width", NULL),
+				optimal_height());
+	return TRUE;
+}
+
+gboolean menu_set_keep_above(GtkCheckMenuItem *item, void *data)
+{
+	gboolean newval;
+
+	newval = gtk_check_menu_item_get_active(item);
+	g_key_file_set_boolean(config, CONFIG_GROUP, "keep_above", newval);
+	gtk_window_set_keep_above(GTK_WINDOW(wd), newval);
+	return TRUE;
+}
+
+gboolean menu_quit(GtkMenuItem *item, void *data)
+{
+	gtk_main_quit();
+	return TRUE;
 }
 
 void init_files(void)
@@ -534,14 +555,54 @@ void init_files(void)
 	g_free(val);
 }
 
+GtkWidget *init_menu(GtkAccelGroup *accels)
+{
+	GtkWidget *menu;
+	GtkWidget *item;
+
+	menu = gtk_menu_new();
+
+	item = gtk_check_menu_item_new_with_label("Keep window on top");
+	gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(item),
+				g_key_file_get_boolean(config, CONFIG_GROUP,
+				"keep_above", NULL));
+	g_signal_connect(item, "toggled", G_CALLBACK(menu_set_keep_above),
+				NULL);
+	gtk_widget_add_accelerator(item, "activate", accels, GDK_Tab, 0,
+				GTK_ACCEL_VISIBLE);
+	always_on_top = item;
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+
+	item = gtk_separator_menu_item_new();
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+
+	item = gtk_menu_item_new_with_label("Set optimal size");
+	g_signal_connect(item, "activate", G_CALLBACK(menu_autoresize), NULL);
+	gtk_widget_add_accelerator(item, "activate", accels, GDK_space, 0,
+				GTK_ACCEL_VISIBLE);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+
+	item = gtk_menu_item_new_with_label("Quit");
+	g_signal_connect(item, "activate", G_CALLBACK(menu_quit), NULL);
+	gtk_widget_add_accelerator(item, "activate", accels, GDK_Escape, 0,
+				GTK_ACCEL_VISIBLE);
+	gtk_widget_add_accelerator(item, "activate", accels, GDK_q, 0, 0);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+
+	gtk_widget_show_all(menu);
+	return menu;
+}
+
 void init_window(void)
 {
 	GError *err1 = NULL;
 	GError *err2 = NULL;
+	GtkAccelGroup *accels;
 	GtkWidget *vbox;
 	GtkWidget *stats_table;
 	GtkWidget *state_table;
 	GtkWidget *lbl;
+	GtkWidget *menu;
 	GtkTooltips *tips;
 	struct stats *st;
 	struct stat_output *output;
@@ -560,6 +621,9 @@ void init_window(void)
 	gtk_window_set_title(GTK_WINDOW(wd), title);
 	g_free(title);
 	gtk_window_set_gravity(GTK_WINDOW(wd), GDK_GRAVITY_STATIC);
+	accels = gtk_accel_group_new();
+	gtk_window_add_accel_group(GTK_WINDOW(wd), accels);
+	menu = init_menu(accels);
 	vbox = gtk_vbox_new(FALSE, 5);
 	for (i = 0; statistics[i].heading != NULL; i++);
 	stats_table = gtk_table_new(i, 3, TRUE);
@@ -605,9 +669,12 @@ void init_window(void)
 		state_lbl[i] = lbl;
 	}
 	gtk_widget_show_all(GTK_WIDGET(wd));
+	gtk_widget_add_events(wd, GDK_BUTTON_PRESS_MASK);
 	g_signal_connect(wd, "configure-event", G_CALLBACK(configure), wd);
 	g_signal_connect(wd, "delete-event", G_CALLBACK(destroy), NULL);
 	g_signal_connect(wd, "key-press-event", G_CALLBACK(keypress), wd);
+	g_signal_connect(wd, "button-press-event", G_CALLBACK(menu_popup),
+				menu);
 
 	x = g_key_file_get_integer(config, CONFIG_GROUP, "x", &err1);
 	y = g_key_file_get_integer(config, CONFIG_GROUP, "y", &err2);
