@@ -59,6 +59,20 @@ struct stats {
 	struct stat_values prev;
 };
 
+struct pane {
+	const char *config_key;
+	const char *label;
+	gboolean initial;
+	unsigned accel;
+	GtkWidget *widget;
+	GtkWidget *checkbox;
+} panes[] = {
+	{"show_stats",	"Show statistics",		TRUE,	GDK_s},
+	{"show_nexus",	"Show Nexus states",		FALSE,	GDK_n},
+	{"show_bitmap",	"Show chunk bitmap",		TRUE,	GDK_c},
+	{NULL}
+};
+
 #define NEXUS_STATE(x) #x,
 char *state_names[]={
 	NEXUS_STATES
@@ -108,6 +122,7 @@ int optimal_height(void)
 void read_config(void)
 {
 	GError *err = NULL;
+	struct pane *pane;
 
 	config = g_key_file_new();
 	g_key_file_load_from_file(config, conffile, 0, NULL);
@@ -130,6 +145,16 @@ void read_config(void)
 		g_clear_error(&err);
 		g_key_file_set_boolean(config, CONFIG_GROUP, "keep_above",
 					TRUE);
+	}
+
+	for (pane = panes; pane->config_key != NULL; pane++) {
+		g_key_file_get_boolean(config, CONFIG_GROUP, pane->config_key,
+					&err);
+		if (err) {
+			g_clear_error(&err);
+			g_key_file_set_boolean(config, CONFIG_GROUP,
+					pane->config_key, pane->initial);
+		}
 	}
 }
 
@@ -487,6 +512,52 @@ gboolean menu_popup(GtkWidget *widget, GdkEventButton *event, GtkWidget *menu)
 	return TRUE;
 }
 
+void set_pane_widget(const char *config_key, GtkWidget *widget)
+{
+	struct pane *pane;
+
+	for (pane = panes; pane->config_key != NULL; pane++)
+		if (!strcmp(config_key, pane->config_key))
+			pane->widget = widget;
+}
+
+void update_pane_dimmers(void)
+{
+	struct pane *pane;
+	int count = 0;
+
+	for (pane = panes; pane->config_key != NULL; pane++)
+		if (g_key_file_get_boolean(config, CONFIG_GROUP,
+					pane->config_key, NULL))
+			count++;
+	for (pane = panes; pane->config_key != NULL; pane++) {
+		if (count > 1) {
+			gtk_widget_set_sensitive(pane->checkbox, TRUE);
+		} else {
+			if (g_key_file_get_boolean(config, CONFIG_GROUP,
+						pane->config_key, NULL))
+				gtk_widget_set_sensitive(pane->checkbox, FALSE);
+			else
+				gtk_widget_set_sensitive(pane->checkbox, TRUE);
+		}
+	}
+}
+
+gboolean menu_toggle_pane(GtkCheckMenuItem *item, void *data)
+{
+	struct pane *pane = data;
+	gboolean newval;
+
+	newval = gtk_check_menu_item_get_active(item);
+	g_key_file_set_boolean(config, CONFIG_GROUP, pane->config_key, newval);
+	if (newval)
+		gtk_widget_show(pane->widget);
+	else
+		gtk_widget_hide(pane->widget);
+	update_pane_dimmers();
+	return TRUE;
+}
+
 gboolean menu_autoresize(GtkMenuItem *item, void *data)
 {
 	gtk_window_resize(GTK_WINDOW(wd), g_key_file_get_integer(config,
@@ -559,8 +630,23 @@ GtkWidget *init_menu(GtkAccelGroup *accels)
 {
 	GtkWidget *menu;
 	GtkWidget *item;
+	struct pane *pane;
 
 	menu = gtk_menu_new();
+
+	for (pane = panes; pane->config_key != NULL; pane++) {
+		item = gtk_check_menu_item_new_with_label(pane->label);
+		gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(item),
+					g_key_file_get_boolean(config,
+					CONFIG_GROUP, pane->config_key, NULL));
+		g_signal_connect(item, "toggled",
+					G_CALLBACK(menu_toggle_pane), pane);
+		gtk_widget_add_accelerator(item, "activate", accels,
+					pane->accel, 0, GTK_ACCEL_VISIBLE);
+		pane->checkbox = item;
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+	}
+	update_pane_dimmers();
 
 	item = gtk_check_menu_item_new_with_label("Keep window on top");
 	gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(item),
@@ -606,6 +692,7 @@ void init_window(void)
 	GtkTooltips *tips;
 	struct stats *st;
 	struct stat_output *output;
+	struct pane *pane;
 	char *title;
 	int x;
 	int y;
@@ -634,6 +721,9 @@ void init_window(void)
 	gtk_box_pack_start(GTK_BOX(vbox), stats_table, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(vbox), state_table, FALSE, FALSE, 0);
 	gtk_box_pack_end(GTK_BOX(vbox), img, TRUE, TRUE, 0);
+	set_pane_widget("show_stats", stats_table);
+	set_pane_widget("show_nexus", state_table);
+	set_pane_widget("show_bitmap", img);
 	for (i = 0; statistics[i].heading != NULL; i++) {
 		st = &statistics[i];
 		lbl = gtk_label_new(st->heading);
@@ -669,6 +759,11 @@ void init_window(void)
 		state_lbl[i] = lbl;
 	}
 	gtk_widget_show_all(GTK_WIDGET(wd));
+	/* Now re-hide the panes that are not enabled. */
+	for (pane = panes; pane->config_key != NULL; pane++)
+		if (!g_key_file_get_boolean(config, CONFIG_GROUP,
+					pane->config_key, NULL))
+			gtk_widget_hide(pane->widget);
 	gtk_widget_add_events(wd, GDK_BUTTON_PRESS_MASK);
 	g_signal_connect(wd, "configure-event", G_CALLBACK(configure), wd);
 	g_signal_connect(wd, "delete-event", G_CALLBACK(destroy), NULL);
