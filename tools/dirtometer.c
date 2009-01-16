@@ -61,15 +61,16 @@ struct stats {
 
 struct pane {
 	const char *config_key;
-	const char *label;
+	const char *frame_label;
+	const char *menu_label;
 	gboolean initial;
 	unsigned accel;
 	GtkWidget *widget;
 	GtkWidget *checkbox;
 } panes[] = {
-	{"show_stats",	"Show statistics",		TRUE,	GDK_s},
-	{"show_nexus",	"Show Nexus states",		FALSE,	GDK_n},
-	{"show_bitmap",	"Show chunk bitmap",		TRUE,	GDK_c},
+	{"show_stats",	"Statistics",	"Show statistics",	TRUE,	GDK_s},
+	{"show_nexus",	"Nexus states",	"Show Nexus states",	FALSE,	GDK_n},
+	{"show_bitmap",	"Chunk bitmap",	"Show chunk bitmap",	TRUE,	GDK_c},
 	{NULL}
 };
 
@@ -516,15 +517,6 @@ gboolean menu_popup(GtkWidget *widget, GdkEventButton *event, GtkWidget *menu)
 	return TRUE;
 }
 
-void set_pane_widget(const char *config_key, GtkWidget *widget)
-{
-	struct pane *pane;
-
-	for (pane = panes; pane->config_key != NULL; pane++)
-		if (!strcmp(config_key, pane->config_key))
-			pane->widget = widget;
-}
-
 void update_pane_dimmers(void)
 {
 	struct pane *pane;
@@ -639,7 +631,7 @@ GtkWidget *init_menu(GtkAccelGroup *accels)
 	menu = gtk_menu_new();
 
 	for (pane = panes; pane->config_key != NULL; pane++) {
-		item = gtk_check_menu_item_new_with_label(pane->label);
+		item = gtk_check_menu_item_new_with_label(pane->menu_label);
 		gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(item),
 					g_key_file_get_boolean(config,
 					CONFIG_GROUP, pane->config_key, NULL));
@@ -683,6 +675,22 @@ GtkWidget *init_menu(GtkAccelGroup *accels)
 	return menu;
 }
 
+GtkWidget *pane_widget(const char *config_key, GtkWidget *widget)
+{
+	struct pane *pane;
+	GtkWidget *frame;
+
+	for (pane = panes; pane->config_key != NULL; pane++) {
+		if (!strcmp(config_key, pane->config_key)) {
+			frame = gtk_frame_new(pane->frame_label);
+			gtk_container_add(GTK_CONTAINER(frame), widget);
+			pane->widget = frame;
+			return frame;
+		}
+	}
+	return NULL;
+}
+
 void init_window(void)
 {
 	GError *err1 = NULL;
@@ -723,12 +731,12 @@ void init_window(void)
 	gtk_misc_set_alignment(GTK_MISC(img), 0, 0);
 	tips = gtk_tooltips_new();
 	gtk_container_add(GTK_CONTAINER(wd), vbox);
-	gtk_box_pack_start(GTK_BOX(vbox), stats_table, FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(vbox), state_table, FALSE, FALSE, 0);
-	gtk_box_pack_end(GTK_BOX(vbox), img, TRUE, TRUE, 0);
-	set_pane_widget("show_stats", stats_table);
-	set_pane_widget("show_nexus", state_table);
-	set_pane_widget("show_bitmap", img);
+	gtk_box_pack_start(GTK_BOX(vbox), pane_widget("show_stats",
+				stats_table), FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(vbox), pane_widget("show_nexus",
+				state_table), FALSE, FALSE, 0);
+	gtk_box_pack_end(GTK_BOX(vbox), pane_widget("show_bitmap", img), TRUE,
+				TRUE, 0);
 	for (i = 0; statistics[i].heading != NULL; i++) {
 		st = &statistics[i];
 		lbl = gtk_label_new(st->heading);
