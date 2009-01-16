@@ -691,6 +691,13 @@ GtkWidget *pane_widget(const char *config_key, GtkWidget *widget)
 	return NULL;
 }
 
+const char img_tooltip[] =
+"Red: Dirtied this session\n"
+"White: Accessed this session\n"
+"Dark red: Dirtied in previous session\n"
+"Light gray: Accessed in previous session\n"
+"Dark gray: Not present";
+
 void init_window(void)
 {
 	GError *err1 = NULL;
@@ -701,6 +708,7 @@ void init_window(void)
 	GtkWidget *state_table;
 	GtkWidget *lbl;
 	GtkWidget *menu;
+	GtkWidget *img_box;
 	GtkTooltips *tips;
 	struct stats *st;
 	struct stat_output *output;
@@ -723,20 +731,23 @@ void init_window(void)
 	accels = gtk_accel_group_new();
 	gtk_window_add_accel_group(GTK_WINDOW(wd), accels);
 	menu = init_menu(accels);
+	tips = gtk_tooltips_new();
 	vbox = gtk_vbox_new(FALSE, 5);
 	for (i = 0; statistics[i].heading != NULL; i++);
 	stats_table = gtk_table_new(i, 3, TRUE);
 	state_table = gtk_table_new(NR_STATES, 2, FALSE);
 	img = gtk_image_new();
 	gtk_misc_set_alignment(GTK_MISC(img), 0, 0);
-	tips = gtk_tooltips_new();
+	img_box = gtk_event_box_new();
+	gtk_container_add(GTK_CONTAINER(img_box), img);
+	gtk_tooltips_set_tip(tips, img_box, img_tooltip, NULL);
 	gtk_container_add(GTK_CONTAINER(wd), vbox);
 	gtk_box_pack_start(GTK_BOX(vbox), pane_widget("show_stats",
 				stats_table), FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(vbox), pane_widget("show_nexus",
 				state_table), FALSE, FALSE, 0);
-	gtk_box_pack_end(GTK_BOX(vbox), pane_widget("show_bitmap", img), TRUE,
-				TRUE, 0);
+	gtk_box_pack_end(GTK_BOX(vbox), pane_widget("show_bitmap", img_box),
+				TRUE, TRUE, 0);
 	for (i = 0; statistics[i].heading != NULL; i++) {
 		st = &statistics[i];
 		lbl = gtk_label_new(st->heading);
