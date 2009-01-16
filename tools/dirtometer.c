@@ -96,6 +96,7 @@ int state_fd;
 char *states;
 int numchunks;
 int chunks_per_mb;
+int img_width;
 
 void die(char *fmt, ...)
 {
@@ -410,16 +411,13 @@ void update_img(void)
 	int numpixels;
 	GdkPixbuf *pixbuf;
 	int i;
-	int width;
 	int height;
 	int changed = 0;
 
-	width = g_key_file_get_integer(config, CONFIG_GROUP, "width", NULL);
-	height = g_key_file_get_integer(config, CONFIG_GROUP, "height", NULL);
-
 	if (prev_states == NULL)
 		prev_states = g_malloc(numchunks);
-	numpixels = max(height * width, numchunks);
+	height = (numchunks + img_width - 1) / img_width;
+	numpixels = height * img_width;
 	pixels = g_malloc(4 * numpixels);
 	for (i = 0; i < numchunks; i++) {
 		if (states[i] != prev_states[i]) {
@@ -444,16 +442,17 @@ void update_img(void)
 		}
 	}
 	for (i = numchunks; i < numpixels; i++)
-		pixels[i] = htonl(0x000000ff);
+		pixels[i] = 0;
 	/* These calls are expensive for large buffers, so we only invoke them
 	   if the image has changed */
-	if (changed || width != last_width || height != last_height) {
+	if (changed || img_width != last_width || height != last_height) {
 		pixbuf = gdk_pixbuf_new_from_data((guchar *)pixels,
-					GDK_COLORSPACE_RGB, TRUE, 8, width,
-					height,	width * 4, free_pixels, NULL);
+					GDK_COLORSPACE_RGB, TRUE, 8,
+					img_width, height, img_width * 4,
+					free_pixels, NULL);
 		gtk_image_set_from_pixbuf(GTK_IMAGE(img), pixbuf);
 		g_object_unref(pixbuf);
-		last_width = width;
+		last_width = img_width;
 		last_height = height;
 	} else {
 		g_free(pixels);
@@ -480,7 +479,6 @@ gboolean configure(GtkWidget *widget, GdkEventConfigure *event, void *data)
 	g_key_file_set_integer(config, CONFIG_GROUP, "height", event->height);
 	g_key_file_set_integer(config, CONFIG_GROUP, "x", event->x);
 	g_key_file_set_integer(config, CONFIG_GROUP, "y", event->y);
-	update_img();
 	return FALSE;
 }
 
@@ -501,6 +499,12 @@ gboolean keypress(GtkWidget *widget, GdkEventKey *event, void *data)
 	default:
 		return FALSE;
 	}
+}
+
+void img_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
+{
+	img_width = alloc->width;
+	update_img();
 }
 
 gboolean menu_popup(GtkWidget *widget, GdkEventButton *event, GtkWidget *menu)
@@ -716,6 +720,7 @@ void init_window(void)
 	stats_table = gtk_table_new(i, 3, TRUE);
 	state_table = gtk_table_new(NR_STATES, 2, FALSE);
 	img = gtk_image_new();
+	gtk_misc_set_alignment(GTK_MISC(img), 0, 0);
 	tips = gtk_tooltips_new();
 	gtk_container_add(GTK_CONTAINER(wd), vbox);
 	gtk_box_pack_start(GTK_BOX(vbox), stats_table, FALSE, FALSE, 0);
@@ -770,6 +775,8 @@ void init_window(void)
 	g_signal_connect(wd, "key-press-event", G_CALLBACK(keypress), wd);
 	g_signal_connect(wd, "button-press-event", G_CALLBACK(menu_popup),
 				menu);
+	g_signal_connect(img, "size-allocate", G_CALLBACK(img_size_allocate),
+				NULL);
 
 	x = g_key_file_get_integer(config, CONFIG_GROUP, "x", &err1);
 	y = g_key_file_get_integer(config, CONFIG_GROUP, "y", &err2);
@@ -813,7 +820,6 @@ int main(int argc, char **argv)
 	init_window();
 	update_stats();
 	update_states();
-	update_img();
 	g_timeout_add(100, update_event, NULL);
 	gtk_main();
 	write_config();
