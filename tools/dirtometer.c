@@ -488,9 +488,10 @@ gboolean update_event(void *data)
 	return TRUE;
 }
 
-#define IMG_MIN_WIDTH_PADDING	15
-#define IMG_MIN_HEIGHT_PADDING	15
-#define IMG_BORDER_WIDTH	5
+#define WINDOW_BORDER		2
+#define IMG_MIN_WIDTH_PADDING	20
+#define IMG_MIN_HEIGHT_PADDING	25
+#define IMG_BORDER_WIDTH	16
 #define IMG_HEIGHT_PADDING	5
 /* Calculating the correct window size is difficult when the bitmap is enabled,
    because the height depends on the width and there's no straightforward way
@@ -544,6 +545,8 @@ void resize_window(struct pane *added, struct pane *dropped)
 			min_height += req.height;
 		}
 	}
+	min_width += 2 * WINDOW_BORDER;
+	min_height += 2 * WINDOW_BORDER;
 
 	/* Make sure the window size is at least the minimum. */
 	if (width < min_width && g_key_file_get_boolean(config, CONFIG_GROUP,
@@ -814,6 +817,7 @@ void init_window(void)
 	wd = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(wd), title);
 	g_free(title);
+	gtk_container_set_border_width(GTK_CONTAINER(wd), WINDOW_BORDER);
 	gtk_window_set_gravity(GTK_WINDOW(wd), GDK_GRAVITY_STATIC);
 	accels = gtk_accel_group_new();
 	gtk_window_add_accel_group(GTK_WINDOW(wd), accels);
@@ -822,10 +826,13 @@ void init_window(void)
 	vbox = gtk_vbox_new(FALSE, 5);
 	for (i = 0; statistics[i].heading != NULL; i++);
 	stats_table = gtk_table_new(i, 3, TRUE);
+	gtk_container_set_border_width(GTK_CONTAINER(stats_table), 2);
 	state_table = gtk_table_new(NR_STATES, 2, FALSE);
+	gtk_container_set_border_width(GTK_CONTAINER(state_table), 2);
 	img = gtk_image_new();
 	gtk_misc_set_alignment(GTK_MISC(img), 0, 0);
 	img_box = gtk_event_box_new();
+	gtk_container_set_border_width(GTK_CONTAINER(img_box), 2);
 	gtk_container_add(GTK_CONTAINER(img_box), img);
 	gtk_tooltips_set_tip(tips, img_box, img_tooltip, NULL);
 	gtk_container_add(GTK_CONTAINER(wd), vbox);
