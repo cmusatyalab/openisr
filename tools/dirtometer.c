@@ -320,31 +320,46 @@ struct stats statistics[] = {
 	}, {0}
 };
 
-void update_stat_valid(struct stats *st)
+void update_label(GtkLabel *lbl, const char *val)
+{
+	if (strcmp(gtk_label_get_label(lbl), val))
+		gtk_label_set_label(lbl, val);
+}
+
+void stat_output_set_changed(struct stat_output *output, gboolean changed)
 {
 	const GdkColor busy = {
 		.red = 65535,
 		.green = 16384,
 		.blue = 16384
 	};
+	GtkStyle *style;
+	gboolean prev;
+
+	style = gtk_widget_get_style(output->ebox);
+	prev = gdk_color_equal(&busy, &style->bg[GTK_STATE_NORMAL]);
+	if (prev != changed)
+		gtk_widget_modify_bg(output->ebox, GTK_STATE_NORMAL,
+					changed ? &busy : NULL);
+}
+
+void update_stat_valid(struct stats *st)
+{
 	struct stat_output *output;
 	int i;
 	char *str;
+	gboolean changed;
 
 	for (i = 0; i < NOUTPUTS; i++) {
 		output = &st->output[i];
 		if (output->format == NULL)
 			continue;
 		str = output->format(&st->cur, i);
-		gtk_label_set_label(GTK_LABEL(output->label), str);
+		update_label(GTK_LABEL(output->label), str);
 		g_free(str);
 		if (output->changed != NULL) {
-			if (output->changed(&st->prev, &st->cur, i))
-				gtk_widget_modify_bg(output->ebox,
-						GTK_STATE_NORMAL, &busy);
-			else
-				gtk_widget_modify_bg(output->ebox,
-						GTK_STATE_NORMAL, NULL);
+			changed = output->changed(&st->prev, &st->cur, i);
+			stat_output_set_changed(output, changed);
 			st->prev = st->cur;
 		}
 	}
@@ -358,8 +373,7 @@ void update_stat_invalid(struct stats *st)
 	for (i = 0; i < NOUTPUTS; i++) {
 		output = &st->output[i];
 		if (output->changed != NULL)
-			gtk_widget_modify_bg(output->ebox, GTK_STATE_NORMAL,
-						NULL);
+			stat_output_set_changed(output, FALSE);
 	}
 }
 
@@ -386,7 +400,7 @@ void update_states(void)
 	vals = g_strsplit(data, " ", 0);
 	if (g_strv_length(vals) == NR_STATES)
 		for (i = 0; i < NR_STATES; i++)
-			gtk_label_set_label(GTK_LABEL(state_lbl[i]), vals[i]);
+			update_label(GTK_LABEL(state_lbl[i]), vals[i]);
 	g_strfreev(vals);
 	g_free(data);
 }
