@@ -67,6 +67,8 @@ struct pane {
 	unsigned accel;
 	GtkWidget *widget;
 	GtkWidget *checkbox;
+	int width;
+	int height;
 } panes[] = {
 	{"show_stats",	"Statistics",	"Show statistics",	TRUE,	GDK_s},
 	{"show_nexus",	"Nexus states",	"Show Nexus states",	FALSE,	GDK_n},
@@ -113,14 +115,6 @@ void die(char *fmt, ...)
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
-int optimal_height(void)
-{
-	int width;
-
-	width = g_key_file_get_integer(config, CONFIG_GROUP, "width", NULL);
-	return (numchunks + width - 1) / width;
-}
-
 void read_config(void)
 {
 	GError *err = NULL;
@@ -132,14 +126,13 @@ void read_config(void)
 	g_key_file_get_integer(config, CONFIG_GROUP, "width", &err);
 	if (err) {
 		g_clear_error(&err);
-		g_key_file_set_integer(config, CONFIG_GROUP, "width", 200);
+		g_key_file_set_integer(config, CONFIG_GROUP, "width", 0);
 	}
 
 	g_key_file_get_integer(config, CONFIG_GROUP, "height", &err);
 	if (err) {
 		g_clear_error(&err);
-		g_key_file_set_integer(config, CONFIG_GROUP, "height",
-					optimal_height());
+		g_key_file_set_integer(config, CONFIG_GROUP, "height", 0);
 	}
 
 	g_key_file_get_boolean(config, CONFIG_GROUP, "keep_above", &err);
@@ -403,6 +396,11 @@ void free_pixels(unsigned char *pixels, void *data)
 	g_free(pixels);
 }
 
+int optimal_height(int width)
+{
+	return (numchunks + width - 1) / width;
+}
+
 void update_img(void)
 {
 	static char *prev_states;
@@ -417,7 +415,7 @@ void update_img(void)
 
 	if (prev_states == NULL)
 		prev_states = g_malloc(numchunks);
-	height = (numchunks + img_width - 1) / img_width;
+	height = optimal_height(img_width);
 	numpixels = height * img_width;
 	pixels = g_malloc(4 * numpixels);
 	for (i = 0; i < numchunks; i++) {
@@ -474,6 +472,87 @@ gboolean update_event(void *data)
 	return TRUE;
 }
 
+#define IMG_MIN_WIDTH_PADDING	15
+#define IMG_MIN_HEIGHT_PADDING	15
+#define IMG_BORDER_WIDTH	5
+#define IMG_HEIGHT_PADDING	5
+/* Calculating the correct window size is difficult when the bitmap is enabled,
+   because the height depends on the width and there's no straightforward way
+   to calculate the width the bitmap itself will be assigned after frame and
+   padding are included.  So we apply fudge factors. */
+void resize_window(struct pane *added, struct pane *dropped, gboolean optimal)
+{
+	struct pane *pane;
+	GtkRequisition label_req;
+	GtkRequisition req;
+	int min_width = 0;
+	int min_height = 0;
+	int width;
+	int height;
+
+	width = g_key_file_get_integer(config, CONFIG_GROUP, "width", NULL);
+	height = g_key_file_get_integer(config, CONFIG_GROUP, "height", NULL);
+	for (pane = panes; pane->config_key != NULL; pane++)
+		if (!strcmp(pane->config_key, "show_bitmap"))
+			gtk_widget_size_request(
+					gtk_frame_get_label_widget(
+					GTK_FRAME(pane->widget)), &label_req);
+
+	/* Expand/contract the window if a pane was added/removed. */
+	if (added != NULL) {
+		if (!strcmp(added->config_key, "show_bitmap")) {
+			height += optimal_height(width - IMG_BORDER_WIDTH)
+						+ label_req.height
+						+ IMG_HEIGHT_PADDING;
+		} else {
+			gtk_widget_size_request(added->widget, &req);
+			height += req.height;
+		}
+	}
+	if (dropped != NULL)
+		height -= dropped->height;
+
+	/* Calculate the minimum window size. */
+	for (pane = panes; pane->config_key != NULL; pane++) {
+		if (!g_key_file_get_boolean(config, CONFIG_GROUP,
+					pane->config_key, NULL))
+			continue;
+		if (!strcmp(pane->config_key, "show_bitmap")) {
+			min_width = max(min_width, label_req.width
+						+ IMG_MIN_WIDTH_PADDING);
+			min_height += label_req.height
+						+ IMG_MIN_HEIGHT_PADDING;
+		} else {
+			gtk_widget_size_request(pane->widget, &req);
+			min_width = max(min_width, req.width);
+			min_height += req.height;
+		}
+	}
+
+	/* Reoptimize if requested, otherwise make sure the actual size is
+	   at least the minimum. */
+	if (optimal || width < min_width) {
+		/* We re-optimize if we're expanding the width because
+		   otherwise the bitmap may end up with a bunch of empty rows
+		   at the bottom */
+		width = min_width;
+		height = min_height;
+		if (g_key_file_get_boolean(config, CONFIG_GROUP,
+					"show_bitmap", NULL)) {
+			height -= IMG_MIN_HEIGHT_PADDING;
+			height += optimal_height(width - IMG_BORDER_WIDTH)
+						+ IMG_HEIGHT_PADDING;
+		}
+	} else {
+		height = max(min_height, height);
+	}
+
+	g_key_file_set_integer(config, CONFIG_GROUP, "width", width);
+	g_key_file_set_integer(config, CONFIG_GROUP, "height", height);
+	gtk_window_resize(GTK_WINDOW(wd), width, height);
+	gtk_widget_set_size_request(wd, min_width, min_height);
+}
+
 gboolean configure(GtkWidget *widget, GdkEventConfigure *event, void *data)
 {
 	g_key_file_set_integer(config, CONFIG_GROUP, "width", event->width);
@@ -500,6 +579,14 @@ gboolean keypress(GtkWidget *widget, GdkEventKey *event, void *data)
 	default:
 		return FALSE;
 	}
+}
+
+void pane_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
+{
+	struct pane *pane = data;
+
+	pane->width = alloc->width;
+	pane->height = alloc->height;
 }
 
 void img_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
@@ -546,19 +633,20 @@ gboolean menu_toggle_pane(GtkCheckMenuItem *item, void *data)
 
 	newval = gtk_check_menu_item_get_active(item);
 	g_key_file_set_boolean(config, CONFIG_GROUP, pane->config_key, newval);
-	if (newval)
+	if (newval) {
 		gtk_widget_show(pane->widget);
-	else
+		resize_window(pane, NULL, FALSE);
+	} else {
 		gtk_widget_hide(pane->widget);
+		resize_window(NULL, pane, FALSE);
+	}
 	update_pane_dimmers();
 	return TRUE;
 }
 
 gboolean menu_autoresize(GtkMenuItem *item, void *data)
 {
-	gtk_window_resize(GTK_WINDOW(wd), g_key_file_get_integer(config,
-				CONFIG_GROUP, "width", NULL),
-				optimal_height());
+	resize_window(NULL, NULL, TRUE);
 	return TRUE;
 }
 
@@ -685,6 +773,9 @@ GtkWidget *pane_widget(const char *config_key, GtkWidget *widget)
 			frame = gtk_frame_new(pane->frame_label);
 			gtk_container_add(GTK_CONTAINER(frame), widget);
 			pane->widget = frame;
+			g_signal_connect(frame, "size-allocate",
+						G_CALLBACK(pane_size_allocate),
+						pane);
 			return frame;
 		}
 	}
@@ -718,10 +809,6 @@ void init_window(void)
 	int y;
 	int i;
 	int j;
-	GdkGeometry hints = {
-		.min_width = 10,
-		.min_height = 10,
-	};
 
 	title = g_strdup_printf("Dirtometer: %s", name);
 	wd = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -806,12 +893,7 @@ void init_window(void)
 	gtk_window_set_keep_above(GTK_WINDOW(wd),
 				g_key_file_get_boolean(config, CONFIG_GROUP,
 				"keep_above", NULL));
-	gtk_window_resize(GTK_WINDOW(wd), g_key_file_get_integer(config,
-				CONFIG_GROUP, "width", NULL),
-				g_key_file_get_integer(config, CONFIG_GROUP,
-				"height", NULL));
-	gtk_window_set_geometry_hints(GTK_WINDOW(wd), img, &hints,
-				GDK_HINT_MIN_SIZE);
+	resize_window(NULL, NULL, FALSE);
 }
 
 GOptionEntry options[] = {
