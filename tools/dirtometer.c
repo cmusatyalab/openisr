@@ -480,7 +480,7 @@ gboolean update_event(void *data)
    because the height depends on the width and there's no straightforward way
    to calculate the width the bitmap itself will be assigned after frame and
    padding are included.  So we apply fudge factors. */
-void resize_window(struct pane *added, struct pane *dropped, gboolean optimal)
+void resize_window(struct pane *added, struct pane *dropped)
 {
 	struct pane *pane;
 	GtkRequisition label_req;
@@ -529,21 +529,17 @@ void resize_window(struct pane *added, struct pane *dropped, gboolean optimal)
 		}
 	}
 
-	/* Reoptimize if requested, otherwise make sure the actual size is
-	   at least the minimum. */
-	if (optimal || width < min_width) {
-		/* We re-optimize if we're expanding the width because
-		   otherwise the bitmap may end up with a bunch of empty rows
-		   at the bottom */
+	/* Make sure the window size is at least the minimum. */
+	if (width < min_width && g_key_file_get_boolean(config, CONFIG_GROUP,
+				"show_bitmap", NULL)) {
+		/* We need to recalculate the height so that we don't end up
+		   with a bunch of empty rows at the bottom of the bitmap. */
 		width = min_width;
-		height = min_height;
-		if (g_key_file_get_boolean(config, CONFIG_GROUP,
-					"show_bitmap", NULL)) {
-			height -= IMG_MIN_HEIGHT_PADDING;
-			height += optimal_height(width - IMG_BORDER_WIDTH)
-						+ IMG_HEIGHT_PADDING;
-		}
+		height = min_height - IMG_MIN_HEIGHT_PADDING +
+				optimal_height(width - IMG_BORDER_WIDTH) +
+				IMG_HEIGHT_PADDING;
 	} else {
+		width = max(min_width, width);
 		height = max(min_height, height);
 	}
 
@@ -635,18 +631,12 @@ gboolean menu_toggle_pane(GtkCheckMenuItem *item, void *data)
 	g_key_file_set_boolean(config, CONFIG_GROUP, pane->config_key, newval);
 	if (newval) {
 		gtk_widget_show(pane->widget);
-		resize_window(pane, NULL, FALSE);
+		resize_window(pane, NULL);
 	} else {
 		gtk_widget_hide(pane->widget);
-		resize_window(NULL, pane, FALSE);
+		resize_window(NULL, pane);
 	}
 	update_pane_dimmers();
-	return TRUE;
-}
-
-gboolean menu_autoresize(GtkMenuItem *item, void *data)
-{
-	resize_window(NULL, NULL, TRUE);
 	return TRUE;
 }
 
@@ -732,6 +722,9 @@ GtkWidget *init_menu(GtkAccelGroup *accels)
 	}
 	update_pane_dimmers();
 
+	item = gtk_separator_menu_item_new();
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+
 	item = gtk_check_menu_item_new_with_label("Keep window on top");
 	gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(item),
 				g_key_file_get_boolean(config, CONFIG_GROUP,
@@ -741,15 +734,6 @@ GtkWidget *init_menu(GtkAccelGroup *accels)
 	gtk_widget_add_accelerator(item, "activate", accels, GDK_Tab, 0,
 				GTK_ACCEL_VISIBLE);
 	always_on_top = item;
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
-
-	item = gtk_separator_menu_item_new();
-	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
-
-	item = gtk_menu_item_new_with_label("Set optimal size");
-	g_signal_connect(item, "activate", G_CALLBACK(menu_autoresize), NULL);
-	gtk_widget_add_accelerator(item, "activate", accels, GDK_space, 0,
-				GTK_ACCEL_VISIBLE);
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
 
 	item = gtk_menu_item_new_with_label("Quit");
@@ -893,7 +877,7 @@ void init_window(void)
 	gtk_window_set_keep_above(GTK_WINDOW(wd),
 				g_key_file_get_boolean(config, CONFIG_GROUP,
 				"keep_above", NULL));
-	resize_window(NULL, NULL, FALSE);
+	resize_window(NULL, NULL);
 }
 
 GOptionEntry options[] = {
