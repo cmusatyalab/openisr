@@ -360,9 +360,9 @@ void update_stat_valid(struct stats *st)
 		if (output->changed != NULL) {
 			changed = output->changed(&st->prev, &st->cur, i);
 			stat_output_set_changed(output, changed);
-			st->prev = st->cur;
 		}
 	}
+	st->prev = st->cur;
 }
 
 void update_stat_invalid(struct stats *st)
