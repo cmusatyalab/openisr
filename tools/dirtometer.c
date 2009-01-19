@@ -427,6 +427,8 @@ void update_img(void)
 	int height;
 	int changed = 0;
 
+	if (img_width == 0)
+		return;  /* need to wait for img_size_allocate() callback */
 	if (prev_states == NULL)
 		prev_states = g_malloc(numchunks);
 	height = optimal_height(img_width);
