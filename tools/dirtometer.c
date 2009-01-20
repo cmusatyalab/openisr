@@ -41,6 +41,8 @@ struct pane {
 	unsigned accel;
 	GtkWidget *widget;
 	GtkWidget *checkbox;
+	int last_req_width;
+	int last_req_height;
 	int width;
 	int height;
 } panes[] = {
@@ -507,56 +509,7 @@ void img_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
 
 GtkWidget *wd;
 int state_fd;
-
-gboolean update_event(void *data)
-{
-	struct stat st;
-
-	if (fstat(state_fd, &st))
-		die("fstat failed");
-	if (st.st_nlink == 0)
-		gtk_main_quit();
-	update_stats();
-	update_states();
-	update_img();
-	return TRUE;
-}
-
-void pane_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
-{
-	struct pane *pane = data;
-
-	pane->width = alloc->width;
-	pane->height = alloc->height;
-}
-
-gboolean configure(GtkWidget *widget, GdkEventConfigure *event, void *data)
-{
-	g_key_file_set_integer(config, CONFIG_GROUP, "width", event->width);
-	g_key_file_set_integer(config, CONFIG_GROUP, "height", event->height);
-	g_key_file_set_integer(config, CONFIG_GROUP, "x", event->x);
-	g_key_file_set_integer(config, CONFIG_GROUP, "y", event->y);
-	return FALSE;
-}
-
-gboolean map(GtkWidget *widget, GdkEvent *event, void *data)
-{
-	mapped = TRUE;
-	update_event(NULL);
-	return FALSE;
-}
-
-gboolean unmap(GtkWidget *widget, GdkEvent *event, void *data)
-{
-	mapped = FALSE;
-	return FALSE;
-}
-
-gboolean destroy(GtkWidget *widget, GdkEvent *event, void *data)
-{
-	gtk_main_quit();
-	return TRUE;
-}
+gboolean resize_pending;
 
 #define WINDOW_BORDER		2
 #define IMG_MIN_WIDTH_PADDING	20
@@ -636,6 +589,76 @@ void resize_window(struct pane *added, struct pane *dropped)
 	g_key_file_set_integer(config, CONFIG_GROUP, "height", height);
 	gtk_window_resize(GTK_WINDOW(wd), width, height);
 	gtk_widget_set_size_request(wd, min_width, min_height);
+}
+
+gboolean update_event(void *data)
+{
+	struct stat st;
+
+	if (fstat(state_fd, &st))
+		die("fstat failed");
+	if (st.st_nlink == 0)
+		gtk_main_quit();
+	update_stats();
+	update_states();
+	update_img();
+	return TRUE;
+}
+
+gboolean do_resize(void *unused)
+{
+	resize_window(NULL, NULL);
+	resize_pending = FALSE;
+	return FALSE;
+}
+
+void pane_size_request(GtkWidget *widget, GtkRequisition *req, void *data)
+{
+	struct pane *pane = data;
+
+	if (!resize_pending && (req->width != pane->last_req_width ||
+				req->height != pane->last_req_height)) {
+		g_idle_add(do_resize, NULL);
+		resize_pending = TRUE;
+		pane->last_req_width = req->width;
+		pane->last_req_height = req->height;
+	}
+}
+
+void pane_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
+{
+	struct pane *pane = data;
+
+	pane->width = alloc->width;
+	pane->height = alloc->height;
+}
+
+gboolean configure(GtkWidget *widget, GdkEventConfigure *event, void *data)
+{
+	g_key_file_set_integer(config, CONFIG_GROUP, "width", event->width);
+	g_key_file_set_integer(config, CONFIG_GROUP, "height", event->height);
+	g_key_file_set_integer(config, CONFIG_GROUP, "x", event->x);
+	g_key_file_set_integer(config, CONFIG_GROUP, "y", event->y);
+	return FALSE;
+}
+
+gboolean map(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	mapped = TRUE;
+	update_event(NULL);
+	return FALSE;
+}
+
+gboolean unmap(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	mapped = FALSE;
+	return FALSE;
+}
+
+gboolean destroy(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	gtk_main_quit();
+	return TRUE;
 }
 
 /** Context menu ************************************************************/
@@ -826,6 +849,9 @@ GtkWidget *pane_widget(const char *config_key, GtkWidget *widget)
 			frame = gtk_frame_new(pane->frame_label);
 			gtk_container_add(GTK_CONTAINER(frame), widget);
 			pane->widget = frame;
+			g_signal_connect(frame, "size-request",
+						G_CALLBACK(pane_size_request),
+						pane);
 			g_signal_connect(frame, "size-allocate",
 						G_CALLBACK(pane_size_allocate),
 						pane);
