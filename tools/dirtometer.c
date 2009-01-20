@@ -33,32 +33,6 @@
 #include <glib.h>
 #include "nexus.h"
 
-#define CONFIG_GROUP "dirtometer"
-#define NOUTPUTS 2
-
-struct stat_values {
-	long i[NOUTPUTS];
-	double f;
-};
-
-struct stat_output {
-	const char *tooltip;
-	char *(*format)(struct stat_values *values, int which);
-	gboolean (*changed)(struct stat_values *prev, struct stat_values *cur,
-				int which);
-	GtkWidget *ebox;
-	GtkWidget *label;
-};
-
-struct stats {
-	const char *heading;
-	const char *attrs[NOUTPUTS];
-	gboolean (*fetch)(struct stats *);
-	struct stat_output output[NOUTPUTS];
-	struct stat_values cur;
-	struct stat_values prev;
-};
-
 struct pane {
 	const char *config_key;
 	const char *frame_label;
@@ -76,31 +50,15 @@ struct pane {
 	{NULL}
 };
 
-#define NEXUS_STATE(x) #x,
-char *state_names[]={
-	NEXUS_STATES
-};
-#undef NEXUS_STATE
-#define NR_STATES ((int)(sizeof(state_names) / sizeof(state_names[0])))
-
-GtkWidget *wd;
-GtkWidget *img;
-GtkWidget *state_lbl[NR_STATES];
-GtkWidget *always_on_top;
-
-const char *uuid;
-const char *name;
-const char *confdir;
-const char *conffile;
-const char *statsdir;
-
-GKeyFile *config;
-int state_fd;
 char *states;
 int numchunks;
-int chunks_per_mb;
-int img_width;
 gboolean mapped;
+
+/** Utility ******************************************************************/
+
+const char *statsdir;
+
+#define max(a, b) ((a) > (b) ? (a) : (b))
 
 void die(char *fmt, ...)
 {
@@ -114,7 +72,34 @@ void die(char *fmt, ...)
 	exit(1);
 }
 
-#define max(a, b) ((a) > (b) ? (a) : (b))
+char *get_attr(const char *attr)
+{
+	char *path;
+	char *data;
+	gboolean ok;
+
+	path = g_strdup_printf("%s/%s", statsdir, attr);
+	ok = g_file_get_contents(path, &data, NULL, NULL);
+	g_free(path);
+	if (!ok)
+		return NULL;
+	g_strchomp(data);
+	return data;
+}
+
+void update_label(GtkLabel *lbl, const char *val)
+{
+	if (strcmp(gtk_label_get_label(lbl), val))
+		gtk_label_set_label(lbl, val);
+}
+
+/** Config file **************************************************************/
+
+#define CONFIG_GROUP "dirtometer"
+
+const char *confdir;
+const char *conffile;
+GKeyFile *config;
 
 void read_config(void)
 {
@@ -179,20 +164,34 @@ void write_config(void)
 	g_free(contents);
 }
 
-char *get_attr(const char *attr)
-{
-	char *path;
-	char *data;
-	gboolean ok;
+/** Statistics pane **********************************************************/
 
-	path = g_strdup_printf("%s/%s", statsdir, attr);
-	ok = g_file_get_contents(path, &data, NULL, NULL);
-	g_free(path);
-	if (!ok)
-		return NULL;
-	g_strchomp(data);
-	return data;
-}
+#define NOUTPUTS 2
+
+struct stat_values {
+	long i[NOUTPUTS];
+	double f;
+};
+
+struct stat_output {
+	const char *tooltip;
+	char *(*format)(struct stat_values *values, int which);
+	gboolean (*changed)(struct stat_values *prev, struct stat_values *cur,
+				int which);
+	GtkWidget *ebox;
+	GtkWidget *label;
+};
+
+struct stats {
+	const char *heading;
+	const char *attrs[NOUTPUTS];
+	gboolean (*fetch)(struct stats *);
+	struct stat_output output[NOUTPUTS];
+	struct stat_values cur;
+	struct stat_values prev;
+};
+
+int chunks_per_mb;
 
 gboolean get_ints(struct stats *st)
 {
@@ -321,12 +320,6 @@ struct stats statistics[] = {
 	}, {0}
 };
 
-void update_label(GtkLabel *lbl, const char *val)
-{
-	if (strcmp(gtk_label_get_label(lbl), val))
-		gtk_label_set_label(lbl, val);
-}
-
 void stat_output_set_changed(struct stat_output *output, gboolean changed)
 {
 	const GdkColor busy = {
@@ -396,6 +389,17 @@ void update_stats(void)
 	}
 }
 
+/** Nexus states pane ********************************************************/
+
+#define NEXUS_STATE(x) #x,
+char *state_names[]={
+	NEXUS_STATES
+};
+#undef NEXUS_STATE
+#define NR_STATES ((int)(sizeof(state_names) / sizeof(state_names[0])))
+
+GtkWidget *state_lbl[NR_STATES];
+
 void update_states(void)
 {
 	char *data;
@@ -416,14 +420,19 @@ void update_states(void)
 	g_free(data);
 }
 
-void free_pixels(unsigned char *pixels, void *data)
-{
-	g_free(pixels);
-}
+/** Chunk bitmap pane ********************************************************/
+
+GtkWidget *img;
+int img_width;
 
 int optimal_height(int width)
 {
 	return (numchunks + width - 1) / width;
+}
+
+void free_pixels(unsigned char *pixels, void *data)
+{
+	g_free(pixels);
 }
 
 void update_img(void)
@@ -488,6 +497,17 @@ void update_img(void)
 	}
 }
 
+void img_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
+{
+	img_width = alloc->width;
+	update_img();
+}
+
+/** Window *******************************************************************/
+
+GtkWidget *wd;
+int state_fd;
+
 gboolean update_event(void *data)
 {
 	struct stat st;
@@ -499,6 +519,42 @@ gboolean update_event(void *data)
 	update_stats();
 	update_states();
 	update_img();
+	return TRUE;
+}
+
+void pane_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
+{
+	struct pane *pane = data;
+
+	pane->width = alloc->width;
+	pane->height = alloc->height;
+}
+
+gboolean configure(GtkWidget *widget, GdkEventConfigure *event, void *data)
+{
+	g_key_file_set_integer(config, CONFIG_GROUP, "width", event->width);
+	g_key_file_set_integer(config, CONFIG_GROUP, "height", event->height);
+	g_key_file_set_integer(config, CONFIG_GROUP, "x", event->x);
+	g_key_file_set_integer(config, CONFIG_GROUP, "y", event->y);
+	return FALSE;
+}
+
+gboolean map(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	mapped = TRUE;
+	update_event(NULL);
+	return FALSE;
+}
+
+gboolean unmap(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	mapped = FALSE;
+	return FALSE;
+}
+
+gboolean destroy(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	gtk_main_quit();
 	return TRUE;
 }
 
@@ -582,69 +638,9 @@ void resize_window(struct pane *added, struct pane *dropped)
 	gtk_widget_set_size_request(wd, min_width, min_height);
 }
 
-gboolean configure(GtkWidget *widget, GdkEventConfigure *event, void *data)
-{
-	g_key_file_set_integer(config, CONFIG_GROUP, "width", event->width);
-	g_key_file_set_integer(config, CONFIG_GROUP, "height", event->height);
-	g_key_file_set_integer(config, CONFIG_GROUP, "x", event->x);
-	g_key_file_set_integer(config, CONFIG_GROUP, "y", event->y);
-	return FALSE;
-}
+/** Context menu ************************************************************/
 
-gboolean map(GtkWidget *widget, GdkEvent *event, void *data)
-{
-	mapped = TRUE;
-	update_event(NULL);
-	return FALSE;
-}
-
-gboolean unmap(GtkWidget *widget, GdkEvent *event, void *data)
-{
-	mapped = FALSE;
-	return FALSE;
-}
-
-gboolean destroy(GtkWidget *widget, GdkEvent *event, void *data)
-{
-	gtk_main_quit();
-	return TRUE;
-}
-
-gboolean keypress(GtkWidget *widget, GdkEventKey *event, void *data)
-{
-	switch (event->keyval) {
-	case GDK_Tab:
-		/* GTK won't let us install an accelerator for this, so we
-		   have to do it by hand. */
-		gtk_widget_activate(always_on_top);
-		return TRUE;
-	default:
-		return FALSE;
-	}
-}
-
-void pane_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
-{
-	struct pane *pane = data;
-
-	pane->width = alloc->width;
-	pane->height = alloc->height;
-}
-
-void img_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
-{
-	img_width = alloc->width;
-	update_img();
-}
-
-gboolean menu_popup(GtkWidget *widget, GdkEventButton *event, GtkWidget *menu)
-{
-	if (event->type != GDK_BUTTON_PRESS || event->button != 3)
-		return FALSE;
-	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, event->button,
-				event->time);
-	return TRUE;
-}
+GtkWidget *always_on_top;
 
 void update_pane_dimmers(void)
 {
@@ -702,48 +698,26 @@ gboolean menu_quit(GtkMenuItem *item, void *data)
 	return TRUE;
 }
 
-void init_files(void)
+gboolean menu_popup(GtkWidget *widget, GdkEventButton *event, GtkWidget *menu)
 {
-	GError *err = NULL;
-	char *path;
-	char *linkdest;
-	char **linkparts;
-	char *val;
-	char *end;
+	if (event->type != GDK_BUTTON_PRESS || event->button != 3)
+		return FALSE;
+	gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL, event->button,
+				event->time);
+	return TRUE;
+}
 
-	path = g_strdup_printf("/dev/shm/openisr-chunkmap-%s", uuid);
-	state_fd = open(path, O_RDONLY);
-	if (state_fd == -1) {
-		if (errno == ENOENT)
-			die("Parcel %s is not currently running", uuid);
-		else
-			die("Couldn't open %s", path);
+gboolean keypress(GtkWidget *widget, GdkEventKey *event, void *data)
+{
+	switch (event->keyval) {
+	case GDK_Tab:
+		/* GTK won't let us install an accelerator for this, so we
+		   have to do it by hand. */
+		gtk_widget_activate(always_on_top);
+		return TRUE;
+	default:
+		return FALSE;
 	}
-	numchunks = lseek(state_fd, 0, SEEK_END);
-	if (numchunks == -1)
-		die("lseek failed");
-	states = mmap(NULL, numchunks, PROT_READ, MAP_SHARED, state_fd, 0);
-	if (states == MAP_FAILED)
-		die("mmap failed");
-	g_free(path);
-
-	path = g_strdup_printf("/dev/disk/by-id/openisr-%s", uuid);
-	linkdest = g_file_read_link(path, &err);
-	if (err)
-		die("Couldn't read link %s: %s", path, err->message);
-	linkparts = g_strsplit(linkdest, "/", 0);
-	statsdir = g_strdup_printf("/sys/class/openisr/%s",
-				linkparts[g_strv_length(linkparts) - 1]);
-	g_strfreev(linkparts);
-	g_free(path);
-
-	val = get_attr("chunk_size");
-	if (val == NULL)
-		die("Couldn't get parcel chunk size");
-	chunks_per_mb = (1 << 20) / strtol(val, &end, 10);
-	if (val[0] == 0 || end[0] != 0)
-		die("Couldn't parse parcel chunk size");
-	g_free(val);
 }
 
 GtkWidget *init_menu(GtkAccelGroup *accels)
@@ -791,6 +765,55 @@ GtkWidget *init_menu(GtkAccelGroup *accels)
 
 	gtk_widget_show_all(menu);
 	return menu;
+}
+
+/** Initialization ***********************************************************/
+
+const char *name;
+const char *uuid;
+
+void init_files(void)
+{
+	GError *err = NULL;
+	char *path;
+	char *linkdest;
+	char **linkparts;
+	char *val;
+	char *end;
+
+	path = g_strdup_printf("/dev/shm/openisr-chunkmap-%s", uuid);
+	state_fd = open(path, O_RDONLY);
+	if (state_fd == -1) {
+		if (errno == ENOENT)
+			die("Parcel %s is not currently running", uuid);
+		else
+			die("Couldn't open %s", path);
+	}
+	numchunks = lseek(state_fd, 0, SEEK_END);
+	if (numchunks == -1)
+		die("lseek failed");
+	states = mmap(NULL, numchunks, PROT_READ, MAP_SHARED, state_fd, 0);
+	if (states == MAP_FAILED)
+		die("mmap failed");
+	g_free(path);
+
+	path = g_strdup_printf("/dev/disk/by-id/openisr-%s", uuid);
+	linkdest = g_file_read_link(path, &err);
+	if (err)
+		die("Couldn't read link %s: %s", path, err->message);
+	linkparts = g_strsplit(linkdest, "/", 0);
+	statsdir = g_strdup_printf("/sys/class/openisr/%s",
+				linkparts[g_strv_length(linkparts) - 1]);
+	g_strfreev(linkparts);
+	g_free(path);
+
+	val = get_attr("chunk_size");
+	if (val == NULL)
+		die("Couldn't get parcel chunk size");
+	chunks_per_mb = (1 << 20) / strtol(val, &end, 10);
+	if (val[0] == 0 || end[0] != 0)
+		die("Couldn't parse parcel chunk size");
+	g_free(val);
 }
 
 GtkWidget *pane_widget(const char *config_key, GtkWidget *widget)
