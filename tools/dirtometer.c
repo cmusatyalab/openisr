@@ -100,6 +100,7 @@ char *states;
 int numchunks;
 int chunks_per_mb;
 int img_width;
+gboolean mapped;
 
 void die(char *fmt, ...)
 {
@@ -362,7 +363,6 @@ void update_stat_valid(struct stats *st)
 			stat_output_set_changed(output, changed);
 		}
 	}
-	st->prev = st->cur;
 }
 
 void update_stat_invalid(struct stats *st)
@@ -380,12 +380,20 @@ void update_stat_invalid(struct stats *st)
 void update_stats(void)
 {
 	struct stats *st;
+	gboolean visible;
 
-	for (st = statistics; st->heading != NULL; st++)
-		if (st->fetch(st))
-			update_stat_valid(st);
-		else
-			update_stat_invalid(st);
+	visible = mapped && g_key_file_get_boolean(config, CONFIG_GROUP,
+				"show_stats", NULL);
+	for (st = statistics; st->heading != NULL; st++) {
+		if (st->fetch(st)) {
+			if (visible)
+				update_stat_valid(st);
+			st->prev = st->cur;
+		} else {
+			if (visible)
+				update_stat_invalid(st);
+		}
+	}
 }
 
 void update_states(void)
@@ -394,6 +402,9 @@ void update_states(void)
 	char **vals;
 	int i;
 
+	if (!mapped || !g_key_file_get_boolean(config, CONFIG_GROUP,
+				"show_nexus", NULL))
+		return;
 	data = get_attr("states");
 	if (data == NULL)
 		return;
@@ -427,6 +438,9 @@ void update_img(void)
 	int height;
 	int changed = 0;
 
+	if (!mapped || !g_key_file_get_boolean(config, CONFIG_GROUP,
+				"show_bitmap", NULL))
+		return;
 	if (img_width == 0)
 		return;  /* need to wait for img_size_allocate() callback */
 	if (prev_states == NULL)
@@ -574,6 +588,19 @@ gboolean configure(GtkWidget *widget, GdkEventConfigure *event, void *data)
 	g_key_file_set_integer(config, CONFIG_GROUP, "height", event->height);
 	g_key_file_set_integer(config, CONFIG_GROUP, "x", event->x);
 	g_key_file_set_integer(config, CONFIG_GROUP, "y", event->y);
+	return FALSE;
+}
+
+gboolean map(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	mapped = TRUE;
+	update_event(NULL);
+	return FALSE;
+}
+
+gboolean unmap(GtkWidget *widget, GdkEvent *event, void *data)
+{
+	mapped = FALSE;
 	return FALSE;
 }
 
@@ -888,6 +915,8 @@ void init_window(void)
 	g_signal_connect(wd, "key-press-event", G_CALLBACK(keypress), wd);
 	g_signal_connect(wd, "button-press-event", G_CALLBACK(menu_popup),
 				menu);
+	g_signal_connect(wd, "map-event", G_CALLBACK(map), NULL);
+	g_signal_connect(wd, "unmap-event", G_CALLBACK(unmap), NULL);
 	g_signal_connect(img, "size-allocate", G_CALLBACK(img_size_allocate),
 				NULL);
 
@@ -926,8 +955,6 @@ int main(int argc, char **argv)
 	init_files();
 	read_config();
 	init_window();
-	update_stats();
-	update_states();
 	g_timeout_add(100, update_event, NULL);
 	gtk_main();
 	write_config();
