@@ -1,7 +1,7 @@
 /*
  * dirtometer - Shows present and dirty chunks in a parcel's local cache
  *
- * Copyright (C) 2008 Carnegie Mellon University
+ * Copyright (C) 2008-2009 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
