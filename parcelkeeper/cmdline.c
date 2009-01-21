@@ -38,6 +38,7 @@ enum option {
 	OPT_SPLICE,
 	OPT_UNSAFE,
 	OPT_MODE,
+	OPT_NEXUS_CACHE,
 	END_OPTS = -1
 };
 
@@ -69,6 +70,7 @@ static struct pk_option pk_options[] = {
 	{"uuid",           OPT_UUID,           {"uuid"}},
 	{"destdir",        OPT_DESTDIR,        {"dir"}},
 	{"minsize",        OPT_MINSIZE,        {"MB"},                                                  "Don't reclaim hoarded chunks until the hoard cache reaches this size"},
+	{"nexus-cache",    OPT_NEXUS_CACHE, {"MB"},							"Size of the Nexus cache"},
 	{"compression",    OPT_COMPRESSION,    {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
 	{"log",            OPT_LOG,            {"file"}},
 	{"log-filter",     OPT_MASK_FILE,      {"comma_separated_list"},                                "Override default list of log types"},
@@ -88,6 +90,7 @@ mode(RUN) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         OPTIONAL},
 	{OPT_MINSIZE,       OPTIONAL},
+	{OPT_NEXUS_CACHE,   OPTIONAL},
 	{OPT_COMPRESSION,   OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
@@ -483,6 +486,11 @@ enum mode parse_cmdline(int argc, char **argv)
 				PARSE_ERROR("unknown mode %s; try \"%s help\"",
 							optparams[0],
 							progname);
+			break;
+		case OPT_NEXUS_CACHE:
+			if (parseuint(&config.nexus_cache, optparams[0], 10))
+				PARSE_ERROR("invalid integer value: %s",
+							optparams[0]);
 			break;
 		case END_OPTS:
 			/* Silence compiler warning */

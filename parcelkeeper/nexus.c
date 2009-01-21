@@ -252,8 +252,7 @@ pk_err_t nexus_init(void)
 				state.loopdev_name);
 	setup.offset=state.offset >> 9;
 	setup.chunksize=parcel.chunksize;
-	/* Always use a 16 MB cache */
-	setup.cachesize=(16 << 20) / parcel.chunksize;
+	setup.cachesize=(config.nexus_cache << 20) / parcel.chunksize;
 	setup.crypto=crypto_to_nexus(parcel.crypto);
 	setup.compress_default=compress_to_nexus(config.compress);
 	for (u=0; u<8*sizeof(parcel.required_compress); u++)

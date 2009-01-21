@@ -866,7 +866,7 @@ sub run () {
     print("Launching Parcelkeeper...\n")
 	if $verbose;
     $kill_pk = 1;  # Tells the SIGINT handler to cleanly terminate PK
-    run_parcelkeeper("run", "parcel hoard minsize compression log") == 0
+    run_parcelkeeper("run", "parcel hoard minsize nexus-cache compression log") == 0
 	or errexit("Unable to launch Parcelkeeper.");	
     
     # Wait for udev to catch up
@@ -1671,6 +1671,8 @@ sub parcelkeeper_cmd ($$) {
 	    $cmd .= " --hoard $hoarddir";
 	} elsif ($arg eq "minsize") {
 	    $cmd .= " --minsize $syscfg{hoard_minsize}";
+	} elsif ($arg eq "nexus-cache") {
+	    $cmd .= " --nexus-cache $syscfg{nexus_cache}";
 	} elsif ($arg eq "compression") {
 	    $cmd .= " --compression $syscfg{compression}";
 	} elsif ($arg eq "uuid") {

@@ -18,7 +18,8 @@ struct pk_config config = {
 	.log_file_mask = (1 << LOG_INFO) | (1 << LOG_WARNING) |
 				(1 << LOG_STATS),
 	.log_stderr_mask = 1 << LOG_WARNING,
-	.compress = COMP_NONE
+	.compress = COMP_NONE, 
+	.nexus_cache = 32, /* MB */
 };
 struct pk_parcel parcel;
 struct pk_state state;

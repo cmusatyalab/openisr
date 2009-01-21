@@ -127,6 +127,7 @@ struct pk_config {
 	enum compresstype compress;
 	unsigned minsize;  /* MB */
 	char *uuid;
+	unsigned nexus_cache; /* MB */
 };
 
 struct pk_parcel {
