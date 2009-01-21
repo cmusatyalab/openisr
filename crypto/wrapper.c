@@ -8,7 +8,7 @@
 				unsigned long len, unsigned char *out, \
 				struct isrcry_ ## alg ## _key *skey, \
 				unsigned char *iv) { \
-		return _isrcry_cbc_encrypt(in, len, out, \
+		return _isrcry_ ## mode ## _ ## direction(in, len, out, \
 					(cipher_fn *) _isrcry_ ## alg ## _ \
 					## direction, blocksize, skey, iv); \
 	}
