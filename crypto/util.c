@@ -9,6 +9,8 @@ exported const char *isrcry_strerror(enum isrcry_result result)
 		return "Success";
 	case ISRCRY_INVALID_ARGUMENT:
 		return "Invalid argument";
+	case ISRCRY_BAD_PADDING:
+		return "Bad padding";
 	}
 	return "Unknown error";
 }
