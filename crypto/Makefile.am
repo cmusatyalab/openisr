@@ -10,7 +10,8 @@ endif
 
 pkglib_LTLIBRARIES = libisrcrypto.la
 libisrcrypto_la_SOURCES = aes.c blowfish.c cbc.c pad.c sha1.c util.c wrapper.c
-libisrcrypto_la_SOURCES += isrcrypto.h internal.h aes_tab.h blowfish_tab.h
+libisrcrypto_la_SOURCES += isrcrypto.h cipher.h internal.h
+libisrcrypto_la_SOURCES += aes_tab.h blowfish_tab.h
 
 if HAVE_X86_64
 libisrcrypto_la_SOURCES += sha1-compress-amd64.S

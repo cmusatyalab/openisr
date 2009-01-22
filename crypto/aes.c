@@ -187,7 +187,7 @@ exported enum isrcry_result isrcry_aes_init(const unsigned char *key,
   @param skey The key as scheduled
   @return ISRCRY_OK if successful
 */
-enum isrcry_result _isrcry_aes_encrypt(const unsigned char *in,
+exported enum isrcry_result _isrcry_aes_encrypt(const unsigned char *in,
 			unsigned char *out, struct isrcry_aes_key *skey)
 {
     uint32_t s0, s1, s2, s3, t0, t1, t2, t3, *rk;
@@ -312,7 +312,7 @@ enum isrcry_result _isrcry_aes_encrypt(const unsigned char *in,
   @param skey The key as scheduled 
   @return ISRCRY_OK if successful
 */
-enum isrcry_result _isrcry_aes_decrypt(const unsigned char *in,
+exported enum isrcry_result _isrcry_aes_decrypt(const unsigned char *in,
 			unsigned char *out, struct isrcry_aes_key *skey)
 {
     uint32_t s0, s1, s2, s3, t0, t1, t2, t3, *rk;

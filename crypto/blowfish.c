@@ -89,7 +89,7 @@ exported enum isrcry_result isrcry_blowfish_init(const unsigned char *key,
   @param skey The key as scheduled
   @return ISRCRY_OK if successful
 */
-enum isrcry_result _isrcry_blowfish_encrypt(const unsigned char *in,
+exported enum isrcry_result _isrcry_blowfish_encrypt(const unsigned char *in,
 			unsigned char *out, struct isrcry_blowfish_key *skey)
 {
    uint32_t L, R;
@@ -128,7 +128,7 @@ enum isrcry_result _isrcry_blowfish_encrypt(const unsigned char *in,
   @param skey The key as scheduled 
   @return ISRCRY_OK if successful
 */
-enum isrcry_result _isrcry_blowfish_decrypt(const unsigned char *in,
+exported enum isrcry_result _isrcry_blowfish_decrypt(const unsigned char *in,
 			unsigned char *out, struct isrcry_blowfish_key *skey)
 {
    uint32_t L, R;
