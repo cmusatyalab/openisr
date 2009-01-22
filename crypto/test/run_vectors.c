@@ -147,37 +147,36 @@ void aes_monte_test(void)
 	}
 }
 
-void aes_cbc_test(void)
+void chain_test(const char *alg, const struct chain_test *vectors,
+			unsigned vec_count, init_fn *init,
+			cipher_mode_fn *encrypt, cipher_mode_fn *decrypt,
+			void *skey, unsigned blocksize)
 {
-	unsigned blocksize = ISRCRY_AES_BLOCKSIZE;
 	const struct chain_test *test;
-	struct isrcry_aes_key akey;
 	enum isrcry_result ret;
 	unsigned char buf[1024];
 	unsigned char iv[blocksize];
 	unsigned n;
 
-	for (n = 0; n < MEMBERS(aes_cbc_vectors); n++) {
-		test = &aes_cbc_vectors[n];
-		ret = isrcry_aes_init(test->key, test->keylen, &akey);
+	for (n = 0; n < vec_count; n++) {
+		test = &vectors[n];
+		ret = init(test->key, test->keylen, skey);
 		if (ret) {
-			fail("%u init %d", n, ret);
+			fail("%s %u init %d", alg, n, ret);
 			continue;
 		}
 		memcpy(iv, test->iv, blocksize);
-		ret = isrcry_aes_cbc_encrypt(test->plain, test->plainlen,
-					buf, &akey, iv);
+		ret = encrypt(test->plain, test->plainlen, buf, skey, iv);
 		if (ret)
-			fail("%u encrypt %d", n, ret);
+			fail("%s %u encrypt %d", alg, n, ret);
 		if (memcmp(buf, test->cipher, test->plainlen))
-			fail("%u encrypt mismatch", n);
+			fail("%s %u encrypt mismatch", alg, n);
 		memcpy(iv, test->iv, blocksize);
-		ret = isrcry_aes_cbc_decrypt(test->cipher, test->plainlen,
-					buf, &akey, iv);
+		ret = decrypt(test->cipher, test->plainlen, buf, skey, iv);
 		if (ret)
-			fail("%u decrypt %d", n, ret);
+			fail("%s %u decrypt %d", alg, n, ret);
 		if (memcmp(buf, test->plain, test->plainlen))
-			fail("%u decrypt mismatch", n);
+			fail("%s %u decrypt mismatch", alg, n);
 	}
 }
 
@@ -205,7 +204,11 @@ int main(int argc, char **argv)
 				(cipher_fn *) _isrcry_aes_decrypt,
 				&akey, ISRCRY_AES_BLOCKSIZE);
 	aes_monte_test();
-	aes_cbc_test();
+	chain_test("aes", aes_cbc_vectors, MEMBERS(aes_cbc_vectors),
+				(init_fn *) isrcry_aes_init,
+				(cipher_mode_fn *) isrcry_aes_cbc_encrypt,
+				(cipher_mode_fn *) isrcry_aes_cbc_decrypt,
+				&akey, ISRCRY_AES_BLOCKSIZE);
 
 	if (failed) {
 		printf("%d tests failed\n", failed);
