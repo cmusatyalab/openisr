@@ -48,36 +48,6 @@ void ecb_test(const char *alg, const struct ecb_test *vectors,
 	}
 }
 
-void bf_key_test(void)
-{
-	unsigned blocksize = ISRCRY_BLOWFISH_BLOCKSIZE;
-	const struct key_test *test;
-	struct isrcry_blowfish_key bfkey;
-	enum isrcry_result ret;
-	unsigned char buf[blocksize];
-	unsigned n;
-
-	for (n = 0; n < blowfish_key_vectors.count; n++) {
-		test = &blowfish_key_vectors.tests[n];
-		ret = isrcry_blowfish_init(test->key, test->keylen, &bfkey);
-		if (ret) {
-			fail("%u init %i", n, ret);
-			continue;
-		}
-		ret = _isrcry_blowfish_encrypt(blowfish_key_vectors.plain, buf,
-					&bfkey);
-		if (ret)
-			fail("%u encrypt %d", n, ret);
-		if (memcmp(buf, test->cipher, blocksize))
-			fail("%u encrypt mismatch", n);
-		ret = _isrcry_blowfish_decrypt(test->cipher, buf, &bfkey);
-		if (ret)
-			fail("%u decrypt %d", n, ret);
-		if (memcmp(buf, blowfish_key_vectors.plain, blocksize))
-			fail("%u decrypt mismatch", n);
-	}
-}
-
 void bf_cbc_test(void)
 {
 	unsigned blocksize = ISRCRY_BLOWFISH_BLOCKSIZE;
@@ -209,7 +179,6 @@ int main(int argc, char **argv)
 				(cipher_fn *) _isrcry_blowfish_encrypt,
 				(cipher_fn *) _isrcry_blowfish_decrypt,
 				&bfkey, ISRCRY_BLOWFISH_BLOCKSIZE);
-	bf_key_test();
 	bf_cbc_test();
 	ecb_test("aes", aes_ecb_vectors, MEMBERS(aes_ecb_vectors),
 				(init_fn *) isrcry_aes_init,

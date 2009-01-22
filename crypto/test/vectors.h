@@ -12,18 +12,6 @@ struct ecb_test {
 	unsigned keylen;
 };
 
-struct key_test {
-	int keylen;
-	uint8_t cipher[16];
-	uint8_t key[24];
-};
-
-struct key_tests {
-	uint8_t plain[16];
-	const struct key_test *tests;
-	unsigned count;
-};
-
 struct chain_test {
 	uint8_t key[16];
 	uint8_t iv[16];
