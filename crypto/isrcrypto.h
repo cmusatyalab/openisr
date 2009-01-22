@@ -6,6 +6,7 @@
 enum isrcry_result {
 	ISRCRY_OK			= 0,
 	ISRCRY_INVALID_ARGUMENT		= 1,
+	ISRCRY_BAD_PADDING		= 2,
 };
 
 #define ISRCRY_AES_BLOCKSIZE 16
@@ -35,10 +36,34 @@ struct isrcry_sha1_ctx {
 				unsigned char *out, \
 				struct isrcry_ ## alg ## _key *skey, \
 				unsigned char *iv);
+#define ENCRYPT_PAD(alg, mode, pad) \
+	enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## pad ## \
+				_encrypt (const unsigned char *in, \
+				unsigned long inlen, unsigned char *out, \
+				unsigned long outlen, \
+				struct isrcry_ ## alg ## _key *skey, \
+				unsigned char *iv);
+#define DECRYPT_PAD(alg, mode, pad) \
+	enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## pad ## \
+				_decrypt (const unsigned char *in, \
+				unsigned long inlen, unsigned char *out, \
+				unsigned long *outlen, \
+				struct isrcry_ ## alg ## _key *skey, \
+				unsigned char *iv);
+
 CIPHER(aes, cbc, encrypt)
 CIPHER(aes, cbc, decrypt)
 CIPHER(blowfish, cbc, encrypt)
 CIPHER(blowfish, cbc, decrypt)
+
+ENCRYPT_PAD(aes, cbc, pkcs5)
+DECRYPT_PAD(aes, cbc, pkcs5)
+ENCRYPT_PAD(blowfish, cbc, pkcs5)
+DECRYPT_PAD(blowfish, cbc, pkcs5)
+
+#undef CIPHER
+#undef ENCRYPT_PAD
+#undef DECRYPT_PAD
 
 enum isrcry_result isrcry_aes_init(const unsigned char *key, int keylen,
 			struct isrcry_aes_key *skey);

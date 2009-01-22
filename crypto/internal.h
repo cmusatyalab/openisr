@@ -13,8 +13,16 @@
 #define exported
 #endif
 
-typedef int (cipher_fn)(const unsigned char *in, unsigned char *out,
-			void *skey);
+typedef enum isrcry_result (cipher_fn)(const unsigned char *in,
+			unsigned char *out, void *skey);
+typedef enum isrcry_result (mode_fn)(const unsigned char *in,
+			unsigned long len, unsigned char *out,
+			cipher_fn *encrypt, unsigned blocklen, void *key,
+			unsigned char *iv);
+typedef enum isrcry_result (pad_fn)(unsigned char *buf, unsigned blocklen,
+			unsigned datalen);
+typedef enum isrcry_result (unpad_fn)(unsigned char *buf, unsigned blocklen,
+			unsigned *datalen);
 
 enum isrcry_result _isrcry_cbc_encrypt(const unsigned char *in,
 			unsigned long len, unsigned char *out,
@@ -35,6 +43,11 @@ enum isrcry_result _isrcry_blowfish_encrypt(const unsigned char *in,
 			unsigned char *out, struct isrcry_blowfish_key *skey);
 enum isrcry_result _isrcry_blowfish_decrypt(const unsigned char *in,
 			unsigned char *out, struct isrcry_blowfish_key *skey);
+
+enum isrcry_result _isrcry_pkcs5_pad(unsigned char *buf, unsigned blocklen,
+			unsigned datalen);
+enum isrcry_result _isrcry_pkcs5_unpad(unsigned char *buf, unsigned blocklen,
+			unsigned *datalen);
 
 /* Compression function. @state points to 5 u32 words, and @data points to
    64 bytes of input data, possibly unaligned. */
