@@ -17,6 +17,17 @@ typedef enum isrcry_result (init_fn)(const unsigned char *key, int keylen,
 			void *skey);
 typedef enum isrcry_result (cipher_fn)(const unsigned char *in,
 			unsigned char *out, void *skey);
+typedef enum isrcry_result (cipher_mode_fn)(const unsigned char *in,
+			unsigned long len, unsigned char *out,
+			void *skey, unsigned char *iv);
+typedef enum isrcry_result (encrypt_mode_pad_fn)(const unsigned char *in,
+				unsigned long inlen, unsigned char *out,
+				unsigned long outlen, void *skey,
+				unsigned char *iv);
+typedef enum isrcry_result (decrypt_mode_pad_fn)(const unsigned char *in,
+				unsigned long inlen, unsigned char *out,
+				unsigned long *outlen, void *skey,
+				unsigned char *iv);
 
 void ecb_test(const char *alg, const struct ecb_test *vectors,
 			unsigned vec_count, init_fn *init,
@@ -48,11 +59,13 @@ void ecb_test(const char *alg, const struct ecb_test *vectors,
 	}
 }
 
-void bf_cbc_test(void)
+void chain_pad_test(const char *alg, const struct chain_test *vectors,
+			unsigned vec_count, init_fn *init,
+			encrypt_mode_pad_fn *encrypt,
+			decrypt_mode_pad_fn *decrypt, void *skey,
+			unsigned blocksize)
 {
-	unsigned blocksize = ISRCRY_BLOWFISH_BLOCKSIZE;
 	const struct chain_test *test;
-	struct isrcry_blowfish_key bfkey;
 	enum isrcry_result ret;
 	unsigned char buf[1024];
 	unsigned char iv[blocksize];
@@ -60,32 +73,31 @@ void bf_cbc_test(void)
 	unsigned long outlen;
 	unsigned n;
 
-	for (n = 0; n < MEMBERS(blowfish_cbc_vectors); n++) {
-		test = &blowfish_cbc_vectors[n];
-		ret = isrcry_blowfish_init(test->key, 16, &bfkey);
+	for (n = 0; n < vec_count; n++) {
+		test = &vectors[n];
+		ret = init(test->key, test->keylen, skey);
 		if (ret) {
-			fail("%u init %d", n, ret);
+			fail("%s %u init %d", alg, n, ret);
 			continue;
 		}
 		memcpy(iv, test->iv, blocksize);
-		ret = isrcry_blowfish_cbc_pkcs5_encrypt(test->plain,
-					test->plainlen, buf, sizeof(buf),
-					&bfkey, iv);
+		ret = encrypt(test->plain, test->plainlen, buf, sizeof(buf),
+					skey, iv);
 		if (ret)
-			fail("%u encrypt %d", n, ret);
+			fail("%s %u encrypt %d", alg, n, ret);
 		cipherlen = test->plainlen + (blocksize -
 					(test->plainlen % blocksize));
 		if (memcmp(buf, test->cipher, cipherlen))
-			fail("%u encrypt mismatch", n);
+			fail("%s %u encrypt mismatch", alg, n);
 		memcpy(iv, test->iv, blocksize);
-		ret = isrcry_blowfish_cbc_pkcs5_decrypt(test->cipher,
-					cipherlen, buf, &outlen, &bfkey, iv);
+		ret = decrypt(test->cipher, cipherlen, buf, &outlen,
+					skey, iv);
 		if (ret)
-			fail("%u decrypt %d", n, ret);
+			fail("%s %u decrypt %d", alg, n, ret);
 		if (outlen != test->plainlen)
-			fail("%u decrypt length mismatch", n);
+			fail("%s %u decrypt length mismatch", alg, n);
 		if (memcmp(buf, test->plain, test->plainlen))
-			fail("%u decrypt mismatch", n);
+			fail("%s %u decrypt mismatch", alg, n);
 	}
 }
 
@@ -147,7 +159,7 @@ void aes_cbc_test(void)
 
 	for (n = 0; n < MEMBERS(aes_cbc_vectors); n++) {
 		test = &aes_cbc_vectors[n];
-		ret = isrcry_aes_init(test->key, 16, &akey);
+		ret = isrcry_aes_init(test->key, test->keylen, &akey);
 		if (ret) {
 			fail("%u init %d", n, ret);
 			continue;
@@ -179,7 +191,14 @@ int main(int argc, char **argv)
 				(cipher_fn *) _isrcry_blowfish_encrypt,
 				(cipher_fn *) _isrcry_blowfish_decrypt,
 				&bfkey, ISRCRY_BLOWFISH_BLOCKSIZE);
-	bf_cbc_test();
+	chain_pad_test("bf", blowfish_cbc_vectors,
+				MEMBERS(blowfish_cbc_vectors),
+				(init_fn *) isrcry_blowfish_init,
+				(encrypt_mode_pad_fn *)
+				isrcry_blowfish_cbc_pkcs5_encrypt,
+				(decrypt_mode_pad_fn *)
+				isrcry_blowfish_cbc_pkcs5_decrypt,
+				&bfkey, ISRCRY_BLOWFISH_BLOCKSIZE);
 	ecb_test("aes", aes_ecb_vectors, MEMBERS(aes_ecb_vectors),
 				(init_fn *) isrcry_aes_init,
 				(cipher_fn *) _isrcry_aes_encrypt,

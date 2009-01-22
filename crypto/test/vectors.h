@@ -18,6 +18,7 @@ struct chain_test {
 	uint8_t plain[128];
 	uint8_t cipher[128];
 	unsigned plainlen;
+	unsigned keylen;
 };
 
 struct monte_test {
