@@ -31,7 +31,7 @@ from vmm import *
 CLASS_VBOX = '@virtualbox.org/VirtualBox;1'
 CLASS_SESN = '@virtualbox.org/Session;1'
 MIN_VERSION = (2,0,0)
-SETTINGS_VERSIONS = ((1,3), (1,5))
+SETTINGS_VERSIONS = ((1,3), (1,5), (1,6))
 
 class MachineFile:
 	def __init__(self, vm_path):
