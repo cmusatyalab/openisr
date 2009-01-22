@@ -22,3 +22,5 @@ else
 libisrcrypto_la_SOURCES += sha1-compress.c
 endif
 endif
+
+SUBDIRS = . test
