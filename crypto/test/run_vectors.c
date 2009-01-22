@@ -21,8 +21,8 @@ void bf_ecb_test(void)
 	unsigned char buf[blocksize];
 	unsigned n;
 
-	for (n = 0; n < MEMBERS(blowfish_ecb_test); n++) {
-		test = &blowfish_ecb_test[n];
+	for (n = 0; n < MEMBERS(blowfish_ecb_vectors); n++) {
+		test = &blowfish_ecb_vectors[n];
 		ret = isrcry_blowfish_init(test->key, blocksize, &bfkey);
 		if (ret) {
 			fail("%u init %i", n, ret);
@@ -50,14 +50,14 @@ void bf_key_test(void)
 	unsigned char buf[blocksize];
 	unsigned n;
 
-	for (n = 0; n < blowfish_key_tests.count; n++) {
-		test = &blowfish_key_tests.tests[n];
+	for (n = 0; n < blowfish_key_vectors.count; n++) {
+		test = &blowfish_key_vectors.tests[n];
 		ret = isrcry_blowfish_init(test->key, test->keylen, &bfkey);
 		if (ret) {
 			fail("%u init %i", n, ret);
 			continue;
 		}
-		ret = _isrcry_blowfish_encrypt(blowfish_key_tests.plain, buf,
+		ret = _isrcry_blowfish_encrypt(blowfish_key_vectors.plain, buf,
 					&bfkey);
 		if (ret)
 			fail("%u encrypt %d", n, ret);
@@ -66,7 +66,7 @@ void bf_key_test(void)
 		ret = _isrcry_blowfish_decrypt(test->cipher, buf, &bfkey);
 		if (ret)
 			fail("%u decrypt %d", n, ret);
-		if (memcmp(buf, blowfish_key_tests.plain, blocksize))
+		if (memcmp(buf, blowfish_key_vectors.plain, blocksize))
 			fail("%u decrypt mismatch", n);
 	}
 }
@@ -83,8 +83,8 @@ void bf_cbc_test(void)
 	unsigned long outlen;
 	unsigned n;
 
-	for (n = 0; n < MEMBERS(blowfish_cbc_test); n++) {
-		test = &blowfish_cbc_test[n];
+	for (n = 0; n < MEMBERS(blowfish_cbc_vectors); n++) {
+		test = &blowfish_cbc_vectors[n];
 		ret = isrcry_blowfish_init(test->key, 16, &bfkey);
 		if (ret) {
 			fail("%u init %d", n, ret);
