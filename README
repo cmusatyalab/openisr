@@ -12,8 +12,8 @@ To run:
 - OpenSSL libraries and command-line utility
 - zlib
 - libuuid from e2fsprogs
+- GTK+
 - Perl
-- gtk2-perl, if dirtometer will be used
 - udev
 - ssh
 - rsync
@@ -30,7 +30,7 @@ Additional requirements for the vmware driver:
 
 To build from a source tarball:
 - All of the requirements for running the OpenISR system, plus:
-- Development headers for glibc, libcurl, OpenSSL, zlib, and libossp-uuid
+- Development headers for glibc, libcurl, OpenSSL, zlib, GTK+, and libuuid
 - pkg-config
 
 To build from the Git repository:
