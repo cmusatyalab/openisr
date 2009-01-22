@@ -25,6 +25,7 @@ struct monte_test {
 	uint8_t out[16];
 	unsigned keylen;
 	unsigned ngroups;
+	unsigned niters;
 	int encrypt;
 };
 

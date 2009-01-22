@@ -134,11 +134,12 @@ void chain_pad_test(const char *alg, const struct chain_test *vectors,
 	}
 }
 
-void aes_monte_test(void)
+void monte_test(const char *alg, const struct monte_test *vectors,
+			unsigned vec_count, init_fn *init,
+			cipher_fn *encrypt, cipher_fn *decrypt,
+			void *skey, unsigned blocksize)
 {
-	unsigned blocksize = ISRCRY_AES_BLOCKSIZE;
 	const struct monte_test *test;
-	struct isrcry_aes_key akey;
 	unsigned n;
 	unsigned m;
 	unsigned l;
@@ -148,26 +149,24 @@ void aes_monte_test(void)
 	uint8_t *out = buf + blocksize;
 	enum isrcry_result ret;
 
-	for (n = 0; n < MEMBERS(aes_monte_vectors); n++) {
-		test = &aes_monte_vectors[n];
+	for (n = 0; n < vec_count; n++) {
+		test = &vectors[n];
 		memset(key, 0, test->keylen);
 		memset(buf, 0, sizeof(buf));
 		for (m = 0; m < test->ngroups; m++) {
-			ret = isrcry_aes_init(key, test->keylen, &akey);
+			ret = init(key, test->keylen, skey);
 			if (ret) {
-				fail("%u init %u", n, m);
+				fail("%s %u init %u", alg, n, m);
 				break;
 			}
-			for (l = 0; l < 10000; l++) {
+			for (l = 0; l < test->niters; l++) {
 				memcpy(in, out, blocksize);
 				if (test->encrypt)
-					ret = _isrcry_aes_encrypt(in, out,
-								&akey);
+					ret = encrypt(in, out, skey);
 				else
-					ret = _isrcry_aes_decrypt(in, out,
-								&akey);
+					ret = decrypt(in, out, skey);
 				if (ret) {
-					fail("%u crypt %u %u", n, m, l);
+					fail("%s %u crypt %u %u", alg, n, m, l);
 					break;
 				}
 				/* buf now holds the last two ciphertexts */
@@ -176,7 +175,7 @@ void aes_monte_test(void)
 				key[l] ^= buf[l + 32 - test->keylen];
 		}
 		if (memcmp(out, test->out, blocksize))
-			fail("%u result mismatch", n);
+			fail("%s %u result mismatch", alg, n);
 	}
 }
 
@@ -203,7 +202,11 @@ int main(int argc, char **argv)
 				(cipher_fn *) _isrcry_aes_encrypt,
 				(cipher_fn *) _isrcry_aes_decrypt,
 				&akey, ISRCRY_AES_BLOCKSIZE);
-	aes_monte_test();
+	monte_test("aes", aes_monte_vectors, MEMBERS(aes_monte_vectors),
+				(init_fn *) isrcry_aes_init,
+				(cipher_fn *) _isrcry_aes_encrypt,
+				(cipher_fn *) _isrcry_aes_decrypt,
+				&akey, ISRCRY_AES_BLOCKSIZE);
 	chain_test("aes", aes_cbc_vectors, MEMBERS(aes_cbc_vectors),
 				(init_fn *) isrcry_aes_init,
 				(cipher_mode_fn *) isrcry_aes_cbc_encrypt,
