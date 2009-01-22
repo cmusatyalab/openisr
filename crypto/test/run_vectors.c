@@ -59,6 +59,39 @@ void ecb_test(const char *alg, const struct ecb_test *vectors,
 	}
 }
 
+void chain_test(const char *alg, const struct chain_test *vectors,
+			unsigned vec_count, init_fn *init,
+			cipher_mode_fn *encrypt, cipher_mode_fn *decrypt,
+			void *skey, unsigned blocksize)
+{
+	const struct chain_test *test;
+	enum isrcry_result ret;
+	unsigned char buf[1024];
+	unsigned char iv[blocksize];
+	unsigned n;
+
+	for (n = 0; n < vec_count; n++) {
+		test = &vectors[n];
+		ret = init(test->key, test->keylen, skey);
+		if (ret) {
+			fail("%s %u init %d", alg, n, ret);
+			continue;
+		}
+		memcpy(iv, test->iv, blocksize);
+		ret = encrypt(test->plain, test->plainlen, buf, skey, iv);
+		if (ret)
+			fail("%s %u encrypt %d", alg, n, ret);
+		if (memcmp(buf, test->cipher, test->plainlen))
+			fail("%s %u encrypt mismatch", alg, n);
+		memcpy(iv, test->iv, blocksize);
+		ret = decrypt(test->cipher, test->plainlen, buf, skey, iv);
+		if (ret)
+			fail("%s %u decrypt %d", alg, n, ret);
+		if (memcmp(buf, test->plain, test->plainlen))
+			fail("%s %u decrypt mismatch", alg, n);
+	}
+}
+
 void chain_pad_test(const char *alg, const struct chain_test *vectors,
 			unsigned vec_count, init_fn *init,
 			encrypt_mode_pad_fn *encrypt,
@@ -144,39 +177,6 @@ void aes_monte_test(void)
 		}
 		if (memcmp(out, test->out, blocksize))
 			fail("%u result mismatch", n);
-	}
-}
-
-void chain_test(const char *alg, const struct chain_test *vectors,
-			unsigned vec_count, init_fn *init,
-			cipher_mode_fn *encrypt, cipher_mode_fn *decrypt,
-			void *skey, unsigned blocksize)
-{
-	const struct chain_test *test;
-	enum isrcry_result ret;
-	unsigned char buf[1024];
-	unsigned char iv[blocksize];
-	unsigned n;
-
-	for (n = 0; n < vec_count; n++) {
-		test = &vectors[n];
-		ret = init(test->key, test->keylen, skey);
-		if (ret) {
-			fail("%s %u init %d", alg, n, ret);
-			continue;
-		}
-		memcpy(iv, test->iv, blocksize);
-		ret = encrypt(test->plain, test->plainlen, buf, skey, iv);
-		if (ret)
-			fail("%s %u encrypt %d", alg, n, ret);
-		if (memcmp(buf, test->cipher, test->plainlen))
-			fail("%s %u encrypt mismatch", alg, n);
-		memcpy(iv, test->iv, blocksize);
-		ret = decrypt(test->cipher, test->plainlen, buf, skey, iv);
-		if (ret)
-			fail("%s %u decrypt %d", alg, n, ret);
-		if (memcmp(buf, test->plain, test->plainlen))
-			fail("%s %u decrypt mismatch", alg, n);
 	}
 }
 
