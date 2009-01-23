@@ -29,4 +29,17 @@ struct monte_test {
 	int encrypt;
 };
 
+struct hash_test {
+	uint8_t data[512];
+	unsigned len;
+	uint8_t hash[64];
+};
+
+struct hash_monte_test {
+	uint8_t seed[64];
+	unsigned ngroups;
+	unsigned niters;
+	uint8_t hash[64];
+};
+
 #endif
