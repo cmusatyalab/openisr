@@ -102,8 +102,10 @@ exported void isrcry_sha1_final(struct isrcry_sha1_ctx *ctx,
 	/* This is slightly inefficient, as the numbers are converted to
 	   big-endian format, and will be converted back by the compression
 	   function. It's probably not worth the effort to fix this. */
-	STORE32H(bitcount >> 32, ctx->block + (SHA1_DATA_SIZE - 8));
-	STORE32H(bitcount, ctx->block + (SHA1_DATA_SIZE - 4));
+	STORE32H((uint32_t)(bitcount >> 32),
+				ctx->block + (SHA1_DATA_SIZE - 8));
+	STORE32H((uint32_t) bitcount,
+				ctx->block + (SHA1_DATA_SIZE - 4));
 	
 	_isrcry_sha1_compress(ctx->digest, ctx->block);
 	
