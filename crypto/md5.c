@@ -40,11 +40,9 @@ exported void isrcry_md5_init(struct isrcry_md5_ctx *ctx)
   ctx->digest[2] = 0x98badcfe;
   ctx->digest[3] = 0x10325476;
   
-  ctx->count_l = ctx->count_h = 0;
+  ctx->count = 0;
   ctx->index = 0;
 }
-
-#define MD5_INCR(ctx) ((ctx)->count_h += !++(ctx)->count_l)
 
 exported void isrcry_md5_update(struct isrcry_md5_ctx *ctx,
 			const unsigned char *buffer, unsigned length)
@@ -64,7 +62,7 @@ exported void isrcry_md5_update(struct isrcry_md5_ctx *ctx,
 	  memcpy(ctx->block + ctx->index, buffer, left);
 
 	  _isrcry_md5_compress(ctx->digest, ctx->block);
-	  MD5_INCR(ctx);
+	  ctx->count++;
 	  
 	  buffer += left;
 	  length -= left;
@@ -73,7 +71,7 @@ exported void isrcry_md5_update(struct isrcry_md5_ctx *ctx,
   while (length >= MD5_DATA_SIZE)
     {
       _isrcry_md5_compress(ctx->digest, buffer);
-      MD5_INCR(ctx);
+      ctx->count++;
 
       buffer += MD5_DATA_SIZE;
       length -= MD5_DATA_SIZE;
@@ -86,8 +84,7 @@ exported void isrcry_md5_update(struct isrcry_md5_ctx *ctx,
 exported void isrcry_md5_final(struct isrcry_md5_ctx *ctx,
 			unsigned char *digest)
 {
-  uint32_t bitcount_high;
-  uint32_t bitcount_low;
+  uint64_t bitcount;
   unsigned i;
   
   /* Final wrapup - pad to MD5_DATA_SIZE-byte boundary with the bit
@@ -113,11 +110,9 @@ exported void isrcry_md5_final(struct isrcry_md5_ctx *ctx,
     
   /* There are 512 = 2^9 bits in one block 
    * Little-endian order => Least significant word first */
-
-  bitcount_low = (ctx->count_l << 9) | (ctx->index << 3);
-  bitcount_high = (ctx->count_h << 9) | (ctx->count_l >> 23);
-  STORE32L(bitcount_low, ctx->block + (MD5_DATA_SIZE - 8));
-  STORE32L(bitcount_high, ctx->block + (MD5_DATA_SIZE - 4));
+  bitcount = (ctx->count << 9) | (ctx->index << 3);
+  STORE32L((uint32_t) bitcount, ctx->block + (MD5_DATA_SIZE - 8));
+  STORE32L((uint32_t)(bitcount >> 32), ctx->block + (MD5_DATA_SIZE - 4));
   
   _isrcry_md5_compress(ctx->digest, ctx->block);
   

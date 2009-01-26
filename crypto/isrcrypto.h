@@ -33,8 +33,7 @@ struct isrcry_sha1_ctx {
 
 struct isrcry_md5_ctx {
 	uint32_t digest[4];
-	uint32_t count_l;
-	uint32_t count_h;
+	uint64_t count;
 	uint8_t block[64];
 	unsigned index;
 };
