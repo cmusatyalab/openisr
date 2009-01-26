@@ -44,6 +44,10 @@ enum isrcry_result _isrcry_pkcs5_unpad(unsigned char *buf, unsigned blocklen,
    64 bytes of input data, possibly unaligned. */
 void _isrcry_sha1_compress(uint32_t *state, const uint8_t *data);
 
+/* @state points to 4 u32 words, and @data points to 64 bytes of input data,
+   possibly unaligned. */
+void _isrcry_md5_compress(uint32_t *state, const uint8_t *data);
+
 /* libtomcrypt helper defines */
 
 /* Extract a byte portably */

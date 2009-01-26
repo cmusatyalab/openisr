@@ -6,7 +6,7 @@
 
 /* nettle, low-level cryptographics library
  *
- * Copyright (C) 2001, 2005 Niels Möller
+ * Copyright (C) 2001, 2005 Niels MÃ¶ller
  *  
  * The nettle library is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -25,32 +25,11 @@
  */
 
 /* Based on public domain code hacked by Colin Plumb, Andrew Kuchling, and
- * Niels Möller. */
+ * Niels MÃ¶ller. */
 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
-
-#ifndef MD5_DEBUG
-# define MD5_DEBUG 0
-#endif
-
-#if MD5_DEBUG
-# include <stdio.h>
-# define DEBUG(i) \
-  fprintf(stderr, "%2d: %8x %8x %8x %8x\n", i, a, b, c, d)
-#else
-# define DEBUG(i)
-#endif
-
-#include <assert.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include "md5.h"
-
-#include "macros.h"
+#include "isrcrypto.h"
+#define LIBISRCRYPTO_INTERNAL
+#include "internal.h"
 
 /* A block, treated as a sequence of 32-bit words. */
 #define MD5_DATA_LENGTH 16
@@ -71,24 +50,22 @@
  * Compresses 20 (_MD5_DIGEST_LENGTH + MD5_DATA_LENGTH) words into 4
  * (_MD5_DIGEST_LENGTH) words. */
 
-void
-_nettle_md5_compress(uint32_t *digest, const uint8_t *input)
+void _isrcry_md5_compress(uint32_t *state, const uint8_t *input)
 {
   uint32_t data[MD5_DATA_LENGTH];
   uint32_t a, b, c, d;
   unsigned i;
 
   for (i = 0; i < MD5_DATA_LENGTH; i++, input += 4)
-    data[i] = LE_READ_UINT32(input);
+    LOAD32L(data[i], input);
 
-  a = digest[0];
-  b = digest[1];
-  c = digest[2];
-  d = digest[3];
+  a = state[0];
+  b = state[1];
+  c = state[2];
+  d = state[3];
 
-  DEBUG(-1);
-  ROUND(F1, a, b, c, d, data[ 0] + 0xd76aa478, 7); DEBUG(0);
-  ROUND(F1, d, a, b, c, data[ 1] + 0xe8c7b756, 12); DEBUG(1);
+  ROUND(F1, a, b, c, d, data[ 0] + 0xd76aa478, 7);
+  ROUND(F1, d, a, b, c, data[ 1] + 0xe8c7b756, 12);
   ROUND(F1, c, d, a, b, data[ 2] + 0x242070db, 17);
   ROUND(F1, b, c, d, a, data[ 3] + 0xc1bdceee, 22);
   ROUND(F1, a, b, c, d, data[ 4] + 0xf57c0faf, 7);
@@ -102,10 +79,10 @@ _nettle_md5_compress(uint32_t *digest, const uint8_t *input)
   ROUND(F1, a, b, c, d, data[12] + 0x6b901122, 7);
   ROUND(F1, d, a, b, c, data[13] + 0xfd987193, 12);
   ROUND(F1, c, d, a, b, data[14] + 0xa679438e, 17);
-  ROUND(F1, b, c, d, a, data[15] + 0x49b40821, 22); DEBUG(15);
+  ROUND(F1, b, c, d, a, data[15] + 0x49b40821, 22);
 
-  ROUND(F2, a, b, c, d, data[ 1] + 0xf61e2562, 5); DEBUG(16);
-  ROUND(F2, d, a, b, c, data[ 6] + 0xc040b340, 9); DEBUG(17);
+  ROUND(F2, a, b, c, d, data[ 1] + 0xf61e2562, 5);
+  ROUND(F2, d, a, b, c, data[ 6] + 0xc040b340, 9);
   ROUND(F2, c, d, a, b, data[11] + 0x265e5a51, 14);
   ROUND(F2, b, c, d, a, data[ 0] + 0xe9b6c7aa, 20);
   ROUND(F2, a, b, c, d, data[ 5] + 0xd62f105d, 5);
@@ -119,10 +96,10 @@ _nettle_md5_compress(uint32_t *digest, const uint8_t *input)
   ROUND(F2, a, b, c, d, data[13] + 0xa9e3e905, 5);
   ROUND(F2, d, a, b, c, data[ 2] + 0xfcefa3f8, 9);
   ROUND(F2, c, d, a, b, data[ 7] + 0x676f02d9, 14);
-  ROUND(F2, b, c, d, a, data[12] + 0x8d2a4c8a, 20); DEBUG(31);
+  ROUND(F2, b, c, d, a, data[12] + 0x8d2a4c8a, 20);
 
-  ROUND(F3, a, b, c, d, data[ 5] + 0xfffa3942, 4); DEBUG(32);
-  ROUND(F3, d, a, b, c, data[ 8] + 0x8771f681, 11); DEBUG(33);
+  ROUND(F3, a, b, c, d, data[ 5] + 0xfffa3942, 4);
+  ROUND(F3, d, a, b, c, data[ 8] + 0x8771f681, 11);
   ROUND(F3, c, d, a, b, data[11] + 0x6d9d6122, 16);
   ROUND(F3, b, c, d, a, data[14] + 0xfde5380c, 23);
   ROUND(F3, a, b, c, d, data[ 1] + 0xa4beea44, 4);
@@ -136,10 +113,10 @@ _nettle_md5_compress(uint32_t *digest, const uint8_t *input)
   ROUND(F3, a, b, c, d, data[ 9] + 0xd9d4d039, 4);
   ROUND(F3, d, a, b, c, data[12] + 0xe6db99e5, 11);
   ROUND(F3, c, d, a, b, data[15] + 0x1fa27cf8, 16);
-  ROUND(F3, b, c, d, a, data[ 2] + 0xc4ac5665, 23); DEBUG(47);
+  ROUND(F3, b, c, d, a, data[ 2] + 0xc4ac5665, 23);
 
-  ROUND(F4, a, b, c, d, data[ 0] + 0xf4292244, 6); DEBUG(48);
-  ROUND(F4, d, a, b, c, data[ 7] + 0x432aff97, 10); DEBUG(49);
+  ROUND(F4, a, b, c, d, data[ 0] + 0xf4292244, 6);
+  ROUND(F4, d, a, b, c, data[ 7] + 0x432aff97, 10);
   ROUND(F4, c, d, a, b, data[14] + 0xab9423a7, 15);
   ROUND(F4, b, c, d, a, data[ 5] + 0xfc93a039, 21);
   ROUND(F4, a, b, c, d, data[12] + 0x655b59c3, 6);
@@ -153,15 +130,10 @@ _nettle_md5_compress(uint32_t *digest, const uint8_t *input)
   ROUND(F4, a, b, c, d, data[ 4] + 0xf7537e82, 6);
   ROUND(F4, d, a, b, c, data[11] + 0xbd3af235, 10);
   ROUND(F4, c, d, a, b, data[ 2] + 0x2ad7d2bb, 15);
-  ROUND(F4, b, c, d, a, data[ 9] + 0xeb86d391, 21); DEBUG(63);
+  ROUND(F4, b, c, d, a, data[ 9] + 0xeb86d391, 21);
 
-  digest[0] += a;
-  digest[1] += b;
-  digest[2] += c;
-  digest[3] += d;
-#if MD5_DEBUG
-  fprintf(stderr, "99: %8x %8x %8x %8x\n",
-	  digest[0], digest[1], digest[2], digest[3]);
-#endif
-  
+  state[0] += a;
+  state[1] += b;
+  state[2] += c;
+  state[3] += d;
 }

@@ -5,7 +5,7 @@
 
 /* nettle, low-level cryptographics library
  *
- * Copyright (C) 2001 Niels Möller
+ * Copyright (C) 2001 Niels MÃ¶ller
  *  
  * The nettle library is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -24,24 +24,18 @@
  */
 
 /* Based on public domain code hacked by Colin Plumb, Andrew Kuchling, and
- * Niels Möller. */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
+ * Niels MÃ¶ller. */
 
 #include <assert.h>
-#include <string.h>
+#include "isrcrypto.h"
+#define LIBISRCRYPTO_INTERNAL
+#include "internal.h"
 
-#include "md5.h"
+#define MD5_DATA_SIZE 64
 
-#include "macros.h"
+static void isrcry_md5_pad(struct isrcry_md5_ctx *ctx);
 
-static void
-md5_final(struct md5_ctx *ctx);
-
-void
-md5_init(struct md5_ctx *ctx)
+exported void isrcry_md5_init(struct isrcry_md5_ctx *ctx)
 {
   ctx->digest[0] = 0x67452301;
   ctx->digest[1] = 0xefcdab89;
@@ -54,10 +48,8 @@ md5_init(struct md5_ctx *ctx)
 
 #define MD5_INCR(ctx) ((ctx)->count_h += !++(ctx)->count_l)
 
-void
-md5_update(struct md5_ctx *ctx,
-	   unsigned length,
-	   const uint8_t *data)
+exported void isrcry_md5_update(struct isrcry_md5_ctx *ctx,
+			const unsigned char *buffer, unsigned length)
 {
   if (ctx->index)
     {
@@ -65,74 +57,50 @@ md5_update(struct md5_ctx *ctx,
       unsigned left = MD5_DATA_SIZE - ctx->index;
       if (length < left)
 	{
-	  memcpy(ctx->block + ctx->index, data, length);
+	  memcpy(ctx->block + ctx->index, buffer, length);
 	  ctx->index += length;
 	  return; /* Finished */
 	}
       else
 	{
-	  memcpy(ctx->block + ctx->index, data, left);
+	  memcpy(ctx->block + ctx->index, buffer, left);
 
-	  _nettle_md5_compress(ctx->digest, ctx->block);
+	  _isrcry_md5_compress(ctx->digest, ctx->block);
 	  MD5_INCR(ctx);
 	  
-	  data += left;
+	  buffer += left;
 	  length -= left;
 	}
     }
   while (length >= MD5_DATA_SIZE)
     {
-      _nettle_md5_compress(ctx->digest, data);
+      _isrcry_md5_compress(ctx->digest, buffer);
       MD5_INCR(ctx);
 
-      data += MD5_DATA_SIZE;
+      buffer += MD5_DATA_SIZE;
       length -= MD5_DATA_SIZE;
     }
   if ((ctx->index = length))     /* This assignment is intended */
     /* Buffer leftovers */
-    memcpy(ctx->block, data, length);
+    memcpy(ctx->block, buffer, length);
 }
 
-void
-md5_digest(struct md5_ctx *ctx,
-	   unsigned length,
-	   uint8_t *digest)
+exported void isrcry_md5_final(struct isrcry_md5_ctx *ctx,
+			unsigned char *digest)
 {
   unsigned i;
-  unsigned words;
-  unsigned leftover;
   
-  assert(length <= MD5_DIGEST_SIZE);
-
-  md5_final(ctx);
-  
-  words = length / 4;
-  leftover = length % 4;
+  isrcry_md5_pad(ctx);
   
   /* Little endian order */
-  for (i = 0; i < words; i++, digest += 4)
-    LE_WRITE_UINT32(digest, ctx->digest[i]);
-
-  if (leftover)
-    {
-      uint32_t word;
-      unsigned j;
-
-      assert(i < _MD5_DIGEST_LENGTH);
-      
-      /* Still least significant byte first. */
-      for (word = ctx->digest[i], j = 0; j < leftover;
-	   j++, word >>= 8)
-	digest[j] = word & 0xff;
-    }
-  md5_init(ctx);
+  for (i = 0; i < ISRCRY_MD5_DIGEST_SIZE / 4; i++, digest += 4)
+    STORE32L(ctx->digest[i], digest);
 }
 
 /* Final wrapup - pad to MD5_DATA_SIZE-byte boundary with the bit
  * pattern 1 0* (64-bit count of bits processed, LSB-first) */
 
-static void
-md5_final(struct md5_ctx *ctx)
+static void isrcry_md5_pad(struct isrcry_md5_ctx *ctx)
 {
   uint32_t bitcount_high;
   uint32_t bitcount_low;
@@ -151,7 +119,7 @@ md5_final(struct md5_ctx *ctx)
 	 pad with another one */
       memset(ctx->block + i, 0, MD5_DATA_SIZE - i);
       
-      _nettle_md5_compress(ctx->digest, ctx->block);
+      _isrcry_md5_compress(ctx->digest, ctx->block);
       i = 0;
     }
   if (i < (MD5_DATA_SIZE - 8))
@@ -162,8 +130,8 @@ md5_final(struct md5_ctx *ctx)
 
   bitcount_low = (ctx->count_l << 9) | (ctx->index << 3);
   bitcount_high = (ctx->count_h << 9) | (ctx->count_l >> 23);
-  LE_WRITE_UINT32(ctx->block + (MD5_DATA_SIZE - 8), bitcount_low);
-  LE_WRITE_UINT32(ctx->block + (MD5_DATA_SIZE - 4), bitcount_high);
+  STORE32L(bitcount_low, ctx->block + (MD5_DATA_SIZE - 8));
+  STORE32L(bitcount_high, ctx->block + (MD5_DATA_SIZE - 4));
   
-  _nettle_md5_compress(ctx->digest, ctx->block);
+  _isrcry_md5_compress(ctx->digest, ctx->block);
 }

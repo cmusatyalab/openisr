@@ -12,6 +12,7 @@ enum isrcry_result {
 #define ISRCRY_AES_BLOCKSIZE 16
 #define ISRCRY_BLOWFISH_BLOCKSIZE 8
 #define ISRCRY_SHA1_DIGEST_SIZE 20
+#define ISRCRY_MD5_DIGEST_SIZE 16
 
 struct isrcry_aes_key {
 	uint32_t eK[60], dK[60];
@@ -26,6 +27,14 @@ struct isrcry_blowfish_key {
 struct isrcry_sha1_ctx {
 	uint32_t digest[5];
 	uint64_t count;
+	uint8_t block[64];
+	unsigned index;
+};
+
+struct isrcry_md5_ctx {
+	uint32_t digest[4];
+	uint32_t count_l;
+	uint32_t count_h;
 	uint8_t block[64];
 	unsigned index;
 };
@@ -74,6 +83,11 @@ void isrcry_sha1_init(struct isrcry_sha1_ctx *ctx);
 void isrcry_sha1_update(struct isrcry_sha1_ctx *ctx,
 			const unsigned char *buffer, unsigned length);
 void isrcry_sha1_final(struct isrcry_sha1_ctx *ctx, unsigned char *digest);
+
+void isrcry_md5_init(struct isrcry_md5_ctx *ctx);
+void isrcry_md5_update(struct isrcry_md5_ctx *ctx, const unsigned char *buffer,
+			unsigned length);
+void isrcry_md5_final(struct isrcry_md5_ctx *ctx, unsigned char *digest);
 
 const char *isrcry_strerror(enum isrcry_result result);
 
