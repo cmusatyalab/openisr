@@ -237,7 +237,7 @@ SHA-1 Accelerator
 	performance if it is available; otherwise, it will use the kernel's
 	built-in SHA-1 implementation at reduced performance.  This component
 	is licensed under version 2.1 of the GNU Lesser General Public License
-	and can be found in the "sha1" directory of the source tree.
+	and can be found in the "kernel/sha1" directory of the source tree.
 
 locksrv
 	This is the server component of the OpenISR system.  It includes
@@ -250,6 +250,13 @@ Miscellaneous tools
 	The "tools" directory contains a set of command-line tools used by
 	the client and/or server.  The programs found there are licensed
 	under the Eclipse Public License, version 1.0.
+
+libisrcrypto
+	This is a cryptographic library containing implementations of
+	the AES, Blowfish, SHA-1, and MD5 algorithms.  The ISR user-space
+	components use this library to perform cryptography.  It is licensed
+	under version 2.1 of the GNU Lesser General Public License and can be
+	found in the "crypto" subdirectory.
 
 SQLite
 	The third-party SQLite embedded database is included in the OpenISR
