@@ -1,4 +1,3 @@
-#include <string.h>
 #include <unistd.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
