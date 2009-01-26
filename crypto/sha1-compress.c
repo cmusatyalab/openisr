@@ -1,22 +1,22 @@
 /*
- * sha1-compress - SHA1 compression function (generic version)
+ * libisrcrypto - cryptographic library for the OpenISR (R) system
+ *
+ * SHA1 hash algorithm, generic compression function
+ * Originally from Nettle
  *
  * Copyright (C) 2001, 2004 Peter Gutmann, Andrew Kuchling, Niels Möller
- *  
+ * Copyright (C) 2008-2009 Carnegie Mellon University
+ * 
  * This library is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation; either version 2.1 of the License, or (at your
- * option) any later version.
+ * under the terms of version 2.1 of the GNU Lesser General Public License as
+ * published by the Free Software Foundation.  A copy of the GNU Lesser General
+ * Public License should have been distributed along with this library in the
+ * file LICENSE.LGPL.
  * 
  * This library is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
  * for more details.
- * 
- * You should have received a copy of the GNU Lesser General Public License
- * along with the nettle library; see the file COPYING.LIB.  If not, write to
- * the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
- * MA 02111-1307, USA.
  */
 
 #include "isrcrypto.h"

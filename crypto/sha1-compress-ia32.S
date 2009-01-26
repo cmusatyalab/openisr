@@ -1,6 +1,7 @@
 /*
- * sha1-compress-ia32 - IA32-optimized SHA1 compression function
+ * libisrcrypto - cryptographic library for the OpenISR (R) system
  *
+ * SHA1 hash algorithm, IA32 compression function
  * Originally from Nettle
  * Ported from M4 to cpp by Benjamin Gilbert <bgilbert@cs.cmu.edu>
  *

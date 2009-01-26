@@ -1,4 +1,22 @@
-/* Taken from http://csrc.nist.gov/archive/aes/rijndael/rijndael-vals.zip */
+/*
+ * libisrcrypto - cryptographic library for the OpenISR (R) system
+ *
+ * Copyright (C) 2008-2009 Carnegie Mellon University
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of version 2.1 of the GNU Lesser General Public License as
+ * published by the Free Software Foundation.  A copy of the GNU Lesser General
+ * Public License should have been distributed along with this library in the
+ * file LICENSE.LGPL.
+ *
+ * This library is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ */
+
+/* The following vectors were taken from
+   http://csrc.nist.gov/archive/aes/rijndael/rijndael-vals.zip */
 
 const struct monte_test aes_monte_vectors[] = {
 	{{0x01, 0x4e, 0xe1, 0x4f, 0x1a, 0xa8, 0xc0, 0xd4, 0xa4, 0x7a, 0x72, 0xf1, 0x97, 0xf4, 0xdc, 0xb0},
@@ -1555,7 +1573,7 @@ const struct ecb_test aes_ecb_vectors[] = {
 	 32}
 };
 
-/* Taken from RFC 3602 */
+/* The following vectors were taken from RFC 3602 */
 
 const struct chain_test aes_cbc_vectors[] = {
 	{{0x06, 0xa9, 0x21, 0x40, 0x36, 0xb8, 0xa1, 0x5b, 0x51, 0x2e, 0x03, 0xd5, 0x34, 0x12, 0x00, 0x06},

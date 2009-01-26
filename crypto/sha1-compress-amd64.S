@@ -1,6 +1,7 @@
 /*
- * sha1-compress-amd64 - AMD64-optimized SHA1 compression function
+ * libisrcrypto - cryptographic library for the OpenISR (R) system
  *
+ * SHA1 hash algorithm, AMD64 compression function
  * Originally from Nettle
  * Ported from M4 to cpp by Benjamin Gilbert <bgilbert@cs.cmu.edu>
  * Ported from IA32 to AMD64 by Benjamin Gilbert

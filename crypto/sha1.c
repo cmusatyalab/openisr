@@ -1,11 +1,12 @@
 /*
- * sha1 - SHA1 hash algorithm
+ * libisrcrypto - cryptographic library for the OpenISR (R) system
  *
+ * SHA1 hash algorithm
  * Originally from Nettle
  * Modified by Benjamin Gilbert <bgilbert@cs.cmu.edu>
  *
  * Copyright (C) 2001 Peter Gutmann, Andrew Kuchling, Niels Möller
- * Copyright (C) 2006-2008 Carnegie Mellon University
+ * Copyright (C) 2006-2009 Carnegie Mellon University
  * 
  * This library is free software; you can redistribute it and/or modify it
  * under the terms of version 2.1 of the GNU Lesser General Public License as

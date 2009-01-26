@@ -1,3 +1,20 @@
+/*
+ * libisrcrypto - cryptographic library for the OpenISR (R) system
+ *
+ * Copyright (C) 2008-2009 Carnegie Mellon University
+ * 
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of version 2.1 of the GNU Lesser General Public License as
+ * published by the Free Software Foundation.  A copy of the GNU Lesser General
+ * Public License should have been distributed along with this library in the
+ * file LICENSE.LGPL.
+ *          
+ * This library is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ */
+
 #ifndef LIBISRCRYPTO_DEFS_H
 #define LIBISRCRYPTO_DEFS_H
 
@@ -48,7 +65,7 @@ void _isrcry_sha1_compress(uint32_t *state, const uint8_t *data);
    possibly unaligned. */
 void _isrcry_md5_compress(uint32_t *state, const uint8_t *data);
 
-/* libtomcrypt helper defines */
+/* The helper macros below are originally from libtomcrypt. */
 
 /* Extract a byte portably */
 #define byte(x, n) (((x) >> (8 * (n))) & 255)
