@@ -55,6 +55,11 @@ struct isrcry_md5_ctx {
 	unsigned index;
 };
 
+#define CIPHER_INIT(alg) \
+	enum isrcry_result isrcry_ ## alg ## _init(const unsigned char *key, \
+				int keylen, \
+				struct isrcry_ ## alg ## _key *skey);
+
 #define CIPHER(alg, mode, direction) \
 	enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## direction ( \
 				const unsigned char *in, unsigned long len, \
@@ -76,6 +81,18 @@ struct isrcry_md5_ctx {
 				struct isrcry_ ## alg ## _key *skey, \
 				unsigned char *iv);
 
+
+#define HASH(alg) \
+	void isrcry_ ## alg ## _init(struct isrcry_ ## alg ## _ctx *ctx); \
+	void isrcry_ ## alg ## _update(struct isrcry_ ## alg ## _ctx *ctx, \
+				const unsigned char *buffer, \
+				unsigned length); \
+	void isrcry_ ## alg ## _final(struct isrcry_ ## alg ## _ctx *ctx, \
+				unsigned char *digest);
+
+CIPHER_INIT(aes)
+CIPHER_INIT(blowfish)
+
 CIPHER(aes, cbc, encrypt)
 CIPHER(aes, cbc, decrypt)
 CIPHER(blowfish, cbc, encrypt)
@@ -86,24 +103,14 @@ DECRYPT_PAD(aes, cbc, pkcs5)
 ENCRYPT_PAD(blowfish, cbc, pkcs5)
 DECRYPT_PAD(blowfish, cbc, pkcs5)
 
+HASH(sha1)
+HASH(md5)
+
+#undef CIPHER_INIT
 #undef CIPHER
 #undef ENCRYPT_PAD
 #undef DECRYPT_PAD
-
-enum isrcry_result isrcry_aes_init(const unsigned char *key, int keylen,
-			struct isrcry_aes_key *skey);
-enum isrcry_result isrcry_blowfish_init(const unsigned char *key, int keylen,
-			struct isrcry_blowfish_key *skey);
-
-void isrcry_sha1_init(struct isrcry_sha1_ctx *ctx);
-void isrcry_sha1_update(struct isrcry_sha1_ctx *ctx,
-			const unsigned char *buffer, unsigned length);
-void isrcry_sha1_final(struct isrcry_sha1_ctx *ctx, unsigned char *digest);
-
-void isrcry_md5_init(struct isrcry_md5_ctx *ctx);
-void isrcry_md5_update(struct isrcry_md5_ctx *ctx, const unsigned char *buffer,
-			unsigned length);
-void isrcry_md5_final(struct isrcry_md5_ctx *ctx, unsigned char *digest);
+#undef HASH
 
 const char *isrcry_strerror(enum isrcry_result result);
 
