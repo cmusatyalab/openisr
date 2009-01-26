@@ -6,6 +6,7 @@
 #include "vectors_blowfish.h"
 #include "vectors_aes.h"
 #include "vectors_sha1.h"
+#include "vectors_md5.h"
 
 int failed;
 
@@ -203,6 +204,32 @@ void hash_test(const char *alg, const struct hash_test *vectors,
 	}
 }
 
+void hash_simple_monte_test(const char *alg,
+			const struct hash_monte_test *vectors,
+			unsigned vec_count, hash_init_fn *init,
+			hash_update_fn *update, hash_final_fn *final,
+			void *ctx, unsigned hashlen)
+{
+	const struct hash_monte_test *test;
+	uint8_t buf[hashlen];
+	unsigned n;
+	unsigned m;
+
+	for (n = 0; n < vec_count; n++) {
+		test = &vectors[n];
+		memcpy(buf, test->seed, hashlen);
+		if (test->ngroups != 1)
+			fail("%s %u invalid vector", alg, n);
+		for (m = 0; m < test->niters; m++) {
+			init(ctx);
+			update(ctx, buf, hashlen);
+			final(ctx, buf);
+		}
+		if (memcmp(buf, test->hash, hashlen))
+			fail("%s %u result mismatch", alg, n);
+	}
+}
+
 void hash_monte_test(const char *alg, const struct hash_monte_test *vectors,
 			unsigned vec_count, hash_init_fn *init,
 			hash_update_fn *update, hash_final_fn *final,
@@ -238,6 +265,7 @@ int main(int argc, char **argv)
 	struct isrcry_aes_key akey;
 	struct isrcry_blowfish_key bfkey;
 	struct isrcry_sha1_ctx sctx;
+	struct isrcry_md5_ctx mctx;
 
 	ecb_test("bf", blowfish_ecb_vectors, MEMBERS(blowfish_ecb_vectors),
 				(init_fn *) isrcry_blowfish_init,
@@ -278,6 +306,17 @@ int main(int argc, char **argv)
 				(hash_update_fn *) isrcry_sha1_update,
 				(hash_final_fn *) isrcry_sha1_final,
 				&sctx, ISRCRY_SHA1_DIGEST_SIZE);
+	hash_test("md5", md5_hash_vectors, MEMBERS(md5_hash_vectors),
+				(hash_init_fn *) isrcry_md5_init,
+				(hash_update_fn *) isrcry_md5_update,
+				(hash_final_fn *) isrcry_md5_final,
+				&mctx, ISRCRY_MD5_DIGEST_SIZE);
+	hash_simple_monte_test("md5", md5_monte_vectors,
+				MEMBERS(md5_monte_vectors),
+				(hash_init_fn *) isrcry_md5_init,
+				(hash_update_fn *) isrcry_md5_update,
+				(hash_final_fn *) isrcry_md5_final,
+				&mctx, ISRCRY_MD5_DIGEST_SIZE);
 
 	if (failed) {
 		printf("%d tests failed\n", failed);
