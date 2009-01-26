@@ -33,8 +33,6 @@
 
 #define MD5_DATA_SIZE 64
 
-static void isrcry_md5_pad(struct isrcry_md5_ctx *ctx);
-
 exported void isrcry_md5_init(struct isrcry_md5_ctx *ctx)
 {
   ctx->digest[0] = 0x67452301;
@@ -88,26 +86,14 @@ exported void isrcry_md5_update(struct isrcry_md5_ctx *ctx,
 exported void isrcry_md5_final(struct isrcry_md5_ctx *ctx,
 			unsigned char *digest)
 {
-  unsigned i;
-  
-  isrcry_md5_pad(ctx);
-  
-  /* Little endian order */
-  for (i = 0; i < ISRCRY_MD5_DIGEST_SIZE / 4; i++, digest += 4)
-    STORE32L(ctx->digest[i], digest);
-}
-
-/* Final wrapup - pad to MD5_DATA_SIZE-byte boundary with the bit
- * pattern 1 0* (64-bit count of bits processed, LSB-first) */
-
-static void isrcry_md5_pad(struct isrcry_md5_ctx *ctx)
-{
   uint32_t bitcount_high;
   uint32_t bitcount_low;
   unsigned i;
   
+  /* Final wrapup - pad to MD5_DATA_SIZE-byte boundary with the bit
+   * pattern 1 0* (64-bit count of bits processed, LSB-first) */
   i = ctx->index;
-
+  
   /* Set the first char of padding to 0x80. This is safe since there
    * is always at least one byte free */
   assert(i < MD5_DATA_SIZE);
@@ -134,4 +120,8 @@ static void isrcry_md5_pad(struct isrcry_md5_ctx *ctx)
   STORE32L(bitcount_high, ctx->block + (MD5_DATA_SIZE - 4));
   
   _isrcry_md5_compress(ctx->digest, ctx->block);
+  
+  /* Little endian order */
+  for (i = 0; i < ISRCRY_MD5_DIGEST_SIZE / 4; i++, digest += 4)
+    STORE32L(ctx->digest[i], digest);
 }
