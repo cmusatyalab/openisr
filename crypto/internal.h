@@ -5,6 +5,7 @@
 #error This header is for internal use by libisrcrypto
 #endif
 
+#include <string.h>
 #include "config.h"
 #include "cipher.h"
 
@@ -62,6 +63,12 @@ asm __volatile__ (             \
    "movl (%1),%0\n\t"          \
    "bswapl %0\n\t"             \
    :"=r"(x): "r"(y));
+
+#define STORE32L(x, y) \
+	{ uint32_t __t = (x); memcpy((y), &__t, 4); }
+
+#define LOAD32L(x, y) \
+	memcpy(&(x), (y), 4)
 #else
 #define STORE32H(x, y)                                                                     \
      { (y)[0] = (unsigned char)(((x)>>24)&255); (y)[1] = (unsigned char)(((x)>>16)&255);   \
@@ -72,6 +79,16 @@ asm __volatile__ (             \
            ((unsigned long)((y)[1] & 255)<<16) | \
            ((unsigned long)((y)[2] & 255)<<8)  | \
            ((unsigned long)((y)[3] & 255)); }
+
+#define STORE32L(x, y)                                                                     \
+     { (y)[3] = (unsigned char)(((x)>>24)&255); (y)[2] = (unsigned char)(((x)>>16)&255);   \
+       (y)[1] = (unsigned char)(((x)>>8)&255); (y)[0] = (unsigned char)((x)&255); }
+
+#define LOAD32L(x, y)                            \
+     { x = ((unsigned long)((y)[3] & 255)<<24) | \
+           ((unsigned long)((y)[2] & 255)<<16) | \
+           ((unsigned long)((y)[1] & 255)<<8)  | \
+           ((unsigned long)((y)[0] & 255)); }
 #endif
 
 #endif
