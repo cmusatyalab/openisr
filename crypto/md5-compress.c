@@ -34,13 +34,10 @@
 /* A block, treated as a sequence of 32-bit words. */
 #define MD5_DATA_LENGTH 16
 
-/* MD5 functions */
-
 #define F1(x, y, z) ((z) ^ ((x) & ((y) ^ (z))))
 #define F2(x, y, z) F1((z), (x), (y))
 #define F3(x, y, z) ((x) ^ (y) ^ (z))
 #define F4(x, y, z) ((y) ^ ((x) | ~(z)))
-
 #define ROUND(f, w, x, y, z, data, s) \
 ( w += f(x, y, z) + data,  w = w<<s | w>>(32-s),  w += x )
 
@@ -49,7 +46,6 @@
  *
  * Compresses 20 (_MD5_DIGEST_LENGTH + MD5_DATA_LENGTH) words into 4
  * (_MD5_DIGEST_LENGTH) words. */
-
 void _isrcry_md5_compress(uint32_t *state, const uint8_t *input)
 {
   uint32_t data[MD5_DATA_LENGTH];

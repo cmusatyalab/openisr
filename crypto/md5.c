@@ -76,7 +76,7 @@ exported void isrcry_md5_update(struct isrcry_md5_ctx *ctx,
       buffer += MD5_DATA_SIZE;
       length -= MD5_DATA_SIZE;
     }
-  if ((ctx->index = length))     /* This assignment is intended */
+  if ((ctx->index = length))
     /* Buffer leftovers */
     memcpy(ctx->block, buffer, length);
 }
