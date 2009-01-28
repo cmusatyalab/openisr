@@ -509,7 +509,7 @@ struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 	init_waitqueue_head(&dev->waiting_users);
 	init_waitqueue_head(&dev->waiting_idle);
 	dev->devnum=devnum;
-	dev->owner=current->uid;
+	dev->owner=current_uid();
 	
 	if (strchr(ident, '/')) {
 		log(KERN_ERR, "device identifier may not contain '/'");

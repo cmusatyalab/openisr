@@ -47,6 +47,12 @@
 			list_entry((head)->next, type, field)
 #endif
 
+/***** Task struct ***********************************************************/
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
+#define current_uid() (current->uid)
+#endif
+
 /***** Device model/sysfs ****************************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
