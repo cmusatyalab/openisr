@@ -683,8 +683,9 @@ static void cpu_stop(struct nexus_worker *worker)
 /**
  * cpu_callback - CPU hotplug notification handler
  *
- * The CPU hotplug code calls this to let us know when CPUs come and go.  Runs
- * in process context, and is permitted to sleep.
+ * The CPU hotplug code calls this to let us know when CPUs come and go.  For
+ * the values of @action we care about, we run in process context and are
+ * permitted to sleep.
  *
  * Any running thread must be able to handle any transform which is associated
  * with any nexus_dev.  If we encounter allocation failures when bringing up
@@ -715,28 +716,33 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 {
 	int cpu=(long)data;
 	struct nexus_worker *worker;
+	int ret=NOTIFY_OK;
 	
 	/* Any of these handlers may run before thread_start() has actually
 	   started any threads, so they must not make assumptions about the
 	   state of the system. */
-	mutex_lock(&threads.lock);
-	worker=find_worker(cpu);
+	/* We can't take threads.lock unconditionally, because for some
+	   values of @action we are not permitted to sleep. */
 	switch (action) {
 	case CPU_ONLINE:
 		/* CPU is already up */
+		mutex_lock(&threads.lock);
 		if (cpu_start(cpu))
 			log(KERN_ERR, "Failed to start thread for CPU %d", cpu);
+		mutex_unlock(&threads.lock);
 		break;
 	case CPU_DOWN_PREPARE:
-		if (threads.count == 1 && worker != NULL) {
+		mutex_lock(&threads.lock);
+		if (threads.count == 1 && find_worker(cpu) != NULL) {
 			log(KERN_ERR, "Refusing to stop CPU %d: it is running "
 						"our last worker thread", cpu);
-			mutex_unlock(&threads.lock);
-			return NOTIFY_BAD;
+			ret=NOTIFY_BAD;
 		}
+		mutex_unlock(&threads.lock);
 		break;
 	case CPU_DEAD:
 		/* CPU is already down */
+		mutex_lock(&threads.lock);
 		if (threads.count == 1) {
 			/* CPU_DOWN_PREPARE should prevent this, but be
 			   paranoid */
@@ -744,17 +750,19 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 						"our last worker thread", cpu);
 			log(KERN_NOTICE, "Leaving "KTHREAD_NAME"/%d running "
 						"without CPU affinity", cpu);
+			mutex_unlock(&threads.lock);
 			break;
 		}
+		worker=find_worker(cpu);
 		if (worker != NULL)
 			cpu_stop(worker);
 		/* Make sure someone takes over any work the downed thread
 		   was about to do */
 		wake_up_interruptible(&queues.wq);
+		mutex_unlock(&threads.lock);
 		break;
 	}
-	mutex_unlock(&threads.lock);
-	return NOTIFY_OK;
+	return ret;
 }
 
 static struct notifier_block cpu_notifier = {
