@@ -29,19 +29,35 @@
 /* XXX percpu vars */
 
 /**
+ * struct nexus_worker - state for a single per-CPU worker thread
+ * @lh_state      : list head for list of running threads
+ * @cpu           : the number of the CPU we're running on
+ * @task          : the thread's task struct
+ * @ts            : preallocated transforms and compress buffers
+ *
+ * Allocation and freeing (of the struct and of its members) is protected
+ * by &threads.lock.  While a transform is active, it can be accessed by
+ * its owning worker thread without restriction.
+ **/
+struct nexus_worker {
+	struct list_head lh_workers;
+	int cpu;
+	struct task_struct *task;
+	struct nexus_tfm_state ts;
+};
+
+/**
  * struct threads - singleton for per-CPU thread state
  * @lock          : lock for the other fields
- * @task          : task struct for a given per-CPU thread, or NULL if none
+ * @workers       : list of &nexus_worker, one per running thread
  * @count         : number of running threads
- * @ts            : per-CPU preallocated transforms and compress buffers
  * @suite_users   : number of devs holding a reference to each suite
  * @compress_users: number of devs holding a reference to each compress alg
  **/
 static struct threads {
 	struct mutex lock;
-	struct task_struct *task[NR_CPUS];
+	struct list_head workers;
 	int count;
-	struct nexus_tfm_state ts[NR_CPUS];
 	unsigned suite_users[NEXUS_NR_CRYPTO];
 	unsigned compress_users[NEXUS_NR_COMPRESS];
 } threads;
@@ -347,30 +363,27 @@ void wake_all_threads(void)
 #define DEFINE_ALLOC_ON_ALL(TYPE)					\
 static int alloc_##TYPE##_on_all(enum nexus_##TYPE arg)			\
 {									\
-	int cpu;							\
-	int count;							\
+	struct nexus_worker *worker;					\
+	struct nexus_worker *failed;					\
 	int err;							\
 									\
 	BUG_ON(!mutex_is_locked(&threads.lock));			\
 	debug(DBG_THREAD, "Allocating " #TYPE " %s...",			\
 				TYPE##_info(arg)->user_name);		\
-	for (cpu=0, count=0; cpu<NR_CPUS; cpu++) {			\
-		/* We care about which threads are running, not which	\
-		   CPUs are online */					\
-		if (threads.task[cpu] == NULL)				\
-			continue;					\
-		err=TYPE##_add(&threads.ts[cpu], arg);			\
+	list_for_each_entry(worker, &threads.workers, lh_workers) {	\
+		err=TYPE##_add(&worker->ts, arg);			\
 		if (err)						\
 			goto bad;					\
-		count++;						\
 	}								\
-	debug(DBG_THREAD, "...allocated on %d cpus", count);		\
+	debug(DBG_THREAD, "...allocated on %d cpus", threads.count);	\
 	return 0;							\
 									\
 bad:									\
-	while (--cpu >= 0) {						\
-		if (threads.task[cpu] != NULL)				\
-			TYPE##_remove(&threads.ts[cpu], arg);		\
+	failed=worker;							\
+	list_for_each_entry(worker, &threads.workers, lh_workers) {	\
+		if (worker == failed)					\
+			break;						\
+		TYPE##_remove(&worker->ts, arg);			\
 	}								\
 	return err;							\
 }
@@ -385,19 +398,14 @@ bad:									\
 #define DEFINE_FREE_ON_ALL(TYPE)					\
 static void free_##TYPE##_on_all(enum nexus_##TYPE arg)			\
 {									\
-	int cpu;							\
-	int count;							\
+	struct nexus_worker *worker;					\
 									\
 	BUG_ON(!mutex_is_locked(&threads.lock));			\
 	debug(DBG_THREAD, "Freeing " #TYPE " %s...",			\
 				TYPE##_info(arg)->user_name);		\
-	for (cpu=0, count=0; cpu<NR_CPUS; cpu++) {			\
-		if (threads.task[cpu] == NULL)				\
-			continue;					\
-		TYPE##_remove(&threads.ts[cpu], arg);			\
-		count++;						\
-	}								\
-	debug(DBG_THREAD, "...freed on %d cpus", count);				\
+	list_for_each_entry(worker, &threads.workers, lh_workers)	\
+		TYPE##_remove(&worker->ts, arg);			\
+	debug(DBG_THREAD, "...freed on %d cpus", threads.count);	\
 }
 
 DEFINE_ALLOC_ON_ALL(suite)
@@ -413,10 +421,10 @@ DEFINE_FREE_ON_ALL(compress)
  * alloc_all_on_cpu - allocate suite and compress structures for new CPU
  * 
  * For each suite or compression algorithm which is currently allocated
- * on the other CPUs, performs the same allocation for CPU @cpu.  Backs out
- * allocations on failure.  Thread lock must be held.
+ * on the other CPUs, performs the same allocation for the worker thread
+ * @worker.  Backs out allocations on failure.  Thread lock must be held.
  **/
-static int alloc_all_on_cpu(int cpu)
+static int alloc_all_on_cpu(struct nexus_worker *worker)
 {
 	enum nexus_crypto suite=0;
 	enum nexus_compress alg=0;
@@ -428,7 +436,7 @@ static int alloc_all_on_cpu(int cpu)
 	
 	for (suite_count=0; suite<NEXUS_NR_CRYPTO; suite++) {
 		if (threads.suite_users[suite]) {
-			err=suite_add(&threads.ts[cpu], suite);
+			err=suite_add(&worker->ts, suite);
 			if (err)
 				goto bad;
 			suite_count++;
@@ -436,14 +444,15 @@ static int alloc_all_on_cpu(int cpu)
 	}
 	for (alg_count=0; alg<NEXUS_NR_COMPRESS; alg++) {
 		if (threads.compress_users[alg]) {
-			err=compress_add(&threads.ts[cpu], alg);
+			err=compress_add(&worker->ts, alg);
 			if (err)
 				goto bad;
 			alg_count++;
 		}
 	}
 	debug(DBG_THREAD, "Allocated %d suites and %d compression algorithms "
-				"for cpu %d", suite_count, alg_count, cpu);
+				"for cpu %d", suite_count, alg_count,
+				worker->cpu);
 	return 0;
 	
 bad:
@@ -451,21 +460,21 @@ bad:
 	   for both signed and unsigned underflow. */
 	while (--alg >= 0 && alg < NEXUS_NR_COMPRESS) {
 		if (threads.compress_users[alg])
-			compress_remove(&threads.ts[cpu], alg);
+			compress_remove(&worker->ts, alg);
 	}
 	while (--suite >= 0 && suite < NEXUS_NR_CRYPTO) {
 		if (threads.suite_users[suite])
-			suite_remove(&threads.ts[cpu], suite);
+			suite_remove(&worker->ts, suite);
 	}
 	return err;
 }
 
 /**
- * free_all_on_cpu - free all suite and compress structures from @cpu
+ * free_all_on_cpu - free all suite and compress structures for @worker
  *
  * Thread lock must be held.
  **/
-static void free_all_on_cpu(int cpu)
+static void free_all_on_cpu(struct nexus_worker *worker)
 {
 	enum nexus_crypto suite;
 	enum nexus_compress alg;
@@ -476,18 +485,18 @@ static void free_all_on_cpu(int cpu)
 	
 	for (suite=0, suite_count=0; suite<NEXUS_NR_CRYPTO; suite++) {
 		if (threads.suite_users[suite]) {
-			suite_remove(&threads.ts[cpu], suite);
+			suite_remove(&worker->ts, suite);
 			suite_count++;
 		}
 	}
 	for (alg=0, alg_count=0; alg<NEXUS_NR_COMPRESS; alg++) {
 		if (threads.compress_users[alg]) {
-			compress_remove(&threads.ts[cpu], alg);
+			compress_remove(&worker->ts, alg);
 			alg_count++;
 		}
 	}
 	debug(DBG_THREAD, "Freed %d suites and %d compression algorithms for "
-				"cpu %d", suite_count, alg_count, cpu);
+				"cpu %d", suite_count, alg_count, worker->cpu);
 }
 
 /**
@@ -584,6 +593,23 @@ void thread_unregister(struct nexus_dev *dev)
 }
 
 /**
+ * find_worker - return the &nexus_worker for a given @cpu
+ *
+ * Return the &nexus_worker for @cpu, or NULL if none.  Thread lock must be
+ * held.
+ **/
+static struct nexus_worker *find_worker(int cpu)
+{
+	struct nexus_worker *worker;
+	
+	BUG_ON(!mutex_is_locked(&threads.lock));
+	list_for_each_entry(worker, &threads.workers, lh_workers)
+		if (worker->cpu == cpu)
+			return worker;
+	return NULL;
+}
+
+/**
  * cpu_start - allocate data structures and start a new thread for @cpu
  *
  * If a per-CPU thread is already running on @cpu, cpu_start() will return
@@ -591,57 +617,67 @@ void thread_unregister(struct nexus_dev *dev)
  **/
 static int cpu_start(int cpu)
 {
-	struct task_struct *thr;
+	struct nexus_worker *worker;
 	int err;
 	
 	BUG_ON(!mutex_is_locked(&threads.lock));
-	if (threads.task[cpu] != NULL) {
+	if (find_worker(cpu) != NULL) {
 		/* This may happen in some hotplug cases.  Ignore the duplicate
 		   start request. */
 		return 0;
 	}
 	
 	debug(DBG_THREAD, "Onlining CPU %d", cpu);
-	err=alloc_all_on_cpu(cpu);
+	worker=kzalloc(sizeof(*worker), GFP_KERNEL);
+	if (worker == NULL) {
+		debug(DBG_THREAD, "Failed to allocate worker struct for CPU "
+					"%d", cpu);
+		return -ENOMEM;
+	}
+	INIT_LIST_HEAD(&worker->lh_workers);
+	worker->cpu=cpu;
+	err=alloc_all_on_cpu(worker);
 	if (err) {
 		debug(DBG_THREAD, "Failed to allocate transforms for CPU %d",
 					cpu);
+		kfree(worker);
 		return err;
 	}
-	thr=kthread_create(nexus_thread, &threads.ts[cpu], KTHREAD_NAME "/%d",
-				cpu);
-	if (IS_ERR(thr)) {
-		free_all_on_cpu(cpu);
-		return PTR_ERR(thr);
+	worker->task=kthread_create(nexus_thread, &worker->ts,
+				KTHREAD_NAME "/%d", cpu);
+	if (IS_ERR(worker->task)) {
+		err=PTR_ERR(worker->task);
+		free_all_on_cpu(worker);
+		kfree(worker);
+		return err;
 	}
-	threads.task[cpu]=thr;
+	list_add_tail(&worker->lh_workers, &threads.workers);
 	threads.count++;
-	kthread_bind(thr, cpu);
+	kthread_bind(worker->task, cpu);
 	/* Give the thread a lower priority than garden-variety interactive
 	   processes so that we don't kill their scheduling latency */
-	set_user_nice(thr, 5);
-	wake_up_process(thr);
+	set_user_nice(worker->task, 5);
+	wake_up_process(worker->task);
 	return 0;
 }
 
 /**
- * cpu_stop - kill the per-CPU thread on @cpu and free its data structures
+ * cpu_stop - kill the per-CPU thread @worker and free its data structures
  *
- * This is safe to call if no thread is running on @cpu.  Thread lock must
- * be held.
+ * Thread lock must be held.
  **/
-static void cpu_stop(int cpu)
+static void cpu_stop(struct nexus_worker *worker)
 {
 	BUG_ON(!mutex_is_locked(&threads.lock));
-	if (threads.task[cpu] == NULL)
-		return;
+	BUG_ON(worker == NULL);
 	
-	debug(DBG_THREAD, "Offlining CPU %d", cpu);
-	kthread_stop(threads.task[cpu]);
+	debug(DBG_THREAD, "Offlining CPU %d", worker->cpu);
+	kthread_stop(worker->task);
 	debug(DBG_THREAD, "...done");
-	free_all_on_cpu(cpu);
-	threads.task[cpu]=NULL;
+	free_all_on_cpu(worker);
+	list_del(&worker->lh_workers);
 	threads.count--;
+	kfree(worker);
 }
 
 /**
@@ -678,11 +714,13 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 			void *data)
 {
 	int cpu=(long)data;
+	struct nexus_worker *worker;
 	
 	/* Any of these handlers may run before thread_start() has actually
 	   started any threads, so they must not make assumptions about the
 	   state of the system. */
 	mutex_lock(&threads.lock);
+	worker=find_worker(cpu);
 	switch (action) {
 	case CPU_ONLINE:
 		/* CPU is already up */
@@ -690,7 +728,7 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 			log(KERN_ERR, "Failed to start thread for CPU %d", cpu);
 		break;
 	case CPU_DOWN_PREPARE:
-		if (threads.count == 1 && threads.task[cpu] != NULL) {
+		if (threads.count == 1 && worker != NULL) {
 			log(KERN_ERR, "Refusing to stop CPU %d: it is running "
 						"our last worker thread", cpu);
 			mutex_unlock(&threads.lock);
@@ -708,7 +746,8 @@ static int cpu_callback(struct notifier_block *nb, unsigned long action,
 						"without CPU affinity", cpu);
 			break;
 		}
-		cpu_stop(cpu);
+		if (worker != NULL)
+			cpu_stop(worker);
 		/* Make sure someone takes over any work the downed thread
 		   was about to do */
 		wake_up_interruptible(&queues.wq);
@@ -737,14 +776,15 @@ struct notifier_block *__dummy_nb=&cpu_notifier;
  **/
 void thread_shutdown(void)
 {
-	int cpu;
+	struct nexus_worker *worker;
+	struct nexus_worker *next;
 	
 	/* unregister_hotcpu_notifier must be called unlocked, in case the
 	   notifier chain is currently running */
 	unregister_hotcpu_notifier(&cpu_notifier);
 	mutex_lock(&threads.lock);
-	for_each_possible_cpu(cpu)
-		cpu_stop(cpu);
+	list_for_each_entry_safe(worker, next, &threads.workers, lh_workers)
+		cpu_stop(worker);
 	mutex_unlock(&threads.lock);
 	
 	if (io_thread != NULL) {
@@ -779,6 +819,7 @@ int __init thread_start(void)
 		INIT_LIST_HEAD(&queues.list[i]);
 	init_waitqueue_head(&queues.wq);
 	mutex_init(&threads.lock);
+	INIT_LIST_HEAD(&threads.workers);
 	spin_lock_init(&pending_io.lock);
 	init_waitqueue_head(&pending_io.wq);
 	spin_lock_init(&pending_requests.lock);
