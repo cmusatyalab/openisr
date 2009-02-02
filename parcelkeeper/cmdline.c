@@ -36,7 +36,6 @@ enum option {
 	OPT_CHECK,
 	OPT_FULL,
 	OPT_SPLICE,
-	OPT_UNSAFE,
 	OPT_MODE,
 	OPT_NEXUS_CACHE,
 	END_OPTS = -1
@@ -79,7 +78,6 @@ static struct pk_option pk_options[] = {
 	{"check",          OPT_CHECK,          {}},
 	{"full",           OPT_FULL,           {},                                                      "Perform full data-integrity check"},
 	{"splice",         OPT_SPLICE,         {},                                                      "Revert chunks that fail tag validation (requires --full)"},
-	{"unsafe",         OPT_UNSAFE,         {},                                                      "Corrupt local and hoard cache indexes on OS crash, but run faster"},
 	{"mode",           OPT_MODE,           {"mode"},                                                "Print detailed usage message about the given mode"},
 	{0}
 };
@@ -96,7 +94,6 @@ mode(RUN) = {
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
 	{OPT_FOREGROUND,    OPTIONAL},
-	{OPT_UNSAFE,        OPTIONAL},
 	{END_OPTS}
 };
 
@@ -108,7 +105,6 @@ mode(UPLOAD) = {
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
-	{OPT_UNSAFE,        OPTIONAL},
 	{END_OPTS}
 };
 
@@ -120,7 +116,6 @@ mode(HOARD) = {
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
-	{OPT_UNSAFE,        OPTIONAL},
 	{END_OPTS}
 };
 
@@ -130,7 +125,6 @@ mode(EXAMINE) = {
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
-	{OPT_UNSAFE,        OPTIONAL},
 	{END_OPTS}
 };
 
@@ -142,7 +136,6 @@ mode(VALIDATE) = {
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
-	{OPT_UNSAFE,        OPTIONAL},
 	{END_OPTS}
 };
 
@@ -151,7 +144,6 @@ mode(LISTHOARD) = {
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
-	{OPT_UNSAFE,        OPTIONAL},
 	{END_OPTS}
 };
 
@@ -161,7 +153,6 @@ mode(CHECKHOARD) = {
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
-	{OPT_UNSAFE,        OPTIONAL},
 	{END_OPTS}
 };
 
@@ -171,7 +162,6 @@ mode(RMHOARD) = {
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
-	{OPT_UNSAFE,        OPTIONAL},
 	{END_OPTS}
 };
 
@@ -181,7 +171,6 @@ mode(REFRESH) = {
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
-	{OPT_UNSAFE,        OPTIONAL},
 	{END_OPTS}
 };
 
@@ -475,10 +464,6 @@ enum mode parse_cmdline(int argc, char **argv)
 		case OPT_SPLICE:
 			/* Abuse of WANT_ flags? */
 			config.flags |= WANT_SPLICE;
-			break;
-		case OPT_UNSAFE:
-			/* Abuse of WANT_ flags? */
-			config.flags |= WANT_UNSAFE;
 			break;
 		case OPT_MODE:
 			helpmode=parse_mode(optparams[0]);

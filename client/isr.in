@@ -99,7 +99,6 @@ sub set_parcel_globals;
 sub valid_uuid ($);
 sub sync_parcel_uuid_from_name ();
 sub sync_parcel_name_from_uuid ();
-sub configure_unsafe_mode ();
 sub parse_cfgfile ($$);
 sub parse_parcelcfg ($);
 sub build_cache ();
@@ -176,7 +175,6 @@ my $verbose = 1;     # Verbosity level; by default, we print a few messages
 my $bwlimit;         # Bandwidth limit (KBytes/sec) in ci and sync
 my $forceflag = 0;   # Force release of lock in cleanclient()
 my $do_splice = 0;   # checkp: Restore invalid chunks from prev-keyring
-my $unsafe_opt;      # Does the user want us to disable fsync() in PK?
 my $vmm;             # Override default VMM driver
 
 # General global state, mostly about the parcel we are working with
@@ -195,7 +193,6 @@ my $imgbase;         # Path to hoard image w/o the file extension (.cfg, .key)
 my $logfile;         # Path to the log file for this parcel
 my $cleancache_file; # Path to flag that local cache is clean vs. server
 my $cdcache_file;    # Path to flag that upload directory is consistent
-my $unsafe_mode = 0; # Tell PK not to force database updates to disk
 
 # State globals which track which cleanup actions will be necessary when
 # we exit
@@ -351,8 +348,6 @@ $result = GetOptions(
 		     "s|server=s"     => \$server,
 		     "u|user=s"       => \$userid,
 		     "v|verbose+"     => \$verbose,
-		     "x|no-sync"      => \$unsafe_opt,
-		     "X|sync"         => sub { $unsafe_opt = 0 },
 		     "Y|splice"       => \$do_splice,
 		     );
 
@@ -466,7 +461,6 @@ if ($command eq "checkout") {
     need_parcel();
     need_network();
     need_remote_parcel();
-    configure_unsafe_mode();
     $do_sync = 1;
     # If the parcel isn't checked out, we don't know the UUID, so we take
     # a "checkout lock" by parcel name.  This means that two different
@@ -490,7 +484,6 @@ elsif ($command eq "resume") {
     	need_network();
 	need_remote_parcel();
     }
-    configure_unsafe_mode();
     $do_sync = 1;
     acquire_lock("checkout-$parcel", "Checkout", 0);
     checkout();
@@ -508,7 +501,6 @@ elsif ($command eq "checkin") {
     need_checked_out();
     need_network();
     need_remote_parcel();
-    configure_unsafe_mode();
     $do_sync = 1;
     acquire_lock("parcel-$uuid", "Parcel", 0);
     checkin();
@@ -518,7 +510,6 @@ elsif ($command eq "sync") {
     need_checked_out();
     need_network();
     need_remote_parcel();
-    configure_unsafe_mode();
     $do_sync = 1;
     acquire_lock("parcel-$uuid", "Parcel", 0);
     sync(0);
@@ -534,7 +525,6 @@ elsif ($command eq "hoard") {
     need_parcel();
     need_network();
     need_remote_parcel();
-    configure_unsafe_mode();
     $do_sync = 1;
     # Locking is handled in hoard(), after we know the UUID
     hoard(0);
@@ -542,7 +532,6 @@ elsif ($command eq "hoard") {
 elsif ($command eq "stat") {
     need_parcel();
     need_checked_out();
-    configure_unsafe_mode();
     statparcel();
 }
 elsif ($command eq "checkp") {
@@ -552,7 +541,6 @@ elsif ($command eq "checkp") {
 	need_remote_parcel();
     } else {
 	need_checked_out();
-        configure_unsafe_mode();
 	acquire_lock("parcel-$uuid", "Parcel", 0);
     }
     checkparcel();
@@ -569,13 +557,11 @@ elsif ($command eq "lshoard") {
 }
 elsif ($command eq "rmhoard") {
     need_uuid();
-    configure_unsafe_mode();
     acquire_lock("hoard-$uuid", "Hoard cache", 0);
     rmhoard();
 }
 elsif ($command eq "checkhoard") {
     need_not_parcel();
-    configure_unsafe_mode();
     checkhoard();
 }
 elsif ($command eq "auth") {
@@ -1695,9 +1681,6 @@ sub parcelkeeper_cmd ($$) {
     } else {
 	$cmd .= " --stderr-filter $syscfg{console_logmask}";
     }
-    if ($unsafe_mode) {
-	$cmd .= " --unsafe";
-    }
     message("Running Parcelkeeper: $cmd");
     return $cmd;
 }
@@ -2283,34 +2266,6 @@ sub sync_parcel_name_from_uuid () {
     $userid = $pcfg{"USER"};
     $parcel = $pcfg{"PARCEL"};
     return 1;
-}
-
-#
-# configure_unsafe_mode - Enable unsafe mode for PK if the user has
-#                         requested it, and print a message if it has been
-#                         so enabled
-#
-sub configure_unsafe_mode () {
-    if (defined $unsafe_opt) {
-	$unsafe_mode = $unsafe_opt;
-	print YELLOW, "Running in no-sync mode.  Data corruption more likely on OS crash.\n", RESET
-	    if $verbose and $unsafe_mode;
-    } else {
-	if ($syscfg{'no_sync'} eq 'off') {
-	    $unsafe_mode = 0;
-	} elsif ($syscfg{'no_sync'} eq 'resume') {
-	    $unsafe_mode = ($command eq 'resume');
-	} elsif ($syscfg{'no_sync'} eq 'all') {
-	    $unsafe_mode = 1;
-	} else {
-	    err('Unrecognized no_sync config value; defaulting to "off"');
-	    $unsafe_mode = 0;
-	}
-	if ($unsafe_mode) {
-	    print YELLOW, "Running in no-sync mode due to configuration option.  (Override with -X.)\n";
-	    print "Data corruption more likely on OS crash.\n", RESET;
-	}
-    }
 }
 
 #
