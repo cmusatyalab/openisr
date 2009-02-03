@@ -27,9 +27,16 @@
 #include "internal.h"
 
 #define SHA1_DATA_SIZE 64
+#define SHA1_DIGEST_SIZE 20
 
-exported void isrcry_sha1_init(struct isrcry_sha1_ctx *ctx)
+/* Compression function. @state points to 5 u32 words, and @data points to
+   64 bytes of input data, possibly unaligned. */
+void _isrcry_sha1_compress(uint32_t *state, const uint8_t *data);
+
+static void sha1_init(struct isrcry_hash_ctx *hctx)
 {
+	struct isrcry_sha1_ctx *ctx = &hctx->sha1;
+	
 	/* Set the h-vars to their initial values */
 	ctx->digest[0] = 0x67452301L;
 	ctx->digest[1] = 0xEFCDAB89L;
@@ -44,9 +51,11 @@ exported void isrcry_sha1_init(struct isrcry_sha1_ctx *ctx)
 	ctx->index = 0;
 }
 
-exported void isrcry_sha1_update(struct isrcry_sha1_ctx *ctx,
+static void sha1_update(struct isrcry_hash_ctx *hctx,
 			const unsigned char *buffer, unsigned length)
 {
+	struct isrcry_sha1_ctx *ctx = &hctx->sha1;
+	
 	if (ctx->index) {
 		/* Try to fill partial block */
 		unsigned left = SHA1_DATA_SIZE - ctx->index;
@@ -75,9 +84,10 @@ exported void isrcry_sha1_update(struct isrcry_sha1_ctx *ctx,
 
 /* Final wrapup - pad to SHA1_DATA_SIZE-byte boundary with the bit pattern
    1 0* (64-bit count of bits processed, MSB-first) */
-exported void isrcry_sha1_final(struct isrcry_sha1_ctx *ctx,
+static void sha1_final(struct isrcry_hash_ctx *hctx,
 			unsigned char *digest)
 {
+	struct isrcry_sha1_ctx *ctx = &hctx->sha1;
 	uint64_t bitcount;
 	unsigned i = ctx->index;
 	
@@ -109,6 +119,13 @@ exported void isrcry_sha1_final(struct isrcry_sha1_ctx *ctx,
 	
 	_isrcry_sha1_compress(ctx->digest, ctx->block);
 	
-	for (i = 0; i < ISRCRY_SHA1_DIGEST_SIZE / 4; i++, digest += 4)
+	for (i = 0; i < SHA1_DIGEST_SIZE / 4; i++, digest += 4)
 		STORE32H(ctx->digest[i], digest);
 }
+
+const struct isrcry_hash_desc _isrcry_sha1_desc = {
+	.init = sha1_init,
+	.update = sha1_update,
+	.final = sha1_final,
+	.digest_size = SHA1_DIGEST_SIZE
+};

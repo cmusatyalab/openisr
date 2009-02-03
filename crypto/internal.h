@@ -32,6 +32,39 @@
 #define exported
 #endif
 
+struct isrcry_hash_desc {
+	void (*init)(struct isrcry_hash_ctx *hctx);
+	void (*update)(struct isrcry_hash_ctx *hctx,
+				const unsigned char *buffer, unsigned length);
+	void (*final)(struct isrcry_hash_ctx *ctx, unsigned char *digest);
+	unsigned digest_size;
+};
+
+struct isrcry_sha1_ctx {
+	uint32_t digest[5];
+	uint64_t count;
+	uint8_t block[64];
+	unsigned index;
+};
+
+struct isrcry_md5_ctx {
+	uint32_t digest[4];
+	uint64_t count;
+	uint8_t block[64];
+	unsigned index;
+};
+
+struct isrcry_hash_ctx {
+	const struct isrcry_hash_desc *desc;
+	union {
+		struct isrcry_sha1_ctx sha1;
+		struct isrcry_md5_ctx md5;
+	};
+};
+
+extern const struct isrcry_hash_desc _isrcry_sha1_desc;
+extern const struct isrcry_hash_desc _isrcry_md5_desc;
+
 typedef enum isrcry_result (cipher_fn)(const unsigned char *in,
 			unsigned char *out, void *skey);
 typedef enum isrcry_result (mode_fn)(const unsigned char *in,
@@ -56,14 +89,6 @@ enum isrcry_result _isrcry_pkcs5_pad(unsigned char *buf, unsigned blocklen,
 			unsigned datalen);
 enum isrcry_result _isrcry_pkcs5_unpad(unsigned char *buf, unsigned blocklen,
 			unsigned *datalen);
-
-/* Compression function. @state points to 5 u32 words, and @data points to
-   64 bytes of input data, possibly unaligned. */
-void _isrcry_sha1_compress(uint32_t *state, const uint8_t *data);
-
-/* @state points to 4 u32 words, and @data points to 64 bytes of input data,
-   possibly unaligned. */
-void _isrcry_md5_compress(uint32_t *state, const uint8_t *data);
 
 /* The helper macros below are originally from libtomcrypt. */
 

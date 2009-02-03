@@ -26,10 +26,13 @@ enum isrcry_result {
 	ISRCRY_BAD_PADDING		= 2,
 };
 
+enum isrcry_hash {
+	ISRCRY_HASH_SHA1		= 0,
+	ISRCRY_HASH_MD5			= 1,
+};
+
 #define ISRCRY_AES_BLOCKSIZE 16
 #define ISRCRY_BLOWFISH_BLOCKSIZE 8
-#define ISRCRY_SHA1_DIGEST_SIZE 20
-#define ISRCRY_MD5_DIGEST_SIZE 16
 
 struct isrcry_aes_key {
 	uint32_t eK[60], dK[60];
@@ -41,19 +44,7 @@ struct isrcry_blowfish_key {
 	uint32_t K[18];
 };
 
-struct isrcry_sha1_ctx {
-	uint32_t digest[5];
-	uint64_t count;
-	uint8_t block[64];
-	unsigned index;
-};
-
-struct isrcry_md5_ctx {
-	uint32_t digest[4];
-	uint64_t count;
-	uint8_t block[64];
-	unsigned index;
-};
+struct isrcry_hash_ctx;
 
 #define CIPHER_INIT(alg) \
 	enum isrcry_result isrcry_ ## alg ## _init(const unsigned char *key, \
@@ -81,15 +72,6 @@ struct isrcry_md5_ctx {
 				struct isrcry_ ## alg ## _key *skey, \
 				unsigned char *iv);
 
-
-#define HASH(alg) \
-	void isrcry_ ## alg ## _init(struct isrcry_ ## alg ## _ctx *ctx); \
-	void isrcry_ ## alg ## _update(struct isrcry_ ## alg ## _ctx *ctx, \
-				const unsigned char *buffer, \
-				unsigned length); \
-	void isrcry_ ## alg ## _final(struct isrcry_ ## alg ## _ctx *ctx, \
-				unsigned char *digest);
-
 CIPHER_INIT(aes)
 CIPHER_INIT(blowfish)
 
@@ -103,14 +85,18 @@ DECRYPT_PAD(aes, cbc, pkcs5)
 ENCRYPT_PAD(blowfish, cbc, pkcs5)
 DECRYPT_PAD(blowfish, cbc, pkcs5)
 
-HASH(sha1)
-HASH(md5)
-
 #undef CIPHER_INIT
 #undef CIPHER
 #undef ENCRYPT_PAD
 #undef DECRYPT_PAD
-#undef HASH
+
+struct isrcry_hash_ctx *isrcry_hash_alloc(enum isrcry_hash type);
+void isrcry_hash_free(struct isrcry_hash_ctx *ctx);
+void isrcry_hash_init(struct isrcry_hash_ctx *ctx);
+void isrcry_hash_update(struct isrcry_hash_ctx *ctx,
+			const unsigned char *buffer, unsigned length);
+void isrcry_hash_final(struct isrcry_hash_ctx *ctx, unsigned char *digest);
+unsigned isrcry_hash_len(enum isrcry_hash type);
 
 const char *isrcry_strerror(enum isrcry_result result);
 

@@ -15,6 +15,7 @@
  * for more details.
  */
 
+#include <stdlib.h>
 #include <unistd.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
@@ -127,3 +128,60 @@ ENCRYPT_WRAPPER(aes, cbc, pkcs5, ISRCRY_AES_BLOCKSIZE)
 DECRYPT_WRAPPER(aes, cbc, pkcs5, ISRCRY_AES_BLOCKSIZE)
 ENCRYPT_WRAPPER(blowfish, cbc, pkcs5, ISRCRY_BLOWFISH_BLOCKSIZE)
 DECRYPT_WRAPPER(blowfish, cbc, pkcs5, ISRCRY_BLOWFISH_BLOCKSIZE)
+
+
+static const struct isrcry_hash_desc *hash_desc(enum isrcry_hash type)
+{
+	switch (type) {
+	case ISRCRY_HASH_SHA1:
+		return &_isrcry_sha1_desc;
+	case ISRCRY_HASH_MD5:
+		return &_isrcry_md5_desc;
+	}
+	return NULL;
+}
+
+exported struct isrcry_hash_ctx *isrcry_hash_alloc(enum isrcry_hash type)
+{
+	struct isrcry_hash_ctx *hctx;
+	
+	hctx = malloc(sizeof(*hctx));
+	if (hctx == NULL)
+		return NULL;
+	hctx->desc = hash_desc(type);
+	if (hctx->desc == NULL) {
+		free(hctx);
+		return NULL;
+	}
+	return hctx;
+}
+
+exported void isrcry_hash_free(struct isrcry_hash_ctx *hctx)
+{
+	free(hctx);
+}
+
+exported void isrcry_hash_init(struct isrcry_hash_ctx *hctx)
+{
+	hctx->desc->init(hctx);
+}
+
+exported void isrcry_hash_update(struct isrcry_hash_ctx *hctx,
+			const unsigned char *buffer, unsigned length)
+{
+	hctx->desc->update(hctx, buffer, length);
+}
+
+exported void isrcry_hash_final(struct isrcry_hash_ctx *hctx,
+			unsigned char *digest)
+{
+	hctx->desc->final(hctx, digest);
+}
+
+exported unsigned isrcry_hash_len(enum isrcry_hash type)
+{
+	const struct isrcry_hash_desc *desc = hash_desc(type);
+	if (desc == NULL)
+		return 0;
+	return desc->digest_size;
+}

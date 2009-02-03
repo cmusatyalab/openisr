@@ -28,9 +28,16 @@
 #include "internal.h"
 
 #define MD5_DATA_SIZE 64
+#define MD5_DIGEST_SIZE 16
 
-exported void isrcry_md5_init(struct isrcry_md5_ctx *ctx)
+/* @state points to 4 u32 words, and @data points to 64 bytes of input data,
+   possibly unaligned. */
+void _isrcry_md5_compress(uint32_t *state, const uint8_t *data);
+
+static void md5_init(struct isrcry_hash_ctx *hctx)
 {
+  struct isrcry_md5_ctx *ctx = &hctx->md5;
+  
   ctx->digest[0] = 0x67452301;
   ctx->digest[1] = 0xefcdab89;
   ctx->digest[2] = 0x98badcfe;
@@ -40,9 +47,11 @@ exported void isrcry_md5_init(struct isrcry_md5_ctx *ctx)
   ctx->index = 0;
 }
 
-exported void isrcry_md5_update(struct isrcry_md5_ctx *ctx,
+static void md5_update(struct isrcry_hash_ctx *hctx,
 			const unsigned char *buffer, unsigned length)
 {
+  struct isrcry_md5_ctx *ctx = &hctx->md5;
+  
   if (ctx->index)
     {
       /* Try to fill partial block */
@@ -77,9 +86,9 @@ exported void isrcry_md5_update(struct isrcry_md5_ctx *ctx,
     memcpy(ctx->block, buffer, length);
 }
 
-exported void isrcry_md5_final(struct isrcry_md5_ctx *ctx,
-			unsigned char *digest)
+static void md5_final(struct isrcry_hash_ctx *hctx, unsigned char *digest)
 {
+  struct isrcry_md5_ctx *ctx = &hctx->md5;
   uint64_t bitcount;
   unsigned i;
   
@@ -113,6 +122,13 @@ exported void isrcry_md5_final(struct isrcry_md5_ctx *ctx,
   _isrcry_md5_compress(ctx->digest, ctx->block);
   
   /* Little endian order */
-  for (i = 0; i < ISRCRY_MD5_DIGEST_SIZE / 4; i++, digest += 4)
+  for (i = 0; i < MD5_DIGEST_SIZE / 4; i++, digest += 4)
     STORE32L(ctx->digest[i], digest);
 }
+
+const struct isrcry_hash_desc _isrcry_md5_desc = {
+	.init = md5_init,
+	.update = md5_update,
+	.final = md5_final,
+	.digest_size = MD5_DIGEST_SIZE
+};
