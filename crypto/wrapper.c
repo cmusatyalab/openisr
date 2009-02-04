@@ -17,118 +17,168 @@
 
 #include <stdlib.h>
 #include <unistd.h>
+#include <assert.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
 
-static enum isrcry_result _isrcry_encrypt(const unsigned char *in,
-			unsigned long inlen, unsigned char *out,
-			unsigned long outlen, mode_fn *mode, cipher_fn *cipher,
-			pad_fn *pad, unsigned blocklen, void *key,
-			unsigned char *iv)
+static const struct isrcry_cipher_desc *cipher_desc(enum isrcry_cipher type)
 {
-	enum isrcry_result ret;
-	unsigned char lblock[blocklen];
-	unsigned lblock_offset;
-	unsigned lblock_len;
-
-	if (in == NULL || out == NULL || key == NULL || iv == NULL)
-		return ISRCRY_INVALID_ARGUMENT;
-	lblock_len = inlen % blocklen;
-	lblock_offset = inlen - lblock_len;
-	if (outlen < lblock_offset + blocklen)
-		return ISRCRY_INVALID_ARGUMENT;
-	memcpy(lblock, in + lblock_offset, lblock_len);
-	ret = pad(lblock, blocklen, lblock_len);
-	if (ret)
-		return ret;
-	ret = mode(in, lblock_offset, out, cipher, blocklen, key, iv);
-	if (ret)
-		return ret;
-	return mode(lblock, blocklen, out + lblock_offset, cipher, blocklen,
-				key, iv);
+	switch (type) {
+	case ISRCRY_CIPHER_AES:
+		return &_isrcry_aes_desc;
+	case ISRCRY_CIPHER_BLOWFISH:
+		return &_isrcry_bf_desc;
+	}
+	return NULL;
 }
 
-static enum isrcry_result _isrcry_decrypt(const unsigned char *in,
-			unsigned long inlen, unsigned char *out,
-			unsigned long *outlen, mode_fn *mode,
-			cipher_fn *cipher, unpad_fn *unpad, unsigned blocklen,
-			void *key, unsigned char *iv)
+static const struct isrcry_mode_desc *mode_desc(enum isrcry_mode type)
+{
+	switch (type) {
+	case ISRCRY_MODE_ECB:
+		return &_isrcry_ecb_desc;
+	case ISRCRY_MODE_CBC:
+		return &_isrcry_cbc_desc;
+	}
+	return NULL;
+}
+
+static const struct isrcry_pad_desc *pad_desc(enum isrcry_padding type)
+{
+	switch (type) {
+	case ISRCRY_PADDING_PKCS5:
+		return &_isrcry_pkcs5_desc;
+	}
+	return NULL;
+}
+
+exported struct isrcry_cipher_ctx *isrcry_cipher_alloc(
+			enum isrcry_cipher cipher, enum isrcry_mode mode)
+{
+	struct isrcry_cipher_ctx *cctx;
+	
+	cctx = malloc(sizeof(*cctx));
+	if (cctx == NULL)
+		return NULL;
+	cctx->cipher = cipher_desc(cipher);
+	cctx->mode = mode_desc(mode);
+	if (cctx->cipher == NULL || cctx->mode == NULL) {
+		free(cctx);
+		return NULL;
+	}
+	return cctx;
+}
+
+exported void isrcry_cipher_free(struct isrcry_cipher_ctx *cctx)
+{
+	free(cctx);
+}
+
+exported enum isrcry_result isrcry_cipher_init(struct isrcry_cipher_ctx *cctx,
+			enum isrcry_direction direction,
+			const unsigned char *key, int keylen,
+			const unsigned char *iv)
 {
 	enum isrcry_result ret;
-	unsigned char lblock[blocklen];
-	unsigned lblock_offset;
-	unsigned lblock_len;
-
-	if (in == NULL || out == NULL || key == NULL || iv == NULL)
+	
+	assert(MAX_BLOCK_LEN >= cctx->cipher->blocklen);
+	ret = cctx->cipher->init(cctx, key, keylen);
+	if (ret)
+		return ret;
+	switch (direction) {
+	case ISRCRY_ENCRYPT:
+	case ISRCRY_DECRYPT:
+		break;
+	default:
 		return ISRCRY_INVALID_ARGUMENT;
-	if (inlen == 0 || inlen % blocklen)
-		return ISRCRY_INVALID_ARGUMENT;
-	lblock_offset = inlen - blocklen;
-	ret = mode(in, lblock_offset, out, cipher, blocklen, key, iv);
-	if (ret)
-		return ret;
-	ret = mode(in + lblock_offset, blocklen, lblock, cipher, blocklen,
-				key, iv);
-	if (ret)
-		return ret;
-	ret = unpad(lblock, blocklen, &lblock_len);
-	if (ret)
-		return ret;
-	memcpy(out + lblock_offset, lblock, lblock_len);
-	*outlen = lblock_offset + lblock_len;
+	}
+	cctx->direction = direction;
+	if (iv != NULL)
+		memcpy(cctx->iv, iv, cctx->cipher->blocklen);
+	else
+		memset(cctx->iv, 0, cctx->cipher->blocklen);
 	return ISRCRY_OK;
 }
 
-#define NOPAD_WRAPPER(alg, mode, direction, blocksize) \
-	exported enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## \
-				direction (const unsigned char *in, \
-				unsigned long len, unsigned char *out, \
-				struct isrcry_ ## alg ## _key *skey, \
-				unsigned char *iv) { \
-		return _isrcry_ ## mode ## _ ## direction(in, len, out, \
-					(cipher_fn *) _isrcry_ ## alg ## _ \
-					## direction, blocksize, skey, iv); \
+exported enum isrcry_result isrcry_cipher_process(
+			struct isrcry_cipher_ctx *cctx,
+			const unsigned char *in, unsigned long inlen,
+			unsigned char *out)
+{
+	if (cctx->direction == ISRCRY_ENCRYPT)
+		return cctx->mode->encrypt(cctx, in, inlen, out);
+	else
+		return cctx->mode->decrypt(cctx, in, inlen, out);
+}
+
+exported enum isrcry_result isrcry_cipher_final(
+			struct isrcry_cipher_ctx *cctx,
+			enum isrcry_padding padding,
+			const unsigned char *in, unsigned long inlen,
+			unsigned char *out, unsigned long *outlen)
+{
+	const struct isrcry_pad_desc *desc;
+	enum isrcry_result ret;
+	unsigned char lblock[MAX_BLOCK_LEN];
+	unsigned lblock_offset;
+	unsigned lblock_len;
+	unsigned blocklen;
+
+	if (cctx == NULL || in == NULL || out == NULL || outlen == NULL)
+		return ISRCRY_INVALID_ARGUMENT;
+	desc = pad_desc(padding);
+	if (desc == NULL)
+		return ISRCRY_INVALID_ARGUMENT;
+	blocklen = cctx->cipher->blocklen;
+	if (cctx->direction == ISRCRY_ENCRYPT) {
+		lblock_len = inlen % blocklen;
+		lblock_offset = inlen - lblock_len;
+		if (*outlen < lblock_offset + blocklen)
+			return ISRCRY_INVALID_ARGUMENT;
+		memcpy(lblock, in + lblock_offset, lblock_len);
+		ret = desc->pad(lblock, blocklen, lblock_len);
+		if (ret)
+			return ret;
+		ret = cctx->mode->encrypt(cctx, in, lblock_offset, out);
+		if (ret)
+			return ret;
+		ret = cctx->mode->encrypt(cctx, lblock, blocklen,
+					out + lblock_offset);
+		if (ret)
+			return ret;
+		*outlen = lblock_offset + blocklen;
+	} else {
+		if (inlen == 0 || inlen % blocklen)
+			return ISRCRY_INVALID_ARGUMENT;
+		lblock_offset = inlen - blocklen;
+		if (*outlen < lblock_offset)
+			return ISRCRY_INVALID_ARGUMENT;
+		ret = cctx->mode->decrypt(cctx, in, lblock_offset, out);
+		if (ret)
+			return ret;
+		ret = cctx->mode->decrypt(cctx, in + lblock_offset, blocklen,
+					lblock);
+		if (ret)
+			return ret;
+		ret = desc->unpad(lblock, blocklen, &lblock_len);
+		if (ret)
+			return ret;
+		if (*outlen < lblock_offset + lblock_len)
+			return ISRCRY_INVALID_ARGUMENT;
+		memcpy(out + lblock_offset, lblock, lblock_len);
+		*outlen = lblock_offset + lblock_len;
 	}
+	return ISRCRY_OK;
+}
 
-#define ENCRYPT_WRAPPER(alg, mode, pad, blocksize) \
-	exported enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## \
-				pad ## _encrypt (const unsigned char *in, \
-				unsigned long inlen, unsigned char *out, \
-				unsigned long outlen, \
-				struct isrcry_ ## alg ## _key *skey, \
-				unsigned char *iv) { \
-		return _isrcry_ ## encrypt(in, inlen, out, outlen, \
-					_isrcry_ ## mode ## _encrypt, \
-					(cipher_fn *) _isrcry_ ## alg ## _ ## \
-					encrypt, _isrcry_ ## pad ## _pad, \
-					blocksize, skey, iv); \
-	}
-
-#define DECRYPT_WRAPPER(alg, mode, pad, blocksize) \
-	exported enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## \
-				pad ## _decrypt (const unsigned char *in, \
-				unsigned long inlen, unsigned char *out, \
-				unsigned long *outlen, \
-				struct isrcry_ ## alg ## _key *skey, \
-				unsigned char *iv) { \
-		return _isrcry_ ## decrypt(in, inlen, out, outlen, \
-					_isrcry_ ## mode ## _decrypt, \
-					(cipher_fn *) _isrcry_ ## alg ## _ ## \
-					decrypt, _isrcry_ ## pad ## _unpad, \
-					blocksize, skey, iv); \
-	}
-
-NOPAD_WRAPPER(aes, cbc, encrypt, ISRCRY_AES_BLOCKSIZE)
-NOPAD_WRAPPER(aes, cbc, decrypt, ISRCRY_AES_BLOCKSIZE)
-NOPAD_WRAPPER(blowfish, cbc, encrypt, ISRCRY_BLOWFISH_BLOCKSIZE)
-NOPAD_WRAPPER(blowfish, cbc, decrypt, ISRCRY_BLOWFISH_BLOCKSIZE)
-
-ENCRYPT_WRAPPER(aes, cbc, pkcs5, ISRCRY_AES_BLOCKSIZE)
-DECRYPT_WRAPPER(aes, cbc, pkcs5, ISRCRY_AES_BLOCKSIZE)
-ENCRYPT_WRAPPER(blowfish, cbc, pkcs5, ISRCRY_BLOWFISH_BLOCKSIZE)
-DECRYPT_WRAPPER(blowfish, cbc, pkcs5, ISRCRY_BLOWFISH_BLOCKSIZE)
-
+exported unsigned isrcry_cipher_block(enum isrcry_cipher type)
+{
+	const struct isrcry_cipher_desc *desc = cipher_desc(type);
+	if (desc == NULL)
+		return 0;
+	return desc->blocklen;
+}
 
 static const struct isrcry_hash_desc *hash_desc(enum isrcry_hash type)
 {

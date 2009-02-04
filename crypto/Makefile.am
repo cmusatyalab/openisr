@@ -9,9 +9,9 @@ AM_CFLAGS += -fvisibility=hidden
 endif
 
 pkglib_LTLIBRARIES = libisrcrypto.la
-libisrcrypto_la_SOURCES = aes.c blowfish.c cbc.c md5.c md5-compress.c pad.c
-libisrcrypto_la_SOURCES += sha1.c util.c wrapper.c
-libisrcrypto_la_SOURCES += isrcrypto.h cipher.h internal.h
+libisrcrypto_la_SOURCES = aes.c blowfish.c cbc.c ecb.c md5.c md5-compress.c
+libisrcrypto_la_SOURCES += pad.c sha1.c util.c wrapper.c
+libisrcrypto_la_SOURCES += isrcrypto.h internal.h
 libisrcrypto_la_SOURCES += aes_tab.h blowfish_tab.h
 
 if HAVE_X86_64

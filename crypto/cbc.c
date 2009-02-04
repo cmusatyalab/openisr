@@ -35,23 +35,22 @@
 
 /**
   CBC encrypt
+  @param cctx     Cipher context
   @param in       Plaintext
   @param len      The number of bytes to process (must be multiple of block length)
   @param out      [out] Ciphertext
-  @param key      Key
-  @param iv       [in/out] Initialization vector
-  @param blocklen The block size
   @return ISRCRY_OK if successful
 */
-enum isrcry_result _isrcry_cbc_encrypt(const unsigned char *in,
-			unsigned long len, unsigned char *out,
-			cipher_fn *encrypt, unsigned blocklen, void *key,
-			unsigned char *iv)
+static enum isrcry_result cbc_encrypt(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *in, unsigned long len,
+			unsigned char *out)
 {
+   unsigned blocklen = cctx->cipher->blocklen;
+   unsigned char *iv = cctx->iv;
    unsigned x;
    enum isrcry_result err;
 
-   if (in == NULL || out == NULL || key == NULL || iv == NULL)
+   if (in == NULL || out == NULL)
 	   return ISRCRY_INVALID_ARGUMENT;
    if (blocklen < 1 || len % blocklen)
 	   return ISRCRY_INVALID_ARGUMENT;
@@ -73,7 +72,7 @@ enum isrcry_result _isrcry_cbc_encrypt(const unsigned char *in,
 #endif
 
        /* encrypt */
-      if ((err = encrypt(iv, out, key)) != ISRCRY_OK) {
+      if ((err = cctx->cipher->encrypt(cctx, iv, out)) != ISRCRY_OK) {
 	  return err;
       }
 
@@ -97,19 +96,18 @@ enum isrcry_result _isrcry_cbc_encrypt(const unsigned char *in,
 
 /**
   CBC decrypt
+  @param cctx     Cipher context
   @param in       Ciphertext
   @param len      The number of bytes to process (must be multiple of block length)
   @param out      [out] Plaintext
-  @param key      Key
-  @param iv       [in/out] Initialization vector
-  @param blocklen The block size
   @return ISRCRY_OK if successful
 */
-enum isrcry_result _isrcry_cbc_decrypt(const unsigned char *in,
-			unsigned long len, unsigned char *out,
-			cipher_fn *decrypt, unsigned blocklen, void *key,
-			unsigned char *iv)
+static enum isrcry_result cbc_decrypt(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *in, unsigned long len,
+			unsigned char *out)
 {
+   unsigned blocklen = cctx->cipher->blocklen;
+   unsigned char *iv = cctx->iv;
    unsigned x;
    enum isrcry_result err;
    unsigned char tmp[16];
@@ -119,7 +117,7 @@ enum isrcry_result _isrcry_cbc_decrypt(const unsigned char *in,
    unsigned char tmpy;
 #endif         
 
-   if (in == NULL || out == NULL || key == NULL || iv == NULL)
+   if (in == NULL || out == NULL)
 	   return ISRCRY_INVALID_ARGUMENT;
    if (blocklen < 1 || len % blocklen)
 	   return ISRCRY_INVALID_ARGUMENT;
@@ -130,7 +128,7 @@ enum isrcry_result _isrcry_cbc_decrypt(const unsigned char *in,
    
     while (len) {
        /* decrypt */
-       if ((err = decrypt(in, tmp, key)) != ISRCRY_OK)
+       if ((err = cctx->cipher->decrypt(cctx, in, tmp)) != ISRCRY_OK)
 	       return err;
 
        /* xor IV against plaintext */
@@ -154,3 +152,8 @@ enum isrcry_result _isrcry_cbc_decrypt(const unsigned char *in,
    }
    return ISRCRY_OK;
 }
+
+const struct isrcry_mode_desc _isrcry_cbc_desc = {
+	.encrypt = cbc_encrypt,
+	.decrypt = cbc_decrypt
+};

@@ -65,21 +65,20 @@ static uint32_t setup_mix(uint32_t temp)
 
  /**
     Initialize the AES (Rijndael) block cipher
+    @param cctx The cipher context in which to store the scheduled key
     @param key The symmetric key you wish to pass
     @param keylen The key length in bytes
-    @param skey The key in as scheduled by this function.
     @return ISRCRY_OK if successful
  */
-exported enum isrcry_result isrcry_aes_init(const unsigned char *key,
-			int keylen, struct isrcry_aes_key *skey)
+static enum isrcry_result aes_init(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *key, int keylen)
 {
+    struct isrcry_aes_key *skey = &cctx->aes;
     int i, j;
     uint32_t temp, *rk;
     uint32_t *rrk;
     
-    if (key == NULL || skey == NULL)
-	    return ISRCRY_INVALID_ARGUMENT;
-    if (keylen != 16 && keylen != 24 && keylen != 32)
+    if (key == NULL || (keylen != 16 && keylen != 24 && keylen != 32))
 	    return ISRCRY_INVALID_ARGUMENT;
     
     skey->Nr = 10 + ((keylen/8)-2)*2;
@@ -201,18 +200,19 @@ exported enum isrcry_result isrcry_aes_init(const unsigned char *key,
 
 /**
   Encrypts a block of text with AES
+  @param cctx The cipher context
   @param in The input plaintext (16 bytes)
   @param out The output ciphertext (16 bytes)
-  @param skey The key as scheduled
   @return ISRCRY_OK if successful
 */
-exported enum isrcry_result _isrcry_aes_encrypt(const unsigned char *in,
-			unsigned char *out, struct isrcry_aes_key *skey)
+static enum isrcry_result aes_encrypt(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *in, unsigned char *out)
 {
+    struct isrcry_aes_key *skey = &cctx->aes;
     uint32_t s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
     
-    if (in == NULL || out == NULL || skey == NULL)
+    if (in == NULL || out == NULL)
 	    return ISRCRY_INVALID_ARGUMENT;
     
     Nr = skey->Nr;
@@ -326,18 +326,19 @@ exported enum isrcry_result _isrcry_aes_encrypt(const unsigned char *in,
 
 /**
   Decrypts a block of text with AES
+  @param cctx The cipher context
   @param in The input ciphertext (16 bytes)
   @param out The output plaintext (16 bytes)
-  @param skey The key as scheduled 
   @return ISRCRY_OK if successful
 */
-exported enum isrcry_result _isrcry_aes_decrypt(const unsigned char *in,
-			unsigned char *out, struct isrcry_aes_key *skey)
+static enum isrcry_result aes_decrypt(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *in, unsigned char *out)
 {
+    struct isrcry_aes_key *skey = &cctx->aes;
     uint32_t s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
 
-    if (in == NULL || out == NULL || skey == NULL)
+    if (in == NULL || out == NULL)
 	    return ISRCRY_INVALID_ARGUMENT;
     
     Nr = skey->Nr;
@@ -450,3 +451,10 @@ exported enum isrcry_result _isrcry_aes_decrypt(const unsigned char *in,
 
     return ISRCRY_OK;
 }
+
+const struct isrcry_cipher_desc _isrcry_aes_desc = {
+	.init = aes_init,
+	.encrypt = aes_encrypt,
+	.decrypt = aes_decrypt,
+	.blocklen = 16
+};

@@ -24,13 +24,71 @@
 
 #include <string.h>
 #include "config.h"
-#include "cipher.h"
 
 #ifdef HAVE_VISIBILITY
 #define exported __attribute__ ((visibility ("default")))
 #else
 #define exported
 #endif
+
+#define MAX_BLOCK_LEN 16
+
+struct isrcry_cipher_desc {
+	enum isrcry_result (*init)(struct isrcry_cipher_ctx *cctx,
+				const unsigned char *key, int keylen);
+	enum isrcry_result (*encrypt)(struct isrcry_cipher_ctx *cctx,
+				const unsigned char *in,
+				unsigned char *out);
+	enum isrcry_result (*decrypt)(struct isrcry_cipher_ctx *cctx,
+				const unsigned char *in,
+				unsigned char *out);
+	unsigned blocklen;
+};
+
+extern const struct isrcry_cipher_desc _isrcry_aes_desc;
+extern const struct isrcry_cipher_desc _isrcry_bf_desc;
+
+struct isrcry_mode_desc {
+	enum isrcry_result (*encrypt)(struct isrcry_cipher_ctx *cctx,
+				const unsigned char *in, unsigned long len,
+				unsigned char *out);
+	enum isrcry_result (*decrypt)(struct isrcry_cipher_ctx *cctx,
+				const unsigned char *in, unsigned long len,
+				unsigned char *out);
+};
+
+extern const struct isrcry_mode_desc _isrcry_ecb_desc;
+extern const struct isrcry_mode_desc _isrcry_cbc_desc;
+
+struct isrcry_pad_desc {
+	enum isrcry_result (*pad)(unsigned char *buf, unsigned blocklen,
+			unsigned datalen);
+	enum isrcry_result (*unpad)(unsigned char *buf, unsigned blocklen,
+			unsigned *datalen);
+};
+
+extern const struct isrcry_pad_desc _isrcry_pkcs5_desc;
+
+struct isrcry_aes_key {
+	uint32_t eK[60], dK[60];
+	int Nr;
+};
+
+struct isrcry_blowfish_key {
+	uint32_t S[4][256];
+	uint32_t K[18];
+};
+
+struct isrcry_cipher_ctx {
+	const struct isrcry_cipher_desc *cipher;
+	const struct isrcry_mode_desc *mode;
+	union {
+		struct isrcry_aes_key aes;
+		struct isrcry_blowfish_key bf;
+	};
+	unsigned char iv[MAX_BLOCK_LEN];
+	enum isrcry_direction direction;
+};
 
 struct isrcry_hash_desc {
 	void (*init)(struct isrcry_hash_ctx *hctx);
@@ -64,31 +122,6 @@ struct isrcry_hash_ctx {
 
 extern const struct isrcry_hash_desc _isrcry_sha1_desc;
 extern const struct isrcry_hash_desc _isrcry_md5_desc;
-
-typedef enum isrcry_result (cipher_fn)(const unsigned char *in,
-			unsigned char *out, void *skey);
-typedef enum isrcry_result (mode_fn)(const unsigned char *in,
-			unsigned long len, unsigned char *out,
-			cipher_fn *encrypt, unsigned blocklen, void *key,
-			unsigned char *iv);
-typedef enum isrcry_result (pad_fn)(unsigned char *buf, unsigned blocklen,
-			unsigned datalen);
-typedef enum isrcry_result (unpad_fn)(unsigned char *buf, unsigned blocklen,
-			unsigned *datalen);
-
-enum isrcry_result _isrcry_cbc_encrypt(const unsigned char *in,
-			unsigned long len, unsigned char *out,
-			cipher_fn *encrypt, unsigned blocklen, void *key,
-			unsigned char *iv);
-enum isrcry_result _isrcry_cbc_decrypt(const unsigned char *in,
-			unsigned long len, unsigned char *out,
-			cipher_fn *decrypt, unsigned blocklen, void *key,
-			unsigned char *iv);
-
-enum isrcry_result _isrcry_pkcs5_pad(unsigned char *buf, unsigned blocklen,
-			unsigned datalen);
-enum isrcry_result _isrcry_pkcs5_unpad(unsigned char *buf, unsigned blocklen,
-			unsigned *datalen);
 
 /* The helper macros below are originally from libtomcrypt. */
 

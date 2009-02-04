@@ -35,22 +35,24 @@
 #include "internal.h"
 #include "blowfish_tab.h"
 
+static enum isrcry_result blowfish_encrypt(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *in, unsigned char *out);
+
  /**
     Initialize the Blowfish block cipher
+    @param cctx The cipher context in which to store the scheduled key
     @param key The symmetric key you wish to pass
     @param keylen The key length in bytes
-    @param skey The key in as scheduled by this function.
     @return ISRCRY_OK if successful
  */
-exported enum isrcry_result isrcry_blowfish_init(const unsigned char *key,
-			int keylen, struct isrcry_blowfish_key *skey)
+static enum isrcry_result blowfish_init(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *key, int keylen)
 {
+   struct isrcry_blowfish_key *skey = &cctx->bf;
    uint32_t x, y, z, A;
    unsigned char B[8];
 
-   if (key == NULL || skey == NULL)
-	   return ISRCRY_INVALID_ARGUMENT;
-   if (keylen < 8 || keylen > 56)
+   if (key == NULL || keylen < 8 || keylen > 56)
 	   return ISRCRY_INVALID_ARGUMENT;
 
    /* load in key bytes (Supplied by David Hopwood) */
@@ -79,7 +81,7 @@ exported enum isrcry_result isrcry_blowfish_init(const unsigned char *key,
    
    for (x = 0; x < 18; x += 2) {
        /* encrypt it */
-       _isrcry_blowfish_encrypt(B, B, skey);
+       blowfish_encrypt(cctx, B, B);
        /* copy it */
        LOAD32H(skey->K[x], &B[0]);
        LOAD32H(skey->K[x+1], &B[4]);
@@ -89,7 +91,7 @@ exported enum isrcry_result isrcry_blowfish_init(const unsigned char *key,
    for (x = 0; x < 4; x++) {
        for (y = 0; y < 256; y += 2) {
           /* encrypt it */
-          _isrcry_blowfish_encrypt(B, B, skey);
+          blowfish_encrypt(cctx, B, B);
           /* copy it */
           LOAD32H(skey->S[x][y], &B[0]);
           LOAD32H(skey->S[x][y+1], &B[4]);
@@ -103,18 +105,19 @@ exported enum isrcry_result isrcry_blowfish_init(const unsigned char *key,
 
 /**
   Encrypts a block of text with Blowfish
+  @param cctx The cipher context
   @param in The input plaintext (8 bytes)
   @param out The output ciphertext (8 bytes)
-  @param skey The key as scheduled
   @return ISRCRY_OK if successful
 */
-exported enum isrcry_result _isrcry_blowfish_encrypt(const unsigned char *in,
-			unsigned char *out, struct isrcry_blowfish_key *skey)
+static enum isrcry_result blowfish_encrypt(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *in, unsigned char *out)
 {
+   struct isrcry_blowfish_key *skey = &cctx->bf;
    uint32_t L, R;
    int r;
 
-   if (in == NULL || out == NULL || skey == NULL)
+   if (in == NULL || out == NULL)
 	   return ISRCRY_INVALID_ARGUMENT;
 
    /* load it */
@@ -142,18 +145,19 @@ exported enum isrcry_result _isrcry_blowfish_encrypt(const unsigned char *in,
 
 /**
   Decrypts a block of text with Blowfish
+  @param cctx The cipher context
   @param in The input ciphertext (8 bytes)
   @param out The output plaintext (8 bytes)
-  @param skey The key as scheduled 
   @return ISRCRY_OK if successful
 */
-exported enum isrcry_result _isrcry_blowfish_decrypt(const unsigned char *in,
-			unsigned char *out, struct isrcry_blowfish_key *skey)
+static enum isrcry_result blowfish_decrypt(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *in, unsigned char *out)
 {
+   struct isrcry_blowfish_key *skey = &cctx->bf;
    uint32_t L, R;
    int r;
 
-   if (in == NULL || out == NULL || skey == NULL)
+   if (in == NULL || out == NULL)
 	   return ISRCRY_INVALID_ARGUMENT;
     
    /* load it */
@@ -177,3 +181,10 @@ exported enum isrcry_result _isrcry_blowfish_decrypt(const unsigned char *in,
    STORE32H(R, &out[4]);
    return ISRCRY_OK;
 }
+
+const struct isrcry_cipher_desc _isrcry_bf_desc = {
+	.init = blowfish_init,
+	.encrypt = blowfish_encrypt,
+	.decrypt = blowfish_decrypt,
+	.blocklen = 8
+};

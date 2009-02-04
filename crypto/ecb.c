@@ -15,44 +15,53 @@
  * for more details.
  */
 
-#include <unistd.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
 
-static enum isrcry_result pkcs5_pad(unsigned char *buf, unsigned blocklen,
-			unsigned datalen)
+static enum isrcry_result ecb_encrypt(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *in, unsigned long len,
+			unsigned char *out)
 {
-	unsigned char pad;
-	unsigned n;
+	enum isrcry_result ret;
+	unsigned blocklen = cctx->cipher->blocklen;
 
-	if (buf == NULL || datalen >= blocklen || blocklen - datalen > 255)
+	if (in == NULL || out == NULL || len % blocklen)
 		return ISRCRY_INVALID_ARGUMENT;
-	pad = blocklen - datalen;
-	for (n = datalen; n < blocklen; n++)
-		buf[n] = pad;
+
+	while (len) {
+		ret = cctx->cipher->encrypt(cctx, in, out);
+		if (ret)
+			return ret;
+		len -= blocklen;
+		in += blocklen;
+		out += blocklen;
+	}
 	return ISRCRY_OK;
 }
 
-static enum isrcry_result pkcs5_unpad(unsigned char *buf, unsigned blocklen,
-			unsigned *datalen)
+static enum isrcry_result ecb_decrypt(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *in, unsigned long len,
+			unsigned char *out)
 {
-	unsigned char pad;
-	unsigned n;
+	enum isrcry_result ret;
+	unsigned blocklen = cctx->cipher->blocklen;
 
-	if (buf == NULL || datalen == NULL)
+	if (in == NULL || out == NULL || len % blocklen)
 		return ISRCRY_INVALID_ARGUMENT;
-	pad = buf[blocklen - 1];
-	if (pad == 0 || pad > blocklen)
-		return ISRCRY_BAD_PADDING;
-	for (n = 1; n < pad; n++)
-		if (buf[blocklen - n - 1] != pad)
-			return ISRCRY_BAD_PADDING;
-	*datalen = blocklen - pad;
+
+	while (len) {
+		ret = cctx->cipher->decrypt(cctx, in, out);
+		if (ret)
+			return ret;
+		len -= blocklen;
+		in += blocklen;
+		out += blocklen;
+	}
 	return ISRCRY_OK;
 }
 
-const struct isrcry_pad_desc _isrcry_pkcs5_desc = {
-	.pad = pkcs5_pad,
-	.unpad = pkcs5_unpad
+const struct isrcry_mode_desc _isrcry_ecb_desc = {
+	.encrypt = ecb_encrypt,
+	.decrypt = ecb_decrypt
 };

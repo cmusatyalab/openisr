@@ -26,69 +26,49 @@ enum isrcry_result {
 	ISRCRY_BAD_PADDING		= 2,
 };
 
+enum isrcry_direction {
+	ISRCRY_DECRYPT			= 0,
+	ISRCRY_ENCRYPT			= 1
+};
+
+enum isrcry_cipher {
+	ISRCRY_CIPHER_AES		= 0,
+	ISRCRY_CIPHER_BLOWFISH		= 1,
+};
+
+enum isrcry_mode {
+	ISRCRY_MODE_ECB			= 0,
+	ISRCRY_MODE_CBC			= 1,
+};
+
+enum isrcry_padding {
+	ISRCRY_PADDING_PKCS5		= 0,
+};
+
 enum isrcry_hash {
 	ISRCRY_HASH_SHA1		= 0,
 	ISRCRY_HASH_MD5			= 1,
 };
 
-#define ISRCRY_AES_BLOCKSIZE 16
-#define ISRCRY_BLOWFISH_BLOCKSIZE 8
-
-struct isrcry_aes_key {
-	uint32_t eK[60], dK[60];
-	int Nr;
-};
-
-struct isrcry_blowfish_key {
-	uint32_t S[4][256];
-	uint32_t K[18];
-};
-
+struct isrcry_cipher_ctx;
 struct isrcry_hash_ctx;
 
-#define CIPHER_INIT(alg) \
-	enum isrcry_result isrcry_ ## alg ## _init(const unsigned char *key, \
-				int keylen, \
-				struct isrcry_ ## alg ## _key *skey);
 
-#define CIPHER(alg, mode, direction) \
-	enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## direction ( \
-				const unsigned char *in, unsigned long len, \
-				unsigned char *out, \
-				struct isrcry_ ## alg ## _key *skey, \
-				unsigned char *iv);
-#define ENCRYPT_PAD(alg, mode, pad) \
-	enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## pad ## \
-				_encrypt (const unsigned char *in, \
-				unsigned long inlen, unsigned char *out, \
-				unsigned long outlen, \
-				struct isrcry_ ## alg ## _key *skey, \
-				unsigned char *iv);
-#define DECRYPT_PAD(alg, mode, pad) \
-	enum isrcry_result isrcry_ ## alg ## _ ## mode ## _ ## pad ## \
-				_decrypt (const unsigned char *in, \
-				unsigned long inlen, unsigned char *out, \
-				unsigned long *outlen, \
-				struct isrcry_ ## alg ## _key *skey, \
-				unsigned char *iv);
-
-CIPHER_INIT(aes)
-CIPHER_INIT(blowfish)
-
-CIPHER(aes, cbc, encrypt)
-CIPHER(aes, cbc, decrypt)
-CIPHER(blowfish, cbc, encrypt)
-CIPHER(blowfish, cbc, decrypt)
-
-ENCRYPT_PAD(aes, cbc, pkcs5)
-DECRYPT_PAD(aes, cbc, pkcs5)
-ENCRYPT_PAD(blowfish, cbc, pkcs5)
-DECRYPT_PAD(blowfish, cbc, pkcs5)
-
-#undef CIPHER_INIT
-#undef CIPHER
-#undef ENCRYPT_PAD
-#undef DECRYPT_PAD
+struct isrcry_cipher_ctx *isrcry_cipher_alloc(enum isrcry_cipher cipher,
+			enum isrcry_mode mode);
+void isrcry_cipher_free(struct isrcry_cipher_ctx *cctx);
+enum isrcry_result isrcry_cipher_init(struct isrcry_cipher_ctx *cctx,
+			enum isrcry_direction direction,
+			const unsigned char *key, int keylen,
+			const unsigned char *iv);
+enum isrcry_result isrcry_cipher_process(struct isrcry_cipher_ctx *cctx,
+			const unsigned char *in, unsigned long inlen,
+			unsigned char *out);
+enum isrcry_result isrcry_cipher_final(struct isrcry_cipher_ctx *cctx,
+			enum isrcry_padding padding,
+			const unsigned char *in, unsigned long inlen,
+			unsigned char *out, unsigned long *outlen);
+unsigned isrcry_cipher_block(enum isrcry_cipher type);
 
 struct isrcry_hash_ctx *isrcry_hash_alloc(enum isrcry_hash type);
 void isrcry_hash_free(struct isrcry_hash_ctx *ctx);
