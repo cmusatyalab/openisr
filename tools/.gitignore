@@ -1,11 +1,8 @@
-convert-chunks
-convert-keyring
 dirtometer
 nextest
 nexus_debug
 openisr-config
 openisr-config.8
-upgrade-0.9.pl
 query
 readstats
 zlib
