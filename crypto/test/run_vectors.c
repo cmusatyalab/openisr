@@ -260,7 +260,6 @@ void hash_test(const char *alg, enum isrcry_hash type,
 		fail("%s invalid hashlen", alg);
 	for (n = 0; n < vec_count; n++) {
 		test = &vectors[n];
-		isrcry_hash_init(ctx);
 		isrcry_hash_update(ctx, test->data, test->len);
 		isrcry_hash_final(ctx, out);
 		if (memcmp(out, test->hash, hashlen))
@@ -294,7 +293,6 @@ void hash_simple_monte_test(const char *alg, enum isrcry_hash type,
 		if (test->ngroups != 1)
 			fail("%s %u invalid vector", alg, n);
 		for (m = 0; m < test->niters; m++) {
-			isrcry_hash_init(ctx);
 			isrcry_hash_update(ctx, buf, hashlen);
 			isrcry_hash_final(ctx, buf);
 		}
@@ -333,7 +331,6 @@ void hash_monte_test(const char *alg, enum isrcry_hash type,
 			for (l = 0; l < 2; l++)
 				memcpy(buf + l * hashlen, out, hashlen);
 			for (l = 0; l < test->niters; l++) {
-				isrcry_hash_init(ctx);
 				isrcry_hash_update(ctx, buf, 3 * hashlen);
 				memmove(buf, buf + hashlen, 2 * hashlen);
 				isrcry_hash_final(ctx, out);

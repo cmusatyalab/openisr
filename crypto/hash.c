@@ -43,17 +43,13 @@ exported struct isrcry_hash_ctx *isrcry_hash_alloc(enum isrcry_hash type)
 		free(hctx);
 		return NULL;
 	}
+	hctx->desc->init(hctx);
 	return hctx;
 }
 
 exported void isrcry_hash_free(struct isrcry_hash_ctx *hctx)
 {
 	free(hctx);
-}
-
-exported void isrcry_hash_init(struct isrcry_hash_ctx *hctx)
-{
-	hctx->desc->init(hctx);
 }
 
 exported void isrcry_hash_update(struct isrcry_hash_ctx *hctx,
@@ -66,6 +62,7 @@ exported void isrcry_hash_final(struct isrcry_hash_ctx *hctx,
 			unsigned char *digest)
 {
 	hctx->desc->final(hctx, digest);
+	hctx->desc->init(hctx);
 }
 
 exported unsigned isrcry_hash_len(enum isrcry_hash type)

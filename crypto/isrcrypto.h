@@ -72,7 +72,6 @@ unsigned isrcry_cipher_block(enum isrcry_cipher type);
 
 struct isrcry_hash_ctx *isrcry_hash_alloc(enum isrcry_hash type);
 void isrcry_hash_free(struct isrcry_hash_ctx *ctx);
-void isrcry_hash_init(struct isrcry_hash_ctx *ctx);
 void isrcry_hash_update(struct isrcry_hash_ctx *ctx,
 			const unsigned char *buffer, unsigned length);
 void isrcry_hash_final(struct isrcry_hash_ctx *ctx, unsigned char *digest);
