@@ -28,7 +28,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
-#include <openssl/evp.h>
+#include "isrcrypto.h"
 #include "nexus.h"
 
 #define CONTROL_DEV "/dev/openisrctl"
@@ -174,9 +174,10 @@ int setup(struct params *params, char *storefile)
 	unsigned long long tmp;
 	unsigned char *data;
 	unsigned char *crypted;
-	EVP_CIPHER_CTX cipher;
-	EVP_MD_CTX hash;
-	unsigned char iv[16];
+	struct isrcry_cipher_ctx *cipher;
+	struct isrcry_hash_ctx *hash;
+	enum isrcry_cipher alg;
+	unsigned keylen;
 	struct chunk chunk;
 	
 	storefd=open(storefile, O_CREAT|O_WRONLY|O_TRUNC, 0600);
@@ -213,36 +214,42 @@ int setup(struct params *params, char *storefile)
 		printf("Couldn't allocate buffer\n");
 		return 1;
 	}
+	hash = isrcry_hash_alloc(ISRCRY_HASH_SHA1);
+	if (hash == NULL) {
+		printf("Couldn't allocate hash\n");
+		return 1;
+	}
 	memset(data, 0, params->chunksize);
 	if (params->suite != ONDISK_NOCRYPT) {
-		EVP_DigestInit(&hash, EVP_sha1());
-		EVP_DigestUpdate(&hash, data, params->chunksize);
-		EVP_DigestFinal(&hash, chunk.key, NULL);
-		memset(iv, 0, sizeof(iv));
-		EVP_CIPHER_CTX_init(&cipher);
+		isrcry_hash_update(hash, data, params->chunksize);
+		isrcry_hash_final(hash, chunk.key);
 		if (params->suite == ONDISK_AES) {
-			EVP_EncryptInit_ex(&cipher, EVP_aes_128_cbc(), NULL,
-						NULL, NULL);
+			alg=ISRCRY_CIPHER_AES;
+			keylen=16;
 		} else {
-			EVP_EncryptInit_ex(&cipher, EVP_bf_cbc(), NULL, NULL,
-						NULL);
-			EVP_CIPHER_CTX_set_key_length(&cipher, 20);
+			alg=ISRCRY_CIPHER_BLOWFISH;
+			keylen=20;
 		}
-		EVP_CIPHER_CTX_set_padding(&cipher, 0);
-		EVP_EncryptInit_ex(&cipher, NULL, NULL, chunk.key, iv);
-		EVP_EncryptUpdate(&cipher, crypted, (int*)&chunk.length,
-					data, params->chunksize);
-		/* second and third arguments are irrelevant but must exist */
-		EVP_EncryptFinal(&cipher, data, (int*)data);
+		cipher=isrcry_cipher_alloc(alg, ISRCRY_MODE_CBC);
+		if (cipher == NULL) {
+			printf("Couldn't allocate cipher\n");
+			return 1;
+		}
+		if (isrcry_cipher_init(cipher, ISRCRY_ENCRYPT, chunk.key,
+					keylen, NULL)) {
+			printf("Couldn't init cipher\n");
+			return 1;
+		}
+		isrcry_cipher_process(cipher, data, params->chunksize,
+					crypted);
 	} else {
 		memset(chunk.key, 0, sizeof(chunk.key));
-		chunk.length=params->chunksize;
 		crypted=data;
 	}
-	EVP_DigestInit(&hash, EVP_sha1());
-	EVP_DigestUpdate(&hash, crypted, params->chunksize);
-	EVP_DigestFinal(&hash, chunk.tag, NULL);
+	isrcry_hash_update(hash, crypted, params->chunksize);
+	isrcry_hash_final(hash, chunk.tag);
 	
+	chunk.length=params->chunksize;
 	chunk.compression=ONDISK_NONE;
 	fprintf(stderr, "Initializing %llu chunks", params->chunks);
 	if (lseek(chunkfd, params->offset * 512, SEEK_SET) == (off_t)-1) {
