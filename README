@@ -9,7 +9,7 @@ To run:
 - Linux kernel (versions 2.6.18 through 2.6.28 supported)
 - Development headers for your Linux kernel version
 - libcurl >= 7.12.3 and curl command-line utility
-- OpenSSL libraries and command-line utility
+- OpenSSL command-line utility
 - zlib
 - libuuid from e2fsprogs
 - GTK+
@@ -30,7 +30,7 @@ Additional requirements for the vmware driver:
 
 To build from a source tarball:
 - All of the requirements for running the OpenISR system, plus:
-- Development headers for glibc, libcurl, OpenSSL, zlib, GTK+, and libuuid
+- Development headers for glibc, libcurl, zlib, GTK+, and libuuid
 - pkg-config
 
 To build from the Git repository:
@@ -94,12 +94,11 @@ following command line options:
 	Overrides the name of the group which will be permitted to access
 	the OpenISR device nodes.  The default is "isrusers".
 
---with-ssl=DIR
 --with-zlib=DIR
 --with-curl=DIR
-	Specifies an additional search path for, respectively, OpenSSL, zlib,
-	or curl.  In addition to the specified paths, configure will check a
-	set of default paths for each component.
+	Specifies an additional search path for zlib or curl, respectively.
+	In addition to the specified paths, configure will check a set of
+	default paths for each component.
 
 --disable-client
 	Do not build or install components that are only used by the OpenISR

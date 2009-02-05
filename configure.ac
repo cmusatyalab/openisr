@@ -159,8 +159,6 @@ if WANT_VMM([vmware]) ; then
 fi
 
 # Checks for libraries.
-AC_ARG_WITH([ssl], [AS_HELP_STRING([--with-ssl=DIR],
-			[look for OpenSSL libraries in DIR])])
 AC_ARG_WITH([zlib], [AS_HELP_STRING([--with-zlib=DIR],
 			[look for zlib in DIR])])
 AC_ARG_WITH([curl], [AS_HELP_STRING([--with-curl=DIR],
@@ -181,10 +179,6 @@ if test z$enable_client = zyes ; then
 fi
 
 if test z$enable_client = zyes -o z$enable_server = zyes ; then
-	FIND_LIBRARY([libcrypto], [crypto], [EVP_EncryptUpdate],
-				[openssl/evp.h openssl/blowfish.h],
-				[$with_ssl /usr/local/ssl /usr/lib/ssl /usr/ssl /usr/local /usr])
-	
 	FIND_LIBRARY([zlib], [z], [inflate], [zlib.h],
 				[$with_zlib /usr/local /usr])
 fi
