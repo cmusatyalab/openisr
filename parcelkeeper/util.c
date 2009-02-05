@@ -20,8 +20,8 @@
 #include <signal.h>
 #include <errno.h>
 #include <time.h>
-#include <openssl/evp.h>
 #include <uuid/uuid.h>
+#include "isrcrypto.h"
 #include "defs.h"
 
 #define UUID_STR_LEN 36  /* not including trailing NUL */
@@ -457,32 +457,26 @@ char *form_chunk_path(const char *prefix, unsigned chunk)
 pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
 			unsigned len)
 {
-	EVP_MD_CTX ctx;
-	const EVP_MD *alg=NULL;  /* make compiler happy */
+	struct isrcry_hash_ctx *ctx;
+	enum isrcry_hash alg;
 
 	switch (crypto) {
 	case CRY_BLOWFISH_SHA1:
 	case CRY_AES_SHA1:
-		alg=EVP_sha1();
+		alg=ISRCRY_HASH_SHA1;
 		break;
 	case CRY_UNKNOWN:
-		alg=EVP_md_null();
-		break;
+		return PK_INVALID;
 	}
 
-	if (!EVP_DigestInit(&ctx, alg)) {
-		pk_log(LOG_ERROR, "Couldn't initialize digest algorithm");
+	ctx=isrcry_hash_alloc(alg);
+	if (ctx == NULL) {
+		pk_log(LOG_ERROR, "Couldn't allocate digest context");
 		return PK_CALLFAIL;
 	}
-	if (!EVP_DigestUpdate(&ctx, in, len)) {
-		pk_log(LOG_ERROR, "Couldn't run digest algorithm");
-		EVP_MD_CTX_cleanup(&ctx);
-		return PK_CALLFAIL;
-	}
-	if (!EVP_DigestFinal(&ctx, out, NULL)) {
-		pk_log(LOG_ERROR, "Couldn't finalize digest algorithm");
-		return PK_CALLFAIL;
-	}
+	isrcry_hash_update(ctx, in, len);
+	isrcry_hash_final(ctx, out);
+	isrcry_hash_free(ctx);
 	return PK_SUCCESS;
 }
 
