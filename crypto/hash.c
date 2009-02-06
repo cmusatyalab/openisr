@@ -53,13 +53,12 @@ exported void isrcry_hash_free(struct isrcry_hash_ctx *hctx)
 }
 
 exported void isrcry_hash_update(struct isrcry_hash_ctx *hctx,
-			const unsigned char *buffer, unsigned length)
+			const void *buffer, unsigned length)
 {
 	hctx->desc->update(hctx, buffer, length);
 }
 
-exported void isrcry_hash_final(struct isrcry_hash_ctx *hctx,
-			unsigned char *digest)
+exported void isrcry_hash_final(struct isrcry_hash_ctx *hctx, void *digest)
 {
 	hctx->desc->final(hctx, digest);
 	hctx->desc->init(hctx);

@@ -75,9 +75,8 @@ exported void isrcry_cipher_free(struct isrcry_cipher_ctx *cctx)
 }
 
 exported enum isrcry_result isrcry_cipher_init(struct isrcry_cipher_ctx *cctx,
-			enum isrcry_direction direction,
-			const unsigned char *key, int keylen,
-			const unsigned char *iv)
+			enum isrcry_direction direction, const void *key,
+			int keylen, const void *iv)
 {
 	enum isrcry_result ret;
 	
@@ -101,9 +100,8 @@ exported enum isrcry_result isrcry_cipher_init(struct isrcry_cipher_ctx *cctx,
 }
 
 exported enum isrcry_result isrcry_cipher_process(
-			struct isrcry_cipher_ctx *cctx,
-			const unsigned char *in, unsigned long inlen,
-			unsigned char *out)
+			struct isrcry_cipher_ctx *cctx, const void *in,
+			unsigned long inlen, void *out)
 {
 	if (cctx->direction == ISRCRY_ENCRYPT)
 		return cctx->mode->encrypt(cctx, in, inlen, out);
@@ -113,9 +111,8 @@ exported enum isrcry_result isrcry_cipher_process(
 
 exported enum isrcry_result isrcry_cipher_final(
 			struct isrcry_cipher_ctx *cctx,
-			enum isrcry_padding padding,
-			const unsigned char *in, unsigned long inlen,
-			unsigned char *out, unsigned long *outlen)
+			enum isrcry_padding padding, const void *in,
+			unsigned long inlen, void *out, unsigned long *outlen)
 {
 	const struct isrcry_pad_desc *desc;
 	enum isrcry_result ret;

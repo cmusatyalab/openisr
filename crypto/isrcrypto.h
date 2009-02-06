@@ -59,22 +59,20 @@ struct isrcry_cipher_ctx *isrcry_cipher_alloc(enum isrcry_cipher cipher,
 void isrcry_cipher_free(struct isrcry_cipher_ctx *cctx);
 enum isrcry_result isrcry_cipher_init(struct isrcry_cipher_ctx *cctx,
 			enum isrcry_direction direction,
-			const unsigned char *key, int keylen,
-			const unsigned char *iv);
+			const void *key, int keylen, const void *iv);
 enum isrcry_result isrcry_cipher_process(struct isrcry_cipher_ctx *cctx,
-			const unsigned char *in, unsigned long inlen,
-			unsigned char *out);
+			const void *in, unsigned long inlen, void *out);
 enum isrcry_result isrcry_cipher_final(struct isrcry_cipher_ctx *cctx,
 			enum isrcry_padding padding,
-			const unsigned char *in, unsigned long inlen,
-			unsigned char *out, unsigned long *outlen);
+			const void *in, unsigned long inlen,
+			void *out, unsigned long *outlen);
 unsigned isrcry_cipher_block(enum isrcry_cipher type);
 
 struct isrcry_hash_ctx *isrcry_hash_alloc(enum isrcry_hash type);
 void isrcry_hash_free(struct isrcry_hash_ctx *ctx);
 void isrcry_hash_update(struct isrcry_hash_ctx *ctx,
-			const unsigned char *buffer, unsigned length);
-void isrcry_hash_final(struct isrcry_hash_ctx *ctx, unsigned char *digest);
+			const void *buffer, unsigned length);
+void isrcry_hash_final(struct isrcry_hash_ctx *ctx, void *digest);
 unsigned isrcry_hash_len(enum isrcry_hash type);
 
 const char *isrcry_strerror(enum isrcry_result result);
