@@ -39,6 +39,8 @@ static unsigned hashlen = 20;
 
 static int keyroot_fd;
 static const char *keyroot;
+static const char *infile;
+static const char *outfile;
 static gboolean encode = TRUE;
 static gboolean want_encrypt;
 static gboolean want_hash;
@@ -352,6 +354,8 @@ static void run_buffer(GString **in, GString **out, gboolean final)
 #undef action
 
 static GOptionEntry options[] = {
+	{"in", 'i', 0, G_OPTION_ARG_FILENAME, &infile, "Input file", "path"},
+	{"out", 'o', 0, G_OPTION_ARG_FILENAME, &outfile, "Output file", "path"},
 	{"keyroot-fd", 'k', 0, G_OPTION_ARG_INT, &keyroot_fd, "File descriptor from which to read the keyroot", "fd"},
 	{"decode", 'd', G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, &encode, "Decode encoded input", NULL},
 	{"encrypt", 'e', 0, G_OPTION_ARG_NONE, &want_encrypt, "Encrypt data", NULL},
@@ -366,6 +370,8 @@ int main(int argc, char **argv)
 {
 	GOptionContext *octx;
 	GError *err = NULL;
+	FILE *infp = stdin;
+	FILE *outfp = stdout;
 	GString *in;
 	GString *out;
 	size_t len;
@@ -375,18 +381,33 @@ int main(int argc, char **argv)
 	if (!g_option_context_parse(octx, &argc, &argv, &err))
 		die("%s", err->message);
 	g_option_context_free(octx);
+	if (infile != NULL) {
+		infp = fopen(infile, "r");
+		if (infp == NULL)
+			die("Couldn't open %s for reading", infile);
+	}
+	if (outfile != NULL) {
+		outfp = fopen(outfile, "w");
+		if (outfp == NULL)
+			die("Couldn't open %s for writing", outfile);
+	}
 
 	in = g_string_sized_new(BUFSZ);
 	out = g_string_sized_new(BUFSZ);
 	do {
 		g_string_set_size(in, BUFSZ);
 		g_string_truncate(out, 0);
-		len = fread(in->str, 1, in->len, stdin);
-		if (ferror(stdin))
+		len = fread(in->str, 1, in->len, infp);
+		if (ferror(infp))
 			die("Error reading input");
 		g_string_set_size(in, len);
-		run_buffer(&in, &out, feof(stdin));
-		fwrite(out->str, 1, out->len, stdout);
-	} while (!feof(stdin));
+		run_buffer(&in, &out, feof(infp));
+		fwrite(out->str, 1, out->len, outfp);
+		if (ferror(outfp))
+			die("Error writing output");
+	} while (!feof(infp));
+
+	fclose(infp);
+	fclose(outfp);
 	return 0;
 }
