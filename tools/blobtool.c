@@ -1,7 +1,7 @@
 /*
  * blobtool - encode/decode file data
  *
- * Copyright (C) 2009 Carnegie Mellon University
+ * Copyright (C) 2007-2009 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -20,6 +20,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <glib.h>
+#include <zlib.h>
 #include "isrcrypto.h"
 
 #define BUFSZ 32768
@@ -41,6 +42,8 @@ static const char *keyroot;
 static gboolean encode = TRUE;
 static gboolean want_encrypt;
 static gboolean want_hash;
+static gboolean want_zlib;
+static int compress_level = Z_BEST_COMPRESSION;
 
 #define die(str, args...) do { \
 		g_printerr("blobtool: " str "\n", ## args); \
@@ -216,26 +219,113 @@ static void run_hash(const char *in, unsigned inlen, GString *out,
 	}
 }
 
+static void run_zlib_compress(const char *in, unsigned inlen, GString *out,
+			gboolean final)
+{
+	static z_stream strm;
+	char buf[BUFSZ];
+	int ret;
+
+	if (strm.state == NULL) {
+		if (deflateInit(&strm, compress_level) != Z_OK)
+			die("zlib init failed: %s", strm.msg);
+	}
+	strm.next_in = (void *) in;
+	strm.avail_in = inlen;
+	while (strm.avail_in > 0) {
+		strm.next_out = (void *) buf;
+		strm.avail_out = sizeof(buf);
+		if (deflate(&strm, 0) != Z_OK)
+			die("zlib deflate failed: %s", strm.msg);
+		g_string_append_len(out, buf, sizeof(buf) - strm.avail_out);
+	}
+	if (final) {
+		do {
+			strm.next_out = (void *) buf;
+			strm.avail_out = sizeof(buf);
+			ret = deflate(&strm, Z_FINISH);
+			if (ret != Z_STREAM_END && ret != Z_OK)
+				die("zlib deflate failed: %s", strm.msg);
+			g_string_append_len(out, buf, sizeof(buf) -
+						strm.avail_out);
+		} while (ret != Z_STREAM_END);
+		if (deflateEnd(&strm) != Z_OK)
+			die("zlib deflate failed: %s", strm.msg);
+	}
+}
+
+static void run_zlib_decompress(const char *in, unsigned inlen, GString *out,
+			gboolean final)
+{
+	static z_stream strm;
+	static gboolean done;
+	static gboolean warned;
+	char buf[BUFSZ];
+	int ret;
+
+	if (strm.state == NULL) {
+		if (inflateInit(&strm) != Z_OK)
+			die("zlib init failed: %s", strm.msg);
+	}
+	strm.next_in = (void *) in;
+	strm.avail_in = inlen;
+	while (strm.avail_in > 0 && !done) {
+		strm.next_out = (void *) buf;
+		strm.avail_out = sizeof(buf);
+		ret = inflate(&strm, Z_SYNC_FLUSH);
+		if (ret != Z_STREAM_END && ret != Z_OK)
+			die("zlib inflate failed: %s", strm.msg);
+		g_string_append_len(out, buf, sizeof(buf) - strm.avail_out);
+		/* If zlib says we're done decoding, then we are, even
+		   if there's input left over */
+		if (ret == Z_STREAM_END)
+			done = TRUE;
+	}
+	if (done && strm.avail_in > 0 && !warned) {
+		warned = TRUE;
+		g_printerr("blobtool: ignoring trailing garbage in zlib "
+					"stream\n");
+	}
+	if (final) {
+		if (!done)
+			die("zlib stream ended prematurely");
+		if (inflateEnd(&strm) != Z_OK)
+			die("zlib inflate failed: %s", strm.msg);
+	}
+}
+
+#define action(name) do { \
+		if (ops++) \
+			swap_strings(in, out); \
+		run_ ## name((*in)->str, (*in)->len, *out, final); \
+	} while (0)
 static void run_buffer(GString **in, GString **out, gboolean final)
 {
 	int ops = 0;
 
-	if (want_encrypt) {
-		ops++;
-		run_cipher((*in)->str, (*in)->len, *out, final);
+	if (encode) {
+		if (want_zlib)
+			action(zlib_compress);
+		if (want_encrypt)
+			action(cipher);
+	} else {
+		if (want_encrypt)
+			action(cipher);
+		if (want_zlib)
+			action(zlib_decompress);
 	}
-	if (want_hash) {
-		if (ops++)
-			swap_strings(in, out);
-		run_hash((*in)->str, (*in)->len, *out, final);
-	}
+	if (want_hash)
+		action(hash);
 }
+#undef action
 
 static GOptionEntry options[] = {
 	{"keyroot-fd", 'k', 0, G_OPTION_ARG_INT, &keyroot_fd, "File descriptor from which to read the keyroot", "fd"},
 	{"decode", 'd', G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, &encode, "Decode encoded input", NULL},
 	{"encrypt", 'e', 0, G_OPTION_ARG_NONE, &want_encrypt, "Encrypt data", NULL},
 	{"hash", 'h', 0, G_OPTION_ARG_NONE, &want_hash, "Hash data", NULL},
+	{"zlib", 'Z', 0, G_OPTION_ARG_NONE, &want_zlib, "Compress data with zlib", NULL},
+	{"level", 'l', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (1-9)", NULL},
 	{NULL}
 };
 
