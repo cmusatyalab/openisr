@@ -33,10 +33,14 @@ static unsigned cipher_block = 16;
 static unsigned keylen = 16;
 static enum isrcry_mode mode = ISRCRY_MODE_CBC;
 static enum isrcry_padding padding = ISRCRY_PADDING_PKCS5;
+static enum isrcry_hash hash = ISRCRY_HASH_SHA1;
+static unsigned hashlen = 20;
 
 static int keyroot_fd;
 static const char *keyroot;
 static gboolean encode = TRUE;
+static gboolean want_encrypt;
+static gboolean want_hash;
 
 #define die(str, args...) do { \
 		g_printerr("blobtool: " str "\n", ## args); \
@@ -58,6 +62,7 @@ static void swap_strings(GString **in, GString **out)
 	tmp = *in;
 	*in = *out;
 	*out = tmp;
+	g_string_truncate(*out, 0);
 }
 
 static void get_keyroot(void)
@@ -112,6 +117,7 @@ static void init_cipher(struct isrcry_cipher_ctx *ctx, const char **in,
 	FILE *fp;
 	char salt[SALT_LEN];
 
+	get_keyroot();
 	if (encode) {
 		g_string_append(out, SALT_MAGIC);
 		fp = fopen(RNDFILE, "r");
@@ -189,9 +195,47 @@ static void run_cipher(const char *in, unsigned inlen, GString *out,
 	}
 }
 
+static void run_hash(const char *in, unsigned inlen, GString *out,
+			gboolean final)
+{
+	static struct isrcry_hash_ctx *ctx;
+	unsigned char result[hashlen];
+	unsigned n;
+
+	if (ctx == NULL) {
+		ctx = isrcry_hash_alloc(hash);
+		if (ctx == NULL)
+			die("Couldn't allocate hash");
+	}
+	isrcry_hash_update(ctx, in, inlen);
+	if (final) {
+		isrcry_hash_final(ctx, result);
+		for (n = 0; n < hashlen; n++)
+			g_string_append_printf(out, "%.2x", result[n]);
+		g_string_append_c(out, '\n');
+	}
+}
+
+static void run_buffer(GString **in, GString **out, gboolean final)
+{
+	int ops = 0;
+
+	if (want_encrypt) {
+		ops++;
+		run_cipher((*in)->str, (*in)->len, *out, final);
+	}
+	if (want_hash) {
+		if (ops++)
+			swap_strings(in, out);
+		run_hash((*in)->str, (*in)->len, *out, final);
+	}
+}
+
 static GOptionEntry options[] = {
 	{"keyroot-fd", 'k', 0, G_OPTION_ARG_INT, &keyroot_fd, "File descriptor from which to read the keyroot", "fd"},
 	{"decode", 'd', G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, &encode, "Decode encoded input", NULL},
+	{"encrypt", 'e', 0, G_OPTION_ARG_NONE, &want_encrypt, "Encrypt data", NULL},
+	{"hash", 'h', 0, G_OPTION_ARG_NONE, &want_hash, "Hash data", NULL},
 	{NULL}
 };
 
@@ -208,7 +252,6 @@ int main(int argc, char **argv)
 	if (!g_option_context_parse(octx, &argc, &argv, &err))
 		die("%s", err->message);
 	g_option_context_free(octx);
-	get_keyroot();
 
 	in = g_string_sized_new(BUFSZ);
 	out = g_string_sized_new(BUFSZ);
@@ -218,10 +261,8 @@ int main(int argc, char **argv)
 		len = fread(in->str, 1, in->len, stdin);
 		if (ferror(stdin))
 			die("Error reading input");
-		if (len == 0)
-			run_cipher(in->str, 0, out, TRUE);
-		else
-			run_cipher(in->str, len, out, FALSE);
+		g_string_set_size(in, len);
+		run_buffer(&in, &out, len == 0);
 		fwrite(out->str, 1, out->len, stdout);
 	} while (len > 0);
 	return 0;
