@@ -174,13 +174,13 @@ if test z$enable_client = zyes ; then
 	CHECK_VERSION_VAL([curl], [$ver], [7.12.3])
 	
 	PKG_CHECK_MODULES([gtk], [gtk+-2.0 >= 2.8])
-	PKG_CHECK_MODULES([glib], [glib-2.0 >= 2.12])
 	PKG_CHECK_MODULES([libuuid], [uuid])
 fi
 
 if test z$enable_client = zyes -o z$enable_server = zyes ; then
 	FIND_LIBRARY([zlib], [z], [inflate], [zlib.h],
 				[$with_zlib /usr/local /usr])
+	PKG_CHECK_MODULES([glib], [glib-2.0 >= 2.12])
 fi
 
 if WANT_VMM([vmware]) ; then
