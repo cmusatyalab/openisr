@@ -385,8 +385,8 @@ int main(int argc, char **argv)
 		if (ferror(stdin))
 			die("Error reading input");
 		g_string_set_size(in, len);
-		run_buffer(&in, &out, len == 0);
+		run_buffer(&in, &out, feof(stdin));
 		fwrite(out->str, 1, out->len, stdout);
-	} while (len > 0);
+	} while (!feof(stdin));
 	return 0;
 }
