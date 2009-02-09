@@ -345,6 +345,9 @@ static void run_buffer(GString **in, GString **out, gboolean final)
 	}
 	if (want_hash)
 		action(hash);
+	/* If we haven't been asked to do anything, copy in to out */
+	if (ops == 0)
+		g_string_append_len(*out, (*in)->str, (*in)->len);
 }
 #undef action
 
