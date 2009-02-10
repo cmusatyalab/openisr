@@ -4,7 +4,7 @@
  * Originally from Nettle
  * Ported from M4 to cpp by Benjamin Gilbert <bgilbert@cs.cmu.edu>
  *
- * Copyright (C) 2004, Niels Möller
+ * Copyright (C) 2004, Niels MÃ¶ller
  * Copyright (C) 2006-2007 Carnegie Mellon University
  * 
  * This library is free software; you can redistribute it and/or modify it
