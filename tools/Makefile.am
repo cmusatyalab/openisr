@@ -5,10 +5,6 @@ CRYPTO_LIBS = -L$(top_builddir)/crypto -lisrcrypto
 
 GEN = openisr-config openisr-config.8
 
-if WANT_SERVER
-SERVERPROGS = zlib
-endif
-
 if WANT_CLIENT
 CLIENTPROGS = dirtometer readstats nexus_debug
 dist_pkgdata_DATA = modbuild.pm
@@ -16,7 +12,7 @@ sbin_SCRIPTS = openisr-config
 man_MANS = openisr-config.8
 endif
 
-pkglib_PROGRAMS = query blobtool $(SERVERPROGS) $(CLIENTPROGS)
+pkglib_PROGRAMS = query blobtool $(CLIENTPROGS)
 EXTRA_PROGRAMS = nextest
 CLEANFILES = $(GEN) nextest
 EXTRA_DIST = $(GEN:=.in)
@@ -28,7 +24,6 @@ dirtometer_CFLAGS += -Wno-unused-parameter -Wno-missing-field-initializers
 dirtometer_LDFLAGS = $(gtk_LIBS) $(glib_LIBS)
 query_LDFLAGS = -L$(top_builddir)/sqlite -lsqlite
 nextest_LDFLAGS = $(CRYPTO_LIBS)
-zlib_LDFLAGS = -lz
 
 include $(top_srcdir)/mkrevision.mk
 include $(top_srcdir)/subst.mk
