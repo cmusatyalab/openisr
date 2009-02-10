@@ -25,6 +25,7 @@ use Getopt::Long;
 use File::stat;
 use File::Basename;
 use File::Temp qw/tempdir/;
+use MIME::Base64 qw/encode_base64/;
 use Socket;
 use Sys::Hostname;
 use Term::ANSIColor qw(:constants);
@@ -328,7 +329,7 @@ sub encrypt ($$$$) {
 	    errexit("Missing $parceldir/$target.\n");
 	}
 	($rh, $fd) = keyroot_pipe($keyroot);
-        if (system("openssl enc -aes-128-cbc -in $parceldir/$target -out $parceldir/$target.enc -pass fd:$fd -salt") != 0) {
+        if (system(LIBDIR . "/blobtool -e -i $parceldir/$target -o $parceldir/$target.enc -k $fd") != 0) {
             system_errexit("Unable to encrypt $parceldir/$target.");
 	}
 	unlink("$parceldir/$target");
@@ -358,7 +359,7 @@ sub decrypt ($$$$) {
 	    errexit("Missing $parceldir/$target.enc.\n");
 	}
 	($rh, $fd) = keyroot_pipe($keyroot);
-	if (system("openssl enc -d -aes-128-cbc -in $parceldir/$target.enc -out $parceldir/$target -pass fd:$fd -salt") != 0) {
+	if (system(LIBDIR . "/blobtool -ed -i $parceldir/$target.enc -o $parceldir/$target -k $fd") != 0) {
             system_errexit("Unable to decrypt $parceldir/$target.");
 	}
 	unlink("$parceldir/$target.enc");
@@ -372,11 +373,14 @@ sub decrypt ($$$$) {
 sub keygen ($) {
     my $bytes = shift;
     
-    my $keyroot = `openssl rand -rand /dev/urandom -base64 $bytes 2>/dev/null`;
-    $? == 0
-        or errexit("Couldn't generate keyroot");
-    chomp($keyroot);
-    return $keyroot;
+    my $data;
+    
+    open(UR, "/dev/urandom")
+        or unix_errexit("Couldn't open /dev/urandom");
+    read(UR, $data, $bytes) == $bytes
+        or unix_errexit("Couldn't read /dev/urandom");
+    close(UR);
+    return encode_base64($data, "");
 }
 
 #
@@ -647,7 +651,10 @@ sub makeparcel ($$$$$) {
     my $j;
     my $ifmt;
     my $jfmt;
+    my $rh;
+    my $fd;
 
+    my $blobtool = LIBDIR . "/blobtool";
     my $chunksize = CHUNKSIZE;
     my $chunksperdir = CHUNKSPERDIR;
     my $tmp1 = mktempfile();
@@ -679,16 +686,18 @@ sub makeparcel ($$$$$) {
 
     # Generate a single, zeroed chunk
     print "Generating chunk directories...\n";
-    system("dd if=/dev/zero bs=$chunksize count=1 2> /dev/null| " .
-	            LIBDIR . "/zlib > $tmp1") == 0
+    open(ZL, "|-", "$blobtool -Zo $tmp1")
         or errexit("Unable to generate zeroed chunk");
-    $key = `openssl sha1 < $tmp1`
+    print ZL (pack("c", 0) x $chunksize);
+    close ZL
+        or errexit("Unable to generate zeroed chunk");
+    $key = `$blobtool -hi $tmp1`
         or errexit("Unable to generate key");
     chomp $key;
-    system("openssl enc -aes-128-cbc -in $tmp1 -out $tmp2 -nosalt -iv 0 " .
-	            "-K $key") == 0
+    ($rh, $fd) = keyroot_pipe(substr($key, 0, 32));
+    system("$blobtool -ec -i $tmp1 -o $tmp2 -k $fd") == 0
         or errexit("Unable to encrypt chunk");
-    $tag = `openssl sha1 < $tmp2`
+    $tag = `$blobtool -hi $tmp2`
         or errexit("Unable to generate tag");
     chomp $tag;
     open(FD, $tmp2)
