@@ -1,7 +1,7 @@
 /*
  * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
  *
- * Copyright (C) 2006-2007 Carnegie Mellon University
+ * Copyright (C) 2006-2009 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -168,7 +168,7 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 			unsigned *length)
 {
 	char calctag[parcel.hashlen];
-	size_t len;
+	size_t len=0;  /* Make compiler happy */
 	int i;
 	pk_err_t ret;
 
