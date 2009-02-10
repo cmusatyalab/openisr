@@ -217,8 +217,8 @@ Parcelkeeper
 	keyring, local cache, and hoard cache; runtime communication with
 	the server; and various maintenance tasks.  Parcelkeeper is launched
 	by the user interface code when necessary; most users will never need
-	to start it directly.  Parcelkeeper is licensed under the Eclipse
-	Public License, version 1.0.
+	to start it directly.  Parcelkeeper is licensed under version 2 of
+	the GNU General Public License.
 
 Nexus
 	This is the kernel half of the virtual disk.  Nexus exports virtual

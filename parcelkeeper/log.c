@@ -3,10 +3,16 @@
  *
  * Copyright (C) 2006-2008 Carnegie Mellon University
  *
- * This software is distributed under the terms of the Eclipse Public License,
- * Version 1.0 which can be found in the file named LICENSE.Eclipse.  ANY USE,
- * REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES RECIPIENT'S
- * ACCEPTANCE OF THIS AGREEMENT
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of version 2 of the GNU General Public License as published
+ * by the Free Software Foundation.  A copy of the GNU General Public License
+ * should have been distributed along with this program in the file
+ * LICENSE.GPL.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * for more details.
  */
 
 #include <sys/types.h>
