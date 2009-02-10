@@ -2565,6 +2565,7 @@ sub fetch_parcel_file ($$$$$) {
     my $local_hash = "";
     my $flag = ($show_progress and $verbose) ? "" : "-sS";
     my $i;
+    my $blobtool = LIBDIR . "/blobtool";
     my %map;
     
     $tmpfile = mktempfile();
@@ -2581,8 +2582,7 @@ sub fetch_parcel_file ($$$$$) {
     # Look aside to see if the file is available 
     #
     if (!$syscfg{disable_lookaside} and -e $local_path) {
-	$local_hash = `openssl sha1 < $local_path`;
-	chomp $local_hash;
+	chomp ($local_hash = `$blobtool -hi $local_path`);
     }
     
     if ($remote_hash eq $local_hash) {
@@ -2656,7 +2656,7 @@ sub encrypt_keyring ($$) {
     
     my ($rh, $fd) = keyroot_pipe();
     
-    return mysystem("openssl enc -aes-128-cbc -in $src -out $dest -pass fd:$fd -salt");
+    return mysystem(LIBDIR . "/blobtool -e -i $src -o $dest -k $fd");
 }
 
 sub decrypt_keyring ($) {
@@ -2664,7 +2664,7 @@ sub decrypt_keyring ($) {
     
     my ($rh, $fd) = keyroot_pipe();
     
-    return mysystem("openssl enc -d -aes-128-cbc -in $imgbase.key -out $dest -pass fd:$fd -salt");
+    return mysystem(LIBDIR . "/blobtool -ed -i $imgbase.key -o $dest -k $fd");
 }
 
 sub encrypt_cfg ($$) {
@@ -2697,7 +2697,7 @@ sub encrypt_cfg ($$) {
     #
     # Create cfg tarball and encrypt it and the keyring
     #
-    return mysystem("tar c --directory $parent $cur | pv -peW -s $tarsize | gzip -c | openssl enc -aes-128-cbc -out $dest -pass fd:$fd -salt");
+    return mysystem("tar c --directory $parent $cur | pv -peW -s $tarsize | gzip -c | " . LIBDIR . "/blobtool -e -o $dest -k $fd");
 }
 
 sub decrypt_cfg ($) {
@@ -2713,7 +2713,7 @@ sub decrypt_cfg ($) {
 	return -1;
     }
     $size = $stat->size;
-    return mysystem("pv -peW -s $size $imgbase.cfg | openssl enc -d -aes-128-cbc -pass fd:$fd -salt | tar xz --directory $dest");
+    return mysystem("pv -peW -s $size $imgbase.cfg | " . LIBDIR . "/blobtool -ed -k $fd | tar xz --directory $dest");
 }
 
 #
