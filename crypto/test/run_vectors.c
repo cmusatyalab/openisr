@@ -342,7 +342,7 @@ void hash_monte_test(const char *alg, enum isrcry_hash type,
 	isrcry_hash_free(ctx);
 }
 
-int main(int argc, char **argv)
+int main(void)
 {
 	ecb_test("bf", ISRCRY_CIPHER_BLOWFISH, blowfish_ecb_vectors,
 				MEMBERS(blowfish_ecb_vectors));
