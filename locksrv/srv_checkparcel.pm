@@ -54,6 +54,7 @@ my $errors;
 my $numdirs;
 my $totalchunks;
 my $chunksperdir;
+my $blobtool = LIBDIR . "/blobtool";
 my %config = get_config();
 
 # Various temporary variables
@@ -205,12 +206,12 @@ else {
 $keyroot = get_value($parcelcfg, "KEYROOT");
 
 ($rh, $fd) = keyroot_pipe($keyroot);
-system("openssl enc -d -aes-128-cbc -in $currkeyring_enc -out $currkeyring -pass fd:$fd -salt") == 0
+system("$blobtool -ed -i $currkeyring_enc -o $currkeyring -k $fd") == 0
     or system_errexit("Unable to decode $currkeyring_enc");
 
 if (-e $preddir) {
     ($rh, $fd) = keyroot_pipe($keyroot);
-    system("openssl enc -d -aes-128-cbc -in $predkeyring_enc -out $predkeyring -pass fd:$fd -salt") == 0
+    system("$blobtool -ed -i $predkeyring_enc -o $predkeyring -k $fd") == 0
 	or system_errexit("Unable to decode $predkeyring_enc");
 }
 
@@ -342,7 +343,7 @@ if ($contentcheck) {
 		$index = $i*$chunksperdir + $chunk;
 		if ($index <= scalar(@tags)) {
 		    # Check that the keyring entry tag is correct
-		    $tag = `openssl sha1 < $dirpath/$chunk`;
+		    $tag = `$blobtool -hi $dirpath/$chunk`;
 		    chomp($tag);
 		    if (lc($tag) ne lc($tags[$index])) {
 			if ($verbose) {

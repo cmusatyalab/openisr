@@ -35,6 +35,7 @@ my $filepath;
 my $verbose;
 my $item;
 my $metadata;
+my $blobtool = LIBDIR . "/blobtool";
 my %config = get_config();
 
 #
@@ -77,7 +78,7 @@ print "MTIME=", $metadata->mtime, "\n";
 print "CTIME=", $metadata->ctime, "\n";
 print "BLKSSIZE=", $metadata->blksize, "\n";
 print "BLOCKS=", $metadata->blocks, "\n";
-print "SHA1=", `openssl sha1 < $filepath`, "\n";
+print "SHA1=", `$blobtool -hi $filepath`;
 #
 # Clean up and exit
 #
