@@ -247,7 +247,7 @@ locksrv
 Miscellaneous tools
 	The "tools" directory contains a set of command-line tools used by
 	the client and/or server.  The programs found there are licensed
-	under the Eclipse Public License, version 1.0.
+	under the GNU General Public License, version 2.
 
 libisrcrypto
 	This is a cryptographic library containing implementations of
