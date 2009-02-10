@@ -3,10 +3,16 @@
  * 
  * Copyright (C) 2006-2008 Carnegie Mellon University
  * 
- * This software is distributed under the terms of the Eclipse Public License, 
- * Version 1.0 which can be found in the file named LICENSE.Eclipse.  ANY USE, 
- * REPRODUCTION OR DISTRIBUTION OF THIS SOFTWARE CONSTITUTES RECIPIENT'S 
- * ACCEPTANCE OF THIS AGREEMENT
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of version 2.1 of the GNU Lesser General Public License as
+ * published by the Free Software Foundation.  A copy of the GNU Lesser General
+ * Public License should have been distributed along with this library in the
+ * file LICENSE.LGPL.
+ * 
+ * This library is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
  */
 
 #define _GNU_SOURCE

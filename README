@@ -273,8 +273,8 @@ libvdisk
 	accessed from within a virtual machine.  It is only built and
 	installed when the vmware driver is enabled at configure time.
 	libvdisk is found in the "libvdisk" subdirectory of the "vmm"
-	directory, and is licensed under the Eclipse Public License,
-	version 1.0.
+	directory, and is licensed under version 2.1 of the GNU Lesser
+	General Public License.
 
 VirtualBox Python XPCOM bindings
 	The Python XPCOM bindings from the VirtualBox SDK are included in
