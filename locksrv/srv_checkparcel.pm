@@ -7,7 +7,7 @@
 #           A system for capture and transport of PC state
 #
 #              Copyright (c) 2002-2004, Intel Corporation
-#         Copyright (c) 2004-2008, Carnegie Mellon University
+#         Copyright (c) 2004-2009, Carnegie Mellon University
 #
 # This software is distributed under the terms of the Eclipse Public
 # License, Version 1.0 which can be found in the file named LICENSE.Eclipse.

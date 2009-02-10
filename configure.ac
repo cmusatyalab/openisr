@@ -1,7 +1,7 @@
 #
 # configure.ac - build infrastructure for the OpenISR (R) system
 #
-# Copyright (C) 2007-2008 Carnegie Mellon University
+# Copyright (C) 2007-2009 Carnegie Mellon University
 #
 # This software is distributed under the terms of the Eclipse Public
 # License, Version 1.0 which can be found in the file named LICENSE.Eclipse.
@@ -14,7 +14,7 @@
 AC_PREREQ(2.59)
 AC_INIT([OpenISR], [0.9.4])
 AM_INIT_AUTOMAKE([foreign 1.10])
-AC_COPYRIGHT([Copyright (C) 2007-2008 Carnegie Mellon University])
+AC_COPYRIGHT([Copyright (C) 2007-2009 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([parcelkeeper/nexus.c])
 AC_DISABLE_STATIC
 
