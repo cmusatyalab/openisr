@@ -53,6 +53,8 @@ static int compress_level = Z_BEST_COMPRESSION;
 /** Utility ******************************************************************/
 
 struct iodata {
+	FILE *infp;
+	FILE *outfp;
 	GString *in;
 	GString *out;
 };
@@ -370,6 +372,24 @@ static void run_buffer(struct iodata *iod, gboolean final)
 }
 #undef action
 
+static void run_stream(struct iodata *iod)
+{
+	size_t len;
+
+	do {
+		g_string_set_size(iod->in, BUFSZ);
+		g_string_truncate(iod->out, 0);
+		len = fread(iod->in->str, 1, iod->in->len, iod->infp);
+		if (ferror(iod->infp))
+			die("Error reading input");
+		g_string_set_size(iod->in, len);
+		run_buffer(iod, feof(iod->infp));
+		fwrite(iod->out->str, 1, iod->out->len, iod->outfp);
+		if (ferror(iod->outfp))
+			die("Error writing output");
+	} while (!feof(iod->infp));
+}
+
 static GOptionEntry options[] = {
 	{"in", 'i', 0, G_OPTION_ARG_FILENAME, &infile, "Input file", "path"},
 	{"out", 'o', 0, G_OPTION_ARG_FILENAME, &outfile, "Output file", "path"},
@@ -387,10 +407,12 @@ int main(int argc, char **argv)
 {
 	GOptionContext *octx;
 	GError *err = NULL;
-	FILE *infp = stdin;
-	FILE *outfp = stdout;
-	struct iodata iod;
-	size_t len;
+	struct iodata iod = {
+		.infp = stdin,
+		.outfp = stdout,
+		.in = g_string_sized_new(BUFSZ),
+		.out = g_string_sized_new(BUFSZ)
+	};
 
 	octx = g_option_context_new("- encode/decode files");
 	g_option_context_add_main_entries(octx, options, NULL);
@@ -398,32 +420,18 @@ int main(int argc, char **argv)
 		die("%s", err->message);
 	g_option_context_free(octx);
 	if (infile != NULL) {
-		infp = fopen(infile, "r");
-		if (infp == NULL)
+		iod.infp = fopen(infile, "r");
+		if (iod.infp == NULL)
 			die("Couldn't open %s for reading", infile);
 	}
 	if (outfile != NULL) {
-		outfp = fopen(outfile, "w");
-		if (outfp == NULL)
+		iod.outfp = fopen(outfile, "w");
+		if (iod.outfp == NULL)
 			die("Couldn't open %s for writing", outfile);
 	}
 
-	iod.in = g_string_sized_new(BUFSZ);
-	iod.out = g_string_sized_new(BUFSZ);
-	do {
-		g_string_set_size(iod.in, BUFSZ);
-		g_string_truncate(iod.out, 0);
-		len = fread(iod.in->str, 1, iod.in->len, infp);
-		if (ferror(infp))
-			die("Error reading input");
-		g_string_set_size(iod.in, len);
-		run_buffer(&iod, feof(infp));
-		fwrite(iod.out->str, 1, iod.out->len, outfp);
-		if (ferror(outfp))
-			die("Error writing output");
-	} while (!feof(infp));
-
-	fclose(infp);
-	fclose(outfp);
+	run_stream(&iod);
+	fclose(iod.infp);
+	fclose(iod.outfp);
 	return 0;
 }
