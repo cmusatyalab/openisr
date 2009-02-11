@@ -52,6 +52,11 @@ static int compress_level = Z_BEST_COMPRESSION;
 
 /** Utility ******************************************************************/
 
+struct iodata {
+	GString *in;
+	GString *out;
+};
+
 #define die(str, args...) do { \
 		g_printerr("blobtool: " str "\n", ## args); \
 		exit(1); \
@@ -65,14 +70,14 @@ static void *expand_string(GString *str, unsigned len)
 	return str->str + offset;
 }
 
-static void swap_strings(GString **in, GString **out)
+static void swap_strings(struct iodata *iod)
 {
 	GString *tmp;
 
-	tmp = *in;
-	*in = *out;
-	*out = tmp;
-	g_string_truncate(*out, 0);
+	tmp = iod->in;
+	iod->in = iod->out;
+	iod->out = tmp;
+	g_string_truncate(iod->out, 0);
 }
 
 /** Cipher *******************************************************************/
@@ -339,10 +344,10 @@ static void run_zlib_decompress(const char *in, unsigned inlen, GString *out,
 
 #define action(name) do { \
 		if (ops++) \
-			swap_strings(in, out); \
-		run_ ## name((*in)->str, (*in)->len, *out, final); \
+			swap_strings(iod); \
+		run_ ## name(iod->in->str, iod->in->len, iod->out, final); \
 	} while (0)
-static void run_buffer(GString **in, GString **out, gboolean final)
+static void run_buffer(struct iodata *iod, gboolean final)
 {
 	int ops = 0;
 
@@ -361,7 +366,7 @@ static void run_buffer(GString **in, GString **out, gboolean final)
 		action(hash);
 	/* If we haven't been asked to do anything, copy in to out */
 	if (ops == 0)
-		g_string_append_len(*out, (*in)->str, (*in)->len);
+		g_string_append_len(iod->out, iod->in->str, iod->in->len);
 }
 #undef action
 
@@ -384,8 +389,7 @@ int main(int argc, char **argv)
 	GError *err = NULL;
 	FILE *infp = stdin;
 	FILE *outfp = stdout;
-	GString *in;
-	GString *out;
+	struct iodata iod;
 	size_t len;
 
 	octx = g_option_context_new("- encode/decode files");
@@ -404,17 +408,17 @@ int main(int argc, char **argv)
 			die("Couldn't open %s for writing", outfile);
 	}
 
-	in = g_string_sized_new(BUFSZ);
-	out = g_string_sized_new(BUFSZ);
+	iod.in = g_string_sized_new(BUFSZ);
+	iod.out = g_string_sized_new(BUFSZ);
 	do {
-		g_string_set_size(in, BUFSZ);
-		g_string_truncate(out, 0);
-		len = fread(in->str, 1, in->len, infp);
+		g_string_set_size(iod.in, BUFSZ);
+		g_string_truncate(iod.out, 0);
+		len = fread(iod.in->str, 1, iod.in->len, infp);
 		if (ferror(infp))
 			die("Error reading input");
-		g_string_set_size(in, len);
-		run_buffer(&in, &out, feof(infp));
-		fwrite(out->str, 1, out->len, outfp);
+		g_string_set_size(iod.in, len);
+		run_buffer(&iod, feof(infp));
+		fwrite(iod.out->str, 1, iod.out->len, outfp);
 		if (ferror(outfp))
 			die("Error writing output");
 	} while (!feof(infp));
