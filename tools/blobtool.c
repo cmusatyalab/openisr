@@ -29,6 +29,7 @@
 #define SALT_LEN 8
 #define ENC_HEADER_LEN (strlen(SALT_MAGIC) + SALT_LEN)
 
+/* Crypto parameters */
 static enum isrcry_cipher cipher = ISRCRY_CIPHER_AES;
 static unsigned cipher_block = 16;
 static unsigned keylen = 16;
@@ -37,6 +38,7 @@ static enum isrcry_padding padding = ISRCRY_PADDING_PKCS5;
 static enum isrcry_hash hash = ISRCRY_HASH_SHA1;
 static unsigned hashlen = 20;
 
+/* Command-line parameters */
 static int keyroot_fd;
 static const char *keyroot;
 static const char *infile;
@@ -47,6 +49,8 @@ static gboolean want_hash;
 static gboolean want_zlib;
 static gboolean want_chunk_crypto;
 static int compress_level = Z_BEST_COMPRESSION;
+
+/** Utility ******************************************************************/
 
 #define die(str, args...) do { \
 		g_printerr("blobtool: " str "\n", ## args); \
@@ -70,6 +74,8 @@ static void swap_strings(GString **in, GString **out)
 	*out = tmp;
 	g_string_truncate(*out, 0);
 }
+
+/** Cipher *******************************************************************/
 
 static void get_keyroot(void)
 {
@@ -229,6 +235,8 @@ static void run_cipher(const char *in, unsigned inlen, GString *out,
 	}
 }
 
+/** Hash *********************************************************************/
+
 static void run_hash(const char *in, unsigned inlen, GString *out,
 			gboolean final)
 {
@@ -249,6 +257,8 @@ static void run_hash(const char *in, unsigned inlen, GString *out,
 		g_string_append_c(out, '\n');
 	}
 }
+
+/** Zlib compression *********************************************************/
 
 static void run_zlib_compress(const char *in, unsigned inlen, GString *out,
 			gboolean final)
@@ -324,6 +334,8 @@ static void run_zlib_decompress(const char *in, unsigned inlen, GString *out,
 			die("zlib inflate failed: %s", strm.msg);
 	}
 }
+
+/** Control ******************************************************************/
 
 #define action(name) do { \
 		if (ops++) \
