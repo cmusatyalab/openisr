@@ -18,7 +18,7 @@ CLEANFILES = $(GEN) nextest
 EXTRA_DIST = $(GEN:=.in)
 
 blobtool_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS) -Wno-missing-field-initializers
-blobtool_LDFLAGS = $(CRYPTO_LIBS) $(glib_LIBS) -lz
+blobtool_LDFLAGS = $(CRYPTO_LIBS) $(glib_LIBS) -lz -larchive
 dirtometer_CFLAGS = $(AM_CFLAGS) $(gtk_CFLAGS) $(glib_CFLAGS)
 dirtometer_CFLAGS += -Wno-unused-parameter -Wno-missing-field-initializers
 dirtometer_LDFLAGS = $(gtk_LIBS) $(glib_LIBS)
