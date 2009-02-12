@@ -1,5 +1,5 @@
 AM_CPPFLAGS = -I$(top_srcdir)/kernel/nexus -I$(top_srcdir)/sqlite -I..
-AM_CPPFLAGS += -I$(top_srcdir)/crypto -D_GNU_SOURCE
+AM_CPPFLAGS += -I$(top_srcdir)/crypto -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
 AM_CFLAGS = -W -Wall -Wstrict-prototypes
 CRYPTO_LIBS = -L$(top_builddir)/crypto -lisrcrypto
 
