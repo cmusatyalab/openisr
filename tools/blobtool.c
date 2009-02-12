@@ -15,19 +15,38 @@
  * for more details.
  */
 
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
+#include <ftw.h>
 #include <glib.h>
 #include <zlib.h>
+#include <archive.h>
+#include <archive_entry.h>
 #include "isrcrypto.h"
+
+/* For libarchive 1.2 */
+#ifndef ARCHIVE_EXTRACT_SECURE_SYMLINKS
+#define ARCHIVE_EXTRACT_SECURE_SYMLINKS 0
+#endif
+#ifndef ARCHIVE_EXTRACT_SECURE_NODOTDOT
+#define ARCHIVE_EXTRACT_SECURE_NODOTDOT 0
+#endif
 
 #define BUFSZ 32768
 #define RNDFILE "/dev/urandom"
 #define SALT_MAGIC "Salted__"
 #define SALT_LEN 8
 #define ENC_HEADER_LEN (strlen(SALT_MAGIC) + SALT_LEN)
+#define FTW_FDS 16
+#define ARCHIVE_EXTRACT_FLAGS  (ARCHIVE_EXTRACT_TIME |\
+				ARCHIVE_EXTRACT_UNLINK |\
+				ARCHIVE_EXTRACT_SECURE_SYMLINKS |\
+				ARCHIVE_EXTRACT_SECURE_NODOTDOT)
 
 /* Crypto parameters */
 static enum isrcry_cipher cipher = ISRCRY_CIPHER_AES;
@@ -43,11 +62,13 @@ static int keyroot_fd;
 static const char *keyroot;
 static const char *infile;
 static const char *outfile;
+static const char *parent_dir;
 static gboolean encode = TRUE;
 static gboolean want_encrypt;
 static gboolean want_hash;
 static gboolean want_zlib;
 static gboolean want_chunk_crypto;
+static gboolean want_tar;
 static int compress_level = Z_BEST_COMPRESSION;
 
 /** Utility ******************************************************************/
@@ -58,6 +79,8 @@ struct iodata {
 	GString *in;
 	GString *out;
 };
+
+#define warn(str, args...) g_printerr("blobtool: " str "\n", ## args)
 
 #define die(str, args...) do { \
 		g_printerr("blobtool: " str "\n", ## args); \
@@ -331,8 +354,7 @@ static void run_zlib_decompress(const char *in, unsigned inlen, GString *out,
 	}
 	if (done && strm.avail_in > 0 && !warned) {
 		warned = TRUE;
-		g_printerr("blobtool: ignoring trailing garbage in zlib "
-					"stream\n");
+		warn("ignoring trailing garbage in zlib stream");
 	}
 	if (final) {
 		if (!done)
@@ -342,7 +364,7 @@ static void run_zlib_decompress(const char *in, unsigned inlen, GString *out,
 	}
 }
 
-/** Control ******************************************************************/
+/** Generic control **********************************************************/
 
 #define action(name) do { \
 		if (ops++) \
@@ -390,6 +412,200 @@ static void run_stream(struct iodata *iod)
 	} while (!feof(iod->infp));
 }
 
+/** Tar control **************************************************************/
+
+/* tar I/O uses a different main loop than non-tar I/O, since we're not just
+   processing one FD into another. */
+
+static ssize_t archive_read(struct archive *arch, void *data,
+			const void **buffer)
+{
+	struct iodata *iod = data;
+	size_t len;
+
+	/* At EOF, run_buffer() may or may not produce some output.  If not,
+	   we return 0 immediately.  But if it does, we won't return 0 until
+	   the next time we're called.  If we're not at EOF, we must not
+	   return 0. */
+	if (feof(iod->infp))
+		return 0;
+	do {
+		g_string_set_size(iod->in, BUFSZ);
+		g_string_truncate(iod->out, 0);
+		len = fread(iod->in->str, 1, iod->in->len, iod->infp);
+		if (ferror(iod->infp)) {
+			archive_set_error(arch, EIO, "Error reading input");
+			return ARCHIVE_FATAL;
+		}
+		g_string_set_size(iod->in, len);
+		run_buffer(iod, feof(iod->infp));
+	} while (iod->out->len == 0 && !feof(iod->infp));
+	*buffer = iod->out->str;
+	return iod->out->len;
+}
+
+static ssize_t archive_write(struct archive *arch, void *data, void *buffer,
+			size_t length)
+{
+	struct iodata *iod = data;
+
+	g_string_truncate(iod->in, 0);
+	g_string_truncate(iod->out, 0);
+	g_string_append_len(iod->in, buffer, length);
+	run_buffer(iod, FALSE);
+	if (fwrite(iod->out->str, 1, iod->out->len, iod->outfp) <
+				iod->out->len) {
+		archive_set_error(arch, EIO, "Error writing output");
+		return ARCHIVE_FATAL;
+	}
+	return length;
+}
+
+static int archive_finish_write(struct archive *arch, void *data)
+{
+	struct iodata *iod = data;
+
+	g_string_truncate(iod->in, 0);
+	g_string_truncate(iod->out, 0);
+	run_buffer(iod, TRUE);
+	if (fwrite(iod->out->str, 1, iod->out->len, iod->outfp) <
+				iod->out->len) {
+		archive_set_error(arch, EIO, "Error writing final output");
+		return ARCHIVE_FATAL;
+	}
+	return ARCHIVE_OK;
+}
+
+static void read_archive(struct iodata *iod)
+{
+	struct archive *arch;
+	struct archive_entry *ent;
+	int ret;
+
+	arch = archive_read_new();
+	if (arch == NULL)
+		die("Couldn't read archive read object");
+	if (archive_read_support_format_tar(arch))
+		die("Enabling tar format: %s", archive_error_string(arch));
+	if (archive_read_support_compression_gzip(arch))
+		die("Enabling gzip format: %s", archive_error_string(arch));
+	if (archive_read_open(arch, iod, NULL, archive_read, NULL))
+		die("Opening archive: %s", archive_error_string(arch));
+	while (!(ret = archive_read_next_header(arch, &ent)))
+		if (archive_read_extract(arch, ent, ARCHIVE_EXTRACT_FLAGS))
+			die("Extracting %s: %s", archive_entry_pathname(ent),
+						archive_error_string(arch));
+	if (ret != ARCHIVE_EOF)
+		die("Reading archive: %s", archive_error_string(arch));
+	if (archive_read_close(arch))
+		die("Closing archive: %s", archive_error_string(arch));
+	archive_read_finish(arch);
+}
+
+/* ftw() provides no means to pass a data pointer to the called function, so
+   we have to use a global.  (fts() has a nicer interface but doesn't work
+   for _FILE_OFFSET_BITS = 64.)  This is only for write_entry(); pretend it
+   doesn't exist otherwise. */
+static struct archive *write_entry_archive;
+
+static int write_entry(const char *path, const struct stat *st, int type,
+			struct FTW *ignored)
+{
+	struct archive *arch = write_entry_archive;
+	struct archive_entry *ent;
+	FILE *fp = NULL;
+	char buf[BUFSZ];
+	ssize_t len;
+
+	(void)ignored;
+
+	switch (type) {
+	case FTW_D:
+		break;
+	case FTW_F:
+		/* Make sure we can read the file. */
+		fp = fopen(path, "r");
+		if (fp == NULL) {
+			warn("Couldn't read %s: %s", path, strerror(errno));
+			return 0;
+		}
+		break;
+	case FTW_SL:
+		/* Get the symlink target. */
+		len = readlink(path, buf, sizeof(buf) - 1);
+		if (len == -1) {
+			warn("Couldn't read link %s: %s", path,
+						strerror(errno));
+			return 0;
+		}
+		buf[len] = 0;
+		break;
+	case FTW_DNR:
+		warn("Couldn't read directory: %s", path);
+		return 0;
+	case FTW_NS:
+		warn("Couldn't stat: %s", path);
+		return 0;
+	default:
+		die("write_entry: Unknown type code %d: %s", type, path);
+	}
+
+	ent = archive_entry_new();
+	if (ent == NULL)
+		die("Couldn't allocate archive entry");
+	archive_entry_copy_stat(ent, st);
+	archive_entry_set_pathname(ent, path);
+	if (S_ISLNK(st->st_mode))
+		archive_entry_set_symlink(ent, buf);
+	if (archive_write_header(arch, ent))
+		die("Couldn't write archive header for %s: %s", path,
+					archive_error_string(arch));
+	archive_entry_free(ent);
+
+	if (fp != NULL) {
+		while (!feof(fp)) {
+			len = fread(buf, 1, sizeof(buf), fp);
+			if (ferror(fp))
+				die("Error reading %s", path);
+			/* libarchive < 2.4.8 will fail zero-byte writes
+			   when using gzip/bzip2 */
+			if (len > 0 && archive_write_data(arch, buf, len)
+						!= len)
+				die("Couldn't write archive data for %s: %s",
+						path,
+						archive_error_string(arch));
+		}
+		fclose(fp);
+	}
+	return 0;
+}
+
+static void write_archive(struct iodata *iod, char * const *paths)
+{
+	struct archive *arch;
+
+	arch = archive_write_new();
+	if (arch == NULL)
+		die("Couldn't read archive write object");
+	if (archive_write_set_format_pax_restricted(arch))
+		die("Setting tar format: %s", archive_error_string(arch));
+	if (archive_write_set_compression_gzip(arch))
+		die("Setting compression format: %s",
+					archive_error_string(arch));
+	if (archive_write_open(arch, iod, NULL, archive_write,
+				archive_finish_write))
+		die("Opening archive: %s", archive_error_string(arch));
+	write_entry_archive = arch;  /* sigh */
+	for (; *paths != NULL; paths++)
+		if (nftw(*paths, write_entry, FTW_FDS, FTW_PHYS))
+			die("Error traversing path: %s", *paths);
+	if (archive_write_close(arch))
+		die("Closing archive: %s", archive_error_string(arch));
+	archive_write_finish(arch);
+}
+
+/** Top level ****************************************************************/
+
 static GOptionEntry options[] = {
 	{"in", 'i', 0, G_OPTION_ARG_FILENAME, &infile, "Input file", "path"},
 	{"out", 'o', 0, G_OPTION_ARG_FILENAME, &outfile, "Output file", "path"},
@@ -400,6 +616,8 @@ static GOptionEntry options[] = {
 	{"hash", 'h', 0, G_OPTION_ARG_NONE, &want_hash, "Hash data", NULL},
 	{"zlib", 'Z', 0, G_OPTION_ARG_NONE, &want_zlib, "Compress data with zlib", NULL},
 	{"level", 'l', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (1-9)", NULL},
+	{"tar", 't', 0, G_OPTION_ARG_NONE, &want_tar, "Generate or extract a gzipped tar archive", NULL},
+	{"directory", 'C', 0, G_OPTION_ARG_FILENAME, &parent_dir, "Change to directory before tarring/untarring files", "dir"},
 	{NULL}
 };
 
@@ -414,11 +632,19 @@ int main(int argc, char **argv)
 		.out = g_string_sized_new(BUFSZ)
 	};
 
-	octx = g_option_context_new("- encode/decode files");
+	octx = g_option_context_new("[paths] - encode/decode files");
 	g_option_context_add_main_entries(octx, options, NULL);
 	if (!g_option_context_parse(octx, &argc, &argv, &err))
 		die("%s", err->message);
 	g_option_context_free(octx);
+	if (want_tar && want_hash)
+		die("--tar is incompatible with --hash");
+	if (want_tar && encode && infile != NULL)
+		die("--in invalid with --tar in encode mode");
+	if (want_tar && !encode && outfile != NULL)
+		die("--out invalid with --tar --decode");
+	if (want_tar && encode && g_strv_length(argv) < 2)
+		die("No input files or directories specified");
 	if (infile != NULL) {
 		iod.infp = fopen(infile, "r");
 		if (iod.infp == NULL)
@@ -429,8 +655,18 @@ int main(int argc, char **argv)
 		if (iod.outfp == NULL)
 			die("Couldn't open %s for writing", outfile);
 	}
+	if (parent_dir != NULL)
+		if (chdir(parent_dir))
+			die("Couldn't change to directory %s", parent_dir);
 
-	run_stream(&iod);
+	if (want_tar) {
+		if (encode)
+			write_archive(&iod, argv + 1);
+		else
+			read_archive(&iod);
+	} else {
+		run_stream(&iod);
+	}
 	fclose(iod.infp);
 	fclose(iod.outfp);
 	return 0;
