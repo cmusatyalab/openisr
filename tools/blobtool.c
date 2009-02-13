@@ -17,12 +17,16 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
+#include <signal.h>
 #include <errno.h>
 #include <ftw.h>
+#include <termios.h>
 #include <glib.h>
 #include <zlib.h>
 #include <archive.h>
@@ -39,6 +43,7 @@
 
 #define BUFSZ 32768
 #define RNDFILE "/dev/urandom"
+#define TTYFILE "/dev/tty"
 #define SALT_MAGIC "Salted__"
 #define SALT_LEN 8
 #define ENC_HEADER_LEN (strlen(SALT_MAGIC) + SALT_LEN)
@@ -69,6 +74,7 @@ static gboolean want_hash;
 static gboolean want_zlib;
 static gboolean want_chunk_crypto;
 static gboolean want_tar;
+static gboolean want_progress;
 static int compress_level = Z_BEST_COMPRESSION;
 
 /** Utility ******************************************************************/
@@ -80,9 +86,15 @@ struct iodata {
 	GString *out;
 };
 
-#define warn(str, args...) g_printerr("blobtool: " str "\n", ## args)
+static void clear_progress(void);
+
+#define warn(str, args...) do { \
+		clear_progress(); \
+		g_printerr("blobtool: " str "\n", ## args); \
+	} while (0)
 
 #define die(str, args...) do { \
+		clear_progress(); \
 		g_printerr("blobtool: " str "\n", ## args); \
 		exit(1); \
 	} while (0)
@@ -103,6 +115,166 @@ static void swap_strings(struct iodata *iod)
 	iod->in = iod->out;
 	iod->out = tmp;
 	g_string_truncate(iod->out, 0);
+}
+
+static void set_signal_handler(int sig, void (*handler)(int))
+{
+	struct sigaction act;
+
+	memset(&act, 0, sizeof(act));
+	act.sa_handler = handler;
+	act.sa_flags = SA_RESTART;
+	if (sigaction(sig, &act, NULL))
+		die("Couldn't set signal handler for signal %d", sig);
+}
+
+/** Progress bar *************************************************************/
+
+static FILE *tty;
+static off_t progress_bytes;
+static off_t progress_max_bytes;
+static time_t progress_start;
+static gboolean progress_redraw;
+static struct winsize window_size;
+
+static void sigwinch_handler(int ignored)
+{
+	(void)ignored;
+
+	if (tty == NULL)
+		return;
+	ioctl(fileno(tty), TIOCGWINSZ, &window_size);
+	progress_redraw = TRUE;
+}
+
+static unsigned ndigits(unsigned val)
+{
+	unsigned n;
+
+	for (n=0; val; val /= 10, n++);
+	return n;
+}
+
+static char *seconds_to_str(unsigned seconds)
+{
+	if (seconds < 3600)
+		return g_strdup_printf("%u:%.2u", seconds / 60,
+					seconds % 60);
+	else
+		return g_strdup_printf("%u:%.2u:%.2u", seconds / 3600,
+					(seconds / 60) % 60, seconds % 60);
+}
+
+static char *progress_bar(unsigned cols_used, unsigned percent)
+{
+	char *str;
+	int availchars;
+	unsigned fillchars;
+
+	availchars = window_size.ws_col - cols_used - 2;
+	if (availchars < 2)
+		return g_strdup_printf("%*s", availchars + 2, "");
+	fillchars = availchars * percent / 100;
+	str = g_strdup_printf("[%*s]", availchars, "");
+	memset(str + 1, '=', fillchars);
+	if (percent < 100)
+		str[fillchars + 1] = '>';
+	return str;
+}
+
+static void print_progress(gboolean final)
+{
+	static time_t last_timestamp;
+	time_t cur_timestamp;
+	unsigned long long bytes = progress_bytes;
+	unsigned long long max_bytes = progress_max_bytes;
+	unsigned percent = 0;
+	char *estimate = NULL;
+	char *bar;
+	int count;
+
+	if (max_bytes == 0)
+		return;  /* Progress bar disabled */
+	if (final)
+		percent = 100;
+	else
+		percent = MIN(bytes * 100 / max_bytes, 99);
+
+	cur_timestamp = time(NULL);
+	if (!final && !progress_redraw && last_timestamp == cur_timestamp)
+		return;
+	last_timestamp = cur_timestamp;
+	progress_redraw = FALSE;
+
+	if (bytes && !final)
+		estimate = seconds_to_str((max_bytes - bytes) *
+					(cur_timestamp - progress_start)
+					/ bytes);
+
+	count = fprintf(tty, " %3u%% (%*llu/%llu MB) %s%s", percent,
+				ndigits(max_bytes >> 20), bytes >> 20,
+				max_bytes >> 20, estimate ?: "",
+				estimate ? " " : "");
+	bar = progress_bar(count, percent);
+	fprintf(tty, "%s\r", bar);
+	if (final)
+		fprintf(tty, "\n");
+	fflush(tty);
+	g_free(estimate);
+	g_free(bar);
+}
+
+static void init_progress(off_t max_bytes)
+{
+	progress_max_bytes = 0;
+	if (!want_progress || max_bytes == 0)
+		return;
+	set_signal_handler(SIGWINCH, sigwinch_handler);
+	if (tty == NULL) {
+		tty = fopen(TTYFILE, "w");
+		if (tty == NULL) {
+			warn("Couldn't open " TTYFILE);
+			return;
+		}
+		sigwinch_handler(0);
+	}
+	progress_bytes = 0;
+	progress_max_bytes = max_bytes;
+	progress_start = time(NULL);
+	print_progress(FALSE);
+}
+
+static void init_progress_stream(FILE *fp)
+{
+	if (fseeko(fp, 0, SEEK_END)) {
+		/* Make sure progress bar is disabled */
+		init_progress(0);
+	} else {
+		init_progress(ftello(fp));
+		if (fseeko(fp, 0, SEEK_SET))
+			die("Couldn't reset position of input stream: %s",
+						strerror(errno));
+	}
+}
+
+static void progress(off_t count)
+{
+	progress_bytes += count;
+	print_progress(FALSE);
+}
+
+static void finish_progress(void)
+{
+	print_progress(TRUE);
+}
+
+static void clear_progress(void)
+{
+	if (tty != NULL) {
+		fprintf(tty, "%*s\r", window_size.ws_col, "");
+		fflush(tty);
+		progress_redraw = TRUE;
+	}
 }
 
 /** Cipher *******************************************************************/
@@ -398,6 +570,7 @@ static void run_stream(struct iodata *iod)
 {
 	size_t len;
 
+	init_progress_stream(iod->infp);
 	do {
 		g_string_set_size(iod->in, BUFSZ);
 		g_string_truncate(iod->out, 0);
@@ -409,7 +582,9 @@ static void run_stream(struct iodata *iod)
 		fwrite(iod->out->str, 1, iod->out->len, iod->outfp);
 		if (ferror(iod->outfp))
 			die("Error writing output");
+		progress(len);
 	} while (!feof(iod->infp));
+	finish_progress();
 }
 
 /** Tar control **************************************************************/
@@ -439,6 +614,7 @@ static ssize_t archive_read(struct archive *arch, void *data,
 		}
 		g_string_set_size(iod->in, len);
 		run_buffer(iod, feof(iod->infp));
+		progress(len);
 	} while (iod->out->len == 0 && !feof(iod->infp));
 	*buffer = iod->out->str;
 	return iod->out->len;
@@ -482,6 +658,7 @@ static void read_archive(struct iodata *iod)
 	struct archive_entry *ent;
 	int ret;
 
+	init_progress_stream(iod->infp);
 	arch = archive_read_new();
 	if (arch == NULL)
 		die("Couldn't read archive read object");
@@ -500,6 +677,7 @@ static void read_archive(struct iodata *iod)
 	if (archive_read_close(arch))
 		die("Closing archive: %s", archive_error_string(arch));
 	archive_read_finish(arch);
+	finish_progress();
 }
 
 /* ftw() provides no means to pass a data pointer to the called function, so
@@ -507,6 +685,19 @@ static void read_archive(struct iodata *iod)
    for _FILE_OFFSET_BITS = 64.)  This is only for write_entry(); pretend it
    doesn't exist otherwise. */
 static struct archive *write_entry_archive;
+/* Likewise for gather_size(). */
+static off_t gather_size_total;
+
+static int gather_size(const char *path, const struct stat *st, int type,
+			struct FTW *ignored)
+{
+	(void)path;
+	(void)ignored;
+
+	if (type == FTW_F)
+		gather_size_total += st->st_size;
+	return 0;
+}
 
 static int write_entry(const char *path, const struct stat *st, int type,
 			struct FTW *ignored)
@@ -574,6 +765,7 @@ static int write_entry(const char *path, const struct stat *st, int type,
 				die("Couldn't write archive data for %s: %s",
 						path,
 						archive_error_string(arch));
+			progress(len);
 		}
 		fclose(fp);
 	}
@@ -583,7 +775,13 @@ static int write_entry(const char *path, const struct stat *st, int type,
 static void write_archive(struct iodata *iod, char * const *paths)
 {
 	struct archive *arch;
+	char * const *path;
 
+	gather_size_total = 0;  /* sigh */
+	for (path = paths; *path != NULL; path++)
+		if (nftw(*path, gather_size, FTW_FDS, FTW_PHYS))
+			die("Error traversing path: %s", *path);
+	init_progress(gather_size_total);
 	arch = archive_write_new();
 	if (arch == NULL)
 		die("Couldn't read archive write object");
@@ -596,12 +794,13 @@ static void write_archive(struct iodata *iod, char * const *paths)
 				archive_finish_write))
 		die("Opening archive: %s", archive_error_string(arch));
 	write_entry_archive = arch;  /* sigh */
-	for (; *paths != NULL; paths++)
-		if (nftw(*paths, write_entry, FTW_FDS, FTW_PHYS))
-			die("Error traversing path: %s", *paths);
+	for (path = paths; *path != NULL; path++)
+		if (nftw(*path, write_entry, FTW_FDS, FTW_PHYS))
+			die("Error traversing path: %s", *path);
 	if (archive_write_close(arch))
 		die("Closing archive: %s", archive_error_string(arch));
 	archive_write_finish(arch);
+	finish_progress();
 }
 
 /** Top level ****************************************************************/
@@ -618,6 +817,7 @@ static GOptionEntry options[] = {
 	{"level", 'l', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (1-9)", NULL},
 	{"tar", 't', 0, G_OPTION_ARG_NONE, &want_tar, "Generate or extract a gzipped tar archive", NULL},
 	{"directory", 'C', 0, G_OPTION_ARG_FILENAME, &parent_dir, "Change to directory before tarring/untarring files", "dir"},
+	{"progress", 'p', 0, G_OPTION_ARG_NONE, &want_progress, "Print progress bar if possible", NULL},
 	{NULL}
 };
 
