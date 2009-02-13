@@ -645,6 +645,8 @@ int main(int argc, char **argv)
 		die("--out invalid with --tar --decode");
 	if (want_tar && encode && g_strv_length(argv) < 2)
 		die("No input files or directories specified");
+	if (!(want_tar && encode) && g_strv_length(argv) > 1)
+		die("Extraneous arguments on command line");
 	if (infile != NULL) {
 		iod.infp = fopen(infile, "r");
 		if (iod.infp == NULL)
