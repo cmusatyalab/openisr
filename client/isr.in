@@ -2672,48 +2672,18 @@ sub encrypt_cfg ($$) {
     my $dest = shift;
     
     my ($rh, $fd) = keyroot_pipe();
-    my $curfile;
-    my $stat;
-    my $tarsize = 0;
     my $parent = dirname($src);
     my $cur = basename($src);
-    my $retval;
     
-    #
-    # Figure out (roughly) how large the cfg tarball will be, so that we can
-    # generate a progress bar
-    #
-    opendir(CFG, $src)
-	or unix_errexit("Couldn't read memory image directory $src");
-    foreach $curfile (readdir(CFG)) {
-	next if ($curfile eq "." || $curfile eq "..");
-	$stat = stat("$src/$curfile");
-	unix_errexit("Couldn't stat $src/$curfile")
-	    if !$stat;
-	$tarsize += $stat->size;
-    }
-    closedir(CFG);
-    
-    #
-    # Create cfg tarball and encrypt it and the keyring
-    #
-    return mysystem("tar c --directory $parent $cur | pv -peW -s $tarsize | gzip -c | " . LIBDIR . "/blobtool -e -o $dest -k $fd");
+    return mysystem(LIBDIR . "/blobtool -etp -o $dest -k $fd -C $parent $cur");
 }
 
 sub decrypt_cfg ($) {
     my $dest = shift;
     
     my ($rh, $fd) = keyroot_pipe();
-    my $stat;
-    my $size;
     
-    $stat = stat("$imgbase.cfg");
-    if (!$stat) {
-	unix_err("Couldn't stat $imgbase.cfg");
-	return -1;
-    }
-    $size = $stat->size;
-    return mysystem("pv -peW -s $size $imgbase.cfg | " . LIBDIR . "/blobtool -ed -k $fd | tar xz --directory $dest");
+    return mysystem(LIBDIR . "/blobtool -etdp -i $imgbase.cfg -k $fd -C $dest");
 }
 
 #
