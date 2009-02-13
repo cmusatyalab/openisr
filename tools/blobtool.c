@@ -805,21 +805,72 @@ static void write_archive(struct iodata *iod, char * const *paths)
 
 /** Top level ****************************************************************/
 
-static GOptionEntry options[] = {
-	{"in", 'i', 0, G_OPTION_ARG_FILENAME, &infile, "Input file", "path"},
-	{"out", 'o', 0, G_OPTION_ARG_FILENAME, &outfile, "Output file", "path"},
-	{"keyroot-fd", 'k', 0, G_OPTION_ARG_INT, &keyroot_fd, "File descriptor from which to read the keyroot", "fd"},
-	{"decode", 'd', G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, &encode, "Decode encoded input", NULL},
-	{"encrypt", 'e', 0, G_OPTION_ARG_NONE, &want_encrypt, "Encrypt data", NULL},
-	{"chunk", 'c', 0, G_OPTION_ARG_NONE, &want_chunk_crypto, "Encrypt with no salt, zero IV, and provided hex key", NULL},
-	{"hash", 'h', 0, G_OPTION_ARG_NONE, &want_hash, "Hash data", NULL},
-	{"zlib", 'Z', 0, G_OPTION_ARG_NONE, &want_zlib, "Compress data with zlib", NULL},
-	{"level", 'l', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (1-9)", NULL},
-	{"tar", 't', 0, G_OPTION_ARG_NONE, &want_tar, "Generate or extract a gzipped tar archive", NULL},
-	{"directory", 'C', 0, G_OPTION_ARG_FILENAME, &parent_dir, "Change to directory before tarring/untarring files", "dir"},
+static GOptionEntry general_options[] = {
+	{"in", 'i', 0, G_OPTION_ARG_FILENAME, &infile, "Input file", "PATH"},
+	{"out", 'o', 0, G_OPTION_ARG_FILENAME, &outfile, "Output file", "PATH"},
+	{"decode", 'd', G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, &encode, "Input is encoded; decode it", NULL},
 	{"progress", 'p', 0, G_OPTION_ARG_NONE, &want_progress, "Print progress bar if possible", NULL},
 	{NULL}
 };
+
+static GOptionEntry encrypt_options[] = {
+	{"encrypt", 'e', 0, G_OPTION_ARG_NONE, &want_encrypt, "Encrypt data", NULL},
+	{"keyroot-fd", 'k', 0, G_OPTION_ARG_INT, &keyroot_fd, "File descriptor from which to read the keyroot", "FD"},
+	{"chunk", 'c', 0, G_OPTION_ARG_NONE, &want_chunk_crypto, "Encrypt with no salt, zero IV, and provided hex key", NULL},
+	{NULL}
+};
+
+static GOptionEntry hash_options[] = {
+	{"hash", 'h', 0, G_OPTION_ARG_NONE, &want_hash, "Hash data", NULL},
+	{NULL}
+};
+
+static GOptionEntry compress_options[] = {
+	{"zlib", 'Z', 0, G_OPTION_ARG_NONE, &want_zlib, "Compress data with zlib", NULL},
+	{"level", 'l', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (1-9)", "LEVEL"},
+	{NULL}
+};
+
+static GOptionEntry tar_options[] = {
+	{"tar", 't', 0, G_OPTION_ARG_NONE, &want_tar, "Generate or extract a gzipped tar archive", NULL},
+	{"directory", 'C', 0, G_OPTION_ARG_FILENAME, &parent_dir, "Change to DIR before tarring/untarring files", "DIR"},
+	{NULL}
+};
+
+static GOptionContext *build_option_context(void)
+{
+	GOptionContext *ctx;
+	GOptionGroup *grp;
+
+	ctx = g_option_context_new("[paths] - encode/decode files");
+	g_option_context_add_main_entries(ctx, general_options, NULL);
+
+	grp = g_option_group_new("encrypt", "Encryption Options:",
+				"Show help on encryption options",
+				NULL, NULL);
+	g_option_group_add_entries(grp, encrypt_options);
+	g_option_context_add_group(ctx, grp);
+
+	grp = g_option_group_new("hash", "Hash Options:",
+				"Show help on hash options",
+				NULL, NULL);
+	g_option_group_add_entries(grp, hash_options);
+	g_option_context_add_group(ctx, grp);
+
+	grp = g_option_group_new("compress", "Compression Options:",
+				"Show help on compression options",
+				NULL, NULL);
+	g_option_group_add_entries(grp, compress_options);
+	g_option_context_add_group(ctx, grp);
+
+	grp = g_option_group_new("tar", "Tar Options:",
+				"Show help on tar options",
+				NULL, NULL);
+	g_option_group_add_entries(grp, tar_options);
+	g_option_context_add_group(ctx, grp);
+
+	return ctx;
+}
 
 int main(int argc, char **argv)
 {
@@ -832,8 +883,7 @@ int main(int argc, char **argv)
 		.out = g_string_sized_new(BUFSZ)
 	};
 
-	octx = g_option_context_new("[paths] - encode/decode files");
-	g_option_context_add_main_entries(octx, options, NULL);
+	octx = build_option_context();
 	if (!g_option_context_parse(octx, &argc, &argv, &err))
 		die("%s", err->message);
 	g_option_context_free(octx);
