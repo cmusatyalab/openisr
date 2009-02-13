@@ -748,7 +748,7 @@ sub makeparcel ($$$$$) {
     # Generate the cfg tarball
     mkdir("$parcelverdir/cfg")
         or errexit("Couldn't create cfg directory");
-    system("tar czf $parcelverdir/cfg.tgz -C $parcelverdir cfg") == 0
+    system("$blobtool -to $parcelverdir/cfg.tgz -C $parcelverdir cfg") == 0
         or errexit("Couldn't generate cfg tarball");
     rmdir("$parcelverdir/cfg")
 	or errexit("Couldn't remove cfg directory");
