@@ -620,8 +620,8 @@ static ssize_t archive_read(struct archive *arch, void *data,
 	return iod->out->len;
 }
 
-static ssize_t archive_write(struct archive *arch, void *data, void *buffer,
-			size_t length)
+static ssize_t archive_write(struct archive *arch, void *data,
+			const void *buffer, size_t length)
 {
 	struct iodata *iod = data;
 
@@ -793,7 +793,11 @@ static void write_archive(struct iodata *iod, char * const *paths)
 	if (archive_write_set_bytes_in_last_block(arch, 1))
 		die("Disabling final block padding: %s",
 					archive_error_string(arch));
-	if (archive_write_open(arch, iod, NULL, archive_write,
+	/* The third parameter of archive_write_callback became const in
+	   libarchive 2.0.  Do an explicit cast to prevent warnings when
+	   compiling against earlier versions. */
+	if (archive_write_open(arch, iod, NULL,
+				(archive_write_callback *) archive_write,
 				archive_finish_write))
 		die("Opening archive: %s", archive_error_string(arch));
 	write_entry_archive = arch;  /* sigh */
