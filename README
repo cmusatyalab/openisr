@@ -17,7 +17,6 @@ To run:
 - udev
 - ssh
 - rsync
-- pv (available from <http://www.ivarch.com/programs/pv.shtml>)
 - ssh-agent running in your X session (most systems provide this by default)
 - VirtualBox, KVM, VMware Workstation, or VMware Player
 - An accessible OpenISR 0.9-series server
