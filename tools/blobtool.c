@@ -790,6 +790,9 @@ static void write_archive(struct iodata *iod, char * const *paths)
 	if (archive_write_set_compression_gzip(arch))
 		die("Setting compression format: %s",
 					archive_error_string(arch));
+	if (archive_write_set_bytes_in_last_block(arch, 1))
+		die("Disabling final block padding: %s",
+					archive_error_string(arch));
 	if (archive_write_open(arch, iod, NULL, archive_write,
 				archive_finish_write))
 		die("Opening archive: %s", archive_error_string(arch));
