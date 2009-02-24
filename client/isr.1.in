@@ -680,10 +680,6 @@ server, and then checkout the parcel that you were working on at work:
 
 .SH FILES
 .TP
-.I !!BINDIR!!/isr
-The ISR client program.
-
-.TP
 .I !!SHAREDIR!!/config
 Configuration file that specifies defaults for ISR configuration options.
 This file should not be modified; changes should be made in the system-wide
@@ -700,11 +696,6 @@ file override those in
 Configuration file that specifies user-specific settings.  Options in this
 file override those in
 .IR !!SHAREDIR!!/config " and " !!SYSCONFDIR!!/openisr.conf .
-
-.TP
-.I !!LIBDIR!!/parcelkeeper
-The user-level process that demand-pages state from the server while the
-parcel is running.
 
 .SH ACKNOWLEDGMENTS
 ISR was developed by Michael Kozuch and Casey Helfrich from Intel
