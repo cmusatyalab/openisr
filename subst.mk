@@ -8,6 +8,7 @@ $(GEN): %: %.in Makefile $(REVISION_DEPENDS)
 				-e "s=!!SHAREDIR!!=$(pkgdatadir)=g" \
 				-e "s=!!SYSCONFDIR!!=$(pkgsysconfdir)=g" \
 				-e "s=!!BINDIR!!=$(bindir)=g" \
+				-e "s=!!SBINDIR!!=$(sbindir)=g" \
 				-e "s=!!INITDIR!!=$(initexecdir)=g" \
 				-e "s=!!PERLPATH!!=$(PERL)=g" \
 				-e "s=!!PYTHONPATH!!=$(PYTHON)=g" \

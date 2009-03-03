@@ -13,6 +13,7 @@
 
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 LIBDIR=!!LIBDIR!!
+SBINDIR=!!SBINDIR!!
 SCRIPTNAME=/etc/init.d/openisr
 
 # Don't run if the package is no longer installed
@@ -79,19 +80,32 @@ status_module() {
 }
 
 do_start() {
-	local ret=0
-	
 	echo -n "Loading OpenISR kernel modules:"
-	if probe_module openisr insert required
+	if ! probe_module openisr insert required
 	then
-		probe_module loop insert
-		[ "$arch" != "none" ] && probe_module "aes-$arch" insert
-		[ "$arch" != "none" ] && probe_module "sha1-$arch" insert
-	else
-		ret=1
+		if [ ! -x $SBINDIR/openisr-config ] ; then
+			echo "."
+			return 1
+		fi
+		echo ", trying to build..."
+		if ! $SBINDIR/openisr-config --no-init
+		then
+			echo "Module build failed."
+			return 1
+		fi
+		echo -n "Loading OpenISR kernel modules:"
+		if ! probe_module openisr insert required
+		then
+			echo "."
+			return 1
+		fi
 	fi
+	
+	probe_module loop insert
+	[ "$arch" != "none" ] && probe_module "aes-$arch" insert
+	[ "$arch" != "none" ] && probe_module "sha1-$arch" insert
 	echo "."
-	return $ret
+	return 0
 }
 
 do_stop() {
