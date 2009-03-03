@@ -147,21 +147,21 @@ int nexus_sync(struct nexus_dev *dev)
 	DEFINE_WAIT(wait);
 	int do_sched;
 	
-	spin_lock_bh(&dev->requests_lock);
+	spin_lock_irq(&dev->requests_lock);
 	while (test_bit(__DEV_HAVE_CD_REF, &dev->flags) ||
 				!list_empty(&dev->requests)) {
 		prepare_to_wait(&dev->waiting_idle, &wait, TASK_INTERRUPTIBLE);
 		do_sched = test_bit(__DEV_HAVE_CD_REF, &dev->flags) ||
 					!list_empty(&dev->requests);
-		spin_unlock_bh(&dev->requests_lock);
+		spin_unlock_irq(&dev->requests_lock);
 		if (do_sched)
 			schedule();
 		finish_wait(&dev->waiting_idle, &wait);
 		if (signal_pending(current))
 			return -ERESTARTSYS;
-		spin_lock_bh(&dev->requests_lock);
+		spin_lock_irq(&dev->requests_lock);
 	}
-	spin_unlock_bh(&dev->requests_lock);
+	spin_unlock_irq(&dev->requests_lock);
 	return 0;
 }
 

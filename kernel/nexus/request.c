@@ -380,18 +380,30 @@ void nexus_run_requests(struct list_head *entry)
 	if (!test_and_clear_bit(__DEV_REQ_PENDING, &dev->flags))
 		BUG();
 	nexus_dev_get(dev);
-	/* We need to use the _bh variant because CFQ has a timer which takes
-	   the queue lock.  If we didn't disable softirqs here, the timer
-	   could fire after we get the requests_lock and a lock-order inversion
-	   would occur between the queue and requests locks. */
-	spin_lock_bh(&dev->requests_lock);
+	/* We need to use at least the _bh variant because CFQ has a timer
+	   which takes the queue lock.  If we didn't disable softirqs here,
+	   the timer could fire after we get the requests_lock and a
+	   lock-order inversion would occur between the queue and requests
+	   locks.
+	   
+	   Furthermore, if we don't disable hardirqs here, lockdep will
+	   complain that the lock is taken elsewhere after our queue lock,
+	   which in turn is taken elsewhere in hardirq context.  In fact,
+	   *our* queue lock is never taken from hardirq context, but it
+	   shares a lockdep class with the queue locks of other drivers which
+	   do take their locks from hardirqs, leading to a spurious warning.
+	   We can't fix this by allocating the lock ourselves, due to the
+	   request queue lifetime rules explained in nexus_dev_ctr().  So, to
+	   silence the warning, we disable interrupts when taking the
+	   requests_lock, even though it's not strictly necessary. */
+	spin_lock_irq(&dev->requests_lock);
 	/* We don't use the "safe" iterator because the next pointer might
 	   change out from under us between iterations */
 	while (!list_empty(&dev->requests)) {
 		req=list_first_entry(&dev->requests, struct request, queuelist);
 		list_del_init(&req->queuelist);
 		need_put=list_empty(&dev->requests);
-		spin_unlock_bh(&dev->requests_lock);
+		spin_unlock_irq(&dev->requests_lock);
 		if (need_put)
 			nexus_dev_put(dev, 0);
 		if (!dev_is_shutdown(dev)) {
@@ -399,7 +411,7 @@ void nexus_run_requests(struct list_head *entry)
 			case 0:
 				break;
 			case -ENOMEM:
-				spin_lock_bh(&dev->requests_lock);
+				spin_lock_irq(&dev->requests_lock);
 				if (list_empty(&dev->requests))
 					nexus_dev_get(dev);
 				list_add(&req->queuelist, &dev->requests);
@@ -421,11 +433,11 @@ void nexus_run_requests(struct list_head *entry)
 			nexus_end_request(req, -EIO, req->hard_nr_sectors << 9);
 		}
 		cond_resched();
-		spin_lock_bh(&dev->requests_lock);
+		spin_lock_irq(&dev->requests_lock);
 	}
 	wake_up_interruptible_all(&dev->waiting_idle);
 out:
-	spin_unlock_bh(&dev->requests_lock);
+	spin_unlock_irq(&dev->requests_lock);
 	nexus_dev_put(dev, 0);
 }
 
