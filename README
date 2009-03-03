@@ -186,10 +186,6 @@ modules
 - Configure your system to start the "openisr" init script at boot, probably
 in the "S" runlevel
 
-If you upgrade your kernel after installing the OpenISR client, you will
-need to rebuild the OpenISR kernel modules by running "openisr-config" as
-root.
-
 SUSPENDING THE HOST
 -------------------
 

@@ -27,10 +27,8 @@ openisr-config - build and install the OpenISR kernel modules
 is a helper program to build and install the kernel modules for the client
 part of the OpenISR\*R system.  Depending on your installation method, you
 may need to run this command to complete the installation of the OpenISR
-client.  In addition, you must run this command after a kernel upgrade
-in order to build modules for your new kernel.
-.BR isr (1)
-will tell you when you need to do this.
+client.  In addition, this command will be run automatically when booting a
+newly-installed kernel in order to build the appropriate modules.
 
 After the modules are built and installed,
 .B openisr-config
