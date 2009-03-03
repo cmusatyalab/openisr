@@ -3,7 +3,7 @@
 # openisr-config - script to build and install the kernel modules for the
 #                  OpenISR (R) system
 #
-# Copyright (C) 2007-2008 Carnegie Mellon University
+# Copyright (C) 2007-2009 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as published
@@ -20,6 +20,7 @@
 use strict;
 use warnings;
 use Term::ANSIColor;
+use Getopt::Long;
 use constant {
 	SHAREDIR => "!!SHAREDIR!!",
 	INITSCRIPT => "!!INITDIR!!/openisr",
@@ -27,6 +28,7 @@ use constant {
 };
 
 our $warn_initscript;
+my $do_init = 1;
 
 sub fail ($) {
 	my $msg = shift;
@@ -56,21 +58,28 @@ unless (do (SHAREDIR . "/modbuild.pm")) {
 	}
 }
 
+fail "Couldn't parse command line"
+	unless GetOptions("no-init" => sub {$do_init = 0});
+
 status "Building kernel modules for OpenISR " . VERSION . ".";
 print "\n";
 fail "You must be root." if $> != 0;
 
-status "Unloading kernel modules...";
-system(INITSCRIPT . " stop") == 0
-	or fail "Couldn't unload kernel modules.\nPlease suspend any " .
-				"running parcels and try again.";
+if ($do_init) {
+	status "Unloading kernel modules...";
+	system(INITSCRIPT . " stop") == 0
+		or fail "Couldn't unload kernel modules.\nPlease suspend " .
+					"any running parcels and try again.";
+}
 
 # The "build" function is defined by modbuild.pm
 build();
 
-status "Loading kernel modules...";
-system(INITSCRIPT . " start") == 0
-	or fail "Couldn't load kernel modules";
+if ($do_init) {
+	status "Loading kernel modules...";
+	system(INITSCRIPT . " start") == 0
+		or fail "Couldn't load kernel modules";
+}
 
 print "\n";
 if ($warn_initscript) {
