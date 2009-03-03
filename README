@@ -47,8 +47,10 @@ INSTALLATION SUMMARY
 ./autogen.sh      # Only if building from the Git repository
 ./configure --sysconfdir=/etc
 make
-make install
-Follow the directions in "POST-INSTALLATION", below
+make install      # As root
+make postinst     # As root
+
+Any user who will use OpenISR must be added to the "isrusers" group.
 
 VIRTUAL MACHINE MONITORS
 ------------------------
@@ -167,24 +169,6 @@ install the libvdisk library in the appropriate /usr/lib* directories and
 mark it setuid root, regardless of the installation directories specified on
 the configure command line.  See the documentation on the vmware driver (above)
 for details.
-
-POST-INSTALLATION
------------------
-
-If you install the OpenISR client from source, you should perform several
-additional steps to complete the installation:
-
-- Create the "isrusers" group (or the group specified using --with-group, if
-different) and add to it the users who should be able to run the OpenISR
-client
-
-- Run "ldconfig; depmod; udevcontrol reload_rules" as root
-
-- Run "openisr-config" as root to build, install, and load the OpenISR kernel
-modules
-
-- Configure your system to start the "openisr" init script at boot, probably
-in the "S" runlevel
 
 SUSPENDING THE HOST
 -------------------
