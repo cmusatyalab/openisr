@@ -1,0 +1,113 @@
+#!!!PERLPATH!!
+#
+# post - run post-installation actions
+#
+# Copyright (C) 2007-2009 Carnegie Mellon University
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of version 2 of the GNU General Public License as published
+# by the Free Software Foundation.  A copy of the GNU General Public License
+# should have been distributed along with this program in the file
+# LICENSE.GPL.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+# or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+# for more details.
+#
+
+use strict;
+use warnings;
+use Term::ANSIColor;
+use constant {
+	SBINDIR => "!!SBINDIR!!",
+	ISRGROUP => "!!ISRGROUP!!",
+	INITSCRIPT => "!!INITDIR!!/openisr",
+};
+
+sub fail ($) {
+	my $msg = shift;
+
+	print colored("Failed: $msg", "red") . "\n";
+	exit 1;
+}
+
+sub warning ($) {
+	my $msg = shift;
+
+	print colored("Warning: $msg", "yellow") . "\n";
+}
+
+sub status ($) {
+	my $msg = shift;
+
+	print colored($msg, "green") . "\n";
+}
+
+fail "You must be root."
+	if $> != 0;
+
+# Update dynamic linker cache
+status("Running ldconfig...");
+system("/sbin/ldconfig") == 0
+	or fail "Couldn't run ldconfig";
+
+# Create the ISRGROUP group if it doesn't already exist
+unless (defined getgrnam(ISRGROUP)) {
+	status "Creating " . ISRGROUP . " group...";
+	system("groupadd " . ISRGROUP) == 0
+		or fail "Couldn't create " . ISRGROUP . " group";
+}
+
+# Now that we have the system group, reread udev rules file
+status "Reloading udev rules...";
+if (-x "/sbin/udevadm") {
+	my $help = `/sbin/udevadm control --help`;
+	my $ret;
+	if ($help =~ /reload-rules/) {
+		$ret = system("/sbin/udevadm control --reload-rules");
+	} else {
+		$ret = system("/sbin/udevadm control --reload_rules");
+	}
+	fail "Couldn't run udevadm"
+		if $ret;
+} else {
+	system("/sbin/udevcontrol reload_rules") == 0
+		or fail "Couldn't run udevcontrol";
+}
+
+# Build and install kernel module
+# Don't print a status message, since openisr-config will do that for us.
+system(SBINDIR . "/openisr-config") == 0
+	or fail ("Couldn't run openisr-config");
+
+# Enable running the initscript at boot
+my $ret;
+if (-x "/usr/sbin/update-rc.d") {
+	status "Enabling initscript (Debian method)...";
+	$ret = system("/usr/sbin/update-rc.d openisr start 20 S .");
+} elsif (-x "/usr/lib/lsb/install_initd") {
+	status "Enabling initscript (LSB method)...";
+	$ret = system("/usr/lib/lsb/install_initd " . INITSCRIPT);
+} else {
+	status "Enabling initscript...";
+	$ret = 1;
+}
+if ($ret) {
+	my $scr = INITSCRIPT;
+	warning <<EOF;
+Couldn't enable initscript.  Please make sure that
+$scr
+is configured to run at boot.
+EOF
+}
+
+# Print final thoughts
+status "Setup succeeded.";
+my $grp = ISRGROUP;
+print <<EOF;
+Any user who will use OpenISR must be added to the "$grp" group.
+
+EOF
+
+exit 0;
