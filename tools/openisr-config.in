@@ -27,7 +27,6 @@ use constant {
 	VERSION => "!!VERSION!!",
 };
 
-our $warn_initscript;
 my $do_init = 1;
 
 sub fail ($) {
@@ -82,11 +81,5 @@ if ($do_init) {
 }
 
 print "\n";
-if ($warn_initscript) {
-	status "Successfully installed OpenISR kernel modules.  Please " .
-			"ensure that\n" . INITSCRIPT . " is configured " .
-			"to run at boot.";
-} else {
-	status "Successfully installed OpenISR kernel modules.";
-}
+status "Successfully installed OpenISR kernel modules.";
 exit 0;

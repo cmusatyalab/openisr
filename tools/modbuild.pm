@@ -19,8 +19,6 @@ use strict;
 use warnings;
 use File::Temp qw/tempdir/;
 
-our $warn_initscript = 1;
-
 sub build {
 	my $topdir;
 	my $found_version = 0;
