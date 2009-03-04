@@ -122,6 +122,13 @@ def try_close(sesn):
 	except:
 		pass
 
+def progress_wait(progress):
+	"""Wait for completion on a Progress object, raising an exception if
+	the operation fails."""
+	progress.waitForCompletion(-1)
+	if progress.resultCode:
+		raise Exception(progress.errorInfo.text)
+
 def check_runnable():
 	"""Determine whether there are any conditions which would prevent us
 	from resuming this machine."""
@@ -468,8 +475,7 @@ def run_machine():
 
 	sesn = new_instance(CLASS_SESN)
 	vmm.SUSPENDED = 'virtualbox'
-	progress = vbox.openRemoteSession(sesn, vmm.UUID, 'gui', None)
-	progress.waitForCompletion(-1)
+	progress_wait(vbox.openRemoteSession(sesn, vmm.UUID, 'gui', None))
 	# It would be better to use IVirtualBoxCallback to wait for a
 	# session state change, but it's not clear how to do that from Python.
 	# We could loop reading sesn.state, but that deadlocks at session
@@ -482,8 +488,7 @@ def run_machine():
 			signaled = False
 			print >>sys.stderr, 'Suspending parcel...',
 			try:
-				progress = sesn.console.saveState()
-				progress.waitForCompletion(-1)
+				progress_wait(sesn.console.saveState())
 			except:
 				print >>sys.stderr, 'failed'
 			else:
