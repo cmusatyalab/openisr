@@ -475,6 +475,7 @@ def run_machine():
 
 	sesn = new_instance(CLASS_SESN)
 	vmm.SUSPENDED = 'virtualbox'
+	start = time.time()
 	progress_wait(vbox.openRemoteSession(sesn, vmm.UUID, 'gui', None))
 	# It would be better to use IVirtualBoxCallback to wait for a
 	# session state change, but it's not clear how to do that from Python.
@@ -494,6 +495,12 @@ def run_machine():
 			else:
 				print >>sys.stderr, 'done'
 		time.sleep(0.5)
+	if time.time() - start < 20:
+		print >>sys.stderr, '''
+Your ISR session appears to have been very short, possibly because of a
+VirtualBox crash.  If the parcel failed to resume but VirtualBox did not
+display an error message, try resuming the parcel again.
+'''
 
 def info():
 	vmm.VMNAME = 'VirtualBox'
