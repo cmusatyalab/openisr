@@ -104,13 +104,31 @@ sub check_runnable {
 	}
 }
 
+sub find_cdrom {
+	my $dh;
+	my @paths;
+	my $path;
+
+	opendir($dh, "/dev")
+		or return undef;
+	@paths = map "/dev/$_", sort grep /^cdrom/, readdir $dh;
+	closedir $dh;
+	foreach $path (@paths) {
+		return $path
+			if -b $path and -r _ and -w _;
+	}
+	return undef;
+}
+
 sub get_config {
 	my $file = "$CFGDIR/kvm.cfg";
 	my $conf = "";
 	my $default;
+	my $cdrom = find_cdrom();
 
 	if (! -e $file) {
 		($default = <<EOF) =~ s/^\s+//gm;
+			-cdrom auto
 			-net nic
 			-net user
 			-soundhw all
@@ -131,6 +149,8 @@ EOF
 	while (<KCONF>) {
 		next if /^\s*#/;
 		chomp;
+		$conf .= " -cdrom $cdrom"
+			if s/-cdrom\s+auto// and defined $cdrom;
 		$conf .= " $_";
 	}
 	close KCONF;
