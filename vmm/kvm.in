@@ -2,7 +2,7 @@
 #
 # kvm - OpenISR (R) VMM driver for the Kernel-based Virtual Machine
 #
-# Copyright (C) 2008 Carnegie Mellon University
+# Copyright (C) 2008-2009 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as published
@@ -32,10 +32,13 @@ use strict;
 use warnings;
 
 my $program;
+my $incoming_method;
 
-# Return true if the specified program is KVM and not something else (e.g.,
-# QEMU without KVM support)
-sub prog_is_kvm {
+# Make sure the specified program is some variety of qemu with KVM support,
+# and set global variables defining how to interact with it.  (Different
+# versions of qemu expose slightly different interfaces.)  Returns true if
+# this program is acceptable.
+sub validate_kvm {
 	my $prog = shift;
 	my $help;
 	local $/;
@@ -44,7 +47,27 @@ sub prog_is_kvm {
 		or fail "Couldn't execute $prog";
 	$help = <PROG>;
 	close PROG;
-	return ($help =~ /-no-kvm/);
+	return 0
+		unless $help =~ /-no-kvm/;
+	if ($help =~ m/QEMU PC emulator version .* \(kvm-([0-9]+)\)/) {
+		# KVM >= 56
+		if ($1 < 78) {
+			$incoming_method = "file";
+			# file or exec will work for outgoing, so we use exec
+			# for consistency
+		} elsif ($1 < 80) {
+			# The only available migrate method is "tcp"
+			return 0;
+		} else {
+			$incoming_method = "exec";
+			# Outgoing method must be exec
+		}
+	} else {
+		# Old KVM (< 56) that doesn't give its version in the help
+		# string.  Not worth supporting.
+		return 0;
+	}
+	return 1;
 }
 
 sub check_runnable {
@@ -53,8 +76,8 @@ sub check_runnable {
 	if (defined $COMMAND) {
 		fail "$COMMAND invalid or not executable"
 			unless defined ($program = find_program $COMMAND);
-		fail "$program is not a KVM binary"
-			unless prog_is_kvm $program;
+		fail "$program is not a supported version of KVM"
+			unless validate_kvm $program;
 	} else {
 		# Debian packages call the program "kvm".  Fedora calls it
 		# "qemu-kvm".  Source installs call it "qemu-system-x86_64",
@@ -62,10 +85,10 @@ sub check_runnable {
 		# support.
 		foreach my $prog ('kvm', 'qemu-kvm', 'qemu-system-x86_64') {
 			$program = find_program $prog;
-			last if defined $program and prog_is_kvm $program;
+			last if defined $program and validate_kvm $program;
 			undef $program;
 		}
-		fail "KVM not found"
+		fail "Could not find a supported version of KVM"
 			unless defined $program;
 	}
 }
@@ -160,7 +183,13 @@ sub run {
 	$opts .= " -full-screen"
 		if $FULLSCREEN eq "yes";
 	if ($SUSPENDED eq "kvm" and -e "$CFGDIR/kvm.mem") {
-		$opts .= " -incoming file://$CFGDIR/kvm.mem.old";
+		if ($incoming_method eq "exec") {
+			$opts .= " -incoming \"exec:cat $CFGDIR/kvm.mem.old\"";
+		} elsif ($incoming_method eq "file") {
+			$opts .= " -incoming \"file://$CFGDIR/kvm.mem.old\"";
+		} else {
+			fail "Unknown incoming_method";
+		}
 		$loadmem = 1;
 	}
 
@@ -231,7 +260,8 @@ sub run {
 		print STDERR "Suspending parcel...\n";
 		send_cmd $sock, "migrate_set_speed 1g";
 		send_cmd $sock, "stop";
-		send_cmd $sock, "migrate file://$CFGDIR/kvm.mem";
+		send_cmd $sock, "migrate \"exec:dd of=$CFGDIR/kvm.mem " .
+					"2>/dev/null\"";
 		send_cmd $sock, "quit";
 	}
 	close $sock;
