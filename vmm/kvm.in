@@ -32,6 +32,7 @@ use strict;
 use warnings;
 
 my $program;
+my $need_enable_kvm;
 my $incoming_method;
 
 # Make sure the specified program is some variety of qemu with KVM support,
@@ -48,7 +49,8 @@ sub validate_kvm {
 	$help = <PROG>;
 	close PROG;
 	return 0
-		unless $help =~ /-no-kvm/;
+		unless $help =~ /-no-kvm|-enable-kvm/;
+	$need_enable_kvm = ($help =~ /-enable-kvm/);
 	if ($help =~ m/QEMU PC emulator version .* \(kvm-([0-9]+)\)/) {
 		# KVM >= 56
 		if ($1 < 78) {
@@ -62,9 +64,17 @@ sub validate_kvm {
 			$incoming_method = "exec";
 			# Outgoing method must be exec
 		}
+	} elsif ($help =~ m/QEMU PC emulator version ([0-9])+\.([0-9]+).*/) {
+		if ($1 > 0 or $2 >= 10) {
+			# New qemu with KVM support built-in
+			$incoming_method = "exec";
+		} else {
+			# Old KVM (< 56) that doesn't give its version in the
+			# help string.  Not worth supporting.
+			return 0;
+		}
 	} else {
-		# Old KVM (< 56) that doesn't give its version in the help
-		# string.  Not worth supporting.
+		# Could not determine version
 		return 0;
 	}
 	return 1;
@@ -79,11 +89,12 @@ sub check_runnable {
 		fail "$program is not a supported version of KVM"
 			unless validate_kvm $program;
 	} else {
-		# Debian packages call the program "kvm".  Fedora calls it
-		# "qemu-kvm".  Source installs call it "qemu-system-x86_64",
-		# but so does vanilla qemu, so we have to check for KVM
-		# support.
-		foreach my $prog ('kvm', 'qemu-kvm', 'qemu-system-x86_64') {
+		# Debian packages of kvm-userspace call the program "kvm".
+		# Fedora packages call it "qemu-kvm".  Source installs call
+		# it "qemu-system-x86_64".  If we're using qemu >= 0.10.0
+		# with built-in KVM support, it might be called "qemu" or
+		# "qemu-system-x86_64".
+		foreach my $prog (qw/kvm qemu-kvm qemu qemu-system-x86_64/) {
 			$program = find_program $prog;
 			last if defined $program and validate_kvm $program;
 			undef $program;
@@ -179,6 +190,8 @@ sub run {
 	# Calculate command-line options
 	$opts  = "-name \"$NAME\" -hda $DISK -m $MEM";
 	$opts .= " -monitor unix:$sockpath";
+	$opts .= " -enable-kvm"
+		if $need_enable_kvm;
 	$opts .= get_config;
 	$opts .= " -full-screen"
 		if $FULLSCREEN eq "yes";
