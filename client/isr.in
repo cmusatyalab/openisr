@@ -2133,8 +2133,10 @@ sub clean ($) {
     if ($uuid) {
 	# Even though we're about to delete the cfg directory, we still need
 	# to run VMM cleanup because the VMM might need to clean up external
-	# state
-	vmm_cleanup();
+	# state.  If there is no cfg directory, such as when bailing out of a
+	# failed checkout operation, it doesn't make sense to run VMM cleanup.
+	vmm_cleanup()
+	    if -d "$parceldir/cfg";
 
 	# Make sure we cannot be interrupted, since once the parcel.cfg
 	# is gone, another call to "isr clean" won't remove the rest of
