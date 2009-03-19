@@ -1,6 +1,6 @@
 AM_CPPFLAGS = -I$(top_srcdir)/kernel/nexus -I$(top_srcdir)/sqlite
 AM_CPPFLAGS += -I$(top_srcdir)/crypto -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
-AM_CFLAGS = -W -Wall -Wstrict-prototypes -Wno-missing-field-initializers
+AM_CFLAGS = -W -Wall -Wstrict-prototypes $(NO_FIELD_INITIALIZER_WARNINGS)
 AM_CFLAGS += $(libuuid_CFLAGS)
 AM_LDFLAGS = -L$(top_builddir)/sqlite -L$(top_builddir)/crypto
 AM_LDFLAGS += -lcurl -lsqlite -lrt -lisrcrypto $(libuuid_LIBS)

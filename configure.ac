@@ -120,6 +120,18 @@ if test z$success = zyes ; then
 fi
 AC_SUBST([VISIBILITY_HIDDEN])
 
+# gcc 3 doesn't support -Wno-missing-field-initializers; the only thing we
+# can do there to disable these warnings is to disable -W.  gcc 3 doesn't
+# matter enough for us to provide a mechanism to disable -W for only those
+# targets that care, but it'd be nice to be able to build on it.  So we'll
+# just put up with lots of spurious warnings under old gcc.
+CHECK_COMPILER_OPTION([-Wno-missing-field-initializers])
+NO_FIELD_INITIALIZER_WARNINGS=
+if test z$success = zyes ; then
+	NO_FIELD_INITIALIZER_WARNINGS="-Wno-missing-field-initializers"
+fi
+AC_SUBST([NO_FIELD_INITIALIZER_WARNINGS])
+
 # Checks for programs.
 AC_PATH_PROG([PERL], [perl], [no])
 if test z$PERL = zno ; then

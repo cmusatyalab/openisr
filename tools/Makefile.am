@@ -18,10 +18,10 @@ EXTRA_PROGRAMS = nextest
 CLEANFILES = $(GEN) nextest
 EXTRA_DIST = $(GEN:=.in)
 
-blobtool_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS) -Wno-missing-field-initializers
+blobtool_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS) $(NO_FIELD_INITIALIZER_WARNINGS)
 blobtool_LDFLAGS = $(CRYPTO_LIBS) $(glib_LIBS) -lz -larchive
 dirtometer_CFLAGS = $(AM_CFLAGS) $(gtk_CFLAGS) $(glib_CFLAGS)
-dirtometer_CFLAGS += -Wno-unused-parameter -Wno-missing-field-initializers
+dirtometer_CFLAGS += -Wno-unused-parameter $(NO_FIELD_INITIALIZER_WARNINGS)
 dirtometer_LDFLAGS = $(gtk_LIBS) $(glib_LIBS)
 query_LDFLAGS = -L$(top_builddir)/sqlite -lsqlite
 nextest_LDFLAGS = $(CRYPTO_LIBS)
