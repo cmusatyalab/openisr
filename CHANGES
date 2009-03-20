@@ -1,3 +1,39 @@
+====== 0.9.5 (2009-03-20)
+
+------ Client changes
+
+- Change license of Parcelkeeper, tools/*, and bash completions to GPLv2
+- Change license of libvdisk to LGPLv2.1
+- Add dependencies on GTK+, libarchive, and e2fsprogs' libuuid
+- Drop dependencies on OSSP UUID and OpenSSL libraries
+- Drop dependencies on tar, gzip, openssl, and pv programs
+- Support kernels 2.6.28 and 2.6.29
+- Add rewritten dirtometer with more frequent updates and more information
+- Automatically build kernel modules when booting a new kernel
+- Add "make postinst"; simplify installation instructions
+- Suspend the parcel when the client program receives SIGINT
+- Nexus: fix NULL pointer dereference if encryption is disabled
+- Add config option for Nexus chunk cache size; raise default to 32 MB
+- Always disable SQLite fsync() calls; remove options controlling this
+- Various minor fixes and cleanups
+
+------ VMM driver changes
+
+- kvm: Support KVM >= 80
+- kvm: Support qemu 0.10 when KVM support is enabled
+- kvm: Properly handle systems calling the KVM binary "qemu-kvm"
+- kvm: Add "-cdrom auto" kvm.cfg option to autodetect host CD-ROM drive
+- virtualbox: Support VirtualBox 2.1
+- virtualbox: Properly resume parcels with inaccessible CD/floppy images
+- virtualbox: Properly handle changes in VirtualBox settings format version
+- virtualbox: Try to be more helpful after mysterious resume failures
+- Various minor fixes
+
+------ Server changes
+
+- Fix "isr_admin getusage" output
+- No longer ship upgrade code for 0.8-format parcels
+
 ====== 0.9.4 (2008-10-15)
 
 ------ General changes
