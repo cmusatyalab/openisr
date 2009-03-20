@@ -4,7 +4,7 @@
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
- * Copyright (C) 2006-2008 Carnegie Mellon University
+ * Copyright (C) 2006-2009 Carnegie Mellon University
  * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -700,7 +700,7 @@ int suite_add(struct nexus_tfm_state *ts, enum nexus_crypto suite)
 		   matters when the tfm is first allocated.  Does anyone have
 		   better wording for this? */
 		log(KERN_NOTICE, "Using unoptimized AES; load aes-"
-					AES_ACCEL_ARCH ".ko to improve "
+					AES_MODULE_ARCH ".ko to improve "
 					"performance");
 		have_warned_aes=1;
 	}

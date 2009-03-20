@@ -414,11 +414,16 @@ static inline int sha1_impl_is_suboptimal(struct crypto_hash *tfm)
  * by the optimized implementation appear to be minimal.
  **/
 #if (defined(CONFIG_X86) || defined(CONFIG_UML_X86)) && !defined(CONFIG_64BIT)
-#define AES_ACCEL_ARCH "i586"
+#define AES_MODULE_ARCH "i586"
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
+#define AES_DRIVER_ARCH AES_MODULE_ARCH
+#else
+#define AES_DRIVER_ARCH "asm"
+#endif
 #endif
 
-#ifndef AES_ACCEL_ARCH
-#define AES_ACCEL_ARCH "unknown"
+#ifndef AES_MODULE_ARCH
+#define AES_MODULE_ARCH "unknown"
 /* No sufficiently-optimized implementation exists */
 #define aes_impl_is_suboptimal(info, tfm) (0)
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
@@ -426,7 +431,7 @@ static inline int aes_impl_is_suboptimal(const struct tfm_suite_info *info,
 			struct crypto_blkcipher *tfm)
 {
 	/* Look at the driver name field */
-	return strcmp(tfm->__crt_alg->cra_driver_name, "aes-" AES_ACCEL_ARCH)
+	return strcmp(tfm->__crt_alg->cra_driver_name, "aes-" AES_DRIVER_ARCH)
 				? 1 : 0;
 }
 #else
@@ -437,7 +442,7 @@ static inline int aes_impl_is_suboptimal(const struct tfm_suite_info *info,
 	   extracted from the crypto_blkcipher.  The driver name contains the
 	   cipher mode. */
 	char buf[CRYPTO_MAX_ALG_NAME];
-	snprintf(buf, sizeof(buf), "%s(aes-" AES_ACCEL_ARCH ")",
+	snprintf(buf, sizeof(buf), "%s(aes-" AES_DRIVER_ARCH ")",
 				info->cipher_mode_name);
 	return strcmp(crypto_blkcipher_tfm(tfm)->__crt_alg->cra_driver_name,
 				buf) ? 1 : 0;
