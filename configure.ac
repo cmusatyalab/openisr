@@ -12,7 +12,7 @@
 ## Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT([OpenISR], [0.9.4])
+AC_INIT([OpenISR], [0.9.5])
 AM_INIT_AUTOMAKE([foreign 1.10])
 AC_COPYRIGHT([Copyright (C) 2007-2009 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([parcelkeeper/nexus.c])
