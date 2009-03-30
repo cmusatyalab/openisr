@@ -22,8 +22,13 @@ key = value
 The following keys are supported:
 
 content_root
-	This is the path to your web server's document root, and
-	defaults to /var/www/html.
+	This is the path to the directory in which ISR data should be stored,
+	and defaults to /var/www/html.
+
+http_path
+	The pathname part of the HTTP URL corresponding to the content root.
+	The default is the empty string, meaning that the content root is also
+	the web server's document root.
 
 default_pass
 	The password assigned to user accounts created by isr_admin.

@@ -149,6 +149,9 @@ sub get_config {
 	# Absolute path that points to the top level content directory
 	content_root => "/var/www/html",
 	
+	# Pathname part of HTTP base URL
+	http_path => "",
+	
 	# Default password
 	default_pass => undef,
 	
