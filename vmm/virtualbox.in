@@ -59,8 +59,119 @@ class MachineFile:
 		self.dom.unlink()
 		del self.dom
 
+class VboxCompat:
+	def __init__(self):
+		parts = map(int, vbox.version.replace('_OSE', '').split('.'))
+		if len(parts) != 3:
+			raise VmmError("Couldn't parse VirtualBox version: " \
+						+ vbox.version)
+		self.vbox_ver = tuple(parts)
+		if self.vbox_ver < MIN_VERSION:
+			raise VmmError("VirtualBox >= %s required (found %s)" \
+					% (format_version(MIN_VERSION), \
+					vbox.version))
+
+	def create_machine(self, vmdir, name, uuid):
+		'''Create a machine and return it.'''
+		if self.vbox_ver < (2,1):
+			return vbox.createMachine(vmdir, name, uuid)
+		else:
+			return vbox.createMachine(name, 'Other', vmdir, uuid)
+
+	def register_disk(self, path):
+		'''Register the disk at the specified path and return it.'''
+		if self.vbox_ver < (2,1):
+			disk = vbox.openHardDisk(path)
+			vbox.registerHardDisk(disk)
+			return disk
+		else:
+			return vbox.openHardDisk2(path)
+
+	def unregister_disk(self, path):
+		'''Unregister the disk at the specified path if it exists.'''
+		try:
+			if self.vbox_ver < (2,1):
+				disk = vbox.findHardDisk(path)
+			else:
+				disk = vbox.findHardDisk2(path)
+		except:
+			return
+		else:
+			if self.vbox_ver < (2,1):
+				vbox.unregisterHardDisk(disk.id)
+			else:
+				disk.close()
+
+	def attach_ide_disk(self, sesn_machine, uuid, port, device):
+		'''Attach the specified disk to the given machine's IDE
+		controller.  The machine handle must be obtained from an open
+		session.'''
+		if self.vbox_ver < (2,1):
+			sesn_machine.attachHardDisk(uuid,
+					ifaces.StorageBus.IDE, port, device)
+		else:
+			sesn_machine.attachHardDisk2(uuid,
+					ifaces.StorageBus.IDE, port, device)
+
+	def detach_ide_disk(self, sesn_machine, port, device):
+		'''Detach the specified disk from the given machine's IDE
+		controller, if such an attachment exists.  Save machine
+		settings if successful.  The machine handle must be obtained
+		from an open session.'''
+		try:
+			if self.vbox_ver < (2,1):
+				sesn_machine.getHardDisk( \
+						ifaces.StorageBus.IDE, \
+						port, device)
+			else:
+				sesn_machine.getHardDisk2( \
+						ifaces.StorageBus.IDE, \
+						port, device)
+		except:
+			pass
+		else:
+			if self.vbox_ver < (2,1):
+				sesn_machine.detachHardDisk( \
+						ifaces.StorageBus.IDE, \
+						port, device)
+			else:
+				sesn_machine.detachHardDisk2( \
+						ifaces.StorageBus.IDE, \
+						port, device)
+			sesn_machine.saveSettings()
+
+	def get_floppy_drive(self, vm):
+		'''Return the floppy drive object for the specified machine.'''
+		if self.vbox_ver < (2,1):
+			return vm.FloppyDrive
+		else:
+			return vm.floppyDrive
+
+	def image_is_accessible(self, image):
+		'''Return whether the specified image is accessible.'''
+		if self.vbox_ver < (2,1):
+			return image.accessible
+		else:
+			return image.state not in (ifaces.MediaState.Created, \
+					ifaces.MediaState.LockedRead)
+
+	def get_image_location(self, image):
+		if self.vbox_ver < (2,1):
+			return image.filePath
+		else:
+			return image.location
+
+	def get_image_state(self, image):
+		if self.vbox_ver < (2,1):
+			if image.accessible:
+				return 'accessible'
+			else:
+				return 'inaccessible'
+		else:
+			return str(image.state)
+
 def vbox_init():
-	global xpcom, ifaces, vbox, vbox_ver
+	global xpcom, ifaces, vbox, compat
 
 	# Locate the VirtualBox program, then use its location to find the
 	# path to the Python bindings library
@@ -84,18 +195,9 @@ def vbox_init():
 	xpcom.components = __import__('xpcom.components', None, None, 'xpcom')
 	ifaces = xpcom.components.interfaces
 
-	# Get a VirtualBox instance and check the VirtualBox version
+	# Get a VirtualBox instance and initialize version-compatibility code
 	vbox = new_instance(CLASS_VBOX)
-	vbox_ver = parse_version(vbox.version)
-	if vbox_ver < MIN_VERSION:
-		raise VmmError("VirtualBox >= %s required (found %s)" % \
-				(format_version(MIN_VERSION), vbox.version))
-
-def parse_version(ver):
-	parts = map(int, ver.replace('_OSE', '').split('.'))
-	if len(parts) != 3:
-		raise VmmError("Couldn't parse version: " + ver)
-	return tuple(parts)
+	compat = VboxCompat()
 
 def parse_settings_version(ver):
 	return tuple(map(int, ver.split('-')[0].split('.')))
@@ -182,10 +284,7 @@ ddb.adapterType = "ide"
 
 def create_machine():
 	vmname = parcelname()
-	if vbox_ver < (2,1):
-		vm = vbox.createMachine(vmm.CFGDIR, vmname, vmm.UUID)
-	else:
-		vm = vbox.createMachine(vmname, 'Other', vmm.CFGDIR, vmm.UUID)
+	vm = compat.create_machine(vmm.CFGDIR, vmname, vmm.UUID)
 	vm.memorySize = vmm.MEM
 	vm.VRAMSize = 16
 	vm.snapshotFolder = '.'
@@ -320,27 +419,16 @@ def fixup_inaccessible_devices(vm):
 	Return True if we have done so."""
 
 	modified = False
-	if vbox_ver < (2,1):
-		types = ('CD', vm.DVDDrive), \
-			('floppy', vm.FloppyDrive)
-	else:
-		types = ('CD', vm.DVDDrive), \
-			('floppy', vm.floppyDrive)
+	types = ('CD', vm.DVDDrive), ('floppy', compat.get_floppy_drive(vm))
 	for name, drive in types:
 		if drive.state == ifaces.DriveState.ImageMounted:
 			image = drive.getImage()
-			if vbox_ver < (2,1) and not image.accessible:
-				print >>sys.stderr, \
-					'Unbinding inaccessible', name, \
-							'image', image.filePath
-				drive.unmount()
-				modified = True
-			elif vbox_ver >= (2,1) and image.state not in \
-						(ifaces.MediaState.Created, \
-						ifaces.MediaState.LockedRead):
-				print >>sys.stderr, \
-					'Unbinding image', image.location, \
-					'in inaccessible state', image.state
+			if not compat.image_is_accessible(image):
+				print >>sys.stderr, 'Unbinding inaccessible', \
+					name, 'image', \
+					compat.get_image_location(image), \
+					'in state:', \
+					compat.get_image_state(image)
 				drive.unmount()
 				modified = True
 		elif drive.state == ifaces.DriveState.HostDriveCaptured:
@@ -377,21 +465,13 @@ def fixup_machine():
 		vm.saveSettingsWithBackup()
 
 def register_machine():
-	if vbox_ver < (2,1):
-		disk = vbox.openHardDisk(disk_path)
-		vbox.registerHardDisk(disk)
-	else:
-		disk = vbox.openHardDisk2(disk_path)
+	disk = compat.register_disk(disk_path)
 	vm = vbox.openMachine(vm_path)
 	vbox.registerMachine(vm)
 	sesn = new_instance(CLASS_SESN)
 	vbox.openSession(sesn, vm.id)
 	try:
-		if vbox_ver < (2,1):
-			attach = sesn.machine.attachHardDisk
-		else:
-			attach = sesn.machine.attachHardDisk2
-		attach(disk.id, ifaces.StorageBus.IDE, 0, 0)
+		compat.attach_ide_disk(sesn.machine, disk.id, 0, 0)
 		if vmm.FULLSCREEN == 'yes':
 			fullscreen = 'on'
 		else:
@@ -419,22 +499,6 @@ def unregister_state(sesn, do_save):
 			sesn.console.discardSavedState()
 		vmm.SUSPENDED = 'no'
 
-def detach_disk(sesn):
-	if vbox_ver < (2,1):
-		get = sesn.machine.getHardDisk
-		detach = sesn.machine.detachHardDisk
-	else:
-		get = sesn.machine.getHardDisk2
-		detach = sesn.machine.detachHardDisk2
-
-	try:
-		get(ifaces.StorageBus.IDE, 0, 0)
-	except:
-		pass
-	else:
-		detach(ifaces.StorageBus.IDE, 0, 0)
-		sesn.machine.saveSettings()
-
 def unregister_machine(do_save = True):
 	try:
 		vm = vbox.getMachine(vmm.UUID)
@@ -450,25 +514,12 @@ def unregister_machine(do_save = True):
 			sesn.machine.saveSettingsWithBackup()
 		try:
 			unregister_state(sesn, do_save)
-			detach_disk(sesn)
+			compat.detach_ide_disk(sesn.machine, 0, 0)
 		finally:
 			try_close(sesn)
 		vbox.unregisterMachine(vm.id)
 
-	if vbox_ver < (2,1):
-		try:
-			disk = vbox.findHardDisk(disk_path)
-		except:
-			pass
-		else:
-			vbox.unregisterHardDisk(disk.id)
-	else:
-		try:
-			disk = vbox.findHardDisk2(disk_path)
-		except:
-			pass
-		else:
-			disk.close()
+	compat.unregister_disk(disk_path)
 
 def run_machine():
 	global signaled
