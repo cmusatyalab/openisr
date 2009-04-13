@@ -21,6 +21,7 @@ use Getopt::Std;
 use constant {
     LIBDIR => "!!LIBDIR!!",
     SHAREDIR => "!!SHAREDIR!!",
+    SYSCONFDIR => "!!SYSCONFDIR!!",
     RCS_REVISION => "!!REVISION!!",
 };
 use lib SHAREDIR;

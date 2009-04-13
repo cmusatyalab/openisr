@@ -50,7 +50,7 @@ use strict 'vars';
 #
 # Set some variables that we'll need later
 #
-$motdfile = "/etc/openisr/motd";
+$motdfile = SYSCONFDIR . "/motd";
 
 #
 # Return the config file to the caller via stdout

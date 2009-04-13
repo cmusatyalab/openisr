@@ -29,18 +29,18 @@ use MIME::Base64 qw/encode_base64/;
 use Socket;
 use Sys::Hostname;
 use Term::ANSIColor qw(:constants);
-use lib "!!SHAREDIR!!";
-use Server;
-$| = 1; # Autoflush output on every print statement
-
 use constant {
 	RCS_REVISION => "!!REVISION!!",
 	LIBDIR => "!!LIBDIR!!",
+	SYSCONFDIR => "!!SYSCONFDIR!!",
 	CHUNKSIZE => 131072,
 	CHUNKSPERDIR => 512,
 	KEYROOT_BYTES => 15,
 	PASSWORD_BYTES => 9,
 };
+use lib "!!SHAREDIR!!";
+use Server;
+$| = 1; # Autoflush output on every print statement
 
 # Function prototypes
 sub encrypt ($$$$);

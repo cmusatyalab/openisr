@@ -145,6 +145,7 @@ sub get_value
 }
 
 sub get_config {
+    my $conffile = main::SYSCONFDIR . "/locksrv.conf";
     my %conf = (
 	# Absolute path that points to the top level content directory
 	content_root => "/var/www/html",
@@ -159,9 +160,9 @@ sub get_config {
 	hostname => lc((gethostbyname(hostname()))[0]),
     );
     
-    if (-r "/etc/openisr/locksrv.conf") {
-	open(FD, "</etc/openisr/locksrv.conf")
-	    or errexit("Couldn't load /etc/openisr/locksrv.conf");
+    if (-r $conffile) {
+	open(FD, $conffile)
+	    or errexit("Couldn't load $conffile");
 	while (<FD>) {
 	    next if /^\s*#/;
 	    next if !/^\s*([a-z_]+) *= *(.*)$/;
