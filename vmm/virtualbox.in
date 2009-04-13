@@ -31,7 +31,7 @@ from vmm import *
 CLASS_VBOX = '@virtualbox.org/VirtualBox;1'
 CLASS_SESN = '@virtualbox.org/Session;1'
 MIN_VERSION = (2,0,0)
-SETTINGS_VERSIONS = ((1,3), (1,5), (1,6))
+SETTINGS_VERSIONS = ((1,3), (1,5), (1,6), (1,7))
 
 class MachineFile:
 	def __init__(self, vm_path):
@@ -84,16 +84,19 @@ class VboxCompat:
 			disk = vbox.openHardDisk(path)
 			vbox.registerHardDisk(disk)
 			return disk
-		else:
+		elif self.vbox_ver < (2,2):
 			return vbox.openHardDisk2(path)
+		else:
+			return vbox.openHardDisk(path, \
+					ifaces.AccessMode.ReadWrite)
 
 	def unregister_disk(self, path):
 		'''Unregister the disk at the specified path if it exists.'''
 		try:
-			if self.vbox_ver < (2,1):
-				disk = vbox.findHardDisk(path)
-			else:
+			if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
 				disk = vbox.findHardDisk2(path)
+			else:
+				disk = vbox.findHardDisk(path)
 		except:
 			return
 		else:
@@ -102,16 +105,24 @@ class VboxCompat:
 			else:
 				disk.close()
 
+	def __find_ide_controller(self, sesn_machine):
+		for ctlr in sesn_machine.getStorageControllers():
+			if ctlr.bus == ifaces.StorageBus.IDE:
+				return ctlr
+		raise VmmError("Couldn't find an IDE controller")
+
 	def attach_ide_disk(self, sesn_machine, uuid, port, device):
 		'''Attach the specified disk to the given machine's IDE
 		controller.  The machine handle must be obtained from an open
 		session.'''
-		if self.vbox_ver < (2,1):
-			sesn_machine.attachHardDisk(uuid,
-					ifaces.StorageBus.IDE, port, device)
+		if self.vbox_ver < (2,2):
+			ctlr = ifaces.StorageBus.IDE
 		else:
-			sesn_machine.attachHardDisk2(uuid,
-					ifaces.StorageBus.IDE, port, device)
+			ctlr = self.__find_ide_controller(sesn_machine).name
+		if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
+			sesn_machine.attachHardDisk2(uuid, ctlr, port, device)
+		else:
+			sesn_machine.attachHardDisk(uuid, ctlr, port, device)
 
 	def detach_ide_disk(self, sesn_machine, port, device):
 		'''Detach the specified disk from the given machine's IDE
@@ -119,25 +130,22 @@ class VboxCompat:
 		settings if successful.  The machine handle must be obtained
 		from an open session.'''
 		try:
-			if self.vbox_ver < (2,1):
-				sesn_machine.getHardDisk( \
-						ifaces.StorageBus.IDE, \
-						port, device)
+			if self.vbox_ver < (2,2):
+				ctlr = ifaces.StorageBus.IDE
 			else:
-				sesn_machine.getHardDisk2( \
-						ifaces.StorageBus.IDE, \
-						port, device)
+				ctlr = self.__find_ide_controller( \
+						sesn_machine).name
+			if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
+				sesn_machine.getHardDisk2(ctlr, port, device)
+			else:
+				sesn_machine.getHardDisk(ctlr, port, device)
 		except:
 			pass
 		else:
-			if self.vbox_ver < (2,1):
-				sesn_machine.detachHardDisk( \
-						ifaces.StorageBus.IDE, \
-						port, device)
+			if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
+				sesn_machine.detachHardDisk2(ctlr, port, device)
 			else:
-				sesn_machine.detachHardDisk2( \
-						ifaces.StorageBus.IDE, \
-						port, device)
+				sesn_machine.detachHardDisk(ctlr, port, device)
 			sesn_machine.saveSettings()
 
 	def get_floppy_drive(self, vm):
