@@ -98,8 +98,13 @@ typedef struct device_attribute kdevice_attribute_t;
 	put_device(kdevice)
 #define kdevice_unregister(kdevice) \
 	device_unregister(kdevice)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30)
 #define kdevice_get_name(kdevice) \
 	(kdevice->bus_id)
+#else
+#define kdevice_get_name(kdevice) \
+	dev_name(kdevice)
+#endif
 #define kdevice_get_data(kdevice) \
 	dev_get_drvdata(kdevice)
 #define kdevice_set_data(kdevice, data) \
