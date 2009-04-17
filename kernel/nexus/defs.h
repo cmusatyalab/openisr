@@ -511,8 +511,8 @@ extern struct class_attribute class_attrs[];
 extern kdevice_attribute_t kdevice_attrs[];
 
 /* revision.c */
-extern char *isr_release;
-extern char *rcs_revision;
+extern const char isr_release[];
+extern const char rcs_revision[];
 
 #else  /* __KERNEL__ */
 #error This header is not exported outside the Nexus implementation

@@ -58,8 +58,8 @@ REL=`awk 'BEGIN { FS="\"" } /#define PACKAGE_VERSION/ { print $2 }' \
 case $2 in
 object)
 	cat > revision.c <<- EOF
-		const char *isr_release = "$REL";
-		const char *rcs_revision = "$REV";
+		const char isr_release[] = "$REL";
+		const char rcs_revision[] = "$REV";
 		
 		#ifdef __KERNEL__
 		#include <linux/module.h>

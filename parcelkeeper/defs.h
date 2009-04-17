@@ -189,8 +189,8 @@ struct pk_state {
 extern struct pk_config config;
 extern struct pk_parcel parcel;
 extern struct pk_state state;
-extern const char *isr_release;
-extern const char *rcs_revision;
+extern const char isr_release[];
+extern const char rcs_revision[];
 
 #define min(a,b) ((a) < (b) ? (a) : (b))
 #define max(a,b) ((a) > (b) ? (a) : (b))
