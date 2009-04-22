@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <glib.h>
 #include "defs.h"
 
 static pk_err_t make_upload_dirs(void)
@@ -30,7 +31,8 @@ static pk_err_t make_upload_dirs(void)
 	unsigned dir;
 	unsigned numdirs;
 
-	if (!is_dir(config.dest_dir) && mkdir(config.dest_dir, 0700)) {
+	if (!g_file_test(config.dest_dir, G_FILE_TEST_IS_DIR) &&
+				mkdir(config.dest_dir, 0700)) {
 		pk_log(LOG_ERROR, "Unable to make directory %s",
 					config.dest_dir);
 		return PK_IOERR;
@@ -42,7 +44,8 @@ static pk_err_t make_upload_dirs(void)
 			pk_log(LOG_ERROR, "malloc failure");
 			return PK_NOMEM;
 		}
-		if (!is_dir(path) && mkdir(path, 0700)) {
+		if (!g_file_test(path, G_FILE_TEST_IS_DIR) &&
+					mkdir(path, 0700)) {
 			pk_log(LOG_ERROR, "Unable to make directory %s", path);
 			free(path);
 			return PK_IOERR;

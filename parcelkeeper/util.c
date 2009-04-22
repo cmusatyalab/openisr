@@ -32,24 +32,6 @@
 
 #define UUID_STR_LEN 36  /* not including trailing NUL */
 
-int is_dir(const char *path)
-{
-	struct stat st;
-
-	if (stat(path, &st))
-		return 0;
-	return S_ISDIR(st.st_mode);
-}
-
-int is_file(const char *path)
-{
-	struct stat st;
-
-	if (stat(path, &st))
-		return 0;
-	return S_ISREG(st.st_mode);
-}
-
 int at_eof(int fd)
 {
 	off_t cur=lseek(fd, 0, SEEK_CUR);

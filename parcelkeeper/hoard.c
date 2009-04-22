@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <glib.h>
 #include "defs.h"
 
 #define HOARD_INDEX_VERSION 7
@@ -950,7 +951,8 @@ pk_err_t hoard_init(void)
 					"sizes != 128 KB");
 		return PK_INVALID;
 	}
-	if (!is_dir(config.hoard_dir) && mkdir(config.hoard_dir, 0777)) {
+	if (!g_file_test(config.hoard_dir, G_FILE_TEST_IS_DIR) &&
+				mkdir(config.hoard_dir, 0777)) {
 		pk_log(LOG_ERROR, "Couldn't create hoard directory %s",
 					config.hoard_dir);
 		return PK_CALLFAIL;

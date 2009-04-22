@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <glib.h>
 #include <linux/loop.h>
 #include "nexus.h"
 #include "defs.h"
@@ -163,7 +164,7 @@ pk_err_t nexus_init(void)
 	}
 
 	/* Check Nexus version */
-	if (!is_dir("/sys/class/openisr")) {
+	if (!g_file_test("/sys/class/openisr", G_FILE_TEST_IS_DIR)) {
 		pk_log(LOG_ERROR, "kernel module not loaded");
 		return PK_NOTFOUND;
 	}

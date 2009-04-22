@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <glib.h>
 #include "defs.h"
 
 #define CA_MAGIC 0x51528038
@@ -359,8 +360,8 @@ void cache_shutdown(void)
 static pk_err_t open_cachedir(long page_size)
 {
 	pk_err_t ret;
-	int have_image;
-	int have_index;
+	gboolean have_image;
+	gboolean have_index;
 
 	if (sqlite3_open(config.keyring, &state.db)) {
 		pk_log(LOG_ERROR, "Couldn't open keyring %s: %s",
@@ -372,8 +373,8 @@ static pk_err_t open_cachedir(long page_size)
 	if (ret)
 		return ret;
 
-	have_image=is_file(config.cache_file);
-	have_index=is_file(config.cache_index);
+	have_image=g_file_test(config.cache_file, G_FILE_TEST_IS_REGULAR);
+	have_index=g_file_test(config.cache_index, G_FILE_TEST_IS_REGULAR);
 	if (have_image && have_index) {
 		ret=attach(state.db, "cache", config.cache_index);
 		if (ret)
