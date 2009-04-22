@@ -298,7 +298,6 @@ pk_err_t cleanup_action(sqlite3 *db, const char *sql, enum pk_log_type logtype,
 #define FILE_LOCK_READ     0
 #define FILE_LOCK_WRITE 0x01
 #define FILE_LOCK_WAIT  0x02
-int at_eof(int fd);
 pk_err_t parseuint(unsigned *out, const char *in, int base);
 enum cryptotype parse_crypto(const char *desc);
 enum compresstype parse_compress(const char *desc);

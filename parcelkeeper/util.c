@@ -32,16 +32,6 @@
 
 #define UUID_STR_LEN 36  /* not including trailing NUL */
 
-int at_eof(int fd)
-{
-	off_t cur=lseek(fd, 0, SEEK_CUR);
-	if (lseek(fd, 0, SEEK_END) != cur) {
-		lseek(fd, cur, SEEK_SET);
-		return 0;
-	}
-	return 1;
-}
-
 pk_err_t parseuint(unsigned *out, const char *in, int base)
 {
 	unsigned long val;
