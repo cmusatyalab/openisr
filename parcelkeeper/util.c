@@ -108,46 +108,36 @@ int compress_is_valid(enum compresstype type)
 	return (parcel.required_compress & (1 << type));
 }
 
-pk_err_t read_file(const char *path, char *buf, int *bufsize)
+pk_err_t read_file(const char *path, gchar **buf, gsize *len)
 {
-	int fd;
-	int count;
-	pk_err_t ret=PK_SUCCESS;
+	GError *err=NULL;
+	pk_err_t ret;
 
-	fd=open(path, O_RDONLY);
-	if (fd == -1) {
-		switch (errno) {
-		case ENOTDIR:
-		case ENOENT:
-			return PK_NOTFOUND;
-		case ENOMEM:
-			return PK_NOMEM;
-		default:
-			return PK_IOERR;
-		}
-	}
-	count=read(fd, buf, *bufsize);
-	if (count == -1)
+	if (g_file_get_contents(path, buf, len, &err))
+		return PK_SUCCESS;
+	switch (err->code) {
+	case G_FILE_ERROR_NOENT:
+		ret=PK_NOTFOUND;
+		break;
+	case G_FILE_ERROR_NOMEM:
+		ret=PK_NOMEM;
+		break;
+	default:
 		ret=PK_IOERR;
-	else if (count == *bufsize && !at_eof(fd))
-		ret=PK_OVERFLOW;
-	else
-		*bufsize=count;
-	close(fd);
+		break;
+	}
+	g_error_free(err);
 	return ret;
 }
 
-/* Read a file consisting of a newline-terminated string, and return the string
-   without the newline */
-pk_err_t read_sysfs_file(const char *path, char *buf, int bufsize)
+/* Read a file containing a string, strip trailing whitespace, and return the
+   rest */
+pk_err_t read_sysfs_file(const char *path, gchar **buf)
 {
-	pk_err_t ret=read_file(path, buf, &bufsize);
+	pk_err_t ret=read_file(path, buf, NULL);
 	if (ret)
 		return ret;
-	while (--bufsize >= 0 && buf[bufsize] != '\n');
-	if (bufsize < 0)
-		return PK_BADFORMAT;
-	buf[bufsize]=0;
+	g_strchomp(*buf);
 	return PK_SUCCESS;
 }
 

@@ -305,8 +305,8 @@ enum compresstype parse_compress(const char *desc);
 unsigned crypto_hashlen(enum cryptotype type);
 int crypto_is_valid(enum cryptotype type);
 int compress_is_valid(enum compresstype type);
-pk_err_t read_file(const char *path, char *buf, int *bufsize);
-pk_err_t read_sysfs_file(const char *path, char *buf, int bufsize);
+pk_err_t read_file(const char *path, gchar **buf, gsize *len);
+pk_err_t read_sysfs_file(const char *path, gchar **buf);
 char *pk_strerror(pk_err_t err);
 int set_signal_handler(int sig, void (*handler)(int sig));
 pk_err_t setup_signal_handlers(void (*caught_handler)(int sig),

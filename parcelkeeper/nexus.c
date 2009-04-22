@@ -146,8 +146,8 @@ pk_err_t nexus_init(void)
 	struct nexus_setup setup;
 	pk_err_t ret;
 	unsigned u;
-	char revision[64];
-	char protocol[8];
+	gchar *revision;
+	gchar *protocol;
 	unsigned protocol_i;
 	struct utsname utsname;
 
@@ -164,28 +164,29 @@ pk_err_t nexus_init(void)
 		pk_log(LOG_ERROR, "kernel module not loaded");
 		return PK_NOTFOUND;
 	}
-	if (read_sysfs_file("/sys/class/openisr/version", protocol,
-				sizeof(protocol))) {
+	if (read_sysfs_file("/sys/class/openisr/version", &protocol)) {
 		pk_log(LOG_ERROR, "can't get Nexus protocol version");
 		return PK_PROTOFAIL;
 	}
 	if (sscanf(protocol, "%u", &protocol_i) != 1) {
 		pk_log(LOG_ERROR, "can't parse protocol version");
+		g_free(protocol);
 		return PK_PROTOFAIL;
 	}
+	g_free(protocol);
 	if (protocol_i != MY_INTERFACE_VERSION) {
 		pk_log(LOG_ERROR, "protocol mismatch: expected version "
 					"%u, got version %u",
 					MY_INTERFACE_VERSION, protocol_i);
 		return PK_PROTOFAIL;
 	}
-	if (read_sysfs_file("/sys/class/openisr/revision", revision,
-				sizeof(revision))) {
+	if (read_sysfs_file("/sys/class/openisr/revision", &revision)) {
 		pk_log(LOG_ERROR, "can't get Nexus revision");
 		return PK_PROTOFAIL;
 	}
 	pk_log(LOG_INFO, "Driver protocol %u, revision %s", protocol_i,
 				revision);
+	g_free(revision);
 
 	/* Log kernel version */
 	if (uname(&utsname))
@@ -288,14 +289,15 @@ pk_err_t nexus_init(void)
 static void log_sysfs_value(const char *attr)
 {
 	gchar *fname;
-	char buf[32];
+	gchar *data;
 
 	fname = g_strdup_printf("/sys/class/openisr/openisr%c/%s",
 				'a' + state.bdev_index, attr);
-	if (read_sysfs_file(fname, buf, sizeof(buf))) {
+	if (read_sysfs_file(fname, &data)) {
 		pk_log(LOG_STATS, "%s: unknown", attr);
 	} else {
-		pk_log(LOG_STATS, "%s: %s", attr, buf);
+		pk_log(LOG_STATS, "%s: %s", attr, data);
+		g_free(data);
 	}
 	g_free(fname);
 }
