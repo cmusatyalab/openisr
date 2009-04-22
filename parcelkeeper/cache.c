@@ -460,30 +460,27 @@ bad:
 
 static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 {
-	void *buf=malloc(parcel.chunksize);
-	char *ftag;
+	void *buf;
+	gchar *ftag;
 	unsigned len;
 	pk_err_t ret;
 	ssize_t count;
 
-	if (buf == NULL) {
-		pk_log(LOG_ERROR, "malloc failure");
-		return PK_NOMEM;
-	}
+	buf = g_malloc(parcel.chunksize);
 	if (hoard_get_chunk(tag, buf, &len)) {
 		ftag=format_tag(tag, parcel.hashlen);
 		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
-		free(ftag);
+		g_free(ftag);
 		ret=transport_fetch_chunk(buf, chunk, tag, &len);
 		if (ret) {
-			free(buf);
+			g_free(buf);
 			return ret;
 		}
 	} else {
 		pk_log(LOG_CHUNK, "Fetched chunk %u from hoard cache", chunk);
 	}
 	count=pwrite(state.cache_fd, buf, len, cache_chunk_to_offset(chunk));
-	free(buf);
+	g_free(buf);
 	if (count != (int)len) {
 		pk_log(LOG_ERROR, "Couldn't write chunk %u to backing store",
 					chunk);

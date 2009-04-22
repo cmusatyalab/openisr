@@ -465,15 +465,13 @@ pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
 	return PK_SUCCESS;
 }
 
-char *format_tag(const void *tag, unsigned len)
+gchar *format_tag(const void *tag, unsigned len)
 {
-	char *buf;
+	gchar *buf;
 	const unsigned char *tbuf=tag;
 	unsigned u;
 
-	buf=malloc(2 * len + 1);
-	if (buf == NULL)
-		return NULL;
+	buf=g_malloc(2 * len + 1);
 	for (u=0; u<len; u++)
 		sprintf(buf + 2 * u, "%.2x", tbuf[u]);
 	return buf;
@@ -481,23 +479,17 @@ char *format_tag(const void *tag, unsigned len)
 
 void log_tag_mismatch(const void *expected, const void *found, unsigned len)
 {
-	char *fmt_expected;
-	char *fmt_found;
+	gchar *fmt_expected;
+	gchar *fmt_found;
 
 	fmt_expected=format_tag(expected, len);
 	fmt_found=format_tag(found, len);
-	if (fmt_expected != NULL && fmt_found != NULL)
-		pk_log(LOG_WARNING, "Expected %s, found %s", fmt_expected,
-					fmt_found);
-	else
-		pk_log(LOG_ERROR, "malloc failure");
-	if (fmt_expected)
-		free(fmt_expected);
-	if (fmt_found)
-		free(fmt_found);
+	pk_log(LOG_WARNING, "Expected %s, found %s", fmt_expected, fmt_found);
+	g_free(fmt_expected);
+	g_free(fmt_found);
 }
 
-pk_err_t canonicalize_uuid(const char *in, char **out)
+pk_err_t canonicalize_uuid(const char *in, gchar **out)
 {
 	uuid_t uuid;
 
@@ -506,7 +498,7 @@ pk_err_t canonicalize_uuid(const char *in, char **out)
 		return PK_INVALID;
 	}
 	if (out != NULL) {
-		*out=malloc(UUID_STR_LEN + 1);
+		*out=g_malloc(UUID_STR_LEN + 1);
 		uuid_unparse_lower(uuid, *out);
 	}
 	return PK_SUCCESS;

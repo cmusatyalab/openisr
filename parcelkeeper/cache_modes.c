@@ -54,7 +54,7 @@ static pk_err_t make_upload_dirs(void)
 int copy_for_upload(void)
 {
 	struct query *qry;
-	char *buf;
+	void *buf;
 	unsigned chunk;
 	void *tag;
 	unsigned taglen;
@@ -89,18 +89,14 @@ int copy_for_upload(void)
 	printf("Vacuuming keyring...\n");
 	if (vacuum(state.db))
 		return 1;
-	buf=malloc(parcel.chunksize);
-	if (buf == NULL) {
-		pk_log(LOG_ERROR, "malloc failed");
-		return 1;
-	}
+	buf=g_malloc(parcel.chunksize);
 
 	printf("Collecting modified disk state...\n");
 again:
 	modified_chunks=0;
 	modified_bytes=0;
 	if (begin(state.db)) {
-		free(buf);
+		g_free(buf);
 		return 1;
 	}
 	if (query(NULL, state.db, "CREATE TEMP TABLE to_upload AS "
@@ -198,7 +194,7 @@ bad:
 	rollback(state.db);
 	if (query_retry())
 		goto again;
-	free(buf);
+	g_free(buf);
 	if (ret == 0)
 		pk_log(LOG_STATS, "Copied %u modified chunks, %llu bytes",
 					modified_chunks,
@@ -311,11 +307,7 @@ static pk_err_t validate_cachefile(void)
 	pk_err_t ret;
 	pk_err_t ret2;
 
-	buf=malloc(parcel.chunksize);
-	if (buf == NULL) {
-		pk_log(LOG_ERROR, "malloc failed");
-		return PK_NOMEM;
-	}
+	buf=g_malloc(parcel.chunksize);
 
 again:
 	processed_bytes=0;
@@ -422,14 +414,14 @@ again:
 		ret=ret2;
 		goto bad;
 	}
-	free(buf);
+	g_free(buf);
 	return ret;
 
 bad:
 	rollback(state.db);
 	if (query_retry())
 		goto again;
-	free(buf);
+	g_free(buf);
 	return ret;
 }
 

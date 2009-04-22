@@ -46,19 +46,14 @@ static void transport_cleanup_conn(struct pk_connection *conn)
 {
 	if (conn->curl)
 		curl_easy_cleanup(conn->curl);
-	free(conn);
+	g_free(conn);
 }
 
 static pk_err_t transport_init_conn(struct pk_connection **result)
 {
 	struct pk_connection *conn;
 
-	conn=malloc(sizeof(*conn));
-	if (conn == NULL) {
-		pk_log(LOG_ERROR, "malloc failure allocating connection");
-		goto bad;
-	}
-	memset(conn, 0, sizeof(*conn));
+	conn=g_new0(struct pk_connection, 1);
 	conn->curl=curl_easy_init();
 	if (conn->curl == NULL) {
 		pk_log(LOG_ERROR, "Couldn't initialize CURL handle");

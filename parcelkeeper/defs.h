@@ -132,7 +132,7 @@ struct pk_config {
 	/* miscellaneous parameters */
 	enum compresstype compress;
 	unsigned minsize;  /* MB */
-	char *uuid;
+	gchar *uuid;
 	unsigned nexus_cache; /* MB */
 };
 
@@ -143,7 +143,7 @@ struct pk_parcel {
 	unsigned chunksize;
 	unsigned chunks_per_dir;
 	unsigned hashlen;
-	char *uuid;
+	gchar *uuid;
 	char *server;
 	char *user;
 	char *parcel;
@@ -325,8 +325,8 @@ void remove_pidfile(void);
 gchar *form_chunk_path(const char *prefix, unsigned chunk);
 pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
 			unsigned len);
-char *format_tag(const void *tag, unsigned len);
+gchar *format_tag(const void *tag, unsigned len);
 void log_tag_mismatch(const void *expected, const void *found, unsigned len);
-pk_err_t canonicalize_uuid(const char *in, char **out);
+pk_err_t canonicalize_uuid(const char *in, gchar **out);
 
 #endif

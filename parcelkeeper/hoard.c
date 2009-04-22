@@ -358,21 +358,21 @@ static pk_err_t allocate_slot(int *offset)
 
 static pk_err_t add_chunk_reference(const void *tag)
 {
-	char *ftag;
+	gchar *ftag;
 
 	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO refs "
 				"(parcel, tag) VALUES (?, ?)", "db",
 				state.hoard_ident, tag, parcel.hashlen)) {
 		ftag=format_tag(tag, parcel.hashlen);
 		pk_log_sqlerr("Couldn't add chunk reference for tag %s", ftag);
-		free(ftag);
+		g_free(ftag);
 		return PK_IOERR;
 	}
 	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1 "
 				" WHERE tag == ?", "b", tag, parcel.hashlen)) {
 		ftag=format_tag(tag, parcel.hashlen);
 		pk_log_sqlerr("Couldn't set referenced flag for tag %s", ftag);
-		free(ftag);
+		g_free(ftag);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -399,7 +399,7 @@ static pk_err_t _hoard_invalidate_chunk(int offset, const void *tag,
 		pk_log(LOG_ERROR, "Attempted to invalidate tag %s at "
 					"offset %d, but it does not exist "
 					"(harmless)", ftag, offset);
-		free(ftag);
+		g_free(ftag);
 		return PK_SUCCESS;
 	} else if (!query_has_row()) {
 		pk_log_sqlerr("Could not query chunk list");
@@ -420,7 +420,7 @@ static pk_err_t _hoard_invalidate_chunk(int offset, const void *tag,
 		ftag=format_tag(tag, taglen);
 		pk_log_sqlerr("Couldn't invalidate references to tag %s",
 					ftag);
-		free(ftag);
+		g_free(ftag);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;

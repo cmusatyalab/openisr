@@ -101,11 +101,7 @@ int hoard(void)
 		return 1;
 	}
 
-	buf=malloc(parcel.chunksize);
-	if (buf == NULL) {
-		pk_log(LOG_ERROR, "malloc failure");
-		return 1;
-	}
+	buf=g_malloc(parcel.chunksize);
 
 again:
 	for (query(&qry, state.db, "SELECT chunk, tag FROM temp.to_hoard",
@@ -147,7 +143,7 @@ out:
 		goto again;
 	if (query(NULL, state.db, "DROP TABLE temp.to_hoard", NULL))
 		pk_log_sqlerr("Couldn't drop table temp.to_hoard");
-	free(buf);
+	g_free(buf);
 	return ret;
 }
 
