@@ -347,22 +347,21 @@ static int progress_handler(void *db)
 
 static pk_err_t sql_setup_db(sqlite3 *db, const char *name)
 {
-	char *str;
+	gchar *str;
 
 	/* SQLite won't let us use a prepared statement parameter for the
 	   database name. */
-	if (asprintf(&str, "PRAGMA %s.synchronous = OFF", name) == -1)
-		return PK_NOMEM;
+	str = g_strdup_printf("PRAGMA %s.synchronous = OFF", name);
 again:
 	if (query(NULL, db, str, NULL)) {
 		if (query_retry())
 			goto again;
-		free(str);
+		g_free(str);
 		pk_log_sqlerr("Couldn't set synchronous pragma for "
 					"%s database", name);
 		return PK_CALLFAIL;
 	}
-	free(str);
+	g_free(str);
 	return PK_SUCCESS;
 }
 

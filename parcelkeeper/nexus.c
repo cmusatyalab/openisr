@@ -25,7 +25,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
-#include <glib.h>
 #include <linux/loop.h>
 #include "nexus.h"
 #include "defs.h"
@@ -96,10 +95,7 @@ static pk_err_t loop_bind(void) {
 	int fd;
 
 	for (i=0 ;; i++) {
-		if (asprintf(&state.loopdev_name, "/dev/loop%d", i) == -1) {
-			pk_log(LOG_ERROR, "malloc failure opening loop device");
-			continue;
-		}
+		state.loopdev_name = g_strdup_printf("/dev/loop%d", i);
 		fd=open(state.loopdev_name, O_RDWR);
 		if (fd == -1) {
 			pk_log(LOG_ERROR, "Couldn't open loop device");
@@ -138,7 +134,7 @@ static pk_err_t loop_bind(void) {
 			break;
 		}
 		close(fd);
-		free(state.loopdev_name);
+		g_free(state.loopdev_name);
 	}
 	state.loopdev_fd=fd;
 	pk_log(LOG_INFO, "Bound to loop device %s", state.loopdev_name);
@@ -291,20 +287,17 @@ pk_err_t nexus_init(void)
 
 static void log_sysfs_value(const char *attr)
 {
-	char *fname;
+	gchar *fname;
 	char buf[32];
 
-	if (asprintf(&fname, "/sys/class/openisr/openisr%c/%s",
-				'a' + state.bdev_index, attr) == -1) {
-		pk_log(LOG_ERROR, "malloc failure");
-		return;
-	}
+	fname = g_strdup_printf("/sys/class/openisr/openisr%c/%s",
+				'a' + state.bdev_index, attr);
 	if (read_sysfs_file(fname, buf, sizeof(buf))) {
 		pk_log(LOG_STATS, "%s: unknown", attr);
 	} else {
 		pk_log(LOG_STATS, "%s: %s", attr, buf);
 	}
-	free(fname);
+	g_free(fname);
 }
 
 void nexus_shutdown(void)

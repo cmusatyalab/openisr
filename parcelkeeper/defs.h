@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <sqlite3.h>
+#include <glib.h>
 
 typedef enum pk_err {
 	PK_SUCCESS=0,
@@ -107,18 +108,18 @@ struct pk_config {
 
 	/* top-level parcel directory and its contents */
 	char *parcel_dir;
-	char *parcel_cfg;
-	char *keyring;
-	char *prev_keyring;
-	char *cache_file;
-	char *cache_index;
-	char *lockfile;
-	char *pidfile;
+	gchar *parcel_cfg;
+	gchar *keyring;
+	gchar *prev_keyring;
+	gchar *cache_file;
+	gchar *cache_index;
+	gchar *lockfile;
+	gchar *pidfile;
 
 	/* hoard cache and its contents */
 	char *hoard_dir;
-	char *hoard_file;
-	char *hoard_index;
+	gchar *hoard_file;
+	gchar *hoard_index;
 
 	/* upload directory */
 	char *dest_dir;
@@ -146,7 +147,7 @@ struct pk_parcel {
 	char *server;
 	char *user;
 	char *parcel;
-	char *master;
+	gchar *master;
 };
 
 struct pk_state {
@@ -155,11 +156,11 @@ struct pk_state {
 	int lock_fd;
 	int cache_fd;
 	int hoard_fd;
-	char *loopdev_name;
+	gchar *loopdev_name;
 	int loopdev_fd;
 	int chardev_fd;
 	int signal_fds[2];
-	char *shm_name;
+	gchar *shm_name;
 	unsigned char *shm_base;
 	unsigned shm_len;
 	struct pk_connection *conn;
@@ -321,7 +322,7 @@ pk_err_t acquire_lockfile(void);
 void release_lockfile(void);
 pk_err_t create_pidfile(void);
 void remove_pidfile(void);
-char *form_chunk_path(const char *prefix, unsigned chunk);
+gchar *form_chunk_path(const char *prefix, unsigned chunk);
 pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
 			unsigned len);
 char *format_tag(const void *tag, unsigned len);

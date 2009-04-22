@@ -431,15 +431,12 @@ pk_err_t fork_and_wait(int *status_fd)
 	return PK_SUCCESS;
 }
 
-char *form_chunk_path(const char *prefix, unsigned chunk)
+gchar *form_chunk_path(const char *prefix, unsigned chunk)
 {
-	char *ret;
 	unsigned dir = chunk / parcel.chunks_per_dir;
 	unsigned file = chunk % parcel.chunks_per_dir;
 
-	if (asprintf(&ret, "%s/%.4u/%.4u", prefix, dir, file) == -1)
-		return NULL;
-	return ret;
+	return g_strdup_printf("%s/%.4u/%.4u", prefix, dir, file);
 }
 
 pk_err_t digest(enum cryptotype crypto, void *out, const void *in,

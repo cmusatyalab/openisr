@@ -25,7 +25,6 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <errno.h>
-#include <glib.h>
 #include "defs.h"
 
 #define CA_MAGIC 0x51528038
@@ -264,11 +263,7 @@ static pk_err_t shm_init(void)
 	pk_err_t ret;
 
 	state.shm_len = parcel.chunks;
-	if (asprintf(&state.shm_name, "/openisr-chunkmap-%s", parcel.uuid)
-					== -1) {
-		pk_log(LOG_ERROR, "malloc failed");
-		return PK_NOMEM;
-	}
+	state.shm_name = g_strdup_printf("/openisr-chunkmap-%s", parcel.uuid);
 	/* If there's a segment by that name, it's leftover and should be
 	   killed.  (Or else we have a UUID collision, which will prevent
 	   Nexus registration from succeeding in any case.)  This is racy
@@ -338,7 +333,7 @@ bad_map:
 bad_truncate:
 	shm_unlink(state.shm_name);
 bad_open:
-	free(state.shm_name);
+	g_free(state.shm_name);
 	return ret;
 }
 
@@ -347,7 +342,7 @@ void cache_shutdown(void)
 	if (state.shm_base) {
 		munmap(state.shm_base, state.shm_len);
 		shm_unlink(state.shm_name);
-		free(state.shm_name);
+		g_free(state.shm_name);
 	}
 	if (state.cache_fd)
 		close(state.cache_fd);

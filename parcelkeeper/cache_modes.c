@@ -22,12 +22,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
-#include <glib.h>
 #include "defs.h"
 
 static pk_err_t make_upload_dirs(void)
 {
-	char *path;
+	gchar *path;
 	unsigned dir;
 	unsigned numdirs;
 
@@ -40,17 +39,14 @@ static pk_err_t make_upload_dirs(void)
 	numdirs = (parcel.chunks + parcel.chunks_per_dir - 1) /
 				parcel.chunks_per_dir;
 	for (dir=0; dir < numdirs; dir++) {
-		if (asprintf(&path, "%s/%.4d", config.dest_dir, dir) == -1) {
-			pk_log(LOG_ERROR, "malloc failure");
-			return PK_NOMEM;
-		}
+		path = g_strdup_printf("%s/%.4d", config.dest_dir, dir);
 		if (!g_file_test(path, G_FILE_TEST_IS_DIR) &&
 					mkdir(path, 0700)) {
 			pk_log(LOG_ERROR, "Unable to make directory %s", path);
 			free(path);
 			return PK_IOERR;
 		}
-		free(path);
+		g_free(path);
 	}
 	return PK_SUCCESS;
 }
@@ -64,7 +60,7 @@ int copy_for_upload(void)
 	unsigned taglen;
 	unsigned length;
 	char calctag[parcel.hashlen];
-	char *path;
+	gchar *path;
 	int fd;
 	unsigned modified_chunks;
 	off64_t modified_bytes;
@@ -169,29 +165,25 @@ again:
 			goto damaged;
 		}
 		path=form_chunk_path(config.dest_dir, chunk);
-		if (path == NULL) {
-			pk_log(LOG_ERROR, "malloc failure");
-			goto out;
-		}
 		fd=open(path, O_WRONLY|O_CREAT|O_TRUNC, 0600);
 		if (fd == -1) {
 			pk_log(LOG_ERROR, "Couldn't open chunk file %s", path);
-			free(path);
+			g_free(path);
 			goto out;
 		}
 		if (write(fd, buf, length) != (int)length) {
 			pk_log(LOG_ERROR, "Couldn't write chunk file %s",
 						path);
-			free(path);
+			g_free(path);
 			goto out;
 		}
 		if (close(fd) && errno != EINTR) {
 			pk_log(LOG_ERROR, "Couldn't write chunk file %s",
 						path);
-			free(path);
+			g_free(path);
 			goto out;
 		}
-		free(path);
+		g_free(path);
 		hoard_put_chunk(tag, buf, length);
 		modified_chunks++;
 		modified_bytes += length;

@@ -210,11 +210,8 @@ pk_err_t parse_parcel_cfg(void)
 	fclose(fp);
 	if (!pc_have_options())
 		return PK_IOERR;
-	if (asprintf(&parcel.master, "%s/%s/%s/last/hdk", raw_master,
-					parcel.user, parcel.parcel) == -1) {
-		pk_log(LOG_ERROR, "malloc failure");
-		return PK_NOMEM;
-	}
+	parcel.master = g_strdup_printf("%s/%s/%s/last/hdk", raw_master,
+					parcel.user, parcel.parcel);
 	free(raw_master);
 	return PK_SUCCESS;
 

@@ -120,19 +120,15 @@ void transport_shutdown(void)
 static pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
 {
 	struct pk_connection *conn=state.conn;
-	char *url;
+	gchar *url;
 	pk_err_t ret;
 	CURLcode err;
 
 	url=form_chunk_path(parcel.master, chunk);
-	if (url == NULL) {
-		pk_log(LOG_ERROR, "malloc failure");
-		return PK_NOMEM;
-	}
 	pk_log(LOG_TRANSPORT, "Fetching %s", url);
 	if (curl_easy_setopt(conn->curl, CURLOPT_URL, url)) {
 		pk_log(LOG_ERROR, "Couldn't set connection URL");
-		free(url);
+		g_free(url);
 		return PK_CALLFAIL;
 	}
 	conn->buf=buf;
@@ -160,7 +156,7 @@ static pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
 		ret=PK_IOERR;
 		break;
 	}
-	free(url);
+	g_free(url);
 	return ret;
 }
 

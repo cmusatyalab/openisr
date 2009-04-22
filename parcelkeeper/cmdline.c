@@ -18,7 +18,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <glib.h>
 #include "defs.h"
 
 #define MAXPARAMS 1
@@ -377,11 +376,10 @@ static void check_dir(const char *dir)
 		PARSE_ERROR("%s is not a valid directory", dir);
 }
 
-static char *filepath(const char *dir, const char *file, int must_exist)
+static gchar *filepath(const char *dir, const char *file, int must_exist)
 {
-	char *ret;
-	if (asprintf(&ret, "%s/%s", dir, file) == -1)
-		PARSE_ERROR("malloc failure");  /* XXX? */
+	gchar *ret;
+	ret = g_strdup_printf("%s/%s", dir, file);
 	if (must_exist && !g_file_test(ret, G_FILE_TEST_IS_REGULAR))
 		PARSE_ERROR("%s does not exist", ret);
 	return ret;

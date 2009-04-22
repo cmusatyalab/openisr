@@ -21,7 +21,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <glib.h>
 #include "defs.h"
 
 #define HOARD_INDEX_VERSION 7

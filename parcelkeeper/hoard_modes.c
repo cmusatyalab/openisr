@@ -285,7 +285,7 @@ int rmhoard(void)
 	const char *server;
 	const char *user;
 	const char *name;
-	char *desc;
+	gchar *desc;
 	int parcel;
 	int removed;
 
@@ -305,11 +305,7 @@ again:
 	}
 	query_row(qry, "dsss", &parcel, &server, &user, &name);
 	/* server, user, and name expire when we free the query */
-	if (asprintf(&desc, "%s/%s/%s", server, user, name) == -1) {
-		query_free(qry);
-		pk_log(LOG_ERROR, "malloc failure");
-		goto bad;
-	}
+	desc = g_strdup_printf("%s/%s/%s", server, user, name);
 	query_free(qry);
 
 	query(&qry, state.db, "SELECT count(*) FROM "
@@ -317,7 +313,7 @@ again:
 				"HAVING parcel == ? AND count(*) == 1)", "d",
 				parcel);
 	if (!query_has_row()) {
-		free(desc);
+		g_free(desc);
 		pk_log_sqlerr("Couldn't enumerate unique parcel chunks");
 		goto bad;
 	}
@@ -325,7 +321,7 @@ again:
 	query_free(qry);
 
 	pk_log(LOG_INFO, "Removing parcel %s from hoard cache...", desc);
-	free(desc);
+	g_free(desc);
 	if (query(NULL, state.db, "UPDATE hoard.chunks SET referenced = 0 "
 				"WHERE tag IN "
 				"(SELECT tag FROM hoard.refs GROUP BY tag "
