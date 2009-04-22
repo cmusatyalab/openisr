@@ -69,7 +69,7 @@ struct pk_mode {
 	char *desc;
 };
 
-static struct pk_option pk_options[] = {
+static const struct pk_option pk_options[] = {
 	{"parcel",         OPT_PARCEL,         {"parcel_dir"}},
 	{"hoard",          OPT_HOARD,          {"hoard_dir"}},
 	{"uuid",           OPT_UUID,           {"uuid"}},
@@ -204,7 +204,7 @@ mode(VERSION) = {
 #define VERSION_flags		0
 
 #define sym(str) MODE_ ## str, str ## _flags, str ## _opts
-static struct pk_mode pk_modes[] = {
+static const struct pk_mode pk_modes[] = {
 	{"run",         sym(RUN),        "Bind and service a virtual disk"},
 	{"upload",      sym(UPLOAD),     "Split a local cache into individual chunks for upload"},
 	{"hoard",       sym(HOARD),      "Download all chunks into hoard cache"},
@@ -222,11 +222,11 @@ static struct pk_mode pk_modes[] = {
 
 static char *optparams[MAXPARAMS];
 static char *progname;
-static struct pk_mode *curmode;
+static const struct pk_mode *curmode;
 
-static struct pk_option *get_option(enum option opt)
+static const struct pk_option *get_option(enum option opt)
 {
-	struct pk_option *curopt;
+	const struct pk_option *curopt;
 
 	for (curopt=pk_options; curopt->name != NULL; curopt++) {
 		if (curopt->opt == opt)
@@ -236,12 +236,12 @@ static struct pk_option *get_option(enum option opt)
 	return NULL;
 }
 
-static void usage(struct pk_mode *mode) __attribute__ ((noreturn));
-static void usage(struct pk_mode *mode)
+static void usage(const struct pk_mode *mode) __attribute__ ((noreturn));
+static void usage(const struct pk_mode *mode)
 {
-	struct pk_mode *mtmp;
+	const struct pk_mode *mtmp;
 	struct pk_option_record *rtmp;
-	struct pk_option *otmp;
+	const struct pk_option *otmp;
 	char *str_start=NULL;
 	char *str_end=NULL;
 	int i;
@@ -311,7 +311,7 @@ static enum option pk_getopt(int argc, char *argv[])
 {
 	static int optind=2;  /* ignore argv[0] and argv[1] */
 	struct pk_option_record *opts;
-	struct pk_option *curopt;
+	const struct pk_option *curopt;
 	char *arg;
 	int i;
 
@@ -359,9 +359,9 @@ static enum option pk_getopt(int argc, char *argv[])
 	PARSE_ERROR("unknown option --%s", arg);
 }
 
-static struct pk_mode *parse_mode(const char *name)
+static const struct pk_mode *parse_mode(const char *name)
 {
-	struct pk_mode *cur;
+	const struct pk_mode *cur;
 
 	for (cur=pk_modes; cur->name != NULL; cur++) {
 		if (!strcmp(name, cur->name))
@@ -387,7 +387,7 @@ static gchar *filepath(const char *dir, const char *file, int must_exist)
 
 enum mode parse_cmdline(int argc, char **argv)
 {
-	struct pk_mode *helpmode=NULL;
+	const struct pk_mode *helpmode=NULL;
 	enum option opt;
 	char *cp;
 
