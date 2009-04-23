@@ -144,9 +144,9 @@ struct pk_parcel {
 	unsigned chunks_per_dir;
 	unsigned hashlen;
 	gchar *uuid;
-	char *server;
-	char *user;
-	char *parcel;
+	gchar *server;
+	gchar *user;
+	gchar *parcel;
 	gchar *master;
 };
 

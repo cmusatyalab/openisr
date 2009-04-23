@@ -159,16 +159,16 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 			return PK_INVALID;
 		break;
 	case PC_SERVER:
-		parcel.server=strdup(value);
+		parcel.server=g_strdup(value);
 		break;
 	case PC_USER:
-		parcel.user=strdup(value);
+		parcel.user=g_strdup(value);
 		break;
 	case PC_PARCEL:
-		parcel.parcel=strdup(value);
+		parcel.parcel=g_strdup(value);
 		break;
 	case PC_RPATH:
-		raw_master=strdup(value);
+		raw_master=g_strdup(value);
 		break;
 	case PC_DUPLICATE:
 		return PK_INVALID;
@@ -212,7 +212,7 @@ pk_err_t parse_parcel_cfg(void)
 		return PK_IOERR;
 	parcel.master = g_strdup_printf("%s/%s/%s/last/hdk", raw_master,
 					parcel.user, parcel.parcel);
-	free(raw_master);
+	g_free(raw_master);
 	return PK_SUCCESS;
 
 bad:
