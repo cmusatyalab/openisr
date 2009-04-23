@@ -62,7 +62,7 @@ struct pk_mode {
 	char *name;
 	enum mode type;
 	unsigned flags;
-	struct pk_option_record *opts;
+	const struct pk_option_record *opts;
 	char *desc;
 };
 
@@ -92,7 +92,7 @@ struct pk_cmdline_parse_ctx {
 	unsigned optseen[END_OPTS];
 };
 
-#define mode(sym) static struct pk_option_record sym ## _opts[]
+#define mode(sym) static const struct pk_option_record sym ## _opts[]
 
 mode(RUN) = {
 	{OPT_PARCEL,        REQUIRED},
@@ -241,7 +241,7 @@ static void usage(const struct pk_mode *mode)
 {
 	const char *progname = g_get_prgname();
 	const struct pk_mode *mtmp;
-	struct pk_option_record *rtmp;
+	const struct pk_option_record *rtmp;
 	const struct pk_option *otmp;
 	char *str_start=NULL;
 	char *str_end=NULL;
@@ -307,7 +307,7 @@ static void usage(const struct pk_mode *mode)
 static enum option pk_getopt(struct pk_cmdline_parse_ctx *ctx, int argc,
 			char *argv[])
 {
-	struct pk_option_record *opts;
+	const struct pk_option_record *opts;
 	const struct pk_option *curopt;
 	char *arg;
 
