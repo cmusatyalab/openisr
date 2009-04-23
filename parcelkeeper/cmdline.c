@@ -20,8 +20,6 @@
 #include <stdlib.h>
 #include "defs.h"
 
-#define MAXPARAMS 1
-
 enum arg_type {
 	REQUIRED,
 	OPTIONAL,
@@ -50,7 +48,7 @@ enum option {
 struct pk_option {
 	char *name;
 	enum option opt;
-	char *args[MAXPARAMS];
+	char *arg;
 	char *comment;
 };
 
@@ -70,21 +68,21 @@ struct pk_mode {
 };
 
 static const struct pk_option pk_options[] = {
-	{"parcel",         OPT_PARCEL,         {"parcel_dir"}},
-	{"hoard",          OPT_HOARD,          {"hoard_dir"}},
-	{"uuid",           OPT_UUID,           {"uuid"}},
-	{"destdir",        OPT_DESTDIR,        {"dir"}},
-	{"minsize",        OPT_MINSIZE,        {"MB"},                                                  "Don't reclaim hoarded chunks until the hoard cache reaches this size"},
-	{"nexus-cache",    OPT_NEXUS_CACHE, {"MB"},							"Size of the Nexus cache"},
-	{"compression",    OPT_COMPRESSION,    {"algorithm"},                                           "Accepted algorithms: none (default), zlib, lzf"},
-	{"log",            OPT_LOG,            {"file"}},
-	{"log-filter",     OPT_MASK_FILE,      {"comma_separated_list"},                                "Override default list of log types"},
-	{"stderr-filter",  OPT_MASK_STDERR,    {"comma_separated_list"},                                "Override default list of log types"},
-	{"foreground",     OPT_FOREGROUND,     {},                                                      "Don't run in the background"},
-	{"check",          OPT_CHECK,          {}},
-	{"full",           OPT_FULL,           {},                                                      "Perform full data-integrity check"},
-	{"splice",         OPT_SPLICE,         {},                                                      "Revert chunks that fail tag validation (requires --full)"},
-	{"mode",           OPT_MODE,           {"mode"},                                                "Print detailed usage message about the given mode"},
+	{"parcel",         OPT_PARCEL,         "parcel_dir"},
+	{"hoard",          OPT_HOARD,          "hoard_dir"},
+	{"uuid",           OPT_UUID,           "uuid"},
+	{"destdir",        OPT_DESTDIR,        "dir"},
+	{"minsize",        OPT_MINSIZE,        "MB",                       "Don't reclaim hoarded chunks until the hoard cache reaches this size"},
+	{"nexus-cache",    OPT_NEXUS_CACHE,    "MB",                       "Size of the Nexus cache"},
+	{"compression",    OPT_COMPRESSION,    "algorithm",                "Accepted algorithms: none (default), zlib, lzf"},
+	{"log",            OPT_LOG,            "file"},
+	{"log-filter",     OPT_MASK_FILE,      "comma_separated_list",     "Override default list of log types"},
+	{"stderr-filter",  OPT_MASK_STDERR,    "comma_separated_list",     "Override default list of log types"},
+	{"foreground",     OPT_FOREGROUND,     NULL,                       "Don't run in the background"},
+	{"check",          OPT_CHECK,          NULL},
+	{"full",           OPT_FULL,           NULL,                       "Perform full data-integrity check"},
+	{"splice",         OPT_SPLICE,         NULL,                       "Revert chunks that fail tag validation (requires --full)"},
+	{"mode",           OPT_MODE,           "mode",                     "Print detailed usage message about the given mode"},
 	{0}
 };
 
@@ -220,7 +218,7 @@ static const struct pk_mode pk_modes[] = {
 };
 #undef sym
 
-static char *optparams[MAXPARAMS];
+static char *optparam;
 static const struct pk_mode *curmode;
 
 static const struct pk_option *get_option(enum option opt)
@@ -244,7 +242,6 @@ static void usage(const struct pk_mode *mode)
 	const struct pk_option *otmp;
 	char *str_start=NULL;
 	char *str_end=NULL;
-	int i;
 	int have_options=0;
 
 	if (mode == NULL) {
@@ -279,11 +276,8 @@ static void usage(const struct pk_mode *mode)
 				break;
 			}
 			printf("    %s--%s", str_start, otmp->name);
-			for (i=0; i<MAXPARAMS; i++) {
-				if (otmp->args[i] == NULL)
-					break;
-				printf(" <%s>", otmp->args[i]);
-			}
+			if (otmp->arg)
+				printf(" <%s>", otmp->arg);
 			printf("%s\n", str_end);
 			if (otmp->comment != NULL)
 				printf("          %s\n", otmp->comment);
@@ -313,7 +307,6 @@ static enum option pk_getopt(int argc, char *argv[])
 	struct pk_option_record *opts;
 	const struct pk_option *curopt;
 	char *arg;
-	int i;
 
 	if (optind == argc) {
 		/* We've read the entire command line; make sure all required
@@ -338,13 +331,12 @@ static enum option pk_getopt(int argc, char *argv[])
 		if (opts->type != ANY && opts->_seen)
 			PARSE_ERROR("--%s may only be specified once", arg);
 		opts->_seen++;
-		for (i=0; i < MAXPARAMS && curopt->args[i] != NULL; i++) {
+		if (curopt->arg) {
 			if (optind == argc)
 				PARSE_ERROR("wrong number of arguments to --%s",
 							arg);
-			optparams[i]=argv[optind++];
-			if (optparams[i][0] == '-' &&
-						optparams[i][1] == '-')
+			optparam=argv[optind++];
+			if (optparam[0] == '-' && optparam[1] == '-')
 				PARSE_ERROR("wrong number of arguments to --%s",
 							arg);
 		}
@@ -402,7 +394,7 @@ enum mode parse_cmdline(int argc, char **argv)
 	while ((opt=pk_getopt(argc, argv)) != END_OPTS) {
 		switch (opt) {
 		case OPT_PARCEL:
-			config.parcel_dir=optparams[0];
+			config.parcel_dir=optparam;
 			check_dir(config.parcel_dir);
 			cp=config.parcel_dir;
 			config.parcel_cfg=filepath(cp, "parcel.cfg", 1);
@@ -416,43 +408,41 @@ enum mode parse_cmdline(int argc, char **argv)
 			config.pidfile=filepath(cp, "parcelkeeper.pid", 0);
 			break;
 		case OPT_UUID:
-			if (canonicalize_uuid(optparams[0], &config.uuid))
-				PARSE_ERROR("invalid uuid: %s", optparams[0]);
+			if (canonicalize_uuid(optparam, &config.uuid))
+				PARSE_ERROR("invalid uuid: %s", optparam);
 			break;
 		case OPT_DESTDIR:
-			config.dest_dir=optparams[0];
+			config.dest_dir=optparam;
 			break;
 		case OPT_MINSIZE:
-			if (parseuint(&config.minsize, optparams[0], 10))
+			if (parseuint(&config.minsize, optparam, 10))
 				PARSE_ERROR("invalid integer value: %s",
-							optparams[0]);
+							optparam);
 			break;
 		case OPT_COMPRESSION:
-			config.compress=parse_compress(optparams[0]);
+			config.compress=parse_compress(optparam);
 			if (config.compress == COMP_UNKNOWN)
 				PARSE_ERROR("invalid compression type: %s",
-							optparams[0]);
+							optparam);
 			break;
 		case OPT_HOARD:
-			config.hoard_dir=optparams[0];
-			config.hoard_file=filepath(optparams[0], "hoard", 0);
-			config.hoard_index=filepath(optparams[0], "hoard.idx",
-						0);
+			config.hoard_dir=optparam;
+			config.hoard_file=filepath(optparam, "hoard", 0);
+			config.hoard_index=filepath(optparam, "hoard.idx", 0);
 			break;
 		case OPT_LOG:
-			config.log_file=optparams[0];
+			config.log_file=optparam;
 			break;
 		case OPT_MASK_FILE:
-			if (logtypes_to_mask(optparams[0],
-						&config.log_file_mask))
+			if (logtypes_to_mask(optparam, &config.log_file_mask))
 				PARSE_ERROR("invalid log type list: %s",
-							optparams[0]);
+							optparam);
 			break;
 		case OPT_MASK_STDERR:
-			if (logtypes_to_mask(optparams[0],
+			if (logtypes_to_mask(optparam,
 						&config.log_stderr_mask))
 				PARSE_ERROR("invalid log type list: %s",
-							optparams[0]);
+							optparam);
 			break;
 		case OPT_FOREGROUND:
 			config.flags &= ~WANT_BACKGROUND;
@@ -470,16 +460,16 @@ enum mode parse_cmdline(int argc, char **argv)
 			config.flags |= WANT_SPLICE;
 			break;
 		case OPT_MODE:
-			helpmode=parse_mode(optparams[0]);
+			helpmode=parse_mode(optparam);
 			if (helpmode == NULL)
 				PARSE_ERROR("unknown mode %s; try \"%s help\"",
-							optparams[0],
+							optparam,
 							g_get_prgname());
 			break;
 		case OPT_NEXUS_CACHE:
-			if (parseuint(&config.nexus_cache, optparams[0], 10))
+			if (parseuint(&config.nexus_cache, optparam, 10))
 				PARSE_ERROR("invalid integer value: %s",
-							optparams[0]);
+							optparam);
 			break;
 		case END_OPTS:
 			/* Silence compiler warning */
