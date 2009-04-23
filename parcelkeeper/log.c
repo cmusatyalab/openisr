@@ -1,7 +1,7 @@
 /*
  * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
  *
- * Copyright (C) 2006-2008 Carnegie Mellon University
+ * Copyright (C) 2006-2009 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -85,26 +85,21 @@ static const char *log_prefix(enum pk_log_type type)
 /* Cannot call pk_log(), since the logger hasn't started yet */
 pk_err_t logtypes_to_mask(const char *list, unsigned *out)
 {
-	char *list_copy;
-	char *tok;
-	char *initptr;
-	char *saveptr;
+	gchar **types;
 	enum pk_log_type type;
+	int i;
 
 	*out=0;
 	if (strcmp(list, "none")) {
-		/* strtok_r() changes the string, so if we don't make a copy,
-		   we'll change the PK command line as seen by "ps" */
-		initptr=list_copy=strdup(list);
-		if (list_copy == NULL)
-			return PK_NOMEM;
-		while ((tok=strtok_r(initptr, ",", &saveptr)) != NULL) {
-			initptr=NULL;
-			if (parse_logtype(tok, &type))
+		types=g_strsplit(list, ",", 0);
+		for (i=0; types[i] != NULL; i++) {
+			if (parse_logtype(types[i], &type)) {
+				g_strfreev(types);
 				return PK_INVALID;
+			}
 			*out |= (1 << type);
 		}
-		free(list_copy);
+		g_strfreev(types);
 	}
 	return PK_SUCCESS;
 }
