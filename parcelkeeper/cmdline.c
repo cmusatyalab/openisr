@@ -383,7 +383,7 @@ static gchar *filepath(struct pk_cmdline_parse_ctx *ctx, const char *dir,
 	return ret;
 }
 
-enum mode parse_cmdline(int argc, char **argv)
+enum mode parse_cmdline(struct pk_config *conf, int argc, char **argv)
 {
 	const struct pk_mode *helpmode=NULL;
 	struct pk_cmdline_parse_ctx ctx = {0};
@@ -395,83 +395,83 @@ enum mode parse_cmdline(int argc, char **argv)
 	ctx.curmode=parse_mode(argv[0]);
 	if (ctx.curmode == NULL)
 		PARSE_ERROR(&ctx, "unknown mode %s", argv[0]);
-	config.modename=ctx.curmode->name;
-	config.flags=ctx.curmode->flags;
+	conf->modename=ctx.curmode->name;
+	conf->flags=ctx.curmode->flags;
 
 	ctx.optind=1;  /* ignore argv[0] */
 	while ((opt=pk_getopt(&ctx, argc, argv)) != END_OPTS) {
 		switch (opt) {
 		case OPT_PARCEL:
-			config.parcel_dir=ctx.optparam;
-			check_dir(&ctx, config.parcel_dir);
-			cp=config.parcel_dir;
-			config.parcel_cfg=filepath(&ctx, cp, "parcel.cfg", 1);
-			config.keyring=filepath(&ctx, cp, "keyring",
-						config.flags & WANT_CACHE);
-			config.prev_keyring=filepath(&ctx, cp, "prev-keyring",
-						config.flags & WANT_PREV);
-			config.cache_file=filepath(&ctx, cp, "disk", 0);
-			config.cache_index=filepath(&ctx, cp, "disk.idx", 0);
-			config.lockfile=filepath(&ctx, cp, "parcelkeeper.lock",
+			conf->parcel_dir=ctx.optparam;
+			check_dir(&ctx, conf->parcel_dir);
+			cp=conf->parcel_dir;
+			conf->parcel_cfg=filepath(&ctx, cp, "parcel.cfg", 1);
+			conf->keyring=filepath(&ctx, cp, "keyring",
+						conf->flags & WANT_CACHE);
+			conf->prev_keyring=filepath(&ctx, cp, "prev-keyring",
+						conf->flags & WANT_PREV);
+			conf->cache_file=filepath(&ctx, cp, "disk", 0);
+			conf->cache_index=filepath(&ctx, cp, "disk.idx", 0);
+			conf->lockfile=filepath(&ctx, cp, "parcelkeeper.lock",
 						0);
-			config.pidfile=filepath(&ctx, cp, "parcelkeeper.pid",
+			conf->pidfile=filepath(&ctx, cp, "parcelkeeper.pid",
 						0);
 			break;
 		case OPT_UUID:
-			if (canonicalize_uuid(ctx.optparam, &config.uuid))
+			if (canonicalize_uuid(ctx.optparam, &conf->uuid))
 				PARSE_ERROR(&ctx, "invalid uuid: %s",
 							ctx.optparam);
 			break;
 		case OPT_DESTDIR:
-			config.dest_dir=ctx.optparam;
+			conf->dest_dir=ctx.optparam;
 			break;
 		case OPT_MINSIZE:
-			if (parseuint(&config.minsize, ctx.optparam, 10))
+			if (parseuint(&conf->minsize, ctx.optparam, 10))
 				PARSE_ERROR(&ctx, "invalid integer value: %s",
 							ctx.optparam);
 			break;
 		case OPT_COMPRESSION:
-			config.compress=parse_compress(ctx.optparam);
-			if (config.compress == COMP_UNKNOWN)
+			conf->compress=parse_compress(ctx.optparam);
+			if (conf->compress == COMP_UNKNOWN)
 				PARSE_ERROR(&ctx, "invalid compression type: "
 							"%s", ctx.optparam);
 			break;
 		case OPT_HOARD:
-			config.hoard_dir=ctx.optparam;
-			config.hoard_file=filepath(&ctx, ctx.optparam, "hoard",
+			conf->hoard_dir=ctx.optparam;
+			conf->hoard_file=filepath(&ctx, ctx.optparam, "hoard",
 						0);
-			config.hoard_index=filepath(&ctx, ctx.optparam,
+			conf->hoard_index=filepath(&ctx, ctx.optparam,
 						"hoard.idx", 0);
 			break;
 		case OPT_LOG:
-			config.log_file=ctx.optparam;
+			conf->log_file=ctx.optparam;
 			break;
 		case OPT_MASK_FILE:
 			if (logtypes_to_mask(ctx.optparam,
-						&config.log_file_mask))
+						&conf->log_file_mask))
 				PARSE_ERROR(&ctx, "invalid log type list: %s",
 							ctx.optparam);
 			break;
 		case OPT_MASK_STDERR:
 			if (logtypes_to_mask(ctx.optparam,
-						&config.log_stderr_mask))
+						&conf->log_stderr_mask))
 				PARSE_ERROR(&ctx, "invalid log type list: %s",
 							ctx.optparam);
 			break;
 		case OPT_FOREGROUND:
-			config.flags &= ~WANT_BACKGROUND;
+			conf->flags &= ~WANT_BACKGROUND;
 			break;
 		case OPT_CHECK:
 			/* Abuse of WANT_ flags? */
-			config.flags |= WANT_CHECK;
+			conf->flags |= WANT_CHECK;
 			break;
 		case OPT_FULL:
 			/* Abuse of WANT_ flags? */
-			config.flags |= WANT_FULL_CHECK;
+			conf->flags |= WANT_FULL_CHECK;
 			break;
 		case OPT_SPLICE:
 			/* Abuse of WANT_ flags? */
-			config.flags |= WANT_SPLICE;
+			conf->flags |= WANT_SPLICE;
 			break;
 		case OPT_MODE:
 			helpmode=parse_mode(ctx.optparam);
@@ -482,7 +482,7 @@ enum mode parse_cmdline(int argc, char **argv)
 							g_get_prgname());
 			break;
 		case OPT_NEXUS_CACHE:
-			if (parseuint(&config.nexus_cache, ctx.optparam, 10))
+			if (parseuint(&conf->nexus_cache, ctx.optparam, 10))
 				PARSE_ERROR(&ctx, "invalid integer value: %s",
 							ctx.optparam);
 			break;

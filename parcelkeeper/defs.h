@@ -200,7 +200,7 @@ extern const char rcs_revision[];
 #define stringify(str) _stringify(str)
 
 /* cmdline.c */
-enum mode parse_cmdline(int argc, char **argv);
+enum mode parse_cmdline(struct pk_config *conf, int argc, char **argv);
 
 /* log.c */
 void log_start(void);
