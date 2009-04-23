@@ -221,7 +221,6 @@ static const struct pk_mode pk_modes[] = {
 #undef sym
 
 static char *optparams[MAXPARAMS];
-static char *progname;
 static const struct pk_mode *curmode;
 
 static const struct pk_option *get_option(enum option opt)
@@ -239,6 +238,7 @@ static const struct pk_option *get_option(enum option opt)
 static void usage(const struct pk_mode *mode) __attribute__ ((noreturn));
 static void usage(const struct pk_mode *mode)
 {
+	const char *progname = g_get_prgname();
 	const struct pk_mode *mtmp;
 	struct pk_option_record *rtmp;
 	const struct pk_option *otmp;
@@ -309,7 +309,7 @@ static void usage(const struct pk_mode *mode)
 */
 static enum option pk_getopt(int argc, char *argv[])
 {
-	static int optind=2;  /* ignore argv[0] and argv[1] */
+	static int optind=1;  /* ignore argv[0] */
 	struct pk_option_record *opts;
 	const struct pk_option *curopt;
 	char *arg;
@@ -391,12 +391,11 @@ enum mode parse_cmdline(int argc, char **argv)
 	enum option opt;
 	char *cp;
 
-	progname=argv[0];
-	if (argc < 2)
+	if (argc == 0)
 		usage(NULL);
-	curmode=parse_mode(argv[1]);
+	curmode=parse_mode(argv[0]);
 	if (curmode == NULL)
-		PARSE_ERROR("unknown mode %s", argv[1]);
+		PARSE_ERROR("unknown mode %s", argv[0]);
 	config.modename=curmode->name;
 	config.flags=curmode->flags;
 
@@ -475,7 +474,7 @@ enum mode parse_cmdline(int argc, char **argv)
 			if (helpmode == NULL)
 				PARSE_ERROR("unknown mode %s; try \"%s help\"",
 							optparams[0],
-							progname);
+							g_get_prgname());
 			break;
 		case OPT_NEXUS_CACHE:
 			if (parseuint(&config.nexus_cache, optparams[0], 10))

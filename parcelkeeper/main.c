@@ -35,6 +35,7 @@ static const int caught_signals[]={SIGINT, SIGTERM, SIGHUP, 0};
 
 int main(int argc, char **argv)
 {
+	gchar *progname;
 	enum mode mode;
 	int completion_fd=-1;
 	char ret=1;
@@ -54,7 +55,10 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	mode=parse_cmdline(argc, argv);
+	progname = g_path_get_basename(argv[0]);
+	g_set_prgname(progname);
+	g_free(progname);
+	mode=parse_cmdline(argc - 1, argv + 1);
 	/* Trivial modes (usage, version) have already been handled by
 	   parse_cmdline() */
 
