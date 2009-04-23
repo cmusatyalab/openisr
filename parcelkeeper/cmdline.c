@@ -86,6 +86,12 @@ static const struct pk_option pk_options[] = {
 	{0}
 };
 
+struct pk_cmdline_parse_ctx {
+	const struct pk_mode *curmode;
+	char *optparam;
+	int optind;
+};
+
 #define mode(sym) static struct pk_option_record sym ## _opts[]
 
 mode(RUN) = {
@@ -218,9 +224,6 @@ static const struct pk_mode pk_modes[] = {
 };
 #undef sym
 
-static char *optparam;
-static const struct pk_mode *curmode;
-
 static const struct pk_option *get_option(enum option opt)
 {
 	const struct pk_option *curopt;
@@ -290,9 +293,9 @@ static void usage(const struct pk_mode *mode)
 	exit(1);
 }
 
-#define PARSE_ERROR(str, args...) do { \
+#define PARSE_ERROR(ctx, str, args...) do { \
 		printf("ERROR: " str "\n\n" , ## args); \
-		usage(curmode); \
+		usage((ctx)->curmode); \
 	} while (0)
 
 /* Instead of using getopt_long() we roll our own.  getopt_long doesn't support
@@ -301,44 +304,46 @@ static void usage(const struct pk_mode *mode)
    - Checking for required or once-only options
    - Different permissible parameters depending on circumstances (mode)
 */
-static enum option pk_getopt(int argc, char *argv[])
+static enum option pk_getopt(struct pk_cmdline_parse_ctx *ctx, int argc,
+			char *argv[])
 {
-	static int optind=1;  /* ignore argv[0] */
 	struct pk_option_record *opts;
 	const struct pk_option *curopt;
 	char *arg;
 
-	if (optind == argc) {
+	if (ctx->optind == argc) {
 		/* We've read the entire command line; make sure all required
 		   arguments have been handled */
-		for (opts=curmode->opts; opts->opt != END_OPTS; opts++) {
+		for (opts=ctx->curmode->opts; opts->opt != END_OPTS; opts++) {
 			if (opts->type == REQUIRED && !opts->_seen)
-				PARSE_ERROR("missing required option --%s",
+				PARSE_ERROR(ctx, "missing required option "
+						"--%s",
 						get_option(opts->opt)->name);
 		}
 		return -1;
 	}
 
-	arg=argv[optind++];
+	arg=argv[ctx->optind++];
 	if (arg[0] != '-' || arg[1] != '-')
-		PARSE_ERROR("\"%s\" is not an option element", arg);
+		PARSE_ERROR(ctx, "\"%s\" is not an option element", arg);
 	arg += 2;
 
-	for (opts=curmode->opts; opts->opt != END_OPTS; opts++) {
+	for (opts=ctx->curmode->opts; opts->opt != END_OPTS; opts++) {
 		curopt=get_option(opts->opt);
 		if (strcmp(curopt->name, arg))
 			continue;
 		if (opts->type != ANY && opts->_seen)
-			PARSE_ERROR("--%s may only be specified once", arg);
+			PARSE_ERROR(ctx, "--%s may only be specified once",
+						arg);
 		opts->_seen++;
 		if (curopt->arg) {
 			if (optind == argc)
-				PARSE_ERROR("wrong number of arguments to --%s",
-							arg);
-			optparam=argv[optind++];
-			if (optparam[0] == '-' && optparam[1] == '-')
-				PARSE_ERROR("wrong number of arguments to --%s",
-							arg);
+				PARSE_ERROR(ctx, "wrong number of arguments "
+							"to --%s", arg);
+			ctx->optparam=argv[ctx->optind++];
+			if (ctx->optparam[0] == '-' && ctx->optparam[1] == '-')
+				PARSE_ERROR(ctx, "wrong number of arguments "
+							"to --%s", arg);
 		}
 		return opts->opt;
 	}
@@ -347,8 +352,8 @@ static enum option pk_getopt(int argc, char *argv[])
 	   different mode. */
 	for (curopt=pk_options; curopt->name != NULL; curopt++)
 		if (!strcmp(curopt->name, arg))
-			PARSE_ERROR("--%s not valid in this mode", arg);
-	PARSE_ERROR("unknown option --%s", arg);
+			PARSE_ERROR(ctx, "--%s not valid in this mode", arg);
+	PARSE_ERROR(ctx, "unknown option --%s", arg);
 }
 
 static const struct pk_mode *parse_mode(const char *name)
@@ -362,87 +367,96 @@ static const struct pk_mode *parse_mode(const char *name)
 	return NULL;
 }
 
-static void check_dir(const char *dir)
+static void check_dir(struct pk_cmdline_parse_ctx *ctx, const char *dir)
 {
 	if (!g_file_test(dir, G_FILE_TEST_IS_DIR))
-		PARSE_ERROR("%s is not a valid directory", dir);
+		PARSE_ERROR(ctx, "%s is not a valid directory", dir);
 }
 
-static gchar *filepath(const char *dir, const char *file, int must_exist)
+static gchar *filepath(struct pk_cmdline_parse_ctx *ctx, const char *dir,
+			const char *file, int must_exist)
 {
 	gchar *ret;
 	ret = g_strdup_printf("%s/%s", dir, file);
 	if (must_exist && !g_file_test(ret, G_FILE_TEST_IS_REGULAR))
-		PARSE_ERROR("%s does not exist", ret);
+		PARSE_ERROR(ctx, "%s does not exist", ret);
 	return ret;
 }
 
 enum mode parse_cmdline(int argc, char **argv)
 {
 	const struct pk_mode *helpmode=NULL;
+	struct pk_cmdline_parse_ctx ctx = {0};
 	enum option opt;
 	char *cp;
 
 	if (argc == 0)
 		usage(NULL);
-	curmode=parse_mode(argv[0]);
-	if (curmode == NULL)
-		PARSE_ERROR("unknown mode %s", argv[0]);
-	config.modename=curmode->name;
-	config.flags=curmode->flags;
+	ctx.curmode=parse_mode(argv[0]);
+	if (ctx.curmode == NULL)
+		PARSE_ERROR(&ctx, "unknown mode %s", argv[0]);
+	config.modename=ctx.curmode->name;
+	config.flags=ctx.curmode->flags;
 
-	while ((opt=pk_getopt(argc, argv)) != END_OPTS) {
+	ctx.optind=1;  /* ignore argv[0] */
+	while ((opt=pk_getopt(&ctx, argc, argv)) != END_OPTS) {
 		switch (opt) {
 		case OPT_PARCEL:
-			config.parcel_dir=optparam;
-			check_dir(config.parcel_dir);
+			config.parcel_dir=ctx.optparam;
+			check_dir(&ctx, config.parcel_dir);
 			cp=config.parcel_dir;
-			config.parcel_cfg=filepath(cp, "parcel.cfg", 1);
-			config.keyring=filepath(cp, "keyring",
+			config.parcel_cfg=filepath(&ctx, cp, "parcel.cfg", 1);
+			config.keyring=filepath(&ctx, cp, "keyring",
 						config.flags & WANT_CACHE);
-			config.prev_keyring=filepath(cp, "prev-keyring",
+			config.prev_keyring=filepath(&ctx, cp, "prev-keyring",
 						config.flags & WANT_PREV);
-			config.cache_file=filepath(cp, "disk", 0);
-			config.cache_index=filepath(cp, "disk.idx", 0);
-			config.lockfile=filepath(cp, "parcelkeeper.lock", 0);
-			config.pidfile=filepath(cp, "parcelkeeper.pid", 0);
+			config.cache_file=filepath(&ctx, cp, "disk", 0);
+			config.cache_index=filepath(&ctx, cp, "disk.idx", 0);
+			config.lockfile=filepath(&ctx, cp, "parcelkeeper.lock",
+						0);
+			config.pidfile=filepath(&ctx, cp, "parcelkeeper.pid",
+						0);
 			break;
 		case OPT_UUID:
-			if (canonicalize_uuid(optparam, &config.uuid))
-				PARSE_ERROR("invalid uuid: %s", optparam);
+			if (canonicalize_uuid(ctx.optparam, &config.uuid))
+				PARSE_ERROR(&ctx, "invalid uuid: %s",
+							ctx.optparam);
 			break;
 		case OPT_DESTDIR:
-			config.dest_dir=optparam;
+			config.dest_dir=ctx.optparam;
 			break;
 		case OPT_MINSIZE:
-			if (parseuint(&config.minsize, optparam, 10))
-				PARSE_ERROR("invalid integer value: %s",
-							optparam);
+			if (parseuint(&config.minsize, ctx.optparam, 10))
+				PARSE_ERROR(&ctx, "invalid integer value: %s",
+							ctx.optparam);
 			break;
 		case OPT_COMPRESSION:
-			config.compress=parse_compress(optparam);
+			config.compress=parse_compress(ctx.optparam);
 			if (config.compress == COMP_UNKNOWN)
-				PARSE_ERROR("invalid compression type: %s",
-							optparam);
+				PARSE_ERROR(&ctx, "invalid compression type: "
+							"%s", ctx.optparam);
 			break;
 		case OPT_HOARD:
-			config.hoard_dir=optparam;
-			config.hoard_file=filepath(optparam, "hoard", 0);
-			config.hoard_index=filepath(optparam, "hoard.idx", 0);
+			config.hoard_dir=ctx.optparam;
+			config.hoard_file=filepath(&ctx, ctx.optparam, "hoard",
+						0);
+			config.hoard_index=filepath(&ctx, ctx.optparam,
+						"hoard.idx", 0);
 			break;
 		case OPT_LOG:
-			config.log_file=optparam;
+			config.log_file=ctx.optparam;
 			break;
 		case OPT_MASK_FILE:
-			if (logtypes_to_mask(optparam, &config.log_file_mask))
-				PARSE_ERROR("invalid log type list: %s",
-							optparam);
+			if (logtypes_to_mask(ctx.optparam,
+						&config.log_file_mask))
+				PARSE_ERROR(&ctx, "invalid log type list: %s",
+							ctx.optparam);
 			break;
 		case OPT_MASK_STDERR:
-			if (logtypes_to_mask(optparam,
+			if (logtypes_to_mask(ctx.optparam,
 						&config.log_stderr_mask))
-				PARSE_ERROR("invalid log type list: %s",
-							optparam);
+				PARSE_ERROR(&ctx, "invalid log type list: %s",
+							ctx.optparam);
 			break;
 		case OPT_FOREGROUND:
 			config.flags &= ~WANT_BACKGROUND;
@@ -460,16 +474,17 @@ enum mode parse_cmdline(int argc, char **argv)
 			config.flags |= WANT_SPLICE;
 			break;
 		case OPT_MODE:
-			helpmode=parse_mode(optparam);
+			helpmode=parse_mode(ctx.optparam);
 			if (helpmode == NULL)
-				PARSE_ERROR("unknown mode %s; try \"%s help\"",
-							optparam,
+				PARSE_ERROR(&ctx, "unknown mode %s; try "
+							"\"%s help\"",
+							ctx.optparam,
 							g_get_prgname());
 			break;
 		case OPT_NEXUS_CACHE:
-			if (parseuint(&config.nexus_cache, optparam, 10))
-				PARSE_ERROR("invalid integer value: %s",
-							optparam);
+			if (parseuint(&config.nexus_cache, ctx.optparam, 10))
+				PARSE_ERROR(&ctx, "invalid integer value: %s",
+							ctx.optparam);
 			break;
 		case END_OPTS:
 			/* Silence compiler warning */
@@ -477,12 +492,12 @@ enum mode parse_cmdline(int argc, char **argv)
 		}
 	}
 
-	if (curmode->type == MODE_HELP) {
+	if (ctx.curmode->type == MODE_HELP) {
 		usage(helpmode);
-	} else if (curmode->type == MODE_VERSION) {
+	} else if (ctx.curmode->type == MODE_VERSION) {
 		printf("OpenISR %s, Parcelkeeper revision %s\n", isr_release,
 					rcs_revision);
 		exit(0);
 	}
-	return curmode->type;
+	return ctx.curmode->type;
 }
