@@ -42,7 +42,7 @@ enum option {
 	OPT_SPLICE,
 	OPT_MODE,
 	OPT_NEXUS_CACHE,
-	END_OPTS = -1
+	END_OPTS
 };
 
 struct pk_option {
@@ -56,7 +56,6 @@ struct pk_option_record {
 	enum option opt;
 	enum arg_type type;
 	char *comment;
-	unsigned _seen;  /* internal use by pk_getopt() */
 };
 
 struct pk_mode {
@@ -90,6 +89,7 @@ struct pk_cmdline_parse_ctx {
 	const struct pk_mode *curmode;
 	char *optparam;
 	int optind;
+	unsigned optseen[END_OPTS];
 };
 
 #define mode(sym) static struct pk_option_record sym ## _opts[]
@@ -315,12 +315,12 @@ static enum option pk_getopt(struct pk_cmdline_parse_ctx *ctx, int argc,
 		/* We've read the entire command line; make sure all required
 		   arguments have been handled */
 		for (opts=ctx->curmode->opts; opts->opt != END_OPTS; opts++) {
-			if (opts->type == REQUIRED && !opts->_seen)
+			if (opts->type == REQUIRED && !ctx->optseen[opts->opt])
 				PARSE_ERROR(ctx, "missing required option "
 						"--%s",
 						get_option(opts->opt)->name);
 		}
-		return -1;
+		return END_OPTS;
 	}
 
 	arg=argv[ctx->optind++];
@@ -332,10 +332,10 @@ static enum option pk_getopt(struct pk_cmdline_parse_ctx *ctx, int argc,
 		curopt=get_option(opts->opt);
 		if (strcmp(curopt->name, arg))
 			continue;
-		if (opts->type != ANY && opts->_seen)
+		if (opts->type != ANY && ctx->optseen[opts->opt])
 			PARSE_ERROR(ctx, "--%s may only be specified once",
 						arg);
-		opts->_seen++;
+		ctx->optseen[opts->opt]++;
 		if (curopt->arg) {
 			if (optind == argc)
 				PARSE_ERROR(ctx, "wrong number of arguments "
