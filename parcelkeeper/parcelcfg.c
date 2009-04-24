@@ -43,7 +43,7 @@ enum pc_ident {
 #undef optstr
 
 #define optstr(str) {#str, PC_ ## str}
-static struct pc_option {
+static const struct pc_option {
 	char *key;
 	enum pc_ident ident;
 } pc_options[] = {
@@ -61,7 +61,7 @@ static char *raw_master;
 static enum pc_ident pc_find_option(struct pc_parse_ctx *ctx, const char *key,
 			int line)
 {
-	struct pc_option *opt;
+	const struct pc_option *opt;
 
 	for (opt=pc_options; opt->key != NULL; opt++) {
 		if (strcmp(key, opt->key))
@@ -79,7 +79,7 @@ static enum pc_ident pc_find_option(struct pc_parse_ctx *ctx, const char *key,
 
 static gboolean pc_have_options(struct pc_parse_ctx *ctx)
 {
-	struct pc_option *opt;
+	const struct pc_option *opt;
 	gboolean ret=TRUE;
 
 	for (opt=pc_options; opt->key != NULL; opt++) {
