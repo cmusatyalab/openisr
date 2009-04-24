@@ -90,9 +90,8 @@ static int pc_have_options(void)
 
 static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 {
+	gchar **strs;
 	unsigned u;
-	char *tok;
-	char *saveptr;
 	enum compresstype compress;
 
 	switch (ident) {
@@ -138,16 +137,18 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 		break;
 	case PC_COMPRESS:
 		parcel.required_compress=(1 << COMP_NONE);
-		while ((tok=strtok_r(value, ",", &saveptr)) != NULL) {
-			value=NULL;
-			compress=parse_compress(tok);
+		strs=g_strsplit(value, ",", 0);
+		for (u=0; strs[u] != NULL; u++) {
+			compress=parse_compress(strs[u]);
 			if (compress == COMP_UNKNOWN) {
 				pk_log(LOG_ERROR, "Unknown compression type"
-							" %s", tok);
+							" %s", strs[u]);
+				g_strfreev(strs);
 				return PK_INVALID;
 			}
 			parcel.required_compress |= (1 << compress);
 		}
+		g_strfreev(strs);
 		if (!compress_is_valid(config.compress)) {
 			pk_log(LOG_ERROR, "This parcel does not support the "
 						"requested compression type");
