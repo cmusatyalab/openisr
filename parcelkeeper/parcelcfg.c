@@ -36,9 +36,9 @@
 
 #define optstr(str) PC_ ## str
 enum pc_ident {
+	OPTSTRS,
 	PC_DUPLICATE,
-	PC_IGNORE,
-	OPTSTRS
+	PC_IGNORE
 };
 #undef optstr
 
@@ -46,43 +46,47 @@ enum pc_ident {
 static struct pc_option {
 	char *key;
 	enum pc_ident ident;
-	int seen;
 } pc_options[] = {
 	OPTSTRS,
 	{NULL}
 };
 #undef optstr
 
+struct pc_parse_ctx {
+	gboolean seen[sizeof(pc_options) / sizeof(pc_options[0]) - 1];
+};
+
 static char *raw_master;
 
-static enum pc_ident pc_find_option(const char *key, int line)
+static enum pc_ident pc_find_option(struct pc_parse_ctx *ctx, const char *key,
+			int line)
 {
 	struct pc_option *opt;
 
 	for (opt=pc_options; opt->key != NULL; opt++) {
 		if (strcmp(key, opt->key))
 			continue;
-		if (opt->seen) {
+		if (ctx->seen[opt->ident]) {
 			pk_log(LOG_ERROR, "Duplicate key %s at line %d",
 						key, line);
 			return PC_DUPLICATE;
 		}
-		opt->seen=1;
+		ctx->seen[opt->ident]=TRUE;
 		return opt->ident;
 	}
 	return PC_IGNORE;
 }
 
-static int pc_have_options(void)
+static gboolean pc_have_options(struct pc_parse_ctx *ctx)
 {
 	struct pc_option *opt;
-	int ret=1;
+	gboolean ret=TRUE;
 
 	for (opt=pc_options; opt->key != NULL; opt++) {
-		if (!opt->seen) {
+		if (!ctx->seen[opt->ident]) {
 			pk_log(LOG_ERROR, "Missing key %s in parcel.cfg",
 						opt->key);
-			ret=0;
+			ret=FALSE;
 		}
 	}
 	return ret;
@@ -181,6 +185,7 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 
 pk_err_t parse_parcel_cfg(void)
 {
+	struct pc_parse_ctx ctx = {};
 	gchar *data;
 	gchar **lines;
 	gchar **parts;
@@ -207,12 +212,13 @@ pk_err_t parse_parcel_cfg(void)
 		}
 		g_strstrip(parts[0]);
 		g_strstrip(parts[1]);
-		if (pc_handle_option(pc_find_option(parts[0], i+1), parts[1]))
+		if (pc_handle_option(pc_find_option(&ctx, parts[0], i+1),
+					parts[1]))
 			goto bad;
 		g_strfreev(parts);
 	}
 	g_strfreev(lines);
-	if (!pc_have_options())
+	if (!pc_have_options(&ctx))
 		return PK_IOERR;
 	parcel.master = g_strdup_printf("%s/%s/%s/last/hdk", raw_master,
 					parcel.user, parcel.parcel);
