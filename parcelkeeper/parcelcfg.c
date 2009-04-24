@@ -53,10 +53,9 @@ static const struct pc_option {
 #undef optstr
 
 struct pc_parse_ctx {
+	gchar *rpath;
 	gboolean seen[sizeof(pc_options) / sizeof(pc_options[0]) - 1];
 };
-
-static char *raw_master;
 
 static enum pc_ident pc_find_option(struct pc_parse_ctx *ctx, const char *key,
 			int line)
@@ -92,7 +91,8 @@ static gboolean pc_have_options(struct pc_parse_ctx *ctx)
 	return ret;
 }
 
-static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
+static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
+			char *value)
 {
 	gchar **strs;
 	unsigned u;
@@ -173,7 +173,7 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 		parcel.parcel=g_strdup(value);
 		break;
 	case PC_RPATH:
-		raw_master=g_strdup(value);
+		ctx->rpath=g_strdup(value);
 		break;
 	case PC_DUPLICATE:
 		return PK_INVALID;
@@ -212,7 +212,7 @@ pk_err_t parse_parcel_cfg(void)
 		}
 		g_strstrip(parts[0]);
 		g_strstrip(parts[1]);
-		if (pc_handle_option(pc_find_option(&ctx, parts[0], i+1),
+		if (pc_handle_option(&ctx, pc_find_option(&ctx, parts[0], i+1),
 					parts[1]))
 			goto bad;
 		g_strfreev(parts);
@@ -220,13 +220,14 @@ pk_err_t parse_parcel_cfg(void)
 	g_strfreev(lines);
 	if (!pc_have_options(&ctx))
 		return PK_IOERR;
-	parcel.master = g_strdup_printf("%s/%s/%s/last/hdk", raw_master,
+	parcel.master = g_strdup_printf("%s/%s/%s/last/hdk", ctx.rpath,
 					parcel.user, parcel.parcel);
-	g_free(raw_master);
+	g_free(ctx.rpath);
 	return PK_SUCCESS;
 
 bad:
 	g_strfreev(parts);
 	g_strfreev(lines);
+	g_free(ctx.rpath);
 	return PK_IOERR;
 }
