@@ -180,34 +180,37 @@ static pk_err_t pc_handle_option(enum pc_ident ident, char *value)
 
 pk_err_t parse_parcel_cfg(void)
 {
-	FILE *fp;
-	char buf[128];
-	char *key;
-	char *value;
-	char *state;
-	int line;
+	gchar *data;
+	gchar **lines;
+	gchar **parts;
+	pk_err_t ret;
+	int i;
 
-	fp=fopen(config.parcel_cfg, "r");
-	if (fp == NULL) {
-		pk_log(LOG_ERROR, "Couldn't open parcel.cfg");
-		return PK_IOERR;
+	ret=read_file(config.parcel_cfg, &data, NULL);
+	if (ret) {
+		pk_log(LOG_ERROR, "Couldn't read parcel.cfg: %s",
+					pk_strerror(ret));
+		return ret;
 	}
-	for (line=1; fgets(buf, sizeof(buf), fp) != NULL; line++) {
-		if (buf[0] == '#' || !strcmp("\n", buf))
+	lines=g_strsplit(data, "\n", 0);
+	g_free(data);
+	for (i=0; lines[i] != NULL; i++) {
+		g_strstrip(lines[i]);
+		if (lines[i][0] == '#' || lines[i][0] == 0)
 			continue;
-		/* XXX bug: value cannot contain [ \t=] */
-		key=strtok_r(buf, " \t=\n", &state);
-		if (key != NULL)
-			value=strtok_r(NULL, " \t=\n", &state);
-		if (key == NULL || value == NULL) {
+		parts=g_strsplit(lines[i], "=", 2);  /* key, value */
+		if (g_strv_length(parts) != 2) {
 			pk_log(LOG_ERROR, "Error parsing parcel.cfg at line %d",
-						line);
+						i + 1);
 			goto bad;
 		}
-		if (pc_handle_option(pc_find_option(key, line), value))
+		g_strstrip(parts[0]);
+		g_strstrip(parts[1]);
+		if (pc_handle_option(pc_find_option(parts[0], i+1), parts[1]))
 			goto bad;
+		g_strfreev(parts);
 	}
-	fclose(fp);
+	g_strfreev(lines);
 	if (!pc_have_options())
 		return PK_IOERR;
 	parcel.master = g_strdup_printf("%s/%s/%s/last/hdk", raw_master,
@@ -216,6 +219,7 @@ pk_err_t parse_parcel_cfg(void)
 	return PK_SUCCESS;
 
 bad:
-	fclose(fp);
+	g_strfreev(parts);
+	g_strfreev(lines);
 	return PK_IOERR;
 }
