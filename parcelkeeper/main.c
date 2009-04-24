@@ -87,7 +87,7 @@ int main(int argc, char **argv)
 			goto shutdown;
 
 	if (config.parcel_dir != NULL)
-		if (parse_parcel_cfg())
+		if (parse_parcel_cfg(&parcel))
 			goto shutdown;
 
 	sql_init();

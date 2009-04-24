@@ -211,7 +211,7 @@ void _pk_log(enum pk_log_type type, const char *fmt, const char *func, ...)
 pk_err_t logtypes_to_mask(const char *list, unsigned *out);
 
 /* parcelcfg.c */
-pk_err_t parse_parcel_cfg(void);
+pk_err_t parse_parcel_cfg(struct pk_parcel *pdata);
 
 /* cache.c */
 pk_err_t cache_init(void);

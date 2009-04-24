@@ -53,6 +53,7 @@ static const struct pc_option {
 #undef optstr
 
 struct pc_parse_ctx {
+	struct pk_parcel *pdata;
 	gchar *rpath;
 	gboolean seen[sizeof(pc_options) / sizeof(pc_options[0]) - 1];
 };
@@ -113,34 +114,34 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 		}
 		break;
 	case PC_CHUNKSIZE:
-		if (parseuint(&parcel.chunksize, value, 10)) {
+		if (parseuint(&ctx->pdata->chunksize, value, 10)) {
 			pk_log(LOG_ERROR, "Invalid chunksize %s", value);
 			return PK_INVALID;
 		}
 		break;
 	case PC_NUMCHUNKS:
-		if (parseuint(&parcel.chunks, value, 10)) {
+		if (parseuint(&ctx->pdata->chunks, value, 10)) {
 			pk_log(LOG_ERROR, "Invalid chunk count %s", value);
 			return PK_INVALID;
 		}
 		break;
 	case PC_CHUNKSPERDIR:
-		if (parseuint(&parcel.chunks_per_dir, value, 10)) {
+		if (parseuint(&ctx->pdata->chunks_per_dir, value, 10)) {
 			pk_log(LOG_ERROR, "Invalid CHUNKSPERDIR value %s",
 						value);
 			return PK_INVALID;
 		}
 		break;
 	case PC_CRYPTO:
-		parcel.crypto=parse_crypto(value);
-		if (parcel.crypto == CRY_UNKNOWN) {
+		ctx->pdata->crypto=parse_crypto(value);
+		if (ctx->pdata->crypto == CRY_UNKNOWN) {
 			pk_log(LOG_ERROR, "Unknown crypto suite %s", value);
 			return PK_INVALID;
 		}
-		parcel.hashlen=crypto_hashlen(parcel.crypto);
+		ctx->pdata->hashlen=crypto_hashlen(ctx->pdata->crypto);
 		break;
 	case PC_COMPRESS:
-		parcel.required_compress=(1 << COMP_NONE);
+		ctx->pdata->required_compress=(1 << COMP_NONE);
 		strs=g_strsplit(value, ",", 0);
 		for (u=0; strs[u] != NULL; u++) {
 			compress=parse_compress(strs[u]);
@@ -150,7 +151,7 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 				g_strfreev(strs);
 				return PK_INVALID;
 			}
-			parcel.required_compress |= (1 << compress);
+			ctx->pdata->required_compress |= (1 << compress);
 		}
 		g_strfreev(strs);
 		if (!compress_is_valid(config.compress)) {
@@ -160,17 +161,17 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 		}
 		break;
 	case PC_UUID:
-		if (canonicalize_uuid(value, &parcel.uuid))
+		if (canonicalize_uuid(value, &ctx->pdata->uuid))
 			return PK_INVALID;
 		break;
 	case PC_SERVER:
-		parcel.server=g_strdup(value);
+		ctx->pdata->server=g_strdup(value);
 		break;
 	case PC_USER:
-		parcel.user=g_strdup(value);
+		ctx->pdata->user=g_strdup(value);
 		break;
 	case PC_PARCEL:
-		parcel.parcel=g_strdup(value);
+		ctx->pdata->parcel=g_strdup(value);
 		break;
 	case PC_RPATH:
 		ctx->rpath=g_strdup(value);
@@ -183,7 +184,7 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 	return PK_SUCCESS;
 }
 
-pk_err_t parse_parcel_cfg(void)
+pk_err_t parse_parcel_cfg(struct pk_parcel *pdata)
 {
 	struct pc_parse_ctx ctx = {};
 	gchar *data;
@@ -192,6 +193,7 @@ pk_err_t parse_parcel_cfg(void)
 	pk_err_t ret;
 	int i;
 
+	ctx.pdata=pdata;
 	ret=read_file(config.parcel_cfg, &data, NULL);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't read parcel.cfg: %s",
@@ -220,8 +222,8 @@ pk_err_t parse_parcel_cfg(void)
 	g_strfreev(lines);
 	if (!pc_have_options(&ctx))
 		return PK_IOERR;
-	parcel.master = g_strdup_printf("%s/%s/%s/last/hdk", ctx.rpath,
-					parcel.user, parcel.parcel);
+	pdata->master = g_strdup_printf("%s/%s/%s/last/hdk", ctx.rpath,
+					pdata->user, pdata->parcel);
 	g_free(ctx.rpath);
 	return PK_SUCCESS;
 
