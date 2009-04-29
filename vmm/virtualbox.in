@@ -295,6 +295,7 @@ def create_machine():
 	vm = compat.create_machine(vmm.CFGDIR, vmname, vmm.UUID)
 	vm.memorySize = vmm.MEM
 	vm.VRAMSize = 16
+	vm.HWVirtExEnabled = ifaces.TSBool.False
 	vm.snapshotFolder = '.'
 	vm.audioAdapter.enabled = True
 	vm.audioAdapter.audioDriver = ifaces.AudioDriverType.ALSA
