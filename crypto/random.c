@@ -43,10 +43,9 @@ Coda are listed in the file CREDITS.
 #include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
-
-#include <rpc2/secure.h>
-#include "aes.h"
-#include "grunt.h"
+#include "isrcrypto.h"
+#define LIBISRCRYPTO_INTERNAL
+#include "internal.h"
 
 /*
  * Strong pseudo random number generator using AES as a mixing function.
@@ -103,35 +102,32 @@ Coda are listed in the file CREDITS.
 /* #define RANDOM_DEVICE "/dev/random" */
 #define RANDOM_DEVICE "/dev/urandom"
 
-static aes_encrypt_ctx context;
-static uint8_t pool[AES_BLOCK_SIZE];
-static uint8_t last[AES_BLOCK_SIZE];
-static uint32_t counter;
-
 static void prng_get_bytes(uint8_t *random, size_t len);
 
-static void prng_init(const uint8_t s[INITIAL_SEED_LENGTH])
+static void prng_init(struct isrcry_random_ctx *rctx,
+                      const uint8_t s[INITIAL_SEED_LENGTH])
 {
     uint8_t tmp[AES_BLOCK_SIZE];
 
-    memcpy(pool, s, AES_BLOCK_SIZE);
-    aes_encrypt_key(s + AES_BLOCK_SIZE, RND_KEY_BITS, &context);
+    memcpy(rctx->pool, s, AES_BLOCK_SIZE);
+    if (isrcry_cipher_init(rctx->aes, ISRCRY_ENCRYPT, s + AES_BLOCK_SIZE,
+	                   RND_KEY_BITS, NULL))
+        assert(0);
 
     /* discard the first block of random data */
     prng_get_bytes(tmp, AES_BLOCK_SIZE);
 }
 
-static void prng_free(void)
+static void prng_free(struct isrcry_random_ctx *rctx)
 {
-    memset(&context, 0, sizeof(aes_encrypt_ctx));
-    memset(pool, 0, AES_BLOCK_SIZE);
-    memset(last, 0, AES_BLOCK_SIZE);
-    counter = 0;
+    isrcry_cipher_free(rctx->aes);
+    free(rctx);
 }
 
-static void prng_get_bytes(uint8_t *random, size_t len)
+static void prng_get_bytes(struct isrcry_random_ctx *rctx, uint8_t *random,
+	                   size_t len)
 {
-    uint8_t tmp[AES_BLOCK_SIZE], *I, *prev = last;
+    uint8_t tmp[AES_BLOCK_SIZE], *I, *prev = rctx->last;
     struct {
 	struct timeval tv;
 	uint32_t uninitialized_stack_value;
@@ -141,23 +137,23 @@ static void prng_get_bytes(uint8_t *random, size_t len)
 
     /* Mix some entropy into the pool */
     gettimeofday(&init.tv, NULL);
-    init.counter = counter++;
+    init.counter = rctx->counter++;
     I = (uint8_t *)&init;
-    aes_encrypt(I, I, &context);
+    isrcry_cipher_process(rctx->aes, I, AES_BLOCK_SIZE, I);
 
     while (nblocks--) {
-	xor128(pool, I);
+	xor128(rctx->pool, I);
 
 	if (!nblocks && len != AES_BLOCK_SIZE) {
-	    aes_encrypt(pool, tmp, &context);
+	    isrcry_cipher_process(rctx->aes, rctx->pool, AES_BLOCK_SIZE, tmp);
 	    memcpy(random, tmp, len);
 	    random = tmp;
 	} else
-	    aes_encrypt(pool, random, &context);
+	    isrcry_cipher_process(rctx->aes, rctx->pool, AES_BLOCK_SIZE, random);
 
 	/* reseed the pool, mix in the random value */
 	xor128(I, random);
-	aes_encrypt(I, pool, &context);
+	isrcry_cipher_process(rctx->aes, I, AES_BLOCK_SIZE, rctx->pool);
 
 	/* we must never return consecutive identical blocks */
 	assert(memcmp(prev, random, AES_BLOCK_SIZE) != 0);
@@ -166,8 +162,8 @@ static void prng_get_bytes(uint8_t *random, size_t len)
 	random += AES_BLOCK_SIZE;
 	len -= AES_BLOCK_SIZE;
     }
-    if (prev != last)
-	memcpy(last, prev, AES_BLOCK_SIZE);
+    if (prev != rctx->last)
+	memcpy(rctx->last, prev, AES_BLOCK_SIZE);
 }
 
 /* we need to find between 32 and 48 bytes of entropy to seed our PRNG
@@ -385,24 +381,33 @@ static void check_random(int verbose)
 	exit(-1);
 }
 
-/* initialization only called from secure_init */
-void secure_random_init(int verbose)
+struct isrcry_random_ctx *secure_random_init(int verbose)
 {
+    struct isrcry_random_ctx *rctx;
     uint8_t initial_seed[INITIAL_SEED_LENGTH];
 
-    if (counter != 0) return; /* we're already initialized */
+    rctx = malloc(sizeof(*ctx));
+    if (rctx == NULL)
+	return NULL;
 
+    rctx->aes = isrcry_cipher_alloc(ISRCRY_CIPHER_AES, ISRCRY_MODE_ECB);
+    if (rctx->aes == NULL) {
+	free(rctx);
+	return NULL;
+    }
     get_initial_seed(initial_seed, INITIAL_SEED_LENGTH);
 
     /* initialize the RNG */
     prng_init(initial_seed);
 
     check_random(verbose);
+    return rctx;
 }
 
-void secure_random_release(void)
+void secure_random_release(struct isrcry_random_ctx *rctx)
 {
-    prng_free();
+    prng_free(rctx);
+    free(rctx);
 }
 
 /* this is really the only exported function */
@@ -410,5 +415,3 @@ void secure_random_bytes(void *random, size_t len)
 {
     prng_get_bytes((uint8_t *)random, len);
 }
-
-

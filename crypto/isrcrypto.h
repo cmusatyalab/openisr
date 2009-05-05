@@ -52,6 +52,7 @@ enum isrcry_hash {
 
 struct isrcry_cipher_ctx;
 struct isrcry_hash_ctx;
+struct isrcry_random_ctx;
 
 
 struct isrcry_cipher_ctx *isrcry_cipher_alloc(enum isrcry_cipher cipher,

@@ -123,6 +123,13 @@ struct isrcry_hash_ctx {
 extern const struct isrcry_hash_desc _isrcry_sha1_desc;
 extern const struct isrcry_hash_desc _isrcry_md5_desc;
 
+struct isrcry_random_ctx {
+	struct isrcry_cipher_ctx *aes;
+	uint8_t pool[16];
+	uint8_t last[16];
+	uint32_t counter;
+};
+
 /* The helper macros below are originally from libtomcrypt. */
 
 /* Extract a byte portably */
