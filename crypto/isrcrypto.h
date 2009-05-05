@@ -76,6 +76,11 @@ void isrcry_hash_update(struct isrcry_hash_ctx *ctx,
 void isrcry_hash_final(struct isrcry_hash_ctx *ctx, void *digest);
 unsigned isrcry_hash_len(enum isrcry_hash type);
 
+struct isrcry_random_ctx *isrcry_random_alloc(void);
+void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
+			unsigned length);
+void isrcry_random_free(struct isrcry_random_ctx *rctx);
+
 const char *isrcry_strerror(enum isrcry_result result);
 
 #endif
