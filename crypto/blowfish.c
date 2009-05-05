@@ -35,6 +35,11 @@
 #include "internal.h"
 #include "blowfish_tab.h"
 
+struct isrcry_blowfish_key {
+	uint32_t S[4][256];
+	uint32_t K[18];
+};
+
 static enum isrcry_result blowfish_encrypt(struct isrcry_cipher_ctx *cctx,
 			const unsigned char *in, unsigned char *out);
 
@@ -48,7 +53,7 @@ static enum isrcry_result blowfish_encrypt(struct isrcry_cipher_ctx *cctx,
 static enum isrcry_result blowfish_init(struct isrcry_cipher_ctx *cctx,
 			const unsigned char *key, int keylen)
 {
-   struct isrcry_blowfish_key *skey = &cctx->bf;
+   struct isrcry_blowfish_key *skey = cctx->key;
    uint32_t x, y, z, A;
    unsigned char B[8];
 
@@ -113,7 +118,7 @@ static enum isrcry_result blowfish_init(struct isrcry_cipher_ctx *cctx,
 static enum isrcry_result blowfish_encrypt(struct isrcry_cipher_ctx *cctx,
 			const unsigned char *in, unsigned char *out)
 {
-   struct isrcry_blowfish_key *skey = &cctx->bf;
+   struct isrcry_blowfish_key *skey = cctx->key;
    uint32_t L, R;
    int r;
 
@@ -153,7 +158,7 @@ static enum isrcry_result blowfish_encrypt(struct isrcry_cipher_ctx *cctx,
 static enum isrcry_result blowfish_decrypt(struct isrcry_cipher_ctx *cctx,
 			const unsigned char *in, unsigned char *out)
 {
-   struct isrcry_blowfish_key *skey = &cctx->bf;
+   struct isrcry_blowfish_key *skey = cctx->key;
    uint32_t L, R;
    int r;
 
@@ -186,5 +191,6 @@ const struct isrcry_cipher_desc _isrcry_bf_desc = {
 	.init = blowfish_init,
 	.encrypt = blowfish_encrypt,
 	.decrypt = blowfish_decrypt,
-	.blocklen = 8
+	.blocklen = 8,
+	.ctxlen = sizeof(struct isrcry_blowfish_key)
 };

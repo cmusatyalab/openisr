@@ -43,6 +43,7 @@ struct isrcry_cipher_desc {
 				const unsigned char *in,
 				unsigned char *out);
 	unsigned blocklen;
+	unsigned ctxlen;
 };
 
 extern const struct isrcry_cipher_desc _isrcry_aes_desc;
@@ -69,23 +70,10 @@ struct isrcry_pad_desc {
 
 extern const struct isrcry_pad_desc _isrcry_pkcs5_desc;
 
-struct isrcry_aes_key {
-	uint32_t eK[60], dK[60];
-	int Nr;
-};
-
-struct isrcry_blowfish_key {
-	uint32_t S[4][256];
-	uint32_t K[18];
-};
-
 struct isrcry_cipher_ctx {
 	const struct isrcry_cipher_desc *cipher;
 	const struct isrcry_mode_desc *mode;
-	union {
-		struct isrcry_aes_key aes;
-		struct isrcry_blowfish_key bf;
-	};
+	void *key;
 	unsigned char iv[MAX_BLOCK_LEN];
 	enum isrcry_direction direction;
 };

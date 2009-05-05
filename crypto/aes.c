@@ -53,6 +53,11 @@
 #include "internal.h"
 #include "aes_tab.h"
 
+struct isrcry_aes_key {
+	uint32_t eK[60], dK[60];
+	int Nr;
+};
+
 #define RORc(x, y) ( ((((unsigned long)(x)&0xFFFFFFFFUL)>>(unsigned long)((y)&31)) | ((unsigned long)(x)<<(unsigned long)(32-((y)&31)))) & 0xFFFFFFFFUL)
 
 static uint32_t setup_mix(uint32_t temp)
@@ -73,7 +78,7 @@ static uint32_t setup_mix(uint32_t temp)
 static enum isrcry_result aes_init(struct isrcry_cipher_ctx *cctx,
 			const unsigned char *key, int keylen)
 {
-    struct isrcry_aes_key *skey = &cctx->aes;
+    struct isrcry_aes_key *skey = cctx->key;
     int i, j;
     uint32_t temp, *rk;
     uint32_t *rrk;
@@ -208,7 +213,7 @@ static enum isrcry_result aes_init(struct isrcry_cipher_ctx *cctx,
 static enum isrcry_result aes_encrypt(struct isrcry_cipher_ctx *cctx,
 			const unsigned char *in, unsigned char *out)
 {
-    struct isrcry_aes_key *skey = &cctx->aes;
+    struct isrcry_aes_key *skey = cctx->key;
     uint32_t s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
     
@@ -334,7 +339,7 @@ static enum isrcry_result aes_encrypt(struct isrcry_cipher_ctx *cctx,
 static enum isrcry_result aes_decrypt(struct isrcry_cipher_ctx *cctx,
 			const unsigned char *in, unsigned char *out)
 {
-    struct isrcry_aes_key *skey = &cctx->aes;
+    struct isrcry_aes_key *skey = cctx->key;
     uint32_t s0, s1, s2, s3, t0, t1, t2, t3, *rk;
     int Nr, r;
 
@@ -456,5 +461,6 @@ const struct isrcry_cipher_desc _isrcry_aes_desc = {
 	.init = aes_init,
 	.encrypt = aes_encrypt,
 	.decrypt = aes_decrypt,
-	.blocklen = 16
+	.blocklen = 16,
+	.ctxlen = sizeof(struct isrcry_aes_key)
 };

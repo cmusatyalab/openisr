@@ -66,11 +66,17 @@ exported struct isrcry_cipher_ctx *isrcry_cipher_alloc(
 		free(cctx);
 		return NULL;
 	}
+	cctx->key = malloc(cctx->cipher->ctxlen);
+	if (cctx->key == NULL) {
+		free(cctx);
+		return NULL;
+	}
 	return cctx;
 }
 
 exported void isrcry_cipher_free(struct isrcry_cipher_ctx *cctx)
 {
+	free(cctx->key);
 	free(cctx);
 }
 
