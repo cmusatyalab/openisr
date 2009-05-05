@@ -43,12 +43,18 @@ exported struct isrcry_hash_ctx *isrcry_hash_alloc(enum isrcry_hash type)
 		free(hctx);
 		return NULL;
 	}
+	hctx->ctx = malloc(hctx->desc->ctxlen);
+	if (hctx->ctx == NULL) {
+		free(hctx);
+		return NULL;
+	}
 	hctx->desc->init(hctx);
 	return hctx;
 }
 
 exported void isrcry_hash_free(struct isrcry_hash_ctx *hctx)
 {
+	free(hctx->ctx);
 	free(hctx);
 }
 

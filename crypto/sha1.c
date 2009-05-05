@@ -29,13 +29,20 @@
 #define SHA1_DATA_SIZE 64
 #define SHA1_DIGEST_SIZE 20
 
+struct isrcry_sha1_ctx {
+	uint32_t digest[SHA1_DIGEST_SIZE / 4];
+	uint64_t count;
+	uint8_t block[SHA1_DATA_SIZE];
+	unsigned index;
+};
+
 /* Compression function. @state points to 5 u32 words, and @data points to
    64 bytes of input data, possibly unaligned. */
 void _isrcry_sha1_compress(uint32_t *state, const uint8_t *data);
 
 static void sha1_init(struct isrcry_hash_ctx *hctx)
 {
-	struct isrcry_sha1_ctx *ctx = &hctx->sha1;
+	struct isrcry_sha1_ctx *ctx = hctx->ctx;
 	
 	/* Set the h-vars to their initial values */
 	ctx->digest[0] = 0x67452301L;
@@ -54,7 +61,7 @@ static void sha1_init(struct isrcry_hash_ctx *hctx)
 static void sha1_update(struct isrcry_hash_ctx *hctx,
 			const unsigned char *buffer, unsigned length)
 {
-	struct isrcry_sha1_ctx *ctx = &hctx->sha1;
+	struct isrcry_sha1_ctx *ctx = hctx->ctx;
 	
 	if (ctx->index) {
 		/* Try to fill partial block */
@@ -87,7 +94,7 @@ static void sha1_update(struct isrcry_hash_ctx *hctx,
 static void sha1_final(struct isrcry_hash_ctx *hctx,
 			unsigned char *digest)
 {
-	struct isrcry_sha1_ctx *ctx = &hctx->sha1;
+	struct isrcry_sha1_ctx *ctx = hctx->ctx;
 	uint64_t bitcount;
 	unsigned i = ctx->index;
 	
@@ -127,5 +134,6 @@ const struct isrcry_hash_desc _isrcry_sha1_desc = {
 	.init = sha1_init,
 	.update = sha1_update,
 	.final = sha1_final,
-	.digest_size = SHA1_DIGEST_SIZE
+	.digest_size = SHA1_DIGEST_SIZE,
+	.ctxlen = sizeof(struct isrcry_sha1_ctx)
 };

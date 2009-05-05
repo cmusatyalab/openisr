@@ -84,28 +84,12 @@ struct isrcry_hash_desc {
 				const unsigned char *buffer, unsigned length);
 	void (*final)(struct isrcry_hash_ctx *ctx, unsigned char *digest);
 	unsigned digest_size;
-};
-
-struct isrcry_sha1_ctx {
-	uint32_t digest[5];
-	uint64_t count;
-	uint8_t block[64];
-	unsigned index;
-};
-
-struct isrcry_md5_ctx {
-	uint32_t digest[4];
-	uint64_t count;
-	uint8_t block[64];
-	unsigned index;
+	unsigned ctxlen;
 };
 
 struct isrcry_hash_ctx {
 	const struct isrcry_hash_desc *desc;
-	union {
-		struct isrcry_sha1_ctx sha1;
-		struct isrcry_md5_ctx md5;
-	};
+	void *ctx;
 };
 
 extern const struct isrcry_hash_desc _isrcry_sha1_desc;
