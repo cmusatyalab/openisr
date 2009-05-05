@@ -79,27 +79,9 @@ Coda are listed in the file CREDITS.
  * serious breakage.
  */
 
-#define RND_KEY_BITS 128 /* or 192, 256... */
-#define INITIAL_SEED_LENGTH (AES_BLOCK_SIZE + bytes(RND_KEY_BITS))
-
-/* You can choose to use the '/dev/random' device which blocks until
- * enough entropy is available. This is more secure, and typically not
- * an issue for long running processes like venus and codasrv. We only
- * read between 32 and 48 bytes when the application is starting.
- *
- * However it can be a problem for servers that frequenly run
- * applications like volutil or clog,
- * - A machine monitoring a large number of Coda server with rpc2ping
- *   and/or volutil interpreted such stalls as failures.
- * - During Amanda backups we run volutil several times per backed up
- *   volume and easily exceed the time the Amanda server waits for a
- *   reply from the client (Coda server) resulting in failed backups.
- * - When we authenticate users with pam_coda we run clog on every
- *   authentication attempt, as a result an ssh scan drains the entropy
- *   pool. This was very noticeable when using pam-based authentication
- *   with Apache.
- */
-/* #define RANDOM_DEVICE "/dev/random" */
+#define AES_BLOCK_SIZE 16
+#define RND_KEY_LEN 16 /* or 24, 32 */
+#define INITIAL_SEED_LENGTH (AES_BLOCK_SIZE + RND_KEY_LEN)
 #define RANDOM_DEVICE "/dev/urandom"
 
 /* we need to find between 32 and 48 bytes of entropy to seed our PRNG
@@ -152,7 +134,7 @@ static void get_initial_seed(uint8_t *ptr, size_t len)
     }
 
     /* we _really_ should be done by now, but just in case someone changed
-     * RND_KEY_BITS.. Supposedly the top-8 bits in the random() result are
+     * RND_KEY_LEN.. Supposedly the top-8 bits in the random() result are
      * 'more random', which is why we use (random()*255)/RAND_MAX */
     if (len) {
 	srandom(time(NULL));
@@ -164,7 +146,7 @@ static void get_initial_seed(uint8_t *ptr, size_t len)
      * it is malfunctioning still get the gettimeofday value first. If
      * /dev/random doesn't exist we fall back on several more predictable
      * sources. The first 16 bytes are used to seed the pool, the remaining
-     * RND_KEY_BITS initialize the AES-key for the mixing function. */
+     * RND_KEY_LEN initialize the AES-key for the mixing function. */
 
     /* other possible sources? getrusage(), system memory usage? checksum of
      * /proc/{interrupts,meminfo,slabinfo,vmstat}?
@@ -337,7 +319,7 @@ exported struct isrcry_random_ctx *isrcry_random_alloc(void)
     memcpy(rctx->pool, initial_seed, AES_BLOCK_SIZE);
     if (isrcry_cipher_init(rctx->aes, ISRCRY_ENCRYPT,
 	                   initial_seed + AES_BLOCK_SIZE,
-	                   RND_KEY_BITS, NULL))
+	                   RND_KEY_LEN, NULL))
         assert(0);
 
     /* discard the first block of random data */
