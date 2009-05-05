@@ -36,10 +36,8 @@ Coda are listed in the file CREDITS.
 #include <sys/times.h>
 #include <sys/time.h>
 #include <time.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
@@ -172,10 +170,8 @@ exported struct isrcry_random_ctx *isrcry_random_alloc(void)
     get_initial_seed(initial_seed, INITIAL_SEED_LENGTH);
 
     memcpy(rctx->pool, initial_seed, AES_BLOCK_SIZE);
-    if (isrcry_cipher_init(rctx->aes, ISRCRY_ENCRYPT,
-	                   initial_seed + AES_BLOCK_SIZE,
-	                   RND_KEY_LEN, NULL))
-        assert(0);
+    isrcry_cipher_init(rctx->aes, ISRCRY_ENCRYPT,
+                       initial_seed + AES_BLOCK_SIZE, RND_KEY_LEN, NULL);
 
     /* discard the first block of random data */
     isrcry_random_bytes(rctx, tmp, sizeof(tmp));
@@ -204,7 +200,7 @@ exported void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 
     while (nblocks--) {
 	for (i = 0; i < 4; i++)
-		((uint32_t *)rctx->pool)[i] ^= ((uint32_t *)I)[i];
+	    ((uint32_t *)rctx->pool)[i] ^= ((uint32_t *)I)[i];
 
 	if (!nblocks && length != AES_BLOCK_SIZE) {
 	    isrcry_cipher_process(rctx->aes, rctx->pool, AES_BLOCK_SIZE, tmp);
@@ -215,7 +211,7 @@ exported void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 
 	/* reseed the pool, mix in the random value */
 	for (i = 0; i < 4; i++)
-		((uint32_t *)I)[i] ^= ((uint32_t *)random)[i];
+	    ((uint32_t *)I)[i] ^= ((uint32_t *)random)[i];
 	isrcry_cipher_process(rctx->aes, I, AES_BLOCK_SIZE, rctx->pool);
 
 	/* we must never return consecutive identical blocks */
