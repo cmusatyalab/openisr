@@ -37,6 +37,28 @@ Coda are listed in the file CREDITS.
  *   Financial Services Industry (rDSA), ANSI X9.31-1988, September 1998.
  * - NIST-Recommended Random Number Generator Based on ANSI X9.31 Appendix
  *   A.2.4 Using the 3-Key Triple DES and AES Algorithms, 31 January 2005.
+ *
+ * There is a 16-byte pool of random data that we use as the IV. Then when
+ * we want to get random data we generate an initial seed based on the
+ * current timestamp, some uninitialized data from the stack, and a counter.
+ * 
+ * This block is then encrypted using AES-CBC where the pool is used as the
+ * IV. This results in a block of 16-bytes of random data. The random block
+ * is then xor-ed with the original seed to get the next block of seed
+ * data. We then refresh the pool of random data by encrypting the seed
+ * block. These steps are repeated until we've returned the number of
+ * random bytes that were requested.
+ * 
+ * To initialize the pool of random data and the AES128 encryption key, we
+ * get the current timestamp, and read random data from /dev/random (or
+ * /dev/urandom). When /dev/random is unavailable we fall back on several
+ * lower entropy sources such as times(), getpid(), and libc's random().
+ * 
+ * The first block of random data is discarded, and we run a couple of
+ * statistical tests to see if the resulting random data actually looks
+ * reasonable. Passing these tests does not guarantee that the generated
+ * random numbers are cryptographically strong, but it should detect
+ * serious breakage.
  */
 
 #define RND_KEY_BITS 128 /* or 192, 256... */
