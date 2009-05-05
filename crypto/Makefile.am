@@ -7,7 +7,7 @@ CFLAGS=@CFLAGS@ -O3
 
 pkglib_LTLIBRARIES = libisrcrypto.la
 libisrcrypto_la_SOURCES = aes.c blowfish.c cbc.c cipher.c ecb.c hash.c md5.c
-libisrcrypto_la_SOURCES += md5-compress.c pad.c sha1.c util.c
+libisrcrypto_la_SOURCES += md5-compress.c pad.c random.c sha1.c util.c
 libisrcrypto_la_SOURCES += isrcrypto.h internal.h
 libisrcrypto_la_SOURCES += aes_tab.h blowfish_tab.h
 

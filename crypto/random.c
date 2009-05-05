@@ -160,7 +160,7 @@ exported struct isrcry_random_ctx *isrcry_random_alloc(void)
     uint8_t initial_seed[INITIAL_SEED_LENGTH];
     uint8_t tmp[AES_BLOCK_SIZE];
 
-    rctx = malloc(sizeof(*ctx));
+    rctx = malloc(sizeof(*rctx));
     if (rctx == NULL)
 	return NULL;
 
@@ -194,7 +194,8 @@ exported void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 	uint32_t counter;
     } init;
     int nblocks = (length + AES_BLOCK_SIZE - 1) / AES_BLOCK_SIZE;
-
+    int i;
+    
     /* Mix some entropy into the pool */
     gettimeofday(&init.tv, NULL);
     init.counter = rctx->counter++;
@@ -202,7 +203,8 @@ exported void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
     isrcry_cipher_process(rctx->aes, I, AES_BLOCK_SIZE, I);
 
     while (nblocks--) {
-	xor128(rctx->pool, I);
+	for (i = 0; i < 4; i++)
+		((uint32_t *)rctx->pool)[i] ^= ((uint32_t *)I)[i];
 
 	if (!nblocks && length != AES_BLOCK_SIZE) {
 	    isrcry_cipher_process(rctx->aes, rctx->pool, AES_BLOCK_SIZE, tmp);
@@ -212,7 +214,8 @@ exported void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 	    isrcry_cipher_process(rctx->aes, rctx->pool, AES_BLOCK_SIZE, random);
 
 	/* reseed the pool, mix in the random value */
-	xor128(I, random);
+	for (i = 0; i < 4; i++)
+		((uint32_t *)I)[i] ^= ((uint32_t *)random)[i];
 	isrcry_cipher_process(rctx->aes, I, AES_BLOCK_SIZE, rctx->pool);
 
 	/* we must never return consecutive identical blocks */
