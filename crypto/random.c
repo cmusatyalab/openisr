@@ -1,3 +1,22 @@
+/*
+ * libisrcrypto - cryptographic library for the OpenISR (R) system
+ *
+ * Copyright (C) 2008-2009 Carnegie Mellon University
+ * 
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of version 2.1 of the GNU Lesser General Public License as
+ * published by the Free Software Foundation.  A copy of the GNU Lesser General
+ * Public License should have been distributed along with this library in the
+ * file LICENSE.LGPL.
+ *          
+ * This library is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ */
+
+/* This file is adapted from Coda RPC2, whose license block follows. */
+
 /* BLURB lgpl
 			Coda File System
 			    Release 6
