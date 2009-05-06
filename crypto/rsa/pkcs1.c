@@ -60,7 +60,7 @@ int pkcs_1_mgf1(int                  hash_idx,
                       unsigned char *mask, unsigned long masklen)
 {
    unsigned long hLen, x;
-   ulong32       counter;
+   uint32_t      counter;
    int           err;
    hash_state    *md;
    unsigned char *buf;
