@@ -1,4 +1,20 @@
-/* ---- NUMBER THEORY ---- */
+/* LibTomCrypt, modular cryptographic library -- Tom St Denis
+ *
+ * LibTomCrypt is a library that provides various cryptographic
+ * algorithms in a highly modular and flexible manner.
+ *
+ * The library is free for all purposes without any express
+ * guarantee it works.
+ *
+ * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.com
+ */
+
+#define LTC_MP_LT   -1
+#define LTC_MP_EQ    0
+#define LTC_MP_GT    1
+
+#define LTC_MP_NO    0
+#define LTC_MP_YES   1
 
 enum {
    PK_PUBLIC=0,
@@ -6,9 +22,6 @@ enum {
 };
 
 int rand_prime(void *N, long len, prng_state *prng, int wprng);
-
-/* ---- RSA ---- */
-#ifdef MRSA
 
 /* Min and Max RSA key sizes (in bits) */
 #define MIN_RSA_SIZE 1024
@@ -105,3 +118,19 @@ int der_length_sequence(ltc_asn1_list *list, unsigned long inlen,
 /* VA list handy helpers with triplets of <type, size, data> */
 int der_encode_sequence_multi(unsigned char *out, unsigned long *outlen, ...);
 int der_decode_sequence_multi(const unsigned char *in, unsigned long inlen, ...);
+
+int pkcs_1_i2osp(void *n, unsigned long modulus_len, unsigned char *out);
+int pkcs_1_os2ip(void *n, unsigned char *in, unsigned long inlen);
+
+int pkcs_1_pss_encode(const unsigned char *msghash, unsigned long msghashlen,
+                            unsigned long saltlen,  prng_state   *prng,     
+                            int           prng_idx, int           hash_idx,
+                            unsigned long modulus_bitlen,
+                            unsigned char *out,     unsigned long *outlen);
+
+int pkcs_1_pss_decode(const unsigned char *msghash, unsigned long msghashlen,
+                      const unsigned char *sig,     unsigned long siglen,
+                            unsigned long saltlen,  int           hash_idx,
+                            unsigned long modulus_bitlen, int    *res);
+
+
