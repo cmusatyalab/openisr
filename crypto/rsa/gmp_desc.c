@@ -36,28 +36,12 @@ static void deinit(void *a)
    XFREE(a);
 }
 
-static int neg(void *a, void *b)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   mpz_neg(b, a);
-   return CRYPT_OK;
-}
-
 static int copy(void *a, void *b)
 {
    LTC_ARGCHK(a != NULL);
    LTC_ARGCHK(b != NULL);
    mpz_set(b, a);
    return CRYPT_OK;
-}
-
-static int init_copy(void **a, void *b)
-{
-   if (init(a) != CRYPT_OK) {
-      return CRYPT_MEM;
-   }
-   return copy(b, *a);
 }
 
 /* ---- trivial ---- */
@@ -68,24 +52,6 @@ static int set_int(void *a, unsigned long b)
    return CRYPT_OK;
 }
 
-static unsigned long get_int(void *a)
-{
-   LTC_ARGCHK(a != NULL);
-   return mpz_get_ui(a);
-}
-
-static unsigned long get_digit(void *a, int n)
-{
-   LTC_ARGCHK(a != NULL);
-   return mpz_getlimbn(a, n);
-}
-
-static int get_digit_count(void *a)
-{
-   LTC_ARGCHK(a != NULL);
-   return mpz_size(a);
-}
-   
 static int compare(void *a, void *b)
 {
    int ret;
@@ -138,24 +104,6 @@ static int twoexpt(void *a, int n)
 
 /* ---- conversions ---- */
 
-/* read ascii string */
-static int read_radix(void *a, const char *b, int radix)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   mpz_set_str(a, b, radix);
-   return CRYPT_OK;
-}
-
-/* write one */
-static int write_radix(void *a, char *b, int radix)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   mpz_get_str(b, radix, a);
-   return CRYPT_OK;
-}
-
 /* get size as unsigned char string */
 static unsigned long unsigned_size(void *a)
 {
@@ -193,14 +141,6 @@ static int add(void *a, void *b, void *c)
    mpz_add(c, a, b);
    return CRYPT_OK;
 }
-  
-static int addi(void *a, unsigned long b, void *c)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(c != NULL);
-   mpz_add_ui(c, a, b);
-   return CRYPT_OK;
-}
 
 /* sub */
 static int sub(void *a, void *b, void *c)
@@ -230,24 +170,6 @@ static int mul(void *a, void *b, void *c)
    return CRYPT_OK;
 }
 
-static int muli(void *a, unsigned long b, void *c)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(c != NULL);
-   mpz_mul_ui(c, a, b);
-   return CRYPT_OK;
-}
-
-/* sqr */
-static int sqr(void *a, void *b)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   mpz_mul(b, a, a);
-   return CRYPT_OK;
-}
-
-/* div */
 static int divide(void *a, void *b, void *c, void *d)
 {
    mpz_t tmp;
@@ -266,24 +188,6 @@ static int divide(void *a, void *b, void *c, void *d)
    }
    return CRYPT_OK;
 }
-
-static int div_2(void *a, void *b)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   mpz_divexact_ui(b, a, 2);
-   return CRYPT_OK;
-}
-
-/* modi */
-static int modi(void *a, unsigned long b, unsigned long *c)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(c != NULL);
-   
-   *c = mpz_fdiv_ui(a, b);
-   return CRYPT_OK;
-}  
 
 /* gcd */
 static int gcd(void *a, void *b, void *c)
@@ -316,16 +220,6 @@ static int mulmod(void *a, void *b, void *c, void *d)
    return CRYPT_OK;
 }
 
-static int sqrmod(void *a, void *b, void *c)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   LTC_ARGCHK(c != NULL);
-   mpz_mul(c, a, a);
-   mpz_mod(c, c, b);
-   return CRYPT_OK;
-}
-
 /* invmod */
 static int invmod(void *a, void *b, void *c)
 {
@@ -334,39 +228,6 @@ static int invmod(void *a, void *b, void *c)
    LTC_ARGCHK(c != NULL);
    mpz_invert(c, a, b);
    return CRYPT_OK;
-}
-
-/* setup */
-static int montgomery_setup(void *a, void **b)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   *b = (void *)1;
-   return CRYPT_OK;
-}
-
-/* get normalization value */
-static int montgomery_normalization(void *a, void *b)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   mpz_set_ui(a, 1);
-   return CRYPT_OK;
-}
-
-/* reduce */
-static int montgomery_reduce(void *a, void *b, void *c)
-{
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   LTC_ARGCHK(c != NULL);
-   mpz_mod(a, a, b);
-   return CRYPT_OK;
-}
-
-/* clean up */
-static void montgomery_deinit(void *a)
-{
 }
 
 static int exptmod(void *a, void *b, void *c, void *d)
