@@ -10,6 +10,36 @@
  */
 
 /**
+  Gets length of DER encoding of BIT STRING 
+  @param nbits  The number of bits in the string to encode
+  @param outlen [out] The length of the DER encoding for the given string
+  @return CRYPT_OK if successful
+*/
+int der_length_bit_string(unsigned long nbits, unsigned long *outlen)
+{
+   unsigned long nbytes;
+   LTC_ARGCHK(outlen != NULL);
+
+   /* get the number of the bytes */
+   nbytes = (nbits >> 3) + ((nbits & 7) ? 1 : 0) + 1;
+ 
+   if (nbytes < 128) {
+      /* 03 LL PP DD DD DD ... */
+      *outlen = 2 + nbytes;
+   } else if (nbytes < 256) {
+      /* 03 81 LL PP DD DD DD ... */
+      *outlen = 3 + nbytes;
+   } else if (nbytes < 65536) {
+      /* 03 82 LL LL PP DD DD DD ... */
+      *outlen = 4 + nbytes;
+   } else {
+      return CRYPT_INVALID_ARG;
+   }
+
+   return CRYPT_OK;
+}
+
+/**
   Store a BIT STRING
   @param in       The array of bits to store (one per char)
   @param inlen    The number of bits tostore
@@ -151,32 +181,60 @@ int der_decode_bit_string(const unsigned char *in,  unsigned long inlen,
 }
 
 /**
-  Gets length of DER encoding of BIT STRING 
-  @param nbits  The number of bits in the string to encode
-  @param outlen [out] The length of the DER encoding for the given string
+  Gets length of DER encoding of num 
+  @param num    The int to get the size of 
+  @param outlen [out] The length of the DER encoding for the given integer
   @return CRYPT_OK if successful
 */
-int der_length_bit_string(unsigned long nbits, unsigned long *outlen)
+int der_length_integer(void *num, unsigned long *outlen)
 {
-   unsigned long nbytes;
-   LTC_ARGCHK(outlen != NULL);
+   unsigned long z, len;
+   int           leading_zero;
 
-   /* get the number of the bytes */
-   nbytes = (nbits >> 3) + ((nbits & 7) ? 1 : 0) + 1;
- 
-   if (nbytes < 128) {
-      /* 03 LL PP DD DD DD ... */
-      *outlen = 2 + nbytes;
-   } else if (nbytes < 256) {
-      /* 03 81 LL PP DD DD DD ... */
-      *outlen = 3 + nbytes;
-   } else if (nbytes < 65536) {
-      /* 03 82 LL LL PP DD DD DD ... */
-      *outlen = 4 + nbytes;
+   LTC_ARGCHK(num     != NULL);
+   LTC_ARGCHK(outlen  != NULL);
+
+   if (mp_cmp_d(num, 0) != LTC_MP_LT) {
+      /* positive */
+
+      /* we only need a leading zero if the msb of the first byte is one */
+      if ((mp_count_bits(num) & 7) == 0 || mp_iszero(num) == LTC_MP_YES) {
+         leading_zero = 1;
+      } else {
+         leading_zero = 0;
+      }
+
+      /* size for bignum */
+      z = len = leading_zero + mp_unsigned_bin_size(num);
    } else {
-      return CRYPT_INVALID_ARG;
+      /* it's negative */
+      /* find power of 2 that is a multiple of eight and greater than count bits */
+      leading_zero = 0;
+      z = mp_count_bits(num);
+      z = z + (8 - (z & 7));
+      if (((mp_cnt_lsb(num)+1)==mp_count_bits(num)) && ((mp_count_bits(num)&7)==0)) --z;
+      len = z = z >> 3;
    }
 
+   /* now we need a length */
+   if (z < 128) {
+      /* short form */
+      ++len;
+   } else {
+      /* long form (relies on z != 0), assumes length bytes < 128 */
+      ++len;
+
+      while (z) {
+         ++len;
+         z >>= 8;
+      }
+   }
+
+   /* we need a 0x02 to indicate it's INTEGER */
+   ++len;
+
+   /* return length */
+   *outlen = len; 
    return CRYPT_OK;
 }
 
@@ -370,61 +428,67 @@ int der_decode_integer(const unsigned char *in, unsigned long inlen, void *num)
 
 }
 
+static unsigned long der_object_identifier_bits(unsigned long x)
+{
+   unsigned long c;
+   x &= 0xFFFFFFFF;
+   c  = 0;
+   while (x) {
+     ++c;
+     x >>= 1;
+   }
+   return c;
+}
+
 /**
-  Gets length of DER encoding of num 
-  @param num    The int to get the size of 
-  @param outlen [out] The length of the DER encoding for the given integer
+  Gets length of DER encoding of Object Identifier
+  @param nwords   The number of OID words 
+  @param words    The actual OID words to get the size of
+  @param outlen   [out] The length of the DER encoding for the given string
   @return CRYPT_OK if successful
 */
-int der_length_integer(void *num, unsigned long *outlen)
+int der_length_object_identifier(unsigned long *words, unsigned long nwords, unsigned long *outlen)
 {
-   unsigned long z, len;
-   int           leading_zero;
+   unsigned long y, z, t, wordbuf;   
 
-   LTC_ARGCHK(num     != NULL);
-   LTC_ARGCHK(outlen  != NULL);
+   LTC_ARGCHK(words  != NULL);
+   LTC_ARGCHK(outlen != NULL);
 
-   if (mp_cmp_d(num, 0) != LTC_MP_LT) {
-      /* positive */
 
-      /* we only need a leading zero if the msb of the first byte is one */
-      if ((mp_count_bits(num) & 7) == 0 || mp_iszero(num) == LTC_MP_YES) {
-         leading_zero = 1;
-      } else {
-         leading_zero = 0;
-      }
-
-      /* size for bignum */
-      z = len = leading_zero + mp_unsigned_bin_size(num);
-   } else {
-      /* it's negative */
-      /* find power of 2 that is a multiple of eight and greater than count bits */
-      leading_zero = 0;
-      z = mp_count_bits(num);
-      z = z + (8 - (z & 7));
-      if (((mp_cnt_lsb(num)+1)==mp_count_bits(num)) && ((mp_count_bits(num)&7)==0)) --z;
-      len = z = z >> 3;
+   /* must be >= 2 words */
+   if (nwords < 2) {
+      return CRYPT_INVALID_ARG;
    }
 
-   /* now we need a length */
+   /* word1 = 0,1,2,3 and word2 0..39 */
+   if (words[0] > 3 || (words[0] < 2 && words[1] > 39)) {
+      return CRYPT_INVALID_ARG;
+   }
+
+   /* leading word is the first two */
+   z = 0;
+   wordbuf = words[0] * 40 + words[1];
+   for (y = 1; y < nwords; y++) {
+       t = der_object_identifier_bits(wordbuf);
+       z += t/7 + ((t%7) ? 1 : 0) + (wordbuf == 0 ? 1 : 0);
+       if (y < nwords - 1) {
+          /* grab next word */
+          wordbuf = words[y+1];
+       }
+   }
+
+   /* now depending on the length our length encoding changes */
    if (z < 128) {
-      /* short form */
-      ++len;
+      z += 2;
+   } else if (z < 256) {
+      z += 3;
+   } else if (z < 65536UL) {
+      z += 4;
    } else {
-      /* long form (relies on z != 0), assumes length bytes < 128 */
-      ++len;
-
-      while (z) {
-         ++len;
-         z >>= 8;
-      }
+      return CRYPT_INVALID_ARG;
    }
 
-   /* we need a 0x02 to indicate it's INTEGER */
-   ++len;
-
-   /* return length */
-   *outlen = len; 
+   *outlen = z;
    return CRYPT_OK;
 }
 
@@ -592,68 +656,32 @@ int der_decode_object_identifier(const unsigned char *in,    unsigned long  inle
    return CRYPT_OK;
 }
 
-static unsigned long der_object_identifier_bits(unsigned long x)
-{
-   unsigned long c;
-   x &= 0xFFFFFFFF;
-   c  = 0;
-   while (x) {
-     ++c;
-     x >>= 1;
-   }
-   return c;
-}
-
-
 /**
-  Gets length of DER encoding of Object Identifier
-  @param nwords   The number of OID words 
-  @param words    The actual OID words to get the size of
+  Gets length of DER encoding of OCTET STRING 
+  @param noctets  The number of octets in the string to encode
   @param outlen   [out] The length of the DER encoding for the given string
   @return CRYPT_OK if successful
 */
-int der_length_object_identifier(unsigned long *words, unsigned long nwords, unsigned long *outlen)
+int der_length_octet_string(unsigned long noctets, unsigned long *outlen)
 {
-   unsigned long y, z, t, wordbuf;   
-
-   LTC_ARGCHK(words  != NULL);
    LTC_ARGCHK(outlen != NULL);
 
-
-   /* must be >= 2 words */
-   if (nwords < 2) {
-      return CRYPT_INVALID_ARG;
-   }
-
-   /* word1 = 0,1,2,3 and word2 0..39 */
-   if (words[0] > 3 || (words[0] < 2 && words[1] > 39)) {
-      return CRYPT_INVALID_ARG;
-   }
-
-   /* leading word is the first two */
-   z = 0;
-   wordbuf = words[0] * 40 + words[1];
-   for (y = 1; y < nwords; y++) {
-       t = der_object_identifier_bits(wordbuf);
-       z += t/7 + ((t%7) ? 1 : 0) + (wordbuf == 0 ? 1 : 0);
-       if (y < nwords - 1) {
-          /* grab next word */
-          wordbuf = words[y+1];
-       }
-   }
-
-   /* now depending on the length our length encoding changes */
-   if (z < 128) {
-      z += 2;
-   } else if (z < 256) {
-      z += 3;
-   } else if (z < 65536UL) {
-      z += 4;
+   if (noctets < 128) {
+      /* 04 LL DD DD DD ... */
+      *outlen = 2 + noctets;
+   } else if (noctets < 256) {
+      /* 04 81 LL DD DD DD ... */
+      *outlen = 3 + noctets;
+   } else if (noctets < 65536UL) {
+      /* 04 82 LL LL DD DD DD ... */
+      *outlen = 4 + noctets;
+   } else if (noctets < 16777216UL) {
+      /* 04 83 LL LL LL DD DD DD ... */
+      *outlen = 5 + noctets;
    } else {
       return CRYPT_INVALID_ARG;
    }
 
-   *outlen = z;
    return CRYPT_OK;
 }
 
@@ -785,31 +813,48 @@ int der_decode_octet_string(const unsigned char *in, unsigned long inlen,
 }
 
 /**
-  Gets length of DER encoding of OCTET STRING 
-  @param noctets  The number of octets in the string to encode
-  @param outlen   [out] The length of the DER encoding for the given string
+  Gets length of DER encoding of num 
+  @param num    The integer to get the size of 
+  @param outlen [out] The length of the DER encoding for the given integer
   @return CRYPT_OK if successful
 */
-int der_length_octet_string(unsigned long noctets, unsigned long *outlen)
+int der_length_short_integer(unsigned long num, unsigned long *outlen)
 {
-   LTC_ARGCHK(outlen != NULL);
+   unsigned long z, y, len;
 
-   if (noctets < 128) {
-      /* 04 LL DD DD DD ... */
-      *outlen = 2 + noctets;
-   } else if (noctets < 256) {
-      /* 04 81 LL DD DD DD ... */
-      *outlen = 3 + noctets;
-   } else if (noctets < 65536UL) {
-      /* 04 82 LL LL DD DD DD ... */
-      *outlen = 4 + noctets;
-   } else if (noctets < 16777216UL) {
-      /* 04 83 LL LL LL DD DD DD ... */
-      *outlen = 5 + noctets;
-   } else {
-      return CRYPT_INVALID_ARG;
+   LTC_ARGCHK(outlen  != NULL);
+
+   /* force to 32 bits */
+   num &= 0xFFFFFFFFUL;
+
+   /* get the number of bytes */
+   z = 0;
+   y = num;
+   while (y) {
+     ++z;
+     y >>= 8;
+   }
+   
+   /* handle zero */
+   if (z == 0) {
+      z = 1;
    }
 
+   /* we need a 0x02 to indicate it's INTEGER */
+   len = 1;
+
+   /* length byte */
+   ++len;
+
+   /* bytes in value */
+   len += z;
+
+   /* see if msb is set */
+   len += (num&(1UL<<((z<<3) - 1))) ? 1 : 0;
+
+   /* return length */
+   *outlen = len; 
+   
    return CRYPT_OK;
 }
 
@@ -929,49 +974,107 @@ int der_decode_short_integer(const unsigned char *in, unsigned long inlen, unsig
 }
 
 /**
-  Gets length of DER encoding of num 
-  @param num    The integer to get the size of 
-  @param outlen [out] The length of the DER encoding for the given integer
-  @return CRYPT_OK if successful
+   Get the length of a DER sequence 
+   @param list   The sequences of items in the SEQUENCE
+   @param inlen  The number of items
+   @param outlen [out] The length required in octets to store it 
+   @return CRYPT_OK on success
 */
-int der_length_short_integer(unsigned long num, unsigned long *outlen)
+int der_length_sequence(ltc_asn1_list *list, unsigned long inlen,
+                        unsigned long *outlen) 
 {
-   unsigned long z, y, len;
+   int           err, type;
+   unsigned long size, x, y, z, i;
+   void          *data;
 
+   LTC_ARGCHK(list    != NULL);
    LTC_ARGCHK(outlen  != NULL);
 
-   /* force to 32 bits */
-   num &= 0xFFFFFFFFUL;
+   /* get size of output that will be required */
+   y = 0;
+   for (i = 0; i < inlen; i++) {
+       type = list[i].type;
+       size = list[i].size;
+       data = list[i].data;
 
-   /* get the number of bytes */
-   z = 0;
-   y = num;
-   while (y) {
-     ++z;
-     y >>= 8;
+       if (type == LTC_ASN1_EOL) { 
+          break;
+       }
+
+       switch (type) {
+           case LTC_ASN1_INTEGER:
+               if ((err = der_length_integer(data, &x)) != CRYPT_OK) {
+                  goto LBL_ERR;
+               }
+               y += x;
+               break;
+
+           case LTC_ASN1_SHORT_INTEGER:
+               if ((err = der_length_short_integer(*((unsigned long *)data), &x)) != CRYPT_OK) {
+                  goto LBL_ERR;
+               }
+               y += x;
+               break;
+
+           case LTC_ASN1_BIT_STRING:
+               if ((err = der_length_bit_string(size, &x)) != CRYPT_OK) {
+                  goto LBL_ERR;
+               }
+               y += x;
+               break;
+
+           case LTC_ASN1_OCTET_STRING:
+               if ((err = der_length_octet_string(size, &x)) != CRYPT_OK) {
+                  goto LBL_ERR;
+               }
+               y += x;
+               break;
+
+           case LTC_ASN1_OBJECT_IDENTIFIER:
+               if ((err = der_length_object_identifier(data, size, &x)) != CRYPT_OK) {
+                  goto LBL_ERR;
+               }
+               y += x;
+               break;
+
+           case LTC_ASN1_SEQUENCE:
+               if ((err = der_length_sequence(data, size, &x)) != CRYPT_OK) {
+                  goto LBL_ERR;
+               }
+               y += x;
+               break;
+
+          
+           default:
+               err = CRYPT_INVALID_ARG;
+               goto LBL_ERR;
+       }
    }
-   
-   /* handle zero */
-   if (z == 0) {
-      z = 1;
+
+   /* calc header size */
+   z = y;
+   if (y < 128) {
+      y += 2;
+   } else if (y < 256) {
+      /* 0x30 0x81 LL */
+      y += 3;
+   } else if (y < 65536UL) {
+      /* 0x30 0x82 LL LL */
+      y += 4;
+   } else if (y < 16777216UL) {
+      /* 0x30 0x83 LL LL LL */
+      y += 5;
+   } else {
+      err = CRYPT_INVALID_ARG;
+      goto LBL_ERR;
    }
 
-   /* we need a 0x02 to indicate it's INTEGER */
-   len = 1;
+   /* store size */
+   *outlen = y;
+   err     = CRYPT_OK;
 
-   /* length byte */
-   ++len;
-
-   /* bytes in value */
-   len += z;
-
-   /* see if msb is set */
-   len += (num&(1UL<<((z<<3) - 1))) ? 1 : 0;
-
-   /* return length */
-   *outlen = len; 
-   
-   return CRYPT_OK;
+LBL_ERR:
+   return err;
 }
 
 /**
@@ -1349,110 +1452,6 @@ int der_decode_sequence_ex(const unsigned char *in, unsigned long  inlen,
       }
    }                
    err = CRYPT_OK;   
-
-LBL_ERR:
-   return err;
-}
-
-/**
-   Get the length of a DER sequence 
-   @param list   The sequences of items in the SEQUENCE
-   @param inlen  The number of items
-   @param outlen [out] The length required in octets to store it 
-   @return CRYPT_OK on success
-*/
-int der_length_sequence(ltc_asn1_list *list, unsigned long inlen,
-                        unsigned long *outlen) 
-{
-   int           err, type;
-   unsigned long size, x, y, z, i;
-   void          *data;
-
-   LTC_ARGCHK(list    != NULL);
-   LTC_ARGCHK(outlen  != NULL);
-
-   /* get size of output that will be required */
-   y = 0;
-   for (i = 0; i < inlen; i++) {
-       type = list[i].type;
-       size = list[i].size;
-       data = list[i].data;
-
-       if (type == LTC_ASN1_EOL) { 
-          break;
-       }
-
-       switch (type) {
-           case LTC_ASN1_INTEGER:
-               if ((err = der_length_integer(data, &x)) != CRYPT_OK) {
-                  goto LBL_ERR;
-               }
-               y += x;
-               break;
-
-           case LTC_ASN1_SHORT_INTEGER:
-               if ((err = der_length_short_integer(*((unsigned long *)data), &x)) != CRYPT_OK) {
-                  goto LBL_ERR;
-               }
-               y += x;
-               break;
-
-           case LTC_ASN1_BIT_STRING:
-               if ((err = der_length_bit_string(size, &x)) != CRYPT_OK) {
-                  goto LBL_ERR;
-               }
-               y += x;
-               break;
-
-           case LTC_ASN1_OCTET_STRING:
-               if ((err = der_length_octet_string(size, &x)) != CRYPT_OK) {
-                  goto LBL_ERR;
-               }
-               y += x;
-               break;
-
-           case LTC_ASN1_OBJECT_IDENTIFIER:
-               if ((err = der_length_object_identifier(data, size, &x)) != CRYPT_OK) {
-                  goto LBL_ERR;
-               }
-               y += x;
-               break;
-
-           case LTC_ASN1_SEQUENCE:
-               if ((err = der_length_sequence(data, size, &x)) != CRYPT_OK) {
-                  goto LBL_ERR;
-               }
-               y += x;
-               break;
-
-          
-           default:
-               err = CRYPT_INVALID_ARG;
-               goto LBL_ERR;
-       }
-   }
-
-   /* calc header size */
-   z = y;
-   if (y < 128) {
-      y += 2;
-   } else if (y < 256) {
-      /* 0x30 0x81 LL */
-      y += 3;
-   } else if (y < 65536UL) {
-      /* 0x30 0x82 LL LL */
-      y += 4;
-   } else if (y < 16777216UL) {
-      /* 0x30 0x83 LL LL LL */
-      y += 5;
-   } else {
-      err = CRYPT_INVALID_ARG;
-      goto LBL_ERR;
-   }
-
-   /* store size */
-   *outlen = y;
-   err     = CRYPT_OK;
 
 LBL_ERR:
    return err;
