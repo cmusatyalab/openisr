@@ -103,6 +103,26 @@ struct isrcry_random_ctx {
 	uint32_t counter;
 };
 
+struct isrcry_mac_desc {
+	void *(*alloc)(struct isrcry_mac_ctx *mctx);
+	enum isrcry_result (*init)(struct isrcry_mac_ctx *mctx,
+				const unsigned char *key, unsigned keylen);
+	void (*update)(struct isrcry_mac_ctx *mctx,
+				const unsigned char *buffer, unsigned length);
+	enum isrcry_result (*final)(struct isrcry_mac_ctx *mctx,
+				unsigned char *out, unsigned outlen);
+	void (*free)(struct isrcry_mac_ctx *mctx);
+	enum isrcry_hash hash;
+	unsigned mac_size;
+};
+
+extern const struct isrcry_mac_desc _isrcry_hmac_sha1_desc;
+
+struct isrcry_mac_ctx {
+	const struct isrcry_mac_desc *desc;
+	void *ctx;
+};
+
 /* The helper macros below are originally from libtomcrypt. */
 
 /* Extract a byte portably */

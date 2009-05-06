@@ -50,6 +50,10 @@ enum isrcry_hash {
 	ISRCRY_HASH_MD5			= 1,
 };
 
+enum isrcry_mac {
+	ISRCRY_MAC_HMAC_SHA1		= 0,
+};
+
 struct isrcry_cipher_ctx;
 struct isrcry_hash_ctx;
 struct isrcry_random_ctx;
@@ -75,6 +79,16 @@ void isrcry_hash_update(struct isrcry_hash_ctx *ctx,
 			const void *buffer, unsigned length);
 void isrcry_hash_final(struct isrcry_hash_ctx *ctx, void *digest);
 unsigned isrcry_hash_len(enum isrcry_hash type);
+
+struct isrcry_mac_ctx *isrcry_mac_alloc(enum isrcry_mac type);
+void isrcry_mac_free(struct isrcry_mac_ctx *mctx);
+enum isrcry_result isrcry_mac_init(struct isrcry_mac_ctx *mctx,
+			const void *key, unsigned keylen);
+void isrcry_mac_update(struct isrcry_mac_ctx *mctx, const void *buffer,
+			unsigned length);
+enum isrcry_result isrcry_mac_final(struct isrcry_mac_ctx *mctx, void *out,
+			unsigned outlen);
+unsigned isrcry_mac_len(enum isrcry_mac type);
 
 struct isrcry_random_ctx *isrcry_random_alloc(void);
 void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
