@@ -173,7 +173,7 @@ exported struct isrcry_random_ctx *isrcry_random_alloc(void)
     isrcry_cipher_init(rctx->aes, ISRCRY_ENCRYPT,
                        initial_seed + AES_BLOCK_SIZE, RND_KEY_LEN, NULL);
 
-    /* discard the first block of random data */
+    /* discard the first block of random data per FIPS 140-2 */
     isrcry_random_bytes(rctx, tmp, sizeof(tmp));
 
     return rctx;
@@ -214,7 +214,7 @@ exported void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 	    ((uint32_t *)I)[i] ^= ((uint32_t *)random)[i];
 	isrcry_cipher_process(rctx->aes, I, AES_BLOCK_SIZE, rctx->pool);
 
-	/* we must never return consecutive identical blocks */
+	/* we must never return consecutive identical blocks per FIPS 140-2 */
 	assert(memcmp(prev, random, AES_BLOCK_SIZE) != 0);
 
 	prev = random;
