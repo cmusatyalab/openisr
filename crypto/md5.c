@@ -137,6 +137,7 @@ const struct isrcry_hash_desc _isrcry_md5_desc = {
 	.init = md5_init,
 	.update = md5_update,
 	.final = md5_final,
+	.block_size = MD5_DATA_SIZE,
 	.digest_size = MD5_DIGEST_SIZE,
 	.ctxlen = sizeof(struct isrcry_md5_ctx)
 };

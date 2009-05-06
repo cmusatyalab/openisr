@@ -83,6 +83,7 @@ struct isrcry_hash_desc {
 	void (*update)(struct isrcry_hash_ctx *hctx,
 				const unsigned char *buffer, unsigned length);
 	void (*final)(struct isrcry_hash_ctx *ctx, unsigned char *digest);
+	unsigned block_size;
 	unsigned digest_size;
 	unsigned ctxlen;
 };

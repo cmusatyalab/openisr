@@ -134,6 +134,7 @@ const struct isrcry_hash_desc _isrcry_sha1_desc = {
 	.init = sha1_init,
 	.update = sha1_update,
 	.final = sha1_final,
+	.block_size = SHA1_DATA_SIZE,
 	.digest_size = SHA1_DIGEST_SIZE,
 	.ctxlen = sizeof(struct isrcry_sha1_ctx)
 };
