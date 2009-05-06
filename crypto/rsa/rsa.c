@@ -402,7 +402,7 @@ int rsa_sign_hash_ex(const unsigned char *in,       unsigned long  inlen,
   }
 
   /* RSA encode it */
-  return ltc_mp.rsa_me(out, x, out, outlen, PK_PRIVATE, key);
+  return rsa_exptmod(out, x, out, outlen, PK_PRIVATE, key);
 }
 
 /**
@@ -456,7 +456,7 @@ int rsa_verify_hash_ex(const unsigned char *sig,      unsigned long siglen,
 
   /* RSA decode it  */
   x = siglen;
-  if ((err = ltc_mp.rsa_me(sig, siglen, tmpbuf, &x, PK_PUBLIC, key)) != CRYPT_OK) {
+  if ((err = rsa_exptmod(sig, siglen, tmpbuf, &x, PK_PUBLIC, key)) != CRYPT_OK) {
      XFREE(tmpbuf);
      return err;
   }
