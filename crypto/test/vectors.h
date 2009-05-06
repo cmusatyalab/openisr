@@ -59,4 +59,13 @@ struct hash_monte_test {
 	uint8_t hash[64];
 };
 
+struct mac_test {
+	uint8_t key[80];
+	unsigned keylen;
+	uint8_t data[80];
+	unsigned datalen;
+	uint8_t mac[20];
+	unsigned maclen;
+};
+
 #endif

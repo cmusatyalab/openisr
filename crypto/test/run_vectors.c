@@ -23,6 +23,7 @@
 #include "vectors_aes.h"
 #include "vectors_sha1.h"
 #include "vectors_md5.h"
+#include "vectors_hmac.h"
 
 int failed;
 
@@ -342,6 +343,41 @@ void hash_monte_test(const char *alg, enum isrcry_hash type,
 	isrcry_hash_free(ctx);
 }
 
+void mac_test(const char *alg, enum isrcry_mac type,
+			const struct mac_test *vectors, unsigned vec_count)
+{
+	struct isrcry_mac_ctx *ctx;
+	const struct mac_test *test;
+	unsigned mac[64 + 1];
+	unsigned n;
+
+	ctx = isrcry_mac_alloc(type);
+	if (ctx == NULL) {
+		fail("%s alloc", alg);
+		return;
+	}
+	for (n = 0; n < vec_count; n++) {
+		test = &vectors[n];
+		if (isrcry_mac_init(ctx, test->key, test->keylen)) {
+			fail("%s init %u", alg, n);
+			continue;
+		}
+		isrcry_mac_update(ctx, test->data, test->datalen);
+		mac[test->maclen] = 0xc1;
+		if (isrcry_mac_final(ctx, mac, test->maclen)) {
+			fail("%s final %u", alg, n);
+			continue;
+		}
+		if (memcmp(mac, test->mac, test->maclen)) {
+			fail("%s result %u", alg, n);
+			continue;
+		}
+		if (mac[test->maclen] != 0xc1)
+			fail("%s overrun %u", alg, n);
+	}
+	isrcry_mac_free(ctx);
+}
+
 
 /* Statistical random number generator tests defined in
  * FIPS 140-1 - 4.11.1 Power-Up Tests.  Originally from RPC2.
@@ -491,6 +527,8 @@ int main(void)
 				MEMBERS(md5_hash_vectors));
 	hash_simple_monte_test("md5", ISRCRY_HASH_MD5, md5_monte_vectors,
 				MEMBERS(md5_monte_vectors));
+	mac_test("hmac-sha1", ISRCRY_MAC_HMAC_SHA1, hmac_sha1_vectors,
+				MEMBERS(hmac_sha1_vectors));
 	random_fips_test();
 
 	if (failed) {
