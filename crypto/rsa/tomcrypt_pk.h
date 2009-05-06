@@ -38,10 +38,6 @@ typedef struct Rsa_key {
 
 int rsa_make_key(prng_state *prng, int wprng, int size, long e, rsa_key *key);
 
-int rsa_exptmod(const unsigned char *in,   unsigned long inlen,
-                      unsigned char *out,  unsigned long *outlen, int which,
-                      rsa_key *key);
-
 void rsa_free(rsa_key *key);
 
 int rsa_sign_hash_ex(const unsigned char *in,       unsigned long  inlen,

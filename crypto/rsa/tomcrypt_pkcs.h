@@ -1,9 +1,5 @@
 /* PKCS Header Info */
 
-int pkcs_1_mgf1(      int            hash_idx,
-                const unsigned char *seed, unsigned long seedlen,
-                      unsigned char *mask, unsigned long masklen);
-
 int pkcs_1_i2osp(void *n, unsigned long modulus_len, unsigned char *out);
 int pkcs_1_os2ip(void *n, unsigned char *in, unsigned long inlen);
 

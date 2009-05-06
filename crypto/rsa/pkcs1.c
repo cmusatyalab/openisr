@@ -55,7 +55,7 @@ int pkcs_1_os2ip(void *n, unsigned char *in, unsigned long inlen)
    @param masklen     The length of the mask desired
    @return CRYPT_OK if successful
 */
-int pkcs_1_mgf1(int                  hash_idx,
+static int pkcs_1_mgf1(int                  hash_idx,
                 const unsigned char *seed, unsigned long seedlen,
                       unsigned char *mask, unsigned long masklen)
 {
