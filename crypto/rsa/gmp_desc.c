@@ -10,6 +10,7 @@
  */
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <gmp.h>
 
    /** initialize a bignum
@@ -37,6 +38,47 @@ void mp_clear(void *a)
    LTC_ARGCHKVD(a != NULL);
    mpz_clear(a);
    XFREE(a);
+}
+
+int mp_init_multi(void **a, ...)
+{
+   void    **cur = a;
+   int       np  = 0;
+   va_list   args;
+
+   va_start(args, a);
+   while (cur != NULL) {
+       if (mp_init(cur) != CRYPT_OK) {
+          /* failed */
+          va_list clean_list;
+
+          va_start(clean_list, a);
+          cur = a;
+          while (np--) {
+              mp_clear(*cur);
+              cur = va_arg(clean_list, void**);
+          }
+          va_end(clean_list);
+          return CRYPT_MEM;
+       }
+       ++np;
+       cur = va_arg(args, void**);
+   }
+   va_end(args);
+   return CRYPT_OK;   
+}
+
+void mp_clear_multi(void *a, ...)
+{
+   void     *cur = a;
+   va_list   args;
+
+   va_start(args, a);
+   while (cur != NULL) {
+       mp_clear(cur);
+       cur = va_arg(args, void *);
+   }
+   va_end(args);
 }
 
    /** copy 
