@@ -15,7 +15,7 @@
   @param outlen [out] The length of the DER encoding for the given string
   @return CRYPT_OK if successful
 */
-int der_length_bit_string(unsigned long nbits, unsigned long *outlen)
+static int der_length_bit_string(unsigned long nbits, unsigned long *outlen)
 {
    unsigned long nbytes;
    LTC_ARGCHK(outlen != NULL);
@@ -47,7 +47,7 @@ int der_length_bit_string(unsigned long nbits, unsigned long *outlen)
   @param outlen   [in/out] The max size and resulting size of the DER BIT STRING
   @return CRYPT_OK if successful
 */
-int der_encode_bit_string(const unsigned char *in, unsigned long inlen,
+static int der_encode_bit_string(const unsigned char *in, unsigned long inlen,
                                 unsigned char *out, unsigned long *outlen)
 {
    unsigned long len, x, y;
@@ -111,7 +111,7 @@ int der_encode_bit_string(const unsigned char *in, unsigned long inlen,
   @param outlen  [in/out] The number of bits stored
   @return CRYPT_OK if successful
 */
-int der_decode_bit_string(const unsigned char *in,  unsigned long inlen,
+static int der_decode_bit_string(const unsigned char *in,  unsigned long inlen,
                                 unsigned char *out, unsigned long *outlen)
 {
    unsigned long dlen, blen, x, y;
@@ -186,7 +186,7 @@ int der_decode_bit_string(const unsigned char *in,  unsigned long inlen,
   @param outlen [out] The length of the DER encoding for the given integer
   @return CRYPT_OK if successful
 */
-int der_length_integer(void *num, unsigned long *outlen)
+static int der_length_integer(void *num, unsigned long *outlen)
 {
    unsigned long z, len;
    int           leading_zero;
@@ -246,7 +246,7 @@ int der_length_integer(void *num, unsigned long *outlen)
   @param outlen   [in/out] The max size and resulting size of the DER encoded integers
   @return CRYPT_OK if successful
 */
-int der_encode_integer(void *num, unsigned char *out, unsigned long *outlen)
+static int der_encode_integer(void *num, unsigned char *out, unsigned long *outlen)
 {  
    unsigned long tmplen, y;
    int           err, leading_zero;
@@ -350,7 +350,7 @@ int der_encode_integer(void *num, unsigned char *out, unsigned long *outlen)
   @param num      The first mp_int to decode
   @return CRYPT_OK if successful
 */
-int der_decode_integer(const unsigned char *in, unsigned long inlen, void *num)
+static int der_decode_integer(const unsigned char *in, unsigned long inlen, void *num)
 {
    unsigned long x, y, z;
    int           err;
@@ -447,7 +447,7 @@ static unsigned long der_object_identifier_bits(unsigned long x)
   @param outlen   [out] The length of the DER encoding for the given string
   @return CRYPT_OK if successful
 */
-int der_length_object_identifier(unsigned long *words, unsigned long nwords, unsigned long *outlen)
+static int der_length_object_identifier(unsigned long *words, unsigned long nwords, unsigned long *outlen)
 {
    unsigned long y, z, t, wordbuf;   
 
@@ -500,7 +500,7 @@ int der_length_object_identifier(unsigned long *words, unsigned long nwords, uns
   @param outlen  [in/out] The max and resulting size of the OID
   @return CRYPT_OK if successful
 */
-int der_encode_object_identifier(unsigned long *words, unsigned long  nwords,
+static int der_encode_object_identifier(unsigned long *words, unsigned long  nwords,
                                  unsigned char *out,   unsigned long *outlen)
 {
    unsigned long i, x, y, z, t, mask, wordbuf;
@@ -588,7 +588,7 @@ int der_encode_object_identifier(unsigned long *words, unsigned long  nwords,
   @param outlen  [in/out] The number of OID words
   @return CRYPT_OK if successful
 */
-int der_decode_object_identifier(const unsigned char *in,    unsigned long  inlen,
+static int der_decode_object_identifier(const unsigned char *in,    unsigned long  inlen,
                                        unsigned long *words, unsigned long *outlen)
 {
    unsigned long x, y, t, len;
@@ -662,7 +662,7 @@ int der_decode_object_identifier(const unsigned char *in,    unsigned long  inle
   @param outlen   [out] The length of the DER encoding for the given string
   @return CRYPT_OK if successful
 */
-int der_length_octet_string(unsigned long noctets, unsigned long *outlen)
+static int der_length_octet_string(unsigned long noctets, unsigned long *outlen)
 {
    LTC_ARGCHK(outlen != NULL);
 
@@ -693,7 +693,7 @@ int der_length_octet_string(unsigned long noctets, unsigned long *outlen)
   @param outlen   [in/out] The max size and resulting size of the DER OCTET STRING
   @return CRYPT_OK if successful
 */
-int der_encode_octet_string(const unsigned char *in, unsigned long inlen,
+static int der_encode_octet_string(const unsigned char *in, unsigned long inlen,
                                   unsigned char *out, unsigned long *outlen)
 {
    unsigned long x, y, len;
@@ -754,7 +754,7 @@ int der_encode_octet_string(const unsigned char *in, unsigned long inlen,
   @param outlen  [in/out] The number of octets stored
   @return CRYPT_OK if successful
 */
-int der_decode_octet_string(const unsigned char *in, unsigned long inlen,
+static int der_decode_octet_string(const unsigned char *in, unsigned long inlen,
                                   unsigned char *out, unsigned long *outlen)
 {
    unsigned long x, y, len;
@@ -818,7 +818,7 @@ int der_decode_octet_string(const unsigned char *in, unsigned long inlen,
   @param outlen [out] The length of the DER encoding for the given integer
   @return CRYPT_OK if successful
 */
-int der_length_short_integer(unsigned long num, unsigned long *outlen)
+static int der_length_short_integer(unsigned long num, unsigned long *outlen)
 {
    unsigned long z, y, len;
 
@@ -865,7 +865,7 @@ int der_length_short_integer(unsigned long num, unsigned long *outlen)
   @param outlen   [in/out] The max size and resulting size of the DER encoded integers
   @return CRYPT_OK if successful
 */
-int der_encode_short_integer(unsigned long num, unsigned char *out, unsigned long *outlen)
+static int der_encode_short_integer(unsigned long num, unsigned char *out, unsigned long *outlen)
 {  
    unsigned long len, x, y, z;
    int           err;
@@ -937,7 +937,7 @@ int der_encode_short_integer(unsigned long num, unsigned char *out, unsigned lon
   @param num      [out] The integer to decode
   @return CRYPT_OK if successful
 */
-int der_decode_short_integer(const unsigned char *in, unsigned long inlen, unsigned long *num)
+static int der_decode_short_integer(const unsigned char *in, unsigned long inlen, unsigned long *num)
 {
    unsigned long len, x, y;
 
@@ -980,7 +980,7 @@ int der_decode_short_integer(const unsigned char *in, unsigned long inlen, unsig
    @param outlen [out] The length required in octets to store it 
    @return CRYPT_OK on success
 */
-int der_length_sequence(ltc_asn1_list *list, unsigned long inlen,
+static int der_length_sequence(ltc_asn1_list *list, unsigned long inlen,
                         unsigned long *outlen) 
 {
    int           err, type;
