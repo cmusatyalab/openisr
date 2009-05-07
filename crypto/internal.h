@@ -123,6 +123,33 @@ struct isrcry_mac_ctx {
 	void *ctx;
 };
 
+struct isrcry_sign_desc {
+	enum isrcry_result (*make_keys)(struct isrcry_sign_ctx *sctx,
+				unsigned length);
+	enum isrcry_result (*get_key)(struct isrcry_sign_ctx *sctx,
+				enum isrcry_key_type type,
+				enum isrcry_key_format format,
+				unsigned char *out, unsigned *outlen);
+	enum isrcry_result (*set_key)(struct isrcry_sign_ctx *sctx,
+				enum isrcry_key_type type,
+				enum isrcry_key_format format,
+				unsigned char *key, unsigned keylen);
+	enum isrcry_result (*sign)(struct isrcry_sign_ctx *sctx,
+				unsigned char *hash, unsigned hashlen,
+				unsigned char *out, unsigned *outlen);
+	enum isrcry_result (*verify)(struct isrcry_sign_ctx *sctx,
+				unsigned char *hash, unsigned hashlen,
+				unsigned char *sig, unsigned siglen);
+	void (*free)(struct isrcry_sign_ctx *sctx);
+};
+
+struct isrcry_sign_ctx {
+	const struct isrcry_sign_desc *desc;
+	struct isrcry_random_ctx *rand;
+	void *pubkey;
+	void *privkey;
+};
+
 /* The helper macros below are originally from libtomcrypt. */
 
 /* Extract a byte portably */

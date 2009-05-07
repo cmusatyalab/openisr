@@ -35,6 +35,15 @@ enum isrcry_direction {
 	ISRCRY_ENCRYPT			= 1
 };
 
+enum isrcry_key_type {
+	ISRCRY_KEY_PUBLIC		= 0,
+	ISRCRY_KEY_PRIVATE		= 1
+};
+
+enum isrcry_key_format {
+	ISRCRY_KEY_FORMAT_RAW		= 0,
+};
+
 enum isrcry_cipher {
 	ISRCRY_CIPHER_AES		= 0,
 	ISRCRY_CIPHER_BLOWFISH		= 1,
@@ -58,10 +67,15 @@ enum isrcry_mac {
 	ISRCRY_MAC_HMAC_SHA1		= 0,
 };
 
+enum isrcry_sign {
+	ISRCRY_SIGN_RSA_PSS		= 0,
+};
+
 struct isrcry_cipher_ctx;
 struct isrcry_hash_ctx;
 struct isrcry_random_ctx;
 struct isrcry_mac_ctx;
+struct isrcry_sign_ctx;
 
 struct isrcry_cipher_ctx *isrcry_cipher_alloc(enum isrcry_cipher cipher,
 			enum isrcry_mode mode);
@@ -98,6 +112,24 @@ struct isrcry_random_ctx *isrcry_random_alloc(void);
 void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 			unsigned length);
 void isrcry_random_free(struct isrcry_random_ctx *rctx);
+
+struct isrcry_sign_ctx *isrcry_sign_alloc(enum isrcry_sign type,
+			struct isrcry_random_ctx *rand);
+void isrcry_sign_free(struct isrcry_sign_ctx *sctx);
+enum isrcry_result isrcry_sign_make_keys(struct isrcry_sign_ctx *sctx,
+			unsigned length);
+enum isrcry_result isrcry_sign_get_key(struct isrcry_sign_ctx *sctx,
+			enum isrcry_key_type type, enum isrcry_key_format fmt,
+			void *out, unsigned *outlen);
+enum isrcry_result isrcry_sign_set_key(struct isrcry_sign_ctx *sctx,
+			enum isrcry_key_type type, enum isrcry_key_format fmt,
+			void *key, unsigned keylen);
+enum isrcry_result isrcry_sign_sign(struct isrcry_sign_ctx *sctx,
+			void *hash, unsigned hashlen, void *out,
+			unsigned *outlen);
+enum isrcry_result isrcry_sign_verify(struct isrcry_sign_ctx *sctx,
+			void *hash, unsigned hashlen, void *sig,
+			unsigned siglen);
 
 const char *isrcry_strerror(enum isrcry_result result);
 
