@@ -179,6 +179,8 @@ AC_ARG_WITH([curl], [AS_HELP_STRING([--with-curl=DIR],
 			[look for libcurl in DIR])])
 AC_ARG_WITH([libarchive], [AS_HELP_STRING([--with-libarchive=DIR],
 			[look for libarchive in DIR])])
+AC_ARG_WITH([gmp], [AS_HELP_STRING([--with-gmp=DIR],
+			[look for GMP in DIR])])
 
 if test z$enable_client = zyes ; then
 	FIND_LIBRARY([libcurl], [curl], [curl_easy_init], [curl/curl.h],
@@ -199,6 +201,8 @@ if test z$enable_client = zyes -o z$enable_server = zyes ; then
 	FIND_LIBRARY([libarchive], [archive], [archive_read_extract],
 				[archive.h archive_entry.h],
 				[$with_libarchive /usr/local /usr])
+	FIND_LIBRARY([GMP], [gmp], [__gmpz_powm], [gmp.h],
+				[$with_gmp /usr/local /usr])
 	PKG_CHECK_MODULES([glib], [glib-2.0 >= 2.12])
 fi
 

@@ -4,6 +4,7 @@ AM_CFLAGS  = -W -Wall -Wstrict-prototypes -funroll-loops -fomit-frame-pointer
 AM_CFLAGS += $(VISIBILITY_HIDDEN)
 # autoconf puts a -O2 flag in CFLAGS which cannot be overridden by AM_CFLAGS
 CFLAGS=@CFLAGS@ -O3
+AM_LDFLAGS = -lgmp
 
 pkglib_LTLIBRARIES = libisrcrypto.la
 libisrcrypto_la_SOURCES = aes.c blowfish.c cbc.c cipher.c ecb.c hash.c hmac.c
