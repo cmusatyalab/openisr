@@ -9,6 +9,11 @@
  * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.com
  */
 
+#include <stdlib.h>
+#include "isrcrypto.h"
+#define LIBISRCRYPTO_INTERNAL
+#include "internal.h"
+
 /* Min and Max RSA key sizes (in bits) */
 #define MIN_RSA_SIZE 1024
 #define MAX_RSA_SIZE 4096
