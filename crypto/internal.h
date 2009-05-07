@@ -225,4 +225,47 @@ void mp_exptmod(void *a, void *b, void *c, void *d);
 void mp_prime_is_prime(void *a, int rounds, int *b);
 int rand_prime(void *N, unsigned len, struct isrcry_random_ctx *rctx);
 
+enum {
+ LTC_ASN1_EOL,
+ LTC_ASN1_INTEGER,
+ LTC_ASN1_SHORT_INTEGER,
+ LTC_ASN1_BIT_STRING,
+ LTC_ASN1_OCTET_STRING,
+ LTC_ASN1_OBJECT_IDENTIFIER,
+ LTC_ASN1_SEQUENCE,
+};
+
+/** A LTC ASN.1 list type */
+typedef struct ltc_asn1_list_ {
+   /** The LTC ASN.1 enumerated type identifier */
+   int           type;
+   /** The data to encode or place for decoding */
+   void         *data;
+   /** The size of the input or resulting output */
+   unsigned long size;
+   /** The used flag, this is used by the CHOICE ASN.1 type to indicate which choice was made */
+   int           used;
+   /** prev/next entry in the list */
+   struct ltc_asn1_list_ *prev, *next, *child, *parent;
+} ltc_asn1_list;
+
+#define LTC_SET_ASN1(list, index, Type, Data, Size)  \
+   do {                                              \
+      int LTC_MACRO_temp            = (index);       \
+      ltc_asn1_list *LTC_MACRO_list = (list);        \
+      LTC_MACRO_list[LTC_MACRO_temp].type = (Type);  \
+      LTC_MACRO_list[LTC_MACRO_temp].data = (void*)(Data);  \
+      LTC_MACRO_list[LTC_MACRO_temp].size = (Size);  \
+      LTC_MACRO_list[LTC_MACRO_temp].used = 0;       \
+   } while (0);
+
+enum isrcry_result der_encode_sequence(ltc_asn1_list *list, unsigned long inlen,
+                           unsigned char *out,  unsigned long *outlen);
+enum isrcry_result der_decode_sequence(const unsigned char *in, unsigned long  inlen,
+                           ltc_asn1_list *list,     unsigned long  outlen);
+
+/* VA list handy helpers with triplets of <type, size, data> */
+enum isrcry_result der_encode_sequence_multi(unsigned char *out, unsigned long *outlen, ...);
+enum isrcry_result der_decode_sequence_multi(const unsigned char *in, unsigned long inlen, ...);
+
 #endif
