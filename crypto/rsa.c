@@ -57,7 +57,8 @@ static int pkcs_1_i2osp(void *n, unsigned long modulus_len, unsigned char *out)
 
    /* store it */
    memset(out, 0, modulus_len);
-   return mp_to_unsigned_bin(n, out+(modulus_len-size));
+   mp_to_unsigned_bin(n, out+(modulus_len-size));
+   return ISRCRY_OK;
 }
 
 /**
@@ -65,11 +66,10 @@ static int pkcs_1_i2osp(void *n, unsigned long modulus_len, unsigned char *out)
   @param n          [out] The mp_int destination
   @param in         The binary string to read
   @param inlen      The length of the binary string
-  @return ISRCRY_OK if successful
 */
-static int pkcs_1_os2ip(void *n, unsigned char *in, unsigned long inlen)
+static void pkcs_1_os2ip(void *n, unsigned char *in, unsigned long inlen)
 {
-   return mp_read_unsigned_bin(n, in, inlen);
+   mp_read_unsigned_bin(n, in, inlen);
 }
 
 /**
@@ -460,51 +460,51 @@ static int rsa_make_key(prng_state *prng, int wprng, int size, long e, rsa_key *
       return err;
    }
 
-   if ((err = mp_init_multi(&p, &q, &tmp1, &tmp2, &tmp3, NULL)) != ISRCRY_OK) {
+   if ((err = mp_init_multi(&p, &q, &tmp1, &tmp2, &tmp3, NULL))) {
       return err;
    }
 
    /* make primes p and q (optimization provided by Wayne Scott) */
-   if ((err = mp_set_int(tmp3, e)) != ISRCRY_OK)                      { goto errkey; }  /* tmp3 = e */
+   mp_set_int(tmp3, e);  /* tmp3 = e */
 
    /* make prime "p" */
    do {
        if ((err = rand_prime( p, size/2, prng, wprng)) != ISRCRY_OK)  { goto errkey; }
-       if ((err = mp_sub_d( p, 1,  tmp1)) != ISRCRY_OK)               { goto errkey; }  /* tmp1 = p-1 */
-       if ((err = mp_gcd( tmp1,  tmp3,  tmp2)) != ISRCRY_OK)          { goto errkey; }  /* tmp2 = gcd(p-1, e) */
-   } while (mp_cmp_d( tmp2, 1) != 0);                                                  /* while e divides p-1 */
+       mp_sub_d( p, 1,  tmp1); /* tmp1 = p-1 */
+       mp_gcd( tmp1,  tmp3,  tmp2); /* tmp2 = gcd(p-1, e) */
+   } while (mp_cmp_d( tmp2, 1));                                                  /* while e divides p-1 */
 
    /* make prime "q" */
    do {
        if ((err = rand_prime( q, size/2, prng, wprng)) != ISRCRY_OK)  { goto errkey; }
-       if ((err = mp_sub_d( q, 1,  tmp1)) != ISRCRY_OK)               { goto errkey; } /* tmp1 = q-1 */
-       if ((err = mp_gcd( tmp1,  tmp3,  tmp2)) != ISRCRY_OK)          { goto errkey; } /* tmp2 = gcd(q-1, e) */
-   } while (mp_cmp_d( tmp2, 1) != 0);                                                 /* while e divides q-1 */
+       mp_sub_d( q, 1,  tmp1); /* tmp1 = q-1 */
+       mp_gcd( tmp1,  tmp3,  tmp2); /* tmp2 = gcd(q-1, e) */
+   } while (mp_cmp_d( tmp2, 1));                                                 /* while e divides q-1 */
 
    /* tmp1 = lcm(p-1, q-1) */
-   if ((err = mp_sub_d( p, 1,  tmp2)) != ISRCRY_OK)                   { goto errkey; } /* tmp2 = p-1 */
-                                                                                      /* tmp1 = q-1 (previous do/while loop) */
-   if ((err = mp_lcm( tmp1,  tmp2,  tmp1)) != ISRCRY_OK)              { goto errkey; } /* tmp1 = lcm(p-1, q-1) */
+   mp_sub_d( p, 1,  tmp2); /* tmp2 = p-1 */
+   /* tmp1 = q-1 (previous do/while loop) */
+   mp_lcm( tmp1,  tmp2,  tmp1); /* tmp1 = lcm(p-1, q-1) */
 
    /* make key */
    if ((err = mp_init_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP, &key->qP, &key->p, &key->q, NULL)) != ISRCRY_OK) {
       goto errkey;
    }
 
-   if ((err = mp_set_int( key->e, e)) != ISRCRY_OK)                     { goto errkey; } /* key->e =  e */
+   mp_set_int( key->e, e); /* key->e =  e */
    if ((err = mp_invmod( key->e,  tmp1,  key->d)) != ISRCRY_OK)         { goto errkey; } /* key->d = 1/e mod lcm(p-1,q-1) */
-   if ((err = mp_mul( p,  q,  key->N)) != ISRCRY_OK)                    { goto errkey; } /* key->N = pq */
+   mp_mul( p,  q,  key->N); /* key->N = pq */
 
    /* optimize for CRT now */
    /* find d mod q-1 and d mod p-1 */
-   if ((err = mp_sub_d( p, 1,  tmp1)) != ISRCRY_OK)                     { goto errkey; } /* tmp1 = q-1 */
-   if ((err = mp_sub_d( q, 1,  tmp2)) != ISRCRY_OK)                     { goto errkey; } /* tmp2 = p-1 */
-   if ((err = mp_mod( key->d,  tmp1,  key->dP)) != ISRCRY_OK)           { goto errkey; } /* dP = d mod p-1 */
-   if ((err = mp_mod( key->d,  tmp2,  key->dQ)) != ISRCRY_OK)           { goto errkey; } /* dQ = d mod q-1 */
+   mp_sub_d( p, 1,  tmp1); /* tmp1 = q-1 */
+   mp_sub_d( q, 1,  tmp2); /* tmp2 = p-1 */
+   mp_mod( key->d,  tmp1,  key->dP); /* dP = d mod p-1 */
+   mp_mod( key->d,  tmp2,  key->dQ); /* dQ = d mod q-1 */
    if ((err = mp_invmod( q,  p,  key->qP)) != ISRCRY_OK)                { goto errkey; } /* qP = 1/q mod p */
 
-   if ((err = mp_copy( p,  key->p)) != ISRCRY_OK)                       { goto errkey; }
-   if ((err = mp_copy( q,  key->q)) != ISRCRY_OK)                       { goto errkey; }
+   mp_copy( p,  key->p);
+   mp_copy( q,  key->q);
 
    /* set key type (in this case it's CRT optimized) */
    key->type = ISRCRY_KEY_PRIVATE;
@@ -592,7 +592,7 @@ static int rsa_import(const unsigned char *in, unsigned long inlen, rsa_key *key
       goto LBL_ERR;
    }
 
-   if (mp_cmp_d(key->N, 0) == LTC_MP_EQ) {
+   if (mp_cmp_d(key->N, 0) == 0) {
       if ((err = mp_init(&zero)) != ISRCRY_OK) { 
          goto LBL_ERR;
       }
@@ -613,7 +613,7 @@ static int rsa_import(const unsigned char *in, unsigned long inlen, rsa_key *key
       }
       mp_clear(zero);
       key->type = ISRCRY_KEY_PRIVATE;
-   } else if (mp_cmp_d(key->N, 1) == LTC_MP_EQ) {
+   } else if (mp_cmp_d(key->N, 1) == 0) {
       /* we don't support multi-prime RSA */
       err = ISRCRY_BAD_FORMAT;
       goto LBL_ERR;
@@ -705,10 +705,10 @@ static int rsa_exptmod(const unsigned char *in,   unsigned long inlen,
 
    /* init and copy into tmp */
    if ((err = mp_init_multi(&tmp, &tmpa, &tmpb, NULL)) != ISRCRY_OK)                                    { return err; }
-   if ((err = mp_read_unsigned_bin(tmp, (unsigned char *)in, (int)inlen)) != ISRCRY_OK)                 { goto error; }
+   mp_read_unsigned_bin(tmp, (unsigned char *)in, (int)inlen);
 
    /* sanity check on the input */
-   if (mp_cmp(key->N, tmp) == LTC_MP_LT) {
+   if (mp_cmp(key->N, tmp) < 0) {
       err = ISRCRY_BAD_FORMAT;
       goto error;
    }
@@ -716,21 +716,21 @@ static int rsa_exptmod(const unsigned char *in,   unsigned long inlen,
    /* are we using the private exponent and is the key optimized? */
    if (which == ISRCRY_KEY_PRIVATE) {
       /* tmpa = tmp^dP mod p */
-      if ((err = mp_exptmod(tmp, key->dP, key->p, tmpa)) != ISRCRY_OK)                               { goto error; }
+      mp_exptmod(tmp, key->dP, key->p, tmpa);
 
       /* tmpb = tmp^dQ mod q */
-      if ((err = mp_exptmod(tmp, key->dQ, key->q, tmpb)) != ISRCRY_OK)                               { goto error; }
+      mp_exptmod(tmp, key->dQ, key->q, tmpb);
 
       /* tmp = (tmpa - tmpb) * qInv (mod p) */
-      if ((err = mp_sub(tmpa, tmpb, tmp)) != ISRCRY_OK)                                              { goto error; }
-      if ((err = mp_mulmod(tmp, key->qP, key->p, tmp)) != ISRCRY_OK)                                { goto error; }
+      mp_sub(tmpa, tmpb, tmp);
+      mp_mulmod(tmp, key->qP, key->p, tmp);
 
       /* tmp = tmpb + q * tmp */
-      if ((err = mp_mul(tmp, key->q, tmp)) != ISRCRY_OK)                                             { goto error; }
-      if ((err = mp_add(tmp, tmpb, tmp)) != ISRCRY_OK)                                               { goto error; }
+      mp_mul(tmp, key->q, tmp);
+      mp_add(tmp, tmpb, tmp);
    } else {
       /* exptmod it */
-      if ((err = mp_exptmod(tmp, key->e, key->N, tmp)) != ISRCRY_OK)                                { goto error; }
+      mp_exptmod(tmp, key->e, key->N, tmp);
    }
 
    /* read it back */
@@ -750,7 +750,7 @@ static int rsa_exptmod(const unsigned char *in,   unsigned long inlen,
 
    /* convert it */
    memset(out, 0, x);
-   if ((err = mp_to_unsigned_bin(tmp, out+(x-mp_unsigned_bin_size(tmp)))) != ISRCRY_OK)               { goto error; }
+   mp_to_unsigned_bin(tmp, out+(x-mp_unsigned_bin_size(tmp)));
 
    /* clean up and return */
    err = ISRCRY_OK;
