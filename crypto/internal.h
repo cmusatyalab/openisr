@@ -203,7 +203,7 @@ int mp_init_multi(void **a, ...);
 void mp_clear_multi(void *a, ...);
 void mp_copy(void *a, void *b);
 void mp_set_int(void *a, unsigned long b);
-int mp_compare(void *a, void *b);
+int mp_cmp(void *a, void *b);
 int mp_cmp_d(void *a, unsigned long b);
 int mp_count_bits(void *a);
 int mp_cnt_lsb(void *a);

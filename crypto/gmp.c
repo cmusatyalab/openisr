@@ -104,7 +104,7 @@ void mp_set_int(void *a, unsigned long b)
      @param b   The right side integer
      @return < 0 if a < b, > 0 if a > b and 0 otherwise.  (signed comparison)
    */
-int mp_compare(void *a, void *b)
+int mp_cmp(void *a, void *b)
 {
    return mpz_cmp(a, b);
 }
