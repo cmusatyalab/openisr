@@ -9,16 +9,21 @@
  * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.com
  */
 
+#include <stdlib.h>
+#include <stdarg.h>
+#include "isrcrypto.h"
+#define LIBISRCRYPTO_INTERNAL
+#include "internal.h"
+
 /**
   Gets length of DER encoding of BIT STRING 
   @param nbits  The number of bits in the string to encode
   @param outlen [out] The length of the DER encoding for the given string
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_length_bit_string(unsigned long nbits, unsigned long *outlen)
+static enum isrcry_result der_length_bit_string(unsigned long nbits, unsigned long *outlen)
 {
    unsigned long nbytes;
-   LTC_ARGCHK(outlen != NULL);
 
    /* get the number of the bytes */
    nbytes = (nbits >> 3) + ((nbits & 7) ? 1 : 0) + 1;
@@ -33,10 +38,10 @@ static int der_length_bit_string(unsigned long nbits, unsigned long *outlen)
       /* 03 82 LL LL PP DD DD DD ... */
       *outlen = 4 + nbytes;
    } else {
-      return CRYPT_INVALID_ARG;
+      return ISRCRY_INVALID_ARGUMENT;
    }
 
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
@@ -45,27 +50,23 @@ static int der_length_bit_string(unsigned long nbits, unsigned long *outlen)
   @param inlen    The number of bits tostore
   @param out      [out] The destination for the DER encoded BIT STRING
   @param outlen   [in/out] The max size and resulting size of the DER BIT STRING
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_encode_bit_string(const unsigned char *in, unsigned long inlen,
+static enum isrcry_result der_encode_bit_string(const unsigned char *in, unsigned long inlen,
                                 unsigned char *out, unsigned long *outlen)
 {
    unsigned long len, x, y;
    unsigned char buf;
    int           err;
 
-   LTC_ARGCHK(in     != NULL);
-   LTC_ARGCHK(out    != NULL);
-   LTC_ARGCHK(outlen != NULL);
-
    /* avoid overflows */
-   if ((err = der_length_bit_string(inlen, &len)) != CRYPT_OK) {
+   if ((err = der_length_bit_string(inlen, &len)) != ISRCRY_OK) {
       return err;
    }
 
    if (len > *outlen) {
       *outlen = len;
-      return CRYPT_BUFFER_OVERFLOW;
+      return ISRCRY_BUFFER_OVERFLOW;
    }
 
    /* store header (include bit padding count in length) */
@@ -100,7 +101,7 @@ static int der_encode_bit_string(const unsigned char *in, unsigned long inlen,
       out[x++] = buf;
    }
    *outlen = x;
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
@@ -109,25 +110,21 @@ static int der_encode_bit_string(const unsigned char *in, unsigned long inlen,
   @param inlen   The size of the DER BIT STRING
   @param out     [out] The array of bits stored (one per char)
   @param outlen  [in/out] The number of bits stored
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_decode_bit_string(const unsigned char *in,  unsigned long inlen,
+static enum isrcry_result der_decode_bit_string(const unsigned char *in,  unsigned long inlen,
                                 unsigned char *out, unsigned long *outlen)
 {
    unsigned long dlen, blen, x, y;
 
-   LTC_ARGCHK(in     != NULL);
-   LTC_ARGCHK(out    != NULL);
-   LTC_ARGCHK(outlen != NULL);
-
    /* packet must be at least 4 bytes */
    if (inlen < 4) {
-       return CRYPT_INVALID_ARG;
+       return ISRCRY_INVALID_ARGUMENT;
    }
 
    /* check for 0x03 */
    if ((in[0]&0x1F) != 0x03) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
 
     /* offset in the data */
@@ -140,7 +137,7 @@ static int der_decode_bit_string(const unsigned char *in,  unsigned long inlen,
 
       /* invalid if 0 or > 2 */
       if (y == 0 || y > 2) {
-         return CRYPT_INVALID_PACKET;
+         return ISRCRY_BAD_FORMAT;
       }
 
       /* read the data len */
@@ -155,7 +152,7 @@ static int der_decode_bit_string(const unsigned char *in,  unsigned long inlen,
   
    /* is the data len too long or too short? */
    if ((dlen == 0) || (dlen + x > inlen)) {
-       return CRYPT_INVALID_PACKET;
+       return ISRCRY_BAD_FORMAT;
    }
 
    /* get padding count */
@@ -164,7 +161,7 @@ static int der_decode_bit_string(const unsigned char *in,  unsigned long inlen,
    /* too many bits? */
    if (blen > *outlen) {
       *outlen = blen;
-      return CRYPT_BUFFER_OVERFLOW;
+      return ISRCRY_BUFFER_OVERFLOW;
    }
 
    /* decode/store the bits */
@@ -177,28 +174,25 @@ static int der_decode_bit_string(const unsigned char *in,  unsigned long inlen,
 
    /* we done */
    *outlen = blen;
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
   Gets length of DER encoding of num 
   @param num    The int to get the size of 
   @param outlen [out] The length of the DER encoding for the given integer
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_length_integer(void *num, unsigned long *outlen)
+static enum isrcry_result der_length_integer(void *num, unsigned long *outlen)
 {
    unsigned long z, len;
    int           leading_zero;
 
-   LTC_ARGCHK(num     != NULL);
-   LTC_ARGCHK(outlen  != NULL);
-
-   if (mp_cmp_d(num, 0) != LTC_MP_LT) {
+   if (mp_cmp_d(num, 0) >= 0) {
       /* positive */
 
       /* we only need a leading zero if the msb of the first byte is one */
-      if ((mp_count_bits(num) & 7) == 0 || mp_iszero(num) == LTC_MP_YES) {
+      if ((mp_count_bits(num) & 7) == 0 || mp_cmp_d(num, 0) == 0) {
          leading_zero = 1;
       } else {
          leading_zero = 0;
@@ -235,7 +229,7 @@ static int der_length_integer(void *num, unsigned long *outlen)
 
    /* return length */
    *outlen = len; 
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /* Exports a positive bignum as DER format (upto 2^32 bytes in size) */
@@ -244,30 +238,26 @@ static int der_length_integer(void *num, unsigned long *outlen)
   @param num      The first mp_int to encode
   @param out      [out] The destination for the DER encoded integers
   @param outlen   [in/out] The max size and resulting size of the DER encoded integers
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_encode_integer(void *num, unsigned char *out, unsigned long *outlen)
+static enum isrcry_result der_encode_integer(void *num, unsigned char *out, unsigned long *outlen)
 {  
    unsigned long tmplen, y;
    int           err, leading_zero;
 
-   LTC_ARGCHK(num    != NULL);
-   LTC_ARGCHK(out    != NULL);
-   LTC_ARGCHK(outlen != NULL);
-
    /* find out how big this will be */
-   if ((err = der_length_integer(num, &tmplen)) != CRYPT_OK) {
+   if ((err = der_length_integer(num, &tmplen)) != ISRCRY_OK) {
       return err;
    }
 
    if (*outlen < tmplen) {
       *outlen = tmplen;
-      return CRYPT_BUFFER_OVERFLOW;
+      return ISRCRY_BUFFER_OVERFLOW;
    }
 
-   if (mp_cmp_d(num, 0) != LTC_MP_LT) {
+   if (mp_cmp_d(num, 0) >= 0) {
       /* we only need a leading zero if the msb of the first byte is one */
-      if ((mp_count_bits(num) & 7) == 0 || mp_iszero(num) == LTC_MP_YES) {
+      if ((mp_count_bits(num) & 7) == 0 || mp_cmp_d(num, 0) == 0) {
          leading_zero = 1;
       } else {
          leading_zero = 0;
@@ -301,7 +291,7 @@ static int der_encode_integer(void *num, unsigned char *out, unsigned long *outl
       *out++ = (unsigned char)((y>>8)&255);
       *out++ = (unsigned char)y;
    } else {
-      return CRYPT_INVALID_ARG;
+      return ISRCRY_INVALID_ARGUMENT;
    }
 
    /* now store msbyte of zero if num is non-zero */
@@ -310,37 +300,30 @@ static int der_encode_integer(void *num, unsigned char *out, unsigned long *outl
    }
 
    /* if it's not zero store it as big endian */
-   if (mp_cmp_d(num, 0) == LTC_MP_GT) {
+   if (mp_cmp_d(num, 0) > 0) {
       /* now store the mpint */
-      if ((err = mp_to_unsigned_bin(num, out)) != CRYPT_OK) {
-          return err;
-      }
-   } else if (mp_iszero(num) != LTC_MP_YES) {
+      mp_to_unsigned_bin(num, out);
+   } else if (mp_cmp_d(num, 0) < 0) {
       void *tmp;
          
       /* negative */
-      if (mp_init(&tmp) != CRYPT_OK) {
-         return CRYPT_MEM;
+      if (mp_init(&tmp)) {
+         return -1;
       }
 
       /* 2^roundup and subtract */
       y = mp_count_bits(num);
       y = y + (8 - (y & 7));
       if (((mp_cnt_lsb(num)+1)==mp_count_bits(num)) && ((mp_count_bits(num)&7)==0)) y -= 8;
-      if (mp_2expt(tmp, y) != CRYPT_OK || mp_add(tmp, num, tmp) != CRYPT_OK) {
-         mp_clear(tmp);
-         return CRYPT_MEM;
-      }
-      if ((err = mp_to_unsigned_bin(tmp, out)) != CRYPT_OK) {
-         mp_clear(tmp);
-         return err;
-      }
+      mp_2expt(tmp, y);
+      mp_add(tmp, num, tmp);
+      mp_to_unsigned_bin(tmp, out);
       mp_clear(tmp);
    }
 
    /* we good */
    *outlen = tmplen; 
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
@@ -348,25 +331,21 @@ static int der_encode_integer(void *num, unsigned char *out, unsigned long *outl
   @param in       The DER encoded data
   @param inlen    Size of DER encoded data
   @param num      The first mp_int to decode
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_decode_integer(const unsigned char *in, unsigned long inlen, void *num)
+static enum isrcry_result der_decode_integer(const unsigned char *in, unsigned long inlen, void *num)
 {
    unsigned long x, y, z;
-   int           err;
-
-   LTC_ARGCHK(num    != NULL);
-   LTC_ARGCHK(in     != NULL);
 
    /* min DER INTEGER is 0x02 01 00 == 0 */
    if (inlen < (1 + 1 + 1)) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
 
    /* ok expect 0x02 when we AND with 0001 1111 [1F] */
    x = 0;
    if ((in[x++] & 0x1F) != 0x02) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
 
    /* now decode the len stuff */
@@ -377,20 +356,18 @@ static int der_decode_integer(const unsigned char *in, unsigned long inlen, void
 
       /* will it overflow? */
       if (x + z > inlen) {
-         return CRYPT_INVALID_PACKET;
+         return ISRCRY_BAD_FORMAT;
       }
      
       /* no so read it */
-      if ((err = mp_read_unsigned_bin(num, (unsigned char *)in + x, z)) != CRYPT_OK) {
-         return err;
-      }
+      mp_read_unsigned_bin(num, (unsigned char *)in + x, z);
    } else {
       /* long form */
       z &= 0x7F;
       
       /* will number of length bytes overflow? (or > 4) */
       if (((x + z) > inlen) || (z > 4) || (z == 0)) {
-         return CRYPT_INVALID_PACKET;
+         return ISRCRY_BAD_FORMAT;
       }
 
       /* now read it in */
@@ -401,30 +378,26 @@ static int der_decode_integer(const unsigned char *in, unsigned long inlen, void
 
       /* now will reading y bytes overrun? */
       if ((x + y) > inlen) {
-         return CRYPT_INVALID_PACKET;
+         return ISRCRY_BAD_FORMAT;
       }
 
       /* no so read it */
-      if ((err = mp_read_unsigned_bin(num, (unsigned char *)in + x, y)) != CRYPT_OK) {
-         return err;
-      }
+      mp_read_unsigned_bin(num, (unsigned char *)in + x, y);
    }
 
    /* see if it's negative */
    if (in[x] & 0x80) {
       void *tmp;
-      if (mp_init(&tmp) != CRYPT_OK) {
-         return CRYPT_MEM;
+      if (mp_init(&tmp)) {
+         return -1;
       }
 
-      if (mp_2expt(tmp, mp_count_bits(num)) != CRYPT_OK || mp_sub(num, tmp, num) != CRYPT_OK) {
-         mp_clear(tmp);
-         return CRYPT_MEM;
-      }
+      mp_2expt(tmp, mp_count_bits(num));
+      mp_sub(num, tmp, num);
       mp_clear(tmp);
    } 
 
-   return CRYPT_OK;
+   return ISRCRY_OK;
 
 }
 
@@ -445,24 +418,20 @@ static unsigned long der_object_identifier_bits(unsigned long x)
   @param nwords   The number of OID words 
   @param words    The actual OID words to get the size of
   @param outlen   [out] The length of the DER encoding for the given string
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_length_object_identifier(unsigned long *words, unsigned long nwords, unsigned long *outlen)
+static enum isrcry_result der_length_object_identifier(unsigned long *words, unsigned long nwords, unsigned long *outlen)
 {
    unsigned long y, z, t, wordbuf;   
 
-   LTC_ARGCHK(words  != NULL);
-   LTC_ARGCHK(outlen != NULL);
-
-
    /* must be >= 2 words */
    if (nwords < 2) {
-      return CRYPT_INVALID_ARG;
+      return ISRCRY_INVALID_ARGUMENT;
    }
 
    /* word1 = 0,1,2,3 and word2 0..39 */
    if (words[0] > 3 || (words[0] < 2 && words[1] > 39)) {
-      return CRYPT_INVALID_ARG;
+      return ISRCRY_INVALID_ARGUMENT;
    }
 
    /* leading word is the first two */
@@ -485,11 +454,11 @@ static int der_length_object_identifier(unsigned long *words, unsigned long nwor
    } else if (z < 65536UL) {
       z += 4;
    } else {
-      return CRYPT_INVALID_ARG;
+      return ISRCRY_INVALID_ARGUMENT;
    }
 
    *outlen = z;
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
@@ -498,25 +467,21 @@ static int der_length_object_identifier(unsigned long *words, unsigned long nwor
   @param nwords  The number of words in the OID
   @param out     [out] Destination of OID data
   @param outlen  [in/out] The max and resulting size of the OID
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_encode_object_identifier(unsigned long *words, unsigned long  nwords,
+static enum isrcry_result der_encode_object_identifier(unsigned long *words, unsigned long  nwords,
                                  unsigned char *out,   unsigned long *outlen)
 {
    unsigned long i, x, y, z, t, mask, wordbuf;
    int           err;
 
-   LTC_ARGCHK(words  != NULL);
-   LTC_ARGCHK(out    != NULL);
-   LTC_ARGCHK(outlen != NULL);
-
    /* check length */
-   if ((err = der_length_object_identifier(words, nwords, &x)) != CRYPT_OK) {
+   if ((err = der_length_object_identifier(words, nwords, &x)) != ISRCRY_OK) {
       return err;
    }
    if (x > *outlen) {
       *outlen = x;
-      return CRYPT_BUFFER_OVERFLOW;
+      return ISRCRY_BUFFER_OVERFLOW;
    }
 
    /* compute length to store OID data */
@@ -543,7 +508,7 @@ static int der_encode_object_identifier(unsigned long *words, unsigned long  nwo
       out[x++] = (unsigned char)((z>>8)&255);
       out[x++] = (unsigned char)(z&255);
    } else {
-      return CRYPT_INVALID_ARG;
+      return ISRCRY_INVALID_ARGUMENT;
    }
 
    /* store first byte */
@@ -577,7 +542,7 @@ static int der_encode_object_identifier(unsigned long *words, unsigned long  nwo
    }
 
    *outlen = x;
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
@@ -586,31 +551,27 @@ static int der_encode_object_identifier(unsigned long *words, unsigned long  nwo
   @param inlen   The length of the OID data
   @param words   [out] The destination of the OID words
   @param outlen  [in/out] The number of OID words
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_decode_object_identifier(const unsigned char *in,    unsigned long  inlen,
+static enum isrcry_result der_decode_object_identifier(const unsigned char *in,    unsigned long  inlen,
                                        unsigned long *words, unsigned long *outlen)
 {
    unsigned long x, y, t, len;
 
-   LTC_ARGCHK(in     != NULL);
-   LTC_ARGCHK(words  != NULL);
-   LTC_ARGCHK(outlen != NULL);
-
    /* header is at least 3 bytes */
    if (inlen < 3) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
 
    /* must be room for at least two words */
    if (*outlen < 2) {
-      return CRYPT_BUFFER_OVERFLOW;
+      return ISRCRY_BUFFER_OVERFLOW;
    }
 
    /* decode the packet header */
    x = 0;
    if ((in[x++] & 0x1F) != 0x06) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
    
    /* get the length */
@@ -618,7 +579,7 @@ static int der_decode_object_identifier(const unsigned char *in,    unsigned lon
       len = in[x++]; 
    } else {
        if (in[x] < 0x81 || in[x] > 0x82) {
-          return CRYPT_INVALID_PACKET;
+          return ISRCRY_BAD_FORMAT;
        }
        y   = in[x++] & 0x7F;
        len = 0;
@@ -628,7 +589,7 @@ static int der_decode_object_identifier(const unsigned char *in,    unsigned lon
    }
 
    if (len < 1 || (len + x) > inlen) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
 
    /* decode words */
@@ -639,7 +600,7 @@ static int der_decode_object_identifier(const unsigned char *in,    unsigned lon
        if (!(in[x++] & 0x80)) {
            /* store t */
            if (y >= *outlen) {
-              return CRYPT_BUFFER_OVERFLOW;
+              return ISRCRY_BUFFER_OVERFLOW;
            }
       if (y == 0) {
          words[0] = t / 40;
@@ -653,19 +614,17 @@ static int der_decode_object_identifier(const unsigned char *in,    unsigned lon
    }
        
    *outlen = y;
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
   Gets length of DER encoding of OCTET STRING 
   @param noctets  The number of octets in the string to encode
   @param outlen   [out] The length of the DER encoding for the given string
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_length_octet_string(unsigned long noctets, unsigned long *outlen)
+static enum isrcry_result der_length_octet_string(unsigned long noctets, unsigned long *outlen)
 {
-   LTC_ARGCHK(outlen != NULL);
-
    if (noctets < 128) {
       /* 04 LL DD DD DD ... */
       *outlen = 2 + noctets;
@@ -679,10 +638,10 @@ static int der_length_octet_string(unsigned long noctets, unsigned long *outlen)
       /* 04 83 LL LL LL DD DD DD ... */
       *outlen = 5 + noctets;
    } else {
-      return CRYPT_INVALID_ARG;
+      return ISRCRY_INVALID_ARGUMENT;
    }
 
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
@@ -691,27 +650,23 @@ static int der_length_octet_string(unsigned long noctets, unsigned long *outlen)
   @param inlen    The number of OCTETS to store
   @param out      [out] The destination for the DER encoded OCTET STRING
   @param outlen   [in/out] The max size and resulting size of the DER OCTET STRING
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_encode_octet_string(const unsigned char *in, unsigned long inlen,
+static enum isrcry_result der_encode_octet_string(const unsigned char *in, unsigned long inlen,
                                   unsigned char *out, unsigned long *outlen)
 {
    unsigned long x, y, len;
    int           err;
 
-   LTC_ARGCHK(in     != NULL);
-   LTC_ARGCHK(out    != NULL);
-   LTC_ARGCHK(outlen != NULL);
-
    /* get the size */
-   if ((err = der_length_octet_string(inlen, &len)) != CRYPT_OK) {
+   if ((err = der_length_octet_string(inlen, &len)) != ISRCRY_OK) {
       return err; 
    }
 
    /* too big? */
    if (len > *outlen) {
       *outlen = len;
-      return CRYPT_BUFFER_OVERFLOW;
+      return ISRCRY_BUFFER_OVERFLOW;
    }
 
    /* encode the header+len */
@@ -732,7 +687,7 @@ static int der_encode_octet_string(const unsigned char *in, unsigned long inlen,
       out[x++] = (unsigned char)((inlen>>8)&255);
       out[x++] = (unsigned char)(inlen&255);
    } else {
-      return CRYPT_INVALID_ARG;
+      return ISRCRY_INVALID_ARGUMENT;
    }
 
    /* store octets */
@@ -743,7 +698,7 @@ static int der_encode_octet_string(const unsigned char *in, unsigned long inlen,
    /* retun length */
    *outlen = x;
 
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
@@ -752,25 +707,21 @@ static int der_encode_octet_string(const unsigned char *in, unsigned long inlen,
   @param inlen   The size of the DER OCTET STRING
   @param out     [out] The array of octets stored (one per char)
   @param outlen  [in/out] The number of octets stored
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_decode_octet_string(const unsigned char *in, unsigned long inlen,
+static enum isrcry_result der_decode_octet_string(const unsigned char *in, unsigned long inlen,
                                   unsigned char *out, unsigned long *outlen)
 {
    unsigned long x, y, len;
 
-   LTC_ARGCHK(in     != NULL);
-   LTC_ARGCHK(out    != NULL);
-   LTC_ARGCHK(outlen != NULL);
-
    /* must have header at least */
    if (inlen < 2) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
 
    /* check for 0x04 */
    if ((in[0] & 0x1F) != 0x04) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
    x = 1;
 
@@ -779,7 +730,7 @@ static int der_decode_octet_string(const unsigned char *in, unsigned long inlen,
       /* valid # of bytes in length are 1,2,3 */
       y = in[x] & 0x7F;
       if ((y == 0) || (y > 3) || ((x + y) > inlen)) {
-         return CRYPT_INVALID_PACKET;
+         return ISRCRY_BAD_FORMAT;
       }
 
       /* read the length in */
@@ -795,11 +746,11 @@ static int der_decode_octet_string(const unsigned char *in, unsigned long inlen,
    /* is it too long? */
    if (len > *outlen) {
       *outlen = len;
-      return CRYPT_BUFFER_OVERFLOW;
+      return ISRCRY_BUFFER_OVERFLOW;
    }
 
    if (len + x > inlen) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
 
    /* read the data */
@@ -809,20 +760,18 @@ static int der_decode_octet_string(const unsigned char *in, unsigned long inlen,
 
    *outlen = y;
 
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
   Gets length of DER encoding of num 
   @param num    The integer to get the size of 
   @param outlen [out] The length of the DER encoding for the given integer
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_length_short_integer(unsigned long num, unsigned long *outlen)
+static enum isrcry_result der_length_short_integer(unsigned long num, unsigned long *outlen)
 {
    unsigned long z, y, len;
-
-   LTC_ARGCHK(outlen  != NULL);
 
    /* force to 32 bits */
    num &= 0xFFFFFFFFUL;
@@ -855,7 +804,7 @@ static int der_length_short_integer(unsigned long num, unsigned long *outlen)
    /* return length */
    *outlen = len; 
    
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
@@ -863,27 +812,24 @@ static int der_length_short_integer(unsigned long num, unsigned long *outlen)
   @param num      The integer to encode
   @param out      [out] The destination for the DER encoded integers
   @param outlen   [in/out] The max size and resulting size of the DER encoded integers
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_encode_short_integer(unsigned long num, unsigned char *out, unsigned long *outlen)
+static enum isrcry_result der_encode_short_integer(unsigned long num, unsigned char *out, unsigned long *outlen)
 {  
    unsigned long len, x, y, z;
    int           err;
    
-   LTC_ARGCHK(out    != NULL);
-   LTC_ARGCHK(outlen != NULL);
-
    /* force to 32 bits */
    num &= 0xFFFFFFFFUL;
 
    /* find out how big this will be */
-   if ((err = der_length_short_integer(num, &len)) != CRYPT_OK) {
+   if ((err = der_length_short_integer(num, &len)) != ISRCRY_OK) {
       return err;
    }
 
    if (*outlen < len) {
       *outlen = len;
-      return CRYPT_BUFFER_OVERFLOW;
+      return ISRCRY_BUFFER_OVERFLOW;
    }
 
    /* get len of output */
@@ -927,7 +873,7 @@ static int der_encode_short_integer(unsigned long num, unsigned char *out, unsig
    /* we good */
    *outlen = x;
  
-   return CRYPT_OK;
+   return ISRCRY_OK;
 }
 
 /**
@@ -935,31 +881,28 @@ static int der_encode_short_integer(unsigned long num, unsigned char *out, unsig
   @param in       The DER encoded data
   @param inlen    Size of data
   @param num      [out] The integer to decode
-  @return CRYPT_OK if successful
+  @return ISRCRY_OK if successful
 */
-static int der_decode_short_integer(const unsigned char *in, unsigned long inlen, unsigned long *num)
+static enum isrcry_result der_decode_short_integer(const unsigned char *in, unsigned long inlen, unsigned long *num)
 {
    unsigned long len, x, y;
 
-   LTC_ARGCHK(num    != NULL);
-   LTC_ARGCHK(in     != NULL);
-
    /* check length */
    if (inlen < 2) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
 
    /* check header */
    x = 0;
    if ((in[x++] & 0x1F) != 0x02) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
 
    /* get the packet len */
    len = in[x++];
 
    if (x + len > inlen) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
 
    /* read number */
@@ -969,7 +912,7 @@ static int der_decode_short_integer(const unsigned char *in, unsigned long inlen
    }
    *num = y;
 
-   return CRYPT_OK;
+   return ISRCRY_OK;
 
 }
 
@@ -978,17 +921,14 @@ static int der_decode_short_integer(const unsigned char *in, unsigned long inlen
    @param list   The sequences of items in the SEQUENCE
    @param inlen  The number of items
    @param outlen [out] The length required in octets to store it 
-   @return CRYPT_OK on success
+   @return ISRCRY_OK on success
 */
-static int der_length_sequence(ltc_asn1_list *list, unsigned long inlen,
+static enum isrcry_result der_length_sequence(ltc_asn1_list *list, unsigned long inlen,
                         unsigned long *outlen) 
 {
    int           err, type;
    unsigned long size, x, y, z, i;
    void          *data;
-
-   LTC_ARGCHK(list    != NULL);
-   LTC_ARGCHK(outlen  != NULL);
 
    /* get size of output that will be required */
    y = 0;
@@ -1003,42 +943,42 @@ static int der_length_sequence(ltc_asn1_list *list, unsigned long inlen,
 
        switch (type) {
            case LTC_ASN1_INTEGER:
-               if ((err = der_length_integer(data, &x)) != CRYPT_OK) {
+               if ((err = der_length_integer(data, &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
                break;
 
            case LTC_ASN1_SHORT_INTEGER:
-               if ((err = der_length_short_integer(*((unsigned long *)data), &x)) != CRYPT_OK) {
+               if ((err = der_length_short_integer(*((unsigned long *)data), &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
                break;
 
            case LTC_ASN1_BIT_STRING:
-               if ((err = der_length_bit_string(size, &x)) != CRYPT_OK) {
+               if ((err = der_length_bit_string(size, &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
                break;
 
            case LTC_ASN1_OCTET_STRING:
-               if ((err = der_length_octet_string(size, &x)) != CRYPT_OK) {
+               if ((err = der_length_octet_string(size, &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
                break;
 
            case LTC_ASN1_OBJECT_IDENTIFIER:
-               if ((err = der_length_object_identifier(data, size, &x)) != CRYPT_OK) {
+               if ((err = der_length_object_identifier(data, size, &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
                break;
 
            case LTC_ASN1_SEQUENCE:
-               if ((err = der_length_sequence(data, size, &x)) != CRYPT_OK) {
+               if ((err = der_length_sequence(data, size, &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
@@ -1046,7 +986,7 @@ static int der_length_sequence(ltc_asn1_list *list, unsigned long inlen,
 
           
            default:
-               err = CRYPT_INVALID_ARG;
+               err = ISRCRY_INVALID_ARGUMENT;
                goto LBL_ERR;
        }
    }
@@ -1065,13 +1005,13 @@ static int der_length_sequence(ltc_asn1_list *list, unsigned long inlen,
       /* 0x30 0x83 LL LL LL */
       y += 5;
    } else {
-      err = CRYPT_INVALID_ARG;
+      err = ISRCRY_INVALID_ARGUMENT;
       goto LBL_ERR;
    }
 
    /* store size */
    *outlen = y;
-   err     = CRYPT_OK;
+   err     = ISRCRY_OK;
 
 LBL_ERR:
    return err;
@@ -1084,18 +1024,14 @@ LBL_ERR:
    @param out       [out] The destination 
    @param outlen    [in/out] The size of the output
    @param type_of   LTC_ASN1_SEQUENCE or LTC_ASN1_SET/LTC_ASN1_SETOF
-   @return CRYPT_OK on success
+   @return ISRCRY_OK on success
 */
-int der_encode_sequence_ex(ltc_asn1_list *list, unsigned long inlen,
+static enum isrcry_result der_encode_sequence_ex(ltc_asn1_list *list, unsigned long inlen,
                            unsigned char *out,  unsigned long *outlen, int type_of) 
 {
    int           err, type;
    unsigned long size, x, y, z, i;
    void          *data;
-
-   LTC_ARGCHK(list    != NULL);
-   LTC_ARGCHK(out     != NULL);
-   LTC_ARGCHK(outlen  != NULL);
 
    /* get size of output that will be required */
    y = 0;
@@ -1110,49 +1046,49 @@ int der_encode_sequence_ex(ltc_asn1_list *list, unsigned long inlen,
 
        switch (type) {
            case LTC_ASN1_INTEGER:
-               if ((err = der_length_integer(data, &x)) != CRYPT_OK) {
+               if ((err = der_length_integer(data, &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
                break;
 
            case LTC_ASN1_SHORT_INTEGER:
-               if ((err = der_length_short_integer(*((unsigned long*)data), &x)) != CRYPT_OK) {
+               if ((err = der_length_short_integer(*((unsigned long*)data), &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
                break;
 
            case LTC_ASN1_BIT_STRING:
-               if ((err = der_length_bit_string(size, &x)) != CRYPT_OK) {
+               if ((err = der_length_bit_string(size, &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
                break;
 
            case LTC_ASN1_OCTET_STRING:
-               if ((err = der_length_octet_string(size, &x)) != CRYPT_OK) {
+               if ((err = der_length_octet_string(size, &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
                break;
 
            case LTC_ASN1_OBJECT_IDENTIFIER:
-               if ((err = der_length_object_identifier(data, size, &x)) != CRYPT_OK) {
+               if ((err = der_length_object_identifier(data, size, &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
                break;
 
            case LTC_ASN1_SEQUENCE:
-               if ((err = der_length_sequence(data, size, &x)) != CRYPT_OK) {
+               if ((err = der_length_sequence(data, size, &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                y += x;
                break;
           
            default:
-               err = CRYPT_INVALID_ARG;
+               err = ISRCRY_INVALID_ARGUMENT;
                goto LBL_ERR;
        }
    }
@@ -1171,14 +1107,14 @@ int der_encode_sequence_ex(ltc_asn1_list *list, unsigned long inlen,
       /* 0x30 0x83 LL LL LL */
       y += 5;
    } else {
-      err = CRYPT_INVALID_ARG;
+      err = ISRCRY_INVALID_ARGUMENT;
       goto LBL_ERR;
    }
 
    /* too big ? */
    if (*outlen < y) {
       *outlen = y;
-      err = CRYPT_BUFFER_OVERFLOW;
+      err = ISRCRY_BUFFER_OVERFLOW;
       goto LBL_ERR;
    }
 
@@ -1216,7 +1152,7 @@ int der_encode_sequence_ex(ltc_asn1_list *list, unsigned long inlen,
        switch (type) {
            case LTC_ASN1_INTEGER:
                z = *outlen;
-               if ((err = der_encode_integer(data, out + x, &z)) != CRYPT_OK) {
+               if ((err = der_encode_integer(data, out + x, &z)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                x       += z;
@@ -1225,7 +1161,7 @@ int der_encode_sequence_ex(ltc_asn1_list *list, unsigned long inlen,
 
            case LTC_ASN1_SHORT_INTEGER:
                z = *outlen;
-               if ((err = der_encode_short_integer(*((unsigned long*)data), out + x, &z)) != CRYPT_OK) {
+               if ((err = der_encode_short_integer(*((unsigned long*)data), out + x, &z)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                x       += z;
@@ -1234,7 +1170,7 @@ int der_encode_sequence_ex(ltc_asn1_list *list, unsigned long inlen,
 
            case LTC_ASN1_BIT_STRING:
                z = *outlen;
-               if ((err = der_encode_bit_string(data, size, out + x, &z)) != CRYPT_OK) {
+               if ((err = der_encode_bit_string(data, size, out + x, &z)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                x       += z;
@@ -1243,7 +1179,7 @@ int der_encode_sequence_ex(ltc_asn1_list *list, unsigned long inlen,
 
            case LTC_ASN1_OCTET_STRING:
                z = *outlen;
-               if ((err = der_encode_octet_string(data, size, out + x, &z)) != CRYPT_OK) {
+               if ((err = der_encode_octet_string(data, size, out + x, &z)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                x       += z;
@@ -1252,7 +1188,7 @@ int der_encode_sequence_ex(ltc_asn1_list *list, unsigned long inlen,
 
            case LTC_ASN1_OBJECT_IDENTIFIER:
                z = *outlen;
-               if ((err = der_encode_object_identifier(data, size, out + x, &z)) != CRYPT_OK) {
+               if ((err = der_encode_object_identifier(data, size, out + x, &z)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                x       += z;
@@ -1261,7 +1197,7 @@ int der_encode_sequence_ex(ltc_asn1_list *list, unsigned long inlen,
 
            case LTC_ASN1_SEQUENCE:
                z = *outlen;
-               if ((err = der_encode_sequence_ex(data, size, out + x, &z, type)) != CRYPT_OK) {
+               if ((err = der_encode_sequence_ex(data, size, out + x, &z, type)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                x       += z;
@@ -1269,15 +1205,21 @@ int der_encode_sequence_ex(ltc_asn1_list *list, unsigned long inlen,
                break;
            
            default:
-               err = CRYPT_INVALID_ARG;
+               err = ISRCRY_INVALID_ARGUMENT;
                goto LBL_ERR;
        }
    }
    *outlen = x;
-   err = CRYPT_OK;   
+   err = ISRCRY_OK;   
 
 LBL_ERR:
    return err;
+}
+
+enum isrcry_result der_encode_sequence(ltc_asn1_list *list, unsigned long inlen,
+                           unsigned char *out,  unsigned long *outlen)
+{
+	return der_encode_sequence_ex(list, inlen, out, outlen, LTC_ASN1_SEQUENCE);
 }
 
 /**
@@ -1286,28 +1228,24 @@ LBL_ERR:
    @param inlen    The size of the input
    @param list     The list of items to decode
    @param outlen   The number of items in the list
-   @param ordered  Search an unordeded or ordered list
-   @return CRYPT_OK on success
+   @return ISRCRY_OK on success
 */
-int der_decode_sequence_ex(const unsigned char *in, unsigned long  inlen,
-                           ltc_asn1_list *list,     unsigned long  outlen, int ordered)
+enum isrcry_result der_decode_sequence(const unsigned char *in, unsigned long  inlen,
+                           ltc_asn1_list *list,     unsigned long  outlen)
 {
    int           err, type;
    unsigned long size, x, y, z, i, blksize;
    void          *data;
 
-   LTC_ARGCHK(in   != NULL);
-   LTC_ARGCHK(list != NULL);
-   
    /* get blk size */
    if (inlen < 2) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
 
    /* sequence type? We allow 0x30 SEQUENCE and 0x31 SET since fundamentally they're the same structure */
    x = 0;
    if (in[x] != 0x30 && in[x] != 0x31) {
-      return CRYPT_INVALID_PACKET;
+      return ISRCRY_BAD_FORMAT;
    }
    ++x;
 
@@ -1315,13 +1253,13 @@ int der_decode_sequence_ex(const unsigned char *in, unsigned long  inlen,
       blksize = in[x++];
    } else if (in[x] & 0x80) {
       if (in[x] < 0x81 || in[x] > 0x83) {
-         return CRYPT_INVALID_PACKET;
+         return ISRCRY_BAD_FORMAT;
       }
       y = in[x++] & 0x7F;
 
       /* would reading the len bytes overrun? */
       if (x + y > inlen) {
-         return CRYPT_INVALID_PACKET;
+         return ISRCRY_BAD_FORMAT;
       }
 
       /* read len */
@@ -1333,7 +1271,7 @@ int der_decode_sequence_ex(const unsigned char *in, unsigned long  inlen,
 
   /* would this blksize overflow? */
   if (x + blksize > inlen) {
-     return CRYPT_INVALID_PACKET;
+     return ISRCRY_BAD_FORMAT;
   }
 
    /* mark all as unused */
@@ -1348,7 +1286,6 @@ int der_decode_sequence_ex(const unsigned char *in, unsigned long  inlen,
        type = list[i].type;
        size = list[i].size;
        data = list[i].data;
-       if (!ordered && list[i].used == 1) { continue; }
 
        if (type == LTC_ASN1_EOL) { 
           break;
@@ -1357,22 +1294,20 @@ int der_decode_sequence_ex(const unsigned char *in, unsigned long  inlen,
        switch (type) {
            case LTC_ASN1_INTEGER:
                z = inlen;
-               if ((err = der_decode_integer(in + x, z, data)) != CRYPT_OK) {
-                  if (!ordered) {  continue; }
+               if ((err = der_decode_integer(in + x, z, data)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
-               if ((err = der_length_integer(data, &z)) != CRYPT_OK) {
+               if ((err = der_length_integer(data, &z)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                break;
 
            case LTC_ASN1_SHORT_INTEGER:
                z = inlen;
-               if ((err = der_decode_short_integer(in + x, z, data)) != CRYPT_OK) {
-                  if (!ordered) { continue; }
+               if ((err = der_decode_short_integer(in + x, z, data)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
-               if ((err = der_length_short_integer(((unsigned long*)data)[0], &z)) != CRYPT_OK) {
+               if ((err = der_length_short_integer(((unsigned long*)data)[0], &z)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                
@@ -1380,78 +1315,70 @@ int der_decode_sequence_ex(const unsigned char *in, unsigned long  inlen,
 
            case LTC_ASN1_BIT_STRING:
                z = inlen;
-               if ((err = der_decode_bit_string(in + x, z, data, &size)) != CRYPT_OK) {
-                  if (!ordered) { continue; }
+               if ((err = der_decode_bit_string(in + x, z, data, &size)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                list[i].size = size;
-               if ((err = der_length_bit_string(size, &z)) != CRYPT_OK) {
+               if ((err = der_length_bit_string(size, &z)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                break;
 
            case LTC_ASN1_OCTET_STRING:
                z = inlen;
-               if ((err = der_decode_octet_string(in + x, z, data, &size)) != CRYPT_OK) {
-                  if (!ordered) { continue; }
+               if ((err = der_decode_octet_string(in + x, z, data, &size)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                list[i].size = size;
-               if ((err = der_length_octet_string(size, &z)) != CRYPT_OK) {
+               if ((err = der_length_octet_string(size, &z)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                break;
 
            case LTC_ASN1_OBJECT_IDENTIFIER:
                z = inlen;
-               if ((err = der_decode_object_identifier(in + x, z, data, &size)) != CRYPT_OK) {
-                  if (!ordered) { continue; }
+               if ((err = der_decode_object_identifier(in + x, z, data, &size)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                list[i].size = size;
-               if ((err = der_length_object_identifier(data, size, &z)) != CRYPT_OK) {
+               if ((err = der_length_object_identifier(data, size, &z)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                break;
 
            case LTC_ASN1_SEQUENCE:
                /* detect if we have the right type */
-               if ((type == LTC_ASN1_SETOF && (in[x] & 0x3F) != 0x31) || (type == LTC_ASN1_SEQUENCE && (in[x] & 0x3F) != 0x30)) {
-                  err = CRYPT_INVALID_PACKET;
+               if ((in[x] & 0x3F) != 0x30) {
+                  err = ISRCRY_BAD_FORMAT;
                   goto LBL_ERR;
                }
 
                z = inlen;
-               if ((err = der_decode_sequence(in + x, z, data, size)) != CRYPT_OK) {
-                  if (!ordered) { continue; }
+               if ((err = der_decode_sequence(in + x, z, data, size)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
-               if ((err = der_length_sequence(data, size, &z)) != CRYPT_OK) {
+               if ((err = der_length_sequence(data, size, &z)) != ISRCRY_OK) {
                   goto LBL_ERR;
                }
                break;
 
 
            default:
-               err = CRYPT_INVALID_ARG;
+               err = ISRCRY_INVALID_ARGUMENT;
                goto LBL_ERR;
        }
        x           += z;
        inlen       -= z;
        list[i].used = 1;
-       if (!ordered) { 
-          /* restart the decoder */
-          i = -1;
-       }          
    }
      
    for (i = 0; i < outlen; i++) {
       if (list[i].used == 0) {
-          err = CRYPT_INVALID_PACKET;
+          err = ISRCRY_BAD_FORMAT;
           goto LBL_ERR;
       }
    }                
-   err = CRYPT_OK;   
+   err = ISRCRY_OK;   
 
 LBL_ERR:
    return err;
@@ -1462,18 +1389,15 @@ LBL_ERR:
   @param out    [out] Destination for data
   @param outlen [in/out] Length of buffer and resulting length of output
   @remark <...> is of the form <type, size, data> (int, unsigned long, void*)
-  @return CRYPT_OK on success
+  @return ISRCRY_OK on success
 */  
-int der_encode_sequence_multi(unsigned char *out, unsigned long *outlen, ...)
+enum isrcry_result der_encode_sequence_multi(unsigned char *out, unsigned long *outlen, ...)
 {
    int           err, type;
    unsigned long size, x;
    void          *data;
    va_list       args;
    ltc_asn1_list *list;
-
-   LTC_ARGCHK(out    != NULL);
-   LTC_ARGCHK(outlen != NULL);
 
    /* get size of output that will be required */
    va_start(args, outlen);
@@ -1499,19 +1423,19 @@ int der_encode_sequence_multi(unsigned char *out, unsigned long *outlen, ...)
           
            default:
                va_end(args);
-               return CRYPT_INVALID_ARG;
+               return ISRCRY_INVALID_ARGUMENT;
        }
    }
    va_end(args);
 
    /* allocate structure for x elements */
    if (x == 0) {
-      return CRYPT_NOP;
+      return ISRCRY_INVALID_ARGUMENT;
    }
 
-   list = XCALLOC(sizeof(*list), x);
+   list = calloc(sizeof(*list), x);
    if (list == NULL) {
-      return CRYPT_MEM;
+      return -1;
    }
 
    /* fill in the structure */
@@ -1540,7 +1464,7 @@ int der_encode_sequence_multi(unsigned char *out, unsigned long *outlen, ...)
          
            default:
                va_end(args);
-               err = CRYPT_INVALID_ARG;
+               err = ISRCRY_INVALID_ARGUMENT;
                goto LBL_ERR;
        }
    }
@@ -1548,7 +1472,7 @@ int der_encode_sequence_multi(unsigned char *out, unsigned long *outlen, ...)
 
    err = der_encode_sequence(list, x, out, outlen);   
 LBL_ERR:
-   XFREE(list);
+   free(list);
    return err;
 }
 
@@ -1557,17 +1481,15 @@ LBL_ERR:
   @param in    Input buffer
   @param inlen Length of input in octets
   @remark <...> is of the form <type, size, data> (int, unsigned long, void*)
-  @return CRYPT_OK on success
+  @return ISRCRY_OK on success
 */  
-int der_decode_sequence_multi(const unsigned char *in, unsigned long inlen, ...)
+enum isrcry_result der_decode_sequence_multi(const unsigned char *in, unsigned long inlen, ...)
 {
    int           err, type;
    unsigned long size, x;
    void          *data;
    va_list       args;
    ltc_asn1_list *list;
-
-   LTC_ARGCHK(in    != NULL);
 
    /* get size of output that will be required */
    va_start(args, inlen);
@@ -1593,19 +1515,19 @@ int der_decode_sequence_multi(const unsigned char *in, unsigned long inlen, ...)
           
            default:
                va_end(args);
-               return CRYPT_INVALID_ARG;
+               return ISRCRY_INVALID_ARGUMENT;
        }
    }
    va_end(args);
 
    /* allocate structure for x elements */
    if (x == 0) {
-      return CRYPT_NOP;
+      return ISRCRY_INVALID_ARGUMENT;
    }
 
-   list = XCALLOC(sizeof(*list), x);
+   list = calloc(sizeof(*list), x);
    if (list == NULL) {
-      return CRYPT_MEM;
+      return -1;
    }
 
    /* fill in the structure */
@@ -1634,7 +1556,7 @@ int der_decode_sequence_multi(const unsigned char *in, unsigned long inlen, ...)
          
            default:
                va_end(args);
-               err = CRYPT_INVALID_ARG;
+               err = ISRCRY_INVALID_ARGUMENT;
                goto LBL_ERR;
        }
    }
@@ -1642,6 +1564,6 @@ int der_decode_sequence_multi(const unsigned char *in, unsigned long inlen, ...)
 
    err = der_decode_sequence(in, inlen, list, x);
 LBL_ERR:
-   XFREE(list);
+   free(list);
    return err;
 }
