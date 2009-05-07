@@ -24,6 +24,10 @@ enum isrcry_result {
 	ISRCRY_OK			= 0,
 	ISRCRY_INVALID_ARGUMENT		= 1,
 	ISRCRY_BAD_PADDING		= 2,
+	ISRCRY_BAD_FORMAT		= 3,
+	ISRCRY_BAD_SIGNATURE		= 4,
+	ISRCRY_BUFFER_OVERFLOW		= 5,
+	ISRCRY_NEED_RANDOM		= 6,
 };
 
 enum isrcry_direction {

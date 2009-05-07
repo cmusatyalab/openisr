@@ -28,6 +28,14 @@ exported const char *isrcry_strerror(enum isrcry_result result)
 		return "Invalid argument";
 	case ISRCRY_BAD_PADDING:
 		return "Bad padding";
+	case ISRCRY_BAD_FORMAT:
+		return "Invalid data format";
+	case ISRCRY_BAD_SIGNATURE:
+		return "Invalid signature";
+	case ISRCRY_BUFFER_OVERFLOW:
+		return "Buffer too short";
+	case ISRCRY_NEED_RANDOM:
+		return "Need random bytes but no randomness source specified";
 	}
 	return "Unknown error";
 }
