@@ -200,7 +200,7 @@ static int pkcs_1_pss_encode(const unsigned char *msghash, unsigned long msghash
 
    /* generate DB = PS || 0x01 || salt, PS == modulus_len - saltlen - hLen - 2 zero bytes */
    x = 0;
-   XMEMSET(DB + x, 0, modulus_len - saltlen - hLen - 2);
+   memset(DB + x, 0, modulus_len - saltlen - hLen - 2);
    x += modulus_len - saltlen - hLen - 2;
    DB[x++] = 0x01;
    memcpy(DB + x, salt, saltlen);
