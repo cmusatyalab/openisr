@@ -19,7 +19,7 @@
    @param out           [out] The destination for the integer
    @return CRYPT_OK if successful
 */
-int pkcs_1_i2osp(void *n, unsigned long modulus_len, unsigned char *out)
+static int pkcs_1_i2osp(void *n, unsigned long modulus_len, unsigned char *out)
 {
    unsigned long size;
 
@@ -41,7 +41,7 @@ int pkcs_1_i2osp(void *n, unsigned long modulus_len, unsigned char *out)
   @param inlen      The length of the binary string
   @return CRYPT_OK if successful
 */
-int pkcs_1_os2ip(void *n, unsigned char *in, unsigned long inlen)
+static int pkcs_1_os2ip(void *n, unsigned char *in, unsigned long inlen)
 {
    return mp_read_unsigned_bin(n, in, inlen);
 }
@@ -143,7 +143,7 @@ LBL_ERR:
    @param outlen           [in/out] The max size and resulting size of the encoded data
    @return CRYPT_OK if successful
 */
-int pkcs_1_pss_encode(const unsigned char *msghash, unsigned long msghashlen,
+static int pkcs_1_pss_encode(const unsigned char *msghash, unsigned long msghashlen,
                             unsigned long saltlen,  prng_state   *prng,     
                             int           prng_idx, int           hash_idx,
                             unsigned long modulus_bitlen,
@@ -293,7 +293,7 @@ LBL_ERR:
    @param  res             [out] The result of the comparison, 1==valid, 0==invalid
    @return CRYPT_OK if successful (even if the comparison failed)
 */
-int pkcs_1_pss_decode(const unsigned char *msghash, unsigned long msghashlen,
+static int pkcs_1_pss_decode(const unsigned char *msghash, unsigned long msghashlen,
                       const unsigned char *sig,     unsigned long siglen,
                             unsigned long saltlen,  int           hash_idx,
                             unsigned long modulus_bitlen, int    *res)
@@ -443,7 +443,7 @@ LBL_ERR:
    @param key      [out] Destination of a newly created private key pair
    @return CRYPT_OK if successful, upon error all allocated ram is freed
 */
-int rsa_make_key(prng_state *prng, int wprng, int size, long e, rsa_key *key)
+static int rsa_make_key(prng_state *prng, int wprng, int size, long e, rsa_key *key)
 {
    void *p, *q, *tmp1, *tmp2, *tmp3;
    int    err;
@@ -529,7 +529,7 @@ cleanup:
   @param key     [out] Destination for newly imported key
   @return CRYPT_OK if successful, upon error allocated memory is freed
 */
-int rsa_import(const unsigned char *in, unsigned long inlen, rsa_key *key)
+static int rsa_import(const unsigned char *in, unsigned long inlen, rsa_key *key)
 {
    int           err;
    void         *zero;
@@ -648,7 +648,7 @@ LBL_ERR:
     @param key       The RSA key to export
     @return CRYPT_OK if successful
 */    
-int rsa_export(unsigned char *out, unsigned long *outlen, int type, rsa_key *key)
+static int rsa_export(unsigned char *out, unsigned long *outlen, int type, rsa_key *key)
 {
    unsigned long zero=0;
    LTC_ARGCHK(out    != NULL);
@@ -787,7 +787,7 @@ error:
   @param key       The private RSA key to use
   @return CRYPT_OK if successful
 */
-int rsa_sign_hash_ex(const unsigned char *in,       unsigned long  inlen,
+static int rsa_sign_hash_ex(const unsigned char *in,       unsigned long  inlen,
                            unsigned char *out,      unsigned long *outlen,
                            prng_state    *prng,     int            prng_idx,
                            int            hash_idx, unsigned long  saltlen,
@@ -842,7 +842,7 @@ int rsa_sign_hash_ex(const unsigned char *in,       unsigned long  inlen,
   @param key              The public RSA key corresponding to the key that performed the signature
   @return CRYPT_OK on success (even if the signature is invalid)
 */
-int rsa_verify_hash_ex(const unsigned char *sig,      unsigned long siglen,
+static int rsa_verify_hash_ex(const unsigned char *sig,      unsigned long siglen,
                        const unsigned char *hash,     unsigned long hashlen,
                              int            hash_idx, unsigned long saltlen,
                              int           *stat,     rsa_key      *key)
@@ -906,7 +906,7 @@ int rsa_verify_hash_ex(const unsigned char *sig,      unsigned long siglen,
   Free an RSA key from memory
   @param key   The RSA key to free
 */
-void rsa_free(rsa_key *key)
+static void rsa_free(rsa_key *key)
 {
    LTC_ARGCHKVD(key != NULL);
    mp_clear_multi(key->e, key->d, key->N, key->dQ, key->dP, key->qP, key->p, key->q, NULL);
