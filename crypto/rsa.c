@@ -76,39 +76,33 @@ static void pkcs_1_os2ip(void *n, unsigned char *in, unsigned long inlen)
    Perform PKCS #1 MGF1 (internal)
    @param seed        The seed for MGF1
    @param seedlen     The length of the seed
-   @param hash_idx    The index of the hash desired
+   @param hashtype    The hash desired
    @param mask        [out] The destination
    @param masklen     The length of the mask desired
    @return ISRCRY_OK if successful
 */
-static int pkcs_1_mgf1(int                  hash_idx,
+static int pkcs_1_mgf1(enum isrcry_hash hashtype,
                 const unsigned char *seed, unsigned long seedlen,
                       unsigned char *mask, unsigned long masklen)
 {
    unsigned long hLen, x;
    uint32_t      counter;
    int           err;
-   hash_state    *md;
+   struct isrcry_hash_ctx *hctx;
    unsigned char *buf;
  
-   /* ensure valid hash */
-   if ((err = hash_is_valid(hash_idx)) != ISRCRY_OK) { 
-      return err;
-   }
-
    /* get hash output size */
-   hLen = hash_descriptor[hash_idx].hashsize;
+   hLen = isrcry_hash_len(hashtype);
 
    /* allocate memory */
-   md  = malloc(sizeof(hash_state));
    buf = malloc(hLen);
-   if (md == NULL || buf == NULL) {
-      if (md != NULL) {
-         free(md);
-      }
+   hctx = isrcry_hash_alloc(hashtype);
+   if (buf == NULL || hctx == NULL) {
       if (buf != NULL) {
          free(buf);
       }
+      if (hctx != NULL)
+         isrcry_hash_free(hctx);
       return -1;
    }
 
@@ -121,31 +115,18 @@ static int pkcs_1_mgf1(int                  hash_idx,
        ++counter;
 
        /* get hash of seed || counter */
-       if ((err = hash_descriptor[hash_idx].init(md)) != ISRCRY_OK) {
-          goto LBL_ERR;
-       }
-       if ((err = hash_descriptor[hash_idx].process(md, seed, seedlen)) != ISRCRY_OK) {
-          goto LBL_ERR;
-       }
-       if ((err = hash_descriptor[hash_idx].process(md, buf, 4)) != ISRCRY_OK) {
-          goto LBL_ERR;
-       }
-       if ((err = hash_descriptor[hash_idx].done(md, buf)) != ISRCRY_OK) {
-          goto LBL_ERR;
-       }
+       isrcry_hash_update(hctx, seed, seedlen);
+       isrcry_hash_update(hctx, buf, 4);
+       isrcry_hash_final(hctx, buf);
 
        /* store it */
        for (x = 0; x < hLen && masklen > 0; x++, masklen--) {
           *mask++ = buf[x];
        }
    }
-
    err = ISRCRY_OK;
-LBL_ERR:
-
    free(buf);
-   free(md);
-
+   isrcry_hash_free(hctx);
    return err;
 }
 
@@ -154,34 +135,25 @@ LBL_ERR:
    @param msghash          The hash to encode
    @param msghashlen       The length of the hash (octets)
    @param saltlen          The length of the salt desired (octets)
-   @param prng             An active PRNG context
-   @param prng_idx         The index of the PRNG desired
-   @param hash_idx         The index of the hash desired
+   @param rctx             An active PRNG context
+   @param hashtype         The index of the hash desired
    @param modulus_bitlen   The bit length of the RSA modulus
    @param out              [out] The destination of the encoding
    @param outlen           [in/out] The max size and resulting size of the encoded data
    @return ISRCRY_OK if successful
 */
 static int pkcs_1_pss_encode(const unsigned char *msghash, unsigned long msghashlen,
-                            unsigned long saltlen,  prng_state   *prng,     
-                            int           prng_idx, int           hash_idx,
+                            unsigned long saltlen, struct isrcry_random_ctx *rctx,
+                            enum isrcry_hash hashtype,
                             unsigned long modulus_bitlen,
                             unsigned char *out,     unsigned long *outlen)
 {
    unsigned char *DB, *mask, *salt, *hash;
    unsigned long x, y, hLen, modulus_len;
    int           err;
-   hash_state    md;
+   struct isrcry_hash_ctx *hctx;
 
-   /* ensure hash and PRNG are valid */
-   if ((err = hash_is_valid(hash_idx)) != ISRCRY_OK) {
-      return err;
-   }
-   if ((err = prng_is_valid(prng_idx)) != ISRCRY_OK) {
-      return err;
-   }
-
-   hLen        = hash_descriptor[hash_idx].hashsize;
+   hLen        = isrcry_hash_len(hashtype);
    modulus_len = (modulus_bitlen>>3) + (modulus_bitlen & 7 ? 1 : 0);
 
    /* check sizes */
@@ -194,7 +166,8 @@ static int pkcs_1_pss_encode(const unsigned char *msghash, unsigned long msghash
    mask = malloc(modulus_len);
    salt = malloc(modulus_len);
    hash = malloc(modulus_len);
-   if (DB == NULL || mask == NULL || salt == NULL || hash == NULL) {
+   hctx = isrcry_hash_alloc(hashtype);
+   if (DB == NULL || mask == NULL || salt == NULL || hash == NULL || hctx == NULL) {
       if (DB != NULL) {
          free(DB);
       }
@@ -207,35 +180,23 @@ static int pkcs_1_pss_encode(const unsigned char *msghash, unsigned long msghash
       if (hash != NULL) {
          free(hash);
       }
+      if (hctx != NULL)
+	 isrcry_hash_free(hctx);
       return -1;
    }
 
 
    /* generate random salt */
    if (saltlen > 0) {
-      if (prng_descriptor[prng_idx].read(salt, saltlen, prng) != saltlen) {
-         err = -1;
-         goto LBL_ERR;
-      }
+      isrcry_random_bytes(rctx, salt, saltlen);
    }
 
    /* M = (eight) 0x00 || msghash || salt, hash = H(M) */
-   if ((err = hash_descriptor[hash_idx].init(&md)) != ISRCRY_OK) {
-      goto LBL_ERR;
-   }
    memset(DB, 0, 8);
-   if ((err = hash_descriptor[hash_idx].process(&md, DB, 8)) != ISRCRY_OK) {
-      goto LBL_ERR;
-   }
-   if ((err = hash_descriptor[hash_idx].process(&md, msghash, msghashlen)) != ISRCRY_OK) {
-      goto LBL_ERR;
-   }
-   if ((err = hash_descriptor[hash_idx].process(&md, salt, saltlen)) != ISRCRY_OK) {
-      goto LBL_ERR;
-   }
-   if ((err = hash_descriptor[hash_idx].done(&md, hash)) != ISRCRY_OK) {
-      goto LBL_ERR;
-   }
+   isrcry_hash_update(hctx, DB, 8);
+   isrcry_hash_update(hctx, msghash, msghashlen);
+   isrcry_hash_update(hctx, salt, saltlen);
+   isrcry_hash_final(hctx, hash);
 
    /* generate DB = PS || 0x01 || salt, PS == modulus_len - saltlen - hLen - 2 zero bytes */
    x = 0;
@@ -246,7 +207,7 @@ static int pkcs_1_pss_encode(const unsigned char *msghash, unsigned long msghash
    x += saltlen;
 
    /* generate mask of length modulus_len - hLen - 1 from hash */
-   if ((err = pkcs_1_mgf1(hash_idx, hash, hLen, mask, modulus_len - hLen - 1)) != ISRCRY_OK) {
+   if ((err = pkcs_1_mgf1(hashtype, hash, hLen, mask, modulus_len - hLen - 1)) != ISRCRY_OK) {
       goto LBL_ERR;
    }
 
@@ -286,6 +247,7 @@ LBL_ERR:
    free(salt);
    free(mask);
    free(DB);
+   isrcry_hash_free(hctx);
 
    return err;
 }
@@ -297,30 +259,25 @@ LBL_ERR:
    @param  sig             The signature data (encoded data)
    @param  siglen          The length of the signature data (octets)
    @param  saltlen         The length of the salt used (octets)
-   @param  hash_idx        The index of the hash desired
+   @param  hashtype        The hash desired
    @param  modulus_bitlen  The bit length of the RSA modulus
    @param  res             [out] The result of the comparison, 1==valid, 0==invalid
    @return ISRCRY_OK if successful (even if the comparison failed)
 */
 static int pkcs_1_pss_decode(const unsigned char *msghash, unsigned long msghashlen,
                       const unsigned char *sig,     unsigned long siglen,
-                            unsigned long saltlen,  int           hash_idx,
+                            unsigned long saltlen,  enum isrcry_hash hashtype,
                             unsigned long modulus_bitlen, int    *res)
 {
    unsigned char *DB, *mask, *salt, *hash;
    unsigned long x, y, hLen, modulus_len;
    int           err;
-   hash_state    md;
+   struct isrcry_hash_ctx *hctx;
 
    /* default to invalid */
    *res = 0;
 
-   /* ensure hash is valid */
-   if ((err = hash_is_valid(hash_idx)) != ISRCRY_OK) {
-      return err;
-   }
-
-   hLen        = hash_descriptor[hash_idx].hashsize;
+   hLen        = isrcry_hash_len(hashtype);
    modulus_len = (modulus_bitlen>>3) + (modulus_bitlen & 7 ? 1 : 0);
 
    /* check sizes */
@@ -334,7 +291,8 @@ static int pkcs_1_pss_decode(const unsigned char *msghash, unsigned long msghash
    mask = malloc(modulus_len);
    salt = malloc(modulus_len);
    hash = malloc(modulus_len);
-   if (DB == NULL || mask == NULL || salt == NULL || hash == NULL) {
+   hctx = isrcry_hash_alloc(hashtype);
+   if (DB == NULL || mask == NULL || salt == NULL || hash == NULL || hctx == NULL) {
       if (DB != NULL) {
          free(DB);
       }
@@ -347,6 +305,8 @@ static int pkcs_1_pss_decode(const unsigned char *msghash, unsigned long msghash
       if (hash != NULL) {
          free(hash);
       }
+      if (hctx != NULL)
+         isrcry_hash_free(hctx);
       return -1;
    }
 
@@ -372,7 +332,7 @@ static int pkcs_1_pss_decode(const unsigned char *msghash, unsigned long msghash
    }
 
    /* generate mask of length modulus_len - hLen - 1 from hash */
-   if ((err = pkcs_1_mgf1(hash_idx, hash, hLen, mask, modulus_len - hLen - 1)) != ISRCRY_OK) {
+   if ((err = pkcs_1_mgf1(hashtype, hash, hLen, mask, modulus_len - hLen - 1)) != ISRCRY_OK) {
       goto LBL_ERR;
    }
 
@@ -401,22 +361,11 @@ static int pkcs_1_pss_decode(const unsigned char *msghash, unsigned long msghash
    }
 
    /* M = (eight) 0x00 || msghash || salt, mask = H(M) */
-   if ((err = hash_descriptor[hash_idx].init(&md)) != ISRCRY_OK) {
-      goto LBL_ERR;
-   }
    memset(mask, 0, 8);
-   if ((err = hash_descriptor[hash_idx].process(&md, mask, 8)) != ISRCRY_OK) {
-      goto LBL_ERR;
-   }
-   if ((err = hash_descriptor[hash_idx].process(&md, msghash, msghashlen)) != ISRCRY_OK) {
-      goto LBL_ERR;
-   }
-   if ((err = hash_descriptor[hash_idx].process(&md, DB+x, saltlen)) != ISRCRY_OK) {
-      goto LBL_ERR;
-   }
-   if ((err = hash_descriptor[hash_idx].done(&md, mask)) != ISRCRY_OK) {
-      goto LBL_ERR;
-   }
+   isrcry_hash_update(hctx, mask, 8);
+   isrcry_hash_update(hctx, msghash, msghashlen);
+   isrcry_hash_update(hctx, DB+x, saltlen);
+   isrcry_hash_final(hctx, mask);
 
    /* mask == hash means valid signature */
    if (memcmp(mask, hash, hLen) == 0) {
@@ -436,14 +385,13 @@ LBL_ERR:
 
 /** 
    Create an RSA key
-   @param prng     An active PRNG state
-   @param wprng    The index of the PRNG desired
+   @param rctx     An active PRNG state
    @param size     The size of the modulus (key size) desired (octets)
    @param e        The "e" value (public key).  e==65537 is a good choice
    @param key      [out] Destination of a newly created private key pair
    @return ISRCRY_OK if successful, upon error all allocated ram is freed
 */
-static int rsa_make_key(prng_state *prng, int wprng, int size, long e, rsa_key *key)
+static int rsa_make_key(struct isrcry_random_ctx *rctx, int size, long e, rsa_key *key)
 {
    void *p, *q, *tmp1, *tmp2, *tmp3;
    int    err;
@@ -456,10 +404,6 @@ static int rsa_make_key(prng_state *prng, int wprng, int size, long e, rsa_key *
       return ISRCRY_INVALID_ARGUMENT;
    }
 
-   if ((err = prng_is_valid(wprng)) != ISRCRY_OK) {
-      return err;
-   }
-
    if ((err = mp_init_multi(&p, &q, &tmp1, &tmp2, &tmp3, NULL))) {
       return err;
    }
@@ -469,14 +413,14 @@ static int rsa_make_key(prng_state *prng, int wprng, int size, long e, rsa_key *
 
    /* make prime "p" */
    do {
-       if ((err = rand_prime( p, size/2, prng, wprng)) != ISRCRY_OK)  { goto errkey; }
+       if ((err = rand_prime( p, size/2, rctx)) != ISRCRY_OK)  { goto errkey; }
        mp_sub_d( p, 1,  tmp1); /* tmp1 = p-1 */
        mp_gcd( tmp1,  tmp3,  tmp2); /* tmp2 = gcd(p-1, e) */
    } while (mp_cmp_d( tmp2, 1));                                                  /* while e divides p-1 */
 
    /* make prime "q" */
    do {
-       if ((err = rand_prime( q, size/2, prng, wprng)) != ISRCRY_OK)  { goto errkey; }
+       if ((err = rand_prime( q, size/2, rctx)) != ISRCRY_OK)  { goto errkey; }
        mp_sub_d( q, 1,  tmp1); /* tmp1 = q-1 */
        mp_gcd( tmp1,  tmp3,  tmp2); /* tmp2 = gcd(q-1, e) */
    } while (mp_cmp_d( tmp2, 1));                                                 /* while e divides q-1 */
@@ -765,29 +709,20 @@ error:
   @param inlen     The length of the hash to sign (octets)
   @param out       [out] The signature
   @param outlen    [in/out] The max size and resulting size of the signature
-  @param prng      An active PRNG state
-  @param prng_idx  The index of the PRNG desired
-  @param hash_idx  The index of the hash desired
+  @param rctx      An active PRNG state
+  @param hashtype  The hash desired
   @param saltlen   The length of the salt desired (octets)
   @param key       The private RSA key to use
   @return ISRCRY_OK if successful
 */
 static int rsa_sign_hash_ex(const unsigned char *in,       unsigned long  inlen,
                            unsigned char *out,      unsigned long *outlen,
-                           prng_state    *prng,     int            prng_idx,
-                           int            hash_idx, unsigned long  saltlen,
+                           struct isrcry_random_ctx *rctx,
+                           enum isrcry_hash hashtype, unsigned long  saltlen,
                            rsa_key *key)
 {
    unsigned long modulus_bitlen, modulus_bytelen, x;
    int           err;
-
-   /* valid prng and hash ? */
-   if ((err = prng_is_valid(prng_idx)) != ISRCRY_OK) {
-      return err;
-   }
-   if ((err = hash_is_valid(hash_idx)) != ISRCRY_OK) {
-      return err;
-   }
 
    /* get modulus len in bits */
    modulus_bitlen = mp_count_bits((key->N));
@@ -801,8 +736,8 @@ static int rsa_sign_hash_ex(const unsigned char *in,       unsigned long  inlen,
 
   /* PSS pad the key */
   x = *outlen;
-  if ((err = pkcs_1_pss_encode(in, inlen, saltlen, prng, prng_idx,
-                               hash_idx, modulus_bitlen, out, &x)) != ISRCRY_OK) {
+  if ((err = pkcs_1_pss_encode(in, inlen, saltlen, rctx, hashtype,
+                               modulus_bitlen, out, &x)) != ISRCRY_OK) {
      return err;
   }
 
@@ -816,7 +751,7 @@ static int rsa_sign_hash_ex(const unsigned char *in,       unsigned long  inlen,
   @param siglen           The length of the signature data (octets)
   @param hash             The hash of the message that was signed
   @param hashlen          The length of the hash of the message that was signed (octets)
-  @param hash_idx         The index of the desired hash
+  @param hashtype         The desired hash
   @param saltlen          The length of the salt used during signature
   @param stat             [out] The result of the signature comparison, 1==valid, 0==invalid
   @param key              The public RSA key corresponding to the key that performed the signature
@@ -824,7 +759,7 @@ static int rsa_sign_hash_ex(const unsigned char *in,       unsigned long  inlen,
 */
 static int rsa_verify_hash_ex(const unsigned char *sig,      unsigned long siglen,
                        const unsigned char *hash,     unsigned long hashlen,
-                             int            hash_idx, unsigned long saltlen,
+                             enum isrcry_hash hashtype, unsigned long saltlen,
                              int           *stat,     rsa_key      *key)
 {
   unsigned long modulus_bitlen, modulus_bytelen, x;
@@ -833,11 +768,6 @@ static int rsa_verify_hash_ex(const unsigned char *sig,      unsigned long sigle
 
   /* default to invalid */
   *stat = 0;
-
-  /* valid hash ? */
-  if ((err = hash_is_valid(hash_idx)) != ISRCRY_OK) {
-     return err;
-  }
 
   /* get modulus len in bits */
   modulus_bitlen = mp_count_bits( (key->N));
@@ -868,7 +798,7 @@ static int rsa_verify_hash_ex(const unsigned char *sig,      unsigned long sigle
   }
 
   /* PSS decode and verify it */
-  err = pkcs_1_pss_decode(hash, hashlen, tmpbuf, x, saltlen, hash_idx, modulus_bitlen, stat);
+  err = pkcs_1_pss_decode(hash, hashlen, tmpbuf, x, saltlen, hashtype, modulus_bitlen, stat);
 
   free(tmpbuf);
   return err;
