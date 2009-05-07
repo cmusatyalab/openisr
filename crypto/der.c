@@ -970,6 +970,10 @@ static enum isrcry_result der_length_sequence(ltc_asn1_list *list, unsigned long
                y += x;
                break;
 
+           case LTC_ASN1_NULL:
+               y += 2;
+               break;
+
            case LTC_ASN1_OBJECT_IDENTIFIER:
                if ((err = der_length_object_identifier(data, size, &x)) != ISRCRY_OK) {
                   goto LBL_ERR;
@@ -1071,6 +1075,10 @@ static enum isrcry_result der_encode_sequence_ex(ltc_asn1_list *list, unsigned l
                   goto LBL_ERR;
                }
                y += x;
+               break;
+
+           case LTC_ASN1_NULL:
+               y += 2;
                break;
 
            case LTC_ASN1_OBJECT_IDENTIFIER:
@@ -1184,6 +1192,12 @@ static enum isrcry_result der_encode_sequence_ex(ltc_asn1_list *list, unsigned l
                }
                x       += z;
                *outlen -= z;
+               break;
+
+           case LTC_ASN1_NULL:
+               out[x++] = 0x05;
+               out[x++] = 0x00;
+               *outlen -= 2;
                break;
 
            case LTC_ASN1_OBJECT_IDENTIFIER:
@@ -1335,6 +1349,14 @@ enum isrcry_result der_decode_sequence(const unsigned char *in, unsigned long  i
                }
                break;
 
+           case LTC_ASN1_NULL:
+               if (inlen < 2 || in[x] != 0x05 || in[x+1] != 0x00) {
+                  err = ISRCRY_BAD_FORMAT;
+                  goto LBL_ERR;
+               }
+               z = 2;
+               break;
+                  
            case LTC_ASN1_OBJECT_IDENTIFIER:
                z = inlen;
                if ((err = der_decode_object_identifier(in + x, z, data, &size)) != ISRCRY_OK) {
@@ -1416,6 +1438,7 @@ enum isrcry_result der_encode_sequence_multi(unsigned char *out, unsigned long *
            case LTC_ASN1_SHORT_INTEGER:
            case LTC_ASN1_BIT_STRING:
            case LTC_ASN1_OCTET_STRING:
+           case LTC_ASN1_NULL:
            case LTC_ASN1_OBJECT_IDENTIFIER:
            case LTC_ASN1_SEQUENCE:
                 ++x; 
@@ -1455,6 +1478,7 @@ enum isrcry_result der_encode_sequence_multi(unsigned char *out, unsigned long *
            case LTC_ASN1_SHORT_INTEGER:
            case LTC_ASN1_BIT_STRING:
            case LTC_ASN1_OCTET_STRING:
+           case LTC_ASN1_NULL:
            case LTC_ASN1_OBJECT_IDENTIFIER:
            case LTC_ASN1_SEQUENCE:
                 list[x].type   = type;
@@ -1508,6 +1532,7 @@ enum isrcry_result der_decode_sequence_multi(const unsigned char *in, unsigned l
            case LTC_ASN1_SHORT_INTEGER:
            case LTC_ASN1_BIT_STRING:
            case LTC_ASN1_OCTET_STRING:
+           case LTC_ASN1_NULL:
            case LTC_ASN1_OBJECT_IDENTIFIER:
            case LTC_ASN1_SEQUENCE:
                 ++x; 
@@ -1547,6 +1572,7 @@ enum isrcry_result der_decode_sequence_multi(const unsigned char *in, unsigned l
            case LTC_ASN1_SHORT_INTEGER:
            case LTC_ASN1_BIT_STRING:
            case LTC_ASN1_OCTET_STRING:
+           case LTC_ASN1_NULL:
            case LTC_ASN1_OBJECT_IDENTIFIER:
            case LTC_ASN1_SEQUENCE:
                 list[x].type   = type;
