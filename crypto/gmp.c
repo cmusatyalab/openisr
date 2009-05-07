@@ -9,9 +9,12 @@
  * Tom St Denis, tomstdenis@gmail.com, http://libtomcrypt.com
  */
 
-#include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <gmp.h>
+#include "isrcrypto.h"
+#define LIBISRCRYPTO_INTERNAL
+#include "internal.h"
 
    /** initialize a bignum
      @param   a     The number to initialize
@@ -19,14 +22,12 @@
    */
 int mp_init(void **a)
 { 
-   LTC_ARGCHK(a != NULL);
-
-   *a = XCALLOC(1, sizeof(__mpz_struct));
+   *a = malloc(sizeof(__mpz_struct));
    if (*a == NULL) {
-      return CRYPT_MEM;
+      return -1;
    }
    mpz_init(((__mpz_struct *)*a));
-   return CRYPT_OK;
+   return 0;
 }
 
    /** deinit 
@@ -35,9 +36,8 @@ int mp_init(void **a)
    */
 void mp_clear(void *a)
 {
-   LTC_ARGCHKVD(a != NULL);
    mpz_clear(a);
-   XFREE(a);
+   free(a);
 }
 
 int mp_init_multi(void **a, ...)
@@ -48,7 +48,7 @@ int mp_init_multi(void **a, ...)
 
    va_start(args, a);
    while (cur != NULL) {
-       if (mp_init(cur) != CRYPT_OK) {
+       if (mp_init(cur)) {
           /* failed */
           va_list clean_list;
 
@@ -59,13 +59,13 @@ int mp_init_multi(void **a, ...)
               cur = va_arg(clean_list, void**);
           }
           va_end(clean_list);
-          return CRYPT_MEM;
+          return -1;
        }
        ++np;
        cur = va_arg(args, void**);
    }
    va_end(args);
-   return CRYPT_OK;   
+   return 0;   
 }
 
 void mp_clear_multi(void *a, ...)
@@ -84,65 +84,39 @@ void mp_clear_multi(void *a, ...)
    /** copy 
       @param   src   The number to copy from
       @param   dst   The number to write to 
-      @return CRYPT_OK on success
    */
-int mp_copy(void *a, void *b)
+void mp_copy(void *a, void *b)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
    mpz_set(b, a);
-   return CRYPT_OK;
 }
 
    /** set small constant 
       @param a    Number to write to
       @param n    Source upto bits_per_digit (actually meant for very small constants) 
-      @return CRYPT_OK on succcess
    */
-int mp_set_int(void *a, unsigned long b)
+void mp_set_int(void *a, unsigned long b)
 {
-   LTC_ARGCHK(a != NULL);
    mpz_set_ui(((__mpz_struct *)a), b);
-   return CRYPT_OK;
 }
 
    /** compare two integers
      @param a   The left side integer
      @param b   The right side integer
-     @return LTC_MP_LT if a < b, LTC_MP_GT if a > b and LTC_MP_EQ otherwise.  (signed comparison)
+     @return < 0 if a < b, > 0 if a > b and 0 otherwise.  (signed comparison)
    */
 int mp_compare(void *a, void *b)
 {
-   int ret;
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   ret = mpz_cmp(a, b);
-   if (ret < 0) {
-      return LTC_MP_LT;
-   } else if (ret > 0) {
-      return LTC_MP_GT;
-   } else {
-      return LTC_MP_EQ;
-   }
+   return mpz_cmp(a, b);
 }
 
    /** compare against int 
      @param a   The left side integer
      @param b   The right side integer (upto bits_per_digit)
-     @return LTC_MP_LT if a < b, LTC_MP_GT if a > b and LTC_MP_EQ otherwise.  (signed comparison)
+     @return < 0 if a < b, > 0 if a > b and 0 otherwise.  (signed comparison)
    */
 int mp_cmp_d(void *a, unsigned long b)
 {
-   int ret;
-   LTC_ARGCHK(a != NULL);
-   ret = mpz_cmp_ui(((__mpz_struct *)a), b);
-   if (ret < 0) {
-      return LTC_MP_LT;
-   } else if (ret > 0) {
-      return LTC_MP_GT;
-   } else {
-      return LTC_MP_EQ;
-   }
+   return mpz_cmp_ui(((__mpz_struct *)a), b);
 }
 
    /** Count the number of bits used to represent the integer
@@ -151,7 +125,6 @@ int mp_cmp_d(void *a, unsigned long b)
    */
 int mp_count_bits(void *a)
 {
-   LTC_ARGCHK(a != NULL);
    return mpz_sizeinbase(a, 2);
 }
 
@@ -161,21 +134,17 @@ int mp_count_bits(void *a)
    */
 int mp_cnt_lsb(void *a)
 {
-   LTC_ARGCHK(a != NULL);
    return mpz_scan1(a, 0);
 }
 
    /** Compute a power of two
      @param a  The integer to store the power in
      @param n  The power of two you want to store (a = 2^n)
-     @return CRYPT_OK on success
    */
-int mp_2expt(void *a, int n)
+void mp_2expt(void *a, int n)
 {
-   LTC_ARGCHK(a != NULL);
    mpz_set_ui(a, 0);
    mpz_setbit(a, n);
-   return CRYPT_OK;
 }
 
    /** get size as unsigned char string 
@@ -185,7 +154,6 @@ int mp_2expt(void *a, int n)
 unsigned long mp_unsigned_bin_size(void *a)
 {
    unsigned long t;
-   LTC_ARGCHK(a != NULL);
    t = mpz_sizeinbase(a, 2);
    if (mpz_cmp_ui(((__mpz_struct *)a), 0) == 0) return 0;
    return (t>>3) + ((t&7)?1:0);
@@ -194,87 +162,60 @@ unsigned long mp_unsigned_bin_size(void *a)
    /** store an integer as an array of octets 
      @param src   The integer to store
      @param dst   The buffer to store the integer in
-     @return CRYPT_OK on success
    */
-int mp_to_unsigned_bin(void *a, unsigned char *b)
+void mp_to_unsigned_bin(void *a, unsigned char *b)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
    mpz_export(b, NULL, 1, 1, 1, 0, ((__mpz_struct*)a));
-   return CRYPT_OK;
 }
 
    /** read an array of octets and store as integer
      @param dst   The integer to load
      @param src   The array of octets 
      @param len   The number of octets 
-     @return CRYPT_OK on success
    */
-int mp_read_unsigned_bin(void *a, unsigned char *b, unsigned long len)
+void mp_read_unsigned_bin(void *a, unsigned char *b, unsigned long len)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
    mpz_import(a, len, 1, 1, 1, 0, b);
-   return CRYPT_OK;
 }
 
    /** add two integers 
      @param a   The first source integer
      @param b   The second source integer
      @param c   The destination of "a + b"
-     @return CRYPT_OK on success
    */
-int mp_add(void *a, void *b, void *c)
+void mp_add(void *a, void *b, void *c)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   LTC_ARGCHK(c != NULL);
    mpz_add(c, a, b);
-   return CRYPT_OK;
 }
 
    /** subtract two integers 
      @param a   The first source integer
      @param b   The second source integer
      @param c   The destination of "a - b"
-     @return CRYPT_OK on success
    */
-int mp_sub(void *a, void *b, void *c)
+void mp_sub(void *a, void *b, void *c)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   LTC_ARGCHK(c != NULL);
    mpz_sub(c, a, b);
-   return CRYPT_OK;
 }
 
    /** subtract two integers 
      @param a   The first source integer
      @param b   The second source integer (single digit of upto bits_per_digit in length)
      @param c   The destination of "a - b"
-     @return CRYPT_OK on success
    */
-int mp_sub_d(void *a, unsigned long b, void *c)
+void mp_sub_d(void *a, unsigned long b, void *c)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(c != NULL);
    mpz_sub_ui(c, a, b);
-   return CRYPT_OK;
 }
 
    /** multiply two integers 
      @param a   The first source integer
      @param b   The second source integer (single digit of upto bits_per_digit in length)
      @param c   The destination of "a * b"
-     @return CRYPT_OK on success
    */
-int mp_mul(void *a, void *b, void *c)
+void mp_mul(void *a, void *b, void *c)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   LTC_ARGCHK(c != NULL);
    mpz_mul(c, a, b);
-   return CRYPT_OK;
 }
 
    /** Divide an integer
@@ -282,13 +223,10 @@ int mp_mul(void *a, void *b, void *c)
      @param b    The divisor
      @param c    The quotient (can be NULL to signify don't care)
      @param d    The remainder (can be NULL to signify don't care)
-     @return CRYPT_OK on success
    */
-int mp_div(void *a, void *b, void *c, void *d)
+void mp_div(void *a, void *b, void *c, void *d)
 {
    mpz_t tmp;
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
    if (c != NULL) {
       mpz_init(tmp);
       mpz_divexact(tmp, a, b);
@@ -300,42 +238,31 @@ int mp_div(void *a, void *b, void *c, void *d)
       mpz_set(c, tmp);
       mpz_clear(tmp);
    }
-   return CRYPT_OK;
 }
 
-int mp_mod(void *a, void *b, void *c)
+void mp_mod(void *a, void *b, void *c)
 {
-   return mp_div(a, b, NULL, c);
+   mp_div(a, b, NULL, c);
 }
 
    /** gcd 
       @param  a     The first integer
       @param  b     The second integer
       @param  c     The destination for (a, b)
-      @return CRYPT_OK on success
    */
-int mp_gcd(void *a, void *b, void *c)
+void mp_gcd(void *a, void *b, void *c)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   LTC_ARGCHK(c != NULL);
    mpz_gcd(c, a, b);
-   return CRYPT_OK;
 }
 
    /** lcm 
       @param  a     The first integer
       @param  b     The second integer
       @param  c     The destination for [a, b]
-      @return CRYPT_OK on success
    */
-int mp_lcm(void *a, void *b, void *c)
+void mp_lcm(void *a, void *b, void *c)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   LTC_ARGCHK(c != NULL);
    mpz_lcm(c, a, b);
-   return CRYPT_OK;
 }
 
    /** Modular multiplication
@@ -343,32 +270,22 @@ int mp_lcm(void *a, void *b, void *c)
       @param  b     The second source 
       @param  c     The modulus
       @param  d     The destination (a*b mod c)
-      @return CRYPT_OK on success
    */
-int mp_mulmod(void *a, void *b, void *c, void *d)
+void mp_mulmod(void *a, void *b, void *c, void *d)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   LTC_ARGCHK(c != NULL);
-   LTC_ARGCHK(d != NULL);
    mpz_mul(d, a, b);
    mpz_mod(d, d, c);
-   return CRYPT_OK;
 }
 
    /** Modular inversion
       @param  a     The value to invert
       @param  b     The modulus 
       @param  c     The destination (1/a mod b)
-      @return CRYPT_OK on success
+      @return 0 on success
    */
 int mp_invmod(void *a, void *b, void *c)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   LTC_ARGCHK(c != NULL);
-   mpz_invert(c, a, b);
-   return CRYPT_OK;
+   return !mpz_invert(c, a, b);
 }
 
    /** Modular exponentiation
@@ -376,92 +293,52 @@ int mp_invmod(void *a, void *b, void *c)
        @param b    The power (can be negative) integer
        @param c    The modulus integer
        @param d    The destination
-       @return CRYPT_OK on success
    */
-int mp_exptmod(void *a, void *b, void *c, void *d)
+void mp_exptmod(void *a, void *b, void *c, void *d)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   LTC_ARGCHK(c != NULL);
-   LTC_ARGCHK(d != NULL);
    mpz_powm(d, a, b, c);
-   return CRYPT_OK;
 }   
 
    /** Primality testing
        @param a     The integer to test
-       @param b     The destination of the result (FP_YES if prime)
-       @return CRYPT_OK on success
+       @param b     The destination of the result (1 if prime)
    */
-int mp_prime_is_prime(void *a, int rounds, int *b)
+void mp_prime_is_prime(void *a, int rounds, int *b)
 {
-   LTC_ARGCHK(a != NULL);
-   LTC_ARGCHK(b != NULL);
-   *b = mpz_probab_prime_p(a, rounds) > 0 ? LTC_MP_YES : LTC_MP_NO;
-   return CRYPT_OK;
+   *b = mpz_probab_prime_p(a, rounds) > 0 ? 1 : 0;
 }
 
-#define USE_BBS 1
-
-int rand_prime(void *N, long len, prng_state *prng, int wprng)
+int rand_prime(void *N, unsigned len, struct isrcry_random_ctx *rctx)
 {
-   int            err, res, type;
+   int            res;
    unsigned char *buf;
-
-   LTC_ARGCHK(N != NULL);
-
-   /* get type */
-   if (len < 0) {
-      type = USE_BBS;
-      len = -len;
-   } else {
-      type = 0;
-   }
 
    /* allow sizes between 2 and 512 bytes for a prime size */
    if (len < 2 || len > 512) { 
-      return CRYPT_INVALID_PRIME_SIZE;
+      return -1;
    }
    
-   /* valid PRNG? Better be! */
-   if ((err = prng_is_valid(wprng)) != CRYPT_OK) {
-      return err; 
-   }
-
    /* allocate buffer to work with */
-   buf = XCALLOC(1, len);
+   buf = malloc(len);
    if (buf == NULL) {
-       return CRYPT_MEM;
+       return -1;
    }
 
    do {
       /* generate value */
-      if (prng_descriptor[wprng].read(buf, len, prng) != (unsigned long)len) {
-         XFREE(buf);
-         return CRYPT_ERROR_READPRNG;
-      }
+      isrcry_random_bytes(rctx, buf, len);
 
       /* munge bits */
       buf[0]     |= 0x80 | 0x40;
-      buf[len-1] |= 0x01 | ((type & USE_BBS) ? 0x02 : 0x00);
+      buf[len-1] |= 0x01;
  
       /* load value */
-      if ((err = mp_read_unsigned_bin(N, buf, len)) != CRYPT_OK) {
-         XFREE(buf);
-         return err;
-      }
+      mp_read_unsigned_bin(N, buf, len);
 
       /* test */
-      if ((err = mp_prime_is_prime(N, 8, &res)) != CRYPT_OK) {
-         XFREE(buf);
-         return err;
-      }
-   } while (res == LTC_MP_NO);
+      mp_prime_is_prime(N, 8, &res);
+   } while (!res);
 
-#ifdef LTC_CLEAN_STACK
-   zeromem(buf, len);
-#endif
-
-   XFREE(buf);
-   return CRYPT_OK;
+   free(buf);
+   return 0;
 }
