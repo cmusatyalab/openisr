@@ -114,7 +114,7 @@ void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 void isrcry_random_free(struct isrcry_random_ctx *rctx);
 
 struct isrcry_sign_ctx *isrcry_sign_alloc(enum isrcry_sign type,
-			struct isrcry_random_ctx *rand);
+			struct isrcry_random_ctx *rctx);
 void isrcry_sign_free(struct isrcry_sign_ctx *sctx);
 enum isrcry_result isrcry_sign_make_keys(struct isrcry_sign_ctx *sctx,
 			unsigned length);

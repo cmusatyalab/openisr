@@ -47,7 +47,7 @@ static int key_format_ok(enum isrcry_key_format fmt)
 }
 
 exported struct isrcry_sign_ctx *isrcry_sign_alloc(enum isrcry_sign type,
-			struct isrcry_random_ctx *rand)
+			struct isrcry_random_ctx *rctx)
 {
 	struct isrcry_sign_ctx *sctx;
 
@@ -59,7 +59,12 @@ exported struct isrcry_sign_ctx *isrcry_sign_alloc(enum isrcry_sign type,
 		free(sctx);
 		return NULL;
 	}
-	sctx->rand = rand;
+	sctx->hctx = isrcry_hash_alloc(sctx->desc->hash);
+	if (sctx->hctx == NULL) {
+		free(sctx);
+		return NULL;
+	}
+	sctx->rctx = rctx;
 	sctx->pubkey = sctx->privkey = NULL;
 	return sctx;
 }
@@ -67,6 +72,7 @@ exported struct isrcry_sign_ctx *isrcry_sign_alloc(enum isrcry_sign type,
 exported void isrcry_sign_free(struct isrcry_sign_ctx *sctx)
 {
 	sctx->desc->free(sctx);
+	isrcry_hash_free(sctx->hctx);
 	free(sctx);
 }
 

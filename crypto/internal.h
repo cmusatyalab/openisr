@@ -141,11 +141,13 @@ struct isrcry_sign_desc {
 				unsigned char *hash, unsigned hashlen,
 				unsigned char *sig, unsigned siglen);
 	void (*free)(struct isrcry_sign_ctx *sctx);
+	enum isrcry_hash hash;
 };
 
 struct isrcry_sign_ctx {
 	const struct isrcry_sign_desc *desc;
-	struct isrcry_random_ctx *rand;
+	struct isrcry_hash_ctx *hctx;
+	struct isrcry_random_ctx *rctx;
 	void *pubkey;
 	void *privkey;
 };
