@@ -18,10 +18,9 @@
 #define MIN_RSA_SIZE 1024
 #define MAX_RSA_SIZE 4096
 
-/** RSA PKCS style key */
-typedef struct Rsa_key {
+struct isrcry_rsa_key {
     /** Type of key, ISRCRY_KEY_PRIVATE or ISRCRY_KEY_PUBLIC */
-    int type;
+    enum isrcry_key_type type;
     /** The public exponent */
     void *e; 
     /** The private exponent */
@@ -38,7 +37,7 @@ typedef struct Rsa_key {
     void *dP; 
     /** The d mod (q - 1) CRT param */
     void *dQ;
-} rsa_key;
+};
 
 /* always stores the same # of bytes, pads with leading zero bytes
    as required
@@ -396,7 +395,8 @@ LBL_ERR:
    @param key      [out] Destination of a newly created private key pair
    @return ISRCRY_OK if successful, upon error all allocated ram is freed
 */
-static int rsa_make_key(struct isrcry_random_ctx *rctx, int size, long e, rsa_key *key)
+static int rsa_make_key(struct isrcry_random_ctx *rctx, int size, long e,
+			struct isrcry_rsa_key *key)
 {
    void *p, *q, *tmp1, *tmp2, *tmp3;
    int    err;
@@ -475,7 +475,8 @@ cleanup:
   @param key     [out] Destination for newly imported key
   @return ISRCRY_OK if successful, upon error allocated memory is freed
 */
-static int rsa_import(const unsigned char *in, unsigned long inlen, rsa_key *key)
+static int rsa_import(const unsigned char *in, unsigned long inlen,
+			struct isrcry_rsa_key *key)
 {
    int           err;
    void         *zero;
@@ -590,7 +591,8 @@ LBL_ERR:
     @param key       The RSA key to export
     @return ISRCRY_OK if successful
 */    
-static int rsa_export(unsigned char *out, unsigned long *outlen, int type, rsa_key *key)
+static int rsa_export(unsigned char *out, unsigned long *outlen, int type,
+			struct isrcry_rsa_key *key)
 {
    unsigned long zero=0;
 
@@ -636,7 +638,7 @@ static int rsa_export(unsigned char *out, unsigned long *outlen, int type, rsa_k
 */   
 static int rsa_exptmod(const unsigned char *in,   unsigned long inlen,
                       unsigned char *out,  unsigned long *outlen, int which,
-                      rsa_key *key)
+                      struct isrcry_rsa_key *key)
 {
    void         *tmp, *tmpa, *tmpb;
    unsigned long x;
@@ -724,7 +726,7 @@ static int rsa_sign_hash_ex(const unsigned char *in,       unsigned long  inlen,
                            unsigned char *out,      unsigned long *outlen,
                            struct isrcry_random_ctx *rctx,
                            enum isrcry_hash hashtype, unsigned long  saltlen,
-                           rsa_key *key)
+                           struct isrcry_rsa_key *key)
 {
    unsigned long modulus_bitlen, modulus_bytelen, x;
    int           err;
@@ -762,10 +764,10 @@ static int rsa_sign_hash_ex(const unsigned char *in,       unsigned long  inlen,
   @param key              The public RSA key corresponding to the key that performed the signature
   @return ISRCRY_OK on success (even if the signature is invalid)
 */
-static int rsa_verify_hash_ex(const unsigned char *sig,      unsigned long siglen,
-                       const unsigned char *hash,     unsigned long hashlen,
+static int rsa_verify_hash_ex(const unsigned char *sig, unsigned long siglen,
+                       const unsigned char *hash, unsigned long hashlen,
                              enum isrcry_hash hashtype, unsigned long saltlen,
-                             int           *stat,     rsa_key      *key)
+                             int *stat, struct isrcry_rsa_key *key)
 {
   unsigned long modulus_bitlen, modulus_bytelen, x;
   int           err;
@@ -813,7 +815,7 @@ static int rsa_verify_hash_ex(const unsigned char *sig,      unsigned long sigle
   Free an RSA key from memory
   @param key   The RSA key to free
 */
-static void rsa_free(rsa_key *key)
+static void rsa_free(struct isrcry_rsa_key *key)
 {
    mp_clear_multi(key->e, key->d, key->N, key->dQ, key->dP, key->qP, key->p, key->q, NULL);
 }
