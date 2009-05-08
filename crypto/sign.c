@@ -100,16 +100,20 @@ exported enum isrcry_result isrcry_sign_set_key(struct isrcry_sign_ctx *sctx,
 	return sctx->desc->set_key(sctx, type, fmt, key, keylen);
 }
 
-exported enum isrcry_result isrcry_sign_sign(struct isrcry_sign_ctx *sctx,
-			void *hash, unsigned hashlen, void *out,
-			unsigned *outlen)
+exported void isrcry_sign_update(struct isrcry_sign_ctx *sctx, void *data,
+			unsigned datalen)
 {
-	return sctx->desc->sign(sctx, hash, hashlen, out, outlen);
+	isrcry_hash_update(sctx->hctx, data, datalen);
+}
+
+exported enum isrcry_result isrcry_sign_sign(struct isrcry_sign_ctx *sctx,
+			void *out, unsigned *outlen)
+{
+	return sctx->desc->sign(sctx, out, outlen);
 }
 
 exported enum isrcry_result isrcry_sign_verify(struct isrcry_sign_ctx *sctx,
-			void *hash, unsigned hashlen, void *sig,
-			unsigned siglen)
+			void *sig, unsigned siglen)
 {
-	return sctx->desc->verify(sctx, hash, hashlen, sig, siglen);
+	return sctx->desc->verify(sctx, sig, siglen);
 }

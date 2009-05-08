@@ -124,12 +124,12 @@ enum isrcry_result isrcry_sign_get_key(struct isrcry_sign_ctx *sctx,
 enum isrcry_result isrcry_sign_set_key(struct isrcry_sign_ctx *sctx,
 			enum isrcry_key_type type, enum isrcry_key_format fmt,
 			void *key, unsigned keylen);
+void isrcry_sign_update(struct isrcry_sign_ctx *sctx, void *data,
+			unsigned datalen);
 enum isrcry_result isrcry_sign_sign(struct isrcry_sign_ctx *sctx,
-			void *hash, unsigned hashlen, void *out,
-			unsigned *outlen);
+			void *out, unsigned *outlen);
 enum isrcry_result isrcry_sign_verify(struct isrcry_sign_ctx *sctx,
-			void *hash, unsigned hashlen, void *sig,
-			unsigned siglen);
+			void *sig, unsigned siglen);
 
 const char *isrcry_strerror(enum isrcry_result result);
 
