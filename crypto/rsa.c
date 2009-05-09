@@ -510,7 +510,7 @@ cleanup:
 static enum isrcry_result rsa_set_key(struct isrcry_sign_ctx *sctx,
 			enum isrcry_key_type type,
 			enum isrcry_key_format format,
-			unsigned char *in, unsigned inlen)
+			const unsigned char *in, unsigned inlen)
 {
 	struct isrcry_rsa_key *key;
 	enum isrcry_key_type found_type;

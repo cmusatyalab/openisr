@@ -133,11 +133,11 @@ struct isrcry_sign_desc {
 	enum isrcry_result (*set_key)(struct isrcry_sign_ctx *sctx,
 				enum isrcry_key_type type,
 				enum isrcry_key_format format,
-				unsigned char *key, unsigned keylen);
+				const unsigned char *key, unsigned keylen);
 	enum isrcry_result (*sign)(struct isrcry_sign_ctx *sctx,
 				unsigned char *out, unsigned *outlen);
 	enum isrcry_result (*verify)(struct isrcry_sign_ctx *sctx,
-				unsigned char *sig, unsigned siglen);
+				const unsigned char *sig, unsigned siglen);
 	void (*free)(struct isrcry_sign_ctx *sctx);
 	enum isrcry_hash hash;
 };
