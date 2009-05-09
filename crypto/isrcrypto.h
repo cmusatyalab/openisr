@@ -28,6 +28,7 @@ enum isrcry_result {
 	ISRCRY_BAD_SIGNATURE		= 4,
 	ISRCRY_BUFFER_OVERFLOW		= 5,
 	ISRCRY_NEED_RANDOM		= 6,
+	ISRCRY_NEED_KEY			= 7,
 };
 
 enum isrcry_direction {
