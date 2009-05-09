@@ -126,34 +126,26 @@ static void pkcs_1_os2ip(void *n, unsigned char *in, unsigned long inlen)
    Perform PKCS #1 MGF1 (internal)
    @param seed        The seed for MGF1
    @param seedlen     The length of the seed
-   @param hashtype    The hash desired
    @param mask        [out] The destination
    @param masklen     The length of the mask desired
    @return ISRCRY_OK if successful
 */
-static int pkcs_1_mgf1(enum isrcry_hash hashtype,
+static enum isrcry_result pkcs_1_mgf1(struct isrcry_sign_ctx *sctx,
 			const unsigned char *seed, unsigned long seedlen,
 			unsigned char *mask, unsigned long masklen)
 {
 	unsigned long hLen, x;
 	uint32_t counter;
 	int err;
-	struct isrcry_hash_ctx *hctx;
 	unsigned char *buf;
 
 	/* get hash output size */
-	hLen = isrcry_hash_len(hashtype);
+	hLen = isrcry_hash_len(sctx->desc->hash);
 
 	/* allocate memory */
 	buf = malloc(hLen);
-	hctx = isrcry_hash_alloc(hashtype);
-	if (buf == NULL || hctx == NULL) {
-		if (buf != NULL)
-			free(buf);
-		if (hctx != NULL)
-			isrcry_hash_free(hctx);
+	if (buf == NULL)
 		return -1;
-	}
 
 	/* start counter */
 	counter = 0;
@@ -164,9 +156,9 @@ static int pkcs_1_mgf1(enum isrcry_hash hashtype,
 		++counter;
 
 		/* get hash of seed || counter */
-		isrcry_hash_update(hctx, seed, seedlen);
-		isrcry_hash_update(hctx, buf, 4);
-		isrcry_hash_final(hctx, buf);
+		isrcry_hash_update(sctx->hctx, seed, seedlen);
+		isrcry_hash_update(sctx->hctx, buf, 4);
+		isrcry_hash_final(sctx->hctx, buf);
 
 		/* store it */
 		for (x = 0; x < hLen && masklen > 0; x++, masklen--)
@@ -174,7 +166,6 @@ static int pkcs_1_mgf1(enum isrcry_hash hashtype,
 	}
 	err = ISRCRY_OK;
 	free(buf);
-	isrcry_hash_free(hctx);
 	return err;
 }
 
@@ -182,7 +173,6 @@ static int pkcs_1_mgf1(enum isrcry_hash hashtype,
    PKCS #1 v2.00 Signature Encoding
    @param msghash          The hash to encode
    @param msghashlen       The length of the hash (octets)
-   @param saltlen          The length of the salt desired (octets)
    @param rctx             An active PRNG context
    @param hashtype         The index of the hash desired
    @param modulus_bitlen   The bit length of the RSA modulus
@@ -190,19 +180,17 @@ static int pkcs_1_mgf1(enum isrcry_hash hashtype,
    @param outlen           [in/out] The max size and resulting size of the encoded data
    @return ISRCRY_OK if successful
 */
-static int pkcs_1_pss_encode(const unsigned char *msghash,
-			unsigned long msghashlen, unsigned long saltlen,
-			struct isrcry_random_ctx *rctx,
-			enum isrcry_hash hashtype,
+static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
+			const unsigned char *msghash,
+			unsigned long msghashlen,
 			unsigned long modulus_bitlen, unsigned char *out,
 			unsigned long *outlen)
 {
 	unsigned char *DB, *mask, *salt, *hash;
-	unsigned long x, y, hLen, modulus_len;
+	unsigned long x, y, hLen, modulus_len, saltlen;
 	int err;
-	struct isrcry_hash_ctx *hctx;
 
-	hLen = isrcry_hash_len(hashtype);
+	hLen = saltlen = isrcry_hash_len(sctx->desc->hash);
 	modulus_len = (modulus_bitlen >> 3) + (modulus_bitlen & 7 ? 1 : 0);
 
 	/* check sizes */
@@ -214,9 +202,7 @@ static int pkcs_1_pss_encode(const unsigned char *msghash,
 	mask = malloc(modulus_len);
 	salt = malloc(modulus_len);
 	hash = malloc(modulus_len);
-	hctx = isrcry_hash_alloc(hashtype);
-	if (DB == NULL || mask == NULL || salt == NULL || hash == NULL ||
-				hctx == NULL) {
+	if (DB == NULL || mask == NULL || salt == NULL || hash == NULL) {
 		if (DB != NULL)
 			free(DB);
 		if (mask != NULL)
@@ -225,22 +211,20 @@ static int pkcs_1_pss_encode(const unsigned char *msghash,
 			free(salt);
 		if (hash != NULL)
 			free(hash);
-		if (hctx != NULL)
-			isrcry_hash_free(hctx);
 		return -1;
 	}
 
 
 	/* generate random salt */
 	if (saltlen > 0)
-		isrcry_random_bytes(rctx, salt, saltlen);
+		isrcry_random_bytes(sctx->rctx, salt, saltlen);
 
 	/* M = (eight) 0x00 || msghash || salt, hash = H(M) */
 	memset(DB, 0, 8);
-	isrcry_hash_update(hctx, DB, 8);
-	isrcry_hash_update(hctx, msghash, msghashlen);
-	isrcry_hash_update(hctx, salt, saltlen);
-	isrcry_hash_final(hctx, hash);
+	isrcry_hash_update(sctx->hctx, DB, 8);
+	isrcry_hash_update(sctx->hctx, msghash, msghashlen);
+	isrcry_hash_update(sctx->hctx, salt, saltlen);
+	isrcry_hash_final(sctx->hctx, hash);
 
 	/* generate DB = PS || 0x01 || salt, PS == modulus_len - saltlen -
 	   hLen - 2 zero bytes */
@@ -252,8 +236,8 @@ static int pkcs_1_pss_encode(const unsigned char *msghash,
 	x += saltlen;
 
 	/* generate mask of length modulus_len - hLen - 1 from hash */
-	if ((err = pkcs_1_mgf1(hashtype, hash, hLen, mask,
-				modulus_len - hLen - 1)) != ISRCRY_OK)
+	if ((err = pkcs_1_mgf1(sctx, hash, hLen, mask,
+				modulus_len - hLen - 1)))
 		goto LBL_ERR;
 
 	/* xor against DB */
@@ -291,7 +275,6 @@ LBL_ERR:
 	free(salt);
 	free(mask);
 	free(DB);
-	isrcry_hash_free(hctx);
 
 	return err;
 }
@@ -302,27 +285,19 @@ LBL_ERR:
    @param  msghashlen      The length of the hash (octets)
    @param  sig             The signature data (encoded data)
    @param  siglen          The length of the signature data (octets)
-   @param  saltlen         The length of the salt used (octets)
-   @param  hashtype        The hash desired
    @param  modulus_bitlen  The bit length of the RSA modulus
-   @param  res             [out] The result of the comparison, 1==valid, 0==invalid
    @return ISRCRY_OK if successful (even if the comparison failed)
 */
-static int pkcs_1_pss_decode(const unsigned char *msghash,
-			unsigned long msghashlen, const unsigned char *sig,
-			unsigned long siglen, unsigned long saltlen,
-			enum isrcry_hash hashtype,
-			unsigned long modulus_bitlen, int *res)
+static enum isrcry_result pkcs_1_pss_decode(struct isrcry_sign_ctx *sctx,
+			unsigned char *msghash, unsigned long msghashlen,
+			const unsigned char *sig, unsigned long siglen,
+			unsigned long modulus_bitlen)
 {
 	unsigned char *DB, *mask, *salt, *hash;
-	unsigned long x, y, hLen, modulus_len;
+	unsigned long x, y, hLen, modulus_len, saltlen;
 	int err;
-	struct isrcry_hash_ctx *hctx;
 
-	/* default to invalid */
-	*res = 0;
-
-	hLen = isrcry_hash_len(hashtype);
+	hLen = saltlen = isrcry_hash_len(sctx->desc->hash);
 	modulus_len = (modulus_bitlen >> 3) + (modulus_bitlen & 7 ? 1 : 0);
 
 	/* check sizes */
@@ -335,9 +310,7 @@ static int pkcs_1_pss_decode(const unsigned char *msghash,
 	mask = malloc(modulus_len);
 	salt = malloc(modulus_len);
 	hash = malloc(modulus_len);
-	hctx = isrcry_hash_alloc(hashtype);
-	if (DB == NULL || mask == NULL || salt == NULL || hash == NULL ||
-				hctx == NULL) {
+	if (DB == NULL || mask == NULL || salt == NULL || hash == NULL) {
 		if (DB != NULL)
 			free(DB);
 		if (mask != NULL)
@@ -346,8 +319,6 @@ static int pkcs_1_pss_decode(const unsigned char *msghash,
 			free(salt);
 		if (hash != NULL)
 			free(hash);
-		if (hctx != NULL)
-			isrcry_hash_free(hctx);
 		return -1;
 	}
 
@@ -374,8 +345,8 @@ static int pkcs_1_pss_decode(const unsigned char *msghash,
 	}
 
 	/* generate mask of length modulus_len - hLen - 1 from hash */
-	if ((err = pkcs_1_mgf1(hashtype, hash, hLen, mask, modulus_len -
-				hLen - 1)) != ISRCRY_OK)
+	if ((err = pkcs_1_mgf1(sctx, hash, hLen, mask, modulus_len -
+				hLen - 1)))
 		goto LBL_ERR;
 
 	/* xor against DB */
@@ -404,23 +375,22 @@ static int pkcs_1_pss_decode(const unsigned char *msghash,
 
 	/* M = (eight) 0x00 || msghash || salt, mask = H(M) */
 	memset(mask, 0, 8);
-	isrcry_hash_update(hctx, mask, 8);
-	isrcry_hash_update(hctx, msghash, msghashlen);
-	isrcry_hash_update(hctx, DB + x, saltlen);
-	isrcry_hash_final(hctx, mask);
+	isrcry_hash_update(sctx->hctx, mask, 8);
+	isrcry_hash_update(sctx->hctx, msghash, msghashlen);
+	isrcry_hash_update(sctx->hctx, DB + x, saltlen);
+	isrcry_hash_final(sctx->hctx, mask);
 
 	/* mask == hash means valid signature */
 	if (memcmp(mask, hash, hLen) == 0)
-		*res = 1;
+		err = ISRCRY_OK;
+	else
+		err = ISRCRY_BAD_SIGNATURE;
 
-	err = ISRCRY_OK;
 LBL_ERR:
-
 	free(hash);
 	free(salt);
 	free(mask);
 	free(DB);
-
 	return err;
 }
 
@@ -745,26 +715,19 @@ error:
 	return err;
 }
 
-/**
-  PKCS #1 pad then sign
-  @param in        The hash to sign
-  @param inlen     The length of the hash to sign (octets)
-  @param out       [out] The signature
-  @param outlen    [in/out] The max size and resulting size of the signature
-  @param rctx      An active PRNG state
-  @param hashtype  The hash desired
-  @param saltlen   The length of the salt desired (octets)
-  @param key       The private RSA key to use
-  @return ISRCRY_OK if successful
-*/
-static int rsa_sign_hash_ex(const unsigned char *in, unsigned long inlen,
-			unsigned char *out, unsigned long *outlen,
-			struct isrcry_random_ctx *rctx,
-			enum isrcry_hash hashtype, unsigned long saltlen,
-			struct isrcry_rsa_key *key)
+static enum isrcry_result rsa_sign(struct isrcry_sign_ctx *sctx,
+			unsigned char *out, unsigned *outlen)
 {
-	unsigned long modulus_bitlen, modulus_bytelen, x;
+	struct isrcry_rsa_key *key = sctx->privkey;
+	unsigned hashlen = isrcry_hash_len(sctx->desc->hash);
+	unsigned char hash[hashlen];
+	unsigned long modulus_bitlen, modulus_bytelen, x, y;
 	int err;
+
+	if (sctx->rctx == NULL)
+		return ISRCRY_NEED_RANDOM;
+	if (key == NULL)
+		return ISRCRY_NEED_KEY;
 
 	/* get modulus len in bits */
 	modulus_bitlen = mp_count_bits((key->N));
@@ -775,40 +738,42 @@ static int rsa_sign_hash_ex(const unsigned char *in, unsigned long inlen,
 		*outlen = modulus_bytelen;
 		return ISRCRY_BUFFER_OVERFLOW;
 	}
+	
+	/* get hash of data */
+	isrcry_hash_final(sctx->hctx, hash);
 
 	/* PSS pad the key */
 	x = *outlen;
-	if ((err = pkcs_1_pss_encode(in, inlen, saltlen, rctx, hashtype,
-				modulus_bitlen, out, &x)) != ISRCRY_OK)
+	if ((err = pkcs_1_pss_encode(sctx, hash, hashlen, modulus_bitlen,
+				out, &x)))
 		return err;
 
 	/* RSA encode it */
-	return rsa_exptmod(out, x, out, outlen, ISRCRY_KEY_PRIVATE, key);
+	y = *outlen;
+	err = rsa_exptmod(out, x, out, &y, ISRCRY_KEY_PRIVATE, sctx->privkey);
+	*outlen = y;
+	return err;
 }
 
-/**
-  PKCS #1 de-sign then PSS depad
-  @param sig              The signature data
-  @param siglen           The length of the signature data (octets)
-  @param hash             The hash of the message that was signed
-  @param hashlen          The length of the hash of the message that was signed (octets)
-  @param hashtype         The desired hash
-  @param saltlen          The length of the salt used during signature
-  @param stat             [out] The result of the signature comparison, 1==valid, 0==invalid
-  @param key              The public RSA key corresponding to the key that performed the signature
-  @return ISRCRY_OK on success (even if the signature is invalid)
-*/
-static int rsa_verify_hash_ex(const unsigned char *sig, unsigned long siglen,
-			const unsigned char *hash, unsigned long hashlen,
-			enum isrcry_hash hashtype, unsigned long saltlen,
-			int *stat, struct isrcry_rsa_key *key)
+static enum isrcry_result rsa_verify(struct isrcry_sign_ctx *sctx,
+			const unsigned char *sig, unsigned siglen)
 {
+	unsigned hashlen = isrcry_hash_len(sctx->desc->hash);
+	unsigned char hash[hashlen];
+	struct isrcry_rsa_key *key;
 	unsigned long modulus_bitlen, modulus_bytelen, x;
 	int err;
 	unsigned char *tmpbuf;
 
-	/* default to invalid */
-	*stat = 0;
+	if (sctx->pubkey != NULL)
+		key = sctx->pubkey;
+	else if (sctx->privkey != NULL)
+		key = sctx->privkey;
+	else
+		return ISRCRY_NEED_KEY;
+
+	/* get hash of data */
+	isrcry_hash_final(sctx->hctx, hash);
 
 	/* get modulus len in bits */
 	modulus_bitlen = mp_count_bits((key->N));
@@ -826,7 +791,7 @@ static int rsa_verify_hash_ex(const unsigned char *sig, unsigned long siglen,
 	/* RSA decode it  */
 	x = siglen;
 	if ((err = rsa_exptmod(sig, siglen, tmpbuf, &x, ISRCRY_KEY_PUBLIC,
-				key)) != ISRCRY_OK) {
+				key))) {
 		free(tmpbuf);
 		return err;
 	}
@@ -838,8 +803,7 @@ static int rsa_verify_hash_ex(const unsigned char *sig, unsigned long siglen,
 	}
 
 	/* PSS decode and verify it */
-	err = pkcs_1_pss_decode(hash, hashlen, tmpbuf, x, saltlen, hashtype,
-				modulus_bitlen, stat);
+	err = pkcs_1_pss_decode(sctx, hash, hashlen, tmpbuf, x, modulus_bitlen);
 
 	free(tmpbuf);
 	return err;
@@ -857,12 +821,8 @@ const struct isrcry_sign_desc _isrcry_rsa_pss_sha1_desc = {
 	.make_keys = rsa_make_keys,
 	.get_key = rsa_get_key,
 	.set_key = rsa_set_key,
-#if 0
-	enum isrcry_result (*sign)(struct isrcry_sign_ctx *sctx,
-				unsigned char *out, unsigned *outlen);
-	enum isrcry_result (*verify)(struct isrcry_sign_ctx *sctx,
-				unsigned char *sig, unsigned siglen);
-#endif
+	.sign = rsa_sign,
+	.verify = rsa_verify,
 	.free = rsa_free,
 	.hash = ISRCRY_HASH_SHA1
 };
