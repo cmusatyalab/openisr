@@ -23,6 +23,8 @@
 static const struct isrcry_sign_desc *sign_desc(enum isrcry_sign type)
 {
 	switch (type) {
+	case ISRCRY_SIGN_RSA_PSS_SHA1:
+		return &_isrcry_rsa_pss_sha1_desc;
 	}
 	return NULL;
 }

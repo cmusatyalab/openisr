@@ -142,6 +142,8 @@ struct isrcry_sign_desc {
 	enum isrcry_hash hash;
 };
 
+extern const struct isrcry_sign_desc _isrcry_rsa_pss_sha1_desc;
+
 struct isrcry_sign_ctx {
 	const struct isrcry_sign_desc *desc;
 	struct isrcry_hash_ctx *hctx;

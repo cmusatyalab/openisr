@@ -36,10 +36,9 @@
 /* Min and Max RSA key sizes (in bits) */
 #define MIN_RSA_SIZE 1024
 #define MAX_RSA_SIZE 4096
+#define RSA_E 65537
 
 struct isrcry_rsa_key {
-	/** Type of key, ISRCRY_KEY_PRIVATE or ISRCRY_KEY_PUBLIC */
-	enum isrcry_key_type type;
 	/** The public exponent */
 	void *e;
 	/** The private exponent */
@@ -57,6 +56,34 @@ struct isrcry_rsa_key {
 	/** The d mod (q - 1) CRT param */
 	void *dQ;
 };
+
+/**
+  Free an RSA key from memory
+  @param key   The RSA key to free
+*/
+static void free_key(struct isrcry_rsa_key *key)
+{
+	mp_clear_multi(key->e, key->d, key->N, key->dQ, key->dP, key->qP,
+				key->p, key->q, NULL);
+	free(key);
+}
+
+static void set_key(struct isrcry_sign_ctx *sctx, enum isrcry_key_type type,
+			struct isrcry_rsa_key *key)
+{
+	switch (type) {
+	case ISRCRY_KEY_PUBLIC:
+		if (sctx->pubkey != NULL)
+			free_key(sctx->pubkey);
+		sctx->pubkey = key;
+		break;
+	case ISRCRY_KEY_PRIVATE:
+		if (sctx->privkey != NULL)
+			free_key(sctx->privkey);
+		sctx->privkey = key;
+		break;
+	}
+}
 
 /* always stores the same # of bytes, pads with leading zero bytes
    as required
@@ -397,44 +424,38 @@ LBL_ERR:
 	return err;
 }
 
-/** 
-   Create an RSA key
-   @param rctx     An active PRNG state
-   @param size     The size of the modulus (key size) desired (octets)
-   @param e        The "e" value (public key).  e==65537 is a good choice
-   @param key      [out] Destination of a newly created private key pair
-   @return ISRCRY_OK if successful, upon error all allocated ram is freed
-*/
-static int rsa_make_key(struct isrcry_random_ctx *rctx, int size, long e,
-			struct isrcry_rsa_key *key)
+static enum isrcry_result rsa_make_keys(struct isrcry_sign_ctx *sctx,
+			unsigned length)
 {
+	struct isrcry_rsa_key *key;
 	void *p, *q, *tmp1, *tmp2, *tmp3;
-	int err;
+	enum isrcry_result err;
 
-	if (size < (MIN_RSA_SIZE / 8) || size > (MAX_RSA_SIZE / 8))
+	if (length < (MIN_RSA_SIZE / 8) || length > (MAX_RSA_SIZE / 8))
 		return ISRCRY_INVALID_ARGUMENT;
-
-	if ((e < 3) || ((e & 1) == 0))
-		return ISRCRY_INVALID_ARGUMENT;
+	if (sctx->rctx == NULL)
+		return ISRCRY_NEED_RANDOM;
 
 	if ((err = mp_init_multi(&p, &q, &tmp1, &tmp2, &tmp3, NULL)))
 		return err;
+	key = malloc(sizeof(*key));
+	if (key == NULL)
+		return -1;
 
 	/* make primes p and q (optimization provided by Wayne Scott) */
-	mp_set_int(tmp3, e);	/* tmp3 = e */
+	mp_set_int(tmp3, RSA_E);		/* tmp3 = e */
 
 	/* make prime "p" */
 	do {
-		if ((err = rand_prime(p, size / 2, rctx)) != ISRCRY_OK) {
+		if ((err = rand_prime(p, length / 2, sctx->rctx)))
 			goto errkey;
-		}
 		mp_sub_d(p, 1, tmp1);		/* tmp1 = p-1 */
 		mp_gcd(tmp1, tmp3, tmp2);	/* tmp2 = gcd(p-1, e) */
 	} while (mp_cmp_d(tmp2, 1));		/* while e divides p-1 */
 
 	/* make prime "q" */
 	do {
-		if ((err = rand_prime(q, size / 2, rctx)) != ISRCRY_OK)
+		if ((err = rand_prime(q, length / 2, sctx->rctx)))
 			goto errkey;
 		mp_sub_d(q, 1, tmp1);		/* tmp1 = q-1 */
 		mp_gcd(tmp1, tmp3, tmp2);	/* tmp2 = gcd(q-1, e) */
@@ -448,12 +469,12 @@ static int rsa_make_key(struct isrcry_random_ctx *rctx, int size, long e,
 	/* make key */
 	if ((err = mp_init_multi(&key->e, &key->d, &key->N, &key->dQ,
 				&key->dP, &key->qP, &key->p, &key->q,
-				NULL)) != ISRCRY_OK)
+				NULL)))
 		goto errkey;
 
-	mp_set_int(key->e, e);			/* key->e =  e */
+	mp_set_int(key->e, RSA_E);		/* key->e =  e */
 	/* key->d = 1/e mod lcm(p-1,q-1) */
-	if ((err = mp_invmod(key->e, tmp1, key->d)) != ISRCRY_OK)
+	if ((err = mp_invmod(key->e, tmp1, key->d)))
 		goto errkey;
 	mp_mul(p, q, key->N);			/* key->N = pq */
 
@@ -463,21 +484,20 @@ static int rsa_make_key(struct isrcry_random_ctx *rctx, int size, long e,
 	mp_sub_d(q, 1, tmp2);			/* tmp2 = p-1 */
 	mp_mod(key->d, tmp1, key->dP);		/* dP = d mod p-1 */
 	mp_mod(key->d, tmp2, key->dQ);		/* dQ = d mod q-1 */
-	if ((err = mp_invmod(q, p, key->qP)) != ISRCRY_OK)
+	if ((err = mp_invmod(q, p, key->qP)))
 		goto errkey;
 	/* qP = 1/q mod p */
 	mp_copy(p, key->p);
 	mp_copy(q, key->q);
 
-	/* set key type (in this case it's CRT optimized) */
-	key->type = ISRCRY_KEY_PRIVATE;
+	set_key(sctx, ISRCRY_KEY_PUBLIC, NULL);
+	set_key(sctx, ISRCRY_KEY_PRIVATE, key);
 
 	/* return ok and free temps */
 	err = ISRCRY_OK;
 	goto cleanup;
 errkey:
-	mp_clear_multi(key->d, key->e, key->N, key->dQ, key->dP, key->qP,
-				key->p, key->q, NULL);
+	free_key(key);
 cleanup:
 	mp_clear_multi(tmp3, tmp2, tmp1, p, q, NULL);
 	return err;
@@ -486,34 +506,33 @@ cleanup:
 /**
   Import an RSAPublicKey or RSAPrivateKey
   [two-prime only, only support >= 1024-bit keys, defined in PKCS #1 v2.1]
-  @param in      The packet to import from
-  @param inlen   It's length (octets)
-  @param key     [out] Destination for newly imported key
-  @return ISRCRY_OK if successful, upon error allocated memory is freed
 */
-static int rsa_import(const unsigned char *in, unsigned long inlen,
-			struct isrcry_rsa_key *key)
+static enum isrcry_result rsa_set_key(struct isrcry_sign_ctx *sctx,
+			enum isrcry_key_type type,
+			enum isrcry_key_format format,
+			unsigned char *in, unsigned inlen)
 {
+	struct isrcry_rsa_key *key;
+	enum isrcry_key_type found_type;
 	int err;
 	void *zero;
-	unsigned char *tmpbuf;
+	unsigned char tmpbuf[MAX_RSA_SIZE * 8];
 	unsigned long t, x, y, z, tmpoid[16];
 	ltc_asn1_list ssl_pubkey_hashoid[2];
 	ltc_asn1_list ssl_pubkey[2];
 
 	/* init key */
+	key = malloc(sizeof(*key));
+	if (key == NULL)
+		return -1;
 	if ((err = mp_init_multi(&key->e, &key->d, &key->N, &key->dQ,
 				&key->dP, &key->qP, &key->p, &key->q,
-				NULL)) != ISRCRY_OK)
+				NULL))) {
+		free(key);
 		return err;
-
-	/* see if the OpenSSL DER format RSA public key will work */
-	tmpbuf = malloc(MAX_RSA_SIZE * 8);
-	if (tmpbuf == NULL) {
-		err = -1;
-		goto LBL_ERR;
 	}
 
+	/* see if the OpenSSL DER format RSA public key will work */
 	/* this includes the internal hash ID and optional params (NULL in
 	   this case) */
 	LTC_SET_ASN1(ssl_pubkey_hashoid, 0, LTC_ASN1_OBJECT_IDENTIFIER,
@@ -527,7 +546,7 @@ static int rsa_import(const unsigned char *in, unsigned long inlen,
 	LTC_SET_ASN1(ssl_pubkey, 0, LTC_ASN1_SEQUENCE, &ssl_pubkey_hashoid,
 				2);
 	LTC_SET_ASN1(ssl_pubkey, 1, LTC_ASN1_BIT_STRING, tmpbuf,
-				MAX_RSA_SIZE * 8);
+				sizeof(tmpbuf));
 
 	if (der_decode_sequence(in, inlen, ssl_pubkey, 2UL) == ISRCRY_OK) {
 		/* ok now we have to reassemble the BIT STRING to an
@@ -540,30 +559,19 @@ static int rsa_import(const unsigned char *in, unsigned long inlen,
 				z = 0;
 			}
 		}
-
-		/* now it should be SEQUENCE { INTEGER, INTEGER } */
-		if ((err = der_decode_sequence_multi(tmpbuf, t,
-					LTC_ASN1_INTEGER, 1UL, key->N,
-					LTC_ASN1_INTEGER, 1UL, key->e,
-					LTC_ASN1_EOL, 0UL, NULL))
-					!= ISRCRY_OK) {
-			free(tmpbuf);
-			goto LBL_ERR;
-		}
-		free(tmpbuf);
-		key->type = ISRCRY_KEY_PUBLIC;
-		return ISRCRY_OK;
+		/* continue... */
+		in = tmpbuf;
+		inlen = t;
 	}
-	free(tmpbuf);
 
-	/* not SSL public key, try to match against PKCS #1 standards */
+	/* try to match against PKCS #1 standards */
 	if ((err = der_decode_sequence_multi(in, inlen,
 				LTC_ASN1_INTEGER, 1UL, key->N,
-				LTC_ASN1_EOL, 0UL, NULL)) != ISRCRY_OK)
+				LTC_ASN1_EOL, 0UL, NULL)))
 		goto LBL_ERR;
 
 	if (mp_cmp_d(key->N, 0) == 0) {
-		if ((err = mp_init(&zero)) != ISRCRY_OK)
+		if ((err = mp_init(&zero)))
 			goto LBL_ERR;
 		/* it's a private key */
 		if ((err = der_decode_sequence_multi(in, inlen,
@@ -576,13 +584,12 @@ static int rsa_import(const unsigned char *in, unsigned long inlen,
 					LTC_ASN1_INTEGER, 1UL, key->dP,
 					LTC_ASN1_INTEGER, 1UL, key->dQ,
 					LTC_ASN1_INTEGER, 1UL, key->qP,
-					LTC_ASN1_EOL, 0UL, NULL))
-					!= ISRCRY_OK) {
+					LTC_ASN1_EOL, 0UL, NULL))) {
 			mp_clear(zero);
 			goto LBL_ERR;
 		}
 		mp_clear(zero);
-		key->type = ISRCRY_KEY_PRIVATE;
+		found_type = ISRCRY_KEY_PRIVATE;
 	} else if (mp_cmp_d(key->N, 1) == 0) {
 		/* we don't support multi-prime RSA */
 		err = ISRCRY_BAD_FORMAT;
@@ -592,36 +599,48 @@ static int rsa_import(const unsigned char *in, unsigned long inlen,
 		if ((err = der_decode_sequence_multi(in, inlen,
 					LTC_ASN1_INTEGER, 1UL, key->N,
 					LTC_ASN1_INTEGER, 1UL, key->e,
-					LTC_ASN1_EOL, 0UL, NULL))
-					!= ISRCRY_OK) {
+					LTC_ASN1_EOL, 0UL, NULL))) {
 			goto LBL_ERR;
 		}
-		key->type = ISRCRY_KEY_PUBLIC;
+		found_type = ISRCRY_KEY_PUBLIC;
 	}
+
+	if (found_type != type) {
+		err = ISRCRY_BAD_FORMAT;
+		goto LBL_ERR;
+	}
+	set_key(sctx, type, key);
 	return ISRCRY_OK;
 LBL_ERR:
-	mp_clear_multi(key->d, key->e, key->N, key->dQ, key->dP, key->qP,
-				key->p, key->q, NULL);
+	free_key(key);
 	return err;
 }
 
 /**
     This will export either an RSAPublicKey or RSAPrivateKey
     [defined in PKCS #1 v2.1] 
-    @param out       [out] Destination of the packet
-    @param outlen    [in/out] The max size and resulting size of the packet
-    @param type      The type of exported key (ISRCRY_KEY_PRIVATE or ISRCRY_KEY_PUBLIC)
-    @param key       The RSA key to export
-    @return ISRCRY_OK if successful
 */
-static int rsa_export(unsigned char *out, unsigned long *outlen, int type,
-			struct isrcry_rsa_key *key)
+static enum isrcry_result rsa_get_key(struct isrcry_sign_ctx *sctx,
+				enum isrcry_key_type type,
+				enum isrcry_key_format format,
+				unsigned char *out, unsigned *outlen)
 {
-	unsigned long zero = 0;
+	struct isrcry_rsa_key *key = NULL;
+	unsigned long zero=0;
+	unsigned long outlen_l = *outlen;
+	enum isrcry_result ret;
 
-	/* type valid? */
-	if (!(key->type == ISRCRY_KEY_PRIVATE) &&
-				(type == ISRCRY_KEY_PRIVATE))
+	switch (type) {
+	case ISRCRY_KEY_PUBLIC:
+		key = sctx->pubkey;
+		if (key == NULL)
+			key = sctx->privkey;
+		break;
+	case ISRCRY_KEY_PRIVATE:
+		key = sctx->privkey;
+		break;
+	}
+	if (key == NULL)
 		return ISRCRY_INVALID_ARGUMENT;
 
 	if (type == ISRCRY_KEY_PRIVATE) {
@@ -629,7 +648,7 @@ static int rsa_export(unsigned char *out, unsigned long *outlen, int type,
 		/* output is 
 		   Version, n, e, d, p, q, d mod (p-1), d mod (q - 1), 1/q mod p
 		 */
-		return der_encode_sequence_multi(out, outlen,
+		ret=der_encode_sequence_multi(out, &outlen_l,
 					LTC_ASN1_SHORT_INTEGER, 1UL, &zero,
 					LTC_ASN1_INTEGER, 1UL, key->N,
 					LTC_ASN1_INTEGER, 1UL, key->e,
@@ -642,11 +661,13 @@ static int rsa_export(unsigned char *out, unsigned long *outlen, int type,
 					LTC_ASN1_EOL, 0UL, NULL);
 	} else {
 		/* public key */
-		return der_encode_sequence_multi(out, outlen,
+		ret=der_encode_sequence_multi(out, &outlen_l,
 					LTC_ASN1_INTEGER, 1UL, key->N,
 					LTC_ASN1_INTEGER, 1UL, key->e,
 					LTC_ASN1_EOL, 0UL, NULL);
 	}
+	*outlen = outlen_l;
+	return ret;
 }
 
 /** 
@@ -666,16 +687,6 @@ static int rsa_exptmod(const unsigned char *in, unsigned long inlen,
 	void *tmp, *tmpa, *tmpb;
 	unsigned long x;
 	int err;
-
-	/* is the key of the right type for the operation? */
-	if (which == ISRCRY_KEY_PRIVATE && (key->type != ISRCRY_KEY_PRIVATE)) {
-		return ISRCRY_INVALID_ARGUMENT;
-	}
-
-	/* must be a private or public operation */
-	if (which != ISRCRY_KEY_PRIVATE && which != ISRCRY_KEY_PUBLIC) {
-		return ISRCRY_INVALID_ARGUMENT;
-	}
 
 	/* init and copy into tmp */
 	if ((err = mp_init_multi(&tmp, &tmpa, &tmpb, NULL)) != ISRCRY_OK)
@@ -834,12 +845,24 @@ static int rsa_verify_hash_ex(const unsigned char *sig, unsigned long siglen,
 	return err;
 }
 
-/**
-  Free an RSA key from memory
-  @param key   The RSA key to free
-*/
-static void rsa_free(struct isrcry_rsa_key *key)
+static void rsa_free(struct isrcry_sign_ctx *sctx)
 {
-	mp_clear_multi(key->e, key->d, key->N, key->dQ, key->dP, key->qP,
-				key->p, key->q, NULL);
+	if (sctx->pubkey != NULL)
+		free_key(sctx->pubkey);
+	if (sctx->privkey != NULL)
+		free_key(sctx->privkey);
 }
+
+const struct isrcry_sign_desc _isrcry_rsa_pss_sha1_desc = {
+	.make_keys = rsa_make_keys,
+	.get_key = rsa_get_key,
+	.set_key = rsa_set_key,
+#if 0
+	enum isrcry_result (*sign)(struct isrcry_sign_ctx *sctx,
+				unsigned char *out, unsigned *outlen);
+	enum isrcry_result (*verify)(struct isrcry_sign_ctx *sctx,
+				unsigned char *sig, unsigned siglen);
+#endif
+	.free = rsa_free,
+	.hash = ISRCRY_HASH_SHA1
+};

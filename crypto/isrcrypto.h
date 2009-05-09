@@ -68,7 +68,7 @@ enum isrcry_mac {
 };
 
 enum isrcry_sign {
-	ISRCRY_SIGN_RSA_PSS		= 0,
+	ISRCRY_SIGN_RSA_PSS_SHA1	= 0,
 };
 
 struct isrcry_cipher_ctx;
