@@ -204,6 +204,11 @@ if test z$enable_client = zyes -o z$enable_server = zyes ; then
 	FIND_LIBRARY([GMP], [gmp], [__gmpz_powm], [gmp.h],
 				[$with_gmp /usr/local /usr])
 	PKG_CHECK_MODULES([glib], [glib-2.0 >= 2.12])
+	PKG_CHECK_MODULES([libtasn1], [libtasn1])
+	AC_SUBST([ASN1PARSER], [`pkg-config --variable=prefix libtasn1`/bin/asn1Parser])
+	if ! test -x $ASN1PARSER ; then
+		AC_MSG_ERROR([asn1Parser not found])
+	fi
 fi
 
 if WANT_VMM([vmware]) ; then

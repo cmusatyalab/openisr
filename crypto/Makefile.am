@@ -1,10 +1,10 @@
 LIBTOOL_VERSION = 0:0:0
 
 AM_CFLAGS  = -W -Wall -Wstrict-prototypes -funroll-loops -fomit-frame-pointer
-AM_CFLAGS += $(VISIBILITY_HIDDEN)
+AM_CFLAGS += $(VISIBILITY_HIDDEN) $(libtasn1_CFLAGS)
 # autoconf puts a -O2 flag in CFLAGS which cannot be overridden by AM_CFLAGS
 CFLAGS=@CFLAGS@ -O3
-AM_LDFLAGS = -lgmp
+AM_LDFLAGS = -lgmp $(libtasn1_LIBS)
 
 pkglib_LTLIBRARIES = libisrcrypto.la
 libisrcrypto_la_SOURCES = aes.c blowfish.c cbc.c cipher.c ecb.c hash.c hmac.c

@@ -12,6 +12,7 @@ To run:
 - zlib
 - libuuid from e2fsprogs
 - libarchive
+- libtasn1
 - GMP
 - GTK+
 - Perl
@@ -30,7 +31,7 @@ Additional requirements for the vmware driver:
 
 To build from a source tarball:
 - All of the requirements for running the OpenISR system, plus:
-- Development headers for glibc, libcurl, zlib, GMP, GTK+, libuuid,
+- Development headers for glibc, libcurl, zlib, GMP, GTK+, libuuid, libtasn1,
   and libarchive
 - pkg-config
 
