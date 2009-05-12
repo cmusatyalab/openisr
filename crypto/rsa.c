@@ -175,7 +175,7 @@ static enum isrcry_result pkcs_1_mgf1(struct isrcry_sign_ctx *sctx,
    @param msghashlen       The length of the hash (octets)
    @param rctx             An active PRNG context
    @param hashtype         The index of the hash desired
-   @param modulus_bitlen   The bit length of the RSA modulus
+   @param emBits           The desired bit length of the encoded data
    @param out              [out] The destination of the encoding
    @param outlen           [in/out] The max size and resulting size of the encoded data
    @return ISRCRY_OK if successful
@@ -183,26 +183,26 @@ static enum isrcry_result pkcs_1_mgf1(struct isrcry_sign_ctx *sctx,
 static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
 			const unsigned char *msghash,
 			unsigned long msghashlen,
-			unsigned long modulus_bitlen, unsigned char *out,
+			unsigned long emBits, unsigned char *out,
 			unsigned long *outlen)
 {
 	unsigned char *DB, *mask, *salt, *hash;
-	unsigned long x, y, hLen, modulus_len, saltlen;
+	unsigned long x, y, hLen, emLen, saltlen;
 	int err;
 
 	saltlen = sctx->desc->saltlen;
 	hLen = isrcry_hash_len(sctx->desc->hash);
-	modulus_len = (modulus_bitlen >> 3) + (modulus_bitlen & 7 ? 1 : 0);
+	emLen = (emBits >> 3) + (emBits & 7 ? 1 : 0);
 
 	/* check sizes */
-	if ((saltlen > modulus_len) || (modulus_len < hLen + saltlen + 2))
+	if ((saltlen > emLen) || (emLen < hLen + saltlen + 2))
 		return ISRCRY_INVALID_ARGUMENT;
 
-	/* allocate ram for DB/mask/salt/hash of size modulus_len */
-	DB = malloc(modulus_len);
-	mask = malloc(modulus_len);
-	salt = malloc(modulus_len);
-	hash = malloc(modulus_len);
+	/* allocate ram for DB/mask/salt/hash of size emLen */
+	DB = malloc(emLen);
+	mask = malloc(emLen);
+	salt = malloc(emLen);
+	hash = malloc(emLen);
 	if (DB == NULL || mask == NULL || salt == NULL || hash == NULL) {
 		if (DB != NULL)
 			free(DB);
@@ -231,35 +231,34 @@ static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
 	isrcry_hash_update(sctx->hctx, salt, saltlen);
 	isrcry_hash_final(sctx->hctx, hash);
 
-	/* generate DB = PS || 0x01 || salt, PS == modulus_len - saltlen -
+	/* generate DB = PS || 0x01 || salt, PS == emLen - saltlen -
 	   hLen - 2 zero bytes */
 	x = 0;
-	memset(DB + x, 0, modulus_len - saltlen - hLen - 2);
-	x += modulus_len - saltlen - hLen - 2;
+	memset(DB + x, 0, emLen - saltlen - hLen - 2);
+	x += emLen - saltlen - hLen - 2;
 	DB[x++] = 0x01;
 	memcpy(DB + x, salt, saltlen);
 	x += saltlen;
 
-	/* generate mask of length modulus_len - hLen - 1 from hash */
-	if ((err = pkcs_1_mgf1(sctx, hash, hLen, mask,
-				modulus_len - hLen - 1)))
+	/* generate mask of length emLen - hLen - 1 from hash */
+	if ((err = pkcs_1_mgf1(sctx, hash, hLen, mask, emLen - hLen - 1)))
 		goto LBL_ERR;
 
 	/* xor against DB */
-	for (y = 0; y < (modulus_len - hLen - 1); y++)
+	for (y = 0; y < (emLen - hLen - 1); y++)
 		DB[y] ^= mask[y];
 
 	/* output is DB || hash || 0xBC */
-	if (*outlen < modulus_len) {
-		*outlen = modulus_len;
+	if (*outlen < emLen) {
+		*outlen = emLen;
 		err = ISRCRY_BUFFER_OVERFLOW;
 		goto LBL_ERR;
 	}
 
-	/* DB len = modulus_len - hLen - 1 */
+	/* DB len = emLen - hLen - 1 */
 	y = 0;
-	memcpy(out + y, DB, modulus_len - hLen - 1);
-	y += modulus_len - hLen - 1;
+	memcpy(out + y, DB, emLen - hLen - 1);
+	y += emLen - hLen - 1;
 
 	/* hash */
 	memcpy(out + y, hash, hLen);
@@ -268,11 +267,11 @@ static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
 	/* 0xBC */
 	out[y] = 0xBC;
 
-	/* now clear the 8*modulus_len - modulus_bitlen most significant bits */
-	out[0] &= 0xFF >> ((modulus_len << 3) - (modulus_bitlen - 1));
+	/* now clear the 8*emLen - emBits most significant bits */
+	out[0] &= 0xFF >> ((emLen << 3) - emBits);
 
 	/* store output size */
-	*outlen = modulus_len;
+	*outlen = emLen;
 	err = ISRCRY_OK;
 LBL_ERR:
 
@@ -290,32 +289,31 @@ LBL_ERR:
    @param  msghashlen      The length of the hash (octets)
    @param  sig             The signature data (encoded data)
    @param  siglen          The length of the signature data (octets)
-   @param  modulus_bitlen  The bit length of the RSA modulus
+   @param  emBits          The desired bit length of the encoded data
    @return ISRCRY_OK if successful (even if the comparison failed)
 */
 static enum isrcry_result pkcs_1_pss_decode(struct isrcry_sign_ctx *sctx,
 			unsigned char *msghash, unsigned long msghashlen,
 			const unsigned char *sig, unsigned long siglen,
-			unsigned long modulus_bitlen)
+			unsigned long emBits)
 {
 	unsigned char *DB, *mask, *salt, *hash;
-	unsigned long x, y, hLen, modulus_len, saltlen;
+	unsigned long x, y, hLen, emLen, saltlen;
 	int err;
 
 	saltlen = sctx->desc->saltlen;
 	hLen = isrcry_hash_len(sctx->desc->hash);
-	modulus_len = (modulus_bitlen >> 3) + (modulus_bitlen & 7 ? 1 : 0);
+	emLen = (emBits >> 3) + (emBits & 7 ? 1 : 0);
 
 	/* check sizes */
-	if (saltlen > modulus_len || modulus_len < hLen + saltlen + 2 ||
-				siglen != modulus_len)
+	if (saltlen > emLen || emLen < hLen + saltlen + 2)
 		return ISRCRY_INVALID_ARGUMENT;
 
-	/* allocate ram for DB/mask/salt/hash of size modulus_len */
-	DB = malloc(modulus_len);
-	mask = malloc(modulus_len);
-	salt = malloc(modulus_len);
-	hash = malloc(modulus_len);
+	/* allocate ram for DB/mask/salt/hash of size emLen */
+	DB = malloc(emLen);
+	mask = malloc(emLen);
+	salt = malloc(emLen);
+	hash = malloc(emLen);
 	if (DB == NULL || mask == NULL || salt == NULL || hash == NULL) {
 		if (DB != NULL)
 			free(DB);
@@ -336,37 +334,36 @@ static enum isrcry_result pkcs_1_pss_decode(struct isrcry_sign_ctx *sctx,
 
 	/* copy out the DB */
 	x = 0;
-	memcpy(DB, sig + x, modulus_len - hLen - 1);
-	x += modulus_len - hLen - 1;
+	memcpy(DB, sig + x, emLen - hLen - 1);
+	x += emLen - hLen - 1;
 
 	/* copy out the hash */
 	memcpy(hash, sig + x, hLen);
 	x += hLen;
 
 	/* check the MSB */
-	if ((sig[0] & ~(0xFF >> ((modulus_len << 3) - (modulus_bitlen - 1))))
-				!= 0) {
+	if ((sig[0] & ~(0xFF >> ((emLen << 3) - emBits))) != 0) {
 		err = ISRCRY_BAD_FORMAT;
 		goto LBL_ERR;
 	}
 
-	/* generate mask of length modulus_len - hLen - 1 from hash */
-	if ((err = pkcs_1_mgf1(sctx, hash, hLen, mask, modulus_len -
+	/* generate mask of length emLen - hLen - 1 from hash */
+	if ((err = pkcs_1_mgf1(sctx, hash, hLen, mask, emLen -
 				hLen - 1)))
 		goto LBL_ERR;
 
 	/* xor against DB */
-	for (y = 0; y < (modulus_len - hLen - 1); y++)
+	for (y = 0; y < emLen - hLen - 1; y++)
 		DB[y] ^= mask[y];
 
 	/* now clear the first byte [make sure smaller than modulus] */
-	DB[0] &= 0xFF >> ((modulus_len << 3) - (modulus_bitlen - 1));
+	DB[0] &= 0xFF >> ((emLen << 3) - (emBits - 1));
 
-	/* DB = PS || 0x01 || salt, PS == modulus_len - saltlen - hLen
+	/* DB = PS || 0x01 || salt, PS == emLen - saltlen - hLen
 	   - 2 zero bytes */
 
 	/* check for zeroes and 0x01 */
-	for (x = 0; x < modulus_len - saltlen - hLen - 2; x++) {
+	for (x = 0; x < emLen - saltlen - hLen - 2; x++) {
 		if (DB[x] != 0x00) {
 			err = ISRCRY_BAD_FORMAT;
 			goto LBL_ERR;
@@ -751,7 +748,7 @@ static enum isrcry_result rsa_sign(struct isrcry_sign_ctx *sctx,
 
 	/* PSS pad the key */
 	x = *outlen;
-	if ((err = pkcs_1_pss_encode(sctx, hash, hashlen, modulus_bitlen,
+	if ((err = pkcs_1_pss_encode(sctx, hash, hashlen, modulus_bitlen - 1,
 				out, &x)))
 		return err;
 
@@ -771,6 +768,7 @@ static enum isrcry_result rsa_verify(struct isrcry_sign_ctx *sctx,
 	unsigned long modulus_bitlen, modulus_bytelen, x;
 	int err;
 	unsigned char *tmpbuf;
+	int sig_is_short;
 
 	if (sctx->pubkey != NULL)
 		key = sctx->pubkey;
@@ -785,7 +783,7 @@ static enum isrcry_result rsa_verify(struct isrcry_sign_ctx *sctx,
 	/* get modulus len in bits */
 	modulus_bitlen = mp_count_bits((key->N));
 
-	/* outlen must be at least the size of the modulus */
+	/* siglen must be equal to the size of the modulus */
 	modulus_bytelen = mp_unsigned_bin_size((key->N));
 	if (modulus_bytelen != siglen)
 		return ISRCRY_BAD_FORMAT;
@@ -808,9 +806,12 @@ static enum isrcry_result rsa_verify(struct isrcry_sign_ctx *sctx,
 		free(tmpbuf);
 		return ISRCRY_BAD_FORMAT;
 	}
+	sig_is_short = !((modulus_bitlen - 1) % 8);
 
 	/* PSS decode and verify it */
-	err = pkcs_1_pss_decode(sctx, hash, hashlen, tmpbuf, x, modulus_bitlen);
+	err = pkcs_1_pss_decode(sctx, hash, hashlen,
+				sig_is_short ? tmpbuf + 1 : tmpbuf,
+				sig_is_short ? x - 1 : x, modulus_bitlen - 1);
 
 	free(tmpbuf);
 	return err;
