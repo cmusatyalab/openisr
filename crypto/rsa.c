@@ -452,10 +452,6 @@ static enum isrcry_result rsa_set_key(struct isrcry_sign_ctx *sctx,
 	enum isrcry_key_type found_type;
 	int err;
 	void *zero;
-	unsigned char tmpbuf[MAX_RSA_SIZE * 8];
-	unsigned long t, x, y, z, tmpoid[16];
-	ltc_asn1_list ssl_pubkey_hashoid[2];
-	ltc_asn1_list ssl_pubkey[2];
 
 	/* init key */
 	key = malloc(sizeof(*key));
@@ -466,38 +462,6 @@ static enum isrcry_result rsa_set_key(struct isrcry_sign_ctx *sctx,
 				NULL))) {
 		free(key);
 		return err;
-	}
-
-	/* see if the OpenSSL DER format RSA public key will work */
-	/* this includes the internal hash ID and optional params (NULL in
-	   this case) */
-	LTC_SET_ASN1(ssl_pubkey_hashoid, 0, LTC_ASN1_OBJECT_IDENTIFIER,
-				tmpoid, sizeof(tmpoid) / sizeof(tmpoid[0]));
-	LTC_SET_ASN1(ssl_pubkey_hashoid, 1, LTC_ASN1_NULL, NULL, 0);
-
-	/* the actual format of the SSL DER key is odd, it stores a
-	   RSAPublicKey in a **BIT** string ... so we have to extract it
-	   then proceed to convert bit to octet 
-	 */
-	LTC_SET_ASN1(ssl_pubkey, 0, LTC_ASN1_SEQUENCE, &ssl_pubkey_hashoid,
-				2);
-	LTC_SET_ASN1(ssl_pubkey, 1, LTC_ASN1_BIT_STRING, tmpbuf,
-				sizeof(tmpbuf));
-
-	if (der_decode_sequence(in, inlen, ssl_pubkey, 2UL) == ISRCRY_OK) {
-		/* ok now we have to reassemble the BIT STRING to an
-		   OCTET STRING.  Thanks OpenSSL... */
-		for (t = y = z = x = 0; x < ssl_pubkey[1].size; x++) {
-			y = (y << 1) | tmpbuf[x];
-			if (++z == 8) {
-				tmpbuf[t++] = (unsigned char) y;
-				y = 0;
-				z = 0;
-			}
-		}
-		/* continue... */
-		in = tmpbuf;
-		inlen = t;
 	}
 
 	/* try to match against PKCS #1 standards */
