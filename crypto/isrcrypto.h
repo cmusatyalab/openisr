@@ -132,6 +132,10 @@ enum isrcry_result isrcry_sign_sign(struct isrcry_sign_ctx *sctx,
 enum isrcry_result isrcry_sign_verify(struct isrcry_sign_ctx *sctx,
 			const void *sig, unsigned siglen);
 
+/* Do not use this function; it is only here for the test suite. */
+enum isrcry_result isrcry_sign_set_salt(struct isrcry_sign_ctx *sctx,
+			const void *salt, unsigned saltlen);
+
 const char *isrcry_strerror(enum isrcry_result result);
 
 #endif

@@ -151,6 +151,7 @@ struct isrcry_sign_ctx {
 	struct isrcry_random_ctx *rctx;
 	void *pubkey;
 	void *privkey;
+	void *salt;
 };
 
 /* The helper macros below are originally from libtomcrypt. */

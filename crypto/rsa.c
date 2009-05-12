@@ -217,8 +217,12 @@ static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
 
 
 	/* generate random salt */
-	if (saltlen > 0)
-		isrcry_random_bytes(sctx->rctx, salt, saltlen);
+	if (saltlen > 0) {
+		if (sctx->salt != NULL)
+			memcpy(salt, sctx->salt, saltlen);
+		else
+			isrcry_random_bytes(sctx->rctx, salt, saltlen);
+	}
 
 	/* M = (eight) 0x00 || msghash || salt, hash = H(M) */
 	memset(DB, 0, 8);
@@ -726,7 +730,8 @@ static enum isrcry_result rsa_sign(struct isrcry_sign_ctx *sctx,
 	unsigned long modulus_bitlen, modulus_bytelen, x, y;
 	int err;
 
-	if (sctx->rctx == NULL)
+	if (sctx->rctx == NULL && sctx->desc->saltlen > 0 &&
+				sctx->salt == NULL)
 		return ISRCRY_NEED_RANDOM;
 	if (key == NULL)
 		return ISRCRY_NEED_KEY;
