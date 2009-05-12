@@ -85,43 +85,6 @@ static void set_key(struct isrcry_sign_ctx *sctx, enum isrcry_key_type type,
 	}
 }
 
-/* always stores the same # of bytes, pads with leading zero bytes
-   as required
- */
-/**
-   PKCS #1 Integer to binary
-   @param n             The integer to store
-   @param modulus_len   The length of the RSA modulus
-   @param out           [out] The destination for the integer
-   @return ISRCRY_OK if successful
-*/
-static int pkcs_1_i2osp(void *n, unsigned long modulus_len,
-			unsigned char *out)
-{
-	unsigned long size;
-
-	size = mp_unsigned_bin_size(n);
-
-	if (size > modulus_len)
-		return ISRCRY_BUFFER_OVERFLOW;
-
-	/* store it */
-	memset(out, 0, modulus_len);
-	mp_to_unsigned_bin(n, out + (modulus_len - size));
-	return ISRCRY_OK;
-}
-
-/**
-  Read a binary string into an mp_int
-  @param n          [out] The mp_int destination
-  @param in         The binary string to read
-  @param inlen      The length of the binary string
-*/
-static void pkcs_1_os2ip(void *n, unsigned char *in, unsigned long inlen)
-{
-	mp_read_unsigned_bin(n, in, inlen);
-}
-
 /**
    Perform PKCS #1 MGF1 (internal)
    @param seed        The seed for MGF1
