@@ -68,4 +68,33 @@ struct mac_test {
 	unsigned maclen;
 };
 
+struct rsa_test_key {
+	uint8_t modulus[257];
+	unsigned modulus_len;
+	uint8_t publicExponent[3];
+	unsigned publicExponent_len;
+	uint8_t privateExponent[257];
+	unsigned privateExponent_len;
+	uint8_t prime1[129];
+	unsigned prime1_len;
+	uint8_t prime2[129];
+	unsigned prime2_len;
+	uint8_t exponent1[129];
+	unsigned exponent1_len;
+	uint8_t exponent2[129];
+	unsigned exponent2_len;
+	uint8_t coefficient[129];
+	unsigned coefficient_len;
+};
+
+struct rsa_sign_test {
+	const struct rsa_test_key *key;
+	uint8_t data[256];
+	unsigned datalen;
+	uint8_t salt[20];
+	unsigned saltlen;
+	uint8_t sig[256];
+	unsigned siglen;
+};
+
 #endif

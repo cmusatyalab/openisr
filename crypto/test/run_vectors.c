@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <libtasn1.h>
 #include "isrcrypto.h"
 #include "vectors.h"
 #include "vectors_blowfish.h"
@@ -24,6 +25,7 @@
 #include "vectors_sha1.h"
 #include "vectors_md5.h"
 #include "vectors_hmac.h"
+#include "vectors_rsa.h"
 
 int failed;
 
@@ -378,6 +380,170 @@ void mac_test(const char *alg, enum isrcry_mac type,
 	isrcry_mac_free(ctx);
 }
 
+void sign_genkey_test(const char *alg, enum isrcry_sign type,
+			const unsigned *lengths, unsigned length_count)
+{
+	struct isrcry_sign_ctx *sctx;
+	struct isrcry_random_ctx *rctx;
+	char buf[1024];
+	char sig[1024];
+	unsigned siglen;
+	unsigned n;
+
+	rctx = isrcry_random_alloc();
+	if (rctx == NULL) {
+		fail("%s random alloc", alg);
+		return;
+	}
+	sctx = isrcry_sign_alloc(type, rctx);
+	if (sctx == NULL) {
+		fail("%s sign alloc", alg);
+		isrcry_random_free(rctx);
+		return;
+	}
+	isrcry_random_bytes(rctx, buf, sizeof(buf));
+	for (n = 0; n < length_count; n++) {
+		if (isrcry_sign_make_keys(sctx, lengths[n])) {
+			fail("%s make_keys %u", alg, n);
+			continue;
+		}
+		isrcry_sign_update(sctx, buf, sizeof(buf));
+		siglen = sizeof(sig);
+		if (isrcry_sign_sign(sctx, sig, &siglen)) {
+			fail("%s sign %u", alg, n);
+			continue;
+		}
+		isrcry_sign_update(sctx, buf, sizeof(buf));
+		if (isrcry_sign_verify(sctx, sig, siglen)) {
+			fail("%s verify %u", alg, n);
+			continue;
+		}
+		buf[0]++;
+		isrcry_sign_update(sctx, buf, sizeof(buf));
+		if (isrcry_sign_verify(sctx, sig, siglen) !=
+					ISRCRY_BAD_SIGNATURE) {
+			fail("%s verify xfail %u", alg, n);
+			continue;
+		}
+	}
+	isrcry_sign_free(sctx);
+	isrcry_random_free(rctx);
+}
+
+#define _write_value(dst, namestr, data, len) do { \
+		if (asn1_write_value((dst), (namestr), (data), (len))) {\
+			fail("asn1_write_value %s", (namestr)); \
+			asn1_delete_structure(&dst); \
+			return; \
+		} \
+	} while (0)
+#define write_value(dst, src, name) \
+	_write_value(dst, #name, (src)->name, (src)->name ## _len)
+
+void rsa_set_key(struct isrcry_sign_ctx *sctx, const struct rsa_test_key *key,
+			ASN1_TYPE defs)
+{
+	ASN1_TYPE akey = ASN1_TYPE_EMPTY;
+	char skeybuf[4096];
+	int skeylen;
+	char errbuf[MAX_ERROR_DESCRIPTION_SIZE] = {0};
+	unsigned zero = 0;
+
+	if (asn1_create_element(defs, "PKCS-1.RSAPrivateKey", &akey)) {
+		fail("asn1_create_element");
+		return;
+	}
+	_write_value(akey, "version", &zero, sizeof(zero));
+	/* All of these fields must have a leading zero byte if the first
+	   data byte is >= 0x80, since otherwise they will be recorded as
+	   negative numbers. */
+	write_value(akey, key, modulus);
+	write_value(akey, key, publicExponent);
+	write_value(akey, key, privateExponent);
+	write_value(akey, key, prime1);
+	write_value(akey, key, prime2);
+	write_value(akey, key, exponent1);
+	write_value(akey, key, exponent2);
+	write_value(akey, key, coefficient);
+	skeylen = sizeof(skeybuf);
+	if (asn1_der_coding(akey, "", skeybuf, &skeylen, errbuf)) {
+		fail("asn1_der_coding: %s", errbuf);
+		asn1_delete_structure(&akey);
+		return;
+	}
+	if (asn1_delete_structure(&akey)) {
+		fail("asn1_delete_structure");
+		return;
+	}
+	if (isrcry_sign_set_key(sctx, ISRCRY_KEY_PRIVATE,
+				ISRCRY_KEY_FORMAT_RAW, skeybuf, skeylen))
+		fail("isrcry_sign_set_key");
+}
+
+#undef _write_value
+#undef write_value
+
+void rsa_sign_test(const struct rsa_sign_test *vectors, unsigned vec_count)
+{
+	extern const ASN1_ARRAY_TYPE rsa_key_asn1_tab[];
+	struct isrcry_sign_ctx *ctx;
+	const struct rsa_sign_test *test;
+	const struct rsa_test_key *key = NULL;
+	ASN1_TYPE defs = ASN1_TYPE_EMPTY;
+	char sig[4096];
+	unsigned siglen;
+	char errbuf[MAX_ERROR_DESCRIPTION_SIZE];
+	unsigned n;
+
+	if (asn1_array2tree(rsa_key_asn1_tab, &defs, errbuf)) {
+		fail("asn1_array2tree: %s", errbuf);
+		return;
+	}
+	ctx = isrcry_sign_alloc(ISRCRY_SIGN_RSA_PSS_SHA1, NULL);
+	if (ctx == NULL) {
+		fail("alloc");
+		asn1_delete_structure(&defs);
+		return;
+	}
+	for (n = 0; n < vec_count; n++) {
+		test = &vectors[n];
+		if (test->key != key) {
+			rsa_set_key(ctx, test->key, defs);
+			key = test->key;
+		}
+		isrcry_sign_update(ctx, test->data, test->datalen);
+		if (isrcry_sign_set_salt(ctx, test->salt, test->saltlen)) {
+			fail("set_salt %u", n);
+			continue;
+		}
+		siglen = sizeof(sig);
+		if (isrcry_sign_sign(ctx, sig, &siglen)) {
+			fail("sign %u", n);
+			continue;
+		}
+		if (siglen != test->siglen) {
+			fail("signature length %u", n);
+			continue;
+		}
+		if (memcmp(sig, test->sig, test->siglen)) {
+			fail("signature mismatch %u", n);
+			continue;
+		}
+		isrcry_sign_update(ctx, test->data, test->datalen);
+		if (isrcry_sign_verify(ctx, test->sig, test->siglen)) {
+			fail("verify %u", n);
+			continue;
+		}
+		isrcry_sign_update(ctx, test->data, test->datalen - 1);
+		if (isrcry_sign_verify(ctx, test->sig, test->siglen) !=
+					ISRCRY_BAD_SIGNATURE) {
+			fail("verify xfail %u", n);
+			continue;
+		}
+	}
+	isrcry_sign_free(ctx);
+	asn1_delete_structure(&defs);
+}
 
 /* Statistical random number generator tests defined in
  * FIPS 140-1 - 4.11.1 Power-Up Tests.  Originally from RPC2.
@@ -529,6 +695,10 @@ int main(void)
 				MEMBERS(md5_monte_vectors));
 	mac_test("hmac-sha1", ISRCRY_MAC_HMAC_SHA1, hmac_sha1_vectors,
 				MEMBERS(hmac_sha1_vectors));
+	sign_genkey_test("rsa-pss-sha1", ISRCRY_SIGN_RSA_PSS_SHA1,
+				rsa_sign_genkey_lengths,
+				MEMBERS(rsa_sign_genkey_lengths));
+	rsa_sign_test(rsa_sign_vectors, MEMBERS(rsa_sign_vectors));
 	random_fips_test();
 
 	if (failed) {
