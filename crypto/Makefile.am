@@ -12,6 +12,9 @@ libisrcrypto_la_SOURCES += mac.c md5.c md5-compress.c pad.c random.c sha1.c
 libisrcrypto_la_SOURCES += sign.c util.c gmp.c der.c rsa.c
 libisrcrypto_la_SOURCES += isrcrypto.h internal.h
 libisrcrypto_la_SOURCES += aes_tab.h blowfish_tab.h
+nodist_libisrcrypto_la_SOURCES = rsa-key-tab.c
+CLEANFILES = rsa-key-tab.c
+EXTRA_DIST = rsa-key.asn1
 
 if HAVE_X86_64
 libisrcrypto_la_SOURCES += sha1-compress-amd64.S
@@ -24,3 +27,9 @@ endif
 endif
 
 SUBDIRS = . test
+
+%-tab.c: %.asn1
+	$(ASN1PARSER) -n $(subst -,_,$(basename $(notdir $<)))_asn1_tab \
+		-o $@.tmp $<
+	sed -e "s/^extern //" $@.tmp > $@
+	rm $@.tmp
