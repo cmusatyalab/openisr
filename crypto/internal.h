@@ -140,6 +140,7 @@ struct isrcry_sign_desc {
 				const unsigned char *sig, unsigned siglen);
 	void (*free)(struct isrcry_sign_ctx *sctx);
 	enum isrcry_hash hash;
+	unsigned saltlen;
 };
 
 extern const struct isrcry_sign_desc _isrcry_rsa_pss_sha1_desc;

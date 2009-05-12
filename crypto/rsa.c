@@ -190,7 +190,8 @@ static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
 	unsigned long x, y, hLen, modulus_len, saltlen;
 	int err;
 
-	hLen = saltlen = isrcry_hash_len(sctx->desc->hash);
+	saltlen = sctx->desc->saltlen;
+	hLen = isrcry_hash_len(sctx->desc->hash);
 	modulus_len = (modulus_bitlen >> 3) + (modulus_bitlen & 7 ? 1 : 0);
 
 	/* check sizes */
@@ -297,7 +298,8 @@ static enum isrcry_result pkcs_1_pss_decode(struct isrcry_sign_ctx *sctx,
 	unsigned long x, y, hLen, modulus_len, saltlen;
 	int err;
 
-	hLen = saltlen = isrcry_hash_len(sctx->desc->hash);
+	saltlen = sctx->desc->saltlen;
+	hLen = isrcry_hash_len(sctx->desc->hash);
 	modulus_len = (modulus_bitlen >> 3) + (modulus_bitlen & 7 ? 1 : 0);
 
 	/* check sizes */
@@ -824,5 +826,6 @@ const struct isrcry_sign_desc _isrcry_rsa_pss_sha1_desc = {
 	.sign = rsa_sign,
 	.verify = rsa_verify,
 	.free = rsa_free,
-	.hash = ISRCRY_HASH_SHA1
+	.hash = ISRCRY_HASH_SHA1,
+	.saltlen = 20
 };
