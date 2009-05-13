@@ -21,7 +21,6 @@
  */
 
 #include <stdint.h>
-#include <assert.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -100,7 +99,7 @@ static void sha1_final(struct isrcry_hash_ctx *hctx,
 	
 	/* Set the first char of padding to 0x80.  This is safe since there is
 	   always at least one byte free */
-	assert(i < SHA1_DATA_SIZE);
+	g_assert(i < SHA1_DATA_SIZE);
 	ctx->block[i++] = 0x80;
 	
 	if (i > (SHA1_DATA_SIZE - 8)) {

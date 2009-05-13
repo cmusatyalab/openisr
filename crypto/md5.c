@@ -22,7 +22,6 @@
 /* Based on public domain code hacked by Colin Plumb, Andrew Kuchling, and
  * Niels Möller. */
 
-#include <assert.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -105,7 +104,7 @@ static void md5_final(struct isrcry_hash_ctx *hctx, unsigned char *digest)
   
   /* Set the first char of padding to 0x80. This is safe since there
    * is always at least one byte free */
-  assert(i < MD5_DATA_SIZE);
+  g_assert(i < MD5_DATA_SIZE);
   ctx->block[i++] = 0x80;
 
   if (i > (MD5_DATA_SIZE - 8))

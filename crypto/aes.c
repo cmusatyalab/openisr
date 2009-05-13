@@ -47,7 +47,6 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-#include <assert.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -148,7 +147,7 @@ static enum isrcry_result aes_init(struct isrcry_cipher_ctx *cctx,
             rk += 8;
         }
     } else {
-       assert(0);
+       g_assert_not_reached();
     }
 
     /* setup the inverse key now */

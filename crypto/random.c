@@ -40,7 +40,6 @@ Coda are listed in the file CREDITS.
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <assert.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -213,7 +212,7 @@ exported void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 	isrcry_cipher_process(rctx->aes, I, AES_BLOCK_SIZE, rctx->pool);
 
 	/* we must never return consecutive identical blocks per FIPS 140-2 */
-	assert(memcmp(prev, random, AES_BLOCK_SIZE) != 0);
+	g_assert(memcmp(prev, random, AES_BLOCK_SIZE) != 0);
 
 	prev = random;
 	random += AES_BLOCK_SIZE;

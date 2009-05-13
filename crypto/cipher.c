@@ -16,7 +16,6 @@
  */
 
 #include <stdlib.h>
-#include <assert.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -80,7 +79,7 @@ exported enum isrcry_result isrcry_cipher_init(struct isrcry_cipher_ctx *cctx,
 {
 	enum isrcry_result ret;
 	
-	assert(MAX_BLOCK_LEN >= cctx->cipher->blocklen);
+	g_assert(MAX_BLOCK_LEN >= cctx->cipher->blocklen);
 	ret = cctx->cipher->init(cctx, key, keylen);
 	if (ret)
 		return ret;

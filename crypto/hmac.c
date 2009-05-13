@@ -16,7 +16,6 @@
  */
 
 #include <stdlib.h>
-#include <assert.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -66,7 +65,7 @@ static enum isrcry_result hmac_init(struct isrcry_mac_ctx *mctx,
 		memcpy(ctx->key, key, keylen);
 		memset(ctx->key + keylen, 0, ctx->keylen - keylen);
 	}
-	assert(ctx->keylen % 4 == 0);
+	g_assert(ctx->keylen % 4 == 0);
 	for (n = 0; n < ctx->keylen / 4; n++)
 		((uint32_t *) kbuf)[n] = ((uint32_t *) ctx->key)[n] ^ IPAD;
 	isrcry_hash_update(ctx->hctx, kbuf, sizeof(kbuf));
@@ -92,7 +91,7 @@ static enum isrcry_result hmac_final(struct isrcry_mac_ctx *mctx,
 	if (outlen > ctx->hashlen)
 		return ISRCRY_INVALID_ARGUMENT;
 	isrcry_hash_final(ctx->hctx, hbuf);
-	assert(ctx->keylen % 4 == 0);
+	g_assert(ctx->keylen % 4 == 0);
 	for (n = 0; n < ctx->keylen / 4; n++)
 		((uint32_t *) kbuf)[n] = ((uint32_t *) ctx->key)[n] ^ OPAD;
 	isrcry_hash_update(ctx->hctx, kbuf, sizeof(kbuf));
