@@ -94,18 +94,18 @@ int main(int argc, char **argv)
 			usage(argv[0]);
 		ret = isrcry_sign_make_keys(sctx, atoi(argv[2]) / 8);
 		if (ret)
-			die("make_keys returned %d", ret);
+			die("make_keys: %s", isrcry_strerror(ret));
 		buflen = sizeof(buf);
 		ret = isrcry_sign_get_key(sctx, ISRCRY_KEY_PUBLIC, KEYFMT,
 					buf, &buflen);
 		if (ret)
-			die("get_key(public) returned %d", ret);
+			die("get_key(public): %s", isrcry_strerror(ret));
 		write_file(argv[3], buf, buflen);
 		buflen = sizeof(buf);
 		ret = isrcry_sign_get_key(sctx, ISRCRY_KEY_PRIVATE, KEYFMT,
 					buf, &buflen);
 		if (ret)
-			die("get_key(private) returned %d", ret);
+			die("get_key(private): %s", isrcry_strerror(ret));
 		write_file(argv[4], buf, buflen);
 	} else if (!strcmp(argv[1], "sign")) {
 		if (argc != 5)
@@ -114,7 +114,7 @@ int main(int argc, char **argv)
 		ret = isrcry_sign_set_key(sctx, ISRCRY_KEY_PRIVATE, KEYFMT,
 					data, datalen);
 		if (ret)
-			die("set_key returned %d", ret);
+			die("set_key: %s", isrcry_strerror(ret));
 		g_free(data);
 		data = read_file(argv[3], &datalen);
 		isrcry_sign_update(sctx, data, datalen);
@@ -122,7 +122,7 @@ int main(int argc, char **argv)
 		buflen = sizeof(buf);
 		ret = isrcry_sign_sign(sctx, buf, &buflen);
 		if (ret)
-			die("sign returned %d", ret);
+			die("sign: %s", isrcry_strerror(ret));
 		write_file(argv[4], buf, buflen);
 	} else if (!strcmp(argv[1], "verify")) {
 		if (argc != 5)
@@ -131,7 +131,7 @@ int main(int argc, char **argv)
 		ret = isrcry_sign_set_key(sctx, ISRCRY_KEY_PUBLIC, KEYFMT,
 					data, datalen);
 		if (ret)
-			die("set_key returned %d", ret);
+			die("set_key: %s", isrcry_strerror(ret));
 		g_free(data);
 		data = read_file(argv[3], &datalen);
 		isrcry_sign_update(sctx, data, datalen);
@@ -139,7 +139,7 @@ int main(int argc, char **argv)
 		data = read_file(argv[4], &datalen);
 		ret = isrcry_sign_verify(sctx, data, datalen);
 		if (ret != ISRCRY_OK && ret != ISRCRY_BAD_SIGNATURE)
-			die("verify returned %d", ret);
+			die("verify: %s", isrcry_strerror(ret));
 		else if (ret)
 			printf("fail\n");
 		else
