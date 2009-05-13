@@ -105,10 +105,10 @@ static void set_key(struct isrcry_sign_ctx *sctx, enum isrcry_key_type type,
    @return ISRCRY_OK if successful
 */
 static enum isrcry_result pkcs_1_mgf1(struct isrcry_sign_ctx *sctx,
-			const unsigned char *seed, unsigned long seedlen,
-			unsigned char *mask, unsigned long masklen)
+			const unsigned char *seed, unsigned seedlen,
+			unsigned char *mask, unsigned masklen)
 {
-	unsigned long hLen, x;
+	unsigned hLen, x;
 	uint32_t counter;
 	int err;
 	unsigned char *buf;
@@ -155,13 +155,11 @@ static enum isrcry_result pkcs_1_mgf1(struct isrcry_sign_ctx *sctx,
    @return ISRCRY_OK if successful
 */
 static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
-			const unsigned char *msghash,
-			unsigned long msghashlen,
-			unsigned long emBits, unsigned char *out,
-			unsigned long *outlen)
+			const unsigned char *msghash, unsigned msghashlen,
+			unsigned emBits, unsigned char *out, unsigned *outlen)
 {
 	unsigned char *DB, *mask, *salt, *hash;
-	unsigned long x, y, hLen, emLen, saltlen;
+	unsigned x, y, hLen, emLen, saltlen;
 	int err;
 
 	saltlen = sctx->desc->saltlen;
@@ -169,7 +167,7 @@ static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
 	emLen = (emBits >> 3) + (emBits & 7 ? 1 : 0);
 
 	/* check sizes */
-	if ((saltlen > emLen) || (emLen < hLen + saltlen + 2))
+	if (saltlen > emLen || emLen < hLen + saltlen + 2)
 		return ISRCRY_INVALID_ARGUMENT;
 
 	/* allocate ram for DB/mask/salt/hash of size emLen */
@@ -188,7 +186,6 @@ static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
 			free(hash);
 		return -1;
 	}
-
 
 	/* generate random salt */
 	if (saltlen > 0) {
@@ -267,12 +264,12 @@ LBL_ERR:
    @return ISRCRY_OK if successful (even if the comparison failed)
 */
 static enum isrcry_result pkcs_1_pss_decode(struct isrcry_sign_ctx *sctx,
-			unsigned char *msghash, unsigned long msghashlen,
-			const unsigned char *sig, unsigned long siglen,
-			unsigned long emBits)
+			unsigned char *msghash, unsigned msghashlen,
+			const unsigned char *sig, unsigned siglen,
+			unsigned emBits)
 {
 	unsigned char *DB, *mask, *salt, *hash;
-	unsigned long x, y, hLen, emLen, saltlen;
+	unsigned x, y, hLen, emLen, saltlen;
 	int err;
 
 	saltlen = sctx->desc->saltlen;
@@ -634,9 +631,9 @@ out:
    @param key        The RSA key to use 
    @return ISRCRY_OK if successful
 */
-static int rsa_exptmod(const unsigned char *in, unsigned long inlen,
-			unsigned char *out, unsigned long *outlen, int which,
-			struct isrcry_rsa_key *key)
+static int rsa_exptmod(const unsigned char *in, unsigned inlen,
+			unsigned char *out, unsigned *outlen,
+			enum isrcry_key_type which, struct isrcry_rsa_key *key)
 {
 	mpz_t tmp, tmpa, tmpb;
 	unsigned long x;
@@ -705,7 +702,7 @@ static enum isrcry_result rsa_sign(struct isrcry_sign_ctx *sctx,
 	struct isrcry_rsa_key *key = sctx->privkey;
 	unsigned hashlen = isrcry_hash_len(sctx->desc->hash);
 	unsigned char hash[hashlen];
-	unsigned long modulus_bitlen, modulus_bytelen, x, y;
+	unsigned modulus_bitlen, modulus_bytelen, x, y;
 	int err;
 
 	if (sctx->rctx == NULL && sctx->desc->saltlen > 0 &&
@@ -746,7 +743,7 @@ static enum isrcry_result rsa_verify(struct isrcry_sign_ctx *sctx,
 	unsigned hashlen = isrcry_hash_len(sctx->desc->hash);
 	unsigned char hash[hashlen];
 	struct isrcry_rsa_key *key;
-	unsigned long modulus_bitlen, modulus_bytelen, x;
+	unsigned modulus_bitlen, modulus_bytelen, x;
 	int err;
 	unsigned char *tmpbuf;
 	int sig_is_short;
