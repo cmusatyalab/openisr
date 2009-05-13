@@ -43,21 +43,21 @@ extern const ASN1_ARRAY_TYPE rsa_key_asn1_tab[];
 
 struct isrcry_rsa_key {
 	/** The public exponent */
-	void *e;
+	mpz_t e;
 	/** The private exponent */
-	void *d;
+	mpz_t d;
 	/** The modulus */
-	void *N;
+	mpz_t N;
 	/** The p factor of N */
-	void *p;
+	mpz_t p;
 	/** The q factor of N */
-	void *q;
+	mpz_t q;
 	/** The 1/q mod p CRT param */
-	void *qP;
+	mpz_t qP;
 	/** The d mod (p - 1) CRT param */
-	void *dP;
+	mpz_t dP;
 	/** The d mod (q - 1) CRT param */
-	void *dQ;
+	mpz_t dQ;
 };
 
 /**
@@ -66,8 +66,8 @@ struct isrcry_rsa_key {
 */
 static void free_key(struct isrcry_rsa_key *key)
 {
-	mp_clear_multi(key->e, key->d, key->N, key->dQ, key->dP, key->qP,
-				key->p, key->q, NULL);
+	mpz_clear_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP,
+				&key->qP, &key->p, &key->q, NULL);
 	free(key);
 }
 
@@ -367,7 +367,7 @@ static enum isrcry_result rsa_make_keys(struct isrcry_sign_ctx *sctx,
 			unsigned length)
 {
 	struct isrcry_rsa_key *key;
-	void *p, *q, *tmp1, *tmp2, *tmp3;
+	mpz_t p, q, tmp1, tmp2, tmp3;
 	enum isrcry_result err;
 
 	if (length < (MIN_RSA_SIZE / 8) || length > (MAX_RSA_SIZE / 8))
@@ -375,59 +375,60 @@ static enum isrcry_result rsa_make_keys(struct isrcry_sign_ctx *sctx,
 	if (sctx->rctx == NULL)
 		return ISRCRY_NEED_RANDOM;
 
-	if ((err = mp_init_multi(&p, &q, &tmp1, &tmp2, &tmp3, NULL)))
-		return err;
+	mpz_init_multi(&p, &q, &tmp1, &tmp2, &tmp3, NULL);
 	key = malloc(sizeof(*key));
 	if (key == NULL)
 		return -1;
 
 	/* make primes p and q (optimization provided by Wayne Scott) */
-	mp_set_int(tmp3, RSA_E);		/* tmp3 = e */
+	mpz_set_ui(tmp3, RSA_E);		/* tmp3 = e */
 
 	/* make prime "p" */
 	do {
 		if ((err = rand_prime(p, length / 2, sctx->rctx)))
 			goto errkey;
-		mp_sub_d(p, 1, tmp1);		/* tmp1 = p-1 */
-		mp_gcd(tmp1, tmp3, tmp2);	/* tmp2 = gcd(p-1, e) */
-	} while (mp_cmp_d(tmp2, 1));		/* while e divides p-1 */
+		mpz_sub_ui(tmp1, p, 1);		/* tmp1 = p-1 */
+		mpz_gcd(tmp2, tmp1, tmp3);	/* tmp2 = gcd(p-1, e) */
+	} while (mpz_cmp_ui(tmp2, 1));		/* while e divides p-1 */
 
 	/* make prime "q" */
 	do {
 		if ((err = rand_prime(q, length / 2, sctx->rctx)))
 			goto errkey;
-		mp_sub_d(q, 1, tmp1);		/* tmp1 = q-1 */
-		mp_gcd(tmp1, tmp3, tmp2);	/* tmp2 = gcd(q-1, e) */
-	} while (mp_cmp_d(tmp2, 1));		/* while e divides q-1 */
+		mpz_sub_ui(tmp1, q, 1);		/* tmp1 = q-1 */
+		mpz_gcd(tmp2, tmp1, tmp3);	/* tmp2 = gcd(q-1, e) */
+	} while (mpz_cmp_ui(tmp2, 1));		/* while e divides q-1 */
 
 	/* tmp1 = lcm(p-1, q-1) */
-	mp_sub_d(p, 1, tmp2);			/* tmp2 = p-1 */
+	mpz_sub_ui(tmp2, p, 1);			/* tmp2 = p-1 */
 	/* tmp1 = q-1 (previous do/while loop) */
-	mp_lcm(tmp1, tmp2, tmp1);		/* tmp1 = lcm(p-1, q-1) */
+	mpz_lcm(tmp1, tmp1, tmp2);		/* tmp1 = lcm(p-1, q-1) */
 
 	/* make key */
-	if ((err = mp_init_multi(&key->e, &key->d, &key->N, &key->dQ,
-				&key->dP, &key->qP, &key->p, &key->q,
-				NULL)))
-		goto errkey;
+	mpz_init_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP, &key->qP,
+				&key->p, &key->q, NULL);
 
-	mp_set_int(key->e, RSA_E);		/* key->e =  e */
+	mpz_set_ui(key->e, RSA_E);		/* key->e =  e */
 	/* key->d = 1/e mod lcm(p-1,q-1) */
-	if ((err = mp_invmod(key->e, tmp1, key->d)))
+	if (!mpz_invert(key->d, key->e, tmp1)) {
+		err = ISRCRY_BAD_FORMAT;
 		goto errkey;
-	mp_mul(p, q, key->N);			/* key->N = pq */
+	}
+	mpz_mul(key->N, p, q);			/* key->N = pq */
 
 	/* optimize for CRT now */
 	/* find d mod q-1 and d mod p-1 */
-	mp_sub_d(p, 1, tmp1);			/* tmp1 = q-1 */
-	mp_sub_d(q, 1, tmp2);			/* tmp2 = p-1 */
-	mp_mod(key->d, tmp1, key->dP);		/* dP = d mod p-1 */
-	mp_mod(key->d, tmp2, key->dQ);		/* dQ = d mod q-1 */
-	if ((err = mp_invmod(q, p, key->qP)))
+	mpz_sub_ui(tmp1, p, 1);			/* tmp1 = q-1 */
+	mpz_sub_ui(tmp2, q, 1);			/* tmp2 = p-1 */
+	mpz_mod(key->dP, key->d, tmp1);		/* dP = d mod p-1 */
+	mpz_mod(key->dQ, key->d, tmp2);		/* dQ = d mod q-1 */
+	if (!mpz_invert(key->qP, q, p)) {
+		err = ISRCRY_BAD_FORMAT;
 		goto errkey;
+	}
 	/* qP = 1/q mod p */
-	mp_copy(p, key->p);
-	mp_copy(q, key->q);
+	mpz_set(key->p, p);
+	mpz_set(key->q, q);
 
 	set_key(sctx, ISRCRY_KEY_PUBLIC, NULL);
 	set_key(sctx, ISRCRY_KEY_PRIVATE, key);
@@ -438,11 +439,11 @@ static enum isrcry_result rsa_make_keys(struct isrcry_sign_ctx *sctx,
 errkey:
 	free_key(key);
 cleanup:
-	mp_clear_multi(tmp3, tmp2, tmp1, p, q, NULL);
+	mpz_clear_multi(&tmp3, &tmp2, &tmp1, &p, &q, NULL);
 	return err;
 }
 
-static enum isrcry_result asn1_get_int(void *dest, ASN1_TYPE obj,
+static enum isrcry_result asn1_get_int(mpz_t dest, ASN1_TYPE obj,
 			const char *field)
 {
 	void *buf;
@@ -457,19 +458,19 @@ static enum isrcry_result asn1_get_int(void *dest, ASN1_TYPE obj,
 		free(buf);
 		return ISRCRY_BUFFER_OVERFLOW;
 	}
-	mp_read_unsigned_bin(dest, buf, len);
+	mpz_from_unsigned_bin(dest, buf, len);
 	free(buf);
 	return ISRCRY_OK;
 }
 
 static enum isrcry_result asn1_set_int(ASN1_TYPE obj, const char *field,
-			void *val)
+			mpz_t val)
 {
-	unsigned len = mp_unsigned_bin_size(val);
+	unsigned len = mpz_unsigned_bin_size(val);
 	unsigned char buf[len + 1];
 
 	buf[0] = 0;
-	mp_to_unsigned_bin(val, buf + 1);
+	mpz_to_unsigned_bin(buf + 1, val);
 	if (asn1_write_value(obj, field, buf, sizeof(buf)))
 		return ISRCRY_INVALID_ARGUMENT;
 	return ISRCRY_OK;
@@ -494,11 +495,8 @@ static enum isrcry_result rsa_set_key(struct isrcry_sign_ctx *sctx,
 	key = malloc(sizeof(*key));
 	if (key == NULL)
 		return -1;
-	if (mp_init_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP,
-				&key->qP, &key->p, &key->q, NULL)) {
-		free(key);
-		return -1;
-	}
+	mpz_init_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP, &key->qP,
+				&key->p, &key->q, NULL);
 
 	if (asn1_array2tree(rsa_key_asn1_tab, &defs, NULL))
 		goto out;
@@ -637,17 +635,16 @@ static int rsa_exptmod(const unsigned char *in, unsigned long inlen,
 			unsigned char *out, unsigned long *outlen, int which,
 			struct isrcry_rsa_key *key)
 {
-	void *tmp, *tmpa, *tmpb;
+	mpz_t tmp, tmpa, tmpb;
 	unsigned long x;
 	int err;
 
 	/* init and copy into tmp */
-	if ((err = mp_init_multi(&tmp, &tmpa, &tmpb, NULL)) != ISRCRY_OK)
-		return err;
-	mp_read_unsigned_bin(tmp, (unsigned char *) in, (int) inlen);
+	mpz_init_multi(&tmp, &tmpa, &tmpb, NULL);
+	mpz_from_unsigned_bin(tmp, in, inlen);
 
 	/* sanity check on the input */
-	if (mp_cmp(key->N, tmp) < 0) {
+	if (mpz_cmp(key->N, tmp) < 0) {
 		err = ISRCRY_BAD_FORMAT;
 		goto error;
 	}
@@ -655,25 +652,26 @@ static int rsa_exptmod(const unsigned char *in, unsigned long inlen,
 	/* are we using the private exponent and is the key optimized? */
 	if (which == ISRCRY_KEY_PRIVATE) {
 		/* tmpa = tmp^dP mod p */
-		mp_exptmod(tmp, key->dP, key->p, tmpa);
+		mpz_powm(tmpa, tmp, key->dP, key->p);
 
 		/* tmpb = tmp^dQ mod q */
-		mp_exptmod(tmp, key->dQ, key->q, tmpb);
+		mpz_powm(tmpb, tmp, key->dQ, key->q);
 
 		/* tmp = (tmpa - tmpb) * qInv (mod p) */
-		mp_sub(tmpa, tmpb, tmp);
-		mp_mulmod(tmp, key->qP, key->p, tmp);
+		mpz_sub(tmp, tmpa, tmpb);
+		mpz_mul(tmp, tmp, key->qP);
+		mpz_mod(tmp, tmp, key->p);
 
 		/* tmp = tmpb + q * tmp */
-		mp_mul(tmp, key->q, tmp);
-		mp_add(tmp, tmpb, tmp);
+		mpz_mul(tmp, tmp, key->q);
+		mpz_add(tmp, tmp, tmpb);
 	} else {
 		/* exptmod it */
-		mp_exptmod(tmp, key->e, key->N, tmp);
+		mpz_powm(tmp, tmp, key->e, key->N);
 	}
 
 	/* read it back */
-	x = (unsigned long) mp_unsigned_bin_size(key->N);
+	x = mpz_unsigned_bin_size(key->N);
 	if (x > *outlen) {
 		*outlen = x;
 		err = ISRCRY_BUFFER_OVERFLOW;
@@ -681,7 +679,7 @@ static int rsa_exptmod(const unsigned char *in, unsigned long inlen,
 	}
 
 	/* this should never happen ... */
-	if (mp_unsigned_bin_size(tmp) > mp_unsigned_bin_size(key->N)) {
+	if (mpz_unsigned_bin_size(tmp) > mpz_unsigned_bin_size(key->N)) {
 		err = -1;
 		goto error;
 	}
@@ -689,12 +687,12 @@ static int rsa_exptmod(const unsigned char *in, unsigned long inlen,
 
 	/* convert it */
 	memset(out, 0, x);
-	mp_to_unsigned_bin(tmp, out + (x - mp_unsigned_bin_size(tmp)));
+	mpz_to_unsigned_bin(out + (x - mpz_unsigned_bin_size(tmp)), tmp);
 
 	/* clean up and return */
 	err = ISRCRY_OK;
 error:
-	mp_clear_multi(tmp, tmpa, tmpb, NULL);
+	mpz_clear_multi(&tmp, &tmpa, &tmpb, NULL);
 	return err;
 }
 
@@ -714,10 +712,10 @@ static enum isrcry_result rsa_sign(struct isrcry_sign_ctx *sctx,
 		return ISRCRY_NEED_KEY;
 
 	/* get modulus len in bits */
-	modulus_bitlen = mp_count_bits((key->N));
+	modulus_bitlen = mpz_sizeinbase(key->N, 2);
 
 	/* outlen must be at least the size of the modulus */
-	modulus_bytelen = mp_unsigned_bin_size((key->N));
+	modulus_bytelen = mpz_unsigned_bin_size(key->N);
 	if (modulus_bytelen > *outlen) {
 		*outlen = modulus_bytelen;
 		return ISRCRY_BUFFER_OVERFLOW;
@@ -761,10 +759,10 @@ static enum isrcry_result rsa_verify(struct isrcry_sign_ctx *sctx,
 	isrcry_hash_final(sctx->hctx, hash);
 
 	/* get modulus len in bits */
-	modulus_bitlen = mp_count_bits((key->N));
+	modulus_bitlen = mpz_sizeinbase(key->N, 2);
 
 	/* siglen must be equal to the size of the modulus */
-	modulus_bytelen = mp_unsigned_bin_size((key->N));
+	modulus_bytelen = mpz_unsigned_bin_size(key->N);
 	if (modulus_bytelen != siglen)
 		return ISRCRY_BAD_FORMAT;
 

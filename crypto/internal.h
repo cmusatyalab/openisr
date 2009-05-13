@@ -23,6 +23,8 @@
 #endif
 
 #include <string.h>
+#include <stdarg.h>
+#include <gmp.h>
 #include "config.h"
 
 #ifdef HAVE_VISIBILITY
@@ -228,5 +230,51 @@ int mp_invmod(void *a, void *b, void *c);
 void mp_exptmod(void *a, void *b, void *c, void *d);
 void mp_prime_is_prime(void *a, int rounds, int *b);
 int rand_prime(void *N, unsigned len, struct isrcry_random_ctx *rctx);
+
+static inline void mpz_init_multi(mpz_t *a, ...)
+{
+	mpz_t *cur = a;
+	va_list args;
+
+	va_start(args, a);
+	while (cur != NULL) {
+		mpz_init(*cur);
+		cur = va_arg(args, mpz_t *);
+	}
+	va_end(args);
+}
+
+static inline void mpz_clear_multi(mpz_t *a, ...)
+{
+	mpz_t *cur = a;
+	va_list args;
+
+	va_start(args, a);
+	while (cur != NULL) {
+		mpz_clear(*cur);
+		cur = va_arg(args, mpz_t *);
+	}
+	va_end(args);
+}
+
+static inline unsigned mpz_unsigned_bin_size(mpz_t a)
+{
+	unsigned t;
+
+	if (mpz_cmp_ui(a, 0) == 0)
+		return 0;
+	t = mpz_sizeinbase(a, 2);
+	return (t >> 3) + ((t & 7) ? 1 : 0);
+}
+
+static inline void mpz_to_unsigned_bin(void *dst, mpz_t src)
+{
+	mpz_export(dst, NULL, 1, 1, 1, 0, src);
+}
+
+static inline void mpz_from_unsigned_bin(mpz_t dst, const void *src, unsigned len)
+{
+	mpz_import(dst, len, 1, 1, 1, 0, src);
+}
 
 #endif
