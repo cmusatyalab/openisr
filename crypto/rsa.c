@@ -145,7 +145,7 @@ static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
 {
 	unsigned char *DB, *mask, *salt, *hash;
 	unsigned x, y, hLen, emLen, saltlen;
-	int err;
+	enum isrcry_result err;
 
 	saltlen = sctx->desc->saltlen;
 	hLen = isrcry_hash_len(sctx->desc->hash);
@@ -243,7 +243,7 @@ static enum isrcry_result pkcs_1_pss_decode(struct isrcry_sign_ctx *sctx,
 {
 	unsigned char *DB, *mask, *salt, *hash;
 	unsigned x, y, hLen, emLen, saltlen;
-	int err;
+	enum isrcry_result err;
 
 	saltlen = sctx->desc->saltlen;
 	hLen = isrcry_hash_len(sctx->desc->hash);
@@ -585,13 +585,13 @@ out:
    @param key        The RSA key to use 
    @return ISRCRY_OK if successful
 */
-static int rsa_exptmod(const unsigned char *in, unsigned inlen,
+static enum isrcry_result rsa_exptmod(const unsigned char *in, unsigned inlen,
 			unsigned char *out, unsigned *outlen,
 			enum isrcry_key_type which, struct isrcry_rsa_key *key)
 {
 	mpz_t tmp, tmpa, tmpb;
 	unsigned long x;
-	int err;
+	enum isrcry_result err;
 
 	/* init and copy into tmp */
 	mpz_init_multi(&tmp, &tmpa, &tmpb, NULL);
@@ -657,7 +657,7 @@ static enum isrcry_result rsa_sign(struct isrcry_sign_ctx *sctx,
 	unsigned hashlen = isrcry_hash_len(sctx->desc->hash);
 	unsigned char hash[hashlen];
 	unsigned modulus_bitlen, modulus_bytelen, x, y;
-	int err;
+	enum isrcry_result err;
 
 	if (sctx->rctx == NULL && sctx->desc->saltlen > 0 &&
 				sctx->salt == NULL)
@@ -698,7 +698,7 @@ static enum isrcry_result rsa_verify(struct isrcry_sign_ctx *sctx,
 	unsigned char hash[hashlen];
 	struct isrcry_rsa_key *key;
 	unsigned modulus_bitlen, modulus_bytelen, x;
-	int err;
+	enum isrcry_result err;
 	unsigned char sigbuf[siglen];
 	int sig_is_short;
 
@@ -732,11 +732,9 @@ static enum isrcry_result rsa_verify(struct isrcry_sign_ctx *sctx,
 	sig_is_short = !((modulus_bitlen - 1) % 8);
 
 	/* PSS decode and verify it */
-	err = pkcs_1_pss_decode(sctx, hash, hashlen,
+	return pkcs_1_pss_decode(sctx, hash, hashlen,
 				sig_is_short ? sigbuf + 1 : sigbuf,
 				sig_is_short ? x - 1 : x, modulus_bitlen - 1);
-
-	return err;
 }
 
 static void rsa_free(struct isrcry_sign_ctx *sctx)
