@@ -29,6 +29,7 @@
  */
 
 #include <stdlib.h>
+#include <libtasn1.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -37,6 +38,8 @@
 #define MIN_RSA_SIZE 1024
 #define MAX_RSA_SIZE 4096
 #define RSA_E 65537
+
+extern const ASN1_ARRAY_TYPE rsa_key_asn1_tab[];
 
 struct isrcry_rsa_key {
 	/** The public exponent */
@@ -439,6 +442,39 @@ cleanup:
 	return err;
 }
 
+static enum isrcry_result asn1_get_int(void *dest, ASN1_TYPE obj,
+			const char *field)
+{
+	void *buf;
+	int len = 0;
+	
+	if (asn1_read_value(obj, field, NULL, &len) != ASN1_MEM_ERROR)
+		return ISRCRY_INVALID_ARGUMENT;
+	buf = malloc(len);
+	if (buf == NULL)
+		return -1;
+	if (asn1_read_value(obj, field, buf, &len)) {
+		free(buf);
+		return ISRCRY_BUFFER_OVERFLOW;
+	}
+	mp_read_unsigned_bin(dest, buf, len);
+	free(buf);
+	return ISRCRY_OK;
+}
+
+static enum isrcry_result asn1_set_int(ASN1_TYPE obj, const char *field,
+			void *val)
+{
+	unsigned len = mp_unsigned_bin_size(val);
+	unsigned char buf[len + 1];
+
+	buf[0] = 0;
+	mp_to_unsigned_bin(val, buf + 1);
+	if (asn1_write_value(obj, field, buf, sizeof(buf)))
+		return ISRCRY_INVALID_ARGUMENT;
+	return ISRCRY_OK;
+}
+
 /**
   Import an RSAPublicKey or RSAPrivateKey
   [two-prime only, only support >= 1024-bit keys, defined in PKCS #1 v2.1]
@@ -449,71 +485,68 @@ static enum isrcry_result rsa_set_key(struct isrcry_sign_ctx *sctx,
 			const unsigned char *in, unsigned inlen)
 {
 	struct isrcry_rsa_key *key;
-	enum isrcry_key_type found_type;
-	int err;
-	void *zero;
+	ASN1_TYPE defs = ASN1_TYPE_EMPTY;
+	ASN1_TYPE akey = ASN1_TYPE_EMPTY;
+	uint8_t ver;
+	int len;
+	enum isrcry_result ret = ISRCRY_BAD_FORMAT;
 
-	/* init key */
 	key = malloc(sizeof(*key));
 	if (key == NULL)
 		return -1;
-	if ((err = mp_init_multi(&key->e, &key->d, &key->N, &key->dQ,
-				&key->dP, &key->qP, &key->p, &key->q,
-				NULL))) {
+	if (mp_init_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP,
+				&key->qP, &key->p, &key->q, NULL)) {
 		free(key);
-		return err;
+		return -1;
 	}
 
-	/* try to match against PKCS #1 standards */
-	if ((err = der_decode_sequence_multi(in, inlen,
-				LTC_ASN1_INTEGER, 1UL, key->N,
-				LTC_ASN1_EOL, 0UL, NULL)))
-		goto LBL_ERR;
+	if (asn1_array2tree(rsa_key_asn1_tab, &defs, NULL))
+		goto out;
 
-	if (mp_cmp_d(key->N, 0) == 0) {
-		if ((err = mp_init(&zero)))
-			goto LBL_ERR;
-		/* it's a private key */
-		if ((err = der_decode_sequence_multi(in, inlen,
-					LTC_ASN1_INTEGER, 1UL, zero,
-					LTC_ASN1_INTEGER, 1UL, key->N,
-					LTC_ASN1_INTEGER, 1UL, key->e,
-					LTC_ASN1_INTEGER, 1UL, key->d,
-					LTC_ASN1_INTEGER, 1UL, key->p,
-					LTC_ASN1_INTEGER, 1UL, key->q,
-					LTC_ASN1_INTEGER, 1UL, key->dP,
-					LTC_ASN1_INTEGER, 1UL, key->dQ,
-					LTC_ASN1_INTEGER, 1UL, key->qP,
-					LTC_ASN1_EOL, 0UL, NULL))) {
-			mp_clear(zero);
-			goto LBL_ERR;
-		}
-		mp_clear(zero);
-		found_type = ISRCRY_KEY_PRIVATE;
-	} else if (mp_cmp_d(key->N, 1) == 0) {
-		/* we don't support multi-prime RSA */
-		err = ISRCRY_BAD_FORMAT;
-		goto LBL_ERR;
+	if (type == ISRCRY_KEY_PRIVATE) {
+		if (asn1_create_element(defs, "PKCS-1.RSAPrivateKey", &akey))
+			goto out;
+		if (asn1_der_decoding(&akey, in, inlen, NULL))
+			goto out;
+		len = sizeof(ver);
+		if (asn1_read_value(akey, "version", &ver, &len))
+			goto out;
+		if (ver != 0)
+			goto out;
+		if (asn1_get_int(key->N, akey, "modulus"))
+			goto out;
+		if (asn1_get_int(key->e, akey, "publicExponent"))
+			goto out;
+		if (asn1_get_int(key->d, akey, "privateExponent"))
+			goto out;
+		if (asn1_get_int(key->p, akey, "prime1"))
+			goto out;
+		if (asn1_get_int(key->q, akey, "prime2"))
+			goto out;
+		if (asn1_get_int(key->dP, akey, "exponent1"))
+			goto out;
+		if (asn1_get_int(key->dQ, akey, "exponent2"))
+			goto out;
+		if (asn1_get_int(key->qP, akey, "coefficient"))
+			goto out;
 	} else {
-		/* it's a public key and we lack e */
-		if ((err = der_decode_sequence_multi(in, inlen,
-					LTC_ASN1_INTEGER, 1UL, key->N,
-					LTC_ASN1_INTEGER, 1UL, key->e,
-					LTC_ASN1_EOL, 0UL, NULL))) {
-			goto LBL_ERR;
-		}
-		found_type = ISRCRY_KEY_PUBLIC;
-	}
-
-	if (found_type != type) {
-		err = ISRCRY_BAD_FORMAT;
-		goto LBL_ERR;
+		if (asn1_create_element(defs, "PKCS-1.RSAPublicKey", &akey))
+			goto out;
+		if (asn1_der_decoding(&akey, in, inlen, NULL))
+			goto out;
+		if (asn1_get_int(key->N, akey, "modulus"))
+			goto out;
+		if (asn1_get_int(key->e, akey, "publicExponent"))
+			goto out;
 	}
 	set_key(sctx, type, key);
-	return ISRCRY_OK;
-LBL_ERR:
-	free_key(key);
-	return err;
+	ret = ISRCRY_OK;
+out:
+	asn1_delete_structure(&akey);
+	asn1_delete_structure(&defs);
+	if (ret)
+		free_key(key);
+	return ret;
 }
 
 /**
@@ -526,9 +559,11 @@ static enum isrcry_result rsa_get_key(struct isrcry_sign_ctx *sctx,
 				unsigned char *out, unsigned *outlen)
 {
 	struct isrcry_rsa_key *key = NULL;
-	unsigned long zero=0;
-	unsigned long outlen_l = *outlen;
-	enum isrcry_result ret;
+	ASN1_TYPE defs = ASN1_TYPE_EMPTY;
+	ASN1_TYPE akey = ASN1_TYPE_EMPTY;
+	unsigned zero = 0;
+	enum isrcry_result ret = ISRCRY_BAD_FORMAT;
+	int err;
 
 	switch (type) {
 	case ISRCRY_KEY_PUBLIC:
@@ -543,30 +578,48 @@ static enum isrcry_result rsa_get_key(struct isrcry_sign_ctx *sctx,
 	if (key == NULL)
 		return ISRCRY_INVALID_ARGUMENT;
 
+	if (asn1_array2tree(rsa_key_asn1_tab, &defs, NULL))
+		return ISRCRY_BAD_FORMAT;
+
 	if (type == ISRCRY_KEY_PRIVATE) {
-		/* private key */
-		/* output is 
-		   Version, n, e, d, p, q, d mod (p-1), d mod (q - 1), 1/q mod p
-		 */
-		ret=der_encode_sequence_multi(out, &outlen_l,
-					LTC_ASN1_SHORT_INTEGER, 1UL, &zero,
-					LTC_ASN1_INTEGER, 1UL, key->N,
-					LTC_ASN1_INTEGER, 1UL, key->e,
-					LTC_ASN1_INTEGER, 1UL, key->d,
-					LTC_ASN1_INTEGER, 1UL, key->p,
-					LTC_ASN1_INTEGER, 1UL, key->q,
-					LTC_ASN1_INTEGER, 1UL, key->dP,
-					LTC_ASN1_INTEGER, 1UL, key->dQ,
-					LTC_ASN1_INTEGER, 1UL, key->qP,
-					LTC_ASN1_EOL, 0UL, NULL);
+		if (asn1_create_element(defs, "PKCS-1.RSAPrivateKey", &akey))
+			goto out;
+		if (asn1_write_value(akey, "version", &zero, sizeof(zero)))
+			goto out;
+		if (asn1_set_int(akey, "modulus", key->N))
+			goto out;
+		if (asn1_set_int(akey, "publicExponent", key->e))
+			goto out;
+		if (asn1_set_int(akey, "privateExponent", key->d))
+			goto out;
+		if (asn1_set_int(akey, "prime1", key->p))
+			goto out;
+		if (asn1_set_int(akey, "prime2", key->q))
+			goto out;
+		if (asn1_set_int(akey, "exponent1", key->dP))
+			goto out;
+		if (asn1_set_int(akey, "exponent2", key->dQ))
+			goto out;
+		if (asn1_set_int(akey, "coefficient", key->qP))
+			goto out;
 	} else {
-		/* public key */
-		ret=der_encode_sequence_multi(out, &outlen_l,
-					LTC_ASN1_INTEGER, 1UL, key->N,
-					LTC_ASN1_INTEGER, 1UL, key->e,
-					LTC_ASN1_EOL, 0UL, NULL);
+		if (asn1_create_element(defs, "PKCS-1.RSAPublicKey", &akey))
+			goto out;
+		if (asn1_set_int(akey, "modulus", key->N))
+			goto out;
+		if (asn1_set_int(akey, "publicExponent", key->e))
+			goto out;
 	}
-	*outlen = outlen_l;
+	err = asn1_der_coding(akey, "", out, (int *) outlen, NULL);
+	if (err == ASN1_MEM_ERROR)
+		ret = ISRCRY_BUFFER_OVERFLOW;
+	if (err)
+		goto out;
+	ret = ISRCRY_OK;
+
+out:
+	asn1_delete_structure(&akey);
+	asn1_delete_structure(&defs);
 	return ret;
 }
 
