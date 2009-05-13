@@ -203,34 +203,6 @@ asm __volatile__ (             \
            ((unsigned long)((y)[0] & 255)); }
 #endif
 
-int mp_init(void **a);
-void mp_clear(void *a);
-int mp_init_multi(void **a, ...);
-void mp_clear_multi(void *a, ...);
-void mp_copy(void *a, void *b);
-void mp_set_int(void *a, unsigned long b);
-int mp_cmp(void *a, void *b);
-int mp_cmp_d(void *a, unsigned long b);
-int mp_count_bits(void *a);
-int mp_cnt_lsb(void *a);
-void mp_2expt(void *a, int n);
-unsigned long mp_unsigned_bin_size(void *a);
-void mp_to_unsigned_bin(void *a, unsigned char *b);
-void mp_read_unsigned_bin(void *a, unsigned char *b, unsigned long len);
-void mp_add(void *a, void *b, void *c);
-void mp_sub(void *a, void *b, void *c);
-void mp_sub_d(void *a, unsigned long b, void *c);
-void mp_mul(void *a, void *b, void *c);
-void mp_div(void *a, void *b, void *c, void *d);
-void mp_mod(void *a, void *b, void *c);
-void mp_gcd(void *a, void *b, void *c);
-void mp_lcm(void *a, void *b, void *c);
-void mp_mulmod(void *a, void *b, void *c, void *d);
-int mp_invmod(void *a, void *b, void *c);
-void mp_exptmod(void *a, void *b, void *c, void *d);
-void mp_prime_is_prime(void *a, int rounds, int *b);
-int rand_prime(void *N, unsigned len, struct isrcry_random_ctx *rctx);
-
 enum isrcry_result isrcry_gen_prime(mpz_t out, struct isrcry_random_ctx *rctx,
 			unsigned len);
 
