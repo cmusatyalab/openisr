@@ -41,3 +41,24 @@ exported const char *isrcry_strerror(enum isrcry_result result)
 	}
 	return "Unknown error";
 }
+
+enum isrcry_result isrcry_gen_prime(mpz_t out, struct isrcry_random_ctx *rctx,
+			unsigned len)
+{
+	unsigned char buf[len];
+
+	if (len < 2 || len > 512)
+		return ISRCRY_INVALID_ARGUMENT;
+
+	do {
+		isrcry_random_bytes(rctx, buf, len);
+		/* 0x80 makes sure the number is the specified number of bits.
+		   What does 0x40 do? */
+		buf[0]     |= 0x80 | 0x40;
+		/* Make sure the number is odd */
+		buf[len-1] |= 0x01;
+		mpz_from_unsigned_bin(out, buf, len);
+	} while (!mpz_probab_prime_p(out, 8));
+
+	return ISRCRY_OK;
+}

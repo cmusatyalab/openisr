@@ -231,6 +231,9 @@ void mp_exptmod(void *a, void *b, void *c, void *d);
 void mp_prime_is_prime(void *a, int rounds, int *b);
 int rand_prime(void *N, unsigned len, struct isrcry_random_ctx *rctx);
 
+enum isrcry_result isrcry_gen_prime(mpz_t out, struct isrcry_random_ctx *rctx,
+			unsigned len);
+
 static inline void mpz_init_multi(mpz_t *a, ...)
 {
 	mpz_t *cur = a;

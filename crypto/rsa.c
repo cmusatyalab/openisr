@@ -385,7 +385,7 @@ static enum isrcry_result rsa_make_keys(struct isrcry_sign_ctx *sctx,
 
 	/* make prime "p" */
 	do {
-		if ((err = rand_prime(p, length / 2, sctx->rctx)))
+		if ((err = isrcry_gen_prime(p, sctx->rctx, length / 2)))
 			goto errkey;
 		mpz_sub_ui(tmp1, p, 1);		/* tmp1 = p-1 */
 		mpz_gcd(tmp2, tmp1, tmp3);	/* tmp2 = gcd(p-1, e) */
@@ -393,7 +393,7 @@ static enum isrcry_result rsa_make_keys(struct isrcry_sign_ctx *sctx,
 
 	/* make prime "q" */
 	do {
-		if ((err = rand_prime(q, length / 2, sctx->rctx)))
+		if ((err = isrcry_gen_prime(q, sctx->rctx, length / 2)))
 			goto errkey;
 		mpz_sub_ui(tmp1, q, 1);		/* tmp1 = q-1 */
 		mpz_gcd(tmp2, tmp1, tmp3);	/* tmp2 = gcd(q-1, e) */
