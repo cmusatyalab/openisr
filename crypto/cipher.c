@@ -17,6 +17,7 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include <glib.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -57,27 +58,21 @@ exported struct isrcry_cipher_ctx *isrcry_cipher_alloc(
 {
 	struct isrcry_cipher_ctx *cctx;
 	
-	cctx = malloc(sizeof(*cctx));
-	if (cctx == NULL)
-		return NULL;
+	cctx = g_slice_new0(struct isrcry_cipher_ctx);
 	cctx->cipher = cipher_desc(cipher);
 	cctx->mode = mode_desc(mode);
 	if (cctx->cipher == NULL || cctx->mode == NULL) {
-		free(cctx);
+		g_slice_free(struct isrcry_cipher_ctx, cctx);
 		return NULL;
 	}
-	cctx->key = malloc(cctx->cipher->ctxlen);
-	if (cctx->key == NULL) {
-		free(cctx);
-		return NULL;
-	}
+	cctx->key = g_slice_alloc0(cctx->cipher->ctxlen);
 	return cctx;
 }
 
 exported void isrcry_cipher_free(struct isrcry_cipher_ctx *cctx)
 {
-	free(cctx->key);
-	free(cctx);
+	g_slice_free1(cctx->cipher->ctxlen, cctx->key);
+	g_slice_free(struct isrcry_cipher_ctx, cctx);
 }
 
 exported enum isrcry_result isrcry_cipher_init(struct isrcry_cipher_ctx *cctx,

@@ -16,6 +16,7 @@
  */
 
 #include <stdlib.h>
+#include <glib.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -33,17 +34,15 @@ exported struct isrcry_mac_ctx *isrcry_mac_alloc(enum isrcry_mac type)
 {
 	struct isrcry_mac_ctx *mctx;
 
-	mctx = malloc(sizeof(*mctx));
-	if (mctx == NULL)
-		return NULL;
+	mctx = g_slice_new0(struct isrcry_mac_ctx);
 	mctx->desc = mac_desc(type);
 	if (mctx->desc == NULL) {
-		free(mctx);
+		g_slice_free(struct isrcry_mac_ctx, mctx);
 		return NULL;
 	}
 	mctx->ctx = mctx->desc->alloc(mctx);
 	if (mctx->ctx == NULL) {
-		free(mctx);
+		g_slice_free(struct isrcry_mac_ctx, mctx);
 		return NULL;
 	}
 	return mctx;
@@ -52,7 +51,7 @@ exported struct isrcry_mac_ctx *isrcry_mac_alloc(enum isrcry_mac type)
 exported void isrcry_mac_free(struct isrcry_mac_ctx *mctx)
 {
 	mctx->desc->free(mctx);
-	free(mctx);
+	g_slice_free(struct isrcry_mac_ctx, mctx);
 }
 
 exported enum isrcry_result isrcry_mac_init(struct isrcry_mac_ctx *mctx,

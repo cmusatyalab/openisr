@@ -29,6 +29,7 @@
  */
 
 #include <stdlib.h>
+#include <glib.h>
 #include <libtasn1.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
@@ -64,9 +65,7 @@ static struct isrcry_rsa_key *alloc_key(void)
 {
 	struct isrcry_rsa_key *key;
 	
-	key = malloc(sizeof(*key));
-	if (key == NULL)
-		return NULL;
+	key = g_slice_new(struct isrcry_rsa_key);
 	mpz_init_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP, &key->qP,
 				&key->p, &key->q, NULL);
 	return key;
@@ -76,7 +75,7 @@ static void free_key(struct isrcry_rsa_key *key)
 {
 	mpz_clear_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP,
 				&key->qP, &key->p, &key->q, NULL);
-	free(key);
+	g_slice_free(struct isrcry_rsa_key, key);
 }
 
 static void set_key(struct isrcry_sign_ctx *sctx, enum isrcry_key_type type,
@@ -157,21 +156,10 @@ static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
 		return ISRCRY_INVALID_ARGUMENT;
 
 	/* allocate ram for DB/mask/salt/hash of size emLen */
-	DB = malloc(emLen);
-	mask = malloc(emLen);
-	salt = malloc(emLen);
-	hash = malloc(emLen);
-	if (DB == NULL || mask == NULL || salt == NULL || hash == NULL) {
-		if (DB != NULL)
-			free(DB);
-		if (mask != NULL)
-			free(mask);
-		if (salt != NULL)
-			free(salt);
-		if (hash != NULL)
-			free(hash);
-		return -1;
-	}
+	DB = g_malloc(emLen);
+	mask = g_malloc(emLen);
+	salt = g_malloc(emLen);
+	hash = g_malloc(emLen);
 
 	/* generate random salt */
 	if (saltlen > 0) {
@@ -231,10 +219,10 @@ static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
 	err = ISRCRY_OK;
 LBL_ERR:
 
-	free(hash);
-	free(salt);
-	free(mask);
-	free(DB);
+	g_free(hash);
+	g_free(salt);
+	g_free(mask);
+	g_free(DB);
 
 	return err;
 }
@@ -266,21 +254,10 @@ static enum isrcry_result pkcs_1_pss_decode(struct isrcry_sign_ctx *sctx,
 		return ISRCRY_INVALID_ARGUMENT;
 
 	/* allocate ram for DB/mask/salt/hash of size emLen */
-	DB = malloc(emLen);
-	mask = malloc(emLen);
-	salt = malloc(emLen);
-	hash = malloc(emLen);
-	if (DB == NULL || mask == NULL || salt == NULL || hash == NULL) {
-		if (DB != NULL)
-			free(DB);
-		if (mask != NULL)
-			free(mask);
-		if (salt != NULL)
-			free(salt);
-		if (hash != NULL)
-			free(hash);
-		return -1;
-	}
+	DB = g_malloc(emLen);
+	mask = g_malloc(emLen);
+	salt = g_malloc(emLen);
+	hash = g_malloc(emLen);
 
 	/* ensure the 0xBC byte */
 	if (sig[siglen - 1] != 0xBC) {
@@ -344,10 +321,10 @@ static enum isrcry_result pkcs_1_pss_decode(struct isrcry_sign_ctx *sctx,
 		err = ISRCRY_BAD_SIGNATURE;
 
 LBL_ERR:
-	free(hash);
-	free(salt);
-	free(mask);
-	free(DB);
+	g_free(hash);
+	g_free(salt);
+	g_free(mask);
+	g_free(DB);
 	return err;
 }
 
@@ -365,8 +342,6 @@ static enum isrcry_result rsa_make_keys(struct isrcry_sign_ctx *sctx,
 
 	mpz_init_multi(&p, &q, &tmp1, &tmp2, &tmp3, NULL);
 	key = alloc_key();
-	if (key == NULL)
-		return -1;
 
 	/* make primes p and q (optimization provided by Wayne Scott) */
 	mpz_set_ui(tmp3, RSA_E);		/* tmp3 = e */
@@ -436,15 +411,13 @@ static enum isrcry_result asn1_get_int(mpz_t dest, ASN1_TYPE obj,
 	
 	if (asn1_read_value(obj, field, NULL, &len) != ASN1_MEM_ERROR)
 		return ISRCRY_INVALID_ARGUMENT;
-	buf = malloc(len);
-	if (buf == NULL)
-		return -1;
+	buf = g_malloc(len);
 	if (asn1_read_value(obj, field, buf, &len)) {
-		free(buf);
+		g_free(buf);
 		return ISRCRY_BUFFER_OVERFLOW;
 	}
 	mpz_from_unsigned_bin(dest, buf, len);
-	free(buf);
+	g_free(buf);
 	return ISRCRY_OK;
 }
 
@@ -478,8 +451,6 @@ static enum isrcry_result rsa_set_key(struct isrcry_sign_ctx *sctx,
 	enum isrcry_result ret = ISRCRY_BAD_FORMAT;
 
 	key = alloc_key();
-	if (key == NULL)
-		return -1;
 
 	if (asn1_array2tree(rsa_key_asn1_tab, &defs, NULL))
 		goto out;

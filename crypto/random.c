@@ -41,6 +41,7 @@ Coda are listed in the file CREDITS.
 #include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
+#include <glib.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -158,13 +159,11 @@ exported struct isrcry_random_ctx *isrcry_random_alloc(void)
     uint8_t initial_seed[INITIAL_SEED_LENGTH];
     uint8_t tmp[AES_BLOCK_SIZE];
 
-    rctx = malloc(sizeof(*rctx));
-    if (rctx == NULL)
-	return NULL;
+    rctx = g_slice_new0(struct isrcry_random_ctx);
 
     rctx->aes = isrcry_cipher_alloc(ISRCRY_CIPHER_AES, ISRCRY_MODE_ECB);
     if (rctx->aes == NULL) {
-	free(rctx);
+	g_slice_free(struct isrcry_random_ctx, rctx);
 	return NULL;
     }
     get_initial_seed(initial_seed, INITIAL_SEED_LENGTH);
@@ -228,5 +227,5 @@ exported void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 exported void isrcry_random_free(struct isrcry_random_ctx *rctx)
 {
     isrcry_cipher_free(rctx->aes);
-    free(rctx);
+    g_slice_free(struct isrcry_random_ctx, rctx);
 }

@@ -16,6 +16,7 @@
  */
 
 #include <stdlib.h>
+#include <glib.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -53,18 +54,15 @@ exported struct isrcry_sign_ctx *isrcry_sign_alloc(enum isrcry_sign type,
 {
 	struct isrcry_sign_ctx *sctx;
 
-	sctx = malloc(sizeof(*sctx));
-	if (sctx == NULL)
-		return NULL;
-	memset(sctx, 0, sizeof(*sctx));
+	sctx = g_slice_new0(struct isrcry_sign_ctx);
 	sctx->desc = sign_desc(type);
 	if (sctx->desc == NULL) {
-		free(sctx);
+		g_slice_free(struct isrcry_sign_ctx, sctx);
 		return NULL;
 	}
 	sctx->hctx = isrcry_hash_alloc(sctx->desc->hash);
 	if (sctx->hctx == NULL) {
-		free(sctx);
+		g_slice_free(struct isrcry_sign_ctx, sctx);
 		return NULL;
 	}
 	sctx->rctx = rctx;
@@ -75,8 +73,8 @@ exported void isrcry_sign_free(struct isrcry_sign_ctx *sctx)
 {
 	sctx->desc->free(sctx);
 	isrcry_hash_free(sctx->hctx);
-	free(sctx->salt);
-	free(sctx);
+	g_free(sctx->salt);
+	g_slice_free(struct isrcry_sign_ctx, sctx);
 }
 
 exported enum isrcry_result isrcry_sign_make_keys(struct isrcry_sign_ctx *sctx,
@@ -109,18 +107,15 @@ exported enum isrcry_result isrcry_sign_set_salt(struct isrcry_sign_ctx *sctx,
 	void *copy;
 
 	if (salt == NULL) {
-		free(sctx->salt);
+		g_free(sctx->salt);
 		sctx->salt = NULL;
 		return ISRCRY_OK;
 	}
 	if (saltlen != sctx->desc->saltlen)
 		return ISRCRY_INVALID_ARGUMENT;
-	copy = malloc(saltlen);
-	if (copy == NULL)
-		return -1;
-	memcpy(copy, salt, saltlen);
+	copy = g_memdup(salt, saltlen);
 	if (sctx->salt != NULL)
-		free(sctx->salt);
+		g_free(sctx->salt);
 	sctx->salt = copy;
 	return ISRCRY_OK;
 }

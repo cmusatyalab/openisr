@@ -17,6 +17,7 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include <glib.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -37,22 +38,15 @@ static void *hmac_alloc(struct isrcry_mac_ctx *mctx)
 {
 	struct isrcry_hmac_ctx *ctx;
 
-	ctx = malloc(sizeof(*ctx));
-	if (ctx == NULL)
-		return NULL;
+	ctx = g_slice_new0(struct isrcry_hmac_ctx);
 	ctx->hctx = isrcry_hash_alloc(mctx->desc->hash);
 	if (ctx->hctx == NULL) {
-		free(ctx);
+		g_slice_free(struct isrcry_hmac_ctx, ctx);
 		return NULL;
 	}
 	ctx->hashlen = isrcry_hash_len(mctx->desc->hash);
 	ctx->keylen = ctx->hctx->desc->block_size;
-	ctx->key = malloc(ctx->keylen);
-	if (ctx->key == NULL) {
-		isrcry_hash_free(ctx->hctx);
-		free(ctx);
-		return NULL;
-	}
+	ctx->key = g_slice_alloc0(ctx->keylen);
 	return ctx;
 }
 
@@ -113,9 +107,9 @@ static void hmac_free(struct isrcry_mac_ctx *mctx)
 {
 	struct isrcry_hmac_ctx *ctx = mctx->ctx;
 
-	free(ctx->key);
+	g_slice_free1(ctx->keylen, ctx->key);
 	isrcry_hash_free(ctx->hctx);
-	free(ctx);
+	g_slice_free(struct isrcry_hmac_ctx, ctx);
 }
 
 const struct isrcry_mac_desc _isrcry_hmac_sha1_desc = {

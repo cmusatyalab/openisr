@@ -16,6 +16,7 @@
  */
 
 #include <stdlib.h>
+#include <glib.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -35,27 +36,21 @@ exported struct isrcry_hash_ctx *isrcry_hash_alloc(enum isrcry_hash type)
 {
 	struct isrcry_hash_ctx *hctx;
 	
-	hctx = malloc(sizeof(*hctx));
-	if (hctx == NULL)
-		return NULL;
+	hctx = g_slice_new0(struct isrcry_hash_ctx);
 	hctx->desc = hash_desc(type);
 	if (hctx->desc == NULL) {
-		free(hctx);
+		g_slice_free(struct isrcry_hash_ctx, hctx);
 		return NULL;
 	}
-	hctx->ctx = malloc(hctx->desc->ctxlen);
-	if (hctx->ctx == NULL) {
-		free(hctx);
-		return NULL;
-	}
+	hctx->ctx = g_slice_alloc0(hctx->desc->ctxlen);
 	hctx->desc->init(hctx);
 	return hctx;
 }
 
 exported void isrcry_hash_free(struct isrcry_hash_ctx *hctx)
 {
-	free(hctx->ctx);
-	free(hctx);
+	g_slice_free1(hctx->desc->ctxlen, hctx->ctx);
+	g_slice_free(struct isrcry_hash_ctx, hctx);
 }
 
 exported void isrcry_hash_update(struct isrcry_hash_ctx *hctx,
