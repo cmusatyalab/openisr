@@ -60,10 +60,18 @@ struct isrcry_rsa_key {
 	mpz_t dQ;
 };
 
-/**
-  Free an RSA key from memory
-  @param key   The RSA key to free
-*/
+static struct isrcry_rsa_key *alloc_key(void)
+{
+	struct isrcry_rsa_key *key;
+	
+	key = malloc(sizeof(*key));
+	if (key == NULL)
+		return NULL;
+	mpz_init_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP, &key->qP,
+				&key->p, &key->q, NULL);
+	return key;
+}
+
 static void free_key(struct isrcry_rsa_key *key)
 {
 	mpz_clear_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP,
@@ -376,7 +384,7 @@ static enum isrcry_result rsa_make_keys(struct isrcry_sign_ctx *sctx,
 		return ISRCRY_NEED_RANDOM;
 
 	mpz_init_multi(&p, &q, &tmp1, &tmp2, &tmp3, NULL);
-	key = malloc(sizeof(*key));
+	key = alloc_key();
 	if (key == NULL)
 		return -1;
 
@@ -405,9 +413,6 @@ static enum isrcry_result rsa_make_keys(struct isrcry_sign_ctx *sctx,
 	mpz_lcm(tmp1, tmp1, tmp2);		/* tmp1 = lcm(p-1, q-1) */
 
 	/* make key */
-	mpz_init_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP, &key->qP,
-				&key->p, &key->q, NULL);
-
 	mpz_set_ui(key->e, RSA_E);		/* key->e =  e */
 	/* key->d = 1/e mod lcm(p-1,q-1) */
 	if (!mpz_invert(key->d, key->e, tmp1)) {
@@ -492,11 +497,9 @@ static enum isrcry_result rsa_set_key(struct isrcry_sign_ctx *sctx,
 	int len;
 	enum isrcry_result ret = ISRCRY_BAD_FORMAT;
 
-	key = malloc(sizeof(*key));
+	key = alloc_key();
 	if (key == NULL)
 		return -1;
-	mpz_init_multi(&key->e, &key->d, &key->N, &key->dQ, &key->dP, &key->qP,
-				&key->p, &key->q, NULL);
 
 	if (asn1_array2tree(rsa_key_asn1_tab, &defs, NULL))
 		goto out;
