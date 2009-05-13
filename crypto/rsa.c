@@ -104,25 +104,14 @@ static void set_key(struct isrcry_sign_ctx *sctx, enum isrcry_key_type type,
    @param masklen     The length of the mask desired
    @return ISRCRY_OK if successful
 */
-static enum isrcry_result pkcs_1_mgf1(struct isrcry_sign_ctx *sctx,
+static void pkcs_1_mgf1(struct isrcry_sign_ctx *sctx,
 			const unsigned char *seed, unsigned seedlen,
 			unsigned char *mask, unsigned masklen)
 {
-	unsigned hLen, x;
-	uint32_t counter;
-	int err;
-	unsigned char *buf;
-
-	/* get hash output size */
-	hLen = isrcry_hash_len(sctx->desc->hash);
-
-	/* allocate memory */
-	buf = malloc(hLen);
-	if (buf == NULL)
-		return -1;
-
-	/* start counter */
-	counter = 0;
+	unsigned hLen = isrcry_hash_len(sctx->desc->hash);
+	unsigned char buf[hLen];
+	unsigned x;
+	uint32_t counter = 0;
 
 	while (masklen > 0) {
 		/* handle counter */
@@ -138,9 +127,6 @@ static enum isrcry_result pkcs_1_mgf1(struct isrcry_sign_ctx *sctx,
 		for (x = 0; x < hLen && masklen > 0; x++, masklen--)
 			*mask++ = buf[x];
 	}
-	err = ISRCRY_OK;
-	free(buf);
-	return err;
 }
 
 /**
@@ -212,8 +198,7 @@ static enum isrcry_result pkcs_1_pss_encode(struct isrcry_sign_ctx *sctx,
 	x += saltlen;
 
 	/* generate mask of length emLen - hLen - 1 from hash */
-	if ((err = pkcs_1_mgf1(sctx, hash, hLen, mask, emLen - hLen - 1)))
-		goto LBL_ERR;
+	pkcs_1_mgf1(sctx, hash, hLen, mask, emLen - hLen - 1);
 
 	/* xor against DB */
 	for (y = 0; y < (emLen - hLen - 1); y++)
@@ -319,9 +304,7 @@ static enum isrcry_result pkcs_1_pss_decode(struct isrcry_sign_ctx *sctx,
 	}
 
 	/* generate mask of length emLen - hLen - 1 from hash */
-	if ((err = pkcs_1_mgf1(sctx, hash, hLen, mask, emLen -
-				hLen - 1)))
-		goto LBL_ERR;
+	pkcs_1_mgf1(sctx, hash, hLen, mask, emLen - hLen - 1);
 
 	/* xor against DB */
 	for (y = 0; y < emLen - hLen - 1; y++)
@@ -745,7 +728,7 @@ static enum isrcry_result rsa_verify(struct isrcry_sign_ctx *sctx,
 	struct isrcry_rsa_key *key;
 	unsigned modulus_bitlen, modulus_bytelen, x;
 	int err;
-	unsigned char *tmpbuf;
+	unsigned char sigbuf[siglen];
 	int sig_is_short;
 
 	if (sctx->pubkey != NULL)
@@ -766,32 +749,22 @@ static enum isrcry_result rsa_verify(struct isrcry_sign_ctx *sctx,
 	if (modulus_bytelen != siglen)
 		return ISRCRY_BAD_FORMAT;
 
-	/* allocate temp buffer for decoded sig */
-	tmpbuf = malloc(siglen);
-	if (tmpbuf == NULL)
-		return -1;
-
 	/* RSA decode it  */
 	x = siglen;
-	if ((err = rsa_exptmod(sig, siglen, tmpbuf, &x, ISRCRY_KEY_PUBLIC,
-				key))) {
-		free(tmpbuf);
+	if ((err = rsa_exptmod(sig, siglen, sigbuf, &x, ISRCRY_KEY_PUBLIC,
+				key)))
 		return err;
-	}
 
 	/* make sure the output is the right size */
-	if (x != siglen) {
-		free(tmpbuf);
+	if (x != siglen)
 		return ISRCRY_BAD_FORMAT;
-	}
 	sig_is_short = !((modulus_bitlen - 1) % 8);
 
 	/* PSS decode and verify it */
 	err = pkcs_1_pss_decode(sctx, hash, hashlen,
-				sig_is_short ? tmpbuf + 1 : tmpbuf,
+				sig_is_short ? sigbuf + 1 : sigbuf,
 				sig_is_short ? x - 1 : x, modulus_bitlen - 1);
 
-	free(tmpbuf);
 	return err;
 }
 
