@@ -17,7 +17,6 @@
 
 #include <stdlib.h>
 #include <assert.h>
-#include <glib.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"

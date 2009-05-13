@@ -29,7 +29,6 @@
  */
 
 #include <stdlib.h>
-#include <glib.h>
 #include <libtasn1.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL

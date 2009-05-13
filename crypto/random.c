@@ -41,7 +41,6 @@ Coda are listed in the file CREDITS.
 #include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
-#include <glib.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
