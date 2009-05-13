@@ -634,7 +634,7 @@ static int rsa_exptmod(const unsigned char *in, unsigned inlen,
 
 	/* this should never happen ... */
 	if (mpz_unsigned_bin_size(tmp) > mpz_unsigned_bin_size(key->N)) {
-		err = -1;
+		err = ISRCRY_BAD_FORMAT;
 		goto error;
 	}
 	*outlen = x;
