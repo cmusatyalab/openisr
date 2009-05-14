@@ -157,6 +157,12 @@ struct isrcry_sign_ctx {
 	void *salt;
 };
 
+gchar *isrcry_pem_encode(const char *alg, enum isrcry_key_type type,
+			void *data, unsigned datalen);
+enum isrcry_result isrcry_pem_decode(const char *alg,
+			enum isrcry_key_type type, const void *data,
+			unsigned datalen, void **out, unsigned *outlen);
+
 /* The helper macros below are originally from libtomcrypt. */
 
 /* Extract a byte portably */
