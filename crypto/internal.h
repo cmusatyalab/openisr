@@ -162,7 +162,9 @@ struct isrcry_sign_ctx {
 /* Extract a byte portably */
 #define byte(x, n) (((x) >> (8 * (n))) & 255)
 
-#if defined(HAVE_X86_32) || defined(HAVE_X86_64)
+/* On amd64, gcc will auto-vectorize byte-by-byte loops using the XMM
+   registers, and we don't want to defeat that. */
+#if defined(HAVE_X86_32)
 #define ISRCRY_FAST_TYPE unsigned long
 #endif
 
