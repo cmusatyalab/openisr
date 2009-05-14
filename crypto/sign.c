@@ -43,6 +43,7 @@ static int key_format_ok(enum isrcry_key_format fmt)
 {
 	switch (fmt) {
 	case ISRCRY_KEY_FORMAT_RAW:
+	case ISRCRY_KEY_FORMAT_PEM:
 		return 1;
 	}
 	return 0;

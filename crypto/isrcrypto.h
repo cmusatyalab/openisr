@@ -43,6 +43,7 @@ enum isrcry_key_type {
 
 enum isrcry_key_format {
 	ISRCRY_KEY_FORMAT_RAW		= 0,
+	ISRCRY_KEY_FORMAT_PEM		= 1,
 };
 
 enum isrcry_cipher {

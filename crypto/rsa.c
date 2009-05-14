@@ -437,10 +437,9 @@ static enum isrcry_result asn1_set_int(ASN1_TYPE obj, const char *field,
   Import an RSAPublicKey or RSAPrivateKey
   [two-prime only, only support >= 1024-bit keys, defined in PKCS #1 v2.1]
 */
-static enum isrcry_result rsa_set_key(struct isrcry_sign_ctx *sctx,
-			enum isrcry_key_type type,
-			enum isrcry_key_format format,
-			const unsigned char *in, unsigned inlen)
+static enum isrcry_result rsa_import_der_key(struct isrcry_sign_ctx *sctx,
+			enum isrcry_key_type type, const void *in,
+			unsigned inlen)
 {
 	struct isrcry_rsa_key *key;
 	ASN1_TYPE defs = ASN1_TYPE_EMPTY;
@@ -504,17 +503,17 @@ out:
     This will export either an RSAPublicKey or RSAPrivateKey
     [defined in PKCS #1 v2.1] 
 */
-static enum isrcry_result rsa_get_key(struct isrcry_sign_ctx *sctx,
-				enum isrcry_key_type type,
-				enum isrcry_key_format format,
-				unsigned char *out, unsigned *outlen)
+static enum isrcry_result rsa_export_der_key(struct isrcry_sign_ctx *sctx,
+			enum isrcry_key_type type, void **out,
+			unsigned *outlen)
 {
 	struct isrcry_rsa_key *key = NULL;
 	ASN1_TYPE defs = ASN1_TYPE_EMPTY;
 	ASN1_TYPE akey = ASN1_TYPE_EMPTY;
+	void *buf;
+	int len;
 	unsigned zero = 0;
 	enum isrcry_result ret = ISRCRY_BAD_FORMAT;
-	int err;
 
 	switch (type) {
 	case ISRCRY_KEY_PUBLIC:
@@ -561,17 +560,80 @@ static enum isrcry_result rsa_get_key(struct isrcry_sign_ctx *sctx,
 		if (asn1_set_int(akey, "publicExponent", key->e))
 			goto out;
 	}
-	err = asn1_der_coding(akey, "", out, (int *) outlen, NULL);
-	if (err == ASN1_MEM_ERROR)
-		ret = ISRCRY_BUFFER_OVERFLOW;
-	if (err)
+	len = 0;
+	if (asn1_der_coding(akey, "", NULL, &len, NULL) != ASN1_MEM_ERROR)
 		goto out;
+	buf = g_malloc(len);
+	if (asn1_der_coding(akey, "", buf, &len, NULL))
+		goto out;
+	*out = buf;
+	*outlen = len;
 	ret = ISRCRY_OK;
 
 out:
 	asn1_delete_structure(&akey);
 	asn1_delete_structure(&defs);
 	return ret;
+}
+
+static enum isrcry_result rsa_get_key(struct isrcry_sign_ctx *sctx,
+			enum isrcry_key_type type,
+			enum isrcry_key_format format, unsigned char *out,
+			unsigned *outlen)
+{
+	enum isrcry_result ret;
+	void *raw;
+	void *enc;
+	unsigned len;
+
+	ret = rsa_export_der_key(sctx, type, &raw, &len);
+	if (ret)
+		return ret;
+	switch (format) {
+	case ISRCRY_KEY_FORMAT_RAW:
+		enc = raw;
+		break;
+	case ISRCRY_KEY_FORMAT_PEM:
+		enc = isrcry_pem_encode("RSA", type, raw, len);
+		g_free(raw);
+		len = strlen(enc);
+		break;
+	default:
+		g_assert_not_reached();
+	}
+	if (len > *outlen) {
+		*outlen = len;
+		g_free(enc);
+		return ISRCRY_BUFFER_OVERFLOW;
+	}
+	memcpy(out, enc, len);
+	*outlen = len;
+	g_free(enc);
+	return ISRCRY_OK;
+}
+
+static enum isrcry_result rsa_set_key(struct isrcry_sign_ctx *sctx,
+			enum isrcry_key_type type,
+			enum isrcry_key_format format,
+			const unsigned char *in, unsigned inlen)
+{
+	void *raw;
+	unsigned len;
+	enum isrcry_result ret;
+
+	switch (format) {
+	case ISRCRY_KEY_FORMAT_RAW:
+		return rsa_import_der_key(sctx, type, in, inlen);
+	case ISRCRY_KEY_FORMAT_PEM:
+		ret = isrcry_pem_decode("RSA", type, in, inlen, &raw, &len);
+		if (ret)
+			return ret;
+		ret = rsa_import_der_key(sctx, type, raw, len);
+		g_free(raw);
+		return ret;
+	default:
+		g_assert_not_reached();
+	}
 }
 
 /** 
