@@ -23,7 +23,7 @@
 #include "isrcrypto.h"
 
 #define ALG	ISRCRY_SIGN_RSA_PSS_SHA1
-#define KEYFMT	ISRCRY_KEY_FORMAT_RAW
+#define KEYFMT	ISRCRY_KEY_FORMAT_PEM
 
 void die(char *fmt, ...)
 {
