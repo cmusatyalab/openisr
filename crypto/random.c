@@ -81,6 +81,13 @@ Coda are listed in the file CREDITS.
 #define INITIAL_SEED_LENGTH (AES_BLOCK_SIZE + RND_KEY_LEN)
 #define RANDOM_DEVICE "/dev/urandom"
 
+struct isrcry_random_ctx {
+	struct isrcry_cipher_ctx *aes;
+	uint8_t pool[16];
+	uint8_t last[16];
+	uint32_t counter;
+};
+
 /* we need to find between 32 and 48 bytes of entropy to seed our PRNG
  * depending on the value of RNG_KEY_BITS */
 static void get_initial_seed(uint8_t *ptr, size_t len)

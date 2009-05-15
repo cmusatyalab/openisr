@@ -99,13 +99,6 @@ struct isrcry_hash_ctx {
 extern const struct isrcry_hash_desc _isrcry_sha1_desc;
 extern const struct isrcry_hash_desc _isrcry_md5_desc;
 
-struct isrcry_random_ctx {
-	struct isrcry_cipher_ctx *aes;
-	uint8_t pool[16];
-	uint8_t last[16];
-	uint32_t counter;
-};
-
 struct isrcry_mac_desc {
 	void *(*alloc)(struct isrcry_mac_ctx *mctx);
 	enum isrcry_result (*init)(struct isrcry_mac_ctx *mctx,
