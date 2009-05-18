@@ -239,7 +239,8 @@ static inline void mpz_to_unsigned_bin(void *dst, mpz_t src)
 	mpz_export(dst, NULL, 1, 1, 1, 0, src);
 }
 
-static inline void mpz_from_unsigned_bin(mpz_t dst, const void *src, unsigned len)
+static inline void mpz_from_unsigned_bin(mpz_t dst, const void *src,
+			unsigned len)
 {
 	mpz_import(dst, len, 1, 1, 1, 0, src);
 }
