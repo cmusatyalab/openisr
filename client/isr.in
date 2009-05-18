@@ -3028,23 +3028,23 @@ sub usage ($) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR server (once per X session only)\n";
 	print "  ls         List info about your parcels (parcel, -lL optional)\n";
- 	print "  resume     Checkout (if necessary) and run a parcel (-cdFmrxX optional)\n";
-	print "  checkin    Sync parcel to server and check it in (-bxX optional)\n";
+ 	print "  resume     Checkout (if necessary) and run a parcel (-cdFmr optional)\n";
+	print "  checkin    Sync parcel to server and check it in (-b optional)\n";
 	print "  passwd     Change your ISR password on the server\n";
 	print "  help       Print help message\n";
 	print "Advanced commands:\n";
-	print "  stat       Display information about local state for a parcel (-xX optional)\n";
-	print "  checkout   Checkout parcel without running it (-cdrxX optional)\n";
-	print "  sync       Sync parcel to server without checking it in (-bxX optional)\n";
+	print "  stat       Display information about local state for a parcel\n";
+	print "  checkout   Checkout parcel without running it (-cdr optional)\n";
+	print "  sync       Sync parcel to server without checking it in (-b optional)\n";
 	print "  discard    Discard all local changes to parcel since last checkout or sync\n";
 	print "  clean      Remove parcel from client and release its lock (-f optional)\n";
-	print "  hoard      Fetch entire virtual disk for improved performance (-xX optional)\n";
+	print "  hoard      Fetch entire virtual disk for improved performance\n";
 	print "  deauth     Remove authentication credentials from your client\n";
 	print "Debugging and maintenance commands:\n";
-	print "  checkp     Check parcel for consistency (-cerxXY optional)\n";
-	print "  checkhoard Check hoard cache for consistency (-cxX optional)\n";
+	print "  checkp     Check parcel for consistency (-cerY optional)\n";
+	print "  checkhoard Check hoard cache for consistency (-c optional)\n";
 	print "  lshoard    List info about the hoard cache (-l optional)\n";
-	print "  rmhoard    Remove a parcel from the hoard cache (-xX optional)\n";
+	print "  rmhoard    Remove a parcel from the hoard cache\n";
 	print "  uuid       Print the UUID for a parcel\n";
 	print "  version    Print OpenISR version\n";
     }
@@ -3063,8 +3063,6 @@ sub usage ($) {
     print "  -s,--server        Server domain name (optional)\n";
     print "  -u,--user          Your ISR user name (defaults to your login name)\n";
     print "  -v,--verbose       Increment verbosity level\n";
-    print "  -x,--no-sync       Reduce safety but improve speed [most commands]\n";
-    print "  -X,--sync          Override --no-sync when it is the default [most commands]\n";
     print "  -Y,--splice        Restore invalid chunks from previous version [checkp]\n";
     print "\n";
     
