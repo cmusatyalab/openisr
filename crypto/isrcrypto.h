@@ -73,11 +73,16 @@ enum isrcry_sign {
 	ISRCRY_SIGN_RSA_PSS_SHA1	= 0,
 };
 
+enum isrcry_dh {
+	ISRCRY_DH_IKE_2048		= 0,
+};
+
 struct isrcry_cipher_ctx;
 struct isrcry_hash_ctx;
 struct isrcry_random_ctx;
 struct isrcry_mac_ctx;
 struct isrcry_sign_ctx;
+struct isrcry_dh_ctx;
 
 struct isrcry_cipher_ctx *isrcry_cipher_alloc(enum isrcry_cipher cipher,
 			enum isrcry_mode mode);
@@ -136,6 +141,16 @@ enum isrcry_result isrcry_sign_verify(struct isrcry_sign_ctx *sctx,
 /* Do not use this function; it is only here for the test suite. */
 enum isrcry_result isrcry_sign_set_salt(struct isrcry_sign_ctx *sctx,
 			const void *salt, unsigned saltlen);
+
+struct isrcry_dh_ctx *isrcry_dh_alloc(enum isrcry_dh type,
+			struct isrcry_random_ctx *rctx);
+void isrcry_dh_free(struct isrcry_dh_ctx *dctx);
+enum isrcry_result isrcry_dh_init(struct isrcry_dh_ctx *dctx,
+			unsigned entropy_bytes);
+enum isrcry_result isrcry_dh_get_public(struct isrcry_dh_ctx *dctx, void *out);
+enum isrcry_result isrcry_dh_run(struct isrcry_dh_ctx *dctx,
+			const void *peerkey, void *out);
+unsigned isrcry_dh_key_len(enum isrcry_dh type);
 
 const char *isrcry_strerror(enum isrcry_result result);
 

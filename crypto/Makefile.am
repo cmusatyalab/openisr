@@ -7,11 +7,11 @@ CFLAGS=@CFLAGS@ -O3
 AM_LDFLAGS = -lgmp $(glib_LIBS) $(libtasn1_LIBS)
 
 pkglib_LTLIBRARIES = libisrcrypto.la
-libisrcrypto_la_SOURCES = aes.c blowfish.c cbc.c cipher.c ecb.c hash.c hmac.c
-libisrcrypto_la_SOURCES += mac.c md5.c md5-compress.c pad.c random.c rsa.c
-libisrcrypto_la_SOURCES += sha1.c sign.c util.c
+libisrcrypto_la_SOURCES = aes.c blowfish.c cbc.c cipher.c dh.c ecb.c hash.c
+libisrcrypto_la_SOURCES += hmac.c mac.c md5.c md5-compress.c pad.c random.c
+libisrcrypto_la_SOURCES += rsa.c sha1.c sign.c util.c
 libisrcrypto_la_SOURCES += isrcrypto.h internal.h
-libisrcrypto_la_SOURCES += aes_tab.h blowfish_tab.h
+libisrcrypto_la_SOURCES += aes_tab.h blowfish_tab.h dh_tab.h
 nodist_libisrcrypto_la_SOURCES = rsa-key-tab.c
 CLEANFILES = rsa-key-tab.c
 EXTRA_DIST = rsa-key.asn1
