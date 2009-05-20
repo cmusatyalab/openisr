@@ -86,6 +86,9 @@ my $ret;
 if (-x "/usr/sbin/update-rc.d") {
 	status "Enabling initscript (Debian method)...";
 	$ret = system("/usr/sbin/update-rc.d openisr start 20 S .");
+} elsif (-x "/sbin/chkconfig") {
+	status "Enabling initscript (Fedora method)...";
+	$ret = system("/sbin/chkconfig --add " . INITSCRIPT);
 } elsif (-x "/usr/lib/lsb/install_initd") {
 	status "Enabling initscript (LSB method)...";
 	$ret = system("/usr/lib/lsb/install_initd " . INITSCRIPT);
