@@ -864,7 +864,7 @@ sub run () {
 	if ($pk_pid == 0) {
 	    errexit("Parcelkeeper died unexpectedly");
 	}
-	last if -e $devnode;
+	last if -r $devnode && -w _;
 	# Sleep 100 ms
 	select(undef, undef, undef, 0.1);
 	# Give up after 15 s
