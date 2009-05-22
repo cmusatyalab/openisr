@@ -1,0 +1,64 @@
+#!/bin/sh
+#
+# set_device_owner - chown a Nexus block device newly created by udev
+#
+# Copyright (C) 2009 Carnegie Mellon University
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of version 2 of the GNU General Public License as published
+# by the Free Software Foundation.  A copy of the GNU General Public License
+# should have been distributed along with this program in the file
+# LICENSE.GPL.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+# or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+# for more details.
+#
+
+#
+# We used to have
+#
+#	SUBSYSTEM=="block", KERNEL=="openisr[a-z]", \
+#			PROGRAM="/bin/cat /sys/class/openisr/%k/owner", \
+#			OWNER="%c", MODE="0600"
+#	SUBSYSTEM=="block", KERNEL=="openisr[a-z][1-9]*", \
+#			PROGRAM="/bin/cat /sys/class/openisr/%P/owner", \
+#			OWNER="%c", MODE="0600"
+#
+# but udev versions 137-142 do not expand string substitutions in OWNER
+# and GROUP fields.  As a result, on Fedora 11 and Ubuntu 9.04, we can't
+# dynamically set block device ownership using just udev.  So instead we have
+# PROGRAM run this script, which waits for the device node to be created and
+# then overrides its ownership.
+#
+
+TIMEOUT=15
+
+run() {
+	if [ -x /sbin/udevadm ] ; then
+		/sbin/udevadm settle --timeout=$TIMEOUT || exit 0
+	else
+		/sbin/udevsettle --timeout=$TIMEOUT || exit 0
+	fi
+
+	basename=`basename "$DEVNAME" | tr -d 0-9`
+	attrfile="/sys/class/openisr/$basename/owner"
+	[ -b "$DEVNAME" ] || exit 0
+	[ -f "$attrfile" ] || exit 0
+	uid=`cat "$attrfile"`
+	chown "$uid" "$DEVNAME"
+}
+
+if [ -z "$DEVNAME" ] ; then
+	echo "This script must be run by udev." >&2
+	exit 1
+fi
+
+# If the udev log priority is set to "debug", stdout and stderr are pipes to
+# udevd, which will block until there are no writers, causing "udevadm settle"
+# to deadlock.  Close the pipes.
+exec > /dev/null 2>&1
+
+run &
+exit 0

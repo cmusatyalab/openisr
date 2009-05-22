@@ -8,6 +8,7 @@ GEN = openisr-config openisr-config.8 post
 if WANT_CLIENT
 CLIENTPROGS = dirtometer readstats nexus_debug
 dist_pkgdata_DATA = modbuild.pm
+dist_pkgdata_SCRIPTS = set_device_owner
 sbin_SCRIPTS = openisr-config
 man_MANS = openisr-config.8
 noinst_SCRIPTS = post

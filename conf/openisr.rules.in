@@ -4,14 +4,9 @@
 SUBSYSTEM=="misc", KERNEL=="openisrctl", \
 		GROUP="!!ISRGROUP!!", MODE="0660"
 
-# There's no good way to read a sysfs attribute from a variably-named
-# directory other than the one associated with the current device
-SUBSYSTEM=="block", KERNEL=="openisr[a-z]", \
-		PROGRAM="/bin/cat /sys/class/openisr/%k/owner", \
-		OWNER="%c", MODE="0600"
-SUBSYSTEM=="block", KERNEL=="openisr[a-z][1-9]*", \
-		PROGRAM="/bin/cat /sys/class/openisr/%P/owner", \
-		OWNER="%c", MODE="0600"
+# Set block device owner and permissions
+ACTION!="remove", SUBSYSTEM=="block", KERNEL=="openisr*", \
+		RUN="!!SHAREDIR!!/set_device_owner", MODE="0600"
 
 # Add persistent symlinks
 SUBSYSTEM=="block", KERNEL=="openisr[a-z]", \
