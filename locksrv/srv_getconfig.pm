@@ -26,7 +26,6 @@ use Sys::Hostname;
 # Begin main routine
 ####################
 my $parcelpath;
-my $verbose;
 my $parceldir;
 my $parcelname;
 my $username;
@@ -36,7 +35,7 @@ my $configfile;
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hVp:');
+getopts('hp:');
 
 if ($opt_h) {
     usage();
@@ -46,7 +45,6 @@ if (!$opt_p) {
     usage("Missing parcel name (-p)");
 }
 $parcelname = $opt_p;
-$verbose = $opt_V;
 use strict 'vars';
 
 #
@@ -90,7 +88,6 @@ sub usage
     print "Options:\n";
     print "  -h    Print this message\n";
     print "  -p    Parcel name\n";    
-    print "  -V    Be verbose\n";
     print "\n";
     exit 0;
 }

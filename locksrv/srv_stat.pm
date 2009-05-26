@@ -32,7 +32,6 @@ use sigtrap qw(die normal-signals);
 # Variables
 #
 my $filepath;
-my $verbose;
 my $item;
 my $metadata;
 my $blobtool = LIBDIR . "/blobtool";
@@ -42,7 +41,7 @@ my %config = get_config();
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hVf:');
+getopts('hf:');
 
 if ($opt_h) {
     usage();
@@ -51,7 +50,6 @@ if (!$opt_f) {
     usage("Missing file path (-f)");
 }
 $filepath = "$config{content_root}/$opt_f";
-$verbose = $opt_V;
 use strict 'vars';
 
 #
@@ -108,7 +106,6 @@ sub usage {
     print "Options:\n";
     print "  -h        Print this message\n";
     print "  -f <path> File path (relative to $config{content_root})\n";
-    print "  -V        Be verbose\n";
     print "\n";
     exit 0;
 }
