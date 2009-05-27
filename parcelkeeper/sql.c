@@ -25,7 +25,6 @@
 #include <sqlite3.h>
 #include "defs.h"
 
-#define CACHE_BUCKETS 199
 #define SLOW_THRESHOLD_MS 200
 #define ERRBUFSZ 256
 #define MAX_WAIT_USEC 10000
@@ -33,15 +32,16 @@
 
 struct db {
 	sqlite3 *conn;
+	GHashTable *prepared;
 };
 
 struct query {
+	struct db *db;
 	sqlite3_stmt *stmt;
 	const char *sql;
 	struct timeval start;
 };
 
-static struct query *prepared[CACHE_BUCKETS];
 static __thread int result;  /* set by query() and query_next() */
 static __thread char errmsg[ERRBUFSZ];
 
@@ -54,22 +54,13 @@ static void sqlerr(const char *fmt, ...)
 	va_end(ap);
 }
 
-static unsigned get_bucket(const char *sql)
-{
-	/* DJB string hash algorithm */
-	unsigned hash = 5381;
-
-	while (*sql)
-		hash = ((hash << 5) + hash) ^ *sql++;
-	return hash % CACHE_BUCKETS;
-}
-
 static int alloc_query(struct query **new_qry, struct db *db, const char *sql)
 {
 	struct query *qry;
 	int ret;
 
 	qry=g_slice_new(struct query);
+	qry->db=db;
 	ret=sqlite3_prepare_v2(db->conn, sql, -1, &qry->stmt, NULL);
 	if (ret) {
 		sqlerr("%s", sqlite3_errmsg(db->conn));
@@ -81,24 +72,23 @@ static int alloc_query(struct query **new_qry, struct db *db, const char *sql)
 	return ret;
 }
 
-static void destroy_query(struct query *qry)
+static void destroy_query(void *data)
 {
+	struct query *qry=data;
+
 	sqlite3_finalize(qry->stmt);
 	g_slice_free(struct query, qry);
 }
 
 static int get_query(struct query **new_qry, struct db *db, const char *sql)
 {
-	unsigned bucket=get_bucket(sql);
+	struct query *qry;
 	int ret;
 
-	/* XXX when we go to multi-threaded, this will need locking */
-	/* XXX also, might need a better hash table */
-	if (prepared[bucket] && db->conn ==
-				sqlite3_db_handle(prepared[bucket]->stmt) &&
-				!strcmp(sql, prepared[bucket]->sql)) {
-		*new_qry=prepared[bucket];
-		prepared[bucket]=NULL;
+	qry=g_hash_table_lookup(db->prepared, sql);
+	if (qry != NULL) {
+		g_hash_table_steal(db->prepared, sql);
+		*new_qry=qry;
 		ret=SQLITE_OK;
 		state.sql_hits++;
 	} else {
@@ -261,7 +251,6 @@ void query_free(struct query *qry)
 	struct timeval cur;
 	struct timeval diff;
 	unsigned ms;
-	unsigned bucket;
 
 	if (qry == NULL)
 		return;
@@ -278,13 +267,7 @@ void query_free(struct query *qry)
 
 	sqlite3_reset(qry->stmt);
 	sqlite3_clear_bindings(qry->stmt);
-	bucket=get_bucket(qry->sql);
-	/* XXX locking */
-	if (prepared[bucket]) {
-		destroy_query(prepared[bucket]);
-		state.sql_replacements++;
-	}
-	prepared[bucket]=qry;
+	g_hash_table_replace(qry->db->prepared, (void *)qry->sql, qry);
 }
 
 void sql_init(void)
@@ -298,9 +281,8 @@ void sql_init(void)
 
 void sql_shutdown(void)
 {
-	pk_log(LOG_STATS, "Prepared statement cache: %u hits, %u misses, "
-	    			"%u replacements", state.sql_hits,
-				state.sql_misses, state.sql_replacements);
+	pk_log(LOG_STATS, "Prepared statement cache: %u hits, %u misses",
+				state.sql_hits, state.sql_misses);
 	pk_log(LOG_STATS, "Busy handler called for %u queries; %u timeouts",
 				state.sql_busy_queries,
 				state.sql_busy_timeouts);
@@ -359,6 +341,8 @@ pk_err_t sql_conn_open(const char *path, struct db **handle)
 
 	*handle = NULL;
 	db = g_slice_new0(struct db);
+	db->prepared = g_hash_table_new_full(g_str_hash, g_str_equal, NULL,
+				destroy_query);
 	if (sqlite3_open(path, &db->conn)) {
 		pk_log(LOG_ERROR, "Couldn't open database %s: %s",
 					path, sqlite3_errmsg(db->conn));
@@ -392,6 +376,7 @@ again:
 	return PK_SUCCESS;
 
 bad:
+	g_hash_table_destroy(db->prepared);
 	sqlite3_close(db->conn);
 	g_slice_free(struct db, db);
 	return PK_CALLFAIL;
@@ -399,19 +384,12 @@ bad:
 
 void sql_conn_close(struct db *db)
 {
-	int i;
-
-	/* XXX locking */
-	for (i=0; i<CACHE_BUCKETS; i++) {
-		if (prepared[i]) {
-			destroy_query(prepared[i]);
-			prepared[i]=NULL;
-		}
-	}
-	if (db != NULL)
-		if (sqlite3_close(db->conn))
-			pk_log(LOG_ERROR, "Couldn't close database: %s",
-						sqlite3_errmsg(db->conn));
+	if (db == NULL)
+		return;
+	g_hash_table_destroy(db->prepared);
+	if (sqlite3_close(db->conn))
+		pk_log(LOG_ERROR, "Couldn't close database: %s",
+					sqlite3_errmsg(db->conn));
 	g_slice_free(struct db, db);
 }
 
