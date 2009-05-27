@@ -31,6 +31,10 @@
 #define MAX_WAIT_USEC 10000
 #define PROGRESS_HANDLER_INTERVAL 100000
 
+struct db {
+	sqlite3 *conn;
+};
+
 struct query {
 	sqlite3_stmt *stmt;
 	const char *sql;
@@ -60,15 +64,15 @@ static unsigned get_bucket(const char *sql)
 	return hash % CACHE_BUCKETS;
 }
 
-static int alloc_query(struct query **new_qry, sqlite3 *db, const char *sql)
+static int alloc_query(struct query **new_qry, struct db *db, const char *sql)
 {
 	struct query *qry;
 	int ret;
 
 	qry=g_slice_new(struct query);
-	ret=sqlite3_prepare_v2(db, sql, -1, &qry->stmt, NULL);
+	ret=sqlite3_prepare_v2(db->conn, sql, -1, &qry->stmt, NULL);
 	if (ret) {
-		sqlerr("%s", sqlite3_errmsg(db));
+		sqlerr("%s", sqlite3_errmsg(db->conn));
 		g_slice_free(struct query, qry);
 	} else {
 		qry->sql=sqlite3_sql(qry->stmt);
@@ -83,15 +87,16 @@ static void destroy_query(struct query *qry)
 	g_slice_free(struct query, qry);
 }
 
-static int get_query(struct query **new_qry, sqlite3 *db, const char *sql)
+static int get_query(struct query **new_qry, struct db *db, const char *sql)
 {
 	unsigned bucket=get_bucket(sql);
 	int ret;
 
 	/* XXX when we go to multi-threaded, this will need locking */
 	/* XXX also, might need a better hash table */
-	if (prepared[bucket] && db == sqlite3_db_handle(prepared[bucket]->stmt)
-				&& !strcmp(sql, prepared[bucket]->sql)) {
+	if (prepared[bucket] && db->conn ==
+				sqlite3_db_handle(prepared[bucket]->stmt) &&
+				!strcmp(sql, prepared[bucket]->sql)) {
 		*new_qry=prepared[bucket];
 		prepared[bucket]=NULL;
 		ret=SQLITE_OK;
@@ -106,7 +111,7 @@ static int get_query(struct query **new_qry, sqlite3 *db, const char *sql)
 	return ret;
 }
 
-pk_err_t query(struct query **new_qry, sqlite3 *db, const char *query,
+pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 			const char *fmt, ...)
 {
 	struct query *qry;
@@ -164,7 +169,7 @@ pk_err_t query(struct query **new_qry, sqlite3 *db, const char *query,
 	if (result == SQLITE_OK)
 		query_next(qry);
 	else if (!found_unknown)
-		sqlerr("%s", sqlite3_errmsg(db));
+		sqlerr("%s", sqlite3_errmsg(db->conn));
 	if (result != SQLITE_ROW || new_qry == NULL)
 		query_free(qry);
 	else
@@ -328,7 +333,7 @@ static int progress_handler(void *db)
 	return pending_signal();
 }
 
-static pk_err_t sql_setup_db(sqlite3 *db, const char *name)
+static pk_err_t sql_setup_db(struct db *db, const char *name)
 {
 	gchar *str;
 
@@ -348,51 +353,51 @@ again:
 	return PK_SUCCESS;
 }
 
-pk_err_t sql_conn_open(const char *path, sqlite3 **handle)
+pk_err_t sql_conn_open(const char *path, struct db **handle)
 {
-	sqlite3 *db;
-	pk_err_t ret;
+	struct db *db;
 
 	*handle = NULL;
-	if (sqlite3_open(path, &db)) {
+	db = g_slice_new0(struct db);
+	if (sqlite3_open(path, &db->conn)) {
 		pk_log(LOG_ERROR, "Couldn't open database %s: %s",
-					path, sqlite3_errmsg(db));
+					path, sqlite3_errmsg(db->conn));
+		g_slice_free(struct db, db);
 		return PK_IOERR;
 	}
-	if (sqlite3_extended_result_codes(db, 1)) {
+	if (sqlite3_extended_result_codes(db->conn, 1)) {
 		pk_log(LOG_ERROR, "Couldn't enable extended result codes "
 					"for database %s", path);
-		sqlite3_close(db);
-		return PK_CALLFAIL;
+		goto bad;
 	}
-	if (sqlite3_busy_handler(db, busy_handler, db)) {
+	if (sqlite3_busy_handler(db->conn, busy_handler, db)) {
 		pk_log(LOG_ERROR, "Couldn't set busy handler for database %s",
 					path);
-		sqlite3_close(db);
-		return PK_CALLFAIL;
+		goto bad;
 	}
 	/* Every so often during long-running queries, check to see if a
 	   signal is pending */
-	sqlite3_progress_handler(db, PROGRESS_HANDLER_INTERVAL,
+	sqlite3_progress_handler(db->conn, PROGRESS_HANDLER_INTERVAL,
 				progress_handler, db);
 again:
 	if (query(NULL, db, "PRAGMA count_changes = TRUE", NULL)) {
 		if (query_retry())
 			goto again;
 		pk_log_sqlerr("Couldn't enable count_changes for %s", path);
-		sqlite3_close(db);
-		return PK_CALLFAIL;
+		goto bad;
 	}
-	ret = sql_setup_db(db, "main");
-	if (ret) {
-		sqlite3_close(db);
-		return ret;
-	}
+	if (sql_setup_db(db, "main"))
+		goto bad;
 	*handle = db;
 	return PK_SUCCESS;
+
+bad:
+	sqlite3_close(db->conn);
+	g_slice_free(struct db, db);
+	return PK_CALLFAIL;
 }
 
-void sql_conn_close(sqlite3 *db)
+void sql_conn_close(struct db *db)
 {
 	int i;
 
@@ -404,9 +409,10 @@ void sql_conn_close(sqlite3 *db)
 		}
 	}
 	if (db != NULL)
-		if (sqlite3_close(db))
+		if (sqlite3_close(db->conn))
 			pk_log(LOG_ERROR, "Couldn't close database: %s",
-						sqlite3_errmsg(db));
+						sqlite3_errmsg(db->conn));
+	g_slice_free(struct db, db);
 }
 
 /* This should not be called inside a transaction, since the whole point of
@@ -429,7 +435,7 @@ int query_retry(void)
 	return 0;
 }
 
-pk_err_t attach(sqlite3 *db, const char *handle, const char *file)
+pk_err_t attach(struct db *db, const char *handle, const char *file)
 {
 	pk_err_t ret;
 
@@ -453,7 +459,7 @@ again_detach:
 	return PK_SUCCESS;
 }
 
-pk_err_t _begin(sqlite3 *db, const char *caller, int immediate)
+pk_err_t _begin(struct db *db, const char *caller, int immediate)
 {
 again:
 	if (query(NULL, db, immediate ? "BEGIN IMMEDIATE" : "BEGIN", NULL)) {
@@ -466,7 +472,7 @@ again:
 	return PK_SUCCESS;
 }
 
-pk_err_t _commit(sqlite3 *db, const char *caller)
+pk_err_t _commit(struct db *db, const char *caller)
 {
 again:
 	if (query(NULL, db, "COMMIT", NULL)) {
@@ -479,7 +485,7 @@ again:
 	return PK_SUCCESS;
 }
 
-pk_err_t _rollback(sqlite3 *db, const char *caller)
+pk_err_t _rollback(struct db *db, const char *caller)
 {
 	int saved=result;
 	pk_err_t ret=PK_SUCCESS;
@@ -489,7 +495,8 @@ again:
 	   Always try to roll back, just to be safe, but don't report an error
 	   if no transaction is active afterward, even if the rollback claimed
 	   to fail. */
-	if (query(NULL, db, "ROLLBACK", NULL) && !sqlite3_get_autocommit(db)) {
+	if (query(NULL, db, "ROLLBACK", NULL) &&
+				!sqlite3_get_autocommit(db->conn)) {
 		if (query_busy())
 			goto again;
 		pk_log_sqlerr("Couldn't roll back transaction on behalf of "
@@ -500,7 +507,7 @@ again:
 	return ret;
 }
 
-pk_err_t vacuum(sqlite3 *db)
+pk_err_t vacuum(struct db *db)
 {
 	pk_err_t ret;
 
@@ -539,7 +546,7 @@ bad_trans:
 }
 
 /* This validates both the primary and attached databases */
-pk_err_t validate_db(sqlite3 *db)
+pk_err_t validate_db(struct db *db)
 {
 	struct query *qry;
 	const char *str;
@@ -563,8 +570,8 @@ again:
 	return PK_SUCCESS;
 }
 
-pk_err_t cleanup_action(sqlite3 *db, const char *sql, enum pk_log_type logtype,
-			const char *desc)
+pk_err_t cleanup_action(struct db *db, const char *sql,
+			enum pk_log_type logtype, const char *desc)
 {
 	struct query *qry;
 	int changes;
