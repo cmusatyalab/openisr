@@ -428,6 +428,7 @@ bad:
 int check_hoard(void)
 {
 	struct query *qry;
+	struct query *qry2;
 	const char *uuid;
 	int offset;
 	int next_offset;
@@ -435,6 +436,7 @@ int check_hoard(void)
 	unsigned taglen;
 	int crypto;
 	int count;
+	int curcount;
 	int curtime;
 
 	pk_log(LOG_INFO, "Validating hoard cache");
@@ -451,7 +453,7 @@ again:
 				query_next(qry)) {
 		query_row(qry, "s", &uuid);
 		if (canonicalize_uuid(uuid, NULL) == PK_INVALID) {
-			if (query(NULL, state.db, "DELETE FROM hoard.parcels "
+			if (query(&qry2, state.db, "DELETE FROM hoard.parcels "
 						"WHERE uuid == ?", "s",
 						uuid)) {
 				pk_log_sqlerr("Couldn't remove invalid "
@@ -460,7 +462,9 @@ again:
 				query_free(qry);
 				goto bad;
 			}
-			count += sqlite3_changes(state.db);
+			query_row(qry2, "d", &curcount);
+			query_free(qry2);
+			count += curcount;
 		}
 	}
 	query_free(qry);
@@ -562,13 +566,14 @@ again:
 		goto bad;
 
 	curtime=time(NULL);
-	if (query(NULL, state.db, "UPDATE hoard.chunks SET last_access = ? "
+	if (query(&qry, state.db, "UPDATE hoard.chunks SET last_access = ? "
 				"WHERE last_access > ?", "dd", curtime,
 				curtime + 10)) {
 		pk_log_sqlerr("Couldn't locate chunks with invalid timestamps");
 		goto bad;
 	}
-	count=sqlite3_changes(state.db);
+	query_row(qry, "d", &count);
+	query_free(qry);
 	if (count)
 		pk_log(LOG_WARNING, "Repaired %d chunks with timestamps in "
 					"the future", count);

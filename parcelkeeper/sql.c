@@ -375,6 +375,14 @@ pk_err_t sql_conn_open(const char *path, sqlite3 **handle)
 	   signal is pending */
 	sqlite3_progress_handler(db, PROGRESS_HANDLER_INTERVAL,
 				progress_handler, db);
+again:
+	if (query(NULL, db, "PRAGMA count_changes = TRUE", NULL)) {
+		if (query_retry())
+			goto again;
+		pk_log_sqlerr("Couldn't enable count_changes for %s", path);
+		sqlite3_close(db);
+		return PK_CALLFAIL;
+	}
 	ret = sql_setup_db(db, "main");
 	if (ret) {
 		sqlite3_close(db);
@@ -558,13 +566,15 @@ again:
 pk_err_t cleanup_action(sqlite3 *db, const char *sql, enum pk_log_type logtype,
 			const char *desc)
 {
+	struct query *qry;
 	int changes;
 
-	if (query(NULL, db, sql, NULL)) {
+	if (query(&qry, db, sql, NULL)) {
 		pk_log_sqlerr("Couldn't clean %s", desc);
 		return PK_IOERR;
 	}
-	changes=sqlite3_changes(db);
+	query_row(qry, "d", &changes);
+	query_free(qry);
 	if (changes > 0)
 		pk_log(logtype, "Cleaned %d %s", changes, desc);
 	return PK_SUCCESS;

@@ -166,14 +166,16 @@ static pk_err_t expand_slot_cache(void)
 	int allowed;
 
 	/* First, try to use existing unallocated slots */
-	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO temp.slots "
+	if (query(&qry, state.hoard, "INSERT OR IGNORE INTO temp.slots "
 				"(offset) SELECT offset FROM chunks "
 				"WHERE referenced == 0 AND tag ISNULL "
 				"LIMIT ?", "d", needed)) {
 		pk_log_sqlerr("Error reclaiming hoard cache slots");
 		return PK_IOERR;
 	}
-	needed -= sqlite3_changes(state.hoard);
+	query_row(qry, "d", &count);
+	query_free(qry);
+	needed -= count;
 
 	/* Now try to reclaim existing, unreferenced chunks.  See how many
 	   we're permitted to reclaim. */
@@ -194,7 +196,7 @@ static pk_err_t expand_slot_cache(void)
 
 	if (allowed > 0) {
 		/* Try to reclaim LRU unreferenced chunks */
-		if (query(NULL, state.hoard, "INSERT OR IGNORE INTO "
+		if (query(&qry, state.hoard, "INSERT OR IGNORE INTO "
 					"temp.slots (offset) "
 					"SELECT offset FROM chunks "
 					"WHERE referenced == 0 AND tag NOTNULL "
@@ -203,7 +205,9 @@ static pk_err_t expand_slot_cache(void)
 			pk_log_sqlerr("Error reclaiming hoard cache slots");
 			return PK_IOERR;
 		}
-		needed -= sqlite3_changes(state.hoard);
+		query_row(qry, "d", &count);
+		query_free(qry);
+		needed -= count;
 	}
 
 	/* Now expand the hoard cache as necessary to meet our quota */
@@ -281,7 +285,7 @@ static pk_err_t _flush_slot_cache(void)
 				ret=PK_IOERR;
 				goto bad;
 			}
-		} else if (!query_ok()) {
+		} else if (!query_has_row()) {
 			pk_log_sqlerr("Couldn't update chunks table for "
 						"offset %d", offset);
 			ret=PK_IOERR;
