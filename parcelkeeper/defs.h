@@ -260,7 +260,8 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 /* sql.c */
 void sql_init(void);
 void sql_shutdown(void);
-pk_err_t sql_setup_conn(sqlite3 *db);
+pk_err_t sql_conn_open(const char *path, sqlite3 **handle);
+void sql_conn_close(sqlite3 *db);
 pk_err_t query(struct query **new_qry, sqlite3 *db, const char *query,
 			const char *fmt, ...);
 pk_err_t query_next(struct query *qry);
@@ -269,7 +270,6 @@ const char *query_errmsg(void);
 int query_retry(void);
 void query_row(struct query *qry, const char *fmt, ...);
 void query_free(struct query *qry);
-void query_flush(void);
 pk_err_t attach(sqlite3 *db, const char *handle, const char *file);
 pk_err_t _begin(sqlite3 *db, const char *caller, int immediate);
 #define begin(db) _begin(db, __func__, 0)

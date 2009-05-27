@@ -346,10 +346,7 @@ void cache_shutdown(void)
 	}
 	if (state.cache_fd)
 		close(state.cache_fd);
-	query_flush();
-	if (state.db && sqlite3_close(state.db))
-		pk_log(LOG_ERROR, "Couldn't close keyring: %s",
-					sqlite3_errmsg(state.db));
+	sql_conn_close(state.db);
 }
 
 static pk_err_t open_cachedir(long page_size)
@@ -358,13 +355,7 @@ static pk_err_t open_cachedir(long page_size)
 	gboolean have_image;
 	gboolean have_index;
 
-	if (sqlite3_open(config.keyring, &state.db)) {
-		pk_log(LOG_ERROR, "Couldn't open keyring %s: %s",
-					config.keyring,
-					sqlite3_errmsg(state.db));
-		return PK_IOERR;
-	}
-	ret=sql_setup_conn(state.db);
+	ret=sql_conn_open(config.keyring, &state.db);
 	if (ret)
 		return ret;
 
@@ -424,21 +415,12 @@ pk_err_t cache_init(void)
 		return PK_CALLFAIL;
 	}
 
-	if (config.flags & WANT_CACHE) {
+	if (config.flags & WANT_CACHE)
 		ret=open_cachedir(page_size);
-		if (ret)
-			goto bad;
-	} else {
-		if (sqlite3_open(":memory:", &state.db)) {
-			pk_log(LOG_ERROR, "Couldn't open database handle: %s",
-						sqlite3_errmsg(state.db));
-			ret=PK_IOERR;
-			goto bad;
-		}
-		ret=sql_setup_conn(state.db);
-		if (ret)
-			goto bad;
-	}
+	else
+		ret=sql_conn_open(":memory:", &state.db);
+	if (ret)
+		goto bad;
 
 	if (config.flags & WANT_PREV) {
 		ret=attach(state.db, "prev", config.prev_keyring);

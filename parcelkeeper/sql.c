@@ -282,19 +282,6 @@ void query_free(struct query *qry)
 	prepared[bucket]=qry;
 }
 
-void query_flush(void)
-{
-	int i;
-
-	/* XXX locking */
-	for (i=0; i<CACHE_BUCKETS; i++) {
-		if (prepared[i]) {
-			destroy_query(prepared[i]);
-			prepared[i]=NULL;
-		}
-	}
-}
-
 void sql_init(void)
 {
 	pk_log(LOG_INFO, "Using SQLite %s", sqlite3_version);
@@ -361,27 +348,57 @@ again:
 	return PK_SUCCESS;
 }
 
-pk_err_t sql_setup_conn(sqlite3 *db)
+pk_err_t sql_conn_open(const char *path, sqlite3 **handle)
 {
+	sqlite3 *db;
 	pk_err_t ret;
 
+	*handle = NULL;
+	if (sqlite3_open(path, &db)) {
+		pk_log(LOG_ERROR, "Couldn't open database %s: %s",
+					path, sqlite3_errmsg(db));
+		return PK_IOERR;
+	}
 	if (sqlite3_extended_result_codes(db, 1)) {
 		pk_log(LOG_ERROR, "Couldn't enable extended result codes "
-					"for database");
+					"for database %s", path);
+		sqlite3_close(db);
 		return PK_CALLFAIL;
 	}
 	if (sqlite3_busy_handler(db, busy_handler, db)) {
-		pk_log(LOG_ERROR, "Couldn't set busy handler for database");
+		pk_log(LOG_ERROR, "Couldn't set busy handler for database %s",
+					path);
+		sqlite3_close(db);
 		return PK_CALLFAIL;
 	}
 	/* Every so often during long-running queries, check to see if a
 	   signal is pending */
 	sqlite3_progress_handler(db, PROGRESS_HANDLER_INTERVAL,
 				progress_handler, db);
-	ret=sql_setup_db(db, "main");
-	if (ret)
+	ret = sql_setup_db(db, "main");
+	if (ret) {
+		sqlite3_close(db);
 		return ret;
+	}
+	*handle = db;
 	return PK_SUCCESS;
+}
+
+void sql_conn_close(sqlite3 *db)
+{
+	int i;
+
+	/* XXX locking */
+	for (i=0; i<CACHE_BUCKETS; i++) {
+		if (prepared[i]) {
+			destroy_query(prepared[i]);
+			prepared[i]=NULL;
+		}
+	}
+	if (db != NULL)
+		if (sqlite3_close(db))
+			pk_log(LOG_ERROR, "Couldn't close database: %s",
+						sqlite3_errmsg(db));
 }
 
 /* This should not be called inside a transaction, since the whole point of

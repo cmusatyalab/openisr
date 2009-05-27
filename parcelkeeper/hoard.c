@@ -788,14 +788,6 @@ bad:
 	return ret;
 }
 
-static void close_hoard_index(void)
-{
-	query_flush();
-	if (sqlite3_close(state.hoard))
-		pk_log(LOG_ERROR, "Couldn't close hoard cache index: %s",
-					sqlite3_errmsg(state.hoard));
-}
-
 static pk_err_t open_hoard_index(void)
 {
 	struct query *qry;
@@ -803,15 +795,9 @@ static pk_err_t open_hoard_index(void)
 	int ver;
 
 	/* First open the dedicated hoard cache DB connection */
-	if (sqlite3_open(config.hoard_index, &state.hoard)) {
-		pk_log(LOG_ERROR, "Couldn't open hoard cache index %s: %s",
-					config.hoard_index,
-					sqlite3_errmsg(state.hoard));
-		return PK_IOERR;
-	}
-	ret=sql_setup_conn(state.hoard);
+	ret=sql_conn_open(config.hoard_index, &state.hoard);
 	if (ret)
-		goto bad;
+		return ret;
 
 again:
 	ret=begin(state.hoard);
@@ -855,7 +841,7 @@ bad_rollback:
 	if (query_retry())
 		goto again;
 bad:
-	close_hoard_index();
+	sql_conn_close(state.hoard);
 	return ret;
 }
 
@@ -981,7 +967,7 @@ pk_err_t hoard_init(void)
 	return PK_SUCCESS;
 
 bad_close:
-	close_hoard_index();
+	sql_conn_close(state.hoard);
 bad:
 	close(state.hoard_fd);
 	return ret;
@@ -991,6 +977,6 @@ void hoard_shutdown(void)
 {
 	flush_slot_cache();
 	hoard_try_cleanup();
-	close_hoard_index();
+	sql_conn_close(state.hoard);
 	close(state.hoard_fd);
 }
