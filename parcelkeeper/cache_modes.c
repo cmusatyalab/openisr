@@ -108,12 +108,13 @@ again:
 				"LEFT JOIN cache.chunks ON "
 				"main.keys.chunk == cache.chunks.chunk WHERE "
 				"main.keys.tag != prev.keys.tag", NULL)) {
-		pk_log_sqlerr("Couldn't enumerate modified chunks");
+		pk_log_sqlerr(state.db, "Couldn't enumerate modified chunks");
 		goto bad;
 	}
 	query(&qry, state.db, "SELECT sum(length) FROM temp.to_upload", NULL);
 	if (!query_has_row()) {
-		pk_log_sqlerr("Couldn't find size of modified chunks");
+		pk_log_sqlerr(state.db, "Couldn't find size of modified "
+					"chunks");
 		goto bad;
 	}
 	query_row(qry, "D", &total_modified_bytes);
@@ -185,7 +186,7 @@ again:
 		modified_bytes += length;
 	}
 	if (!query_ok())
-		pk_log_sqlerr("Database query failed");
+		pk_log_sqlerr(state.db, "Database query failed");
 	else
 		ret=0;
 out:
@@ -266,7 +267,7 @@ again:
 	if (query_retry())
 		goto again;
 	if (!query_ok()) {
-		pk_log_sqlerr("Keyring query failed");
+		pk_log_sqlerr(state.db, "Keyring query failed");
 		ret=PK_IOERR;
 	}
 	return ret;
@@ -280,14 +281,14 @@ static pk_err_t revert_chunk(int chunk)
 				"(chunk, tag, key, compression) "
 				"SELECT chunk, tag, key, compression FROM "
 				"prev.keys WHERE chunk == ?", "d", chunk)) {
-		pk_log_sqlerr("Couldn't revert keyring entry for chunk %d",
-					chunk);
+		pk_log_sqlerr(state.db, "Couldn't revert keyring entry for "
+					"chunk %d", chunk);
 		return PK_IOERR;
 	}
 	if (query(NULL, state.db, "DELETE FROM cache.chunks WHERE chunk == ?",
 				"d", chunk)) {
-		pk_log_sqlerr("Couldn't delete cache entry for chunk %d",
-					chunk);
+		pk_log_sqlerr(state.db, "Couldn't delete cache entry for "
+					"chunk %d", chunk);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -316,7 +317,8 @@ again:
 		return PK_IOERR;
 	query(&qry, state.db, "SELECT sum(length) FROM cache.chunks", NULL);
 	if (!query_has_row()) {
-		pk_log_sqlerr("Couldn't get total size of valid chunks");
+		pk_log_sqlerr(state.db, "Couldn't get total size of valid "
+					"chunks");
 		ret=PK_IOERR;
 		goto bad;
 	}
@@ -338,7 +340,7 @@ again:
 	}
 	query_free(qry);
 	if (!query_ok()) {
-		pk_log_sqlerr("Error checking modified chunks");
+		pk_log_sqlerr(state.db, "Error checking modified chunks");
 		ret=PK_IOERR;
 		goto bad;
 	}
@@ -405,7 +407,7 @@ again:
 	}
 	query_free(qry);
 	if (!query_ok()) {
-		pk_log_sqlerr("Error querying cache index");
+		pk_log_sqlerr(state.db, "Error querying cache index");
 		ret=PK_IOERR;
 		goto bad;
 	}
@@ -493,7 +495,7 @@ again:
 		return 1;
 	query(&qry, state.db, "SELECT count(*) from cache.chunks", NULL);
 	if (!query_has_row()) {
-		pk_log_sqlerr("Couldn't query cache index");
+		pk_log_sqlerr(state.db, "Couldn't query cache index");
 		goto bad;
 	}
 	query_row(qry, "d", &validchunks);
@@ -503,7 +505,7 @@ again:
 				"main.keys.chunk == prev.keys.chunk WHERE "
 				"main.keys.tag != prev.keys.tag", NULL);
 	if (!query_has_row()) {
-		pk_log_sqlerr("Couldn't compare keyrings");
+		pk_log_sqlerr(state.db, "Couldn't compare keyrings");
 		goto bad;
 	}
 	query_row(qry, "d", &dirtychunks);

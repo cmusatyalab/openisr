@@ -285,7 +285,7 @@ pk_err_t cleanup_action(struct db *db, const char *sql,
 #define query_has_row() (query_result() == SQLITE_ROW)
 #define query_ok() (query_result() == SQLITE_OK)
 #define query_busy() (query_result() == SQLITE_BUSY)
-#define pk_log_sqlerr(fmt, args...) do { \
+#define pk_log_sqlerr(db, fmt, args...) do { \
 		int _res = query_result(); \
 		if (_res == SQLITE_ROW || _res == SQLITE_OK) \
 			pk_log(LOG_ERROR, fmt, ## args); \

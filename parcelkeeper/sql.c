@@ -327,7 +327,7 @@ again:
 		if (query_retry())
 			goto again;
 		g_free(str);
-		pk_log_sqlerr("Couldn't set synchronous pragma for "
+		pk_log_sqlerr(db, "Couldn't set synchronous pragma for "
 					"%s database", name);
 		return PK_CALLFAIL;
 	}
@@ -367,7 +367,7 @@ again:
 	if (query(NULL, db, "PRAGMA count_changes = TRUE", NULL)) {
 		if (query_retry())
 			goto again;
-		pk_log_sqlerr("Couldn't enable count_changes for %s", path);
+		pk_log_sqlerr(db, "Couldn't enable count_changes for %s", path);
 		goto bad;
 	}
 	if (sql_setup_db(db, "main"))
@@ -421,7 +421,7 @@ again:
 	if (query(NULL, db, "ATTACH ? AS ?", "ss", file, handle)) {
 		if (query_retry())
 			goto again;
-		pk_log_sqlerr("Couldn't attach %s", file);
+		pk_log_sqlerr(db, "Couldn't attach %s", file);
 		return PK_IOERR;
 	}
 	ret=sql_setup_db(db, handle);
@@ -430,7 +430,7 @@ again_detach:
 		if (query(NULL, db, "DETACH ?", "s", handle)) {
 			if (query_retry())
 				goto again_detach;
-			pk_log_sqlerr("Couldn't detach %s", handle);
+			pk_log_sqlerr(db, "Couldn't detach %s", handle);
 		}
 		return ret;
 	}
@@ -443,8 +443,8 @@ again:
 	if (query(NULL, db, immediate ? "BEGIN IMMEDIATE" : "BEGIN", NULL)) {
 		if (query_busy())
 			goto again;
-		pk_log_sqlerr("Couldn't begin transaction on behalf of %s()",
-					caller);
+		pk_log_sqlerr(db, "Couldn't begin transaction on behalf of "
+					"%s()", caller);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -456,8 +456,8 @@ again:
 	if (query(NULL, db, "COMMIT", NULL)) {
 		if (query_busy())
 			goto again;
-		pk_log_sqlerr("Couldn't commit transaction on behalf of %s()",
-					caller);
+		pk_log_sqlerr(db, "Couldn't commit transaction on behalf of "
+					"%s()", caller);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -477,7 +477,7 @@ again:
 				!sqlite3_get_autocommit(db->conn)) {
 		if (query_busy())
 			goto again;
-		pk_log_sqlerr("Couldn't roll back transaction on behalf of "
+		pk_log_sqlerr(db, "Couldn't roll back transaction on behalf of "
 					"%s()", caller);
 		ret=PK_IOERR;
 	}
@@ -492,7 +492,7 @@ pk_err_t vacuum(struct db *db)
 again_vacuum:
 	ret=query(NULL, db, "VACUUM", NULL);
 	if (ret) {
-		pk_log_sqlerr("Couldn't vacuum database");
+		pk_log_sqlerr(db, "Couldn't vacuum database");
 		if (query_retry())
 			goto again_vacuum;
 		else
@@ -509,7 +509,7 @@ again_trans:
 		return ret;
 	ret=query(NULL, db, "SELECT * FROM sqlite_master LIMIT 1", NULL);
 	if (ret) {
-		pk_log_sqlerr("Couldn't query sqlite_master");
+		pk_log_sqlerr(db, "Couldn't query sqlite_master");
 		goto bad_trans;
 	}
 	ret=commit(db);
@@ -535,7 +535,7 @@ again:
 	if (query_retry()) {
 		goto again;
 	} else if (!query_has_row()) {
-		pk_log_sqlerr("Couldn't run SQLite integrity check");
+		pk_log_sqlerr(db, "Couldn't run SQLite integrity check");
 		return PK_IOERR;
 	}
 	query_row(qry, "s", &str);
@@ -555,7 +555,7 @@ pk_err_t cleanup_action(struct db *db, const char *sql,
 	int changes;
 
 	if (query(&qry, db, sql, NULL)) {
-		pk_log_sqlerr("Couldn't clean %s", desc);
+		pk_log_sqlerr(db, "Couldn't clean %s", desc);
 		return PK_IOERR;
 	}
 	query_row(qry, "d", &changes);
