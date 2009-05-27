@@ -65,11 +65,11 @@ static int alloc_query(struct query **new_qry, sqlite3 *db, const char *sql)
 	struct query *qry;
 	int ret;
 
-	qry=g_new(struct query, 1);
+	qry=g_slice_new(struct query);
 	ret=sqlite3_prepare_v2(db, sql, -1, &qry->stmt, NULL);
 	if (ret) {
 		sqlerr("%s", sqlite3_errmsg(db));
-		g_free(qry);
+		g_slice_free(struct query, qry);
 	} else {
 		qry->sql=sqlite3_sql(qry->stmt);
 		*new_qry=qry;
@@ -80,7 +80,7 @@ static int alloc_query(struct query **new_qry, sqlite3 *db, const char *sql)
 static void destroy_query(struct query *qry)
 {
 	sqlite3_finalize(qry->stmt);
-	g_free(qry);
+	g_slice_free(struct query, qry);
 }
 
 static int get_query(struct query **new_qry, sqlite3 *db, const char *sql)
