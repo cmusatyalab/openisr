@@ -26,13 +26,14 @@
 #include "defs.h"
 
 #define SLOW_THRESHOLD_MS 200
-#define ERRBUFSZ 256
 #define MAX_WAIT_USEC 10000
 #define PROGRESS_HANDLER_INTERVAL 100000
 
 struct db {
 	sqlite3 *conn;
 	GHashTable *prepared;
+	int result;  /* set by query() and query_next() */
+	gchar *errmsg;
 };
 
 struct query {
@@ -42,15 +43,14 @@ struct query {
 	struct timeval start;
 };
 
-static __thread int result;  /* set by query() and query_next() */
-static __thread char errmsg[ERRBUFSZ];
-
-static void sqlerr(const char *fmt, ...)
+static void sqlerr(struct db *db, const char *fmt, ...)
 {
 	va_list ap;
 
 	va_start(ap, fmt);
-	vsnprintf(errmsg, ERRBUFSZ, fmt, ap);
+	if (db->errmsg != NULL)
+		g_free(db->errmsg);
+	db->errmsg = g_strdup_vprintf(fmt, ap);
 	va_end(ap);
 }
 
@@ -63,7 +63,7 @@ static int alloc_query(struct query **new_qry, struct db *db, const char *sql)
 	qry->db=db;
 	ret=sqlite3_prepare_v2(db->conn, sql, -1, &qry->stmt, NULL);
 	if (ret) {
-		sqlerr("%s", sqlite3_errmsg(db->conn));
+		sqlerr(db, "%s", sqlite3_errmsg(db->conn));
 		g_slice_free(struct query, qry);
 	} else {
 		qry->sql=sqlite3_sql(qry->stmt);
@@ -113,58 +113,59 @@ pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 
 	if (new_qry != NULL)
 		*new_qry=NULL;
-	result=get_query(&qry, db, query);
-	if (result)
+	db->result=get_query(&qry, db, query);
+	if (db->result)
 		return PK_SQLERR;
 	stmt=qry->stmt;
 	va_start(ap, fmt);
 	for (; fmt != NULL && *fmt; fmt++) {
 		switch (*fmt) {
 		case 'd':
-			result=sqlite3_bind_int(stmt, i++, va_arg(ap, int));
+			db->result=sqlite3_bind_int(stmt, i++, va_arg(ap,
+						int));
 			break;
 		case 'D':
-			result=sqlite3_bind_int64(stmt, i++, va_arg(ap,
+			db->result=sqlite3_bind_int64(stmt, i++, va_arg(ap,
 						int64_t));
 			break;
 		case 'f':
-			result=sqlite3_bind_double(stmt, i++, va_arg(ap,
+			db->result=sqlite3_bind_double(stmt, i++, va_arg(ap,
 						double));
 			break;
 		case 's':
 		case 'S':
-			result=sqlite3_bind_text(stmt, i++, va_arg(ap, char *),
-						-1, *fmt == 's'
+			db->result=sqlite3_bind_text(stmt, i++, va_arg(ap,
+						char *), -1, *fmt == 's'
 						? SQLITE_TRANSIENT
 						: SQLITE_STATIC);
 			break;
 		case 'b':
 		case 'B':
 			blob=va_arg(ap, void *);
-			result=sqlite3_bind_blob(stmt, i++, blob, va_arg(ap,
-						int), *fmt == 'b'
+			db->result=sqlite3_bind_blob(stmt, i++, blob,
+						va_arg(ap, int), *fmt == 'b'
 						? SQLITE_TRANSIENT
 						: SQLITE_STATIC);
 			break;
 		default:
-			sqlerr("Unknown format specifier %c", *fmt);
-			result=SQLITE_MISUSE;
+			sqlerr(db, "Unknown format specifier %c", *fmt);
+			db->result=SQLITE_MISUSE;
 			found_unknown=1;
 			break;
 		}
-		if (result)
+		if (db->result)
 			break;
 	}
 	va_end(ap);
-	if (result == SQLITE_OK)
+	if (db->result == SQLITE_OK)
 		query_next(qry);
 	else if (!found_unknown)
-		sqlerr("%s", sqlite3_errmsg(db->conn));
-	if (result != SQLITE_ROW || new_qry == NULL)
+		sqlerr(db, "%s", sqlite3_errmsg(db->conn));
+	if (db->result != SQLITE_ROW || new_qry == NULL)
 		query_free(qry);
 	else
 		*new_qry=qry;
-	if (result == SQLITE_OK || result == SQLITE_ROW)
+	if (db->result == SQLITE_OK || db->result == SQLITE_ROW)
 		return PK_SUCCESS;
 	else
 		return PK_SQLERR;
@@ -172,11 +173,13 @@ pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 
 pk_err_t query_next(struct query *qry)
 {
+	int result;
+
 	if (pending_signal()) {
 		/* Try to stop the query.  If this succeeds, the transaction
 		   will be automatically rolled back.  Often, though, the
 		   attempt will not succeed. */
-		sqlite3_interrupt(sqlite3_db_handle(qry->stmt));
+		sqlite3_interrupt(qry->db->conn);
 	}
 	result=sqlite3_step(qry->stmt);
 	/* Collapse DONE into OK, since they're semantically equivalent and
@@ -186,22 +189,23 @@ pk_err_t query_next(struct query *qry)
 	/* Collapse IOERR_BLOCKED into BUSY, likewise */
 	if (result == SQLITE_IOERR_BLOCKED)
 		result=SQLITE_BUSY;
+	qry->db->result=result;
 	if (result == SQLITE_OK || result == SQLITE_ROW) {
 		return PK_SUCCESS;
 	} else {
-		sqlerr("%s", sqlite3_errmsg(sqlite3_db_handle(qry->stmt)));
+		sqlerr(qry->db, "%s", sqlite3_errmsg(qry->db->conn));
 		return PK_SQLERR;
 	}
 }
 
 int query_result(struct db *db)
 {
-	return result;
+	return db->result;
 }
 
-const char *query_errmsg(void)
+const char *query_errmsg(struct db *db)
 {
-	return errmsg;
+	return db->errmsg;
 }
 
 void query_row(struct query *qry, const char *fmt, ...)
@@ -390,6 +394,7 @@ void sql_conn_close(struct db *db)
 	if (sqlite3_close(db->conn))
 		pk_log(LOG_ERROR, "Couldn't close database: %s",
 					sqlite3_errmsg(db->conn));
+	g_free(db->errmsg);
 	g_slice_free(struct db, db);
 }
 
@@ -465,7 +470,7 @@ again:
 
 pk_err_t _rollback(struct db *db, const char *caller)
 {
-	int saved=result;
+	int saved=db->result;
 	pk_err_t ret=PK_SUCCESS;
 
 again:
@@ -481,7 +486,7 @@ again:
 					"%s()", caller);
 		ret=PK_IOERR;
 	}
-	result=saved;
+	db->result=saved;
 	return ret;
 }
 

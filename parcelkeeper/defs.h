@@ -266,7 +266,7 @@ pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 			const char *fmt, ...);
 pk_err_t query_next(struct query *qry);
 int query_result(struct db *db);
-const char *query_errmsg(void);
+const char *query_errmsg(struct db *db);
 gboolean query_retry(struct db *db);
 void query_row(struct query *qry, const char *fmt, ...);
 void query_free(struct query *qry);
@@ -291,7 +291,7 @@ pk_err_t cleanup_action(struct db *db, const char *sql,
 			pk_log(LOG_ERROR, fmt, ## args); \
 		else if (_res != SQLITE_BUSY && _res != SQLITE_INTERRUPT) \
 			pk_log(LOG_ERROR, fmt " (%d, %s)", ## args, \
-						_res, query_errmsg()); \
+						_res, query_errmsg(db)); \
 	} while (0)
 
 /* util.c */
