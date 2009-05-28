@@ -198,14 +198,24 @@ pk_err_t query_next(struct query *qry)
 	}
 }
 
-int query_result(struct db *db)
+gboolean query_has_row(struct db *db)
 {
-	return db->result;
+	return (db->result == SQLITE_ROW);
 }
 
-const char *query_errmsg(struct db *db)
+gboolean query_ok(struct db *db)
 {
-	return db->errmsg;
+	return (db->result == SQLITE_OK);
+}
+
+gboolean query_busy(struct db *db)
+{
+	return (db->result == SQLITE_BUSY);
+}
+
+gboolean query_constrained(struct db *db)
+{
+	return (db->result == SQLITE_CONSTRAINT);
 }
 
 void query_row(struct query *qry, const char *fmt, ...)
@@ -272,6 +282,20 @@ void query_free(struct query *qry)
 	sqlite3_reset(qry->stmt);
 	sqlite3_clear_bindings(qry->stmt);
 	g_hash_table_replace(qry->db->prepared, (void *)qry->sql, qry);
+}
+
+void pk_log_sqlerr(struct db *db, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	if (db->result != SQLITE_BUSY && db->result != SQLITE_INTERRUPT) {
+		_pk_vlog(LOG_ERROR, fmt, __func__, ap);
+		if (db->result != SQLITE_ROW && db->result != SQLITE_OK)
+			pk_log(LOG_ERROR, "...SQLite error %d (%s)",
+						db->result, db->errmsg);
+	}
+	va_end(ap);
 }
 
 void sql_init(void)

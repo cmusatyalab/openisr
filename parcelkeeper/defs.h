@@ -21,7 +21,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <sqlite3.h>
 #include <glib.h>
 
 typedef enum pk_err {
@@ -267,11 +266,14 @@ void sql_conn_close(struct db *db);
 pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 			const char *fmt, ...);
 pk_err_t query_next(struct query *qry);
-int query_result(struct db *db);
-const char *query_errmsg(struct db *db);
 gboolean query_retry(struct db *db);
+gboolean query_has_row(struct db *db);
+gboolean query_ok(struct db *db);
+gboolean query_busy(struct db *db);
+gboolean query_constrained(struct db *db);
 void query_row(struct query *qry, const char *fmt, ...);
 void query_free(struct query *qry);
+void pk_log_sqlerr(struct db *db, const char *fmt, ...);
 pk_err_t attach(struct db *db, const char *handle, const char *file);
 pk_err_t _begin(struct db *db, const char *caller, int immediate);
 #define begin(db) _begin(db, __func__, 0)
@@ -284,17 +286,6 @@ pk_err_t vacuum(struct db *db);
 pk_err_t validate_db(struct db *db);
 pk_err_t cleanup_action(struct db *db, const char *sql,
 			enum pk_log_type logtype, const char *desc);
-#define query_has_row(db) (query_result(db) == SQLITE_ROW)
-#define query_ok(db) (query_result(db) == SQLITE_OK)
-#define query_busy(db) (query_result(db) == SQLITE_BUSY)
-#define pk_log_sqlerr(db, fmt, args...) do { \
-		int _res = query_result(db); \
-		if (_res == SQLITE_ROW || _res == SQLITE_OK) \
-			pk_log(LOG_ERROR, fmt, ## args); \
-		else if (_res != SQLITE_BUSY && _res != SQLITE_INTERRUPT) \
-			pk_log(LOG_ERROR, fmt " (%d, %s)", ## args, \
-						_res, query_errmsg(db)); \
-	} while (0)
 
 /* util.c */
 #define FILE_LOCK_READ     0

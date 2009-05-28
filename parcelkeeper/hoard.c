@@ -286,7 +286,7 @@ static pk_err_t _flush_slot_cache(void)
 					taglen, len, crypto, last_access,
 					offset);
 
-		if (query_result(state.hoard) == SQLITE_CONSTRAINT) {
+		if (query_constrained(state.hoard)) {
 			if (query(NULL, state.hoard, "UPDATE chunks "
 						"SET referenced = 0 WHERE "
 						"offset == ?", "d", offset)) {
