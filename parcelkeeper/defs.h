@@ -205,6 +205,8 @@ enum mode parse_cmdline(struct pk_config *conf, int argc, char **argv);
 /* log.c */
 void log_start(void);
 void log_shutdown(void);
+void _pk_vlog(enum pk_log_type type, const char *fmt, const char *func,
+			va_list args) __attribute__ ((format(printf, 2, 0)));
 void _pk_log(enum pk_log_type type, const char *fmt, const char *func, ...)
 			__attribute__ ((format(printf, 2, 4)));
 #define pk_log(type, fmt, args...) _pk_log(type, fmt, __func__, ## args)
