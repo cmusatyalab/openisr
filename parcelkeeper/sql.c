@@ -194,7 +194,7 @@ pk_err_t query_next(struct query *qry)
 	}
 }
 
-int query_result(void)
+int query_result(struct db *db)
 {
 	return result;
 }
@@ -324,7 +324,7 @@ static pk_err_t sql_setup_db(struct db *db, const char *name)
 	str = g_strdup_printf("PRAGMA %s.synchronous = OFF", name);
 again:
 	if (query(NULL, db, str, NULL)) {
-		if (query_retry())
+		if (query_retry(db))
 			goto again;
 		g_free(str);
 		pk_log_sqlerr(db, "Couldn't set synchronous pragma for "
@@ -365,7 +365,7 @@ pk_err_t sql_conn_open(const char *path, struct db **handle)
 				progress_handler, db);
 again:
 	if (query(NULL, db, "PRAGMA count_changes = TRUE", NULL)) {
-		if (query_retry())
+		if (query_retry(db))
 			goto again;
 		pk_log_sqlerr(db, "Couldn't enable count_changes for %s", path);
 		goto bad;
@@ -395,11 +395,11 @@ void sql_conn_close(struct db *db)
 
 /* This should not be called inside a transaction, since the whole point of
    sleeping is to do it without locks held */
-int query_retry(void)
+gboolean query_retry(struct db *db)
 {
 	long time;
 
-	if (query_busy()) {
+	if (query_busy(db)) {
 		/* The SQLite busy handler is not called when SQLITE_BUSY
 		   results from a failed attempt to promote a shared
 		   lock to reserved.  So we can't just retry after getting
@@ -408,9 +408,9 @@ int query_retry(void)
 		state.sql_wait_usecs += time;
 		usleep(time);
 		state.sql_retries++;
-		return 1;
+		return TRUE;
 	}
-	return 0;
+	return FALSE;
 }
 
 pk_err_t attach(struct db *db, const char *handle, const char *file)
@@ -419,7 +419,7 @@ pk_err_t attach(struct db *db, const char *handle, const char *file)
 
 again:
 	if (query(NULL, db, "ATTACH ? AS ?", "ss", file, handle)) {
-		if (query_retry())
+		if (query_retry(db))
 			goto again;
 		pk_log_sqlerr(db, "Couldn't attach %s", file);
 		return PK_IOERR;
@@ -428,7 +428,7 @@ again:
 	if (ret) {
 again_detach:
 		if (query(NULL, db, "DETACH ?", "s", handle)) {
-			if (query_retry())
+			if (query_retry(db))
 				goto again_detach;
 			pk_log_sqlerr(db, "Couldn't detach %s", handle);
 		}
@@ -441,7 +441,7 @@ pk_err_t _begin(struct db *db, const char *caller, int immediate)
 {
 again:
 	if (query(NULL, db, immediate ? "BEGIN IMMEDIATE" : "BEGIN", NULL)) {
-		if (query_busy())
+		if (query_busy(db))
 			goto again;
 		pk_log_sqlerr(db, "Couldn't begin transaction on behalf of "
 					"%s()", caller);
@@ -454,7 +454,7 @@ pk_err_t _commit(struct db *db, const char *caller)
 {
 again:
 	if (query(NULL, db, "COMMIT", NULL)) {
-		if (query_busy())
+		if (query_busy(db))
 			goto again;
 		pk_log_sqlerr(db, "Couldn't commit transaction on behalf of "
 					"%s()", caller);
@@ -475,7 +475,7 @@ again:
 	   to fail. */
 	if (query(NULL, db, "ROLLBACK", NULL) &&
 				!sqlite3_get_autocommit(db->conn)) {
-		if (query_busy())
+		if (query_busy(db))
 			goto again;
 		pk_log_sqlerr(db, "Couldn't roll back transaction on behalf of "
 					"%s()", caller);
@@ -493,7 +493,7 @@ again_vacuum:
 	ret=query(NULL, db, "VACUUM", NULL);
 	if (ret) {
 		pk_log_sqlerr(db, "Couldn't vacuum database");
-		if (query_retry())
+		if (query_retry(db))
 			goto again_vacuum;
 		else
 			return ret;
@@ -518,7 +518,7 @@ again_trans:
 
 bad_trans:
 	rollback(db);
-	if (query_retry())
+	if (query_retry(db))
 		goto again_trans;
 	return ret;
 }
@@ -532,9 +532,9 @@ pk_err_t validate_db(struct db *db)
 
 again:
 	query(&qry, db, "PRAGMA integrity_check(1)", NULL);
-	if (query_retry()) {
+	if (query_retry(db)) {
 		goto again;
-	} else if (!query_has_row()) {
+	} else if (!query_has_row(db)) {
 		pk_log_sqlerr(db, "Couldn't run SQLite integrity check");
 		return PK_IOERR;
 	}

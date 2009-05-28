@@ -215,7 +215,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	return ret;
 }
@@ -227,9 +227,9 @@ static pk_err_t verify_cache_index(void)
 
 again:
 	query(&qry, state.db, "PRAGMA cache.user_version", NULL);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
-	else if (!query_has_row()) {
+	else if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query cache index version");
 		return PK_IOERR;
 	}
@@ -295,14 +295,14 @@ static pk_err_t shm_init(void)
 
 again:
 	for (query(&qry, state.db, "SELECT chunk FROM cache.chunks", NULL);
-				query_has_row(); query_next(qry)) {
+				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "d", &chunk);
 		shm_set(chunk, SHM_PRESENT);
 	}
 	query_free(qry);
-	if (query_retry()) {
+	if (query_retry(state.db)) {
 		goto again;
-	} else if (!query_ok()) {
+	} else if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query cache index");
 		ret=PK_SQLERR;
 		goto bad_populate;
@@ -312,14 +312,14 @@ again:
 				"FROM main.keys JOIN prev.keys "
 				"ON main.keys.chunk == prev.keys.chunk "
 				"WHERE main.keys.tag != prev.keys.tag", NULL);
-				query_has_row(); query_next(qry)) {
+				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "d", &chunk);
 		shm_set(chunk, SHM_DIRTY);
 	}
 	query_free(qry);
-	if (query_retry()) {
+	if (query_retry(state.db)) {
 		goto again;
-	} else if (!query_ok()) {
+	} else if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't find modified chunks");
 		ret=PK_SQLERR;
 		goto bad_populate;
@@ -497,7 +497,7 @@ again:
 		return ret;
 	query(&qry, state.db, "SELECT tag, key, compression FROM keys "
 				"WHERE chunk == ?", "d", chunk);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query keyring");
 		ret=PK_IOERR;
 		goto bad;
@@ -517,12 +517,12 @@ again:
 
 	query(&qry, state.db, "SELECT length FROM cache.chunks "
 				"WHERE chunk == ?", "d", chunk);
-	if (query_ok()) {
+	if (query_ok(state.db)) {
 		/* Chunk is not in the local cache */
 		ret=obtain_chunk(chunk, tag, length);
 		if (ret)
 			goto bad;
-	} else if (query_has_row()) {
+	} else if (query_has_row(state.db)) {
 		query_row(qry, "d", length);
 		query_free(qry);
 	} else {
@@ -551,7 +551,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	return ret;
 }
@@ -589,7 +589,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	return ret;
 }

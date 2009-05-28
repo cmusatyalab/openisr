@@ -37,7 +37,7 @@ again:							\
 		return;					\
 	if (TRANSACTION_CALL) {				\
 		rollback(state.hoard);			\
-		if (query_retry())			\
+		if (query_retry(state.hoard))		\
 			goto again;			\
 		return;					\
 	}						\
@@ -187,7 +187,7 @@ static pk_err_t expand_slot_cache(void)
 	if (needed > 0 && config.minsize > 0) {
 		query(&qry, state.hoard, "SELECT count(tag) FROM chunks",
 					NULL);
-		if (!query_has_row()) {
+		if (!query_has_row(state.hoard)) {
 			pk_log_sqlerr(state.hoard, "Error finding size of "
 						"hoard cache");
 			return PK_IOERR;
@@ -221,7 +221,7 @@ static pk_err_t expand_slot_cache(void)
 	if (needed > 0) {
 		query(&qry, state.hoard, "SELECT count(*), max(offset) "
 					"FROM chunks", NULL);
-		if (!query_has_row()) {
+		if (!query_has_row(state.hoard)) {
 			pk_log_sqlerr(state.hoard, "Couldn't find max hoard "
 						"cache offset");
 			return PK_IOERR;
@@ -275,8 +275,8 @@ static pk_err_t _flush_slot_cache(void)
 
 	for (query(&qry, state.hoard, "SELECT tag, offset, length, crypto, "
 				"last_access FROM temp.slots WHERE "
-				"tag NOTNULL", NULL); query_has_row();
-				query_next(qry)) {
+				"tag NOTNULL", NULL);
+				query_has_row(state.hoard); query_next(qry)) {
 		query_row(qry, "bdddd", &tag, &taglen, &offset, &len, &crypto,
 					&last_access);
 		query(NULL, state.hoard, "UPDATE chunks SET tag = ?, "
@@ -286,7 +286,7 @@ static pk_err_t _flush_slot_cache(void)
 					taglen, len, crypto, last_access,
 					offset);
 
-		if (query_result() == SQLITE_CONSTRAINT) {
+		if (query_result(state.hoard) == SQLITE_CONSTRAINT) {
 			if (query(NULL, state.hoard, "UPDATE chunks "
 						"SET referenced = 0 WHERE "
 						"offset == ?", "d", offset)) {
@@ -296,7 +296,7 @@ static pk_err_t _flush_slot_cache(void)
 				ret=PK_IOERR;
 				goto bad;
 			}
-		} else if (!query_has_row()) {
+		} else if (!query_has_row(state.hoard)) {
 			pk_log_sqlerr(state.hoard, "Couldn't update chunks "
 						"table for offset %d", offset);
 			ret=PK_IOERR;
@@ -304,7 +304,7 @@ static pk_err_t _flush_slot_cache(void)
 		}
 	}
 	query_free(qry);
-	if (!query_ok()) {
+	if (!query_ok(state.hoard)) {
 		pk_log_sqlerr(state.hoard, "Couldn't query slot cache");
 		return PK_IOERR;
 	}
@@ -348,11 +348,11 @@ static pk_err_t allocate_slot(int *offset)
 		/* First, try to find an unused slot in the slot cache */
 		query(&qry, state.hoard, "SELECT offset FROM temp.slots "
 					"WHERE tag ISNULL LIMIT 1", NULL);
-		if (query_has_row()) {
+		if (query_has_row(state.hoard)) {
 			query_row(qry, "d", offset);
 			query_free(qry);
 			break;
-		} else if (!query_ok()) {
+		} else if (!query_ok(state.hoard)) {
 			pk_log_sqlerr(state.hoard, "Error finding unused "
 						"hoard cache slot");
 			return PK_IOERR;
@@ -411,7 +411,7 @@ static pk_err_t _hoard_invalidate_chunk(int offset, const void *tag,
 	query(&qry, state.hoard, "SELECT offset FROM chunks WHERE "
 				"offset == ? AND tag == ?", "db",
 				offset, tag, taglen);
-	if (query_ok()) {
+	if (query_ok(state.hoard)) {
 		/* Harmless: it's already not there.  But let's warn anyway. */
 		ftag=format_tag(tag, taglen);
 		pk_log(LOG_ERROR, "Attempted to invalidate tag %s at "
@@ -419,7 +419,7 @@ static pk_err_t _hoard_invalidate_chunk(int offset, const void *tag,
 					"(harmless)", ftag, offset);
 		g_free(ftag);
 		return PK_SUCCESS;
-	} else if (!query_has_row()) {
+	} else if (!query_has_row(state.hoard)) {
 		pk_log_sqlerr(state.hoard, "Could not query chunk list");
 		return PK_IOERR;
 	}
@@ -498,7 +498,7 @@ again:
 		ret=PK_IOERR;
 		goto bad;
 	}
-	if (query_has_row()) {
+	if (query_has_row(state.hoard)) {
 		query_row(qry, "dd", &offset, &clen);
 		query_free(qry);
 		slot_cache=1;
@@ -509,12 +509,12 @@ again:
 		query(&qry, state.hoard, "SELECT offset, length FROM chunks "
 					"WHERE tag == ?", "b", tag,
 					parcel.hashlen);
-		if (query_ok()) {
+		if (query_ok(state.hoard)) {
 			ret=commit(state.hoard);
 			if (ret)
 				goto bad;
 			return PK_NOTFOUND;
-		} else if (!query_has_row()) {
+		} else if (!query_has_row(state.hoard)) {
 			pk_log_sqlerr(state.hoard, "Couldn't query hoard "
 						"chunk index");
 			ret=PK_IOERR;
@@ -546,7 +546,7 @@ again:
 				parcel.hashlen)) {
 		/* Not fatal, but if we got SQLITE_BUSY, retry anyway */
 		pk_log_sqlerr(state.hoard, "Couldn't update chunk timestamp");
-		if (query_busy())
+		if (query_busy(state.hoard))
 			goto bad;
 	}
 	if (!slot_cache) {
@@ -597,7 +597,7 @@ again:
 
 bad:
 	rollback(state.hoard);
-	if (query_retry())
+	if (query_retry(state.hoard))
 		goto again;
 	return ret;
 }
@@ -618,12 +618,12 @@ again:
 	/* See if the tag is already in the slot cache */
 	query(NULL, state.hoard, "SELECT tag FROM temp.slots WHERE tag == ?",
 				"b", tag, parcel.hashlen);
-	if (query_has_row()) {
+	if (query_has_row(state.hoard)) {
 		ret=commit(state.hoard);
 		if (ret)
 			goto bad;
 		return PK_SUCCESS;
-	} else if (!query_ok()) {
+	} else if (!query_ok(state.hoard)) {
 		pk_log_sqlerr(state.hoard, "Couldn't look up tag in "
 					"slot cache");
 		goto bad;
@@ -632,7 +632,7 @@ again:
 	/* See if the tag is already in the hoard cache */
 	query(NULL, state.hoard, "SELECT tag FROM chunks WHERE tag == ?",
 				"b", tag, parcel.hashlen);
-	if (query_has_row()) {
+	if (query_has_row(state.hoard)) {
 		ret=add_chunk_reference(tag);
 		if (ret)
 			goto bad;
@@ -640,7 +640,7 @@ again:
 		if (ret)
 			goto bad;
 		return PK_SUCCESS;
-	} else if (!query_ok()) {
+	} else if (!query_ok(state.hoard)) {
 		pk_log_sqlerr(state.hoard, "Couldn't look up tag in hoard "
 					"cache index");
 		goto bad;
@@ -677,7 +677,7 @@ again:
 
 bad:
 	rollback(state.hoard);
-	if (query_retry())
+	if (query_retry(state.hoard))
 		goto again;
 	return ret;
 }
@@ -703,7 +703,7 @@ again:
 					"SELECT DISTINCT tag FROM prev.keys",
 					NULL);
 	ret=PK_IOERR;
-	if (!query_ok()) {
+	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't generate tag list");
 		goto bad;
 	}
@@ -753,7 +753,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	return ret;
 }
@@ -780,7 +780,7 @@ again:
 	/* Find out the parcel ID assigned by SQLite */
 	query(&qry, state.hoard, "SELECT parcel FROM parcels WHERE uuid == ?",
 				"S", parcel.uuid);
-	if (!query_has_row()) {
+	if (!query_has_row(state.hoard)) {
 		pk_log_sqlerr(state.hoard, "Couldn't query parcels table");
 		ret=PK_IOERR;
 		goto bad;
@@ -806,7 +806,7 @@ again:
 
 bad:
 	rollback(state.hoard);
-	if (query_retry())
+	if (query_retry(state.hoard))
 		goto again;
 	return ret;
 }
@@ -827,7 +827,7 @@ again:
 	if (ret)
 		goto bad;
 	query(&qry, state.hoard, "PRAGMA user_version", NULL);
-	if (!query_has_row()) {
+	if (!query_has_row(state.hoard)) {
 		pk_log_sqlerr(state.hoard, "Couldn't get hoard cache "
 					"index version");
 		ret=PK_IOERR;
@@ -862,7 +862,7 @@ again:
 
 bad_rollback:
 	rollback(state.hoard);
-	if (query_retry())
+	if (query_retry(state.hoard))
 		goto again;
 bad:
 	sql_conn_close(state.hoard);
@@ -898,7 +898,7 @@ again:
 	   refs_constraint index.  Given the size of parcels table, the
 	   below approach is much more efficient. */
 	for (ret=query(&qry, state.hoard, "SELECT parcel FROM parcels", NULL),
-				changes=0; query_has_row();
+				changes=0; query_has_row(state.hoard);
 				ret=query_next(qry)) {
 		query_row(qry, "d", &ident);
 		ret=query(NULL, state.hoard, "SELECT parcel FROM refs WHERE "
@@ -908,7 +908,7 @@ again:
 			query_free(qry);
 			goto bad;
 		}
-		if (!query_has_row()) {
+		if (!query_has_row(state.hoard)) {
 			ret=query(NULL, state.hoard, "DELETE FROM parcels "
 						"WHERE parcel == ?", "d",
 						ident);
@@ -923,7 +923,7 @@ again:
 		}
 	}
 	query_free(qry);
-	if (!query_ok()) {
+	if (!query_ok(state.hoard)) {
 		pk_log_sqlerr(state.hoard, "Couldn't query parcels table");
 		goto bad;
 	}
@@ -945,7 +945,7 @@ out:
 	return ret;
 bad:
 	rollback(state.hoard);
-	if (query_retry())
+	if (query_retry(state.hoard))
 		goto again;
 	goto out;
 }

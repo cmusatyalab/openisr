@@ -112,7 +112,7 @@ again:
 		goto bad;
 	}
 	query(&qry, state.db, "SELECT sum(length) FROM temp.to_upload", NULL);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't find size of modified "
 					"chunks");
 		goto bad;
@@ -120,8 +120,8 @@ again:
 	query_row(qry, "D", &total_modified_bytes);
 	query_free(qry);
 	for (query(&qry, state.db, "SELECT chunk, tag, length FROM "
-				"temp.to_upload", NULL); query_has_row();
-				query_next(qry)) {
+				"temp.to_upload", NULL);
+				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "dbd", &chunk, &tag, &taglen, &length);
 		print_progress_mb(modified_bytes, total_modified_bytes);
 		if (chunk > parcel.chunks) {
@@ -185,7 +185,7 @@ again:
 		modified_chunks++;
 		modified_bytes += length;
 	}
-	if (!query_ok())
+	if (!query_ok(state.db))
 		pk_log_sqlerr(state.db, "Database query failed");
 	else
 		ret=0;
@@ -193,7 +193,7 @@ out:
 	query_free(qry);
 bad:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	g_free(buf);
 	if (ret == 0)
@@ -222,7 +222,7 @@ again:
 	ret=PK_SUCCESS;
 	for (query(&qry, state.db, "SELECT chunk, tag, key, compression "
 				"FROM keys ORDER BY chunk ASC", NULL);
-				query_has_row(); query_next(qry)) {
+				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "dnnd", &chunk, &taglen, &keylen, &compress);
 		if (chunk >= parcel.chunks) {
 			pk_log(LOG_WARNING, "Found keyring entry %u greater "
@@ -264,9 +264,9 @@ again:
 		}
 	}
 	query_free(qry);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
-	if (!query_ok()) {
+	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Keyring query failed");
 		ret=PK_IOERR;
 	}
@@ -316,7 +316,7 @@ again:
 	if (begin(state.db))
 		return PK_IOERR;
 	query(&qry, state.db, "SELECT sum(length) FROM cache.chunks", NULL);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't get total size of valid "
 					"chunks");
 		ret=PK_IOERR;
@@ -332,14 +332,14 @@ again:
 				"main.keys.chunk == cache.chunks.chunk "
 				"WHERE main.keys.tag != prev.keys.tag AND "
 				"cache.chunks.chunk ISNULL", NULL);
-				query_has_row(); query_next(qry)) {
+				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "d", &chunk);
 		pk_log(LOG_WARNING, "Chunk %u: modified but not present",
 					chunk);
 		ret=PK_INVALID;
 	}
 	query_free(qry);
-	if (!query_ok()) {
+	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Error checking modified chunks");
 		ret=PK_IOERR;
 		goto bad;
@@ -349,7 +349,7 @@ again:
 				"cache.chunks.length, keys.tag FROM "
 				"cache.chunks LEFT JOIN keys ON "
 				"cache.chunks.chunk == keys.chunk", NULL);
-				query_has_row(); query_next(qry)) {
+				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "ddb", &chunk, &chunklen, &tag, &taglen);
 		processed_bytes += chunklen;
 		print_progress_mb(processed_bytes, valid_bytes);
@@ -406,7 +406,7 @@ again:
 		}
 	}
 	query_free(qry);
-	if (!query_ok()) {
+	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Error querying cache index");
 		ret=PK_IOERR;
 		goto bad;
@@ -421,7 +421,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	g_free(buf);
 	return ret;
@@ -494,7 +494,7 @@ again:
 	if (begin(state.db))
 		return 1;
 	query(&qry, state.db, "SELECT count(*) from cache.chunks", NULL);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query cache index");
 		goto bad;
 	}
@@ -504,7 +504,7 @@ again:
 				"JOIN prev.keys ON "
 				"main.keys.chunk == prev.keys.chunk WHERE "
 				"main.keys.tag != prev.keys.tag", NULL);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't compare keyrings");
 		goto bad;
 	}
@@ -528,7 +528,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	return 1;
 }

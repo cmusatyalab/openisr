@@ -50,7 +50,7 @@ again:
 
 	/* See how much we need to hoard */
 	query(&qry, state.db, "SELECT count(*) FROM temp.to_hoard", NULL);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't count unhoarded chunks");
 		goto bad;
 	}
@@ -60,7 +60,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	return PK_IOERR;
 }
@@ -106,7 +106,8 @@ int hoard(void)
 
 again:
 	for (query(&qry, state.db, "SELECT chunk, tag FROM temp.to_hoard",
-				NULL); query_has_row(); query_next(qry)) {
+				NULL); query_has_row(state.db);
+				query_next(qry)) {
 		query_row(qry, "db", &chunk, &tag, &taglen);
 		if (taglen != parcel.hashlen) {
 			pk_log(LOG_ERROR, "Invalid tag length for chunk %d",
@@ -121,13 +122,13 @@ again_inner:
 		   doesn't acquire the hoard DB lock. */
 		query(NULL, state.hoard, "SELECT tag FROM chunks WHERE "
 					"tag == ?", "b", tag, taglen);
-		if (query_ok()) {
+		if (query_ok(state.hoard)) {
 			if (transport_fetch_chunk(buf, chunk, tag, &chunklen))
 				goto out;
 			print_progress_chunks(++num_hoarded, to_hoard);
-		} else if (query_has_row()) {
+		} else if (query_has_row(state.hoard)) {
 			print_progress_chunks(num_hoarded, --to_hoard);
-		} else if (query_retry()) {
+		} else if (query_retry(state.hoard)) {
 			goto again_inner;
 		} else {
 			pk_log_sqlerr(state.hoard, "Couldn't query hoard "
@@ -135,13 +136,13 @@ again_inner:
 			goto out;
 		}
 	}
-	if (!query_ok())
+	if (!query_ok(state.db))
 		pk_log_sqlerr(state.db, "Querying hoard index failed");
 	else
 		ret=0;
 out:
 	query_free(qry);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	if (query(NULL, state.db, "DROP TABLE temp.to_hoard", NULL))
 		pk_log_sqlerr(state.db, "Couldn't drop table temp.to_hoard");
@@ -169,7 +170,7 @@ again:
 	query(&qry, state.db, "SELECT count(*) FROM "
 				"(SELECT 1 FROM prev.keys GROUP BY tag)",
 				NULL);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query previous keyring");
 		goto bad;
 	}
@@ -177,7 +178,7 @@ again:
 	query_free(qry);
 	query(&qry, state.db, "SELECT count(*) FROM hoard.refs WHERE "
 				"parcel == ?", "d", state.hoard_ident);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query hoard cache");
 		goto bad;
 	}
@@ -195,7 +196,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	return 1;
 }
@@ -220,7 +221,7 @@ again:
 		return 1;
 	query(&qry, state.db, "SELECT count(tag) FROM hoard.chunks WHERE "
 				"referenced == 1", NULL);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't count referenced chunks");
 		goto out;
 	}
@@ -228,7 +229,7 @@ again:
 	query_free(qry);
 	query(&qry, state.db, "SELECT count(tag) FROM hoard.chunks WHERE "
 				"referenced == 0", NULL);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't count unreferenced chunks");
 		goto out;
 	}
@@ -236,7 +237,7 @@ again:
 	query_free(qry);
 	query(&qry, state.db, "SELECT count(*) FROM hoard.chunks WHERE "
 				"tag ISNULL", NULL);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't count unused chunk slots");
 		goto out;
 	}
@@ -254,7 +255,7 @@ again:
 				"HAVING count(*) == 1) GROUP BY parcel) "
 				"AS sub2 "
 				"ON parcels.parcel == sub2.parcel", NULL);
-				query_has_row(); query_next(qry)) {
+				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "dssssdd", &parcel, &uuid, &server, &user,
 					&name, &p_total, &p_unique);
 		printf("%s %s %s %s %d %d\n", uuid, server, user, name, p_total,
@@ -262,7 +263,7 @@ again:
 		shared -= p_unique;
 	}
 	query_free(qry);
-	if (query_ok()) {
+	if (query_ok(state.db)) {
 		printf("shared %d\n", shared);
 		printf("unreferenced %d\n", unreferenced);
 		printf("unused %d\n", unused);
@@ -272,7 +273,7 @@ again:
 	}
 out:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	return ret;
 }
@@ -293,11 +294,11 @@ again:
 	query(&qry, state.db, "SELECT parcel, server, user, name FROM "
 				"hoard.parcels WHERE uuid == ?", "S",
 				config.uuid);
-	if (query_ok()) {
+	if (query_ok(state.db)) {
 		pk_log(LOG_INFO, "rmhoard: %s: No such parcel", config.uuid);
 		rollback(state.db);
 		return 0;
-	} else if (!query_has_row()) {
+	} else if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query parcel table");
 		goto bad;
 	}
@@ -310,7 +311,7 @@ again:
 				"(SELECT parcel FROM hoard.refs GROUP BY tag "
 				"HAVING parcel == ? AND count(*) == 1)", "d",
 				parcel);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		g_free(desc);
 		pk_log_sqlerr(state.db, "Couldn't enumerate unique "
 					"parcel chunks");
@@ -346,7 +347,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	return 1;
 }
@@ -371,7 +372,7 @@ static pk_err_t check_hoard_data(void)
 
 again:
 	query(&qry, state.db, "SELECT sum(length) FROM temp.to_check", NULL);
-	if (!query_has_row()) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't find the amount of data "
 					"to check");
 		goto bad;
@@ -383,7 +384,7 @@ again:
 	examined_bytes=0;
 	for (query(&qry, state.db, "SELECT tag, offset, length, crypto "
 				"FROM temp.to_check", NULL);
-				query_has_row(); query_next(qry)) {
+				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "bddd", &tag, &taglen, &offset, &len, &crypto);
 		examined_bytes += len;
 		print_progress_mb(examined_bytes, total_bytes);
@@ -412,7 +413,7 @@ again:
 		}
 	}
 	query_free(qry);
-	if (!query_ok()) {
+	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't walk chunk list");
 		goto bad;
 	}
@@ -423,7 +424,7 @@ again:
 	return ret;
 
 bad:
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	if (query(NULL, state.db, "DROP TABLE temp.to_check", NULL))
 		pk_log_sqlerr(state.db, "Couldn't drop temporary table");
@@ -454,7 +455,7 @@ again:
 		return 1;
 
 	for (query(&qry, state.db, "SELECT uuid FROM hoard.parcels",
-				NULL), count=0; query_has_row();
+				NULL), count=0; query_has_row(state.db);
 				query_next(qry)) {
 		query_row(qry, "s", &uuid);
 		if (canonicalize_uuid(uuid, NULL) == PK_INVALID) {
@@ -473,7 +474,7 @@ again:
 		}
 	}
 	query_free(qry);
-	if (!query_ok()) {
+	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query parcel list");
 		goto bad;
 	}
@@ -482,8 +483,8 @@ again:
 
 	next_offset=0;
 	for (query(&qry, state.db, "SELECT offset FROM hoard.chunks "
-				"ORDER BY offset", NULL); query_has_row();
-				query_next(qry)) {
+				"ORDER BY offset", NULL);
+				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "d", &offset);
 		if (offset != next_offset) {
 			/* XXX how do we fix this? */
@@ -496,14 +497,14 @@ again:
 		next_offset += 256;
 	}
 	query_free(qry);
-	if (!query_ok()) {
+	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query chunk table");
 		goto bad;
 	}
 
 	count=0;
 	for (query(&qry, state.db, "SELECT offset, tag, crypto FROM "
-				"hoard.chunks", NULL); query_has_row();
+				"hoard.chunks", NULL); query_has_row(state.db);
 				query_next(qry)) {
 		query_row(qry, "dbd", &offset, &tag, &taglen, &crypto);
 		if ((tag == NULL && crypto != 0) || (tag != NULL &&
@@ -523,7 +524,7 @@ again:
 		}
 	}
 	query_free(qry);
-	if (!query_ok()) {
+	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query chunk list");
 		goto bad;
 	}
@@ -608,7 +609,7 @@ again:
 
 bad:
 	rollback(state.db);
-	if (query_retry())
+	if (query_retry(state.db))
 		goto again;
 	return 1;
 }

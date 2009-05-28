@@ -265,9 +265,9 @@ void sql_conn_close(struct db *db);
 pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 			const char *fmt, ...);
 pk_err_t query_next(struct query *qry);
-int query_result(void);
+int query_result(struct db *db);
 const char *query_errmsg(void);
-int query_retry(void);
+gboolean query_retry(struct db *db);
 void query_row(struct query *qry, const char *fmt, ...);
 void query_free(struct query *qry);
 pk_err_t attach(struct db *db, const char *handle, const char *file);
@@ -282,11 +282,11 @@ pk_err_t vacuum(struct db *db);
 pk_err_t validate_db(struct db *db);
 pk_err_t cleanup_action(struct db *db, const char *sql,
 			enum pk_log_type logtype, const char *desc);
-#define query_has_row() (query_result() == SQLITE_ROW)
-#define query_ok() (query_result() == SQLITE_OK)
-#define query_busy() (query_result() == SQLITE_BUSY)
+#define query_has_row(db) (query_result(db) == SQLITE_ROW)
+#define query_ok(db) (query_result(db) == SQLITE_OK)
+#define query_busy(db) (query_result(db) == SQLITE_BUSY)
 #define pk_log_sqlerr(db, fmt, args...) do { \
-		int _res = query_result(); \
+		int _res = query_result(db); \
 		if (_res == SQLITE_ROW || _res == SQLITE_OK) \
 			pk_log(LOG_ERROR, fmt, ## args); \
 		else if (_res != SQLITE_BUSY && _res != SQLITE_INTERRUPT) \
