@@ -254,7 +254,6 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 
 /* sql.c */
 void sql_init(void);
-void sql_shutdown(void);
 pk_err_t sql_conn_open(const char *path, struct db **handle);
 void sql_conn_close(struct db *db);
 pk_err_t query(struct query **new_qry, struct db *db, const char *query,

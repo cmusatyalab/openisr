@@ -284,10 +284,6 @@ void sql_init(void)
 	srandom(time(NULL));
 }
 
-void sql_shutdown(void)
-{
-}
-
 static int busy_handler(void *data, int count)
 {
 	struct db *db = data;
