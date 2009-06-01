@@ -32,7 +32,14 @@
 struct db {
 	sqlite3 *conn;
 	int result;  /* set by query() and query_next() */
+	gchar *file;
 	gchar *errmsg;
+
+	/* Statistics */
+	unsigned busy_queries;
+	unsigned busy_timeouts;
+	unsigned retries;
+	uint64_t wait_usecs;
 };
 
 struct query {
@@ -279,28 +286,21 @@ void sql_init(void)
 
 void sql_shutdown(void)
 {
-	pk_log(LOG_STATS, "Busy handler called for %u queries; %u timeouts",
-				state.sql_busy_queries,
-				state.sql_busy_timeouts);
-	pk_log(LOG_STATS, "%u SQL retries; %llu ms spent in backoffs",
-				state.sql_retries,
-				(unsigned long long) state.sql_wait_usecs
-				/ 1000);
 }
 
-static int busy_handler(void *db, int count)
+static int busy_handler(void *data, int count)
 {
+	struct db *db = data;
 	long time;
 
-	(void)db;  /* silence warning */
 	if (count == 0)
-		state.sql_busy_queries++;
+		db->busy_queries++;
 	if (count >= 10) {
-		state.sql_busy_timeouts++;
+		db->busy_timeouts++;
 		return 0;
 	}
 	time=random() % (MAX_WAIT_USEC/2);
-	state.sql_wait_usecs += time;
+	db->wait_usecs += time;
 	usleep(time);
 	return 1;
 }
@@ -343,6 +343,7 @@ pk_err_t sql_conn_open(const char *path, struct db **handle)
 		g_slice_free(struct db, db);
 		return PK_IOERR;
 	}
+	db->file = g_strdup(path);
 	if (sqlite3_extended_result_codes(db->conn, 1)) {
 		pk_log(LOG_ERROR, "Couldn't enable extended result codes "
 					"for database %s", path);
@@ -371,6 +372,7 @@ again:
 
 bad:
 	sqlite3_close(db->conn);
+	g_free(db->file);
 	g_slice_free(struct db, db);
 	return PK_CALLFAIL;
 }
@@ -383,6 +385,12 @@ void sql_conn_close(struct db *db)
 		pk_log(LOG_ERROR, "Couldn't close database: %s",
 					sqlite3_errmsg(db->conn));
 	g_free(db->errmsg);
+	pk_log(LOG_STATS, "%s: Busy handler called for %u queries; %u timeouts",
+				db->file, db->busy_queries, db->busy_timeouts);
+	pk_log(LOG_STATS, "%s: %u SQL retries; %llu ms spent in backoffs",
+				db->file, db->retries,
+				(unsigned long long) db->wait_usecs / 1000);
+	g_free(db->file);
 	g_slice_free(struct db, db);
 }
 
@@ -398,9 +406,9 @@ gboolean query_retry(struct db *db)
 		   lock to reserved.  So we can't just retry after getting
 		   SQLITE_BUSY; we have to back off first. */
 		time=random() % MAX_WAIT_USEC;
-		state.sql_wait_usecs += time;
+		db->wait_usecs += time;
 		usleep(time);
-		state.sql_retries++;
+		db->retries++;
 		return TRUE;
 	}
 	return FALSE;

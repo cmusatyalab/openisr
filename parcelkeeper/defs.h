@@ -175,10 +175,6 @@ struct pk_state {
 	int leave_dirty;
 
 	unsigned request_count;
-	unsigned sql_busy_queries;
-	unsigned sql_busy_timeouts;
-	unsigned sql_retries;
-	uint64_t sql_wait_usecs;
 
 	volatile int signal;  /* Last signal received by generic handler */
 	int override_signal;  /* Ignore pending signals in pending_signal() */
