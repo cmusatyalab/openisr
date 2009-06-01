@@ -175,8 +175,6 @@ struct pk_state {
 	int leave_dirty;
 
 	unsigned request_count;
-	unsigned sql_hits;
-	unsigned sql_misses;
 	unsigned sql_busy_queries;
 	unsigned sql_busy_timeouts;
 	unsigned sql_retries;

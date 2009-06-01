@@ -31,7 +31,6 @@
 
 struct db {
 	sqlite3 *conn;
-	GHashTable *prepared;
 	int result;  /* set by query() and query_next() */
 	gchar *errmsg;
 };
@@ -67,37 +66,9 @@ static int alloc_query(struct query **new_qry, struct db *db, const char *sql)
 		g_slice_free(struct query, qry);
 	} else {
 		qry->sql=sqlite3_sql(qry->stmt);
+		gettimeofday(&qry->start, NULL);
 		*new_qry=qry;
 	}
-	return ret;
-}
-
-static void destroy_query(void *data)
-{
-	struct query *qry=data;
-
-	sqlite3_finalize(qry->stmt);
-	g_slice_free(struct query, qry);
-}
-
-static int get_query(struct query **new_qry, struct db *db, const char *sql)
-{
-	struct query *qry;
-	int ret;
-
-	qry=g_hash_table_lookup(db->prepared, sql);
-	if (qry != NULL) {
-		g_hash_table_steal(db->prepared, sql);
-		*new_qry=qry;
-		ret=SQLITE_OK;
-		state.sql_hits++;
-	} else {
-		ret=alloc_query(new_qry, db, sql);
-		state.sql_misses++;
-	}
-
-	if (ret == SQLITE_OK)
-		gettimeofday(&(*new_qry)->start, NULL);
 	return ret;
 }
 
@@ -113,7 +84,7 @@ pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 
 	if (new_qry != NULL)
 		*new_qry=NULL;
-	db->result=get_query(&qry, db, query);
+	db->result=alloc_query(&qry, db, query);
 	if (db->result)
 		return PK_SQLERR;
 	stmt=qry->stmt;
@@ -279,9 +250,8 @@ void query_free(struct query *qry)
 					ms, qry->sql);
 	pk_log(LOG_QUERY, "Query took %u ms: \"%s\"", ms, qry->sql);
 
-	sqlite3_reset(qry->stmt);
-	sqlite3_clear_bindings(qry->stmt);
-	g_hash_table_replace(qry->db->prepared, (void *)qry->sql, qry);
+	sqlite3_finalize(qry->stmt);
+	g_slice_free(struct query, qry);
 }
 
 void pk_log_sqlerr(struct db *db, const char *fmt, ...)
@@ -309,8 +279,6 @@ void sql_init(void)
 
 void sql_shutdown(void)
 {
-	pk_log(LOG_STATS, "Prepared statement cache: %u hits, %u misses",
-				state.sql_hits, state.sql_misses);
 	pk_log(LOG_STATS, "Busy handler called for %u queries; %u timeouts",
 				state.sql_busy_queries,
 				state.sql_busy_timeouts);
@@ -369,8 +337,6 @@ pk_err_t sql_conn_open(const char *path, struct db **handle)
 
 	*handle = NULL;
 	db = g_slice_new0(struct db);
-	db->prepared = g_hash_table_new_full(g_str_hash, g_str_equal, NULL,
-				destroy_query);
 	if (sqlite3_open(path, &db->conn)) {
 		pk_log(LOG_ERROR, "Couldn't open database %s: %s",
 					path, sqlite3_errmsg(db->conn));
@@ -404,7 +370,6 @@ again:
 	return PK_SUCCESS;
 
 bad:
-	g_hash_table_destroy(db->prepared);
 	sqlite3_close(db->conn);
 	g_slice_free(struct db, db);
 	return PK_CALLFAIL;
@@ -414,7 +379,6 @@ void sql_conn_close(struct db *db)
 {
 	if (db == NULL)
 		return;
-	g_hash_table_destroy(db->prepared);
 	if (sqlite3_close(db->conn))
 		pk_log(LOG_ERROR, "Couldn't close database: %s",
 					sqlite3_errmsg(db->conn));
