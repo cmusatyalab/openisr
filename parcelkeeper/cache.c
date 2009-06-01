@@ -191,6 +191,7 @@ int cache_test_flag(unsigned flag)
 static pk_err_t create_cache_index(void)
 {
 	pk_err_t ret;
+	gboolean retry;
 
 again:
 	ret=begin(state.db);
@@ -214,9 +215,12 @@ again:
 	return PK_SUCCESS;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	return ret;
 }
 
@@ -225,6 +229,7 @@ static pk_err_t verify_cache_index(void)
 	struct query *qry;
 	int found;
 	pk_err_t ret;
+	gboolean retry;
 
 again:
 	ret=begin(state.db);
@@ -247,9 +252,12 @@ again:
 	return PK_SUCCESS;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	return ret;
 }
 
@@ -270,6 +278,7 @@ static pk_err_t shm_init(void)
 	struct query *qry;
 	unsigned chunk;
 	pk_err_t ret;
+	gboolean retry;
 
 	state.shm_len = parcel.chunks;
 	state.shm_name = g_strdup_printf("/openisr-chunkmap-%s", parcel.uuid);
@@ -336,9 +345,12 @@ again:
 	return PK_SUCCESS;
 
 bad_sql:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 bad_populate:
 	munmap(state.shm_base, state.shm_len);
 bad_map:
@@ -502,6 +514,7 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 	unsigned taglen;
 	unsigned keylen;
 	pk_err_t ret;
+	gboolean retry;
 
 	pk_log(LOG_CHUNK, "Get: %u", chunk);
 again:
@@ -563,9 +576,12 @@ again:
 	return PK_SUCCESS;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	return ret;
 }
 
@@ -573,6 +589,7 @@ pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
 			enum compresstype compress, unsigned length)
 {
 	pk_err_t ret;
+	gboolean retry;
 
 	pk_log(LOG_CHUNK, "Update: %u", chunk);
 again:
@@ -601,8 +618,11 @@ again:
 	return PK_SUCCESS;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	return ret;
 }

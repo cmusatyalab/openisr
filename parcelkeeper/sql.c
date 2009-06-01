@@ -316,8 +316,10 @@ static pk_err_t sql_setup_db(struct db *db, const char *name)
 	str = g_strdup_printf("PRAGMA %s.synchronous = OFF", name);
 again:
 	if (query(NULL, db, str, NULL)) {
-		if (query_retry(db))
+		if (query_busy(db)) {
+			query_backoff(db);
 			goto again;
+		}
 		g_free(str);
 		pk_log_sqlerr(db, "Couldn't set synchronous pragma for "
 					"%s database", name);
@@ -356,8 +358,10 @@ pk_err_t sql_conn_open(const char *path, struct db **handle)
 				progress_handler, db);
 again:
 	if (query(NULL, db, "PRAGMA count_changes = TRUE", NULL)) {
-		if (query_retry(db))
+		if (query_busy(db)) {
+			query_backoff(db);
 			goto again;
+		}
 		pk_log_sqlerr(db, "Couldn't enable count_changes for %s", path);
 		goto bad;
 	}
@@ -392,22 +396,18 @@ void sql_conn_close(struct db *db)
 
 /* This should not be called inside a transaction, since the whole point of
    sleeping is to do it without locks held */
-gboolean query_retry(struct db *db)
+void query_backoff(struct db *db)
 {
 	long time;
 
-	if (query_busy(db)) {
-		/* The SQLite busy handler is not called when SQLITE_BUSY
-		   results from a failed attempt to promote a shared
-		   lock to reserved.  So we can't just retry after getting
-		   SQLITE_BUSY; we have to back off first. */
-		time=random() % MAX_WAIT_USEC;
-		db->wait_usecs += time;
-		usleep(time);
-		db->retries++;
-		return TRUE;
-	}
-	return FALSE;
+	/* The SQLite busy handler is not called when SQLITE_BUSY results
+	   from a failed attempt to promote a shared lock to reserved.  So
+	   we can't just retry after getting SQLITE_BUSY; we have to back
+	   off first. */
+	time=random() % MAX_WAIT_USEC;
+	db->wait_usecs += time;
+	usleep(time);
+	db->retries++;
 }
 
 pk_err_t attach(struct db *db, const char *handle, const char *file)
@@ -416,8 +416,10 @@ pk_err_t attach(struct db *db, const char *handle, const char *file)
 
 again:
 	if (query(NULL, db, "ATTACH ? AS ?", "ss", file, handle)) {
-		if (query_retry(db))
+		if (query_busy(db)) {
+			query_backoff(db);
 			goto again;
+		}
 		pk_log_sqlerr(db, "Couldn't attach %s", file);
 		return PK_IOERR;
 	}
@@ -425,8 +427,10 @@ again:
 	if (ret) {
 again_detach:
 		if (query(NULL, db, "DETACH ?", "s", handle)) {
-			if (query_retry(db))
+			if (query_busy(db)) {
+				query_backoff(db);
 				goto again_detach;
+			}
 			pk_log_sqlerr(db, "Couldn't detach %s", handle);
 		}
 		return ret;
@@ -485,15 +489,18 @@ again:
 pk_err_t vacuum(struct db *db)
 {
 	pk_err_t ret;
+	gboolean retry;
 
 again_vacuum:
 	ret=query(NULL, db, "VACUUM", NULL);
 	if (ret) {
 		pk_log_sqlerr(db, "Couldn't vacuum database");
-		if (query_retry(db))
+		if (query_busy(db)) {
+			query_backoff(db);
 			goto again_vacuum;
-		else
+		} else {
 			return ret;
+		}
 	}
 
 again_trans:
@@ -514,9 +521,12 @@ again_trans:
 		goto bad_trans;
 
 bad_trans:
+	retry = query_busy(db);
 	rollback(db);
-	if (query_retry(db))
+	if (retry) {
+		query_backoff(db);
 		goto again_trans;
+	}
 	return ret;
 }
 
@@ -529,7 +539,8 @@ pk_err_t validate_db(struct db *db)
 
 again:
 	query(&qry, db, "PRAGMA integrity_check(1)", NULL);
-	if (query_retry(db)) {
+	if (query_busy(db)) {
+		query_backoff(db);
 		goto again;
 	} else if (!query_has_row(db)) {
 		pk_log_sqlerr(db, "Couldn't run SQLite integrity check");

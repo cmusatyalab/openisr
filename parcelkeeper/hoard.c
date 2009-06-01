@@ -32,13 +32,17 @@
 #define TRANSACTION_WRAPPER				\
 TRANSACTION_DECL					\
 {							\
+	gboolean retry;					\
 again:							\
 	if (begin(state.hoard))				\
 		return;					\
 	if (TRANSACTION_CALL) {				\
+		retry = query_busy(state.hoard);	\
 		rollback(state.hoard);			\
-		if (query_retry(state.hoard))		\
+		if (retry) {				\
+			query_backoff(state.hoard);	\
 			goto again;			\
+		}					\
 		return;					\
 	}						\
 	if (commit(state.hoard))			\
@@ -482,6 +486,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	pk_err_t ret;
 	int slot_cache=0;
 	const char *update_timestamp;
+	gboolean retry;
 
 	if (config.hoard_dir == NULL)
 		return PK_NOTFOUND;
@@ -596,9 +601,12 @@ again:
 	return PK_SUCCESS;
 
 bad:
+	retry = query_busy(state.hoard);
 	rollback(state.hoard);
-	if (query_retry(state.hoard))
+	if (retry) {
+		query_backoff(state.hoard);
 		goto again;
+	}
 	return ret;
 }
 
@@ -606,6 +614,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 {
 	pk_err_t ret;
 	int offset;
+	gboolean retry;
 
 	if (config.hoard_dir == NULL)
 		return PK_SUCCESS;
@@ -676,9 +685,12 @@ again:
 	return PK_SUCCESS;
 
 bad:
+	retry = query_busy(state.hoard);
 	rollback(state.hoard);
-	if (query_retry(state.hoard))
+	if (retry) {
+		query_backoff(state.hoard);
 		goto again;
+	}
 	return ret;
 }
 
@@ -687,6 +699,7 @@ bad:
 pk_err_t hoard_sync_refs(int from_cache)
 {
 	pk_err_t ret;
+	gboolean retry;
 
 	if (config.hoard_dir == NULL)
 		return PK_SUCCESS;
@@ -752,9 +765,12 @@ again:
 	return PK_SUCCESS;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	return ret;
 }
 
@@ -762,6 +778,7 @@ static pk_err_t get_parcel_ident(void)
 {
 	struct query *qry;
 	pk_err_t ret;
+	gboolean retry;
 
 again:
 	ret=begin(state.hoard);
@@ -805,9 +822,12 @@ again:
 	return PK_SUCCESS;
 
 bad:
+	retry = query_busy(state.hoard);
 	rollback(state.hoard);
-	if (query_retry(state.hoard))
+	if (retry) {
+		query_backoff(state.hoard);
 		goto again;
+	}
 	return ret;
 }
 
@@ -816,6 +836,7 @@ static pk_err_t open_hoard_index(void)
 	struct query *qry;
 	pk_err_t ret;
 	int ver;
+	gboolean retry;
 
 	/* First open the dedicated hoard cache DB connection */
 	ret=sql_conn_open(config.hoard_index, &state.hoard);
@@ -861,9 +882,12 @@ again:
 	return PK_SUCCESS;
 
 bad_rollback:
+	retry = query_busy(state.hoard);
 	rollback(state.hoard);
-	if (query_retry(state.hoard))
+	if (retry) {
+		query_backoff(state.hoard);
 		goto again;
+	}
 bad:
 	sql_conn_close(state.hoard);
 	return ret;
@@ -876,6 +900,7 @@ static pk_err_t hoard_try_cleanup(void)
 	pk_err_t ret;
 	int changes;
 	int ident;
+	gboolean retry;
 
 	ret=get_file_lock(state.hoard_fd, FILE_LOCK_WRITE);
 	if (ret == PK_BUSY) {
@@ -944,9 +969,12 @@ out:
 	put_file_lock(state.hoard_fd);
 	return ret;
 bad:
+	retry = query_busy(state.hoard);
 	rollback(state.hoard);
-	if (query_retry(state.hoard))
+	if (retry) {
+		query_backoff(state.hoard);
 		goto again;
+	}
 	goto out;
 }
 

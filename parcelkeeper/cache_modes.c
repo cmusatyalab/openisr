@@ -66,6 +66,7 @@ int copy_for_upload(void)
 	off64_t modified_bytes;
 	int64_t total_modified_bytes;
 	int ret=1;
+	gboolean retry;
 
 	if (cache_test_flag(CA_F_DAMAGED)) {
 		pk_log(LOG_WARNING, "Local cache marked as damaged; "
@@ -192,9 +193,12 @@ again:
 out:
 	query_free(qry);
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	g_free(buf);
 	if (ret == 0)
 		pk_log(LOG_STATS, "Copied %u modified chunks, %llu bytes",
@@ -266,13 +270,16 @@ again:
 		}
 	}
 	query_free(qry);
-	rollback(state.db);
 	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Keyring query failed");
-		if (query_retry(state.db))
+		if (query_busy(state.db)) {
+			rollback(state.db);
+			query_backoff(state.db);
 			goto again;
+		}
 		ret=PK_IOERR;
 	}
+	rollback(state.db);
 	return ret;
 }
 
@@ -310,6 +317,7 @@ static pk_err_t validate_cachefile(void)
 	int64_t valid_bytes;
 	pk_err_t ret;
 	pk_err_t ret2;
+	gboolean retry;
 
 	buf=g_malloc(parcel.chunksize);
 
@@ -423,9 +431,12 @@ again:
 	return ret;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	g_free(buf);
 	return ret;
 }
@@ -492,6 +503,7 @@ int examine_cache(void)
 	unsigned dirty_mb;
 	unsigned valid_pct;
 	unsigned dirty_pct;
+	gboolean retry;
 
 again:
 	if (begin(state.db))
@@ -530,8 +542,11 @@ again:
 	return 0;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	return 1;
 }

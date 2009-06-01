@@ -25,6 +25,7 @@
 static pk_err_t build_hoard_table(int *chunks_to_hoard)
 {
 	struct query *qry;
+	gboolean retry;
 
 again:
 	/* Build a temp table listing the chunks to hoard, so that
@@ -59,9 +60,12 @@ again:
 	return PK_SUCCESS;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	return PK_IOERR;
 }
 
@@ -71,6 +75,7 @@ bad:
 static gboolean need_fetch(void *tag, unsigned taglen)
 {
 	gboolean ret = TRUE;
+	gboolean retry;
 
 again:
 	if (begin(state.hoard))
@@ -81,9 +86,12 @@ again:
 		ret = FALSE;
 	} else if (!query_ok(state.hoard)) {
 		pk_log_sqlerr(state.hoard, "Couldn't query hoard cache index");
+		retry = query_busy(state.hoard);
 		rollback(state.hoard);
-		if (query_retry(state.hoard))
+		if (retry) {
+			query_backoff(state.hoard);
 			goto again;
+		}
 		return ret;
 	}
 	rollback(state.hoard);
@@ -101,6 +109,7 @@ int hoard(void)
 	int num_hoarded=0;
 	int to_hoard;
 	int ret=1;
+	gboolean retry;
 
 	/* We need to do this first; otherwise, chunks we thought were hoarded
 	   could disappear out from under us */
@@ -156,9 +165,12 @@ again:
 		ret=0;
 out:
 	query_free(qry);
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 out_early:
 	g_free(buf);
 	if (begin(state.db)) {
@@ -182,6 +194,7 @@ int examine_hoard(void)
 	unsigned valid_mb;
 	unsigned max_mb;
 	unsigned valid_pct;
+	gboolean retry;
 
 	if (hoard_sync_refs(0)) {
 		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
@@ -219,9 +232,12 @@ again:
 	return 0;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	return 1;
 }
 
@@ -239,6 +255,7 @@ int list_hoard(void)
 	int shared;
 	int unreferenced;
 	int unused;
+	gboolean retry;
 
 again:
 	if (begin(state.db))
@@ -296,9 +313,12 @@ again:
 		pk_log_sqlerr(state.db, "Couldn't list parcels in hoard cache");
 	}
 out:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	return ret;
 }
 
@@ -311,6 +331,7 @@ int rmhoard(void)
 	gchar *desc;
 	int parcel;
 	int removed;
+	gboolean retry;
 
 again:
 	if (begin(state.db))
@@ -370,9 +391,12 @@ again:
 	return 0;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	return 1;
 }
 
@@ -390,6 +414,7 @@ static pk_err_t check_hoard_data(void)
 	off64_t total_bytes;
 	pk_err_t ret;
 	int count;
+	gboolean retry;
 
 	pk_log(LOG_INFO, "Validating hoard cache data");
 	printf("Validating hoard cache data...\n");
@@ -455,9 +480,12 @@ again:
 	return ret;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	if (begin(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't drop temporary table (1)");
 		return PK_IOERR;
@@ -484,6 +512,7 @@ int check_hoard(void)
 	int count;
 	int curcount;
 	int curtime;
+	gboolean retry;
 
 	pk_log(LOG_INFO, "Validating hoard cache");
 	printf("Validating hoard cache...\n");
@@ -648,9 +677,12 @@ again:
 	return 0;
 
 bad:
+	retry = query_busy(state.db);
 	rollback(state.db);
-	if (query_retry(state.db))
+	if (retry) {
+		query_backoff(state.db);
 		goto again;
+	}
 	return 1;
 }
 

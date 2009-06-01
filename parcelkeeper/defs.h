@@ -259,13 +259,13 @@ void sql_conn_close(struct db *db);
 pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 			const char *fmt, ...);
 pk_err_t query_next(struct query *qry);
-gboolean query_retry(struct db *db);
 gboolean query_has_row(struct db *db);
 gboolean query_ok(struct db *db);
 gboolean query_busy(struct db *db);
 gboolean query_constrained(struct db *db);
 void query_row(struct query *qry, const char *fmt, ...);
 void query_free(struct query *qry);
+void query_backoff(struct db *db);
 void pk_log_sqlerr(struct db *db, const char *fmt, ...);
 pk_err_t attach(struct db *db, const char *handle, const char *file);
 pk_err_t _begin(struct db *db, const char *caller, int immediate);
