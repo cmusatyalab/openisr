@@ -224,17 +224,20 @@ static pk_err_t verify_cache_index(void)
 {
 	struct query *qry;
 	int found;
+	pk_err_t ret;
 
 again:
+	ret=begin(state.db);
+	if (ret)
+		return ret;
 	query(&qry, state.db, "PRAGMA cache.user_version", NULL);
-	if (query_retry(state.db))
-		goto again;
-	else if (!query_has_row(state.db)) {
+	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query cache index version");
-		return PK_IOERR;
+		goto bad;
 	}
 	query_row(qry, "d", &found);
 	query_free(qry);
+	rollback(state.db);
 	if (found != CA_INDEX_VERSION) {
 		pk_log(LOG_ERROR, "Invalid version reading cache index: "
 					"expected %d, found %d",
@@ -242,6 +245,12 @@ again:
 		return PK_BADFORMAT;
 	}
 	return PK_SUCCESS;
+
+bad:
+	rollback(state.db);
+	if (query_retry(state.db))
+		goto again;
+	return ret;
 }
 
 static void shm_set(unsigned chunk, unsigned status)
@@ -294,18 +303,19 @@ static pk_err_t shm_init(void)
 	}
 
 again:
+	ret=begin(state.db);
+	if (ret)
+		goto bad_populate;
 	for (query(&qry, state.db, "SELECT chunk FROM cache.chunks", NULL);
 				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "d", &chunk);
 		shm_set(chunk, SHM_PRESENT);
 	}
 	query_free(qry);
-	if (query_retry(state.db)) {
-		goto again;
-	} else if (!query_ok(state.db)) {
+	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't query cache index");
 		ret=PK_SQLERR;
-		goto bad_populate;
+		goto bad_sql;
 	}
 
 	for (query(&qry, state.db, "SELECT main.keys.chunk "
@@ -317,15 +327,18 @@ again:
 		shm_set(chunk, SHM_DIRTY);
 	}
 	query_free(qry);
-	if (query_retry(state.db)) {
-		goto again;
-	} else if (!query_ok(state.db)) {
+	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't find modified chunks");
 		ret=PK_SQLERR;
-		goto bad_populate;
+		goto bad_sql;
 	}
+	rollback(state.db);
 	return PK_SUCCESS;
 
+bad_sql:
+	rollback(state.db);
+	if (query_retry(state.db))
+		goto again;
 bad_populate:
 	munmap(state.shm_base, state.shm_len);
 bad_map:

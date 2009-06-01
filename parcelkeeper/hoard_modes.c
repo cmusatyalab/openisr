@@ -65,6 +65,31 @@ bad:
 	return PK_IOERR;
 }
 
+/* Make sure the chunk hasn't already been put in the hoard cache (because
+   someone else already downloaded it) before we download.  Use the hoard DB
+   connection so that state.db doesn't acquire the hoard DB lock. */
+static gboolean need_fetch(void *tag, unsigned taglen)
+{
+	gboolean ret = TRUE;
+
+again:
+	if (begin(state.hoard))
+		return TRUE;
+	query(NULL, state.hoard, "SELECT tag FROM chunks WHERE tag == ?", "b",
+				tag, taglen);
+	if (query_has_row(state.hoard)) {
+		ret = FALSE;
+	} else if (!query_ok(state.hoard)) {
+		pk_log_sqlerr(state.hoard, "Couldn't query hoard cache index");
+		rollback(state.hoard);
+		if (query_retry(state.hoard))
+			goto again;
+		return ret;
+	}
+	rollback(state.hoard);
+	return ret;
+}
+
 int hoard(void)
 {
 	struct query *qry;
@@ -105,6 +130,8 @@ int hoard(void)
 	buf=g_malloc(parcel.chunksize);
 
 again:
+	if (begin(state.db))
+		goto out_early;
 	for (query(&qry, state.db, "SELECT chunk, tag FROM temp.to_hoard",
 				NULL); query_has_row(state.db);
 				query_next(qry)) {
@@ -115,25 +142,12 @@ again:
 			goto out;
 		}
 
-again_inner:
-		/* Make sure the chunk hasn't already been put in the hoard
-		   cache (because someone else already downloaded it) before
-		   we download.  Use the hoard DB connection so that state.db
-		   doesn't acquire the hoard DB lock. */
-		query(NULL, state.hoard, "SELECT tag FROM chunks WHERE "
-					"tag == ?", "b", tag, taglen);
-		if (query_ok(state.hoard)) {
+		if (need_fetch(tag, taglen)) {
 			if (transport_fetch_chunk(buf, chunk, tag, &chunklen))
 				goto out;
 			print_progress_chunks(++num_hoarded, to_hoard);
-		} else if (query_has_row(state.hoard)) {
-			print_progress_chunks(num_hoarded, --to_hoard);
-		} else if (query_retry(state.hoard)) {
-			goto again_inner;
 		} else {
-			pk_log_sqlerr(state.hoard, "Couldn't query hoard "
-						"cache index");
-			goto out;
+			print_progress_chunks(num_hoarded, --to_hoard);
 		}
 	}
 	if (!query_ok(state.db))
@@ -142,11 +156,21 @@ again_inner:
 		ret=0;
 out:
 	query_free(qry);
+	rollback(state.db);
 	if (query_retry(state.db))
 		goto again;
-	if (query(NULL, state.db, "DROP TABLE temp.to_hoard", NULL))
-		pk_log_sqlerr(state.db, "Couldn't drop table temp.to_hoard");
+out_early:
 	g_free(buf);
+	if (begin(state.db)) {
+		pk_log_sqlerr(state.db, "Couldn't drop temporary table (1)");
+		return PK_SQLERR;
+	}
+	if (query(NULL, state.db, "DROP TABLE temp.to_hoard", NULL))
+		pk_log_sqlerr(state.db, "Couldn't drop temporary table (2)");
+	if (commit(state.db)) {
+		pk_log_sqlerr(state.db, "Couldn't drop temporary table (3)");
+		rollback(state.db);
+	}
 	return ret;
 }
 
@@ -364,13 +388,16 @@ static pk_err_t check_hoard_data(void)
 	int crypto;
 	off64_t examined_bytes;
 	off64_t total_bytes;
-	pk_err_t ret=PK_SUCCESS;
+	pk_err_t ret;
 	int count;
 
 	pk_log(LOG_INFO, "Validating hoard cache data");
 	printf("Validating hoard cache data...\n");
 
 again:
+	ret=begin(state.db);
+	if (ret)
+		return ret;
 	query(&qry, state.db, "SELECT sum(length) FROM temp.to_check", NULL);
 	if (!query_has_row(state.db)) {
 		pk_log_sqlerr(state.db, "Couldn't find the amount of data "
@@ -417,17 +444,30 @@ again:
 		pk_log_sqlerr(state.db, "Couldn't walk chunk list");
 		goto bad;
 	}
-	if (query(NULL, state.db, "DROP TABLE temp.to_check", NULL))
+	if (query(NULL, state.db, "DROP TABLE temp.to_check", NULL)) {
 		pk_log_sqlerr(state.db, "Couldn't drop temporary table");
+		goto bad;
+	}
+	if (commit(state.db))
+		goto bad;
 	if (count)
 		pk_log(LOG_WARNING, "Removed %d invalid chunks", count);
 	return ret;
 
 bad:
+	rollback(state.db);
 	if (query_retry(state.db))
 		goto again;
+	if (begin(state.db)) {
+		pk_log_sqlerr(state.db, "Couldn't drop temporary table (1)");
+		return PK_IOERR;
+	}
 	if (query(NULL, state.db, "DROP TABLE temp.to_check", NULL))
-		pk_log_sqlerr(state.db, "Couldn't drop temporary table");
+		pk_log_sqlerr(state.db, "Couldn't drop temporary table (2)");
+	if (commit(state.db)) {
+		pk_log_sqlerr(state.db, "Couldn't drop temporary table (3)");
+		rollback(state.db);
+	}
 	return PK_IOERR;
 }
 

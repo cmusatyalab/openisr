@@ -219,7 +219,9 @@ static pk_err_t validate_keyring(void)
 
 again:
 	expected_chunk=0;
-	ret=PK_SUCCESS;
+	ret=begin(state.db);
+	if (ret)
+		return ret;
 	for (query(&qry, state.db, "SELECT chunk, tag, key, compression "
 				"FROM keys ORDER BY chunk ASC", NULL);
 				query_has_row(state.db); query_next(qry)) {
@@ -264,10 +266,11 @@ again:
 		}
 	}
 	query_free(qry);
-	if (query_retry(state.db))
-		goto again;
+	rollback(state.db);
 	if (!query_ok(state.db)) {
 		pk_log_sqlerr(state.db, "Keyring query failed");
+		if (query_retry(state.db))
+			goto again;
 		ret=PK_IOERR;
 	}
 	return ret;
