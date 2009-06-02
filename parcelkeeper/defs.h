@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <glib.h>
+#include <pthread.h>
 
 typedef enum pk_err {
 	PK_SUCCESS=0,
