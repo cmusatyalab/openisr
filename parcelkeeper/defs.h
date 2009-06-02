@@ -51,8 +51,8 @@ enum pk_log_type {
 	LOG_WARNING,
 	LOG_STATS
 };
-#define _LOG_FUNC (1<<31)
-#define LOG_ERROR (LOG_WARNING|_LOG_FUNC)
+#define _LOG_BACKTRACE (1<<31)
+#define LOG_ERROR (LOG_WARNING|_LOG_BACKTRACE)
 
 enum cryptotype {
 	CRY_UNKNOWN=0,

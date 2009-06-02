@@ -56,7 +56,7 @@ static pk_err_t parse_logtype(const char *name, enum pk_log_type *out)
 	else if (!strcmp(name, "slow"))
 		*out=LOG_SLOW_QUERY;
 	else if (!strcmp(name, "error"))
-		*out=LOG_WARNING;  /* ERROR is just WARNING plus _LOG_FUNC */
+		*out=LOG_WARNING;  /* ERROR is just WARNING | _LOG_BACKTRACE */
 	else if (!strcmp(name, "stats"))
 		*out=LOG_STATS;
 	else
@@ -66,7 +66,7 @@ static pk_err_t parse_logtype(const char *name, enum pk_log_type *out)
 
 static const char *log_prefix(enum pk_log_type type)
 {
-	switch (type & ~_LOG_FUNC) {
+	switch (type & ~_LOG_BACKTRACE) {
 	case LOG_INFO:
 		return "INFO";
 	case LOG_CHUNK:
@@ -176,7 +176,7 @@ void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 		vfprintf(state.log_fp, fmt, ap);
 		fprintf(state.log_fp, "\n");
 		va_end(ap);
-		if (type & _LOG_FUNC)
+		if (type & _LOG_BACKTRACE)
 			log_backtrace(state.log_fp);
 		fflush(state.log_fp);
 		put_file_lock(fileno(state.log_fp));
@@ -188,7 +188,7 @@ void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, "\n");
 		va_end(ap);
-		if (type & _LOG_FUNC)
+		if (type & _LOG_BACKTRACE)
 			log_backtrace(stderr);
 	}
 }
