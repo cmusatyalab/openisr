@@ -971,9 +971,6 @@ sub sync ($) {
     my $releasing = shift;  # whether we're releasing the lock afterward
 
     my $relstring = "";
-    my $vflag = "-q";
-    my $bwflag = "";
-    my $i;
 
     # Tidy up the cfg directory
     vmm_cleanup();
@@ -982,52 +979,28 @@ sub sync ($) {
     srun("lock", "-p $parcel -C $sessionid") == 0
 	or errexit("Parcel lock no longer held; aborting");
 
-    if (!-e $cleancache_file) {
-	# Upload the dirty blocks in a cache directory on the server
-	upload();
-    } else {
+    if (-e $cleancache_file) {
 	print "Local cache is clean.  Skipping upload and commit.\n"
 	    if $verbose;
+	return;
     }
+
+    # Upload the dirty blocks in a cache directory on the server
+    upload();
     
     # Operations from this point on should not be interrupted by the user
     block_sigint();
     
-    if (!-e $cleancache_file) {
-	# Commit a new version on the server
-	commit();
+    # Commit a new version on the server
+    commit();
 
-	# If the server-side commit was successful, then do the
-	# client-side commit. 
-	clientcommit($releasing);
-    }
+    # If the server-side commit was successful, then do the
+    # client-side commit. 
+    clientcommit($releasing);
 
     # If $releasing == 1, it is not safe to unblock SIGINT until the parceldir
     # is removed by our caller, since the prev-keyring is not up-to-date.
 
-    # Append the session log to the persistent log in remote storage
-    # and if successful delete the session log. 
-    message("Uploading session log");
-    print "Uploading session log...\n"
-	if $verbose;
-
-    $vflag = "--progress"
-	if ($verbose);
-    $bwflag = "--bwlimit=$bwlimit"
-	if ($bwlimit);
-
-    # Retry if the put operation fails
-    for ($i = 0; $i < $syscfg{retries}; $i++) {
-	if (mysystem("rsync -e 'ssh -o PasswordAuthentication=no' --partial -z $vflag $bwflag $logfile $userid\@$cfg{WPATH}/session.log.new") == 0) {
-	    if (srun("catlog", "-p $parcel -f session.log.new") == 0) {
-		unlink($logfile);
-		last;
-	    }
-	}
-	print "[isr] put operation failed. Retrying...\n"
-	    if $verbose;
-    }
-    
     $relstring = " (but not released)"
 	if !$releasing;
     print(GREEN, "Success: Sync completed. Parcel checkpointed$relstring.\n", RESET)
