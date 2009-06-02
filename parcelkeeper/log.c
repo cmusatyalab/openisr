@@ -24,7 +24,10 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <time.h>
+#include <execinfo.h>
 #include "defs.h"
+
+#define MAX_BACKTRACE_LEN 32
 
 static void curtime(char *buf, unsigned buflen)
 {
@@ -137,6 +140,23 @@ static void check_log(void)
 	}
 }
 
+static void log_backtrace(FILE *fp)
+{
+	void *frames[MAX_BACKTRACE_LEN];
+	char **syms;
+	int i;
+	int count;
+
+	count = backtrace(frames, MAX_BACKTRACE_LEN);
+	syms = backtrace_symbols(frames, count);
+	if (syms == NULL)
+		return;
+	fprintf(fp, "Backtrace:\n");
+	for (i = 0; i < count; i++)
+		fprintf(fp, "   %s\n", syms[i]);
+	free(syms);
+}
+
 void _pk_vlog(enum pk_log_type type, const char *fmt, const char *func,
 			va_list args)
 {
@@ -159,6 +179,8 @@ void _pk_vlog(enum pk_log_type type, const char *fmt, const char *func,
 		vfprintf(state.log_fp, fmt, ap);
 		fprintf(state.log_fp, "\n");
 		va_end(ap);
+		if (type & _LOG_FUNC)
+			log_backtrace(state.log_fp);
 		fflush(state.log_fp);
 		put_file_lock(fileno(state.log_fp));
 	}
@@ -171,6 +193,8 @@ void _pk_vlog(enum pk_log_type type, const char *fmt, const char *func,
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, "\n");
 		va_end(ap);
+		if (type & _LOG_FUNC)
+			log_backtrace(stderr);
 	}
 }
 
