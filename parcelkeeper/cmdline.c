@@ -402,7 +402,7 @@ enum mode parse_cmdline(struct pk_config *conf, int argc, char **argv)
 	while ((opt=pk_getopt(&ctx, argc, argv)) != END_OPTS) {
 		switch (opt) {
 		case OPT_PARCEL:
-			conf->parcel_dir=ctx.optparam;
+			conf->parcel_dir=g_strdup(ctx.optparam);
 			check_dir(&ctx, conf->parcel_dir);
 			cp=conf->parcel_dir;
 			conf->parcel_cfg=filepath(&ctx, cp, "parcel.cfg", 1);
@@ -423,7 +423,7 @@ enum mode parse_cmdline(struct pk_config *conf, int argc, char **argv)
 							ctx.optparam);
 			break;
 		case OPT_DESTDIR:
-			conf->dest_dir=ctx.optparam;
+			conf->dest_dir=g_strdup(ctx.optparam);
 			break;
 		case OPT_MINSIZE:
 			if (parseuint(&conf->minsize, ctx.optparam, 10))
@@ -437,14 +437,14 @@ enum mode parse_cmdline(struct pk_config *conf, int argc, char **argv)
 							"%s", ctx.optparam);
 			break;
 		case OPT_HOARD:
-			conf->hoard_dir=ctx.optparam;
+			conf->hoard_dir=g_strdup(ctx.optparam);
 			conf->hoard_file=filepath(&ctx, ctx.optparam, "hoard",
 						0);
 			conf->hoard_index=filepath(&ctx, ctx.optparam,
 						"hoard.idx", 0);
 			break;
 		case OPT_LOG:
-			conf->log_file=ctx.optparam;
+			conf->log_file=g_strdup(ctx.optparam);
 			break;
 		case OPT_MASK_FILE:
 			if (logtypes_to_mask(ctx.optparam,

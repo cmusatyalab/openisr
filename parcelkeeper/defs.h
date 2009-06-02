@@ -108,7 +108,7 @@ struct pk_config {
 	unsigned flags;
 
 	/* top-level parcel directory and its contents */
-	char *parcel_dir;
+	gchar *parcel_dir;
 	gchar *parcel_cfg;
 	gchar *keyring;
 	gchar *prev_keyring;
@@ -118,15 +118,15 @@ struct pk_config {
 	gchar *pidfile;
 
 	/* hoard cache and its contents */
-	char *hoard_dir;
+	gchar *hoard_dir;
 	gchar *hoard_file;
 	gchar *hoard_index;
 
 	/* upload directory */
-	char *dest_dir;
+	gchar *dest_dir;
 
 	/* log parameters */
-	char *log_file;
+	gchar *log_file;
 	unsigned log_file_mask;
 	unsigned log_stderr_mask;
 
