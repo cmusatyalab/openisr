@@ -199,11 +199,10 @@ enum mode parse_cmdline(struct pk_config *conf, int argc, char **argv);
 /* log.c */
 void log_start(void);
 void log_shutdown(void);
-void _pk_vlog(enum pk_log_type type, const char *fmt, const char *func,
-			va_list args) __attribute__ ((format(printf, 2, 0)));
-void _pk_log(enum pk_log_type type, const char *fmt, const char *func, ...)
-			__attribute__ ((format(printf, 2, 4)));
-#define pk_log(type, fmt, args...) _pk_log(type, fmt, __func__, ## args)
+void pk_log(enum pk_log_type type, const char *fmt, ...)
+			__attribute__ ((format(printf, 2, 3)));
+void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
+			__attribute__ ((format(printf, 2, 0)));
 pk_err_t logtypes_to_mask(const char *list, unsigned *out);
 
 /* parcelcfg.c */
@@ -269,13 +268,11 @@ void query_free(struct query *qry);
 void query_backoff(struct db *db);
 void pk_log_sqlerr(struct db *db, const char *fmt, ...);
 pk_err_t attach(struct db *db, const char *handle, const char *file);
-pk_err_t _begin(struct db *db, const char *caller, int immediate);
-#define begin(db) _begin(db, __func__, 0)
-#define begin_immediate(db) _begin(db, __func__, 1)
-pk_err_t _commit(struct db *db, const char *caller);
-#define commit(db) _commit(db, __func__)
-pk_err_t _rollback(struct db *db, const char *caller);
-#define rollback(db) _rollback(db, __func__)
+pk_err_t _begin(struct db *db, int immediate);
+#define begin(db) _begin(db, 0)
+#define begin_immediate(db) _begin(db, 1)
+pk_err_t commit(struct db *db);
+pk_err_t rollback(struct db *db);
 pk_err_t vacuum(struct db *db);
 pk_err_t validate_db(struct db *db);
 pk_err_t cleanup_action(struct db *db, const char *sql,

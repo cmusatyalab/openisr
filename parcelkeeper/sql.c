@@ -317,7 +317,7 @@ void pk_log_sqlerr(struct db *db, const char *fmt, ...)
 	db_assert_trans(db);
 	va_start(ap, fmt);
 	if (db->result != SQLITE_BUSY && db->result != SQLITE_INTERRUPT) {
-		_pk_vlog(LOG_ERROR, fmt, __func__, ap);
+		pk_vlog(LOG_ERROR, fmt, ap);
 		if (db->result != SQLITE_ROW && db->result != SQLITE_OK)
 			pk_log(LOG_WARNING, "...SQLite error %d (%s)",
 						db->result, db->errmsg);
@@ -499,36 +499,34 @@ out:
 	return ret;
 }
 
-pk_err_t _begin(struct db *db, const char *caller, int immediate)
+pk_err_t _begin(struct db *db, int immediate)
 {
 	db_get(db);
 again:
 	if (query(NULL, db, immediate ? "BEGIN IMMEDIATE" : "BEGIN", NULL)) {
 		if (query_busy(db))
 			goto again;
-		pk_log_sqlerr(db, "Couldn't begin transaction on behalf of "
-					"%s()", caller);
+		pk_log_sqlerr(db, "Couldn't begin transaction");
 		db_put(db);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
 }
 
-pk_err_t _commit(struct db *db, const char *caller)
+pk_err_t commit(struct db *db)
 {
 again:
 	if (query(NULL, db, "COMMIT", NULL)) {
 		if (query_busy(db))
 			goto again;
-		pk_log_sqlerr(db, "Couldn't commit transaction on behalf of "
-					"%s()", caller);
+		pk_log_sqlerr(db, "Couldn't commit transaction");
 		return PK_IOERR;
 	}
 	db_put(db);
 	return PK_SUCCESS;
 }
 
-pk_err_t _rollback(struct db *db, const char *caller)
+pk_err_t rollback(struct db *db)
 {
 	pk_err_t ret=PK_SUCCESS;
 
@@ -541,8 +539,7 @@ again:
 				!sqlite3_get_autocommit(db->conn)) {
 		if (query_busy(db))
 			goto again;
-		pk_log_sqlerr(db, "Couldn't roll back transaction on behalf of "
-					"%s()", caller);
+		pk_log_sqlerr(db, "Couldn't roll back transaction");
 		ret=PK_IOERR;
 	} else {
 		db_put(db);

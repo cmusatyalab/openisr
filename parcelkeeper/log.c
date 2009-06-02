@@ -157,8 +157,7 @@ static void log_backtrace(FILE *fp)
 	free(syms);
 }
 
-void _pk_vlog(enum pk_log_type type, const char *fmt, const char *func,
-			va_list args)
+void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 {
 	va_list ap;
 	char buf[50];
@@ -174,8 +173,6 @@ void _pk_vlog(enum pk_log_type type, const char *fmt, const char *func,
 		va_copy(ap, args);
 		fprintf(state.log_fp, "%s %d %s: ", buf, state.pk_pid,
 					log_prefix(type));
-		if (type & _LOG_FUNC)
-			fprintf(state.log_fp, "%s(): ", func);
 		vfprintf(state.log_fp, fmt, ap);
 		fprintf(state.log_fp, "\n");
 		va_end(ap);
@@ -188,8 +185,6 @@ void _pk_vlog(enum pk_log_type type, const char *fmt, const char *func,
 	if ((1 << type) & config.log_stderr_mask) {
 		va_copy(ap, args);
 		fprintf(stderr, "PK: ");
-		if (type & _LOG_FUNC)
-			fprintf(stderr, "%s(): ", func);
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, "\n");
 		va_end(ap);
@@ -198,12 +193,12 @@ void _pk_vlog(enum pk_log_type type, const char *fmt, const char *func,
 	}
 }
 
-void _pk_log(enum pk_log_type type, const char *fmt, const char *func, ...)
+void pk_log(enum pk_log_type type, const char *fmt, ...)
 {
 	va_list ap;
 
-	va_start(ap, func);
-	_pk_vlog(type, fmt, func, ap);
+	va_start(ap, fmt);
+	pk_vlog(type, fmt, ap);
 	va_end(ap);
 }
 
