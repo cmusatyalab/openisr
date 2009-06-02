@@ -47,6 +47,9 @@ int main(int argc, char **argv)
 	int have_lock=0;
 	pk_err_t err;
 
+	if (!g_thread_supported())
+		g_thread_init(NULL);
+
 	if (setup_signal_handlers(generic_signal_handler, caught_signals,
 				ignored_signals)) {
 		/* Logging isn't up yet */
