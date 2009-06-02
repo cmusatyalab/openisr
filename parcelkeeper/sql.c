@@ -586,6 +586,7 @@ again_trans:
 	ret=commit(db);
 	if (ret)
 		goto bad_trans;
+	return PK_SUCCESS;
 
 bad_trans:
 	retry = query_busy(db);
