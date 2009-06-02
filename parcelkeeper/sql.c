@@ -319,7 +319,7 @@ void pk_log_sqlerr(struct db *db, const char *fmt, ...)
 	if (db->result != SQLITE_BUSY && db->result != SQLITE_INTERRUPT) {
 		_pk_vlog(LOG_ERROR, fmt, __func__, ap);
 		if (db->result != SQLITE_ROW && db->result != SQLITE_OK)
-			pk_log(LOG_ERROR, "...SQLite error %d (%s)",
+			pk_log(LOG_WARNING, "...SQLite error %d (%s)",
 						db->result, db->errmsg);
 	}
 	va_end(ap);
