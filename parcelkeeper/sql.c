@@ -30,7 +30,10 @@
 #define PROGRESS_HANDLER_INTERVAL 100000
 
 struct db {
+	pthread_mutex_t lock;
+	pthread_t holder;
 	sqlite3 *conn;
+	unsigned queries;
 	int result;  /* set by query() and query_next() */
 	gchar *file;
 	gchar *errmsg;
@@ -60,6 +63,40 @@ static void sqlerr(struct db *db, const char *fmt, ...)
 	va_end(ap);
 }
 
+static void db_get(struct db *db)
+{
+	pthread_mutex_lock(&db->lock);
+	db->holder = pthread_self();
+}
+
+static void db_put(struct db *db)
+{
+	if (db->queries) {
+		pk_log(LOG_ERROR, "Leaked %u queries", db->queries);
+		db->queries = 0;
+	}
+	db->holder = (pthread_t) 0;
+	pthread_mutex_unlock(&db->lock);
+}
+
+static gboolean db_in_trans(struct db *db)
+{
+	if (!pthread_mutex_trylock(&db->lock)) {
+		pthread_mutex_unlock(&db->lock);
+		return FALSE;
+	}
+	if (db->holder != pthread_self())
+		return FALSE;
+	return TRUE;
+}
+
+static void db_assert_trans(struct db *db)
+{
+	if (!db_in_trans(db))
+		pk_log(LOG_ERROR, "Attempt to perform database operation "
+					"outside a transaction");
+}
+
 static int alloc_query(struct query **new_qry, struct db *db, const char *sql)
 {
 	struct query *qry;
@@ -74,6 +111,7 @@ static int alloc_query(struct query **new_qry, struct db *db, const char *sql)
 	} else {
 		qry->sql=sqlite3_sql(qry->stmt);
 		gettimeofday(&qry->start, NULL);
+		db->queries++;
 		*new_qry=qry;
 	}
 	return ret;
@@ -91,6 +129,12 @@ pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 
 	if (new_qry != NULL)
 		*new_qry=NULL;
+	if (!db_in_trans(db)) {
+		db->result=SQLITE_MISUSE;
+		sqlerr(db, "Attempt to perform database operation outside "
+					"a transaction");
+		return PK_SQLERR;
+	}
 	db->result=alloc_query(&qry, db, query);
 	if (db->result)
 		return PK_SQLERR;
@@ -178,21 +222,25 @@ pk_err_t query_next(struct query *qry)
 
 gboolean query_has_row(struct db *db)
 {
+	db_assert_trans(db);
 	return (db->result == SQLITE_ROW);
 }
 
 gboolean query_ok(struct db *db)
 {
+	db_assert_trans(db);
 	return (db->result == SQLITE_OK);
 }
 
 gboolean query_busy(struct db *db)
 {
+	db_assert_trans(db);
 	return (db->result == SQLITE_BUSY);
 }
 
 gboolean query_constrained(struct db *db)
 {
+	db_assert_trans(db);
 	return (db->result == SQLITE_CONSTRAINT);
 }
 
@@ -258,6 +306,7 @@ void query_free(struct query *qry)
 	pk_log(LOG_QUERY, "Query took %u ms: \"%s\"", ms, qry->sql);
 
 	sqlite3_finalize(qry->stmt);
+	qry->db->queries--;
 	g_slice_free(struct query, qry);
 }
 
@@ -265,6 +314,7 @@ void pk_log_sqlerr(struct db *db, const char *fmt, ...)
 {
 	va_list ap;
 
+	db_assert_trans(db);
 	va_start(ap, fmt);
 	if (db->result != SQLITE_BUSY && db->result != SQLITE_INTERRUPT) {
 		_pk_vlog(LOG_ERROR, fmt, __func__, ap);
@@ -335,9 +385,13 @@ pk_err_t sql_conn_open(const char *path, struct db **handle)
 
 	*handle = NULL;
 	db = g_slice_new0(struct db);
+	pthread_mutex_init(&db->lock, NULL);
+	db_get(db);
 	if (sqlite3_open(path, &db->conn)) {
 		pk_log(LOG_ERROR, "Couldn't open database %s: %s",
 					path, sqlite3_errmsg(db->conn));
+		db_put(db);
+		pthread_mutex_destroy(&db->lock);
 		g_slice_free(struct db, db);
 		return PK_IOERR;
 	}
@@ -367,12 +421,15 @@ again:
 	}
 	if (sql_setup_db(db, "main"))
 		goto bad;
+	db_put(db);
 	*handle = db;
 	return PK_SUCCESS;
 
 bad:
 	sqlite3_close(db->conn);
 	g_free(db->file);
+	db_put(db);
+	pthread_mutex_destroy(&db->lock);
 	g_slice_free(struct db, db);
 	return PK_CALLFAIL;
 }
@@ -384,6 +441,7 @@ void sql_conn_close(struct db *db)
 	if (sqlite3_close(db->conn))
 		pk_log(LOG_ERROR, "Couldn't close database: %s",
 					sqlite3_errmsg(db->conn));
+	pthread_mutex_destroy(&db->lock);
 	g_free(db->errmsg);
 	pk_log(LOG_STATS, "%s: Busy handler called for %u queries; %u timeouts",
 				db->file, db->busy_queries, db->busy_timeouts);
@@ -414,6 +472,7 @@ pk_err_t attach(struct db *db, const char *handle, const char *file)
 {
 	pk_err_t ret;
 
+	db_get(db);
 again:
 	if (query(NULL, db, "ATTACH ? AS ?", "ss", file, handle)) {
 		if (query_busy(db)) {
@@ -421,7 +480,8 @@ again:
 			goto again;
 		}
 		pk_log_sqlerr(db, "Couldn't attach %s", file);
-		return PK_IOERR;
+		ret = PK_IOERR;
+		goto out;
 	}
 	ret=sql_setup_db(db, handle);
 	if (ret) {
@@ -433,19 +493,22 @@ again_detach:
 			}
 			pk_log_sqlerr(db, "Couldn't detach %s", handle);
 		}
-		return ret;
 	}
-	return PK_SUCCESS;
+out:
+	db_put(db);
+	return ret;
 }
 
 pk_err_t _begin(struct db *db, const char *caller, int immediate)
 {
+	db_get(db);
 again:
 	if (query(NULL, db, immediate ? "BEGIN IMMEDIATE" : "BEGIN", NULL)) {
 		if (query_busy(db))
 			goto again;
 		pk_log_sqlerr(db, "Couldn't begin transaction on behalf of "
 					"%s()", caller);
+		db_put(db);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -461,12 +524,12 @@ again:
 					"%s()", caller);
 		return PK_IOERR;
 	}
+	db_put(db);
 	return PK_SUCCESS;
 }
 
 pk_err_t _rollback(struct db *db, const char *caller)
 {
-	int saved=db->result;
 	pk_err_t ret=PK_SUCCESS;
 
 again:
@@ -481,8 +544,9 @@ again:
 		pk_log_sqlerr(db, "Couldn't roll back transaction on behalf of "
 					"%s()", caller);
 		ret=PK_IOERR;
+	} else {
+		db_put(db);
 	}
-	db->result=saved;
 	return ret;
 }
 
@@ -491,6 +555,7 @@ pk_err_t vacuum(struct db *db)
 	pk_err_t ret;
 	gboolean retry;
 
+	db_get(db);
 again_vacuum:
 	ret=query(NULL, db, "VACUUM", NULL);
 	if (ret) {
@@ -499,9 +564,11 @@ again_vacuum:
 			query_backoff(db);
 			goto again_vacuum;
 		} else {
+			db_put(db);
 			return ret;
 		}
 	}
+	db_put(db);
 
 again_trans:
 	/* VACUUM flushes the connection's schema cache.  Perform a dummy
@@ -537,6 +604,7 @@ pk_err_t validate_db(struct db *db)
 	const char *str;
 	int res;
 
+	db_get(db);
 again:
 	query(&qry, db, "PRAGMA integrity_check(1)", NULL);
 	if (query_busy(db)) {
@@ -544,11 +612,13 @@ again:
 		goto again;
 	} else if (!query_has_row(db)) {
 		pk_log_sqlerr(db, "Couldn't run SQLite integrity check");
+		db_put(db);
 		return PK_IOERR;
 	}
 	query_row(qry, "s", &str);
 	res=strcmp(str, "ok");
 	query_free(qry);
+	db_put(db);
 	if (res) {
 		pk_log(LOG_WARNING, "SQLite integrity check failed");
 		return PK_BADFORMAT;
