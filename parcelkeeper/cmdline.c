@@ -20,6 +20,15 @@
 #include <stdlib.h>
 #include "defs.h"
 
+static struct pk_config default_config = {
+	/* WARNING implies ERROR */
+	.log_file_mask = (1 << LOG_INFO) | (1 << LOG_WARNING) |
+				(1 << LOG_STATS),
+	.log_stderr_mask = 1 << LOG_WARNING,
+	.compress = COMP_NONE,
+	.nexus_cache = 32, /* MB */
+};
+
 enum arg_type {
 	REQUIRED,
 	OPTIONAL,
@@ -383,13 +392,16 @@ static gchar *filepath(struct pk_cmdline_parse_ctx *ctx, const char *dir,
 	return ret;
 }
 
-enum mode parse_cmdline(struct pk_config *conf, int argc, char **argv)
+enum mode parse_cmdline(struct pk_config **out, int argc, char **argv)
 {
 	const struct pk_mode *helpmode=NULL;
+	struct pk_config *conf;
 	struct pk_cmdline_parse_ctx ctx = {0};
 	enum option opt;
 	char *cp;
 
+	conf=g_slice_new(struct pk_config);
+	*conf=default_config;
 	if (argc == 0)
 		usage(NULL);
 	ctx.curmode=parse_mode(argv[0]);
@@ -499,5 +511,27 @@ enum mode parse_cmdline(struct pk_config *conf, int argc, char **argv)
 					rcs_revision);
 		exit(0);
 	}
+	*out=conf;
 	return ctx.curmode->type;
+}
+
+void cmdline_free(struct pk_config *conf)
+{
+	if (conf == NULL)
+		return;
+	g_free(conf->parcel_dir);
+	g_free(conf->parcel_cfg);
+	g_free(conf->keyring);
+	g_free(conf->prev_keyring);
+	g_free(conf->cache_file);
+	g_free(conf->cache_index);
+	g_free(conf->lockfile);
+	g_free(conf->pidfile);
+	g_free(conf->hoard_dir);
+	g_free(conf->hoard_file);
+	g_free(conf->hoard_index);
+	g_free(conf->dest_dir);
+	g_free(conf->log_file);
+	g_free(conf->uuid);
+	g_slice_free(struct pk_config, conf);
 }

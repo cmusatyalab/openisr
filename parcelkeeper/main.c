@@ -19,19 +19,7 @@
 #include <signal.h>
 #include "defs.h"
 
-static struct pk_config config = {
-	/* WARNING implies ERROR */
-	.log_file_mask = (1 << LOG_INFO) | (1 << LOG_WARNING) |
-				(1 << LOG_STATS),
-	.log_stderr_mask = 1 << LOG_WARNING,
-	.compress = COMP_NONE,
-	.nexus_cache = 32, /* MB */
-};
-static struct pk_parcel parcel;
-struct pk_state state = {
-	.conf = &config,
-	.parcel = &parcel,
-};
+struct pk_state state;
 
 static const int ignored_signals[]={SIGUSR1, SIGUSR2, 0};
 static const int caught_signals[]={SIGINT, SIGTERM, SIGHUP, 0};
@@ -63,7 +51,7 @@ int main(int argc, char **argv)
 	progname = g_path_get_basename(argv[0]);
 	g_set_prgname(progname);
 	g_free(progname);
-	mode=parse_cmdline(state.conf, argc - 1, argv + 1);
+	mode=parse_cmdline(&state.conf, argc - 1, argv + 1);
 	/* Trivial modes (usage, version) have already been handled by
 	   parse_cmdline() */
 
@@ -92,7 +80,7 @@ int main(int argc, char **argv)
 			goto shutdown;
 
 	if (state.conf->parcel_dir != NULL)
-		if (parse_parcel_cfg(state.parcel))
+		if (parse_parcel_cfg(&state.parcel))
 			goto shutdown;
 
 	sql_init();
@@ -172,6 +160,8 @@ shutdown:
 		release_lockfile();
 	}
 	log_shutdown();  /* safe to call unconditionally */
+	parcel_cfg_free(state.parcel);  /* likewise */
+	cmdline_free(state.conf);  /* likewise */
 	if (completion_fd != -1)
 		write(completion_fd, &ret, 1);
 	sig=state.signal;

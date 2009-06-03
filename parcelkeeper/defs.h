@@ -189,7 +189,8 @@ extern const char isr_release[];
 extern const char rcs_revision[];
 
 /* cmdline.c */
-enum mode parse_cmdline(struct pk_config *conf, int argc, char **argv);
+enum mode parse_cmdline(struct pk_config **out, int argc, char **argv);
+void cmdline_free(struct pk_config *conf);
 
 /* log.c */
 void log_start(void);
@@ -201,7 +202,8 @@ void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 pk_err_t logtypes_to_mask(const char *list, unsigned *out);
 
 /* parcelcfg.c */
-pk_err_t parse_parcel_cfg(struct pk_parcel *pdata);
+pk_err_t parse_parcel_cfg(struct pk_parcel **out);
+void parcel_cfg_free(struct pk_parcel *parcel);
 
 /* cache.c */
 pk_err_t cache_init(void);

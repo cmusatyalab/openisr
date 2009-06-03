@@ -184,7 +184,7 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 	return PK_SUCCESS;
 }
 
-pk_err_t parse_parcel_cfg(struct pk_parcel *pdata)
+pk_err_t parse_parcel_cfg(struct pk_parcel **out)
 {
 	struct pc_parse_ctx ctx = {};
 	gchar *data;
@@ -193,13 +193,13 @@ pk_err_t parse_parcel_cfg(struct pk_parcel *pdata)
 	pk_err_t ret;
 	int i;
 
-	ctx.pdata=pdata;
 	ret=read_file(state.conf->parcel_cfg, &data, NULL);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't read parcel.cfg: %s",
 					pk_strerror(ret));
 		return ret;
 	}
+	*out=ctx.pdata=g_slice_new0(struct pk_parcel);
 	lines=g_strsplit(data, "\n", 0);
 	g_free(data);
 	for (i=0; lines[i] != NULL; i++) {
@@ -210,26 +210,41 @@ pk_err_t parse_parcel_cfg(struct pk_parcel *pdata)
 		if (g_strv_length(parts) != 2) {
 			pk_log(LOG_ERROR, "Error parsing parcel.cfg at line %d",
 						i + 1);
-			goto bad;
+			goto bad_free;
 		}
 		g_strstrip(parts[0]);
 		g_strstrip(parts[1]);
 		if (pc_handle_option(&ctx, pc_find_option(&ctx, parts[0], i+1),
 					parts[1]))
-			goto bad;
+			goto bad_free;
 		g_strfreev(parts);
 	}
 	g_strfreev(lines);
 	if (!pc_have_options(&ctx))
-		return PK_IOERR;
-	pdata->master = g_strdup_printf("%s/%s/%s/last/hdk", ctx.rpath,
-					pdata->user, pdata->parcel);
+		goto bad;
+	ctx.pdata->master = g_strdup_printf("%s/%s/%s/last/hdk", ctx.rpath,
+					ctx.pdata->user, ctx.pdata->parcel);
 	g_free(ctx.rpath);
 	return PK_SUCCESS;
 
-bad:
+bad_free:
 	g_strfreev(parts);
 	g_strfreev(lines);
+bad:
 	g_free(ctx.rpath);
+	parcel_cfg_free(ctx.pdata);
+	*out=NULL;
 	return PK_IOERR;
+}
+
+void parcel_cfg_free(struct pk_parcel *parcel)
+{
+	if (parcel == NULL)
+		return;
+	g_free(parcel->uuid);
+	g_free(parcel->server);
+	g_free(parcel->user);
+	g_free(parcel->parcel);
+	g_free(parcel->master);
+	g_slice_free(struct pk_parcel, parcel);
 }

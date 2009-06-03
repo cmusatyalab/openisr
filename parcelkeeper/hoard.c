@@ -991,7 +991,7 @@ pk_err_t hoard_init(void)
 
 	if (state.conf->hoard_dir == NULL)
 		return PK_INVALID;
-	if (state.parcel->chunksize != 0 && state.parcel->chunksize != 131072) {
+	if (state.parcel != NULL && state.parcel->chunksize != 131072) {
 		pk_log(LOG_ERROR, "Hoard cache non-functional for chunk "
 					"sizes != 128 KB");
 		return PK_INVALID;
