@@ -20,8 +20,6 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <unistd.h>
-#include <sys/time.h>
-#include <time.h>
 #include <sqlite3.h>
 #include "defs.h"
 
@@ -49,7 +47,7 @@ struct query {
 	struct db *db;
 	sqlite3_stmt *stmt;
 	const char *sql;
-	struct timeval start;
+	GTimer *timer;
 };
 
 static void sqlerr(struct db *db, const char *fmt, ...)
@@ -110,7 +108,7 @@ static int alloc_query(struct query **new_qry, struct db *db, const char *sql)
 		g_slice_free(struct query, qry);
 	} else {
 		qry->sql=sqlite3_sql(qry->stmt);
-		gettimeofday(&qry->start, NULL);
+		qry->timer=g_timer_new();
 		db->queries++;
 		*new_qry=qry;
 	}
@@ -288,16 +286,12 @@ void query_row(struct query *qry, const char *fmt, ...)
 
 void query_free(struct query *qry)
 {
-	struct timeval cur;
-	struct timeval diff;
 	unsigned ms;
 
 	if (qry == NULL)
 		return;
 
-	gettimeofday(&cur, NULL);
-	timersub(&cur, &qry->start, &diff);
-	ms = diff.tv_sec * 1000 + diff.tv_usec / 1000;
+	ms = g_timer_elapsed(qry->timer, NULL) * 1000;
 	/* COMMIT is frequently slow, but we don't learn anything by logging
 	   that, and it clutters up the logs */
 	if (ms >= SLOW_THRESHOLD_MS && strcmp(qry->sql, "COMMIT"))
@@ -305,6 +299,7 @@ void query_free(struct query *qry)
 					ms, qry->sql);
 	pk_log(LOG_QUERY, "Query took %u ms: \"%s\"", ms, qry->sql);
 
+	g_timer_destroy(qry->timer);
 	sqlite3_finalize(qry->stmt);
 	qry->db->queries--;
 	g_slice_free(struct query, qry);
