@@ -101,6 +101,7 @@ enum mode_flags {
 struct pk_connection;
 struct db;
 struct query;
+struct pk_lockfile;
 
 struct pk_config {
 	/* mode data */
@@ -157,7 +158,7 @@ struct pk_state {
 
 	pid_t pk_pid;
 	FILE *log_fp;
-	int lock_fd;
+	struct pk_lockfile *lockfile;
 	int cache_fd;
 	int hoard_fd;
 	gchar *loopdev_name;
@@ -298,8 +299,8 @@ void print_progress_mb(off64_t bytes, off64_t max_bytes);
 pk_err_t fork_and_wait(int *status_fd);
 pk_err_t get_file_lock(int fd, int flags);
 pk_err_t put_file_lock(int fd);
-pk_err_t acquire_lockfile(void);
-void release_lockfile(void);
+pk_err_t acquire_lockfile(struct pk_lockfile **out, const char *path);
+void release_lockfile(struct pk_lockfile *lf);
 pk_err_t create_pidfile(const char *path);
 gchar *form_chunk_path(struct pk_parcel *parcel, const char *prefix,
 			unsigned chunk);

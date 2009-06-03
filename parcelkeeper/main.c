@@ -64,7 +64,7 @@ int main(int argc, char **argv)
 
 	/* Now take the lock */
 	if (state.conf->flags & WANT_LOCK) {
-		err=acquire_lockfile();
+		err=acquire_lockfile(&state.lockfile, state.conf->lockfile);
 		if (err) {
 			pk_log(LOG_ERROR, "Couldn't acquire parcel lock: %s",
 						pk_strerror(err));
@@ -157,7 +157,7 @@ shutdown:
 		cache_shutdown();
 	if (have_lock) {
 		unlink(state.conf->pidfile);  /* safe if lock held */
-		release_lockfile();
+		release_lockfile(state.lockfile);
 	}
 	log_shutdown();  /* safe to call unconditionally */
 	parcel_cfg_free(state.parcel);  /* likewise */

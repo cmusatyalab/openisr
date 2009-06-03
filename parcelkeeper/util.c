@@ -32,6 +32,11 @@
 
 #define UUID_STR_LEN 36  /* not including trailing NUL */
 
+struct pk_lockfile {
+	gchar *path;
+	int fd;
+};
+
 pk_err_t parseuint(unsigned *out, const char *in, int base)
 {
 	unsigned long val;
@@ -300,17 +305,18 @@ pk_err_t put_file_lock(int fd)
    we use a whole-file fcntl lock.  The lock shouldn't become stale because the
    kernel checks that for us; however, over NFS file systems without a lock
    manager, locking will fail.  For safety, we treat that as an error. */
-pk_err_t acquire_lockfile(void)
+pk_err_t acquire_lockfile(struct pk_lockfile **out, const char *path)
 {
+	struct pk_lockfile *lf;
 	int fd;
 	struct stat st;
 	pk_err_t ret;
 
+	*out = NULL;
 	while (1) {
-		fd=open(state.conf->lockfile, O_CREAT|O_WRONLY, 0666);
+		fd=open(path, O_CREAT|O_WRONLY, 0666);
 		if (fd == -1) {
-			pk_log(LOG_ERROR, "Couldn't open lock file %s",
-						state.conf->lockfile);
+			pk_log(LOG_ERROR, "Couldn't open lock file %s", path);
 			return PK_IOERR;
 		}
 		ret=get_file_lock(fd, FILE_LOCK_WRITE);
@@ -319,8 +325,7 @@ pk_err_t acquire_lockfile(void)
 			return ret;
 		}
 		if (fstat(fd, &st)) {
-			pk_log(LOG_ERROR, "Couldn't stat lock file %s",
-						state.conf->lockfile);
+			pk_log(LOG_ERROR, "Couldn't stat lock file %s", path);
 			close(fd);
 			return PK_CALLFAIL;
 		}
@@ -330,16 +335,23 @@ pk_err_t acquire_lockfile(void)
 		   doesn't do anyone any good.  Try again. */
 		close(fd);
 	}
-	state.lock_fd=fd;
+	lf = g_slice_new(struct pk_lockfile);
+	lf->path = g_strdup(path);
+	lf->fd = fd;
+	*out = lf;
 	return PK_SUCCESS;
 }
 
-void release_lockfile(void)
+void release_lockfile(struct pk_lockfile *lf)
 {
+	if (lf == NULL)
+		return;
 	/* To prevent races, we must unlink the lockfile while we still
 	   hold the lock */
-	unlink(state.conf->lockfile);
-	close(state.lock_fd);
+	unlink(lf->path);
+	g_free(lf->path);
+	close(lf->fd);
+	g_slice_free(struct pk_lockfile, lf);
 }
 
 pk_err_t create_pidfile(const char *path)
