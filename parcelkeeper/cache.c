@@ -205,7 +205,7 @@ again:
 		goto bad;
 	}
 	if (query(NULL, state.db, "PRAGMA cache.user_version = "
-				stringify(CA_INDEX_VERSION), NULL)) {
+				G_STRINGIFY(CA_INDEX_VERSION), NULL)) {
 		pk_log_sqlerr(state.db, "Couldn't set cache index version");
 		goto bad;
 	}

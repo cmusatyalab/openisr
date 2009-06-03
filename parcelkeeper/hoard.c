@@ -53,7 +53,7 @@ static pk_err_t create_hoard_index(void)
 {
 	/* XXX auto_vacuum */
 	if (query(NULL, state.hoard, "PRAGMA user_version = "
-				stringify(HOARD_INDEX_VERSION), NULL)) {
+				G_STRINGIFY(HOARD_INDEX_VERSION), NULL)) {
 		pk_log_sqlerr(state.hoard, "Couldn't set schema version");
 		return PK_IOERR;
 	}
@@ -138,7 +138,7 @@ static pk_err_t upgrade_hoard_index(int ver)
 		}
 	}
 	if (query(NULL, state.hoard, "PRAGMA user_version = "
-				stringify(HOARD_INDEX_VERSION), NULL)) {
+				G_STRINGIFY(HOARD_INDEX_VERSION), NULL)) {
 		pk_log_sqlerr(state.hoard, "Couldn't update schema version");
 		return PK_IOERR;
 	}
@@ -199,7 +199,7 @@ static pk_err_t expand_slot_cache(void)
 		query_row(qry, "d", &hoarded);
 		query_free(qry);
 		/* XXX assumes 128 KB */
-		allowed=min(hoarded - ((int)config.minsize * 8), needed);
+		allowed=MIN(hoarded - ((int)config.minsize * 8), needed);
 	} else {
 		allowed=needed;
 	}

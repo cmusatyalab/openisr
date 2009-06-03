@@ -187,12 +187,6 @@ extern struct pk_state state;
 extern const char isr_release[];
 extern const char rcs_revision[];
 
-#define min(a,b) ((a) < (b) ? (a) : (b))
-#define max(a,b) ((a) > (b) ? (a) : (b))
-#define _stringify(str) #str
-/* the first expansion stringifies; the second expands cpp constants */
-#define stringify(str) _stringify(str)
-
 /* cmdline.c */
 enum mode parse_cmdline(struct pk_config *conf, int argc, char **argv);
 

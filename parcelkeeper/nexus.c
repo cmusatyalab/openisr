@@ -491,7 +491,7 @@ void nexus_run(void)
 {
 	fd_set readfds;
 	fd_set exceptfds;
-	int fdcount=max(state.signal_fds[0], state.chardev_fd) + 1;
+	int fdcount=MAX(state.signal_fds[0], state.chardev_fd) + 1;
 	int shutdown_pending=0;
 	char signal;
 

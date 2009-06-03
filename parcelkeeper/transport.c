@@ -35,7 +35,7 @@ static size_t curl_callback(void *data, size_t size, size_t nmemb,
 			void *private)
 {
 	struct pk_connection *conn=private;
-	size_t count = min(size * nmemb, parcel.chunksize - conn->offset);
+	size_t count = MIN(size * nmemb, parcel.chunksize - conn->offset);
 
 	memcpy(conn->buf + conn->offset, data, count);
 	conn->offset += count;
