@@ -153,6 +153,7 @@ struct pk_parcel {
 
 struct pk_state {
 	struct pk_config *conf;
+	struct pk_parcel *parcel;
 
 	pid_t pk_pid;
 	FILE *log_fp;
@@ -183,7 +184,6 @@ struct pk_state {
 	int override_signal;  /* Ignore pending signals in pending_signal() */
 };
 
-extern struct pk_parcel parcel;
 extern struct pk_state state;
 extern const char isr_release[];
 extern const char rcs_revision[];

@@ -35,7 +35,8 @@ static size_t curl_callback(void *data, size_t size, size_t nmemb,
 			void *private)
 {
 	struct pk_connection *conn=private;
-	size_t count = MIN(size * nmemb, parcel.chunksize - conn->offset);
+	size_t count = MIN(size * nmemb, state.parcel->chunksize -
+				conn->offset);
 
 	memcpy(conn->buf + conn->offset, data, count);
 	conn->offset += count;
@@ -85,7 +86,7 @@ static pk_err_t transport_init_conn(struct pk_connection **result)
 		goto bad;
 	}
 	if (curl_easy_setopt(conn->curl, CURLOPT_MAXFILESIZE,
-				parcel.chunksize)) {
+				state.parcel->chunksize)) {
 		pk_log(LOG_ERROR, "Couldn't set maximum transfer size");
 		goto bad;
 	}
@@ -119,7 +120,7 @@ static pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
 	pk_err_t ret;
 	CURLcode err;
 
-	url=form_chunk_path(parcel.master, chunk);
+	url=form_chunk_path(state.parcel->master, chunk);
 	pk_log(LOG_TRANSPORT, "Fetching %s", url);
 	if (curl_easy_setopt(conn->curl, CURLOPT_URL, url)) {
 		pk_log(LOG_ERROR, "Couldn't set connection URL");
@@ -158,7 +159,7 @@ static pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
 pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 			unsigned *length)
 {
-	char calctag[parcel.hashlen];
+	char calctag[state.parcel->hashlen];
 	size_t len=0;  /* Make compiler happy */
 	int i;
 	pk_err_t ret;
@@ -176,14 +177,14 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 		pk_log(LOG_ERROR, "Couldn't fetch chunk %u", chunk);
 		return ret;
 	}
-	ret=digest(parcel.crypto, calctag, buf, len);
+	ret=digest(state.parcel->crypto, calctag, buf, len);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't calculate chunk hash");
 		return ret;
 	}
-	if (memcmp(tag, calctag, parcel.hashlen)) {
+	if (memcmp(tag, calctag, state.parcel->hashlen)) {
 		pk_log(LOG_ERROR, "Invalid tag for retrieved chunk %u", chunk);
-		log_tag_mismatch(tag, calctag, parcel.hashlen);
+		log_tag_mismatch(tag, calctag, state.parcel->hashlen);
 		return PK_TAGFAIL;
 	}
 	hoard_put_chunk(tag, buf, len);

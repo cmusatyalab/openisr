@@ -36,8 +36,8 @@ static pk_err_t make_upload_dirs(void)
 					state.conf->dest_dir);
 		return PK_IOERR;
 	}
-	numdirs = (parcel.chunks + parcel.chunks_per_dir - 1) /
-				parcel.chunks_per_dir;
+	numdirs = (state.parcel->chunks + state.parcel->chunks_per_dir - 1) /
+				state.parcel->chunks_per_dir;
 	for (dir=0; dir < numdirs; dir++) {
 		path = g_strdup_printf("%s/%.4d", state.conf->dest_dir, dir);
 		if (!g_file_test(path, G_FILE_TEST_IS_DIR) &&
@@ -59,7 +59,7 @@ int copy_for_upload(void)
 	void *tag;
 	unsigned taglen;
 	unsigned length;
-	char calctag[parcel.hashlen];
+	char calctag[state.parcel->hashlen];
 	gchar *path;
 	int fd;
 	unsigned modified_chunks;
@@ -90,7 +90,7 @@ int copy_for_upload(void)
 	printf("Vacuuming keyring...\n");
 	if (vacuum(state.db))
 		return 1;
-	buf=g_malloc(parcel.chunksize);
+	buf=g_malloc(state.parcel->chunksize);
 
 	printf("Collecting modified disk state...\n");
 again:
@@ -125,16 +125,16 @@ again:
 				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "dbd", &chunk, &tag, &taglen, &length);
 		print_progress_mb(modified_bytes, total_modified_bytes);
-		if (chunk > parcel.chunks) {
+		if (chunk > state.parcel->chunks) {
 			pk_log(LOG_WARNING, "Chunk %u: greater than parcel "
 						"size %u", chunk,
-						parcel.chunks);
+						state.parcel->chunks);
 			goto damaged;
 		}
-		if (taglen != parcel.hashlen) {
+		if (taglen != state.parcel->hashlen) {
 			pk_log(LOG_WARNING, "Chunk %u: expected tag length "
 						"%u, found %u", chunk,
-						parcel.hashlen, taglen);
+						state.parcel->hashlen, taglen);
 			goto damaged;
 		}
 		if (length == 0) {
@@ -143,7 +143,7 @@ again:
 						"present", chunk);
 			goto damaged;
 		}
-		if (length > parcel.chunksize) {
+		if (length > state.parcel->chunksize) {
 			pk_log(LOG_WARNING, "Chunk %u: absurd length %u",
 						chunk, length);
 			goto damaged;
@@ -155,11 +155,11 @@ again:
 						"local cache: %u", chunk);
 			goto out;
 		}
-		digest(parcel.crypto, calctag, buf, length);
-		if (memcmp(tag, calctag, parcel.hashlen)) {
+		digest(state.parcel->crypto, calctag, buf, length);
+		if (memcmp(tag, calctag, state.parcel->hashlen)) {
 			pk_log(LOG_WARNING, "Chunk %u: tag mismatch.  "
 					"Data corruption has occurred", chunk);
-			log_tag_mismatch(tag, calctag, parcel.hashlen);
+			log_tag_mismatch(tag, calctag, state.parcel->hashlen);
 			goto damaged;
 		}
 		path=form_chunk_path(state.conf->dest_dir, chunk);
@@ -230,10 +230,10 @@ again:
 				"FROM keys ORDER BY chunk ASC", NULL);
 				query_has_row(state.db); query_next(qry)) {
 		query_row(qry, "dnnd", &chunk, &taglen, &keylen, &compress);
-		if (chunk >= parcel.chunks) {
+		if (chunk >= state.parcel->chunks) {
 			pk_log(LOG_WARNING, "Found keyring entry %u greater "
 						"than parcel size %u", chunk,
-						parcel.chunks);
+						state.parcel->chunks);
 			ret=PK_INVALID;
 			continue;
 		}
@@ -250,16 +250,16 @@ again:
 			expected_chunk++;
 		}
 		expected_chunk++;
-		if (taglen != parcel.hashlen) {
+		if (taglen != state.parcel->hashlen) {
 			pk_log(LOG_WARNING, "Chunk %u: expected tag length "
 						"%u, found %u", chunk,
-						parcel.hashlen, taglen);
+						state.parcel->hashlen, taglen);
 			ret=PK_INVALID;
 		}
-		if (keylen != parcel.hashlen) {
+		if (keylen != state.parcel->hashlen) {
 			pk_log(LOG_WARNING, "Chunk %u: expected key length "
 						"%u, found %u", chunk,
-						parcel.hashlen, keylen);
+						state.parcel->hashlen, keylen);
 			ret=PK_INVALID;
 		}
 		if (!compress_is_valid(compress)) {
@@ -309,7 +309,7 @@ static pk_err_t validate_cachefile(void)
 	struct query *qry;
 	void *buf;
 	void *tag;
-	char calctag[parcel.hashlen];
+	char calctag[state.parcel->hashlen];
 	unsigned chunk;
 	unsigned taglen;
 	unsigned chunklen;
@@ -319,7 +319,7 @@ static pk_err_t validate_cachefile(void)
 	pk_err_t ret2;
 	gboolean retry;
 
-	buf=g_malloc(parcel.chunksize);
+	buf=g_malloc(state.parcel->chunksize);
 
 again:
 	processed_bytes=0;
@@ -365,14 +365,14 @@ again:
 		processed_bytes += chunklen;
 		print_progress_mb(processed_bytes, valid_bytes);
 
-		if (chunk > parcel.chunks) {
+		if (chunk > state.parcel->chunks) {
 			pk_log(LOG_WARNING, "Found chunk %u greater than "
 						"parcel size %u", chunk,
-						parcel.chunks);
+						state.parcel->chunks);
 			ret=PK_INVALID;
 			continue;
 		}
-		if (chunklen > parcel.chunksize || chunklen == 0) {
+		if (chunklen > state.parcel->chunksize || chunklen == 0) {
 			pk_log(LOG_WARNING, "Chunk %u: absurd size %u",
 						chunk, chunklen);
 			ret=PK_INVALID;
@@ -384,10 +384,10 @@ again:
 			ret=PK_INVALID;
 			continue;
 		}
-		if (taglen != parcel.hashlen) {
+		if (taglen != state.parcel->hashlen) {
 			pk_log(LOG_WARNING, "Chunk %u: expected tag length "
 						"%u, found %u", chunk,
-						parcel.hashlen, taglen);
+						state.parcel->hashlen, taglen);
 			ret=PK_INVALID;
 			continue;
 		}
@@ -402,7 +402,7 @@ again:
 				ret=PK_IOERR;
 				continue;
 			}
-			digest(parcel.crypto, calctag, buf, chunklen);
+			digest(state.parcel->crypto, calctag, buf, chunklen);
 			if (memcmp(tag, calctag, taglen)) {
 				pk_log(LOG_WARNING, "Chunk %u: tag check "
 							"failure", chunk);
@@ -528,10 +528,11 @@ again:
 	/* We didn't make any changes; we just need to release the locks */
 	rollback(state.db);
 
-	max_mb=(((off64_t)parcel.chunks) * parcel.chunksize) >> 20;
-	valid_mb=(((off64_t)validchunks) * parcel.chunksize) >> 20;
-	dirty_mb=(((off64_t)dirtychunks) * parcel.chunksize) >> 20;
-	valid_pct=(100 * validchunks) / parcel.chunks;
+	max_mb=(((off64_t)state.parcel->chunks) *
+				state.parcel->chunksize) >> 20;
+	valid_mb=(((off64_t)validchunks) * state.parcel->chunksize) >> 20;
+	dirty_mb=(((off64_t)dirtychunks) * state.parcel->chunksize) >> 20;
+	valid_pct=(100 * validchunks) / state.parcel->chunks;
 	if (validchunks)
 		dirty_pct=(100 * dirtychunks) / validchunks;
 	else

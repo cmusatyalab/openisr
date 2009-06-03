@@ -51,7 +51,7 @@ enum shm_chunk_status {
 
 off64_t cache_chunk_to_offset(unsigned chunk)
 {
-	return (off64_t)parcel.chunksize * chunk + state.offset;
+	return (off64_t)state.parcel->chunksize * chunk + state.offset;
 }
 
 static pk_err_t create_cache_file(long page_size)
@@ -76,7 +76,7 @@ static pk_err_t create_cache_file(long page_size)
 	state.offset=page_size;
 	state.cache_flags=0;
 	hdr.magic=htonl(CA_MAGIC);
-	hdr.entries=htonl(parcel.chunks);
+	hdr.entries=htonl(state.parcel->chunks);
 	hdr.offset=htonl(state.offset >> 9);
 	hdr.flags=htonl(state.cache_flags);
 	hdr.version=CA_VERSION;
@@ -84,7 +84,7 @@ static pk_err_t create_cache_file(long page_size)
 		pk_log(LOG_ERROR, "Couldn't write cache file header");
 		return PK_IOERR;
 	}
-	if (ftruncate(fd, cache_chunk_to_offset(parcel.chunks))) {
+	if (ftruncate(fd, cache_chunk_to_offset(state.parcel->chunks))) {
 		pk_log(LOG_ERROR, "couldn't extend cache file");
 		return PK_IOERR;
 	}
@@ -118,10 +118,11 @@ static pk_err_t open_cache_file(long page_size)
 					hdr.version);
 		return PK_BADFORMAT;
 	}
-	if (ntohl(hdr.entries) != parcel.chunks) {
+	if (ntohl(hdr.entries) != state.parcel->chunks) {
 		pk_log(LOG_ERROR, "Invalid chunk count reading cache file: "
 					"expected %u, found %u",
-					parcel.chunks, ntohl(hdr.entries));
+					state.parcel->chunks,
+					ntohl(hdr.entries));
 		return PK_BADFORMAT;
 	}
 	state.cache_flags=ntohl(hdr.flags);
@@ -265,7 +266,7 @@ static void shm_set(unsigned chunk, unsigned status)
 {
 	if (state.shm_base == NULL)
 		return;
-	if (chunk > parcel.chunks) {
+	if (chunk > state.parcel->chunks) {
 		pk_log(LOG_ERROR, "Invalid chunk %u", chunk);
 		return;
 	}
@@ -280,8 +281,9 @@ static pk_err_t shm_init(void)
 	pk_err_t ret;
 	gboolean retry;
 
-	state.shm_len = parcel.chunks;
-	state.shm_name = g_strdup_printf("/openisr-chunkmap-%s", parcel.uuid);
+	state.shm_len = state.parcel->chunks;
+	state.shm_name = g_strdup_printf("/openisr-chunkmap-%s",
+				state.parcel->uuid);
 	/* If there's a segment by that name, it's leftover and should be
 	   killed.  (Or else we have a UUID collision, which will prevent
 	   Nexus registration from succeeding in any case.)  This is racy
@@ -474,9 +476,9 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 	pk_err_t ret;
 	ssize_t count;
 
-	buf = g_malloc(parcel.chunksize);
+	buf = g_malloc(state.parcel->chunksize);
 	if (hoard_get_chunk(tag, buf, &len)) {
-		ftag=format_tag(tag, parcel.hashlen);
+		ftag=format_tag(tag, state.parcel->hashlen);
 		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
 		g_free(ftag);
 		ret=transport_fetch_chunk(buf, chunk, tag, &len);
@@ -530,16 +532,18 @@ again:
 		goto bad;
 	}
 	query_row(qry, "bbd", &rowtag, &taglen, &rowkey, &keylen, compress);
-	if (taglen != parcel.hashlen || keylen != parcel.hashlen) {
+	if (taglen != state.parcel->hashlen ||
+				keylen != state.parcel->hashlen) {
 		query_free(qry);
 		pk_log(LOG_ERROR, "Invalid hash length for chunk %u: "
 					"expected %d, tag %d, key %d",
-					chunk, parcel.hashlen, taglen, keylen);
+					chunk, state.parcel->hashlen, taglen,
+					keylen);
 		ret=PK_INVALID;
 		goto bad;
 	}
-	memcpy(tag, rowtag, parcel.hashlen);
-	memcpy(key, rowkey, parcel.hashlen);
+	memcpy(tag, rowtag, state.parcel->hashlen);
+	memcpy(key, rowkey, state.parcel->hashlen);
 	query_free(qry);
 
 	query(&qry, state.db, "SELECT length FROM cache.chunks "
@@ -558,7 +562,7 @@ again:
 		goto bad;
 	}
 
-	if (*length > parcel.chunksize) {
+	if (*length > state.parcel->chunksize) {
 		pk_log(LOG_ERROR, "Invalid chunk length for chunk %u: %u",
 					chunk, *length);
 		ret=PK_INVALID;
@@ -606,8 +610,8 @@ again:
 	}
 	if (query(NULL, state.db, "UPDATE keys SET tag = ?, key = ?, "
 				"compression = ? WHERE chunk == ?", "bbdd",
-				tag, parcel.hashlen, key, parcel.hashlen,
-				compress, chunk)) {
+				tag, state.parcel->hashlen, key,
+				state.parcel->hashlen, compress, chunk)) {
 		pk_log_sqlerr(state.db, "Couldn't update keyring");
 		goto bad;
 	}

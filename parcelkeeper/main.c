@@ -27,9 +27,10 @@ static struct pk_config config = {
 	.compress = COMP_NONE,
 	.nexus_cache = 32, /* MB */
 };
-struct pk_parcel parcel;
+static struct pk_parcel parcel;
 struct pk_state state = {
 	.conf = &config,
+	.parcel = &parcel,
 };
 
 static const int ignored_signals[]={SIGUSR1, SIGUSR2, 0};
@@ -91,7 +92,7 @@ int main(int argc, char **argv)
 			goto shutdown;
 
 	if (state.conf->parcel_dir != NULL)
-		if (parse_parcel_cfg(&parcel))
+		if (parse_parcel_cfg(state.parcel))
 			goto shutdown;
 
 	sql_init();

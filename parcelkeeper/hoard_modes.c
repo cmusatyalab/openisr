@@ -136,7 +136,7 @@ int hoard(void)
 		return 1;
 	}
 
-	buf=g_malloc(parcel.chunksize);
+	buf=g_malloc(state.parcel->chunksize);
 
 again:
 	if (begin(state.db))
@@ -145,7 +145,7 @@ again:
 				NULL); query_has_row(state.db);
 				query_next(qry)) {
 		query_row(qry, "db", &chunk, &tag, &taglen);
-		if (taglen != parcel.hashlen) {
+		if (taglen != state.parcel->hashlen) {
 			pk_log(LOG_ERROR, "Invalid tag length for chunk %d",
 						chunk);
 			goto out;
@@ -224,8 +224,8 @@ again:
 	if (commit(state.db))
 		goto bad;
 
-	max_mb=(((off64_t)maxchunks) * parcel.chunksize) >> 20;
-	valid_mb=(((off64_t)validchunks) * parcel.chunksize) >> 20;
+	max_mb=(((off64_t)maxchunks) * state.parcel->chunksize) >> 20;
+	valid_mb=(((off64_t)validchunks) * state.parcel->chunksize) >> 20;
 	valid_pct=(100 * validchunks) / maxchunks;
 	printf("Hoard cache : %u%% populated (%u/%u MB)\n", valid_pct,
 				valid_mb, max_mb);

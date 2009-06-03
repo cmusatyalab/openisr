@@ -251,16 +251,17 @@ pk_err_t nexus_init(void)
 	/* Register ourselves with the device */
 	memset(&setup, 0, sizeof(setup));
 	snprintf((char*)setup.ident, NEXUS_MAX_DEVICE_LEN, "%s",
-				parcel.uuid);
+				state.parcel->uuid);
 	snprintf((char*)setup.chunk_device, NEXUS_MAX_DEVICE_LEN, "%s",
 				state.loopdev_name);
 	setup.offset=state.offset >> 9;
-	setup.chunksize=parcel.chunksize;
-	setup.cachesize=(state.conf->nexus_cache << 20) / parcel.chunksize;
-	setup.crypto=crypto_to_nexus(parcel.crypto);
+	setup.chunksize=state.parcel->chunksize;
+	setup.cachesize=(state.conf->nexus_cache << 20) /
+				state.parcel->chunksize;
+	setup.crypto=crypto_to_nexus(state.parcel->crypto);
 	setup.compress_default=compress_to_nexus(state.conf->compress);
-	for (u=0; u<8*sizeof(parcel.required_compress); u++)
-		if (parcel.required_compress & (1 << u))
+	for (u=0; u<8*sizeof(state.parcel->required_compress); u++)
+		if (state.parcel->required_compress & (1 << u))
 			setup.compress_required |= 1 << compress_to_nexus(u);
 	if (setup.crypto == NEXUS_NR_CRYPTO ||
 				setup.compress_default == NEXUS_NR_COMPRESS ||
@@ -349,7 +350,7 @@ void nexus_shutdown(void)
 
 static int request_is_valid(const struct nexus_message *req)
 {
-	if (req->chunk >= parcel.chunks) {
+	if (req->chunk >= state.parcel->chunks) {
 		pk_log(LOG_ERROR, "Invalid chunk number %llu received "
 					"from Nexus", req->chunk);
 		return 0;
@@ -360,7 +361,7 @@ static int request_is_valid(const struct nexus_message *req)
 	case NEXUS_MSGTYPE_CHUNK_ERR:
 		break;
 	case NEXUS_MSGTYPE_UPDATE_META:
-		if (req->length > parcel.chunksize) {
+		if (req->length > state.parcel->chunksize) {
 			pk_log(LOG_ERROR, "Invalid length %u received from "
 						"Nexus for chunk %llu",
 						req->length, req->chunk);
@@ -390,7 +391,8 @@ static void chunk_error(const struct nexus_message *req)
 	case NEXUS_ERR_TAG:
 		pk_log(LOG_WARNING, "Nexus: Tag check error %s chunk %llu",
 					rw, req->chunk);
-		log_tag_mismatch(req->expected, req->found, parcel.hashlen);
+		log_tag_mismatch(req->expected, req->found,
+					state.parcel->hashlen);
 		break;
 	case NEXUS_ERR_KEY:
 		/* Don't log keys to the session log! */

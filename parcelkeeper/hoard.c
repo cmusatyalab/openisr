@@ -168,7 +168,7 @@ static pk_err_t expand_slot_cache(void)
 	int count;
 	int start;
 	int i;
-	int step = parcel.chunksize >> 9;
+	int step = state.parcel->chunksize >> 9;
 	int hoarded=0;
 	int needed=EXPAND_CHUNKS;
 	int allowed;
@@ -382,16 +382,18 @@ static pk_err_t add_chunk_reference(const void *tag)
 
 	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO refs "
 				"(parcel, tag) VALUES (?, ?)", "db",
-				state.hoard_ident, tag, parcel.hashlen)) {
-		ftag=format_tag(tag, parcel.hashlen);
+				state.hoard_ident, tag,
+				state.parcel->hashlen)) {
+		ftag=format_tag(tag, state.parcel->hashlen);
 		pk_log_sqlerr(state.hoard, "Couldn't add chunk reference "
 					"for tag %s", ftag);
 		g_free(ftag);
 		return PK_IOERR;
 	}
 	if (query(NULL, state.hoard, "UPDATE chunks SET referenced = 1 "
-				" WHERE tag == ?", "b", tag, parcel.hashlen)) {
-		ftag=format_tag(tag, parcel.hashlen);
+				" WHERE tag == ?", "b", tag,
+				state.parcel->hashlen)) {
+		ftag=format_tag(tag, state.parcel->hashlen);
 		pk_log_sqlerr(state.hoard, "Couldn't set referenced flag "
 					"for tag %s", ftag);
 		g_free(ftag);
@@ -480,7 +482,7 @@ TRANSACTION_WRAPPER
 pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 {
 	struct query *qry;
-	char calctag[parcel.hashlen];
+	char calctag[state.parcel->hashlen];
 	int offset;
 	int clen;
 	pk_err_t ret;
@@ -498,7 +500,8 @@ again:
 
 	/* First query the slot cache */
 	if (query(&qry, state.hoard, "SELECT offset, length FROM temp.slots "
-				"WHERE tag == ?", "b", tag, parcel.hashlen)) {
+				"WHERE tag == ?", "b", tag,
+				state.parcel->hashlen)) {
 		pk_log_sqlerr(state.hoard, "Couldn't query slot cache");
 		ret=PK_IOERR;
 		goto bad;
@@ -513,7 +516,7 @@ again:
 		/* Now query the hoard cache */
 		query(&qry, state.hoard, "SELECT offset, length FROM chunks "
 					"WHERE tag == ?", "b", tag,
-					parcel.hashlen);
+					state.parcel->hashlen);
 		if (query_ok(state.hoard)) {
 			ret=commit(state.hoard);
 			if (ret)
@@ -531,14 +534,15 @@ again:
 					"WHERE tag == ?";
 	}
 
-	if (offset < 0 || clen <= 0 || (unsigned)clen > parcel.chunksize) {
+	if (offset < 0 || clen <= 0 || (unsigned)clen >
+				state.parcel->chunksize) {
 		pk_log(LOG_ERROR, "Chunk has unreasonable offset/length "
 					"%d/%d; invalidating", offset, clen);
 		if (slot_cache)
 			ret=_hoard_invalidate_slot_chunk(offset);
 		else
 			ret=_hoard_invalidate_chunk(offset, tag,
-						parcel.hashlen);
+						state.parcel->hashlen);
 		if (ret)
 			goto bad;
 		ret=PK_BADFORMAT;
@@ -548,7 +552,7 @@ again:
 	}
 
 	if (query(NULL, state.hoard, update_timestamp, "db", time(NULL), tag,
-				parcel.hashlen)) {
+				state.parcel->hashlen)) {
 		/* Not fatal, but if we got SQLITE_BUSY, retry anyway */
 		pk_log_sqlerr(state.hoard, "Couldn't update chunk timestamp");
 		if (query_busy(state.hoard))
@@ -569,7 +573,8 @@ again:
 		if (slot_cache)
 			hoard_invalidate_slot_chunk(offset);
 		else
-			hoard_invalidate_chunk(offset, tag, parcel.hashlen);
+			hoard_invalidate_chunk(offset, tag,
+						state.parcel->hashlen);
 		return PK_IOERR;
 	}
 
@@ -583,17 +588,18 @@ again:
 	   table before invalidating the slot.  If we're working from the
 	   slot cache, this race does not apply. */
 
-	ret=digest(parcel.crypto, calctag, buf, clen);
+	ret=digest(state.parcel->crypto, calctag, buf, clen);
 	if (ret)
 		return ret;
-	if (memcmp(tag, calctag, parcel.hashlen)) {
+	if (memcmp(tag, calctag, state.parcel->hashlen)) {
 		pk_log(LOG_ERROR, "Tag mismatch reading hoard cache at "
 					"offset %d", offset);
-		log_tag_mismatch(tag, calctag, parcel.hashlen);
+		log_tag_mismatch(tag, calctag, state.parcel->hashlen);
 		if (slot_cache)
 			hoard_invalidate_slot_chunk(offset);
 		else
-			hoard_invalidate_chunk(offset, tag, parcel.hashlen);
+			hoard_invalidate_chunk(offset, tag,
+						state.parcel->hashlen);
 		return PK_TAGFAIL;
 	}
 
@@ -626,7 +632,7 @@ again:
 
 	/* See if the tag is already in the slot cache */
 	query(NULL, state.hoard, "SELECT tag FROM temp.slots WHERE tag == ?",
-				"b", tag, parcel.hashlen);
+				"b", tag, state.parcel->hashlen);
 	if (query_has_row(state.hoard)) {
 		ret=commit(state.hoard);
 		if (ret)
@@ -640,7 +646,7 @@ again:
 
 	/* See if the tag is already in the hoard cache */
 	query(NULL, state.hoard, "SELECT tag FROM chunks WHERE tag == ?",
-				"b", tag, parcel.hashlen);
+				"b", tag, state.parcel->hashlen);
 	if (query_has_row(state.hoard)) {
 		ret=add_chunk_reference(tag);
 		if (ret)
@@ -661,8 +667,8 @@ again:
 	if (query(NULL, state.hoard, "UPDATE temp.slots SET tag = ?, "
 				"length = ?, crypto = ?, last_access = ? "
 				"WHERE offset = ?", "bdddd", tag,
-				parcel.hashlen, len, parcel.crypto,
-				time(NULL), offset)) {
+				state.parcel->hashlen, len,
+				state.parcel->crypto, time(NULL), offset)) {
 		pk_log_sqlerr(state.hoard, "Couldn't add metadata for hoard "
 					"cache chunk");
 		ret=PK_IOERR;
@@ -788,15 +794,15 @@ again:
 	if (query(NULL, state.hoard, "INSERT OR IGNORE INTO parcels "
 				"(uuid, server, user, name) "
 				"VALUES (?, ?, ?, ?)", "SSSS",
-				parcel.uuid, parcel.server,
-				parcel.user, parcel.parcel)) {
+				state.parcel->uuid, state.parcel->server,
+				state.parcel->user, state.parcel->parcel)) {
 		pk_log_sqlerr(state.hoard, "Couldn't insert parcel record");
 		ret=PK_IOERR;
 		goto bad;
 	}
 	/* Find out the parcel ID assigned by SQLite */
 	query(&qry, state.hoard, "SELECT parcel FROM parcels WHERE uuid == ?",
-				"S", parcel.uuid);
+				"S", state.parcel->uuid);
 	if (!query_has_row(state.hoard)) {
 		pk_log_sqlerr(state.hoard, "Couldn't query parcels table");
 		ret=PK_IOERR;
@@ -809,9 +815,10 @@ again:
 	if (query(NULL, state.hoard, "UPDATE parcels SET server = ?, "
 				"user = ?, name = ? WHERE parcel == ? AND "
 				"(server != ? OR user != ? OR name != ?)",
-				"SSSdSSS", parcel.server, parcel.user,
-				parcel.parcel, state.hoard_ident,
-				parcel.server, parcel.user, parcel.parcel)) {
+				"SSSdSSS", state.parcel->server,
+				state.parcel->user, state.parcel->parcel,
+				state.hoard_ident, state.parcel->server,
+				state.parcel->user, state.parcel->parcel)) {
 		pk_log_sqlerr(state.hoard, "Couldn't update parcel record");
 		ret=PK_IOERR;
 		goto bad;
@@ -984,7 +991,7 @@ pk_err_t hoard_init(void)
 
 	if (state.conf->hoard_dir == NULL)
 		return PK_INVALID;
-	if (parcel.chunksize != 0 && parcel.chunksize != 131072) {
+	if (state.parcel->chunksize != 0 && state.parcel->chunksize != 131072) {
 		pk_log(LOG_ERROR, "Hoard cache non-functional for chunk "
 					"sizes != 128 KB");
 		return PK_INVALID;
