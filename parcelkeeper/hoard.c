@@ -188,7 +188,7 @@ static pk_err_t expand_slot_cache(void)
 
 	/* Now try to reclaim existing, unreferenced chunks.  See how many
 	   we're permitted to reclaim. */
-	if (needed > 0 && config.minsize > 0) {
+	if (needed > 0 && state.conf->minsize > 0) {
 		query(&qry, state.hoard, "SELECT count(tag) FROM chunks",
 					NULL);
 		if (!query_has_row(state.hoard)) {
@@ -199,7 +199,7 @@ static pk_err_t expand_slot_cache(void)
 		query_row(qry, "d", &hoarded);
 		query_free(qry);
 		/* XXX assumes 128 KB */
-		allowed=MIN(hoarded - ((int)config.minsize * 8), needed);
+		allowed=MIN(hoarded - ((int)state.conf->minsize * 8), needed);
 	} else {
 		allowed=needed;
 	}
@@ -488,7 +488,7 @@ pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len)
 	const char *update_timestamp;
 	gboolean retry;
 
-	if (config.hoard_dir == NULL)
+	if (state.conf->hoard_dir == NULL)
 		return PK_NOTFOUND;
 
 again:
@@ -616,7 +616,7 @@ pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len)
 	int offset;
 	gboolean retry;
 
-	if (config.hoard_dir == NULL)
+	if (state.conf->hoard_dir == NULL)
 		return PK_SUCCESS;
 
 again:
@@ -701,7 +701,7 @@ pk_err_t hoard_sync_refs(int from_cache)
 	pk_err_t ret;
 	gboolean retry;
 
-	if (config.hoard_dir == NULL)
+	if (state.conf->hoard_dir == NULL)
 		return PK_SUCCESS;
 
 again:
@@ -839,7 +839,7 @@ static pk_err_t open_hoard_index(void)
 	gboolean retry;
 
 	/* First open the dedicated hoard cache DB connection */
-	ret=sql_conn_open(config.hoard_index, &state.hoard);
+	ret=sql_conn_open(state.conf->hoard_index, &state.hoard);
 	if (ret)
 		return ret;
 
@@ -876,7 +876,7 @@ again:
 
 	/* Now attach the hoard cache index to the primary DB connection
 	   for cross-table queries */
-	ret=attach(state.db, "hoard", config.hoard_index);
+	ret=attach(state.db, "hoard", state.conf->hoard_index);
 	if (ret)
 		goto bad;
 	return PK_SUCCESS;
@@ -982,29 +982,29 @@ pk_err_t hoard_init(void)
 {
 	pk_err_t ret;
 
-	if (config.hoard_dir == NULL)
+	if (state.conf->hoard_dir == NULL)
 		return PK_INVALID;
 	if (parcel.chunksize != 0 && parcel.chunksize != 131072) {
 		pk_log(LOG_ERROR, "Hoard cache non-functional for chunk "
 					"sizes != 128 KB");
 		return PK_INVALID;
 	}
-	if (!g_file_test(config.hoard_dir, G_FILE_TEST_IS_DIR) &&
-				mkdir(config.hoard_dir, 0777)) {
+	if (!g_file_test(state.conf->hoard_dir, G_FILE_TEST_IS_DIR) &&
+				mkdir(state.conf->hoard_dir, 0777)) {
 		pk_log(LOG_ERROR, "Couldn't create hoard directory %s",
-					config.hoard_dir);
+					state.conf->hoard_dir);
 		return PK_CALLFAIL;
 	}
 
-	state.hoard_fd=open(config.hoard_file, O_RDWR|O_CREAT, 0666);
+	state.hoard_fd=open(state.conf->hoard_file, O_RDWR|O_CREAT, 0666);
 	if (state.hoard_fd == -1) {
-		pk_log(LOG_ERROR, "Couldn't open %s", config.hoard_file);
+		pk_log(LOG_ERROR, "Couldn't open %s", state.conf->hoard_file);
 		return PK_IOERR;
 	}
 	ret=get_file_lock(state.hoard_fd, FILE_LOCK_READ|FILE_LOCK_WAIT);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't get read lock on %s",
-					config.hoard_file);
+					state.conf->hoard_file);
 		goto bad;
 	}
 
@@ -1012,7 +1012,7 @@ pk_err_t hoard_init(void)
 	if (ret)
 		goto bad;
 
-	if (config.parcel_dir != NULL) {
+	if (state.conf->parcel_dir != NULL) {
 		ret=get_parcel_ident();
 		if (ret)
 			goto bad_close;

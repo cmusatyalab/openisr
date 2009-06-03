@@ -118,7 +118,7 @@ static pk_err_t loop_bind(void) {
 				return PK_IOERR;
 			}
 			snprintf((char*)info.lo_file_name, LO_NAME_SIZE, "%s",
-						config.cache_file);
+						state.conf->cache_file);
 			/* Set LO_FLAGS_AUTOCLEAR, which unbinds the loop
 			   device after the last fd to it is closed.  This
 			   flag should ensure that the device is properly
@@ -256,9 +256,9 @@ pk_err_t nexus_init(void)
 				state.loopdev_name);
 	setup.offset=state.offset >> 9;
 	setup.chunksize=parcel.chunksize;
-	setup.cachesize=(config.nexus_cache << 20) / parcel.chunksize;
+	setup.cachesize=(state.conf->nexus_cache << 20) / parcel.chunksize;
 	setup.crypto=crypto_to_nexus(parcel.crypto);
-	setup.compress_default=compress_to_nexus(config.compress);
+	setup.compress_default=compress_to_nexus(state.conf->compress);
 	for (u=0; u<8*sizeof(parcel.required_compress); u++)
 		if (parcel.required_compress & (1 << u))
 			setup.compress_required |= 1 << compress_to_nexus(u);

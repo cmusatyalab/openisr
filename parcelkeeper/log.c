@@ -109,10 +109,10 @@ pk_err_t logtypes_to_mask(const char *list, unsigned *out)
 
 static void open_log(void)
 {
-	state.log_fp=fopen(config.log_file, "a");
+	state.log_fp=fopen(state.conf->log_file, "a");
 	if (state.log_fp == NULL)
 		pk_log(LOG_ERROR, "Couldn't open log file %s",
-					config.log_file);
+					state.conf->log_file);
 }
 
 static void close_log(void)
@@ -130,7 +130,7 @@ static void check_log(void)
 	if (fstat(fileno(state.log_fp), &st)) {
 		close_log();
 		pk_log(LOG_ERROR, "Couldn't stat log file %s",
-					config.log_file);
+					state.conf->log_file);
 		return;
 	}
 	if (st.st_nlink == 0) {
@@ -162,7 +162,7 @@ void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 	va_list ap;
 	char buf[50];
 
-	if (state.log_fp != NULL && ((1 << type) & config.log_file_mask)) {
+	if (state.log_fp != NULL && ((1 << type) & state.conf->log_file_mask)) {
 		curtime(buf, sizeof(buf));
 		check_log();
 		/* Ignore errors; it's better to write the log entry unlocked
@@ -182,7 +182,7 @@ void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 		put_file_lock(fileno(state.log_fp));
 	}
 
-	if ((1 << type) & config.log_stderr_mask) {
+	if ((1 << type) & state.conf->log_stderr_mask) {
 		va_copy(ap, args);
 		fprintf(stderr, "PK: ");
 		vfprintf(stderr, fmt, ap);
@@ -207,9 +207,10 @@ void log_start(void)
 	state.pk_pid=getpid();
 	/* stderr is unbuffered by default */
 	setlinebuf(stderr);
-	if (config.log_file != NULL && config.log_file_mask)
+	if (state.conf->log_file != NULL && state.conf->log_file_mask)
 		open_log();
-	pk_log(LOG_INFO, "Parcelkeeper starting in %s mode", config.modename);
+	pk_log(LOG_INFO, "Parcelkeeper starting in %s mode",
+				state.conf->modename);
 }
 
 void log_shutdown(void)

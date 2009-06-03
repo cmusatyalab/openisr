@@ -307,10 +307,10 @@ pk_err_t acquire_lockfile(void)
 	pk_err_t ret;
 
 	while (1) {
-		fd=open(config.lockfile, O_CREAT|O_WRONLY, 0666);
+		fd=open(state.conf->lockfile, O_CREAT|O_WRONLY, 0666);
 		if (fd == -1) {
 			pk_log(LOG_ERROR, "Couldn't open lock file %s",
-						config.lockfile);
+						state.conf->lockfile);
 			return PK_IOERR;
 		}
 		ret=get_file_lock(fd, FILE_LOCK_WRITE);
@@ -320,7 +320,7 @@ pk_err_t acquire_lockfile(void)
 		}
 		if (fstat(fd, &st)) {
 			pk_log(LOG_ERROR, "Couldn't stat lock file %s",
-						config.lockfile);
+						state.conf->lockfile);
 			close(fd);
 			return PK_CALLFAIL;
 		}
@@ -338,7 +338,7 @@ void release_lockfile(void)
 {
 	/* To prevent races, we must unlink the lockfile while we still
 	   hold the lock */
-	unlink(config.lockfile);
+	unlink(state.conf->lockfile);
 	close(state.lock_fd);
 }
 
@@ -346,9 +346,10 @@ pk_err_t create_pidfile(void)
 {
 	FILE *fp;
 
-	fp=fopen(config.pidfile, "w");
+	fp=fopen(state.conf->pidfile, "w");
 	if (fp == NULL) {
-		pk_log(LOG_ERROR, "Couldn't open pid file %s", config.pidfile);
+		pk_log(LOG_ERROR, "Couldn't open pid file %s",
+					state.conf->pidfile);
 		return PK_IOERR;
 	}
 	fprintf(fp, "%d\n", getpid());
@@ -358,7 +359,7 @@ pk_err_t create_pidfile(void)
 
 void remove_pidfile(void)
 {
-	unlink(config.pidfile);
+	unlink(state.conf->pidfile);
 }
 
 /* Fork, and have the parent wait for the child to indicate that the parent

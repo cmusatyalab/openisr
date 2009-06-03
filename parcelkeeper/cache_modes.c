@@ -30,16 +30,16 @@ static pk_err_t make_upload_dirs(void)
 	unsigned dir;
 	unsigned numdirs;
 
-	if (!g_file_test(config.dest_dir, G_FILE_TEST_IS_DIR) &&
-				mkdir(config.dest_dir, 0700)) {
+	if (!g_file_test(state.conf->dest_dir, G_FILE_TEST_IS_DIR) &&
+				mkdir(state.conf->dest_dir, 0700)) {
 		pk_log(LOG_ERROR, "Unable to make directory %s",
-					config.dest_dir);
+					state.conf->dest_dir);
 		return PK_IOERR;
 	}
 	numdirs = (parcel.chunks + parcel.chunks_per_dir - 1) /
 				parcel.chunks_per_dir;
 	for (dir=0; dir < numdirs; dir++) {
-		path = g_strdup_printf("%s/%.4d", config.dest_dir, dir);
+		path = g_strdup_printf("%s/%.4d", state.conf->dest_dir, dir);
 		if (!g_file_test(path, G_FILE_TEST_IS_DIR) &&
 					mkdir(path, 0700)) {
 			pk_log(LOG_ERROR, "Unable to make directory %s", path);
@@ -81,7 +81,7 @@ int copy_for_upload(void)
 	}
 
 	pk_log(LOG_INFO, "Copying chunks to upload directory %s",
-				config.dest_dir);
+				state.conf->dest_dir);
 	if (make_upload_dirs())
 		return 1;
 	printf("Updating hoard cache...\n");
@@ -162,7 +162,7 @@ again:
 			log_tag_mismatch(tag, calctag, parcel.hashlen);
 			goto damaged;
 		}
-		path=form_chunk_path(config.dest_dir, chunk);
+		path=form_chunk_path(state.conf->dest_dir, chunk);
 		fd=open(path, O_WRONLY|O_CREAT|O_TRUNC, 0600);
 		if (fd == -1) {
 			pk_log(LOG_ERROR, "Couldn't open chunk file %s", path);
@@ -392,7 +392,7 @@ again:
 			continue;
 		}
 
-		if (config.flags & WANT_FULL_CHECK) {
+		if (state.conf->flags & WANT_FULL_CHECK) {
 			if (pread(state.cache_fd, buf, chunklen,
 						cache_chunk_to_offset(chunk))
 						!= (int)chunklen) {
@@ -407,7 +407,7 @@ again:
 				pk_log(LOG_WARNING, "Chunk %u: tag check "
 							"failure", chunk);
 				log_tag_mismatch(tag, calctag, taglen);
-				if (config.flags & WANT_SPLICE) {
+				if (state.conf->flags & WANT_SPLICE) {
 					ret=revert_chunk(chunk);
 					if (ret)
 						goto bad;
@@ -446,7 +446,7 @@ int validate_cache(void)
 	int ret=0;
 	pk_err_t err;
 
-	if (config.flags & WANT_CHECK) {
+	if (state.conf->flags & WANT_CHECK) {
 		/* Don't actually do any validation; just see where we are */
 		if (cache_test_flag(CA_F_DIRTY))
 			ret |= 2;
@@ -474,7 +474,7 @@ int validate_cache(void)
 		goto bad;
 
 	if (cache_test_flag(CA_F_DIRTY)) {
-		if (config.flags & WANT_FULL_CHECK) {
+		if (state.conf->flags & WANT_FULL_CHECK) {
 			cache_clear_flag(CA_F_DIRTY);
 		} else {
 			pk_log(LOG_INFO, "Not clearing dirty flag: full check "

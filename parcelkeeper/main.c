@@ -19,7 +19,7 @@
 #include <signal.h>
 #include "defs.h"
 
-struct pk_config config = {
+static struct pk_config config = {
 	/* WARNING implies ERROR */
 	.log_file_mask = (1 << LOG_INFO) | (1 << LOG_WARNING) |
 				(1 << LOG_STATS),
@@ -28,7 +28,9 @@ struct pk_config config = {
 	.nexus_cache = 32, /* MB */
 };
 struct pk_parcel parcel;
-struct pk_state state;
+struct pk_state state = {
+	.conf = &config,
+};
 
 static const int ignored_signals[]={SIGUSR1, SIGUSR2, 0};
 static const int caught_signals[]={SIGINT, SIGTERM, SIGHUP, 0};
@@ -60,19 +62,19 @@ int main(int argc, char **argv)
 	progname = g_path_get_basename(argv[0]);
 	g_set_prgname(progname);
 	g_free(progname);
-	mode=parse_cmdline(&config, argc - 1, argv + 1);
+	mode=parse_cmdline(state.conf, argc - 1, argv + 1);
 	/* Trivial modes (usage, version) have already been handled by
 	   parse_cmdline() */
 
 	log_start();
 
 	/* We can't take the lock until we fork (if we're going to do that) */
-	if (config.flags & WANT_BACKGROUND)
+	if (state.conf->flags & WANT_BACKGROUND)
 		if (fork_and_wait(&completion_fd))
 			goto shutdown;
 
 	/* Now take the lock */
-	if (config.flags & WANT_LOCK) {
+	if (state.conf->flags & WANT_LOCK) {
 		err=acquire_lockfile();
 		if (err) {
 			pk_log(LOG_ERROR, "Couldn't acquire parcel lock: %s",
@@ -84,11 +86,11 @@ int main(int argc, char **argv)
 	}
 
 	/* Now that we have the lock, it's safe to create the pidfile */
-	if (config.flags & WANT_BACKGROUND)
+	if (state.conf->flags & WANT_BACKGROUND)
 		if (create_pidfile())
 			goto shutdown;
 
-	if (config.parcel_dir != NULL)
+	if (state.conf->parcel_dir != NULL)
 		if (parse_parcel_cfg(&parcel))
 			goto shutdown;
 
@@ -99,14 +101,14 @@ int main(int argc, char **argv)
 	else
 		have_cache=1;
 
-	if (config.hoard_index != NULL) {
+	if (state.conf->hoard_index != NULL) {
 		if (hoard_init())
 			goto shutdown;
 		else
 			have_hoard=1;
 	}
 
-	if (config.flags & WANT_TRANSPORT) {
+	if (state.conf->flags & WANT_TRANSPORT) {
 		if (transport_init())
 			goto shutdown;
 		else
@@ -138,7 +140,7 @@ int main(int argc, char **argv)
 		ret=validate_cache();
 	} else if (mode == MODE_EXAMINE) {
 		ret=examine_cache();
-		if (config.hoard_dir && !ret)
+		if (state.conf->hoard_dir && !ret)
 			ret=examine_hoard();
 	} else if (mode == MODE_HOARD) {
 		ret=hoard();

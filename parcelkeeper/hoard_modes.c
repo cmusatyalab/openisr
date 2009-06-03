@@ -123,7 +123,7 @@ int hoard(void)
 		return 1;
 
 	/* If WANT_CHECK, that's all we need to do */
-	if (config.flags & WANT_CHECK) {
+	if (state.conf->flags & WANT_CHECK) {
 		rollback(state.db);
 		if (to_hoard == 0)
 			return 0;
@@ -338,9 +338,10 @@ again:
 		return 1;
 	query(&qry, state.db, "SELECT parcel, server, user, name FROM "
 				"hoard.parcels WHERE uuid == ?", "S",
-				config.uuid);
+				state.conf->uuid);
 	if (query_ok(state.db)) {
-		pk_log(LOG_INFO, "rmhoard: %s: No such parcel", config.uuid);
+		pk_log(LOG_INFO, "rmhoard: %s: No such parcel",
+					state.conf->uuid);
 		rollback(state.db);
 		return 0;
 	} else if (!query_has_row(state.db)) {
@@ -656,7 +657,7 @@ again:
 
 	/* If we're going to do a FULL_CHECK, then get the necessary metadata
 	   *now* while we still know it's consistent. */
-	if (config.flags & WANT_FULL_CHECK) {
+	if (state.conf->flags & WANT_FULL_CHECK) {
 		if (query(NULL, state.db, "CREATE TEMP TABLE to_check AS "
 					"SELECT tag, offset, length, crypto "
 					"FROM hoard.chunks WHERE tag NOTNULL "
@@ -670,7 +671,7 @@ again:
 	if (commit(state.db))
 		goto bad;
 
-	if (config.flags & WANT_FULL_CHECK)
+	if (state.conf->flags & WANT_FULL_CHECK)
 		if (check_hoard_data())
 			return 1;
 	/* XXX compact */

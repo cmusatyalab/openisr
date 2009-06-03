@@ -59,7 +59,7 @@ static pk_err_t create_cache_file(long page_size)
 	struct ca_header hdr = {0};
 	int fd;
 
-	fd=open(config.cache_file, O_CREAT|O_EXCL|O_RDWR, 0600);
+	fd=open(state.conf->cache_file, O_CREAT|O_EXCL|O_RDWR, 0600);
 	if (fd == -1) {
 		pk_log(LOG_ERROR, "couldn't create cache file");
 		return PK_IOERR;
@@ -99,7 +99,7 @@ static pk_err_t open_cache_file(long page_size)
 	struct ca_header hdr;
 	int fd;
 
-	fd=open(config.cache_file, O_RDWR);
+	fd=open(state.conf->cache_file, O_RDWR);
 	if (fd == -1) {
 		pk_log(LOG_ERROR, "couldn't open cache file");
 		return PK_IOERR;
@@ -145,7 +145,7 @@ static pk_err_t cache_set_flags(unsigned flags)
 {
 	unsigned tmp;
 
-	if (!(config.flags & WANT_LOCK)) {
+	if (!(state.conf->flags & WANT_LOCK)) {
 		/* Catch misuse of this function */
 		pk_log(LOG_ERROR, "Refusing to set cache flags when lock "
 					"not held");
@@ -380,14 +380,14 @@ static pk_err_t open_cachedir(long page_size)
 	gboolean have_image;
 	gboolean have_index;
 
-	ret=sql_conn_open(config.keyring, &state.db);
+	ret=sql_conn_open(state.conf->keyring, &state.db);
 	if (ret)
 		return ret;
 
-	have_image=g_file_test(config.cache_file, G_FILE_TEST_IS_REGULAR);
-	have_index=g_file_test(config.cache_index, G_FILE_TEST_IS_REGULAR);
+	have_image=g_file_test(state.conf->cache_file, G_FILE_TEST_IS_REGULAR);
+	have_index=g_file_test(state.conf->cache_index, G_FILE_TEST_IS_REGULAR);
 	if (have_image && have_index) {
-		ret=attach(state.db, "cache", config.cache_index);
+		ret=attach(state.db, "cache", state.conf->cache_index);
 		if (ret)
 			return ret;
 		ret=open_cache_file(page_size);
@@ -396,8 +396,9 @@ static pk_err_t open_cachedir(long page_size)
 		ret=verify_cache_index();
 		if (ret)
 			return ret;
-	} else if ((config.flags & WANT_LOCK) && ((have_image && !have_index)
-				|| (!have_image && have_index))) {
+	} else if ((state.conf->flags & WANT_LOCK) &&
+				((have_image && !have_index) ||
+				(!have_image && have_index))) {
 		/* We don't complain about this unless we have the PK lock,
 		   since otherwise we're open to race conditions with another
 		   process that does.  If we don't have the PK lock, we just
@@ -405,8 +406,8 @@ static pk_err_t open_cachedir(long page_size)
 		pk_log(LOG_ERROR, "Cache and index in inconsistent state");
 		return PK_IOERR;
 	} else {
-		if (config.flags & WANT_LOCK) {
-			ret=attach(state.db, "cache", config.cache_index);
+		if (state.conf->flags & WANT_LOCK) {
+			ret=attach(state.db, "cache", state.conf->cache_index);
 			if (ret)
 				return ret;
 			ret=create_cache_file(page_size);
@@ -440,20 +441,20 @@ pk_err_t cache_init(void)
 		return PK_CALLFAIL;
 	}
 
-	if (config.flags & WANT_CACHE)
+	if (state.conf->flags & WANT_CACHE)
 		ret=open_cachedir(page_size);
 	else
 		ret=sql_conn_open(":memory:", &state.db);
 	if (ret)
 		goto bad;
 
-	if (config.flags & WANT_PREV) {
-		ret=attach(state.db, "prev", config.prev_keyring);
+	if (state.conf->flags & WANT_PREV) {
+		ret=attach(state.db, "prev", state.conf->prev_keyring);
 		if (ret)
 			goto bad;
 	}
 
-	if (config.flags & WANT_SHM)
+	if (state.conf->flags & WANT_SHM)
 		if (shm_init())
 			pk_log(LOG_ERROR, "Couldn't set up shared memory "
 						"segment; continuing");

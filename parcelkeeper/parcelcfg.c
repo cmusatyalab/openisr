@@ -154,7 +154,7 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 			ctx->pdata->required_compress |= (1 << compress);
 		}
 		g_strfreev(strs);
-		if (!compress_is_valid(config.compress)) {
+		if (!compress_is_valid(state.conf->compress)) {
 			pk_log(LOG_ERROR, "This parcel does not support the "
 						"requested compression type");
 			return PK_INVALID;
@@ -194,7 +194,7 @@ pk_err_t parse_parcel_cfg(struct pk_parcel *pdata)
 	int i;
 
 	ctx.pdata=pdata;
-	ret=read_file(config.parcel_cfg, &data, NULL);
+	ret=read_file(state.conf->parcel_cfg, &data, NULL);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't read parcel.cfg: %s",
 					pk_strerror(ret));
