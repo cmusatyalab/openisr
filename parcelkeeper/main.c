@@ -98,7 +98,8 @@ int main(int argc, char **argv)
 	}
 
 	if (state.conf->flags & WANT_TRANSPORT) {
-		if (transport_init())
+		if (transport_init() || transport_conn_alloc(&state.conn,
+					state.parcel))
 			goto shutdown;
 		else
 			have_transport=1;
@@ -150,7 +151,7 @@ shutdown:
 	if (have_nexus)
 		nexus_shutdown();
 	if (have_transport)
-		transport_shutdown();
+		transport_conn_free(state.conn);
 	if (have_hoard)
 		hoard_shutdown();
 	if (have_cache)

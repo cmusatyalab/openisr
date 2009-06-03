@@ -25,6 +25,7 @@
 #define TRANSPORT_RETRY_DELAY 5
 
 struct pk_connection {
+	struct pk_parcel *parcel;
 	CURL *curl;
 	char errbuf[CURL_ERROR_SIZE];
 	char *buf;
@@ -35,7 +36,7 @@ static size_t curl_callback(void *data, size_t size, size_t nmemb,
 			void *private)
 {
 	struct pk_connection *conn=private;
-	size_t count = MIN(size * nmemb, state.parcel->chunksize -
+	size_t count = MIN(size * nmemb, conn->parcel->chunksize -
 				conn->offset);
 
 	memcpy(conn->buf + conn->offset, data, count);
@@ -43,18 +44,21 @@ static size_t curl_callback(void *data, size_t size, size_t nmemb,
 	return count;
 }
 
-static void transport_cleanup_conn(struct pk_connection *conn)
+void transport_conn_free(struct pk_connection *conn)
 {
 	if (conn->curl)
 		curl_easy_cleanup(conn->curl);
 	g_slice_free(struct pk_connection, conn);
 }
 
-static pk_err_t transport_init_conn(struct pk_connection **result)
+pk_err_t transport_conn_alloc(struct pk_connection **out,
+			struct pk_parcel *parcel)
 {
 	struct pk_connection *conn;
 
+	*out=NULL;
 	conn=g_slice_new0(struct pk_connection);
+	conn->parcel=parcel;
 	conn->curl=curl_easy_init();
 	if (conn->curl == NULL) {
 		pk_log(LOG_ERROR, "Couldn't initialize CURL handle");
@@ -86,16 +90,16 @@ static pk_err_t transport_init_conn(struct pk_connection **result)
 		goto bad;
 	}
 	if (curl_easy_setopt(conn->curl, CURLOPT_MAXFILESIZE,
-				state.parcel->chunksize)) {
+				parcel->chunksize)) {
 		pk_log(LOG_ERROR, "Couldn't set maximum transfer size");
 		goto bad;
 	}
-	*result=conn;
+	*out=conn;
 	return PK_SUCCESS;
 
 bad:
 	if (conn)
-		transport_cleanup_conn(conn);
+		transport_conn_free(conn);
 	return PK_CALLFAIL;
 }
 
@@ -105,22 +109,17 @@ pk_err_t transport_init(void)
 		pk_log(LOG_ERROR, "Couldn't initialize curl library");
 		return PK_CALLFAIL;
 	}
-	return transport_init_conn(&state.conn);
+	return PK_SUCCESS;
 }
 
-void transport_shutdown(void)
+static pk_err_t transport_get(struct pk_connection *conn, void *buf,
+			unsigned chunk, size_t *len)
 {
-	transport_cleanup_conn(state.conn);
-}
-
-static pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
-{
-	struct pk_connection *conn=state.conn;
 	gchar *url;
 	pk_err_t ret;
 	CURLcode err;
 
-	url=form_chunk_path(state.parcel, state.parcel->master, chunk);
+	url=form_chunk_path(conn->parcel, conn->parcel->master, chunk);
 	pk_log(LOG_TRANSPORT, "Fetching %s", url);
 	if (curl_easy_setopt(conn->curl, CURLOPT_URL, url)) {
 		pk_log(LOG_ERROR, "Couldn't set connection URL");
@@ -156,16 +155,16 @@ static pk_err_t transport_get(void *buf, unsigned chunk, size_t *len)
 	return ret;
 }
 
-pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
-			unsigned *length)
+pk_err_t transport_fetch_chunk(struct pk_connection *conn, void *buf,
+			unsigned chunk, const void *tag, unsigned *length)
 {
-	char calctag[state.parcel->hashlen];
+	char calctag[conn->parcel->hashlen];
 	size_t len=0;  /* Make compiler happy */
 	int i;
 	pk_err_t ret;
 
 	for (i=0; i<TRANSPORT_TRIES; i++) {
-		ret=transport_get(buf, chunk, &len);
+		ret=transport_get(conn, buf, chunk, &len);
 		if (ret != PK_NETFAIL)
 			break;
 		pk_log(LOG_ERROR, "Fetching chunk %u failed; retrying in %d "
@@ -177,14 +176,14 @@ pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
 		pk_log(LOG_ERROR, "Couldn't fetch chunk %u", chunk);
 		return ret;
 	}
-	ret=digest(state.parcel->crypto, calctag, buf, len);
+	ret=digest(conn->parcel->crypto, calctag, buf, len);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't calculate chunk hash");
 		return ret;
 	}
-	if (memcmp(tag, calctag, state.parcel->hashlen)) {
+	if (memcmp(tag, calctag, conn->parcel->hashlen)) {
 		pk_log(LOG_ERROR, "Invalid tag for retrieved chunk %u", chunk);
-		log_tag_mismatch(tag, calctag, state.parcel->hashlen);
+		log_tag_mismatch(tag, calctag, conn->parcel->hashlen);
 		return PK_TAGFAIL;
 	}
 	hoard_put_chunk(tag, buf, len);

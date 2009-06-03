@@ -481,7 +481,7 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 		ftag=format_tag(tag, state.parcel->hashlen);
 		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
 		g_free(ftag);
-		ret=transport_fetch_chunk(buf, chunk, tag, &len);
+		ret=transport_fetch_chunk(state.conn, buf, chunk, tag, &len);
 		if (ret) {
 			g_free(buf);
 			return ret;

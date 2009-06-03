@@ -246,9 +246,11 @@ void nexus_shutdown(void);
 
 /* transport.c */
 pk_err_t transport_init(void);
-void transport_shutdown(void);
-pk_err_t transport_fetch_chunk(void *buf, unsigned chunk, const void *tag,
-			unsigned *length);
+pk_err_t transport_conn_alloc(struct pk_connection **out,
+			struct pk_parcel *parcel);
+void transport_conn_free(struct pk_connection *conn);
+pk_err_t transport_fetch_chunk(struct pk_connection *conn, void *buf,
+			unsigned chunk, const void *tag, unsigned *length);
 
 /* sql.c */
 void sql_init(void);
