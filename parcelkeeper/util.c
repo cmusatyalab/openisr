@@ -90,12 +90,12 @@ int crypto_is_valid(enum cryptotype type)
 	return 0;
 }
 
-int compress_is_valid(enum compresstype type)
+int compress_is_valid(struct pk_parcel *parcel, enum compresstype type)
 {
 	if (type <= COMP_UNKNOWN || type >= 8 *
-				sizeof(state.parcel->required_compress))
+				sizeof(parcel->required_compress))
 		return 0;
-	return (state.parcel->required_compress & (1 << type));
+	return (parcel->required_compress & (1 << type));
 }
 
 pk_err_t read_file(const char *path, gchar **buf, gsize *len)
@@ -342,24 +342,18 @@ void release_lockfile(void)
 	close(state.lock_fd);
 }
 
-pk_err_t create_pidfile(void)
+pk_err_t create_pidfile(const char *path)
 {
 	FILE *fp;
 
-	fp=fopen(state.conf->pidfile, "w");
+	fp=fopen(path, "w");
 	if (fp == NULL) {
-		pk_log(LOG_ERROR, "Couldn't open pid file %s",
-					state.conf->pidfile);
+		pk_log(LOG_ERROR, "Couldn't open pid file %s", path);
 		return PK_IOERR;
 	}
 	fprintf(fp, "%d\n", getpid());
 	fclose(fp);
 	return PK_SUCCESS;
-}
-
-void remove_pidfile(void)
-{
-	unlink(state.conf->pidfile);
 }
 
 /* Fork, and have the parent wait for the child to indicate that the parent
@@ -412,10 +406,11 @@ pk_err_t fork_and_wait(int *status_fd)
 	return PK_SUCCESS;
 }
 
-gchar *form_chunk_path(const char *prefix, unsigned chunk)
+gchar *form_chunk_path(struct pk_parcel *parcel, const char *prefix,
+			unsigned chunk)
 {
-	unsigned dir = chunk / state.parcel->chunks_per_dir;
-	unsigned file = chunk % state.parcel->chunks_per_dir;
+	unsigned dir = chunk / parcel->chunks_per_dir;
+	unsigned file = chunk % parcel->chunks_per_dir;
 
 	return g_strdup_printf("%s/%.4u/%.4u", prefix, dir, file);
 }

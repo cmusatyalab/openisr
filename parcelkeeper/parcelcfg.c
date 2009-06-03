@@ -154,7 +154,7 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 			ctx->pdata->required_compress |= (1 << compress);
 		}
 		g_strfreev(strs);
-		if (!compress_is_valid(state.conf->compress)) {
+		if (!compress_is_valid(ctx->pdata, state.conf->compress)) {
 			pk_log(LOG_ERROR, "This parcel does not support the "
 						"requested compression type");
 			return PK_INVALID;
@@ -199,7 +199,7 @@ pk_err_t parse_parcel_cfg(struct pk_parcel **out)
 					pk_strerror(ret));
 		return ret;
 	}
-	*out=ctx.pdata=g_slice_new0(struct pk_parcel);
+	ctx.pdata=g_slice_new0(struct pk_parcel);
 	lines=g_strsplit(data, "\n", 0);
 	g_free(data);
 	for (i=0; lines[i] != NULL; i++) {
@@ -225,6 +225,7 @@ pk_err_t parse_parcel_cfg(struct pk_parcel **out)
 	ctx.pdata->master = g_strdup_printf("%s/%s/%s/last/hdk", ctx.rpath,
 					ctx.pdata->user, ctx.pdata->parcel);
 	g_free(ctx.rpath);
+	*out=ctx.pdata;
 	return PK_SUCCESS;
 
 bad_free:
@@ -233,7 +234,6 @@ bad_free:
 bad:
 	g_free(ctx.rpath);
 	parcel_cfg_free(ctx.pdata);
-	*out=NULL;
 	return PK_IOERR;
 }
 

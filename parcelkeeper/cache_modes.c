@@ -162,7 +162,7 @@ again:
 			log_tag_mismatch(tag, calctag, state.parcel->hashlen);
 			goto damaged;
 		}
-		path=form_chunk_path(state.conf->dest_dir, chunk);
+		path=form_chunk_path(state.parcel, state.conf->dest_dir, chunk);
 		fd=open(path, O_WRONLY|O_CREAT|O_TRUNC, 0600);
 		if (fd == -1) {
 			pk_log(LOG_ERROR, "Couldn't open chunk file %s", path);
@@ -262,7 +262,7 @@ again:
 						state.parcel->hashlen, keylen);
 			ret=PK_INVALID;
 		}
-		if (!compress_is_valid(compress)) {
+		if (!compress_is_valid(state.parcel, compress)) {
 			pk_log(LOG_WARNING, "Chunk %u: invalid or unsupported "
 						"compression type %u", chunk,
 						compress);

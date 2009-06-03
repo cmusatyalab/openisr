@@ -284,7 +284,7 @@ enum cryptotype parse_crypto(const char *desc);
 enum compresstype parse_compress(const char *desc);
 unsigned crypto_hashlen(enum cryptotype type);
 int crypto_is_valid(enum cryptotype type);
-int compress_is_valid(enum compresstype type);
+int compress_is_valid(struct pk_parcel *parcel, enum compresstype type);
 pk_err_t read_file(const char *path, gchar **buf, gsize *len);
 pk_err_t read_sysfs_file(const char *path, gchar **buf);
 char *pk_strerror(pk_err_t err);
@@ -300,9 +300,9 @@ pk_err_t get_file_lock(int fd, int flags);
 pk_err_t put_file_lock(int fd);
 pk_err_t acquire_lockfile(void);
 void release_lockfile(void);
-pk_err_t create_pidfile(void);
-void remove_pidfile(void);
-gchar *form_chunk_path(const char *prefix, unsigned chunk);
+pk_err_t create_pidfile(const char *path);
+gchar *form_chunk_path(struct pk_parcel *parcel, const char *prefix,
+			unsigned chunk);
 pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
 			unsigned len);
 gchar *format_tag(const void *tag, unsigned len);

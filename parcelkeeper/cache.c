@@ -568,7 +568,7 @@ again:
 		ret=PK_INVALID;
 		goto bad;
 	}
-	if (!compress_is_valid(*compress)) {
+	if (!compress_is_valid(state.parcel, *compress)) {
 		pk_log(LOG_ERROR, "Invalid or unsupported compression type "
 					"for chunk %u: %u", chunk, *compress);
 		ret=PK_INVALID;

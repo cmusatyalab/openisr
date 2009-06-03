@@ -76,7 +76,7 @@ int main(int argc, char **argv)
 
 	/* Now that we have the lock, it's safe to create the pidfile */
 	if (state.conf->flags & WANT_BACKGROUND)
-		if (create_pidfile())
+		if (create_pidfile(state.conf->pidfile))
 			goto shutdown;
 
 	if (state.conf->parcel_dir != NULL)
@@ -156,7 +156,7 @@ shutdown:
 	if (have_cache)
 		cache_shutdown();
 	if (have_lock) {
-		remove_pidfile();  /* safe if lock held */
+		unlink(state.conf->pidfile);  /* safe if lock held */
 		release_lockfile();
 	}
 	log_shutdown();  /* safe to call unconditionally */
