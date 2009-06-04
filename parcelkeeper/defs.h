@@ -156,8 +156,6 @@ struct pk_state {
 	struct pk_config *conf;
 	struct pk_parcel *parcel;
 
-	pid_t pk_pid;
-	FILE *log_fp;
 	struct pk_lockfile *lockfile;
 	int cache_fd;
 	int hoard_fd;

@@ -29,6 +29,11 @@
 
 #define MAX_BACKTRACE_LEN 32
 
+static struct {
+	pid_t pk_pid;
+	FILE *fp;
+} log_state;
+
 static void curtime(char *buf, unsigned buflen)
 {
 	struct timeval tv;
@@ -109,25 +114,25 @@ pk_err_t logtypes_to_mask(const char *list, unsigned *out)
 
 static void open_log(void)
 {
-	state.log_fp=fopen(state.conf->log_file, "a");
-	if (state.log_fp == NULL)
+	log_state.fp=fopen(state.conf->log_file, "a");
+	if (log_state.fp == NULL)
 		pk_log(LOG_ERROR, "Couldn't open log file %s",
 					state.conf->log_file);
 }
 
 static void close_log(void)
 {
-	fclose(state.log_fp);
-	state.log_fp=NULL;
+	fclose(log_state.fp);
+	log_state.fp=NULL;
 }
 
 static void check_log(void)
 {
 	struct stat st;
 
-	if (state.log_fp == NULL)
+	if (log_state.fp == NULL)
 		return;
-	if (fstat(fileno(state.log_fp), &st)) {
+	if (fstat(fileno(log_state.fp), &st)) {
 		close_log();
 		pk_log(LOG_ERROR, "Couldn't stat log file %s",
 					state.conf->log_file);
@@ -162,24 +167,24 @@ void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 	va_list ap;
 	char buf[50];
 
-	if (state.log_fp != NULL && ((1 << type) & state.conf->log_file_mask)) {
+	if (log_state.fp != NULL && ((1 << type) & state.conf->log_file_mask)) {
 		curtime(buf, sizeof(buf));
 		check_log();
 		/* Ignore errors; it's better to write the log entry unlocked
 		   than to drop it on the floor */
-		get_file_lock(fileno(state.log_fp),
+		get_file_lock(fileno(log_state.fp),
 					FILE_LOCK_WRITE | FILE_LOCK_WAIT);
-		fseek(state.log_fp, 0, SEEK_END);
+		fseek(log_state.fp, 0, SEEK_END);
 		va_copy(ap, args);
-		fprintf(state.log_fp, "%s %d %s: ", buf, state.pk_pid,
+		fprintf(log_state.fp, "%s %d %s: ", buf, log_state.pk_pid,
 					log_prefix(type));
-		vfprintf(state.log_fp, fmt, ap);
-		fprintf(state.log_fp, "\n");
+		vfprintf(log_state.fp, fmt, ap);
+		fprintf(log_state.fp, "\n");
 		va_end(ap);
 		if (type & _LOG_BACKTRACE)
-			log_backtrace(state.log_fp);
-		fflush(state.log_fp);
-		put_file_lock(fileno(state.log_fp));
+			log_backtrace(log_state.fp);
+		fflush(log_state.fp);
+		put_file_lock(fileno(log_state.fp));
 	}
 
 	if ((1 << type) & state.conf->log_stderr_mask) {
@@ -204,7 +209,7 @@ void pk_log(enum pk_log_type type, const char *fmt, ...)
 
 void log_start(void)
 {
-	state.pk_pid=getpid();
+	log_state.pk_pid=getpid();
 	/* stderr is unbuffered by default */
 	setlinebuf(stderr);
 	if (state.conf->log_file != NULL && state.conf->log_file_mask)
@@ -216,6 +221,6 @@ void log_start(void)
 void log_shutdown(void)
 {
 	pk_log(LOG_INFO, "Parcelkeeper shutting down");
-	if (state.log_fp != NULL)
+	if (log_state.fp != NULL)
 		close_log();
 }
