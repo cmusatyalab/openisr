@@ -211,18 +211,18 @@ pk_err_t setup_signal_handlers(void (*caught_handler)(int sig),
 
 void generic_signal_handler(int sig)
 {
-	state.signal=sig;
+	sigstate.signal=sig;
 }
 
 int pending_signal(void)
 {
 	static int warned;
 
-	if (state.signal && !warned) {
+	if (sigstate.signal && !warned) {
 		warned=1;
 		pk_log(LOG_INFO, "Interrupt");
 	}
-	return state.signal && !state.override_signal;
+	return sigstate.signal && !sigstate.override_signal;
 }
 
 void print_progress_chunks(unsigned chunks, unsigned maxchunks)

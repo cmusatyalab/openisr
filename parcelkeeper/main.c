@@ -20,6 +20,7 @@
 #include "defs.h"
 
 struct pk_state state;
+struct pk_sigstate sigstate;
 
 static const int ignored_signals[]={SIGUSR1, SIGUSR2, 0};
 static const int caught_signals[]={SIGINT, SIGTERM, SIGHUP, 0};
@@ -156,7 +157,7 @@ int main(int argc, char **argv)
 	}
 
 shutdown:
-	state.override_signal=1;
+	sigstate.override_signal = TRUE;
 	if (have_nexus)
 		nexus_shutdown();
 	if (have_transport)
@@ -174,7 +175,7 @@ shutdown:
 	cmdline_free(state.conf);  /* likewise */
 	if (completion_fd != -1)
 		write(completion_fd, &ret, 1);
-	sig=state.signal;
+	sig = sigstate.signal;
 	if (sig) {
 		/* Make sure our exit status reflects the fact that we died
 		   on a signal.  If we're backgrounded, the parent will pick

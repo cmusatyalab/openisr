@@ -44,7 +44,7 @@ static void nexus_signal_handler(int sig)
 {
 	char c=sig;
 	/* Race-free method of catching signals */
-	write(state.signal_fds[1], &c, 1);
+	write(sigstate.signal_fds[1], &c, 1);
 	/* The fd is set nonblocking, so if the pipe is full, the signal will
 	   be lost */
 }
@@ -197,13 +197,13 @@ pk_err_t nexus_init(void)
 					utsname.machine);
 
 	/* Create signal-passing pipe */
-	if (pipe(state.signal_fds)) {
+	if (pipe(sigstate.signal_fds)) {
 		pk_log(LOG_ERROR, "couldn't create pipe");
 		return PK_CALLFAIL;
 	}
 	/* Set it nonblocking */
-	if (fcntl(state.signal_fds[0], F_SETFL, O_NONBLOCK) ||
-				fcntl(state.signal_fds[1], F_SETFL,
+	if (fcntl(sigstate.signal_fds[0], F_SETFL, O_NONBLOCK) ||
+				fcntl(sigstate.signal_fds[1], F_SETFL,
 				O_NONBLOCK)) {
 		pk_log(LOG_ERROR, "couldn't set pipe nonblocking");
 		return PK_CALLFAIL;
@@ -493,7 +493,7 @@ void nexus_run(void)
 {
 	fd_set readfds;
 	fd_set exceptfds;
-	int fdcount=MAX(state.signal_fds[0], state.chardev_fd) + 1;
+	int fdcount=MAX(sigstate.signal_fds[0], state.chardev_fd) + 1;
 	int shutdown_pending=0;
 	char signal;
 
@@ -502,7 +502,7 @@ void nexus_run(void)
 	FD_ZERO(&exceptfds);
 	for (;;) {
 		FD_SET(state.chardev_fd, &readfds);
-		FD_SET(state.signal_fds[0], &readfds);
+		FD_SET(sigstate.signal_fds[0], &readfds);
 		if (shutdown_pending)
 			FD_SET(state.chardev_fd, &exceptfds);
 		if (select(fdcount, &readfds, NULL, &exceptfds, NULL) == -1) {
@@ -523,8 +523,8 @@ void nexus_run(void)
 		}
 
 		/* Process pending signals */
-		if (FD_ISSET(state.signal_fds[0], &readfds)) {
-			while (read(state.signal_fds[0], &signal,
+		if (FD_ISSET(sigstate.signal_fds[0], &readfds)) {
+			while (read(sigstate.signal_fds[0], &signal,
 						sizeof(signal)) > 0) {
 				switch (signal) {
 				case SIGQUIT:

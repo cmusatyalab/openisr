@@ -162,7 +162,6 @@ struct pk_state {
 	gchar *loopdev_name;
 	int loopdev_fd;
 	int chardev_fd;
-	int signal_fds[2];
 	gchar *shm_name;
 	unsigned char *shm_base;
 	unsigned shm_len;
@@ -178,12 +177,16 @@ struct pk_state {
 	int leave_dirty;
 
 	unsigned request_count;
+};
 
+struct pk_sigstate {
 	volatile int signal;  /* Last signal received by generic handler */
-	int override_signal;  /* Ignore pending signals in pending_signal() */
+	gboolean override_signal;  /* Ignore pending signals in pending_signal() */
+	int signal_fds[2];
 };
 
 extern struct pk_state state;
+extern struct pk_sigstate sigstate;
 extern const char isr_release[];
 extern const char rcs_revision[];
 
