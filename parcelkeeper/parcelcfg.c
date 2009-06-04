@@ -154,11 +154,6 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 			ctx->pdata->required_compress |= (1 << compress);
 		}
 		g_strfreev(strs);
-		if (!compress_is_valid(ctx->pdata, state.conf->compress)) {
-			pk_log(LOG_ERROR, "This parcel does not support the "
-						"requested compression type");
-			return PK_INVALID;
-		}
 		break;
 	case PC_UUID:
 		if (canonicalize_uuid(value, &ctx->pdata->uuid))
@@ -184,7 +179,7 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 	return PK_SUCCESS;
 }
 
-pk_err_t parse_parcel_cfg(struct pk_parcel **out)
+pk_err_t parse_parcel_cfg(struct pk_parcel **out, const char *path)
 {
 	struct pc_parse_ctx ctx = {};
 	gchar *data;
@@ -193,7 +188,7 @@ pk_err_t parse_parcel_cfg(struct pk_parcel **out)
 	pk_err_t ret;
 	int i;
 
-	ret=read_file(state.conf->parcel_cfg, &data, NULL);
+	ret=read_file(path, &data, NULL);
 	if (ret) {
 		pk_log(LOG_ERROR, "Couldn't read parcel.cfg: %s",
 					pk_strerror(ret));

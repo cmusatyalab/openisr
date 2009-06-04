@@ -79,9 +79,15 @@ int main(int argc, char **argv)
 		if (create_pidfile(state.conf->pidfile))
 			goto shutdown;
 
-	if (state.conf->parcel_dir != NULL)
-		if (parse_parcel_cfg(&state.parcel))
+	if (state.conf->parcel_dir != NULL) {
+		if (parse_parcel_cfg(&state.parcel, state.conf->parcel_cfg))
 			goto shutdown;
+		if (!compress_is_valid(state.parcel, state.conf->compress)) {
+			pk_log(LOG_ERROR, "This parcel does not support the "
+						"requested compression type");
+			goto shutdown;
+		}
+	}
 
 	sql_init();
 
