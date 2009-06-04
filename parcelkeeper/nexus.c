@@ -183,7 +183,7 @@ pk_err_t nexus_init(struct pk_state *state)
 	struct utsname utsname;
 
 	/* Check for previous unclean shutdown of local cache */
-	if (cache_test_flag(CA_F_DIRTY)) {
+	if (cache_test_flag(state, CA_F_DIRTY)) {
 		pk_log(LOG_WARNING, "Local cache marked as dirty");
 		pk_log(LOG_WARNING, "Will not run until the cache has been "
 					"validated or discarded");
@@ -271,8 +271,8 @@ pk_err_t nexus_init(struct pk_state *state)
 	/* Set the dirty flag on the local cache.  If the damaged flag is
 	   already set, there's no point in forcing another check if we
 	   crash. */
-	if (!cache_test_flag(CA_F_DAMAGED)) {
-		ret=cache_set_flag(CA_F_DIRTY);
+	if (!cache_test_flag(state, CA_F_DAMAGED)) {
+		ret=cache_set_flag(state, CA_F_DIRTY);
 		if (ret)
 			goto bad_chardev;
 	}
@@ -321,7 +321,7 @@ pk_err_t nexus_init(struct pk_state *state)
 bad_loop:
 	loop_unbind(state);
 bad_flag:
-	cache_clear_flag(CA_F_DIRTY);
+	cache_clear_flag(state, CA_F_DIRTY);
 bad_chardev:
 	close(state->chardev_fd);
 	return ret;
@@ -365,7 +365,7 @@ void nexus_shutdown(struct pk_state *state)
 	sync();
 	sync();
 	if (!state->leave_dirty)
-		cache_clear_flag(CA_F_DIRTY);
+		cache_clear_flag(state, CA_F_DIRTY);
 }
 
 static void add_poll_fd(struct pk_state *state, int fd, GIOCondition cond,
@@ -478,7 +478,7 @@ static int process_message(struct pk_state *state,
 	switch (request->type) {
 	case NEXUS_MSGTYPE_GET_META:
 		reply->chunk=request->chunk;
-		err=cache_get(request->chunk, reply->tag, reply->key,
+		err=cache_get(state, request->chunk, reply->tag, reply->key,
 					&compress, &reply->length);
 		reply->compression=compress_to_nexus(compress);
 		if (err || reply->compression == NEXUS_NR_COMPRESS)
@@ -488,7 +488,7 @@ static int process_message(struct pk_state *state,
 		return 1;
 	case NEXUS_MSGTYPE_UPDATE_META:
 		/* XXX ignores errors */
-		cache_update(request->chunk, request->tag, request->key,
+		cache_update(state, request->chunk, request->tag, request->key,
 					nexus_to_compress(request->compression),
 					request->length);
 		break;

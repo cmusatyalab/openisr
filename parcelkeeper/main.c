@@ -95,7 +95,7 @@ int main(int argc, char **argv)
 
 	sql_init();
 
-	if (cache_init())
+	if (cache_init(&state))
 		goto shutdown;
 	else
 		have_cache=1;
@@ -165,7 +165,7 @@ shutdown:
 	if (have_hoard)
 		hoard_shutdown();
 	if (have_cache)
-		cache_shutdown();
+		cache_shutdown(&state);
 	if (have_lock) {
 		unlink(state.conf->pidfile);  /* safe if lock held */
 		release_lockfile(state.lockfile);

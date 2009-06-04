@@ -49,17 +49,17 @@ enum shm_chunk_status {
 	SHM_DIRTY_SESSION	= 0x8,
 };
 
-off64_t cache_chunk_to_offset(unsigned chunk)
+off64_t cache_chunk_to_offset(struct pk_state *state, unsigned chunk)
 {
-	return (off64_t)state.parcel->chunksize * chunk + state.offset;
+	return (off64_t)state->parcel->chunksize * chunk + state->offset;
 }
 
-static pk_err_t create_cache_file(long page_size)
+static pk_err_t create_cache_file(struct pk_state *state, long page_size)
 {
 	struct ca_header hdr = {0};
 	int fd;
 
-	fd=open(state.conf->cache_file, O_CREAT|O_EXCL|O_RDWR, 0600);
+	fd=open(state->conf->cache_file, O_CREAT|O_EXCL|O_RDWR, 0600);
 	if (fd == -1) {
 		pk_log(LOG_ERROR, "couldn't create cache file");
 		return PK_IOERR;
@@ -73,33 +73,34 @@ static pk_err_t create_cache_file(long page_size)
 	   aligned on page cache boundaries.  We therefore need to
 	   make sure that our header is a multiple of the page size.
 	   We assume that the page size is at least sizeof(hdr) bytes. */
-	state.offset=page_size;
-	state.cache_flags=0;
+	state->offset=page_size;
+	state->cache_flags=0;
 	hdr.magic=htonl(CA_MAGIC);
-	hdr.entries=htonl(state.parcel->chunks);
-	hdr.offset=htonl(state.offset >> 9);
-	hdr.flags=htonl(state.cache_flags);
+	hdr.entries=htonl(state->parcel->chunks);
+	hdr.offset=htonl(state->offset >> 9);
+	hdr.flags=htonl(state->cache_flags);
 	hdr.version=CA_VERSION;
 	if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
 		pk_log(LOG_ERROR, "Couldn't write cache file header");
 		return PK_IOERR;
 	}
-	if (ftruncate(fd, cache_chunk_to_offset(state.parcel->chunks))) {
+	if (ftruncate(fd, cache_chunk_to_offset(state,
+				state->parcel->chunks))) {
 		pk_log(LOG_ERROR, "couldn't extend cache file");
 		return PK_IOERR;
 	}
 
 	pk_log(LOG_INFO, "Created cache file");
-	state.cache_fd=fd;
+	state->cache_fd=fd;
 	return PK_SUCCESS;
 }
 
-static pk_err_t open_cache_file(long page_size)
+static pk_err_t open_cache_file(struct pk_state *state, long page_size)
 {
 	struct ca_header hdr;
 	int fd;
 
-	fd=open(state.conf->cache_file, O_RDWR);
+	fd=open(state->conf->cache_file, O_RDWR);
 	if (fd == -1) {
 		pk_log(LOG_ERROR, "couldn't open cache file");
 		return PK_IOERR;
@@ -118,114 +119,114 @@ static pk_err_t open_cache_file(long page_size)
 					hdr.version);
 		return PK_BADFORMAT;
 	}
-	if (ntohl(hdr.entries) != state.parcel->chunks) {
+	if (ntohl(hdr.entries) != state->parcel->chunks) {
 		pk_log(LOG_ERROR, "Invalid chunk count reading cache file: "
 					"expected %u, found %u",
-					state.parcel->chunks,
+					state->parcel->chunks,
 					ntohl(hdr.entries));
 		return PK_BADFORMAT;
 	}
-	state.cache_flags=ntohl(hdr.flags);
-	state.offset=ntohl(hdr.offset) << 9;
-	if (state.offset % page_size != 0) {
+	state->cache_flags=ntohl(hdr.flags);
+	state->offset=ntohl(hdr.offset) << 9;
+	if (state->offset % page_size != 0) {
 		/* This may occur with old cache files, or with cache files
 		   copied from another system with a different page size. */
 		pk_log(LOG_WARNING, "Cache file's header length %u is not "
 					"a multiple of the page size %ld",
-					state.offset, page_size);
+					state->offset, page_size);
 		pk_log(LOG_ERROR, "Data corruption may occur.  If it does, "
 					"checkin will be disallowed");
 	}
 
 	pk_log(LOG_INFO, "Read cache header");
-	state.cache_fd=fd;
+	state->cache_fd=fd;
 	return PK_SUCCESS;
 }
 
-static pk_err_t cache_set_flags(unsigned flags)
+static pk_err_t cache_set_flags(struct pk_state *state, unsigned flags)
 {
 	unsigned tmp;
 
-	if (!(state.conf->flags & WANT_LOCK)) {
+	if (!(state->conf->flags & WANT_LOCK)) {
 		/* Catch misuse of this function */
 		pk_log(LOG_ERROR, "Refusing to set cache flags when lock "
 					"not held");
 		return PK_BUSY;
 	}
-	if (!state.cache_fd) {
+	if (!state->cache_fd) {
 		pk_log(LOG_ERROR, "Cache file not open; can't set flags");
 		return PK_IOERR;
 	}
 
 	tmp=htonl(flags);
-	if (pwrite(state.cache_fd, &tmp, sizeof(tmp),
+	if (pwrite(state->cache_fd, &tmp, sizeof(tmp),
 				offsetof(struct ca_header, flags))
 				!= sizeof(tmp)) {
 		pk_log(LOG_ERROR, "Couldn't write new flags to cache file");
 		return PK_IOERR;
 	}
-	if (fdatasync(state.cache_fd)) {
+	if (fdatasync(state->cache_fd)) {
 		pk_log(LOG_ERROR, "Couldn't sync cache file");
 		return PK_IOERR;
 	}
-	state.cache_flags=flags;
+	state->cache_flags=flags;
 	return PK_SUCCESS;
 }
 
-pk_err_t cache_set_flag(unsigned flag)
+pk_err_t cache_set_flag(struct pk_state *state, unsigned flag)
 {
 	if ((flag & CA_F_DAMAGED) == CA_F_DAMAGED)
 		pk_log(LOG_WARNING, "Setting damaged flag on local cache");
-	return cache_set_flags(state.cache_flags | flag);
+	return cache_set_flags(state, state->cache_flags | flag);
 }
 
-pk_err_t cache_clear_flag(unsigned flag)
+pk_err_t cache_clear_flag(struct pk_state *state, unsigned flag)
 {
-	return cache_set_flags(state.cache_flags & ~flag);
+	return cache_set_flags(state, state->cache_flags & ~flag);
 }
 
-int cache_test_flag(unsigned flag)
+int cache_test_flag(struct pk_state *state, unsigned flag)
 {
-	return ((state.cache_flags & flag) == flag);
+	return ((state->cache_flags & flag) == flag);
 }
 
-static pk_err_t create_cache_index(void)
+static pk_err_t create_cache_index(struct pk_state *state)
 {
 	pk_err_t ret;
 	gboolean retry;
 
 again:
-	ret=begin(state.db);
+	ret=begin(state->db);
 	if (ret)
 		return ret;
 	ret=PK_IOERR;
-	if (query(NULL, state.db, "CREATE TABLE cache.chunks ("
+	if (query(NULL, state->db, "CREATE TABLE cache.chunks ("
 				"chunk INTEGER PRIMARY KEY NOT NULL, "
 				"length INTEGER NOT NULL)", NULL)) {
-		pk_log_sqlerr(state.db, "Couldn't create cache index");
+		pk_log_sqlerr(state->db, "Couldn't create cache index");
 		goto bad;
 	}
-	if (query(NULL, state.db, "PRAGMA cache.user_version = "
+	if (query(NULL, state->db, "PRAGMA cache.user_version = "
 				G_STRINGIFY(CA_INDEX_VERSION), NULL)) {
-		pk_log_sqlerr(state.db, "Couldn't set cache index version");
+		pk_log_sqlerr(state->db, "Couldn't set cache index version");
 		goto bad;
 	}
-	ret=commit(state.db);
+	ret=commit(state->db);
 	if (ret)
 		goto bad;
 	return PK_SUCCESS;
 
 bad:
-	retry = query_busy(state.db);
-	rollback(state.db);
+	retry = query_busy(state->db);
+	rollback(state->db);
 	if (retry) {
-		query_backoff(state.db);
+		query_backoff(state->db);
 		goto again;
 	}
 	return ret;
 }
 
-static pk_err_t verify_cache_index(void)
+static pk_err_t verify_cache_index(struct pk_state *state)
 {
 	struct query *qry;
 	int found;
@@ -233,17 +234,17 @@ static pk_err_t verify_cache_index(void)
 	gboolean retry;
 
 again:
-	ret=begin(state.db);
+	ret=begin(state->db);
 	if (ret)
 		return ret;
-	query(&qry, state.db, "PRAGMA cache.user_version", NULL);
-	if (!query_has_row(state.db)) {
-		pk_log_sqlerr(state.db, "Couldn't query cache index version");
+	query(&qry, state->db, "PRAGMA cache.user_version", NULL);
+	if (!query_has_row(state->db)) {
+		pk_log_sqlerr(state->db, "Couldn't query cache index version");
 		goto bad;
 	}
 	query_row(qry, "d", &found);
 	query_free(qry);
-	rollback(state.db);
+	rollback(state->db);
 	if (found != CA_INDEX_VERSION) {
 		pk_log(LOG_ERROR, "Invalid version reading cache index: "
 					"expected %d, found %d",
@@ -253,27 +254,27 @@ again:
 	return PK_SUCCESS;
 
 bad:
-	retry = query_busy(state.db);
-	rollback(state.db);
+	retry = query_busy(state->db);
+	rollback(state->db);
 	if (retry) {
-		query_backoff(state.db);
+		query_backoff(state->db);
 		goto again;
 	}
 	return ret;
 }
 
-static void shm_set(unsigned chunk, unsigned status)
+static void shm_set(struct pk_state *state, unsigned chunk, unsigned status)
 {
-	if (state.shm_base == NULL)
+	if (state->shm_base == NULL)
 		return;
-	if (chunk > state.parcel->chunks) {
+	if (chunk > state->parcel->chunks) {
 		pk_log(LOG_ERROR, "Invalid chunk %u", chunk);
 		return;
 	}
-	state.shm_base[chunk] |= status;
+	state->shm_base[chunk] |= status;
 }
 
-static pk_err_t shm_init(void)
+static pk_err_t shm_init(struct pk_state *state)
 {
 	int fd;
 	struct query *qry;
@@ -281,124 +282,124 @@ static pk_err_t shm_init(void)
 	pk_err_t ret;
 	gboolean retry;
 
-	state.shm_len = state.parcel->chunks;
-	state.shm_name = g_strdup_printf("/openisr-chunkmap-%s",
-				state.parcel->uuid);
+	state->shm_len = state->parcel->chunks;
+	state->shm_name = g_strdup_printf("/openisr-chunkmap-%s",
+				state->parcel->uuid);
 	/* If there's a segment by that name, it's leftover and should be
 	   killed.  (Or else we have a UUID collision, which will prevent
 	   Nexus registration from succeeding in any case.)  This is racy
 	   with regard to someone else deleting and recreating the segment,
 	   but we do this under the PK lock so it shouldn't be a problem. */
-	shm_unlink(state.shm_name);
-	fd=shm_open(state.shm_name, O_RDWR|O_CREAT|O_EXCL, 0600);
+	shm_unlink(state->shm_name);
+	fd=shm_open(state->shm_name, O_RDWR|O_CREAT|O_EXCL, 0600);
 	if (fd == -1) {
 		pk_log(LOG_ERROR, "Couldn't create shared memory segment: %s",
 					strerror(errno));
 		ret=PK_IOERR;
 		goto bad_open;
 	}
-	if (ftruncate(fd, state.shm_len)) {
+	if (ftruncate(fd, state->shm_len)) {
 		pk_log(LOG_ERROR, "Couldn't set shared memory segment to "
-					"%u bytes", state.shm_len);
+					"%u bytes", state->shm_len);
 		close(fd);
 		ret=PK_IOERR;
 		goto bad_truncate;
 	}
-	state.shm_base=mmap(NULL, state.shm_len, PROT_READ|PROT_WRITE,
+	state->shm_base=mmap(NULL, state->shm_len, PROT_READ|PROT_WRITE,
 				MAP_SHARED, fd, 0);
 	close(fd);
-	if (state.shm_base == MAP_FAILED) {
+	if (state->shm_base == MAP_FAILED) {
 		pk_log(LOG_ERROR, "Couldn't map shared memory segment");
 		ret=PK_CALLFAIL;
 		goto bad_map;
 	}
 
 again:
-	ret=begin(state.db);
+	ret=begin(state->db);
 	if (ret)
 		goto bad_populate;
-	for (query(&qry, state.db, "SELECT chunk FROM cache.chunks", NULL);
-				query_has_row(state.db); query_next(qry)) {
+	for (query(&qry, state->db, "SELECT chunk FROM cache.chunks", NULL);
+				query_has_row(state->db); query_next(qry)) {
 		query_row(qry, "d", &chunk);
-		shm_set(chunk, SHM_PRESENT);
+		shm_set(state, chunk, SHM_PRESENT);
 	}
 	query_free(qry);
-	if (!query_ok(state.db)) {
-		pk_log_sqlerr(state.db, "Couldn't query cache index");
+	if (!query_ok(state->db)) {
+		pk_log_sqlerr(state->db, "Couldn't query cache index");
 		ret=PK_SQLERR;
 		goto bad_sql;
 	}
 
-	for (query(&qry, state.db, "SELECT main.keys.chunk "
+	for (query(&qry, state->db, "SELECT main.keys.chunk "
 				"FROM main.keys JOIN prev.keys "
 				"ON main.keys.chunk == prev.keys.chunk "
 				"WHERE main.keys.tag != prev.keys.tag", NULL);
-				query_has_row(state.db); query_next(qry)) {
+				query_has_row(state->db); query_next(qry)) {
 		query_row(qry, "d", &chunk);
-		shm_set(chunk, SHM_DIRTY);
+		shm_set(state, chunk, SHM_DIRTY);
 	}
 	query_free(qry);
-	if (!query_ok(state.db)) {
-		pk_log_sqlerr(state.db, "Couldn't find modified chunks");
+	if (!query_ok(state->db)) {
+		pk_log_sqlerr(state->db, "Couldn't find modified chunks");
 		ret=PK_SQLERR;
 		goto bad_sql;
 	}
-	rollback(state.db);
+	rollback(state->db);
 	return PK_SUCCESS;
 
 bad_sql:
-	retry = query_busy(state.db);
-	rollback(state.db);
+	retry = query_busy(state->db);
+	rollback(state->db);
 	if (retry) {
-		query_backoff(state.db);
+		query_backoff(state->db);
 		goto again;
 	}
 bad_populate:
-	munmap(state.shm_base, state.shm_len);
+	munmap(state->shm_base, state->shm_len);
 bad_map:
-	state.shm_base=NULL;
+	state->shm_base=NULL;
 bad_truncate:
-	shm_unlink(state.shm_name);
+	shm_unlink(state->shm_name);
 bad_open:
-	g_free(state.shm_name);
+	g_free(state->shm_name);
 	return ret;
 }
 
-void cache_shutdown(void)
+void cache_shutdown(struct pk_state *state)
 {
-	if (state.shm_base) {
-		munmap(state.shm_base, state.shm_len);
-		shm_unlink(state.shm_name);
-		g_free(state.shm_name);
+	if (state->shm_base) {
+		munmap(state->shm_base, state->shm_len);
+		shm_unlink(state->shm_name);
+		g_free(state->shm_name);
 	}
-	if (state.cache_fd)
-		close(state.cache_fd);
-	sql_conn_close(state.db);
+	if (state->cache_fd)
+		close(state->cache_fd);
+	sql_conn_close(state->db);
 }
 
-static pk_err_t open_cachedir(long page_size)
+static pk_err_t open_cachedir(struct pk_state *state, long page_size)
 {
 	pk_err_t ret;
 	gboolean have_image;
 	gboolean have_index;
 
-	ret=sql_conn_open(state.conf->keyring, &state.db);
+	ret=sql_conn_open(state->conf->keyring, &state->db);
 	if (ret)
 		return ret;
 
-	have_image=g_file_test(state.conf->cache_file, G_FILE_TEST_IS_REGULAR);
-	have_index=g_file_test(state.conf->cache_index, G_FILE_TEST_IS_REGULAR);
+	have_image=g_file_test(state->conf->cache_file, G_FILE_TEST_IS_REGULAR);
+	have_index=g_file_test(state->conf->cache_index, G_FILE_TEST_IS_REGULAR);
 	if (have_image && have_index) {
-		ret=attach(state.db, "cache", state.conf->cache_index);
+		ret=attach(state->db, "cache", state->conf->cache_index);
 		if (ret)
 			return ret;
-		ret=open_cache_file(page_size);
+		ret=open_cache_file(state, page_size);
 		if (ret)
 			return ret;
-		ret=verify_cache_index();
+		ret=verify_cache_index(state);
 		if (ret)
 			return ret;
-	} else if ((state.conf->flags & WANT_LOCK) &&
+	} else if ((state->conf->flags & WANT_LOCK) &&
 				((have_image && !have_index) ||
 				(!have_image && have_index))) {
 		/* We don't complain about this unless we have the PK lock,
@@ -408,11 +409,12 @@ static pk_err_t open_cachedir(long page_size)
 		pk_log(LOG_ERROR, "Cache and index in inconsistent state");
 		return PK_IOERR;
 	} else {
-		if (state.conf->flags & WANT_LOCK) {
-			ret=attach(state.db, "cache", state.conf->cache_index);
+		if (state->conf->flags & WANT_LOCK) {
+			ret=attach(state->db, "cache",
+						state->conf->cache_index);
 			if (ret)
 				return ret;
-			ret=create_cache_file(page_size);
+			ret=create_cache_file(state, page_size);
 			if (ret)
 				return ret;
 		} else {
@@ -421,18 +423,18 @@ static pk_err_t open_cachedir(long page_size)
 			   to avoid race conditions.  (Right now this only
 			   affects examine mode.)  Create a fake cache index
 			   to simplify queries elsewhere. */
-			ret=attach(state.db, "cache", ":memory:");
+			ret=attach(state->db, "cache", ":memory:");
 			if (ret)
 				return ret;
 		}
-		ret=create_cache_index();
+		ret=create_cache_index(state);
 		if (ret)
 			return ret;
 	}
 	return PK_SUCCESS;
 }
 
-pk_err_t cache_init(void)
+pk_err_t cache_init(struct pk_state *state)
 {
 	pk_err_t ret;
 	long page_size;
@@ -443,32 +445,33 @@ pk_err_t cache_init(void)
 		return PK_CALLFAIL;
 	}
 
-	if (state.conf->flags & WANT_CACHE)
-		ret=open_cachedir(page_size);
+	if (state->conf->flags & WANT_CACHE)
+		ret=open_cachedir(state, page_size);
 	else
-		ret=sql_conn_open(":memory:", &state.db);
+		ret=sql_conn_open(":memory:", &state->db);
 	if (ret)
 		goto bad;
 
-	if (state.conf->flags & WANT_PREV) {
-		ret=attach(state.db, "prev", state.conf->prev_keyring);
+	if (state->conf->flags & WANT_PREV) {
+		ret=attach(state->db, "prev", state->conf->prev_keyring);
 		if (ret)
 			goto bad;
 	}
 
-	if (state.conf->flags & WANT_SHM)
-		if (shm_init())
+	if (state->conf->flags & WANT_SHM)
+		if (shm_init(state))
 			pk_log(LOG_ERROR, "Couldn't set up shared memory "
 						"segment; continuing");
 
 	return PK_SUCCESS;
 
 bad:
-	cache_shutdown();
+	cache_shutdown(state);
 	return ret;
 }
 
-static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
+static pk_err_t obtain_chunk(struct pk_state *state, unsigned chunk,
+			const void *tag, unsigned *length)
 {
 	void *buf;
 	gchar *ftag;
@@ -476,12 +479,12 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 	pk_err_t ret;
 	ssize_t count;
 
-	buf = g_malloc(state.parcel->chunksize);
+	buf = g_malloc(state->parcel->chunksize);
 	if (hoard_get_chunk(tag, buf, &len)) {
-		ftag=format_tag(tag, state.parcel->hashlen);
+		ftag=format_tag(tag, state->parcel->hashlen);
 		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
 		g_free(ftag);
-		ret=transport_fetch_chunk(state.conn, buf, chunk, tag, &len);
+		ret=transport_fetch_chunk(state->conn, buf, chunk, tag, &len);
 		if (ret) {
 			g_free(buf);
 			return ret;
@@ -489,7 +492,8 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 	} else {
 		pk_log(LOG_CHUNK, "Fetched chunk %u from hoard cache", chunk);
 	}
-	count=pwrite(state.cache_fd, buf, len, cache_chunk_to_offset(chunk));
+	count=pwrite(state->cache_fd, buf, len,
+				cache_chunk_to_offset(state, chunk));
 	g_free(buf);
 	if (count != (int)len) {
 		pk_log(LOG_ERROR, "Couldn't write chunk %u to backing store",
@@ -497,19 +501,20 @@ static pk_err_t obtain_chunk(unsigned chunk, const void *tag, unsigned *length)
 		return PK_IOERR;
 	}
 
-	if (query(NULL, state.db, "INSERT INTO cache.chunks (chunk, length) "
+	if (query(NULL, state->db, "INSERT INTO cache.chunks (chunk, length) "
 				"VALUES(?, ?)", "dd", chunk, (int)len)) {
-		pk_log_sqlerr(state.db, "Couldn't insert chunk %u into "
+		pk_log_sqlerr(state->db, "Couldn't insert chunk %u into "
 					"cache index", chunk);
 		return PK_IOERR;
 	}
-	shm_set(chunk, SHM_PRESENT);
+	shm_set(state, chunk, SHM_PRESENT);
 	*length=len;
 	return PK_SUCCESS;
 }
 
-pk_err_t cache_get(unsigned chunk, void *tag, void *key,
-			enum compresstype *compress, unsigned *length)
+pk_err_t cache_get(struct pk_state *state, unsigned chunk, void *tag,
+			void *key, enum compresstype *compress,
+			unsigned *length)
 {
 	struct query *qry;
 	void *rowtag;
@@ -521,112 +526,113 @@ pk_err_t cache_get(unsigned chunk, void *tag, void *key,
 
 	pk_log(LOG_CHUNK, "Get: %u", chunk);
 again:
-	ret=begin(state.db);
+	ret=begin(state->db);
 	if (ret)
 		return ret;
-	query(&qry, state.db, "SELECT tag, key, compression FROM keys "
+	query(&qry, state->db, "SELECT tag, key, compression FROM keys "
 				"WHERE chunk == ?", "d", chunk);
-	if (!query_has_row(state.db)) {
-		pk_log_sqlerr(state.db, "Couldn't query keyring");
+	if (!query_has_row(state->db)) {
+		pk_log_sqlerr(state->db, "Couldn't query keyring");
 		ret=PK_IOERR;
 		goto bad;
 	}
 	query_row(qry, "bbd", &rowtag, &taglen, &rowkey, &keylen, compress);
-	if (taglen != state.parcel->hashlen ||
-				keylen != state.parcel->hashlen) {
+	if (taglen != state->parcel->hashlen ||
+				keylen != state->parcel->hashlen) {
 		query_free(qry);
 		pk_log(LOG_ERROR, "Invalid hash length for chunk %u: "
 					"expected %d, tag %d, key %d",
-					chunk, state.parcel->hashlen, taglen,
+					chunk, state->parcel->hashlen, taglen,
 					keylen);
 		ret=PK_INVALID;
 		goto bad;
 	}
-	memcpy(tag, rowtag, state.parcel->hashlen);
-	memcpy(key, rowkey, state.parcel->hashlen);
+	memcpy(tag, rowtag, state->parcel->hashlen);
+	memcpy(key, rowkey, state->parcel->hashlen);
 	query_free(qry);
 
-	query(&qry, state.db, "SELECT length FROM cache.chunks "
+	query(&qry, state->db, "SELECT length FROM cache.chunks "
 				"WHERE chunk == ?", "d", chunk);
-	if (query_ok(state.db)) {
+	if (query_ok(state->db)) {
 		/* Chunk is not in the local cache */
-		ret=obtain_chunk(chunk, tag, length);
+		ret=obtain_chunk(state, chunk, tag, length);
 		if (ret)
 			goto bad;
-	} else if (query_has_row(state.db)) {
+	} else if (query_has_row(state->db)) {
 		query_row(qry, "d", length);
 		query_free(qry);
 	} else {
-		pk_log_sqlerr(state.db, "Couldn't query cache index");
+		pk_log_sqlerr(state->db, "Couldn't query cache index");
 		ret=PK_IOERR;
 		goto bad;
 	}
 
-	if (*length > state.parcel->chunksize) {
+	if (*length > state->parcel->chunksize) {
 		pk_log(LOG_ERROR, "Invalid chunk length for chunk %u: %u",
 					chunk, *length);
 		ret=PK_INVALID;
 		goto bad;
 	}
-	if (!compress_is_valid(state.parcel, *compress)) {
+	if (!compress_is_valid(state->parcel, *compress)) {
 		pk_log(LOG_ERROR, "Invalid or unsupported compression type "
 					"for chunk %u: %u", chunk, *compress);
 		ret=PK_INVALID;
 		goto bad;
 	}
-	ret=commit(state.db);
+	ret=commit(state->db);
 	if (ret)
 		goto bad;
-	shm_set(chunk, SHM_ACCESSED_SESSION);
+	shm_set(state, chunk, SHM_ACCESSED_SESSION);
 	return PK_SUCCESS;
 
 bad:
-	retry = query_busy(state.db);
-	rollback(state.db);
+	retry = query_busy(state->db);
+	rollback(state->db);
 	if (retry) {
-		query_backoff(state.db);
+		query_backoff(state->db);
 		goto again;
 	}
 	return ret;
 }
 
-pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
-			enum compresstype compress, unsigned length)
+pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *tag,
+			const void *key, enum compresstype compress,
+			unsigned length)
 {
 	pk_err_t ret;
 	gboolean retry;
 
 	pk_log(LOG_CHUNK, "Update: %u", chunk);
 again:
-	ret=begin(state.db);
+	ret=begin(state->db);
 	if (ret)
 		return ret;
 	ret=PK_IOERR;
-	if (query(NULL, state.db, "INSERT OR REPLACE INTO cache.chunks "
+	if (query(NULL, state->db, "INSERT OR REPLACE INTO cache.chunks "
 				"(chunk, length) VALUES(?, ?)", "dd",
 				chunk, length)) {
-		pk_log_sqlerr(state.db, "Couldn't update cache index");
+		pk_log_sqlerr(state->db, "Couldn't update cache index");
 		goto bad;
 	}
-	if (query(NULL, state.db, "UPDATE keys SET tag = ?, key = ?, "
+	if (query(NULL, state->db, "UPDATE keys SET tag = ?, key = ?, "
 				"compression = ? WHERE chunk == ?", "bbdd",
-				tag, state.parcel->hashlen, key,
-				state.parcel->hashlen, compress, chunk)) {
-		pk_log_sqlerr(state.db, "Couldn't update keyring");
+				tag, state->parcel->hashlen, key,
+				state->parcel->hashlen, compress, chunk)) {
+		pk_log_sqlerr(state->db, "Couldn't update keyring");
 		goto bad;
 	}
-	ret=commit(state.db);
+	ret=commit(state->db);
 	if (ret)
 		goto bad;
-	shm_set(chunk, SHM_PRESENT | SHM_ACCESSED_SESSION | SHM_DIRTY |
+	shm_set(state, chunk, SHM_PRESENT | SHM_ACCESSED_SESSION | SHM_DIRTY |
 				SHM_DIRTY_SESSION);
 	return PK_SUCCESS;
 
 bad:
-	retry = query_busy(state.db);
-	rollback(state.db);
+	retry = query_busy(state->db);
+	rollback(state->db);
 	if (retry) {
-		query_backoff(state.db);
+		query_backoff(state->db);
 		goto again;
 	}
 	return ret;

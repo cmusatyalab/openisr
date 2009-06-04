@@ -68,12 +68,12 @@ int copy_for_upload(struct pk_state *state)
 	int ret=1;
 	gboolean retry;
 
-	if (cache_test_flag(CA_F_DAMAGED)) {
+	if (cache_test_flag(state, CA_F_DAMAGED)) {
 		pk_log(LOG_WARNING, "Local cache marked as damaged; "
 					"upload disallowed");
 		return 1;
 	}
-	if (cache_test_flag(CA_F_DIRTY)) {
+	if (cache_test_flag(state, CA_F_DIRTY)) {
 		pk_log(LOG_WARNING, "Local cache marked as dirty");
 		pk_log(LOG_WARNING, "Will not upload until the cache has "
 					"been validated");
@@ -149,7 +149,7 @@ again:
 			goto damaged;
 		}
 		if (pread(state->cache_fd, buf, length,
-					cache_chunk_to_offset(chunk))
+					cache_chunk_to_offset(state, chunk))
 					!= (int)length) {
 			pk_log(LOG_ERROR, "Couldn't read chunk from "
 						"local cache: %u", chunk);
@@ -208,7 +208,7 @@ bad:
 	return ret;
 
 damaged:
-	cache_set_flag(CA_F_DAMAGED);
+	cache_set_flag(state, CA_F_DAMAGED);
 	goto out;
 }
 
@@ -395,8 +395,8 @@ again:
 
 		if (state->conf->flags & WANT_FULL_CHECK) {
 			if (pread(state->cache_fd, buf, chunklen,
-						cache_chunk_to_offset(chunk))
-						!= (int)chunklen) {
+						cache_chunk_to_offset(state,
+						chunk)) != (int)chunklen) {
 				pk_log(LOG_ERROR, "Chunk %u: couldn't read "
 							"from local cache",
 							chunk);
@@ -449,9 +449,9 @@ int validate_cache(struct pk_state *state)
 
 	if (state->conf->flags & WANT_CHECK) {
 		/* Don't actually do any validation; just see where we are */
-		if (cache_test_flag(CA_F_DIRTY))
+		if (cache_test_flag(state, CA_F_DIRTY))
 			ret |= 2;
-		if (cache_test_flag(CA_F_DAMAGED))
+		if (cache_test_flag(state, CA_F_DAMAGED))
 			ret |= 4;
 		return ret;
 	}
@@ -474,9 +474,9 @@ int validate_cache(struct pk_state *state)
 	if (err)
 		goto bad;
 
-	if (cache_test_flag(CA_F_DIRTY)) {
+	if (cache_test_flag(state, CA_F_DIRTY)) {
 		if (state->conf->flags & WANT_FULL_CHECK) {
-			cache_clear_flag(CA_F_DIRTY);
+			cache_clear_flag(state, CA_F_DIRTY);
 		} else {
 			pk_log(LOG_INFO, "Not clearing dirty flag: full check "
 						"not requested");
@@ -488,8 +488,8 @@ int validate_cache(struct pk_state *state)
 
 bad:
 	if (err == PK_BADFORMAT || err == PK_INVALID || err == PK_TAGFAIL) {
-		if (cache_set_flag(CA_F_DAMAGED) == PK_SUCCESS)
-			cache_clear_flag(CA_F_DIRTY);
+		if (cache_set_flag(state, CA_F_DAMAGED) == PK_SUCCESS)
+			cache_clear_flag(state, CA_F_DIRTY);
 	}
 	return 1;
 }

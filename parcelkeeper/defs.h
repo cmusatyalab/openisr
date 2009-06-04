@@ -209,16 +209,17 @@ pk_err_t parse_parcel_cfg(struct pk_parcel **out, const char *path);
 void parcel_cfg_free(struct pk_parcel *parcel);
 
 /* cache.c */
-pk_err_t cache_init(void);
-void cache_shutdown(void);
-pk_err_t cache_get(unsigned chunk, void *tag, void *key,
+pk_err_t cache_init(struct pk_state *state);
+void cache_shutdown(struct pk_state *state);
+pk_err_t cache_get(struct pk_state *state, unsigned chunk, void *tag, void *key,
 			enum compresstype *compress, unsigned *length);
-pk_err_t cache_update(unsigned chunk, const void *tag, const void *key,
-			enum compresstype compress, unsigned length);
-off64_t cache_chunk_to_offset(unsigned chunk);
-pk_err_t cache_set_flag(unsigned flag);
-pk_err_t cache_clear_flag(unsigned flag);
-int cache_test_flag(unsigned flag);
+pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *tag,
+			const void *key, enum compresstype compress,
+			unsigned length);
+off64_t cache_chunk_to_offset(struct pk_state *state, unsigned chunk);
+pk_err_t cache_set_flag(struct pk_state *state, unsigned flag);
+pk_err_t cache_clear_flag(struct pk_state *state, unsigned flag);
+int cache_test_flag(struct pk_state *state, unsigned flag);
 
 /* cache_modes.c */
 int copy_for_upload(struct pk_state *state);
