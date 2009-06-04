@@ -368,6 +368,21 @@ void nexus_shutdown(struct pk_state *state)
 		cache_clear_flag(CA_F_DIRTY);
 }
 
+static void add_poll_fd(struct pk_state *state, int fd, GIOCondition cond,
+			GIOFunc callback)
+{
+	GIOChannel *chan;
+	GSource *source;
+
+	chan = g_io_channel_unix_new(fd);
+	g_io_channel_set_close_on_unref(chan, FALSE);
+	source = g_io_create_watch(chan, cond);
+	g_source_set_callback(source, (GSourceFunc) callback, state, NULL);
+	g_source_attach(source, g_main_loop_get_context(state->nexus_loop));
+	g_source_unref(source);
+	g_io_channel_unref(chan);
+}
+
 static int request_is_valid(struct pk_state *state,
 			const struct nexus_message *req)
 {
@@ -484,8 +499,9 @@ static int process_message(struct pk_state *state,
 	return 0;
 }
 
-static void process_batch(struct pk_state *state)
+static gboolean process_batch(GIOChannel *src, GIOCondition cond, void *data)
 {
+	struct pk_state *state = data;
 	struct nexus_message requests[REQUESTS_PER_SYSCALL];
 	struct nexus_message replies[REQUESTS_PER_SYSCALL];
 	int i;
@@ -504,76 +520,57 @@ static void process_batch(struct pk_state *state)
 	}
 
 	if (out_count == 0)
-		return;
+		return TRUE;
 	out_count *= sizeof(replies[0]);
 	if (write(state->chardev_fd, replies, out_count) != out_count) {
 		/* XXX */
 		pk_log(LOG_ERROR, "Short write to Nexus");
 	}
+	return TRUE;
+}
+
+static gboolean process_unregister(GIOChannel *src, GIOCondition cond,
+			void *data)
+{
+	struct pk_state *state = data;
+
+	if (!ioctl(state->chardev_fd, NEXUS_IOC_UNREGISTER))
+		g_main_loop_quit(state->nexus_loop);
+	return TRUE;
+}
+
+static gboolean process_signal(GIOChannel *src, GIOCondition cond, void *data)
+{
+	struct pk_state *state = data;
+	char signal;
+
+	while (read(sigstate.signal_fds[0], &signal, sizeof(signal)) > 0) {
+		switch (signal) {
+		case SIGQUIT:
+			pk_log(LOG_INFO, "Caught SIGQUIT; shutting down "
+						"immediately");
+			pk_log(LOG_INFO, "Loop unregistration may fail");
+			g_main_loop_quit(state->nexus_loop);
+			break;
+		default:
+			pk_log(LOG_INFO, "Caught signal; shutdown pending");
+			/* XXX multiple signals could add multiple callbacks */
+			add_poll_fd(state, state->chardev_fd, G_IO_PRI,
+						process_unregister);
+		}
+	}
+	return TRUE;
 }
 
 void nexus_run(struct pk_state *state)
 {
-	fd_set readfds;
-	fd_set exceptfds;
-	int fdcount=MAX(sigstate.signal_fds[0], state->chardev_fd) + 1;
-	int shutdown_pending=0;
-	char signal;
+	GMainContext *ctx;
 
-	/* Enter processing loop */
-	FD_ZERO(&readfds);
-	FD_ZERO(&exceptfds);
-	for (;;) {
-		FD_SET(state->chardev_fd, &readfds);
-		FD_SET(sigstate.signal_fds[0], &readfds);
-		if (shutdown_pending)
-			FD_SET(state->chardev_fd, &exceptfds);
-		if (select(fdcount, &readfds, NULL, &exceptfds, NULL) == -1) {
-			/* select(2) reports that the fdsets are now
-			   undefined, so we start over */
-			FD_ZERO(&readfds);
-			FD_ZERO(&exceptfds);
-			if (errno == EINTR) {
-				/* Got a signal.  The next time through the
-				   loop the pipe will be readable and we can
-				   find out what signal it was */
-				continue;
-			} else {
-				pk_log(LOG_ERROR, "select() failed: %s",
-							strerror(errno));
-				/* XXX now what? */
-			}
-		}
-
-		/* Process pending signals */
-		if (FD_ISSET(sigstate.signal_fds[0], &readfds)) {
-			while (read(sigstate.signal_fds[0], &signal,
-						sizeof(signal)) > 0) {
-				switch (signal) {
-				case SIGQUIT:
-					pk_log(LOG_INFO, "Caught SIGQUIT;"
-						" shutting down immediately");
-					pk_log(LOG_INFO, "Loop "
-						"unregistration may fail");
-					return;
-				default:
-					pk_log(LOG_INFO, "Caught signal; "
-						"shutdown pending");
-					shutdown_pending=1;
-				}
-			}
-		}
-
-		/* If we need to shut down and we think the block device has
-		   no users, try to unregister */
-		if (shutdown_pending && FD_ISSET(state->chardev_fd,
-					&exceptfds)) {
-			if (!ioctl(state->chardev_fd, NEXUS_IOC_UNREGISTER))
-				return;
-		}
-
-		/* Process pending requests */
-		if (FD_ISSET(state->chardev_fd, &readfds))
-			process_batch(state);
-	}
+	ctx = g_main_context_new();
+	state->nexus_loop = g_main_loop_new(ctx, FALSE);
+	add_poll_fd(state, state->chardev_fd, G_IO_IN, process_batch);
+	add_poll_fd(state, sigstate.signal_fds[0], G_IO_IN, process_signal);
+	g_main_loop_run(state->nexus_loop);
+	g_main_loop_unref(state->nexus_loop);
+	g_main_context_unref(ctx);
 }

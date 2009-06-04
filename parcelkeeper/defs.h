@@ -162,6 +162,7 @@ struct pk_state {
 	gchar *loopdev_name;
 	int loopdev_fd;
 	int chardev_fd;
+	GMainLoop *nexus_loop;
 	gchar *shm_name;
 	unsigned char *shm_base;
 	unsigned shm_len;
