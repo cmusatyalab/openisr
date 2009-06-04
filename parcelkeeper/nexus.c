@@ -99,14 +99,14 @@ static pk_err_t loop_bind(struct pk_state *state) {
 		fd=open(state->loopdev_name, O_RDWR);
 		if (fd == -1) {
 			pk_log(LOG_ERROR, "Couldn't open loop device");
-			return PK_IOERR;
+			goto bad_free;
 		}
 		if (ioctl(fd, LOOP_GET_STATUS64, &info) && errno == ENXIO) {
 			/* XXX race condition */
 			if (ioctl(fd, LOOP_SET_FD, state->cache_fd)) {
 				pk_log(LOG_ERROR, "Couldn't bind to loop "
 							"device");
-				return PK_IOERR;
+				goto bad_close;
 			}
 			/* This is required in order to properly configure the
 			   (null) transfer function, even though it
@@ -114,8 +114,7 @@ static pk_err_t loop_bind(struct pk_state *state) {
 			if (ioctl(fd, LOOP_GET_STATUS64, &info)) {
 				pk_log(LOG_ERROR, "Couldn't get status of "
 							"loop device");
-				ioctl(fd, LOOP_CLR_FD, 0);
-				return PK_IOERR;
+				goto bad_clear;
 			}
 			snprintf((char*)info.lo_file_name, LO_NAME_SIZE, "%s",
 						state->conf->cache_file);
@@ -128,8 +127,7 @@ static pk_err_t loop_bind(struct pk_state *state) {
 			if (ioctl(fd, LOOP_SET_STATUS64, &info)) {
 				pk_log(LOG_ERROR, "Couldn't configure "
 							"loop device");
-				ioctl(fd, LOOP_CLR_FD, 0);
-				return PK_IOERR;
+				goto bad_clear;
 			}
 			break;
 		}
@@ -139,6 +137,39 @@ static pk_err_t loop_bind(struct pk_state *state) {
 	state->loopdev_fd=fd;
 	pk_log(LOG_INFO, "Bound to loop device %s", state->loopdev_name);
 	return PK_SUCCESS;
+
+bad_clear:
+	ioctl(fd, LOOP_CLR_FD, 0);
+bad_close:
+	close(fd);
+bad_free:
+	g_free(state->loopdev_name);
+	return PK_IOERR;
+}
+
+static void loop_unbind(struct pk_state *state)
+{
+	int i;
+
+	/* XXX Sometimes the loop device doesn't unregister the first time.
+	   For now, we retry (a lot) to try to ensure that the user isn't left
+	   with a stale binding.  However, we still print the warning as a
+	   debug aid. */
+	for (i=0; i<LOOP_UNREGISTER_TRIES; i++) {
+		if (!ioctl(state->loopdev_fd, LOOP_CLR_FD, 0)) {
+			if (i > 0)
+				pk_log(LOG_ERROR, "Had to try %d times to "
+							"unbind loop device",
+							i + 1);
+			break;
+		}
+		usleep(10000);
+	}
+	if (i == LOOP_UNREGISTER_TRIES)
+		pk_log(LOG_ERROR, "Couldn't unbind loop device");
+
+	close(state->loopdev_fd);
+	g_free(state->loopdev_name);
 }
 
 pk_err_t nexus_init(struct pk_state *state)
@@ -206,13 +237,18 @@ pk_err_t nexus_init(struct pk_state *state)
 				fcntl(sigstate.signal_fds[1], F_SETFL,
 				O_NONBLOCK)) {
 		pk_log(LOG_ERROR, "couldn't set pipe nonblocking");
+		close(sigstate.signal_fds[0]);
+		close(sigstate.signal_fds[1]);
 		return PK_CALLFAIL;
 	}
 	/* Register pipe-based signal handler */
 	ret=setup_signal_handlers(nexus_signal_handler, caught_signals,
 				ignored_signals);
-	if (ret)
+	if (ret) {
+		close(sigstate.signal_fds[0]);
+		close(sigstate.signal_fds[1]);
 		return ret;
+	}
 	if (pending_signal()) {
 		/* We already got a signal under the generic signal-handling
 		   system.  Exit. */
@@ -238,15 +274,13 @@ pk_err_t nexus_init(struct pk_state *state)
 	if (!cache_test_flag(CA_F_DAMAGED)) {
 		ret=cache_set_flag(CA_F_DIRTY);
 		if (ret)
-			return ret;
+			goto bad_chardev;
 	}
 
 	/* Bind the image file to a loop device */
 	ret=loop_bind(state);
-	if (ret) {
-		cache_clear_flag(CA_F_DIRTY);
-		return ret;
-	}
+	if (ret)
+		goto bad_flag;
 
 	/* Register ourselves with the device */
 	memset(&setup, 0, sizeof(setup));
@@ -270,21 +304,27 @@ pk_err_t nexus_init(struct pk_state *state)
 		/* Shouldn't happen, so we don't need a very good error
 		   message */
 		pk_log(LOG_ERROR, "unknown crypto or compression algorithm");
-		ioctl(state->loopdev_fd, LOOP_CLR_FD, 0);
-		cache_clear_flag(CA_F_DIRTY);
-		return PK_IOERR;
+		ret = PK_IOERR;
+		goto bad_loop;
 	}
 
 	if (ioctl(state->chardev_fd, NEXUS_IOC_REGISTER, &setup)) {
 		pk_log(LOG_ERROR, "unable to register with Nexus: %s",
 					strerror(errno));
-		ioctl(state->loopdev_fd, LOOP_CLR_FD, 0);
-		cache_clear_flag(CA_F_DIRTY);
-		return PK_IOERR;
+		ret = PK_IOERR;
+		goto bad_loop;
 	}
 	state->bdev_index=setup.index;
 	pk_log(LOG_INFO, "Registered with Nexus");
 	return PK_SUCCESS;
+
+bad_loop:
+	loop_unbind(state);
+bad_flag:
+	cache_clear_flag(CA_F_DIRTY);
+bad_chardev:
+	close(state->chardev_fd);
+	return ret;
 }
 
 static void log_sysfs_value(struct pk_state *state, const char *attr)
@@ -305,8 +345,6 @@ static void log_sysfs_value(struct pk_state *state, const char *attr)
 
 void nexus_shutdown(struct pk_state *state)
 {
-	int i;
-
 	log_sysfs_value(state, "cache_hits");
 	log_sysfs_value(state, "cache_misses");
 	log_sysfs_value(state, "cache_alloc_failures");
@@ -321,25 +359,7 @@ void nexus_shutdown(struct pk_state *state)
 	pk_log(LOG_STATS, "messages_received: %u", state->request_count);
 
 	close(state->chardev_fd);
-
-	/* XXX Sometimes the loop device doesn't unregister the first time.
-	   For now, we retry (a lot) to try to ensure that the user isn't left
-	   with a stale binding.  However, we still print the warning as a
-	   debug aid. */
-	for (i=0; i<LOOP_UNREGISTER_TRIES; i++) {
-		if (!ioctl(state->loopdev_fd, LOOP_CLR_FD, 0)) {
-			if (i > 0)
-				pk_log(LOG_ERROR, "Had to try %d times to "
-							"unbind loop device",
-							i + 1);
-			break;
-		}
-		usleep(10000);
-	}
-	if (i == LOOP_UNREGISTER_TRIES)
-		pk_log(LOG_ERROR, "Couldn't unbind loop device");
-
-	close(state->loopdev_fd);
+	loop_unbind(state);
 	/* We don't trust the loop driver */
 	sync();
 	sync();
