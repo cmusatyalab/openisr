@@ -109,7 +109,7 @@ int main(int argc, char **argv)
 
 	if (state.conf->flags & WANT_TRANSPORT) {
 		if (transport_init() || transport_conn_alloc(&state.conn,
-					state.parcel))
+					&state))
 			goto shutdown;
 		else
 			have_transport=1;
