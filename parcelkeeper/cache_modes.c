@@ -85,7 +85,7 @@ int copy_for_upload(struct pk_state *state)
 	if (make_upload_dirs(state))
 		return 1;
 	printf("Updating hoard cache...\n");
-	if (hoard_sync_refs(state, 1))
+	if (hoard_sync_refs(state, TRUE))
 		return 1;
 	printf("Vacuuming keyring...\n");
 	if (vacuum(state->db))

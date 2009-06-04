@@ -113,7 +113,7 @@ int hoard(struct pk_state *state)
 
 	/* We need to do this first; otherwise, chunks we thought were hoarded
 	   could disappear out from under us */
-	if (hoard_sync_refs(state, 0)) {
+	if (hoard_sync_refs(state, FALSE)) {
 		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
 		return 1;
 	}
@@ -197,7 +197,7 @@ int examine_hoard(struct pk_state *state)
 	unsigned valid_pct;
 	gboolean retry;
 
-	if (hoard_sync_refs(state, 0)) {
+	if (hoard_sync_refs(state, FALSE)) {
 		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
 		return 1;
 	}
@@ -691,7 +691,7 @@ bad:
 
 int hoard_refresh(struct pk_state *state)
 {
-	if (hoard_sync_refs(state, 0))
+	if (hoard_sync_refs(state, FALSE))
 		return 1;
 	return 0;
 }

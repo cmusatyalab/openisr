@@ -708,7 +708,7 @@ bad:
 
 /* We use state->db rather than state->hoard in this function, since we need to
    compare to the previous or current keyring */
-pk_err_t hoard_sync_refs(struct pk_state *state, int from_cache)
+pk_err_t hoard_sync_refs(struct pk_state *state, gboolean from_cache)
 {
 	pk_err_t ret;
 	gboolean retry;
