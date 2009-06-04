@@ -135,11 +135,11 @@ int main(int argc, char **argv)
 		nexus_run(&state);
 		ret=0;
 	} else if (mode == MODE_UPLOAD) {
-		ret=copy_for_upload();
+		ret=copy_for_upload(&state);
 	} else if (mode == MODE_VALIDATE) {
-		ret=validate_cache();
+		ret=validate_cache(&state);
 	} else if (mode == MODE_EXAMINE) {
-		ret=examine_cache();
+		ret=examine_cache(&state);
 		if (state.conf->hoard_dir && !ret)
 			ret=examine_hoard();
 	} else if (mode == MODE_HOARD) {

@@ -221,9 +221,9 @@ pk_err_t cache_clear_flag(unsigned flag);
 int cache_test_flag(unsigned flag);
 
 /* cache_modes.c */
-int copy_for_upload(void);
-int validate_cache(void);
-int examine_cache(void);
+int copy_for_upload(struct pk_state *state);
+int validate_cache(struct pk_state *state);
+int examine_cache(struct pk_state *state);
 
 /* hoard.c */
 pk_err_t hoard_init(void);
