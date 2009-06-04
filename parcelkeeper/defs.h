@@ -186,7 +186,6 @@ struct pk_sigstate {
 	int signal_fds[2];
 };
 
-extern struct pk_state state;
 extern struct pk_sigstate sigstate;
 extern const char isr_release[];
 extern const char rcs_revision[];

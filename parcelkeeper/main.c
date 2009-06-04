@@ -19,7 +19,6 @@
 #include <signal.h>
 #include "defs.h"
 
-struct pk_state state;
 struct pk_sigstate sigstate;
 
 static const int ignored_signals[]={SIGUSR1, SIGUSR2, 0};
@@ -27,6 +26,7 @@ static const int caught_signals[]={SIGINT, SIGTERM, SIGHUP, 0};
 
 int main(int argc, char **argv)
 {
+	struct pk_state state = {0};
 	gchar *progname;
 	enum mode mode;
 	int completion_fd=-1;
