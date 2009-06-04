@@ -116,7 +116,7 @@ int main(int argc, char **argv)
 	}
 
 	if (mode == MODE_RUN) {
-		if (nexus_init())
+		if (nexus_init(&state))
 			goto shutdown;
 		else
 			have_nexus=1;
@@ -132,7 +132,7 @@ int main(int argc, char **argv)
 	}
 
 	if (mode == MODE_RUN) {
-		nexus_run();
+		nexus_run(&state);
 		ret=0;
 	} else if (mode == MODE_UPLOAD) {
 		ret=copy_for_upload();
@@ -159,7 +159,7 @@ int main(int argc, char **argv)
 shutdown:
 	sigstate.override_signal = TRUE;
 	if (have_nexus)
-		nexus_shutdown();
+		nexus_shutdown(&state);
 	if (have_transport)
 		transport_conn_free(state.conn);
 	if (have_hoard)

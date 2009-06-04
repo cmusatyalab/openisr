@@ -241,9 +241,9 @@ int check_hoard(void);
 int hoard_refresh(void);
 
 /* nexus.c */
-pk_err_t nexus_init(void);
-void nexus_run(void);
-void nexus_shutdown(void);
+pk_err_t nexus_init(struct pk_state *state);
+void nexus_run(struct pk_state *state);
+void nexus_shutdown(struct pk_state *state);
 
 /* transport.c */
 pk_err_t transport_init(void);

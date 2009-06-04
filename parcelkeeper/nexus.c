@@ -89,21 +89,21 @@ static enum compresstype nexus_to_compress(enum nexus_compress type)
 	}
 }
 
-static pk_err_t loop_bind(void) {
+static pk_err_t loop_bind(struct pk_state *state) {
 	struct loop_info64 info;
 	int i;
 	int fd;
 
 	for (i=0 ;; i++) {
-		state.loopdev_name = g_strdup_printf("/dev/loop%d", i);
-		fd=open(state.loopdev_name, O_RDWR);
+		state->loopdev_name = g_strdup_printf("/dev/loop%d", i);
+		fd=open(state->loopdev_name, O_RDWR);
 		if (fd == -1) {
 			pk_log(LOG_ERROR, "Couldn't open loop device");
 			return PK_IOERR;
 		}
 		if (ioctl(fd, LOOP_GET_STATUS64, &info) && errno == ENXIO) {
 			/* XXX race condition */
-			if (ioctl(fd, LOOP_SET_FD, state.cache_fd)) {
+			if (ioctl(fd, LOOP_SET_FD, state->cache_fd)) {
 				pk_log(LOG_ERROR, "Couldn't bind to loop "
 							"device");
 				return PK_IOERR;
@@ -118,7 +118,7 @@ static pk_err_t loop_bind(void) {
 				return PK_IOERR;
 			}
 			snprintf((char*)info.lo_file_name, LO_NAME_SIZE, "%s",
-						state.conf->cache_file);
+						state->conf->cache_file);
 			/* Set LO_FLAGS_AUTOCLEAR, which unbinds the loop
 			   device after the last fd to it is closed.  This
 			   flag should ensure that the device is properly
@@ -134,14 +134,14 @@ static pk_err_t loop_bind(void) {
 			break;
 		}
 		close(fd);
-		g_free(state.loopdev_name);
+		g_free(state->loopdev_name);
 	}
-	state.loopdev_fd=fd;
-	pk_log(LOG_INFO, "Bound to loop device %s", state.loopdev_name);
+	state->loopdev_fd=fd;
+	pk_log(LOG_INFO, "Bound to loop device %s", state->loopdev_name);
 	return PK_SUCCESS;
 }
 
-pk_err_t nexus_init(void)
+pk_err_t nexus_init(struct pk_state *state)
 {
 	struct nexus_setup setup;
 	pk_err_t ret;
@@ -221,8 +221,8 @@ pk_err_t nexus_init(void)
 
 	/* Open the device.  O_NONBLOCK ensures we never block on a read(), but
 	   write() may still block */
-	state.chardev_fd = open("/dev/openisrctl", O_RDWR|O_NONBLOCK);
-	if (state.chardev_fd < 0) {
+	state->chardev_fd = open("/dev/openisrctl", O_RDWR|O_NONBLOCK);
+	if (state->chardev_fd < 0) {
 		if (errno == ENOENT) {
 			pk_log(LOG_ERROR, "/dev/openisrctl does not exist");
 			return PK_NOTFOUND;
@@ -242,7 +242,7 @@ pk_err_t nexus_init(void)
 	}
 
 	/* Bind the image file to a loop device */
-	ret=loop_bind();
+	ret=loop_bind(state);
 	if (ret) {
 		cache_clear_flag(CA_F_DIRTY);
 		return ret;
@@ -251,17 +251,17 @@ pk_err_t nexus_init(void)
 	/* Register ourselves with the device */
 	memset(&setup, 0, sizeof(setup));
 	snprintf((char*)setup.ident, NEXUS_MAX_DEVICE_LEN, "%s",
-				state.parcel->uuid);
+				state->parcel->uuid);
 	snprintf((char*)setup.chunk_device, NEXUS_MAX_DEVICE_LEN, "%s",
-				state.loopdev_name);
-	setup.offset=state.offset >> 9;
-	setup.chunksize=state.parcel->chunksize;
-	setup.cachesize=(state.conf->nexus_cache << 20) /
-				state.parcel->chunksize;
-	setup.crypto=crypto_to_nexus(state.parcel->crypto);
-	setup.compress_default=compress_to_nexus(state.conf->compress);
-	for (u=0; u<8*sizeof(state.parcel->required_compress); u++)
-		if (state.parcel->required_compress & (1 << u))
+				state->loopdev_name);
+	setup.offset=state->offset >> 9;
+	setup.chunksize=state->parcel->chunksize;
+	setup.cachesize=(state->conf->nexus_cache << 20) /
+				state->parcel->chunksize;
+	setup.crypto=crypto_to_nexus(state->parcel->crypto);
+	setup.compress_default=compress_to_nexus(state->conf->compress);
+	for (u=0; u<8*sizeof(state->parcel->required_compress); u++)
+		if (state->parcel->required_compress & (1 << u))
 			setup.compress_required |= 1 << compress_to_nexus(u);
 	if (setup.crypto == NEXUS_NR_CRYPTO ||
 				setup.compress_default == NEXUS_NR_COMPRESS ||
@@ -270,30 +270,30 @@ pk_err_t nexus_init(void)
 		/* Shouldn't happen, so we don't need a very good error
 		   message */
 		pk_log(LOG_ERROR, "unknown crypto or compression algorithm");
-		ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
+		ioctl(state->loopdev_fd, LOOP_CLR_FD, 0);
 		cache_clear_flag(CA_F_DIRTY);
 		return PK_IOERR;
 	}
 
-	if (ioctl(state.chardev_fd, NEXUS_IOC_REGISTER, &setup)) {
+	if (ioctl(state->chardev_fd, NEXUS_IOC_REGISTER, &setup)) {
 		pk_log(LOG_ERROR, "unable to register with Nexus: %s",
 					strerror(errno));
-		ioctl(state.loopdev_fd, LOOP_CLR_FD, 0);
+		ioctl(state->loopdev_fd, LOOP_CLR_FD, 0);
 		cache_clear_flag(CA_F_DIRTY);
 		return PK_IOERR;
 	}
-	state.bdev_index=setup.index;
+	state->bdev_index=setup.index;
 	pk_log(LOG_INFO, "Registered with Nexus");
 	return PK_SUCCESS;
 }
 
-static void log_sysfs_value(const char *attr)
+static void log_sysfs_value(struct pk_state *state, const char *attr)
 {
 	gchar *fname;
 	gchar *data;
 
 	fname = g_strdup_printf("/sys/class/openisr/openisr%c/%s",
-				'a' + state.bdev_index, attr);
+				'a' + state->bdev_index, attr);
 	if (read_sysfs_file(fname, &data)) {
 		pk_log(LOG_STATS, "%s: unknown", attr);
 	} else {
@@ -303,31 +303,31 @@ static void log_sysfs_value(const char *attr)
 	g_free(fname);
 }
 
-void nexus_shutdown(void)
+void nexus_shutdown(struct pk_state *state)
 {
 	int i;
 
-	log_sysfs_value("cache_hits");
-	log_sysfs_value("cache_misses");
-	log_sysfs_value("cache_alloc_failures");
-	log_sysfs_value("chunk_reads");
-	log_sysfs_value("chunk_writes");
-	log_sysfs_value("chunk_errors");
-	log_sysfs_value("chunk_encrypted_discards");
-	log_sysfs_value("whole_chunk_updates");
-	log_sysfs_value("sectors_read");
-	log_sysfs_value("sectors_written");
-	log_sysfs_value("compression_ratio_pct");
-	pk_log(LOG_STATS, "messages_received: %u", state.request_count);
+	log_sysfs_value(state, "cache_hits");
+	log_sysfs_value(state, "cache_misses");
+	log_sysfs_value(state, "cache_alloc_failures");
+	log_sysfs_value(state, "chunk_reads");
+	log_sysfs_value(state, "chunk_writes");
+	log_sysfs_value(state, "chunk_errors");
+	log_sysfs_value(state, "chunk_encrypted_discards");
+	log_sysfs_value(state, "whole_chunk_updates");
+	log_sysfs_value(state, "sectors_read");
+	log_sysfs_value(state, "sectors_written");
+	log_sysfs_value(state, "compression_ratio_pct");
+	pk_log(LOG_STATS, "messages_received: %u", state->request_count);
 
-	close(state.chardev_fd);
+	close(state->chardev_fd);
 
 	/* XXX Sometimes the loop device doesn't unregister the first time.
 	   For now, we retry (a lot) to try to ensure that the user isn't left
 	   with a stale binding.  However, we still print the warning as a
 	   debug aid. */
 	for (i=0; i<LOOP_UNREGISTER_TRIES; i++) {
-		if (!ioctl(state.loopdev_fd, LOOP_CLR_FD, 0)) {
+		if (!ioctl(state->loopdev_fd, LOOP_CLR_FD, 0)) {
 			if (i > 0)
 				pk_log(LOG_ERROR, "Had to try %d times to "
 							"unbind loop device",
@@ -339,18 +339,19 @@ void nexus_shutdown(void)
 	if (i == LOOP_UNREGISTER_TRIES)
 		pk_log(LOG_ERROR, "Couldn't unbind loop device");
 
-	close(state.loopdev_fd);
+	close(state->loopdev_fd);
 	/* We don't trust the loop driver */
 	sync();
 	sync();
 	sync();
-	if (!state.leave_dirty)
+	if (!state->leave_dirty)
 		cache_clear_flag(CA_F_DIRTY);
 }
 
-static int request_is_valid(const struct nexus_message *req)
+static int request_is_valid(struct pk_state *state,
+			const struct nexus_message *req)
 {
-	if (req->chunk >= state.parcel->chunks) {
+	if (req->chunk >= state->parcel->chunks) {
 		pk_log(LOG_ERROR, "Invalid chunk number %llu received "
 					"from Nexus", req->chunk);
 		return 0;
@@ -361,7 +362,7 @@ static int request_is_valid(const struct nexus_message *req)
 	case NEXUS_MSGTYPE_CHUNK_ERR:
 		break;
 	case NEXUS_MSGTYPE_UPDATE_META:
-		if (req->length > state.parcel->chunksize) {
+		if (req->length > state->parcel->chunksize) {
 			pk_log(LOG_ERROR, "Invalid length %u received from "
 						"Nexus for chunk %llu",
 						req->length, req->chunk);
@@ -376,7 +377,8 @@ static int request_is_valid(const struct nexus_message *req)
 	return 1;
 }
 
-static void chunk_error(const struct nexus_message *req)
+static void chunk_error(struct pk_state *state,
+			const struct nexus_message *req)
 {
 	const char *rw;
 	enum nexus_chunk_err err;
@@ -392,7 +394,7 @@ static void chunk_error(const struct nexus_message *req)
 		pk_log(LOG_WARNING, "Nexus: Tag check error %s chunk %llu",
 					rw, req->chunk);
 		log_tag_mismatch(req->expected, req->found,
-					state.parcel->hashlen);
+					state->parcel->hashlen);
 		break;
 	case NEXUS_ERR_KEY:
 		/* Don't log keys to the session log! */
@@ -418,17 +420,18 @@ static void chunk_error(const struct nexus_message *req)
 	}
 	/* Leave the dirty bit set at shutdown, to force the local cache to
 	   be checked */
-	state.leave_dirty=1;
+	state->leave_dirty=1;
 }
 
 /* Returns true if @reply is valid */
-static int process_message(const struct nexus_message *request,
+static int process_message(struct pk_state *state,
+			const struct nexus_message *request,
 			struct nexus_message *reply)
 {
 	pk_err_t err;
 	enum compresstype compress;
 
-	if (!request_is_valid(request)) {
+	if (!request_is_valid(state, request)) {
 		if (request->type == NEXUS_MSGTYPE_GET_META) {
 			reply->type=NEXUS_MSGTYPE_META_HARDERR;
 			reply->chunk=request->chunk;
@@ -455,13 +458,13 @@ static int process_message(const struct nexus_message *request,
 					request->length);
 		break;
 	case NEXUS_MSGTYPE_CHUNK_ERR:
-		chunk_error(request);
+		chunk_error(state, request);
 		break;
 	}
 	return 0;
 }
 
-static void process_batch(void)
+static void process_batch(struct pk_state *state)
 {
 	struct nexus_message requests[REQUESTS_PER_SYSCALL];
 	struct nexus_message replies[REQUESTS_PER_SYSCALL];
@@ -469,31 +472,31 @@ static void process_batch(void)
 	int in_count;
 	int out_count=0;
 
-	in_count=read(state.chardev_fd, &requests, sizeof(requests));
+	in_count=read(state->chardev_fd, &requests, sizeof(requests));
 	if (in_count % sizeof(requests[0]))
 		pk_log(LOG_ERROR, "Short read from Nexus: %d", in_count);
 	in_count /= sizeof(requests[0]);
 
 	for (i=0; i<in_count; i++) {
-		if (process_message(&requests[i], &replies[out_count]))
+		if (process_message(state, &requests[i], &replies[out_count]))
 			out_count++;
-		state.request_count++;
+		state->request_count++;
 	}
 
 	if (out_count == 0)
 		return;
 	out_count *= sizeof(replies[0]);
-	if (write(state.chardev_fd, replies, out_count) != out_count) {
+	if (write(state->chardev_fd, replies, out_count) != out_count) {
 		/* XXX */
 		pk_log(LOG_ERROR, "Short write to Nexus");
 	}
 }
 
-void nexus_run(void)
+void nexus_run(struct pk_state *state)
 {
 	fd_set readfds;
 	fd_set exceptfds;
-	int fdcount=MAX(sigstate.signal_fds[0], state.chardev_fd) + 1;
+	int fdcount=MAX(sigstate.signal_fds[0], state->chardev_fd) + 1;
 	int shutdown_pending=0;
 	char signal;
 
@@ -501,10 +504,10 @@ void nexus_run(void)
 	FD_ZERO(&readfds);
 	FD_ZERO(&exceptfds);
 	for (;;) {
-		FD_SET(state.chardev_fd, &readfds);
+		FD_SET(state->chardev_fd, &readfds);
 		FD_SET(sigstate.signal_fds[0], &readfds);
 		if (shutdown_pending)
-			FD_SET(state.chardev_fd, &exceptfds);
+			FD_SET(state->chardev_fd, &exceptfds);
 		if (select(fdcount, &readfds, NULL, &exceptfds, NULL) == -1) {
 			/* select(2) reports that the fdsets are now
 			   undefined, so we start over */
@@ -543,14 +546,14 @@ void nexus_run(void)
 
 		/* If we need to shut down and we think the block device has
 		   no users, try to unregister */
-		if (shutdown_pending && FD_ISSET(state.chardev_fd,
+		if (shutdown_pending && FD_ISSET(state->chardev_fd,
 					&exceptfds)) {
-			if (!ioctl(state.chardev_fd, NEXUS_IOC_UNREGISTER))
+			if (!ioctl(state->chardev_fd, NEXUS_IOC_UNREGISTER))
 				return;
 		}
 
 		/* Process pending requests */
-		if (FD_ISSET(state.chardev_fd, &readfds))
-			process_batch();
+		if (FD_ISSET(state->chardev_fd, &readfds))
+			process_batch(state);
 	}
 }
