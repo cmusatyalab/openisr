@@ -141,17 +141,17 @@ int main(int argc, char **argv)
 	} else if (mode == MODE_EXAMINE) {
 		ret=examine_cache(&state);
 		if (state.conf->hoard_dir && !ret)
-			ret=examine_hoard();
+			ret=examine_hoard(&state);
 	} else if (mode == MODE_HOARD) {
-		ret=hoard();
+		ret=hoard(&state);
 	} else if (mode == MODE_LISTHOARD) {
-		ret=list_hoard();
+		ret=list_hoard(&state);
 	} else if (mode == MODE_RMHOARD) {
-		ret=rmhoard();
+		ret=rmhoard(&state);
 	} else if (mode == MODE_CHECKHOARD) {
-		ret=check_hoard();
+		ret=check_hoard(&state);
 	} else if (mode == MODE_REFRESH) {
-		ret=hoard_refresh();
+		ret=hoard_refresh(&state);
 	} else {
 		pk_log(LOG_ERROR, "Unknown mode");
 	}

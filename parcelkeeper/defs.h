@@ -234,12 +234,12 @@ pk_err_t hoard_sync_refs(int from_cache);
 void hoard_invalidate_chunk(int offset, const void *tag, unsigned taglen);
 
 /* hoard_modes.c */
-int hoard(void);
-int examine_hoard(void);
-int list_hoard(void);
-int rmhoard(void);
-int check_hoard(void);
-int hoard_refresh(void);
+int hoard(struct pk_state *state);
+int examine_hoard(struct pk_state *state);
+int list_hoard(struct pk_state *state);
+int rmhoard(struct pk_state *state);
+int check_hoard(struct pk_state *state);
+int hoard_refresh(struct pk_state *state);
 
 /* nexus.c */
 pk_err_t nexus_init(struct pk_state *state);
