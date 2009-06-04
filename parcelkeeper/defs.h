@@ -192,7 +192,7 @@ enum mode parse_cmdline(struct pk_config **out, int argc, char **argv);
 void cmdline_free(struct pk_config *conf);
 
 /* log.c */
-void log_start(void);
+void log_start(const char *path, unsigned file_mask, unsigned stderr_mask);
 void log_shutdown(void);
 void pk_log(enum pk_log_type type, const char *fmt, ...)
 			__attribute__ ((format(printf, 2, 3)));

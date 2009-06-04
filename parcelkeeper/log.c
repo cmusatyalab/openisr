@@ -30,6 +30,9 @@
 #define MAX_BACKTRACE_LEN 32
 
 static struct {
+	gchar *path;
+	unsigned file_mask;
+	unsigned stderr_mask;
 	pid_t pk_pid;
 	FILE *fp;
 } log_state;
@@ -114,10 +117,9 @@ pk_err_t logtypes_to_mask(const char *list, unsigned *out)
 
 static void open_log(void)
 {
-	log_state.fp=fopen(state.conf->log_file, "a");
+	log_state.fp=fopen(log_state.path, "a");
 	if (log_state.fp == NULL)
-		pk_log(LOG_ERROR, "Couldn't open log file %s",
-					state.conf->log_file);
+		pk_log(LOG_ERROR, "Couldn't open log file %s", log_state.path);
 }
 
 static void close_log(void)
@@ -134,8 +136,7 @@ static void check_log(void)
 		return;
 	if (fstat(fileno(log_state.fp), &st)) {
 		close_log();
-		pk_log(LOG_ERROR, "Couldn't stat log file %s",
-					state.conf->log_file);
+		pk_log(LOG_ERROR, "Couldn't stat log file %s", log_state.path);
 		return;
 	}
 	if (st.st_nlink == 0) {
@@ -167,7 +168,7 @@ void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 	va_list ap;
 	char buf[50];
 
-	if (log_state.fp != NULL && ((1 << type) & state.conf->log_file_mask)) {
+	if (log_state.fp != NULL && ((1 << type) & log_state.file_mask)) {
 		curtime(buf, sizeof(buf));
 		check_log();
 		/* Ignore errors; it's better to write the log entry unlocked
@@ -187,7 +188,7 @@ void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 		put_file_lock(fileno(log_state.fp));
 	}
 
-	if ((1 << type) & state.conf->log_stderr_mask) {
+	if ((1 << type) & log_state.stderr_mask) {
 		va_copy(ap, args);
 		fprintf(stderr, "PK: ");
 		vfprintf(stderr, fmt, ap);
@@ -207,15 +208,16 @@ void pk_log(enum pk_log_type type, const char *fmt, ...)
 	va_end(ap);
 }
 
-void log_start(void)
+void log_start(const char *path, unsigned file_mask, unsigned stderr_mask)
 {
+	log_state.path = g_strdup(path);
+	log_state.file_mask = file_mask;
+	log_state.stderr_mask = stderr_mask;
 	log_state.pk_pid=getpid();
 	/* stderr is unbuffered by default */
 	setlinebuf(stderr);
-	if (state.conf->log_file != NULL && state.conf->log_file_mask)
+	if (path != NULL && file_mask)
 		open_log();
-	pk_log(LOG_INFO, "Parcelkeeper starting in %s mode",
-				state.conf->modename);
 }
 
 void log_shutdown(void)
@@ -223,4 +225,6 @@ void log_shutdown(void)
 	pk_log(LOG_INFO, "Parcelkeeper shutting down");
 	if (log_state.fp != NULL)
 		close_log();
+	g_free(log_state.path);
+	log_state.path = NULL;
 }

@@ -55,7 +55,10 @@ int main(int argc, char **argv)
 	/* Trivial modes (usage, version) have already been handled by
 	   parse_cmdline() */
 
-	log_start();
+	log_start(state.conf->log_file, state.conf->log_file_mask,
+				state.conf->log_stderr_mask);
+	pk_log(LOG_INFO, "Parcelkeeper starting in %s mode",
+				state.conf->modename);
 
 	/* We can't take the lock until we fork (if we're going to do that) */
 	if (state.conf->flags & WANT_BACKGROUND)
