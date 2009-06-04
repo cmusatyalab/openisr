@@ -113,7 +113,7 @@ int hoard(struct pk_state *state)
 
 	/* We need to do this first; otherwise, chunks we thought were hoarded
 	   could disappear out from under us */
-	if (hoard_sync_refs(0)) {
+	if (hoard_sync_refs(state, 0)) {
 		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
 		return 1;
 	}
@@ -197,7 +197,7 @@ int examine_hoard(struct pk_state *state)
 	unsigned valid_pct;
 	gboolean retry;
 
-	if (hoard_sync_refs(0)) {
+	if (hoard_sync_refs(state, 0)) {
 		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
 		return 1;
 	}
@@ -449,7 +449,7 @@ again:
 					!= (off_t)len) {
 			pk_log(LOG_ERROR, "Couldn't read chunk at offset %d",
 						offset);
-			hoard_invalidate_chunk(offset, tag, taglen);
+			hoard_invalidate_chunk(state, offset, tag, taglen);
 			count++;
 			continue;
 		}
@@ -463,7 +463,7 @@ again:
 			pk_log(LOG_WARNING, "Tag mismatch at offset %d",
 						offset);
 			log_tag_mismatch(tag, calctag, taglen);
-			hoard_invalidate_chunk(offset, tag, taglen);
+			hoard_invalidate_chunk(state, offset, tag, taglen);
 			count++;
 		}
 	}
@@ -691,7 +691,7 @@ bad:
 
 int hoard_refresh(struct pk_state *state)
 {
-	if (hoard_sync_refs(0))
+	if (hoard_sync_refs(state, 0))
 		return 1;
 	return 0;
 }

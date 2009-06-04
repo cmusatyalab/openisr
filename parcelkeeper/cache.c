@@ -480,7 +480,7 @@ static pk_err_t obtain_chunk(struct pk_state *state, unsigned chunk,
 	ssize_t count;
 
 	buf = g_malloc(state->parcel->chunksize);
-	if (hoard_get_chunk(tag, buf, &len)) {
+	if (hoard_get_chunk(state, tag, buf, &len)) {
 		ftag=format_tag(tag, state->parcel->hashlen);
 		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
 		g_free(ftag);

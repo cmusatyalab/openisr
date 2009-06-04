@@ -227,12 +227,15 @@ int validate_cache(struct pk_state *state);
 int examine_cache(struct pk_state *state);
 
 /* hoard.c */
-pk_err_t hoard_init(void);
-void hoard_shutdown(void);
-pk_err_t hoard_get_chunk(const void *tag, void *buf, unsigned *len);
-pk_err_t hoard_put_chunk(const void *tag, const void *buf, unsigned len);
-pk_err_t hoard_sync_refs(int from_cache);
-void hoard_invalidate_chunk(int offset, const void *tag, unsigned taglen);
+pk_err_t hoard_init(struct pk_state *state);
+void hoard_shutdown(struct pk_state *state);
+pk_err_t hoard_get_chunk(struct pk_state *state, const void *tag, void *buf,
+			unsigned *len);
+pk_err_t hoard_put_chunk(struct pk_state *state, const void *tag,
+			const void *buf, unsigned len);
+pk_err_t hoard_sync_refs(struct pk_state *state, int from_cache);
+void hoard_invalidate_chunk(struct pk_state *state, int offset,
+			const void *tag, unsigned taglen);
 
 /* hoard_modes.c */
 int hoard(struct pk_state *state);

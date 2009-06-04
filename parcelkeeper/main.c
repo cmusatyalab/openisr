@@ -101,7 +101,7 @@ int main(int argc, char **argv)
 		have_cache=1;
 
 	if (state.conf->hoard_index != NULL) {
-		if (hoard_init())
+		if (hoard_init(&state))
 			goto shutdown;
 		else
 			have_hoard=1;
@@ -163,7 +163,7 @@ shutdown:
 	if (have_transport)
 		transport_conn_free(state.conn);
 	if (have_hoard)
-		hoard_shutdown();
+		hoard_shutdown(&state);
 	if (have_cache)
 		cache_shutdown(&state);
 	if (have_lock) {

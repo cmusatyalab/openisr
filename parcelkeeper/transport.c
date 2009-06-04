@@ -187,7 +187,7 @@ pk_err_t transport_fetch_chunk(struct pk_connection *conn, void *buf,
 		log_tag_mismatch(tag, calctag, conn->state->parcel->hashlen);
 		return PK_TAGFAIL;
 	}
-	hoard_put_chunk(tag, buf, len);
+	hoard_put_chunk(conn->state, tag, buf, len);
 	*length=len;
 	return PK_SUCCESS;
 }
