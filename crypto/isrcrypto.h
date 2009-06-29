@@ -162,14 +162,13 @@ enum isrcry_result isrcry_mac_init(struct isrcry_mac_ctx *mctx,
 
 /* Read @length bytes from @buffer and mix them into the MAC.  This function
    may be called more than once to read data incrementally. */
-void isrcry_mac_update(struct isrcry_mac_ctx *mctx, const void *buffer,
-			unsigned length);
+enum isrcry_result isrcry_mac_update(struct isrcry_mac_ctx *mctx,
+			const void *buffer, unsigned length);
 
 /* Compute a MAC of length @outlen over the bytes supplied with
    isrcry_mac_update(), and write the result into @out.  @outlen may not be
-   larger than the maximum length for the MAC algorithm.  @ctx is not
-   automatically reinitialized upon completion; isrcry_mac_init() must be
-   called again in order to perform additional MAC operations. */
+   larger than the maximum length for the MAC algorithm.  @ctx is
+   automatically reinitialized for additional MAC operations. */
 enum isrcry_result isrcry_mac_final(struct isrcry_mac_ctx *mctx, void *out,
 			unsigned outlen);
 

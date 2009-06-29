@@ -116,6 +116,9 @@ extern const struct isrcry_mac_desc _isrcry_hmac_sha1_desc;
 
 struct isrcry_mac_ctx {
 	const struct isrcry_mac_desc *desc;
+	void *key;
+	unsigned keylen;
+	gboolean inited;
 	void *ctx;
 };
 

@@ -352,6 +352,7 @@ void mac_test(const char *alg, enum isrcry_mac type,
 	const struct mac_test *test;
 	unsigned mac[64 + 1];
 	unsigned n;
+	unsigned m;
 
 	ctx = isrcry_mac_alloc(type);
 	if (ctx == NULL) {
@@ -364,18 +365,23 @@ void mac_test(const char *alg, enum isrcry_mac type,
 			fail("%s init %u", alg, n);
 			continue;
 		}
-		isrcry_mac_update(ctx, test->data, test->datalen);
-		mac[test->maclen] = 0xc1;
-		if (isrcry_mac_final(ctx, mac, test->maclen)) {
-			fail("%s final %u", alg, n);
-			continue;
+		for (m = 0; m < 2; m++) {
+			if (isrcry_mac_update(ctx, test->data, test->datalen)) {
+				fail("%s update %u %u", alg, n, m);
+				continue;
+			}
+			mac[test->maclen] = 0xc1;
+			if (isrcry_mac_final(ctx, mac, test->maclen)) {
+				fail("%s final %u %u", alg, n, m);
+				continue;
+			}
+			if (memcmp(mac, test->mac, test->maclen)) {
+				fail("%s result %u %u", alg, n, m);
+				continue;
+			}
+			if (mac[test->maclen] != 0xc1)
+				fail("%s overrun %u %u", alg, n, m);
 		}
-		if (memcmp(mac, test->mac, test->maclen)) {
-			fail("%s result %u", alg, n);
-			continue;
-		}
-		if (mac[test->maclen] != 0xc1)
-			fail("%s overrun %u", alg, n);
 	}
 	isrcry_mac_free(ctx);
 }

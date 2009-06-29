@@ -50,25 +50,59 @@ exported struct isrcry_mac_ctx *isrcry_mac_alloc(enum isrcry_mac type)
 exported void isrcry_mac_free(struct isrcry_mac_ctx *mctx)
 {
 	mctx->desc->free(mctx);
+	g_free(mctx->key);
 	g_slice_free(struct isrcry_mac_ctx, mctx);
+}
+
+static enum isrcry_result check_init(struct isrcry_mac_ctx *mctx)
+{
+	enum isrcry_result ret;
+
+	if (!mctx->inited) {
+		ret = mctx->desc->init(mctx, mctx->key, mctx->keylen);
+		if (ret)
+			return ret;
+		mctx->inited = TRUE;
+	}
+	return ISRCRY_OK;
 }
 
 exported enum isrcry_result isrcry_mac_init(struct isrcry_mac_ctx *mctx,
 			const void *key, unsigned keylen)
 {
-	return mctx->desc->init(mctx, key, keylen);
+	if (mctx->key != NULL)
+		g_free(mctx->key);
+	mctx->key = g_memdup(key, keylen);
+	mctx->keylen = keylen;
+	mctx->inited = FALSE;
+	/* Key the MAC immediately, so that if the key is invalid, we get
+	   an error here and not in isrcry_mac_update() */
+	return check_init(mctx);
 }
 
-exported void isrcry_mac_update(struct isrcry_mac_ctx *mctx,
+exported enum isrcry_result isrcry_mac_update(struct isrcry_mac_ctx *mctx,
 			const void *buffer, unsigned length)
 {
+	enum isrcry_result ret;
+
+	ret = check_init(mctx);
+	if (ret)
+		return ret;
 	mctx->desc->update(mctx, buffer, length);
+	return ISRCRY_OK;
 }
 
 exported enum isrcry_result isrcry_mac_final(struct isrcry_mac_ctx *mctx,
 			void *out, unsigned outlen)
 {
-	return mctx->desc->final(mctx, out, outlen);
+	enum isrcry_result ret;
+
+	ret = check_init(mctx);
+	if (ret)
+		return ret;
+	ret = mctx->desc->final(mctx, out, outlen);
+	mctx->inited = FALSE;
+	return ret;
 }
 
 exported unsigned isrcry_mac_len(enum isrcry_mac type)
