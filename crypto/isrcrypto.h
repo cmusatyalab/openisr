@@ -112,7 +112,9 @@ enum isrcry_result isrcry_cipher_process(struct isrcry_cipher_ctx *cctx,
    to encrypt an exact multiple of the cipher block length without padding.
    @inlen may be greater than the cipher block size.  @outlen is an in/out
    parameter and must be at least (@inlen + 1) rounded up to the next full
-   block.  The cipher is not automatically reinitialized upon completion. */
+   block.  @cctx is not automatically reinitialized; it may be rekeyed with
+   isrcry_cipher_init() or used for further cipher operations with
+   isrcry_cipher_process()/isrcry_cipher_final(). */
 enum isrcry_result isrcry_cipher_final(struct isrcry_cipher_ctx *cctx,
 			enum isrcry_padding padding,
 			const void *in, unsigned long inlen,
@@ -166,7 +168,8 @@ void isrcry_mac_update(struct isrcry_mac_ctx *mctx, const void *buffer,
 /* Compute a MAC of length @outlen over the bytes supplied with
    isrcry_mac_update(), and write the result into @out.  @outlen may not be
    larger than the maximum length for the MAC algorithm.  @ctx is not
-   automatically reinitialized upon completion. */
+   automatically reinitialized upon completion; isrcry_mac_init() must be
+   called again in order to perform additional MAC operations. */
 enum isrcry_result isrcry_mac_final(struct isrcry_mac_ctx *mctx, void *out,
 			unsigned outlen);
 
