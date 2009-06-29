@@ -84,57 +84,164 @@ struct isrcry_mac_ctx;
 struct isrcry_sign_ctx;
 struct isrcry_dh_ctx;
 
+/***** Cipher functions *****/
+
+/* Allocate a cipher context for the given algorithm and cipher mode.
+   Returns NULL on error. */
 struct isrcry_cipher_ctx *isrcry_cipher_alloc(enum isrcry_cipher cipher,
 			enum isrcry_mode mode);
+
+/* Free the cipher context. */
 void isrcry_cipher_free(struct isrcry_cipher_ctx *cctx);
+
+/* Set the cipher direction (encrypt/decrypt), key, and IV for this cipher
+   context.  This function may be called more than once.  @iv must be the
+   length of one cipher block, or NULL to use an all-zero IV. */
 enum isrcry_result isrcry_cipher_init(struct isrcry_cipher_ctx *cctx,
 			enum isrcry_direction direction,
 			const void *key, int keylen, const void *iv);
+
+/* Process some cipher blocks from @in to @out.  @inlen is in bytes and must
+   be a multiple of the block length.  @out must be able to store @inlen
+   bytes. */
 enum isrcry_result isrcry_cipher_process(struct isrcry_cipher_ctx *cctx,
 			const void *in, unsigned long inlen, void *out);
+
+/* Process the final cipher block, padding appropriately with the specified
+   @padding.  This function should not be called if the application wishes
+   to encrypt an exact multiple of the cipher block length without padding.
+   @inlen may be greater than the cipher block size.  @outlen is an in/out
+   parameter and must be at least (@inlen + 1) rounded up to the next full
+   block.  The cipher is not automatically reinitialized upon completion. */
 enum isrcry_result isrcry_cipher_final(struct isrcry_cipher_ctx *cctx,
 			enum isrcry_padding padding,
 			const void *in, unsigned long inlen,
 			void *out, unsigned long *outlen);
+
+/* Return the cipher block length for the given cipher, in bytes. */
 unsigned isrcry_cipher_block(enum isrcry_cipher type);
 
+
+/***** Hash functions *****/
+
+/* Allocate a hash context for the given algorithm.  Returns NULL on error. */
 struct isrcry_hash_ctx *isrcry_hash_alloc(enum isrcry_hash type);
+
+/* Free the hash context. */
 void isrcry_hash_free(struct isrcry_hash_ctx *ctx);
+
+/* Read @length bytes from @buffer and mix them into the hash.  This function
+   may be called more than once to read data incrementally. */
 void isrcry_hash_update(struct isrcry_hash_ctx *ctx,
 			const void *buffer, unsigned length);
+
+/* Finalize the hash over the bytes supplied with isrcry_hash_update().
+   Write the result into @digest, which must be large enough to contain it.
+   @ctx is automatically reinitialized for additional hash operations. */
 void isrcry_hash_final(struct isrcry_hash_ctx *ctx, void *digest);
+
+/* Return the digest length for the given hash, in bytes. */
 unsigned isrcry_hash_len(enum isrcry_hash type);
 
+
+/***** MAC functions *****/
+
+/* Allocate a MAC context for the given MAC parameter set.  Returns NULL on
+   error. */
 struct isrcry_mac_ctx *isrcry_mac_alloc(enum isrcry_mac type);
+
+/* Free the MAC context. */
 void isrcry_mac_free(struct isrcry_mac_ctx *mctx);
+
+/* Initialize this MAC context with the given shared secret.  This function
+   may be called more than once. */
 enum isrcry_result isrcry_mac_init(struct isrcry_mac_ctx *mctx,
 			const void *key, unsigned keylen);
+
+/* Read @length bytes from @buffer and mix them into the MAC.  This function
+   may be called more than once to read data incrementally. */
 void isrcry_mac_update(struct isrcry_mac_ctx *mctx, const void *buffer,
 			unsigned length);
+
+/* Compute a MAC of length @outlen over the bytes supplied with
+   isrcry_mac_update(), and write the result into @out.  @outlen may not be
+   larger than the maximum length for the MAC algorithm.  @ctx is not
+   automatically reinitialized upon completion. */
 enum isrcry_result isrcry_mac_final(struct isrcry_mac_ctx *mctx, void *out,
 			unsigned outlen);
+
+/* Return the maximum MAC length for the given algorithm. */
 unsigned isrcry_mac_len(enum isrcry_mac type);
 
+
+/***** Random functions *****/
+
+/* Allocate a random number generation context.  Returns NULL on error.
+   Unlike the other libisrcrypto modules, isrcry_random_ctx can safely be
+   used from multiple threads without external locking. */
 struct isrcry_random_ctx *isrcry_random_alloc(void);
+
+/* Write @length random bytes into the given @buffer. */
 void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 			unsigned length);
+
+/* Free the random context. */
 void isrcry_random_free(struct isrcry_random_ctx *rctx);
 
+
+/***** Signature functions *****/
+
+/* Allocate a signature context for the given signature algorithm.  @rctx is
+   optional, but if it is NULL and functions are later called on the
+   isrcry_sign_ctx which require a random ctx, ISRCRY_NEED_RANDOM will
+   be returned.  Returns NULL on error. */
 struct isrcry_sign_ctx *isrcry_sign_alloc(enum isrcry_sign type,
 			struct isrcry_random_ctx *rctx);
+
+/* Free the signature context. */
 void isrcry_sign_free(struct isrcry_sign_ctx *sctx);
+
+/* Generate a key pair of the given @length (in bytes) and store it in the
+   @sctx. */
 enum isrcry_result isrcry_sign_make_keys(struct isrcry_sign_ctx *sctx,
 			unsigned length);
+
+/* Retrieve the key of the specified @type (public or private) from the @sctx,
+   in the given @fmt, and return it in @out.  @outlen is an in/out parameter
+   giving the length of @out; if @outlen is insufficient,
+   ISRCRY_BUFFER_OVERFLOW will be returned and the necessary length will be
+   left in *outlen. */
 enum isrcry_result isrcry_sign_get_key(struct isrcry_sign_ctx *sctx,
 			enum isrcry_key_type type, enum isrcry_key_format fmt,
 			void *out, unsigned *outlen);
+
+/* Set the key of the specified @type to @key, which is of length @keylen and
+   encoded in format @fmt.  For RSA, the private key includes all of the
+   information in the public key, so only one need be set; if both private
+   and public keys are set, the public key data will override the
+   corresponding data in the private key. */
 enum isrcry_result isrcry_sign_set_key(struct isrcry_sign_ctx *sctx,
 			enum isrcry_key_type type, enum isrcry_key_format fmt,
 			const void *key, unsigned keylen);
+
+/* Provide @data of length @datalen to the @sctx for future signing or
+   verification.  This function may be called more than once to read data
+   incrementally. */
 void isrcry_sign_update(struct isrcry_sign_ctx *sctx, const void *data,
 			unsigned datalen);
+
+/* Sign the data previously provided with isrcry_sign_update().  Place the
+   signature in @out, which has length *outlen.  @outlen is an in/out
+   parameter.  If *outlen is insufficient, ISRCRY_BUFFER_OVERFLOW will be
+   returned and the necessary length will be left in *outlen.  @sctx is
+   reinitialized for additional sign/verify operations. */
 enum isrcry_result isrcry_sign_sign(struct isrcry_sign_ctx *sctx,
 			void *out, unsigned *outlen);
+
+/* Verify the data previously provided with isrcry_sign_update() against
+   signature @sig with length @siglen.  Returns ISRCRY_OK if the signature
+   verified successfully.  @sctx is reinitialized for additional sign/verify
+   operations. */
 enum isrcry_result isrcry_sign_verify(struct isrcry_sign_ctx *sctx,
 			const void *sig, unsigned siglen);
 
@@ -142,16 +249,43 @@ enum isrcry_result isrcry_sign_verify(struct isrcry_sign_ctx *sctx,
 enum isrcry_result isrcry_sign_set_salt(struct isrcry_sign_ctx *sctx,
 			const void *salt, unsigned saltlen);
 
+
+/***** Diffie-Hellman functions *****/
+
+/* Allocate a Diffie-Hellman context.  @rctx is required.  Returns NULL on
+   error. */
 struct isrcry_dh_ctx *isrcry_dh_alloc(enum isrcry_dh type,
 			struct isrcry_random_ctx *rctx);
+
+/* Free the DH context. */
 void isrcry_dh_free(struct isrcry_dh_ctx *dctx);
+
+/* Generate a new Diffie-Hellman key pair and store it in @dctx.  This function
+   may be called more than once.  @entropy_bytes is the desired amount of
+   entropy in the agreed key, in bytes.  ISRCRY_INVALID_ARGUMENT will be
+   returned if @entropy_bytes is too large for the specified DH parameters. */
 enum isrcry_result isrcry_dh_init(struct isrcry_dh_ctx *dctx,
 			unsigned entropy_bytes);
+
+/* Store into @out the Diffie-Hellman public key associated with @dctx. */
 enum isrcry_result isrcry_dh_get_public(struct isrcry_dh_ctx *dctx, void *out);
+
+/* Run Diffie-Hellman against the private key stored in @dctx and the peer's
+   public key provided in @peerkey, and write the resulting shared secret into
+   @out. */
 enum isrcry_result isrcry_dh_run(struct isrcry_dh_ctx *dctx,
 			const void *peerkey, void *out);
+
+/* Return the length, in bytes, of the public keys and shared secrets
+   generated using the given DH parameters.  Note that the shared secrets
+   will contain less entropy than this. */
 unsigned isrcry_dh_key_len(enum isrcry_dh type);
 
+
+/***** Utility functions *****/
+
+/* Returns a string describing the given error code.  The returned string
+   must not be freed by the application. */
 const char *isrcry_strerror(enum isrcry_result result);
 
 #endif
