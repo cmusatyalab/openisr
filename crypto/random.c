@@ -40,6 +40,7 @@ Coda are listed in the file CREDITS.
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <pthread.h>
 #include "isrcrypto.h"
 #define LIBISRCRYPTO_INTERNAL
 #include "internal.h"
@@ -82,6 +83,7 @@ Coda are listed in the file CREDITS.
 #define RANDOM_DEVICE "/dev/urandom"
 
 struct isrcry_random_ctx {
+	pthread_mutex_t lock;
 	struct isrcry_cipher_ctx *aes;
 	uint8_t pool[16];
 	uint8_t last[16];
@@ -176,6 +178,7 @@ exported struct isrcry_random_ctx *isrcry_random_alloc(void)
     memcpy(rctx->pool, initial_seed, AES_BLOCK_SIZE);
     isrcry_cipher_init(rctx->aes, ISRCRY_ENCRYPT,
                        initial_seed + AES_BLOCK_SIZE, RND_KEY_LEN, NULL);
+    pthread_mutex_init(&rctx->lock, NULL);
 
     /* discard the first block of random data per FIPS 140-2 */
     isrcry_random_bytes(rctx, tmp, sizeof(tmp));
@@ -195,6 +198,8 @@ exported void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
     } init;
     int nblocks = (length + AES_BLOCK_SIZE - 1) / AES_BLOCK_SIZE;
     int i;
+    
+    pthread_mutex_lock(&rctx->lock);
     
     /* Mix some entropy into the pool */
     gettimeofday(&init.tv, NULL);
@@ -227,10 +232,13 @@ exported void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
     }
     if (prev != rctx->last)
 	memcpy(rctx->last, prev, AES_BLOCK_SIZE);
+    
+    pthread_mutex_unlock(&rctx->lock);
 }
 
 exported void isrcry_random_free(struct isrcry_random_ctx *rctx)
 {
+    pthread_mutex_destroy(&rctx->lock);
     isrcry_cipher_free(rctx->aes);
     g_slice_free(struct isrcry_random_ctx, rctx);
 }
