@@ -350,7 +350,7 @@ void mac_test(const char *alg, enum isrcry_mac type,
 {
 	struct isrcry_mac_ctx *ctx;
 	const struct mac_test *test;
-	unsigned mac[64 + 1];
+	uint8_t mac[64 + 1];
 	unsigned n;
 	unsigned m;
 
