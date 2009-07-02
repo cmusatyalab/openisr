@@ -86,9 +86,13 @@ class VboxCompat:
 			return disk
 		elif self.vbox_ver < (2,2):
 			return vbox.openHardDisk2(path)
-		else:
+		elif self.vbox_ver < (3,0):
 			return vbox.openHardDisk(path, \
 					ifaces.AccessMode.ReadWrite)
+		else:
+			return vbox.openHardDisk(path, \
+					ifaces.AccessMode.ReadWrite, \
+					False, '', False, '')
 
 	def unregister_disk(self, path):
 		'''Unregister the disk at the specified path if it exists.'''
@@ -147,6 +151,29 @@ class VboxCompat:
 			else:
 				sesn_machine.detachHardDisk(ctlr, port, device)
 			sesn_machine.saveSettings()
+
+	def release_saved_state(self, sesn, dest_path = None):
+		'''Unregister the saved state attached to the given session.
+		If dest_path is specified, move the state file to that
+		location, otherwise remove it.'''
+		if dest_path is not None:
+			if self.vbox_ver < (3,0):
+				# The stateFilePath may be equal to the
+				# dest_path (if the VM was never started
+				# successfully), so we rename through a
+				# temporary file
+				cur_path = dest_path + '.temp'
+				os.rename(sesn.machine.stateFilePath, cur_path)
+				sesn.console.discardSavedState()
+			else:
+				cur_path = sesn.machine.stateFilePath
+				sesn.console.forgetSavedState(False)
+			os.rename(cur_path, dest_path)
+		else:
+			if self.vbox_ver < (3.0):
+				sesn.console.discardSavedState()
+			else:
+				sesn.console.forgetSavedState(True)
 
 	def get_floppy_drive(self, vm):
 		'''Return the floppy drive object for the specified machine.'''
@@ -495,17 +522,11 @@ def register_machine():
 def unregister_state(sesn, do_save):
 	have_state = (sesn.machine.state == ifaces.MachineState.Saved)
 	if do_save and have_state:
-		# The stateFilePath may be equal to the saved_path if the VM
-		# was never started successfully, so we rename through a
-		# temporary file
-		temp_path = saved_path + '.temp'
-		os.rename(sesn.machine.stateFilePath, temp_path)
-		sesn.console.discardSavedState()
-		os.rename(temp_path, saved_path)
+		compat.release_saved_state(sesn, saved_path)
 		vmm.SUSPENDED = 'virtualbox'
 	else:
 		if have_state:
-			sesn.console.discardSavedState()
+			compat.release_saved_state(sesn)
 		vmm.SUSPENDED = 'no'
 
 def unregister_machine(do_save = True):
