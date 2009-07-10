@@ -618,20 +618,3 @@ again:
 	}
 	return PK_SUCCESS;
 }
-
-pk_err_t cleanup_action(struct db *db, const char *sql,
-			enum pk_log_type logtype, const char *desc)
-{
-	struct query *qry;
-	int changes;
-
-	if (query(&qry, db, sql, NULL)) {
-		pk_log_sqlerr(db, "Couldn't clean %s", desc);
-		return PK_IOERR;
-	}
-	query_row(qry, "d", &changes);
-	query_free(qry);
-	if (changes > 0)
-		pk_log(logtype, "Cleaned %d %s", changes, desc);
-	return PK_SUCCESS;
-}
