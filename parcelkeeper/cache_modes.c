@@ -219,7 +219,7 @@ static pk_err_t validate_keyring(struct pk_state *state)
 	unsigned taglen;
 	unsigned keylen;
 	unsigned compress;
-	pk_err_t ret;
+	pk_err_t ret=PK_SUCCESS;
 
 again:
 	expected_chunk=0;
