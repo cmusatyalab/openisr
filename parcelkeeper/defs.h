@@ -256,6 +256,17 @@ pk_err_t transport_fetch_chunk(struct pk_connection *conn, void *buf,
 			unsigned chunk, const void *tag, unsigned *length);
 
 /* sql.c */
+/* Error levels:
+ *	G_LOG_LEVEL_CRITICAL		- Programmer errors
+ *	G_LOG_LEVEL_MESSAGE		- Ordinary errors
+ *	G_LOG_LEVEL_INFO		- Statistics
+ *	SQL_LOG_LEVEL_QUERY		- Query strings
+ *	SQL_LOG_LEVEL_SLOW_QUERY	- Slow-query warnings
+ */
+enum sql_log_level {
+	SQL_LOG_LEVEL_QUERY		= 1 << G_LOG_LEVEL_USER_SHIFT,
+	SQL_LOG_LEVEL_SLOW_QUERY	= 1 << (G_LOG_LEVEL_USER_SHIFT + 1),
+};
 void sql_init(void);
 gboolean sql_conn_open(const char *path, struct db **handle);
 void sql_conn_close(struct db *db);

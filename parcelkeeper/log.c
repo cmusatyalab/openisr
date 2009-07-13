@@ -163,6 +163,32 @@ static void log_backtrace(FILE *fp)
 	free(syms);
 }
 
+static void g_log_handler(const gchar *domain, GLogLevelFlags level,
+			const gchar *message, void *data)
+{
+	if (!strcmp(domain, "isrsql")) {
+		switch (level) {
+		case G_LOG_LEVEL_MESSAGE:
+			pk_log(LOG_WARNING, "%s", message);
+			break;
+		case G_LOG_LEVEL_INFO:
+			pk_log(LOG_STATS, "%s", message);
+			break;
+		case SQL_LOG_LEVEL_QUERY:
+			pk_log(LOG_QUERY, "%s", message);
+			break;
+		case SQL_LOG_LEVEL_SLOW_QUERY:
+			pk_log(LOG_SLOW_QUERY, "%s", message);
+			break;
+		default:
+			pk_log(LOG_ERROR, "%s", message);
+			break;
+		}
+	} else {
+		g_log_default_handler(domain, level, message, data);
+	}
+}
+
 void pk_log(enum pk_log_type type, const char *fmt, ...)
 {
 	va_list ap;
@@ -209,6 +235,7 @@ void log_start(const char *path, unsigned file_mask, unsigned stderr_mask)
 	setlinebuf(stderr);
 	if (path != NULL && file_mask)
 		open_log();
+	g_log_set_handler("isrsql", ~0, g_log_handler, NULL);
 }
 
 void log_shutdown(void)

@@ -15,6 +15,8 @@
  * for more details.
  */
 
+#define G_LOG_DOMAIN "isrsql"
+
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -70,7 +72,7 @@ static void db_get(struct db *db)
 static void db_put(struct db *db)
 {
 	if (db->queries) {
-		pk_log(LOG_ERROR, "Leaked %u queries", db->queries);
+		g_critical("Leaked %u queries", db->queries);
 		db->queries = 0;
 	}
 	db->holder = (pthread_t) 0;
@@ -91,8 +93,8 @@ static gboolean db_in_trans(struct db *db)
 static void db_assert_trans(struct db *db)
 {
 	if (!db_in_trans(db))
-		pk_log(LOG_ERROR, "Attempt to perform database operation "
-					"outside a transaction");
+		g_critical("Attempt to perform database operation outside a "
+					"transaction");
 }
 
 static int alloc_query(struct query **new_qry, struct db *db, const char *sql)
@@ -277,7 +279,7 @@ void query_row(struct query *qry, const char *fmt, ...)
 			*va_arg(ap, int *)=sqlite3_column_bytes(stmt, i++);
 			break;
 		default:
-			pk_log(LOG_ERROR, "Unknown format specifier %c", *fmt);
+			g_critical("Unknown format specifier %c", *fmt);
 			break;
 		}
 	}
@@ -295,9 +297,11 @@ void query_free(struct query *qry)
 	/* COMMIT is frequently slow, but we don't learn anything by logging
 	   that, and it clutters up the logs */
 	if (ms >= SLOW_THRESHOLD_MS && strcmp(qry->sql, "COMMIT"))
-		pk_log(LOG_SLOW_QUERY, "Slow query took %u ms: \"%s\"",
+		g_log(G_LOG_DOMAIN, SQL_LOG_LEVEL_SLOW_QUERY,
+					"Slow query took %u ms: \"%s\"",
 					ms, qry->sql);
-	pk_log(LOG_QUERY, "Query took %u ms: \"%s\"", ms, qry->sql);
+	g_log(G_LOG_DOMAIN, SQL_LOG_LEVEL_QUERY, "Query took %u ms: \"%s\"",
+				ms, qry->sql);
 
 	g_timer_destroy(qry->timer);
 	sqlite3_finalize(qry->stmt);
@@ -316,20 +320,15 @@ void sql_log_err(struct db *db, const char *fmt, ...)
 		str = g_strdup_vprintf(fmt, ap);
 		va_end(ap);
 		if (db->result != SQLITE_ROW && db->result != SQLITE_OK)
-			pk_log(LOG_WARNING, "%s (%d, %s)", str, db->result,
-						db->errmsg);
+			g_message("%s (%d, %s)", str, db->result, db->errmsg);
 		else
-			pk_log(LOG_WARNING, "%s", str);
+			g_message("%s", str);
 		g_free(str);
 	}
 }
 
 void sql_init(void)
 {
-	pk_log(LOG_INFO, "Using SQLite %s", sqlite3_version);
-	if (strcmp(SQLITE_VERSION, sqlite3_version))
-		pk_log(LOG_INFO, "Warning: built against version "
-					SQLITE_VERSION);
 	srandom(time(NULL));
 }
 
@@ -387,8 +386,8 @@ gboolean sql_conn_open(const char *path, struct db **handle)
 	pthread_mutex_init(&db->lock, NULL);
 	db_get(db);
 	if (sqlite3_open(path, &db->conn)) {
-		pk_log(LOG_ERROR, "Couldn't open database %s: %s",
-					path, sqlite3_errmsg(db->conn));
+		g_message("Couldn't open database %s: %s", path,
+					sqlite3_errmsg(db->conn));
 		db_put(db);
 		pthread_mutex_destroy(&db->lock);
 		g_slice_free(struct db, db);
@@ -396,13 +395,12 @@ gboolean sql_conn_open(const char *path, struct db **handle)
 	}
 	db->file = g_strdup(path);
 	if (sqlite3_extended_result_codes(db->conn, 1)) {
-		pk_log(LOG_ERROR, "Couldn't enable extended result codes "
-					"for database %s", path);
+		g_message("Couldn't enable extended result codes for "
+					"database %s", path);
 		goto bad;
 	}
 	if (sqlite3_busy_handler(db->conn, busy_handler, db)) {
-		pk_log(LOG_ERROR, "Couldn't set busy handler for database %s",
-					path);
+		g_message("Couldn't set busy handler for database %s", path);
 		goto bad;
 	}
 	/* Every so often during long-running queries, check to see if a
@@ -438,14 +436,15 @@ void sql_conn_close(struct db *db)
 	if (db == NULL)
 		return;
 	if (sqlite3_close(db->conn))
-		pk_log(LOG_ERROR, "Couldn't close database: %s",
+		g_message("Couldn't close database: %s",
 					sqlite3_errmsg(db->conn));
 	pthread_mutex_destroy(&db->lock);
 	g_free(db->errmsg);
-	pk_log(LOG_STATS, "%s: Busy handler called for %u queries; %u timeouts",
-				db->file, db->busy_queries, db->busy_timeouts);
-	pk_log(LOG_STATS, "%s: %u SQL retries; %llu ms spent in backoffs",
-				db->file, db->retries,
+	g_log(G_LOG_DOMAIN, G_LOG_LEVEL_INFO, "%s: Busy handler called for "
+				"%u queries; %u timeouts", db->file,
+				db->busy_queries, db->busy_timeouts);
+	g_log(G_LOG_DOMAIN, G_LOG_LEVEL_INFO, "%s: %u SQL retries; %llu ms "
+				"spent in backoffs", db->file, db->retries,
 				(unsigned long long) db->wait_usecs / 1000);
 	g_free(db->file);
 	g_slice_free(struct db, db);
@@ -610,7 +609,7 @@ again:
 	query_free(qry);
 	db_put(db);
 	if (res) {
-		pk_log(LOG_WARNING, "SQLite integrity check failed");
+		g_message("SQLite integrity check failed");
 		return FALSE;
 	}
 	return TRUE;
