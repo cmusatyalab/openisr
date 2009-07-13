@@ -385,9 +385,8 @@ static pk_err_t open_cachedir(struct pk_state *state, long page_size)
 	have_image=g_file_test(state->conf->cache_file, G_FILE_TEST_IS_REGULAR);
 	have_index=g_file_test(state->conf->cache_index, G_FILE_TEST_IS_REGULAR);
 	if (have_image && have_index) {
-		ret=attach(state->db, "cache", state->conf->cache_index);
-		if (ret)
-			return ret;
+		if (!attach(state->db, "cache", state->conf->cache_index))
+			return PK_IOERR;
 		ret=open_cache_file(state, page_size);
 		if (ret)
 			return ret;
@@ -405,10 +404,9 @@ static pk_err_t open_cachedir(struct pk_state *state, long page_size)
 		return PK_IOERR;
 	} else {
 		if (state->conf->flags & WANT_LOCK) {
-			ret=attach(state->db, "cache",
-						state->conf->cache_index);
-			if (ret)
-				return ret;
+			if (!attach(state->db, "cache",
+						state->conf->cache_index))
+				return PK_IOERR;
 			ret=create_cache_file(state, page_size);
 			if (ret)
 				return ret;
@@ -418,9 +416,8 @@ static pk_err_t open_cachedir(struct pk_state *state, long page_size)
 			   to avoid race conditions.  (Right now this only
 			   affects examine mode.)  Create a fake cache index
 			   to simplify queries elsewhere. */
-			ret=attach(state->db, "cache", ":memory:");
-			if (ret)
-				return ret;
+			if (!attach(state->db, "cache", ":memory:"))
+				return PK_IOERR;
 		}
 		ret=create_cache_index(state);
 		if (ret)
@@ -448,9 +445,10 @@ pk_err_t cache_init(struct pk_state *state)
 		goto bad;
 
 	if (state->conf->flags & WANT_PREV) {
-		ret=attach(state->db, "prev", state->conf->prev_keyring);
-		if (ret)
+		if (!attach(state->db, "prev", state->conf->prev_keyring)) {
+			ret=PK_IOERR;
 			goto bad;
+		}
 	}
 
 	if (state->conf->flags & WANT_SHM)

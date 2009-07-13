@@ -886,9 +886,10 @@ again:
 
 	/* Now attach the hoard cache index to the primary DB connection
 	   for cross-table queries */
-	ret=attach(state->db, "hoard", state->conf->hoard_index);
-	if (ret)
+	if (!attach(state->db, "hoard", state->conf->hoard_index)) {
+		ret=PK_IOERR;
 		goto bad;
+	}
 	return PK_SUCCESS;
 
 bad_rollback:

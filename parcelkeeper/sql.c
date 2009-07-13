@@ -463,9 +463,9 @@ void query_backoff(struct db *db)
 	db->retries++;
 }
 
-pk_err_t attach(struct db *db, const char *handle, const char *file)
+gboolean attach(struct db *db, const char *handle, const char *file)
 {
-	pk_err_t ret;
+	gboolean ret = TRUE;
 
 	db_get(db);
 again:
@@ -475,11 +475,11 @@ again:
 			goto again;
 		}
 		pk_log_sqlerr(db, "Couldn't attach %s", file);
-		ret = PK_IOERR;
+		ret = FALSE;
 		goto out;
 	}
-	ret=sql_setup_db(db, handle);
-	if (ret) {
+	if (sql_setup_db(db, handle)) {
+		ret = FALSE;
 again_detach:
 		if (query(NULL, db, "DETACH ?", "s", handle)) {
 			if (query_busy(db)) {
