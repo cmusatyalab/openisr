@@ -115,7 +115,7 @@ static int alloc_query(struct query **new_qry, struct db *db, const char *sql)
 	return ret;
 }
 
-pk_err_t query(struct query **new_qry, struct db *db, const char *query,
+gboolean query(struct query **new_qry, struct db *db, const char *query,
 			const char *fmt, ...)
 {
 	struct query *qry;
@@ -131,11 +131,11 @@ pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 		db->result=SQLITE_MISUSE;
 		sqlerr(db, "Attempt to perform database operation outside "
 					"a transaction");
-		return PK_SQLERR;
+		return FALSE;
 	}
 	db->result=alloc_query(&qry, db, query);
 	if (db->result)
-		return PK_SQLERR;
+		return FALSE;
 	stmt=qry->stmt;
 	va_start(ap, fmt);
 	for (; fmt != NULL && *fmt; fmt++) {
@@ -186,9 +186,9 @@ pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 	else
 		*new_qry=qry;
 	if (db->result == SQLITE_OK || db->result == SQLITE_ROW)
-		return PK_SUCCESS;
+		return TRUE;
 	else
-		return PK_SQLERR;
+		return FALSE;
 }
 
 gboolean query_next(struct query *qry)
@@ -360,7 +360,7 @@ static pk_err_t sql_setup_db(struct db *db, const char *name)
 	   database name. */
 	str = g_strdup_printf("PRAGMA %s.synchronous = OFF", name);
 again:
-	if (query(NULL, db, str, NULL)) {
+	if (!query(NULL, db, str, NULL)) {
 		if (query_busy(db)) {
 			query_backoff(db);
 			goto again;
@@ -406,7 +406,7 @@ pk_err_t sql_conn_open(const char *path, struct db **handle)
 	sqlite3_progress_handler(db->conn, PROGRESS_HANDLER_INTERVAL,
 				progress_handler, db);
 again:
-	if (query(NULL, db, "PRAGMA count_changes = TRUE", NULL)) {
+	if (!query(NULL, db, "PRAGMA count_changes = TRUE", NULL)) {
 		if (query_busy(db)) {
 			query_backoff(db);
 			goto again;
@@ -469,7 +469,7 @@ gboolean attach(struct db *db, const char *handle, const char *file)
 
 	db_get(db);
 again:
-	if (query(NULL, db, "ATTACH ? AS ?", "ss", file, handle)) {
+	if (!query(NULL, db, "ATTACH ? AS ?", "ss", file, handle)) {
 		if (query_busy(db)) {
 			query_backoff(db);
 			goto again;
@@ -481,7 +481,7 @@ again:
 	if (sql_setup_db(db, handle)) {
 		ret = FALSE;
 again_detach:
-		if (query(NULL, db, "DETACH ?", "s", handle)) {
+		if (!query(NULL, db, "DETACH ?", "s", handle)) {
 			if (query_busy(db)) {
 				query_backoff(db);
 				goto again_detach;
@@ -498,7 +498,7 @@ gboolean _begin(struct db *db, gboolean immediate)
 {
 	db_get(db);
 again:
-	if (query(NULL, db, immediate ? "BEGIN IMMEDIATE" : "BEGIN", NULL)) {
+	if (!query(NULL, db, immediate ? "BEGIN IMMEDIATE" : "BEGIN", NULL)) {
 		if (query_busy(db))
 			goto again;
 		pk_log_sqlerr(db, "Couldn't begin transaction");
@@ -511,7 +511,7 @@ again:
 gboolean commit(struct db *db)
 {
 again:
-	if (query(NULL, db, "COMMIT", NULL)) {
+	if (!query(NULL, db, "COMMIT", NULL)) {
 		if (query_busy(db))
 			goto again;
 		pk_log_sqlerr(db, "Couldn't commit transaction");
@@ -528,7 +528,7 @@ again:
 	   Always try to roll back, just to be safe, but don't report an error
 	   if no transaction is active afterward, even if the rollback claimed
 	   to fail. */
-	if (query(NULL, db, "ROLLBACK", NULL) &&
+	if (!query(NULL, db, "ROLLBACK", NULL) &&
 				!sqlite3_get_autocommit(db->conn)) {
 		if (query_busy(db))
 			goto again;
@@ -547,15 +547,14 @@ pk_err_t vacuum(struct db *db)
 
 	db_get(db);
 again_vacuum:
-	ret=query(NULL, db, "VACUUM", NULL);
-	if (ret) {
+	if (!query(NULL, db, "VACUUM", NULL)) {
 		pk_log_sqlerr(db, "Couldn't vacuum database");
 		if (query_busy(db)) {
 			query_backoff(db);
 			goto again_vacuum;
 		} else {
 			db_put(db);
-			return ret;
+			return PK_SQLERR;
 		}
 	}
 	db_put(db);
@@ -567,9 +566,9 @@ again_trans:
 	   a lock on all attached databases. */
 	if (!begin(db))
 		return PK_IOERR;
-	ret=query(NULL, db, "SELECT * FROM sqlite_master LIMIT 1", NULL);
-	if (ret) {
+	if (!query(NULL, db, "SELECT * FROM sqlite_master LIMIT 1", NULL)) {
 		pk_log_sqlerr(db, "Couldn't query sqlite_master");
+		ret=PK_SQLERR;
 		goto bad_trans;
 	}
 	if (!commit(db)) {

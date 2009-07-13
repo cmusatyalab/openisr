@@ -100,7 +100,7 @@ again:
 		g_free(buf);
 		return 1;
 	}
-	if (query(NULL, state->db, "CREATE TEMP TABLE to_upload AS "
+	if (!query(NULL, state->db, "CREATE TEMP TABLE to_upload AS "
 				"SELECT main.keys.chunk AS chunk, "
 				"main.keys.tag AS tag, "
 				"cache.chunks.length AS length FROM "
@@ -287,7 +287,7 @@ again:
 static pk_err_t revert_chunk(struct pk_state *state, int chunk)
 {
 	pk_log(LOG_WARNING, "Reverting chunk %d", chunk);
-	if (query(NULL, state->db, "INSERT OR REPLACE INTO main.keys "
+	if (!query(NULL, state->db, "INSERT OR REPLACE INTO main.keys "
 				"(chunk, tag, key, compression) "
 				"SELECT chunk, tag, key, compression FROM "
 				"prev.keys WHERE chunk == ?", "d", chunk)) {
@@ -295,7 +295,7 @@ static pk_err_t revert_chunk(struct pk_state *state, int chunk)
 					"chunk %d", chunk);
 		return PK_IOERR;
 	}
-	if (query(NULL, state->db, "DELETE FROM cache.chunks WHERE chunk == ?",
+	if (!query(NULL, state->db, "DELETE FROM cache.chunks WHERE chunk == ?",
 				"d", chunk)) {
 		pk_log_sqlerr(state->db, "Couldn't delete cache entry for "
 					"chunk %d", chunk);

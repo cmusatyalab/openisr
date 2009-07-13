@@ -498,7 +498,7 @@ pk_err_t cleanup_action(struct db *db, const char *sql,
 	struct query *qry;
 	int changes;
 
-	if (query(&qry, db, sql, NULL)) {
+	if (!query(&qry, db, sql, NULL)) {
 		pk_log_sqlerr(db, "Couldn't clean %s", desc);
 		return PK_IOERR;
 	}

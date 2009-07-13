@@ -34,13 +34,13 @@ again:
 	   to keep the progress meter accurate */
 	if (!begin(state->db))
 		return PK_IOERR;
-	if (query(NULL, state->db, "CREATE TEMP TABLE to_hoard "
+	if (!query(NULL, state->db, "CREATE TEMP TABLE to_hoard "
 				"(chunk INTEGER NOT NULL, "
 				"tag BLOB UNIQUE NOT NULL)", NULL)) {
 		pk_log_sqlerr(state->db, "Couldn't create temporary table");
 		goto bad;
 	}
-	if (query(NULL, state->db, "INSERT OR IGNORE INTO temp.to_hoard "
+	if (!query(NULL, state->db, "INSERT OR IGNORE INTO temp.to_hoard "
 				"(chunk, tag) SELECT chunk, tag "
 				"FROM prev.keys WHERE tag NOT IN "
 				"(SELECT tag FROM hoard.chunks)", NULL)) {
@@ -178,7 +178,7 @@ out_early:
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (1)");
 		return PK_SQLERR;
 	}
-	if (query(NULL, state->db, "DROP TABLE temp.to_hoard", NULL))
+	if (!query(NULL, state->db, "DROP TABLE temp.to_hoard", NULL))
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (2)");
 	if (!commit(state->db)) {
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (3)");
@@ -370,7 +370,7 @@ again:
 
 	pk_log(LOG_INFO, "Removing parcel %s from hoard cache...", desc);
 	g_free(desc);
-	if (query(NULL, state->db, "UPDATE hoard.chunks SET referenced = 0 "
+	if (!query(NULL, state->db, "UPDATE hoard.chunks SET referenced = 0 "
 				"WHERE tag IN "
 				"(SELECT tag FROM hoard.refs GROUP BY tag "
 				"HAVING parcel == ? AND count(*) == 1)",
@@ -378,7 +378,7 @@ again:
 		pk_log_sqlerr(state->db, "Couldn't update referenced flags");
 		goto bad;
 	}
-	if (query(NULL, state->db, "DELETE FROM hoard.refs WHERE parcel == ?",
+	if (!query(NULL, state->db, "DELETE FROM hoard.refs WHERE parcel == ?",
 				"d", parcel)) {
 		pk_log_sqlerr(state->db, "Couldn't remove parcel from "
 					"hoard cache");
@@ -471,7 +471,7 @@ again:
 		pk_log_sqlerr(state->db, "Couldn't walk chunk list");
 		goto bad;
 	}
-	if (query(NULL, state->db, "DROP TABLE temp.to_check", NULL)) {
+	if (!query(NULL, state->db, "DROP TABLE temp.to_check", NULL)) {
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table");
 		goto bad;
 	}
@@ -492,7 +492,7 @@ bad:
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (1)");
 		return PK_IOERR;
 	}
-	if (query(NULL, state->db, "DROP TABLE temp.to_check", NULL))
+	if (!query(NULL, state->db, "DROP TABLE temp.to_check", NULL))
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (2)");
 	if (!commit(state->db)) {
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (3)");
@@ -530,7 +530,7 @@ again:
 				query_next(qry)) {
 		query_row(qry, "s", &uuid);
 		if (canonicalize_uuid(uuid, NULL) == PK_INVALID) {
-			if (query(&qry2, state->db, "DELETE FROM hoard.parcels "
+			if (!query(&qry2, state->db, "DELETE FROM hoard.parcels "
 						"WHERE uuid == ?", "s",
 						uuid)) {
 				pk_log_sqlerr(state->db, "Couldn't remove "
@@ -582,7 +582,7 @@ again:
 					(!crypto_is_valid(crypto) ||
 					crypto_hashlen(crypto) != taglen))) {
 			count++;
-			if (query(NULL, state->db, "UPDATE hoard.chunks "
+			if (!query(NULL, state->db, "UPDATE hoard.chunks "
 						"SET tag = NULL, length = 0, "
 						"crypto = 0, last_access = 0, "
 						"referenced = 0 WHERE "
@@ -643,7 +643,7 @@ again:
 		goto bad;
 
 	curtime=time(NULL);
-	if (query(&qry, state->db, "UPDATE hoard.chunks SET last_access = ? "
+	if (!query(&qry, state->db, "UPDATE hoard.chunks SET last_access = ? "
 				"WHERE last_access > ?", "dd", curtime,
 				curtime + 10)) {
 		pk_log_sqlerr(state->db, "Couldn't locate chunks with invalid "
@@ -659,7 +659,7 @@ again:
 	/* If we're going to do a FULL_CHECK, then get the necessary metadata
 	   *now* while we still know it's consistent. */
 	if (state->conf->flags & WANT_FULL_CHECK) {
-		if (query(NULL, state->db, "CREATE TEMP TABLE to_check AS "
+		if (!query(NULL, state->db, "CREATE TEMP TABLE to_check AS "
 					"SELECT tag, offset, length, crypto "
 					"FROM hoard.chunks WHERE tag NOTNULL "
 					"ORDER BY offset", NULL)) {

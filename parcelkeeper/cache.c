@@ -197,13 +197,13 @@ static pk_err_t create_cache_index(struct pk_state *state)
 again:
 	if (!begin(state->db))
 		return PK_IOERR;
-	if (query(NULL, state->db, "CREATE TABLE cache.chunks ("
+	if (!query(NULL, state->db, "CREATE TABLE cache.chunks ("
 				"chunk INTEGER PRIMARY KEY NOT NULL, "
 				"length INTEGER NOT NULL)", NULL)) {
 		pk_log_sqlerr(state->db, "Couldn't create cache index");
 		goto bad;
 	}
-	if (query(NULL, state->db, "PRAGMA cache.user_version = "
+	if (!query(NULL, state->db, "PRAGMA cache.user_version = "
 				G_STRINGIFY(CA_INDEX_VERSION), NULL)) {
 		pk_log_sqlerr(state->db, "Couldn't set cache index version");
 		goto bad;
@@ -494,7 +494,7 @@ static pk_err_t obtain_chunk(struct pk_state *state, unsigned chunk,
 		return PK_IOERR;
 	}
 
-	if (query(NULL, state->db, "INSERT INTO cache.chunks (chunk, length) "
+	if (!query(NULL, state->db, "INSERT INTO cache.chunks (chunk, length) "
 				"VALUES(?, ?)", "dd", chunk, (int)len)) {
 		pk_log_sqlerr(state->db, "Couldn't insert chunk %u into "
 					"cache index", chunk);
@@ -598,13 +598,13 @@ pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *tag,
 again:
 	if (!begin(state->db))
 		return PK_IOERR;
-	if (query(NULL, state->db, "INSERT OR REPLACE INTO cache.chunks "
+	if (!query(NULL, state->db, "INSERT OR REPLACE INTO cache.chunks "
 				"(chunk, length) VALUES(?, ?)", "dd",
 				chunk, length)) {
 		pk_log_sqlerr(state->db, "Couldn't update cache index");
 		goto bad;
 	}
-	if (query(NULL, state->db, "UPDATE keys SET tag = ?, key = ?, "
+	if (!query(NULL, state->db, "UPDATE keys SET tag = ?, key = ?, "
 				"compression = ? WHERE chunk == ?", "bbdd",
 				tag, state->parcel->hashlen, key,
 				state->parcel->hashlen, compress, chunk)) {
