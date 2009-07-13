@@ -521,10 +521,8 @@ again:
 	return TRUE;
 }
 
-pk_err_t rollback(struct db *db)
+gboolean rollback(struct db *db)
 {
-	pk_err_t ret=PK_SUCCESS;
-
 again:
 	/* Several SQLite errors *sometimes* result in an automatic rollback.
 	   Always try to roll back, just to be safe, but don't report an error
@@ -535,11 +533,11 @@ again:
 		if (query_busy(db))
 			goto again;
 		pk_log_sqlerr(db, "Couldn't roll back transaction");
-		ret=PK_IOERR;
+		return FALSE;
 	} else {
 		db_put(db);
+		return TRUE;
 	}
-	return ret;
 }
 
 pk_err_t vacuum(struct db *db)
