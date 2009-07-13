@@ -847,9 +847,8 @@ static pk_err_t open_hoard_index(struct pk_state *state)
 	gboolean retry;
 
 	/* First open the dedicated hoard cache DB connection */
-	ret=sql_conn_open(state->conf->hoard_index, &state->hoard);
-	if (ret)
-		return ret;
+	if (!sql_conn_open(state->conf->hoard_index, &state->hoard))
+		return PK_IOERR;
 
 again:
 	if (!begin(state->hoard)) {
@@ -865,6 +864,7 @@ again:
 	}
 	query_row(qry, "d", &ver);
 	query_free(qry);
+	ret=PK_SUCCESS;
 	if (ver == 0) {
 		ret=create_hoard_index(state);
 	} else if (ver < HOARD_INDEX_VERSION) {

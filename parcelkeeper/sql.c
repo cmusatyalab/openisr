@@ -352,7 +352,7 @@ static int progress_handler(void *db)
 	return pending_signal();
 }
 
-static pk_err_t sql_setup_db(struct db *db, const char *name)
+static gboolean sql_setup_db(struct db *db, const char *name)
 {
 	gchar *str;
 
@@ -368,13 +368,13 @@ again:
 		g_free(str);
 		pk_log_sqlerr(db, "Couldn't set synchronous pragma for "
 					"%s database", name);
-		return PK_CALLFAIL;
+		return FALSE;
 	}
 	g_free(str);
-	return PK_SUCCESS;
+	return TRUE;
 }
 
-pk_err_t sql_conn_open(const char *path, struct db **handle)
+gboolean sql_conn_open(const char *path, struct db **handle)
 {
 	struct db *db;
 
@@ -388,7 +388,7 @@ pk_err_t sql_conn_open(const char *path, struct db **handle)
 		db_put(db);
 		pthread_mutex_destroy(&db->lock);
 		g_slice_free(struct db, db);
-		return PK_IOERR;
+		return FALSE;
 	}
 	db->file = g_strdup(path);
 	if (sqlite3_extended_result_codes(db->conn, 1)) {
@@ -414,11 +414,11 @@ again:
 		pk_log_sqlerr(db, "Couldn't enable count_changes for %s", path);
 		goto bad;
 	}
-	if (sql_setup_db(db, "main"))
+	if (!sql_setup_db(db, "main"))
 		goto bad;
 	db_put(db);
 	*handle = db;
-	return PK_SUCCESS;
+	return TRUE;
 
 bad:
 	sqlite3_close(db->conn);
@@ -426,7 +426,7 @@ bad:
 	db_put(db);
 	pthread_mutex_destroy(&db->lock);
 	g_slice_free(struct db, db);
-	return PK_CALLFAIL;
+	return FALSE;
 }
 
 void sql_conn_close(struct db *db)
@@ -478,7 +478,7 @@ again:
 		ret = FALSE;
 		goto out;
 	}
-	if (sql_setup_db(db, handle)) {
+	if (!sql_setup_db(db, handle)) {
 		ret = FALSE;
 again_detach:
 		if (!query(NULL, db, "DETACH ?", "s", handle)) {

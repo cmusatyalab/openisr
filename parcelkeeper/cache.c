@@ -378,9 +378,8 @@ static pk_err_t open_cachedir(struct pk_state *state, long page_size)
 	gboolean have_image;
 	gboolean have_index;
 
-	ret=sql_conn_open(state->conf->keyring, &state->db);
-	if (ret)
-		return ret;
+	if (!sql_conn_open(state->conf->keyring, &state->db))
+		return PK_IOERR;
 
 	have_image=g_file_test(state->conf->cache_file, G_FILE_TEST_IS_REGULAR);
 	have_index=g_file_test(state->conf->cache_index, G_FILE_TEST_IS_REGULAR);
@@ -437,12 +436,16 @@ pk_err_t cache_init(struct pk_state *state)
 		return PK_CALLFAIL;
 	}
 
-	if (state->conf->flags & WANT_CACHE)
+	if (state->conf->flags & WANT_CACHE) {
 		ret=open_cachedir(state, page_size);
-	else
-		ret=sql_conn_open(":memory:", &state->db);
-	if (ret)
-		goto bad;
+		if (ret)
+			goto bad;
+	} else {
+		if (!sql_conn_open(":memory:", &state->db)) {
+			ret=PK_IOERR;
+			goto bad;
+		}
+	}
 
 	if (state->conf->flags & WANT_PREV) {
 		if (!attach(state->db, "prev", state->conf->prev_keyring)) {

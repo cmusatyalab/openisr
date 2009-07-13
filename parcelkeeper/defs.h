@@ -259,7 +259,7 @@ pk_err_t transport_fetch_chunk(struct pk_connection *conn, void *buf,
 
 /* sql.c */
 void sql_init(void);
-pk_err_t sql_conn_open(const char *path, struct db **handle);
+gboolean sql_conn_open(const char *path, struct db **handle);
 void sql_conn_close(struct db *db);
 gboolean query(struct query **new_qry, struct db *db, const char *query,
 			const char *fmt, ...);
