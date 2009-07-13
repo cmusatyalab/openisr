@@ -455,9 +455,10 @@ int validate_cache(struct pk_state *state)
 
 	pk_log(LOG_INFO, "Validating databases");
 	printf("Validating databases...\n");
-	err=validate_db(state->db);
-	if (err)
+	if (!validate_db(state->db)) {
+		err=PK_BADFORMAT;
 		goto bad;
+	}
 
 	pk_log(LOG_INFO, "Validating keyring");
 	printf("Validating keyring...\n");

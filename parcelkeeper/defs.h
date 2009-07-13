@@ -279,7 +279,7 @@ gboolean _begin(struct db *db, gboolean immediate);
 gboolean commit(struct db *db);
 gboolean rollback(struct db *db);
 gboolean vacuum(struct db *db);
-pk_err_t validate_db(struct db *db);
+gboolean validate_db(struct db *db);
 
 /* util.c */
 #define FILE_LOCK_READ     0

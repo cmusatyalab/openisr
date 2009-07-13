@@ -518,7 +518,7 @@ int check_hoard(struct pk_state *state)
 
 	pk_log(LOG_INFO, "Validating hoard cache");
 	printf("Validating hoard cache...\n");
-	if (validate_db(state->db))
+	if (!validate_db(state->db))
 		return 1;
 
 again:

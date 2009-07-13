@@ -584,7 +584,7 @@ bad_trans:
 }
 
 /* This validates both the primary and attached databases */
-pk_err_t validate_db(struct db *db)
+gboolean validate_db(struct db *db)
 {
 	struct query *qry;
 	const char *str;
@@ -599,7 +599,7 @@ again:
 	} else if (!query_has_row(db)) {
 		pk_log_sqlerr(db, "Couldn't run SQLite integrity check");
 		db_put(db);
-		return PK_IOERR;
+		return FALSE;
 	}
 	query_row(qry, "s", &str);
 	res=strcmp(str, "ok");
@@ -607,7 +607,7 @@ again:
 	db_put(db);
 	if (res) {
 		pk_log(LOG_WARNING, "SQLite integrity check failed");
-		return PK_BADFORMAT;
+		return FALSE;
 	}
-	return PK_SUCCESS;
+	return TRUE;
 }
