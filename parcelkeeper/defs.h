@@ -278,7 +278,7 @@ gboolean _begin(struct db *db, gboolean immediate);
 #define begin_immediate(db) _begin(db, TRUE)
 gboolean commit(struct db *db);
 gboolean rollback(struct db *db);
-pk_err_t vacuum(struct db *db);
+gboolean vacuum(struct db *db);
 pk_err_t validate_db(struct db *db);
 
 /* util.c */

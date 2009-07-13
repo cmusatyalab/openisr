@@ -540,9 +540,8 @@ again:
 	}
 }
 
-pk_err_t vacuum(struct db *db)
+gboolean vacuum(struct db *db)
 {
-	pk_err_t ret;
 	gboolean retry;
 
 	db_get(db);
@@ -554,7 +553,7 @@ again_vacuum:
 			goto again_vacuum;
 		} else {
 			db_put(db);
-			return PK_SQLERR;
+			return FALSE;
 		}
 	}
 	db_put(db);
@@ -565,17 +564,14 @@ again_trans:
 	   the next transaction on the connection would unexpectedly take
 	   a lock on all attached databases. */
 	if (!begin(db))
-		return PK_IOERR;
+		return FALSE;
 	if (!query(NULL, db, "SELECT * FROM sqlite_master LIMIT 1", NULL)) {
 		pk_log_sqlerr(db, "Couldn't query sqlite_master");
-		ret=PK_SQLERR;
 		goto bad_trans;
 	}
-	if (!commit(db)) {
-		ret=PK_IOERR;
+	if (!commit(db))
 		goto bad_trans;
-	}
-	return PK_SUCCESS;
+	return TRUE;
 
 bad_trans:
 	retry = query_busy(db);
@@ -584,7 +580,7 @@ bad_trans:
 		query_backoff(db);
 		goto again_trans;
 	}
-	return ret;
+	return FALSE;
 }
 
 /* This validates both the primary and attached databases */

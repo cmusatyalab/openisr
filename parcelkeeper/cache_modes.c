@@ -88,7 +88,7 @@ int copy_for_upload(struct pk_state *state)
 	if (hoard_sync_refs(state, TRUE))
 		return 1;
 	printf("Vacuuming keyring...\n");
-	if (vacuum(state->db))
+	if (!vacuum(state->db))
 		return 1;
 	buf=g_malloc(state->parcel->chunksize);
 
