@@ -199,8 +199,6 @@ void log_start(const char *path, unsigned file_mask, unsigned stderr_mask);
 void log_shutdown(void);
 void pk_log(enum pk_log_type type, const char *fmt, ...)
 			__attribute__ ((format(printf, 2, 3)));
-void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
-			__attribute__ ((format(printf, 2, 0)));
 pk_err_t logtypes_to_mask(const char *list, unsigned *out);
 
 /* parcelcfg.c */

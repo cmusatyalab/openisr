@@ -163,7 +163,7 @@ static void log_backtrace(FILE *fp)
 	free(syms);
 }
 
-void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
+void pk_log(enum pk_log_type type, const char *fmt, ...)
 {
 	va_list ap;
 	char buf[50];
@@ -176,7 +176,7 @@ void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 		get_file_lock(fileno(log_state.fp),
 					FILE_LOCK_WRITE | FILE_LOCK_WAIT);
 		fseek(log_state.fp, 0, SEEK_END);
-		va_copy(ap, args);
+		va_start(ap, fmt);
 		fprintf(log_state.fp, "%s %d %s: ", buf, log_state.pk_pid,
 					log_prefix(type));
 		vfprintf(log_state.fp, fmt, ap);
@@ -189,7 +189,7 @@ void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 	}
 
 	if ((1 << type) & log_state.stderr_mask) {
-		va_copy(ap, args);
+		va_start(ap, fmt);
 		fprintf(stderr, "PK: ");
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, "\n");
@@ -197,15 +197,6 @@ void pk_vlog(enum pk_log_type type, const char *fmt, va_list args)
 		if (type & _LOG_BACKTRACE)
 			log_backtrace(stderr);
 	}
-}
-
-void pk_log(enum pk_log_type type, const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	pk_vlog(type, fmt, ap);
-	va_end(ap);
 }
 
 void log_start(const char *path, unsigned file_mask, unsigned stderr_mask)

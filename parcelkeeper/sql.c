@@ -307,17 +307,21 @@ void query_free(struct query *qry)
 
 void pk_log_sqlerr(struct db *db, const char *fmt, ...)
 {
+	gchar *str;
 	va_list ap;
 
 	db_assert_trans(db);
-	va_start(ap, fmt);
 	if (db->result != SQLITE_BUSY && db->result != SQLITE_INTERRUPT) {
-		pk_vlog(LOG_ERROR, fmt, ap);
+		va_start(ap, fmt);
+		str = g_strdup_vprintf(fmt, ap);
+		va_end(ap);
 		if (db->result != SQLITE_ROW && db->result != SQLITE_OK)
-			pk_log(LOG_WARNING, "...SQLite error %d (%s)",
-						db->result, db->errmsg);
+			pk_log(LOG_WARNING, "%s (%d, %s)", str, db->result,
+						db->errmsg);
+		else
+			pk_log(LOG_WARNING, "%s", str);
+		g_free(str);
 	}
-	va_end(ap);
 }
 
 void sql_init(void)
