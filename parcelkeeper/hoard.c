@@ -45,7 +45,7 @@ again:							\
 		}					\
 		return;					\
 	}						\
-	if (commit(state->hoard))			\
+	if (!commit(state->hoard))			\
 		rollback(state->hoard);			\
 }
 
@@ -522,9 +522,10 @@ again:
 					"WHERE tag == ?", "b", tag,
 					state->parcel->hashlen);
 		if (query_ok(state->hoard)) {
-			ret=commit(state->hoard);
-			if (ret)
+			if (!commit(state->hoard)) {
+				ret=PK_IOERR;
 				goto bad;
+			}
 			return PK_NOTFOUND;
 		} else if (!query_has_row(state->hoard)) {
 			pk_log_sqlerr(state->hoard, "Couldn't query hoard "
@@ -550,7 +551,7 @@ again:
 		if (ret)
 			goto bad;
 		ret=PK_BADFORMAT;
-		if (commit(state->hoard))
+		if (!commit(state->hoard))
 			goto bad;
 		return ret;
 	}
@@ -569,9 +570,10 @@ again:
 			goto bad;
 	}
 
-	ret=commit(state->hoard);
-	if (ret)
+	if (!commit(state->hoard)) {
+		ret=PK_IOERR;
 		goto bad;
+	}
 
 	if (pread(state->hoard_fd, buf, clen, ((off_t)offset) << 9) != clen) {
 		pk_log(LOG_ERROR, "Couldn't read chunk at offset %d", offset);
@@ -639,9 +641,10 @@ again:
 	query(NULL, state->hoard, "SELECT tag FROM temp.slots WHERE tag == ?",
 				"b", tag, state->parcel->hashlen);
 	if (query_has_row(state->hoard)) {
-		ret=commit(state->hoard);
-		if (ret)
+		if (!commit(state->hoard)) {
+			ret=PK_IOERR;
 			goto bad;
+		}
 		return PK_SUCCESS;
 	} else if (!query_ok(state->hoard)) {
 		pk_log_sqlerr(state->hoard, "Couldn't look up tag in "
@@ -657,9 +660,10 @@ again:
 		ret=add_chunk_reference(state, tag);
 		if (ret)
 			goto bad;
-		ret=commit(state->hoard);
-		if (ret)
+		if (!commit(state->hoard)) {
+			ret=PK_IOERR;
 			goto bad;
+		}
 		return PK_SUCCESS;
 	} else if (!query_ok(state->hoard)) {
 		pk_log_sqlerr(state->hoard, "Couldn't look up tag in hoard "
@@ -690,9 +694,9 @@ again:
 		goto bad;
 	}
 
-	ret=commit(state->hoard);
-	if (ret) {
+	if (!commit(state->hoard)) {
 		pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
+		ret=PK_IOERR;
 		goto bad;
 	}
 	return PK_SUCCESS;
@@ -711,7 +715,6 @@ bad:
    compare to the previous or current keyring */
 pk_err_t hoard_sync_refs(struct pk_state *state, gboolean from_cache)
 {
-	pk_err_t ret;
 	gboolean retry;
 
 	if (state->conf->hoard_dir == NULL)
@@ -727,7 +730,6 @@ again:
 		query(NULL, state->db, "CREATE TEMP TABLE newrefs AS "
 					"SELECT DISTINCT tag FROM prev.keys",
 					NULL);
-	ret=PK_IOERR;
 	if (!query_ok(state->db)) {
 		pk_log_sqlerr(state->db, "Couldn't generate tag list");
 		goto bad;
@@ -771,8 +773,7 @@ again:
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table");
 		goto bad;
 	}
-	ret=commit(state->db);
-	if (ret)
+	if (!commit(state->db))
 		goto bad;
 	return PK_SUCCESS;
 
@@ -783,13 +784,12 @@ bad:
 		query_backoff(state->db);
 		goto again;
 	}
-	return ret;
+	return PK_IOERR;
 }
 
 static pk_err_t get_parcel_ident(struct pk_state *state)
 {
 	struct query *qry;
-	pk_err_t ret;
 	gboolean retry;
 
 again:
@@ -802,7 +802,6 @@ again:
 				state->parcel->uuid, state->parcel->server,
 				state->parcel->user, state->parcel->parcel)) {
 		pk_log_sqlerr(state->hoard, "Couldn't insert parcel record");
-		ret=PK_IOERR;
 		goto bad;
 	}
 	/* Find out the parcel ID assigned by SQLite */
@@ -810,7 +809,6 @@ again:
 				"S", state->parcel->uuid);
 	if (!query_has_row(state->hoard)) {
 		pk_log_sqlerr(state->hoard, "Couldn't query parcels table");
-		ret=PK_IOERR;
 		goto bad;
 	}
 	query_row(qry, "d", &state->hoard_ident);
@@ -825,11 +823,9 @@ again:
 				state->hoard_ident, state->parcel->server,
 				state->parcel->user, state->parcel->parcel)) {
 		pk_log_sqlerr(state->hoard, "Couldn't update parcel record");
-		ret=PK_IOERR;
 		goto bad;
 	}
-	ret=commit(state->hoard);
-	if (ret)
+	if (!commit(state->hoard))
 		goto bad;
 	return PK_SUCCESS;
 
@@ -840,7 +836,7 @@ bad:
 		query_backoff(state->hoard);
 		goto again;
 	}
-	return ret;
+	return PK_IOERR;
 }
 
 static pk_err_t open_hoard_index(struct pk_state *state)
@@ -883,9 +879,10 @@ again:
 	ret=create_slot_cache(state);
 	if (ret)
 		goto bad_rollback;
-	ret=commit(state->hoard);
-	if (ret)
+	if (!commit(state->hoard)) {
+		ret=PK_IOERR;
 		goto bad_rollback;
+	}
 
 	/* Now attach the hoard cache index to the primary DB connection
 	   for cross-table queries */
@@ -976,9 +973,10 @@ again:
 	if (ret)
 		goto bad;
 
-	ret=commit(state->hoard);
-	if (ret)
+	if (!commit(state->hoard)) {
+		ret=PK_IOERR;
 		goto bad;
+	}
 out:
 	put_file_lock(state->hoard_fd);
 	return ret;

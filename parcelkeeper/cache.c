@@ -192,13 +192,11 @@ int cache_test_flag(struct pk_state *state, unsigned flag)
 
 static pk_err_t create_cache_index(struct pk_state *state)
 {
-	pk_err_t ret;
 	gboolean retry;
 
 again:
 	if (!begin(state->db))
 		return PK_IOERR;
-	ret=PK_IOERR;
 	if (query(NULL, state->db, "CREATE TABLE cache.chunks ("
 				"chunk INTEGER PRIMARY KEY NOT NULL, "
 				"length INTEGER NOT NULL)", NULL)) {
@@ -210,8 +208,7 @@ again:
 		pk_log_sqlerr(state->db, "Couldn't set cache index version");
 		goto bad;
 	}
-	ret=commit(state->db);
-	if (ret)
+	if (!commit(state->db))
 		goto bad;
 	return PK_SUCCESS;
 
@@ -222,7 +219,7 @@ bad:
 		query_backoff(state->db);
 		goto again;
 	}
-	return ret;
+	return PK_IOERR;
 }
 
 static pk_err_t verify_cache_index(struct pk_state *state)
@@ -576,9 +573,10 @@ again:
 		ret=PK_INVALID;
 		goto bad;
 	}
-	ret=commit(state->db);
-	if (ret)
+	if (!commit(state->db)) {
+		ret=PK_IOERR;
 		goto bad;
+	}
 	shm_set(state, chunk, SHM_ACCESSED_SESSION);
 	return PK_SUCCESS;
 
@@ -596,14 +594,12 @@ pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *tag,
 			const void *key, enum compresstype compress,
 			unsigned length)
 {
-	pk_err_t ret;
 	gboolean retry;
 
 	pk_log(LOG_CHUNK, "Update: %u", chunk);
 again:
 	if (!begin(state->db))
 		return PK_IOERR;
-	ret=PK_IOERR;
 	if (query(NULL, state->db, "INSERT OR REPLACE INTO cache.chunks "
 				"(chunk, length) VALUES(?, ?)", "dd",
 				chunk, length)) {
@@ -617,8 +613,7 @@ again:
 		pk_log_sqlerr(state->db, "Couldn't update keyring");
 		goto bad;
 	}
-	ret=commit(state->db);
-	if (ret)
+	if (!commit(state->db))
 		goto bad;
 	shm_set(state, chunk, SHM_PRESENT | SHM_ACCESSED_SESSION | SHM_DIRTY |
 				SHM_DIRTY_SESSION);
@@ -631,5 +626,5 @@ bad:
 		query_backoff(state->db);
 		goto again;
 	}
-	return ret;
+	return PK_IOERR;
 }

@@ -131,7 +131,7 @@ int hoard(struct pk_state *state)
 			return 1;
 	}
 
-	if (commit(state->db)) {
+	if (!commit(state->db)) {
 		rollback(state->db);
 		return 1;
 	}
@@ -180,7 +180,7 @@ out_early:
 	}
 	if (query(NULL, state->db, "DROP TABLE temp.to_hoard", NULL))
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (2)");
-	if (commit(state->db)) {
+	if (!commit(state->db)) {
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (3)");
 		rollback(state->db);
 	}
@@ -222,7 +222,7 @@ again:
 	}
 	query_row(qry, "d", &validchunks);
 	query_free(qry);
-	if (commit(state->db))
+	if (!commit(state->db))
 		goto bad;
 
 	max_mb=(((off64_t)maxchunks) * state->parcel->chunksize) >> 20;
@@ -388,7 +388,7 @@ again:
 	/* We can't remove the parcel from the parcels table unless we know
 	   that no other Parcelkeeper process is running against that parcel */
 
-	if (commit(state->db))
+	if (!commit(state->db))
 		goto bad;
 	pk_log(LOG_INFO, "Deallocated %d chunks", removed);
 	return 0;
@@ -475,7 +475,7 @@ again:
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table");
 		goto bad;
 	}
-	if (commit(state->db))
+	if (!commit(state->db))
 		goto bad;
 	if (count)
 		pk_log(LOG_WARNING, "Removed %d invalid chunks", count);
@@ -494,7 +494,7 @@ bad:
 	}
 	if (query(NULL, state->db, "DROP TABLE temp.to_check", NULL))
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (2)");
-	if (commit(state->db)) {
+	if (!commit(state->db)) {
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (3)");
 		rollback(state->db);
 	}
@@ -669,7 +669,7 @@ again:
 		}
 	}
 
-	if (commit(state->db))
+	if (!commit(state->db))
 		goto bad;
 
 	if (state->conf->flags & WANT_FULL_CHECK)

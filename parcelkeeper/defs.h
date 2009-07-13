@@ -276,7 +276,7 @@ pk_err_t attach(struct db *db, const char *handle, const char *file);
 gboolean _begin(struct db *db, gboolean immediate);
 #define begin(db) _begin(db, FALSE)
 #define begin_immediate(db) _begin(db, TRUE)
-pk_err_t commit(struct db *db);
+gboolean commit(struct db *db);
 pk_err_t rollback(struct db *db);
 pk_err_t vacuum(struct db *db);
 pk_err_t validate_db(struct db *db);

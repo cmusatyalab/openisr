@@ -316,7 +316,6 @@ static pk_err_t validate_cachefile(struct pk_state *state)
 	int64_t processed_bytes;
 	int64_t valid_bytes;
 	pk_err_t ret;
-	pk_err_t ret2;
 	gboolean retry;
 
 	buf=g_malloc(state->parcel->chunksize);
@@ -422,9 +421,8 @@ again:
 		ret=PK_IOERR;
 		goto bad;
 	}
-	ret2=commit(state->db);
-	if (ret2) {
-		ret=ret2;
+	if (!commit(state->db)) {
+		ret=PK_IOERR;
 		goto bad;
 	}
 	g_free(buf);

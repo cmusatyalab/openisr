@@ -508,17 +508,17 @@ again:
 	return TRUE;
 }
 
-pk_err_t commit(struct db *db)
+gboolean commit(struct db *db)
 {
 again:
 	if (query(NULL, db, "COMMIT", NULL)) {
 		if (query_busy(db))
 			goto again;
 		pk_log_sqlerr(db, "Couldn't commit transaction");
-		return PK_IOERR;
+		return FALSE;
 	}
 	db_put(db);
-	return PK_SUCCESS;
+	return TRUE;
 }
 
 pk_err_t rollback(struct db *db)
@@ -574,9 +574,10 @@ again_trans:
 		pk_log_sqlerr(db, "Couldn't query sqlite_master");
 		goto bad_trans;
 	}
-	ret=commit(db);
-	if (ret)
+	if (!commit(db)) {
+		ret=PK_IOERR;
 		goto bad_trans;
+	}
 	return PK_SUCCESS;
 
 bad_trans:
