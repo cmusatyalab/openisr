@@ -273,9 +273,9 @@ void query_free(struct query *qry);
 void query_backoff(struct db *db);
 void pk_log_sqlerr(struct db *db, const char *fmt, ...);
 pk_err_t attach(struct db *db, const char *handle, const char *file);
-pk_err_t _begin(struct db *db, int immediate);
-#define begin(db) _begin(db, 0)
-#define begin_immediate(db) _begin(db, 1)
+gboolean _begin(struct db *db, gboolean immediate);
+#define begin(db) _begin(db, FALSE)
+#define begin_immediate(db) _begin(db, TRUE)
 pk_err_t commit(struct db *db);
 pk_err_t rollback(struct db *db);
 pk_err_t vacuum(struct db *db);

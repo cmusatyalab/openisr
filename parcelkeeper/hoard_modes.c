@@ -32,7 +32,7 @@ again:
 	   while we're actually hoarding we don't have locks against
 	   the hoard index.  Take care not to list a tag more than once,
 	   to keep the progress meter accurate */
-	if (begin(state->db))
+	if (!begin(state->db))
 		return PK_IOERR;
 	if (query(NULL, state->db, "CREATE TEMP TABLE to_hoard "
 				"(chunk INTEGER NOT NULL, "
@@ -78,7 +78,7 @@ static gboolean need_fetch(struct pk_state *state, void *tag, unsigned taglen)
 	gboolean retry;
 
 again:
-	if (begin(state->hoard))
+	if (!begin(state->hoard))
 		return TRUE;
 	query(NULL, state->hoard, "SELECT tag FROM chunks WHERE tag == ?", "b",
 				tag, taglen);
@@ -139,7 +139,7 @@ int hoard(struct pk_state *state)
 	buf=g_malloc(state->parcel->chunksize);
 
 again:
-	if (begin(state->db))
+	if (!begin(state->db))
 		goto out_early;
 	for (query(&qry, state->db, "SELECT chunk, tag FROM temp.to_hoard",
 				NULL); query_has_row(state->db);
@@ -174,7 +174,7 @@ out:
 	}
 out_early:
 	g_free(buf);
-	if (begin(state->db)) {
+	if (!begin(state->db)) {
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (1)");
 		return PK_SQLERR;
 	}
@@ -203,7 +203,7 @@ int examine_hoard(struct pk_state *state)
 	}
 
 again:
-	if (begin(state->db))
+	if (!begin(state->db))
 		return 1;
 	query(&qry, state->db, "SELECT count(*) FROM "
 				"(SELECT 1 FROM prev.keys GROUP BY tag)",
@@ -259,7 +259,7 @@ int list_hoard(struct pk_state *state)
 	gboolean retry;
 
 again:
-	if (begin(state->db))
+	if (!begin(state->db))
 		return 1;
 	query(&qry, state->db, "SELECT count(tag) FROM hoard.chunks WHERE "
 				"referenced == 1", NULL);
@@ -336,7 +336,7 @@ int rmhoard(struct pk_state *state)
 	gboolean retry;
 
 again:
-	if (begin(state->db))
+	if (!begin(state->db))
 		return 1;
 	query(&qry, state->db, "SELECT parcel, server, user, name FROM "
 				"hoard.parcels WHERE uuid == ?", "S",
@@ -423,9 +423,8 @@ static pk_err_t check_hoard_data(struct pk_state *state)
 	printf("Validating hoard cache data...\n");
 
 again:
-	ret=begin(state->db);
-	if (ret)
-		return ret;
+	if (!begin(state->db))
+		return PK_IOERR;
 	query(&qry, state->db, "SELECT sum(length) FROM temp.to_check", NULL);
 	if (!query_has_row(state->db)) {
 		pk_log_sqlerr(state->db, "Couldn't find the amount of data "
@@ -489,7 +488,7 @@ bad:
 		query_backoff(state->db);
 		goto again;
 	}
-	if (begin(state->db)) {
+	if (!begin(state->db)) {
 		pk_log_sqlerr(state->db, "Couldn't drop temporary table (1)");
 		return PK_IOERR;
 	}
@@ -523,7 +522,7 @@ int check_hoard(struct pk_state *state)
 		return 1;
 
 again:
-	if (begin(state->db))
+	if (!begin(state->db))
 		return 1;
 
 	for (query(&qry, state->db, "SELECT uuid FROM hoard.parcels",

@@ -196,9 +196,8 @@ static pk_err_t create_cache_index(struct pk_state *state)
 	gboolean retry;
 
 again:
-	ret=begin(state->db);
-	if (ret)
-		return ret;
+	if (!begin(state->db))
+		return PK_IOERR;
 	ret=PK_IOERR;
 	if (query(NULL, state->db, "CREATE TABLE cache.chunks ("
 				"chunk INTEGER PRIMARY KEY NOT NULL, "
@@ -230,13 +229,11 @@ static pk_err_t verify_cache_index(struct pk_state *state)
 {
 	struct query *qry;
 	int found;
-	pk_err_t ret;
 	gboolean retry;
 
 again:
-	ret=begin(state->db);
-	if (ret)
-		return ret;
+	if (!begin(state->db))
+		return PK_IOERR;
 	query(&qry, state->db, "PRAGMA cache.user_version", NULL);
 	if (!query_has_row(state->db)) {
 		pk_log_sqlerr(state->db, "Couldn't query cache index version");
@@ -260,7 +257,7 @@ bad:
 		query_backoff(state->db);
 		goto again;
 	}
-	return ret;
+	return PK_SQLERR;
 }
 
 static void shm_set(struct pk_state *state, unsigned chunk, unsigned status)
@@ -315,9 +312,10 @@ static pk_err_t shm_init(struct pk_state *state)
 	}
 
 again:
-	ret=begin(state->db);
-	if (ret)
+	if (!begin(state->db)) {
+		ret=PK_IOERR;
 		goto bad_populate;
+	}
 	for (query(&qry, state->db, "SELECT chunk FROM cache.chunks", NULL);
 				query_has_row(state->db); query_next(qry)) {
 		query_row(qry, "d", &chunk);
@@ -526,9 +524,8 @@ pk_err_t cache_get(struct pk_state *state, unsigned chunk, void *tag,
 
 	pk_log(LOG_CHUNK, "Get: %u", chunk);
 again:
-	ret=begin(state->db);
-	if (ret)
-		return ret;
+	if (!begin(state->db))
+		return PK_IOERR;
 	query(&qry, state->db, "SELECT tag, key, compression FROM keys "
 				"WHERE chunk == ?", "d", chunk);
 	if (!query_has_row(state->db)) {
@@ -604,9 +601,8 @@ pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *tag,
 
 	pk_log(LOG_CHUNK, "Update: %u", chunk);
 again:
-	ret=begin(state->db);
-	if (ret)
-		return ret;
+	if (!begin(state->db))
+		return PK_IOERR;
 	ret=PK_IOERR;
 	if (query(NULL, state->db, "INSERT OR REPLACE INTO cache.chunks "
 				"(chunk, length) VALUES(?, ?)", "dd",

@@ -96,7 +96,7 @@ int copy_for_upload(struct pk_state *state)
 again:
 	modified_chunks=0;
 	modified_bytes=0;
-	if (begin(state->db)) {
+	if (!begin(state->db)) {
 		g_free(buf);
 		return 1;
 	}
@@ -224,9 +224,8 @@ static pk_err_t validate_keyring(struct pk_state *state)
 
 again:
 	expected_chunk=0;
-	ret=begin(state->db);
-	if (ret)
-		return ret;
+	if (!begin(state->db))
+		return PK_IOERR;
 	for (query(&qry, state->db, "SELECT chunk, tag, key, compression "
 				"FROM keys ORDER BY chunk ASC", NULL);
 				query_has_row(state->db); query_next(qry)) {
@@ -325,7 +324,7 @@ static pk_err_t validate_cachefile(struct pk_state *state)
 again:
 	processed_bytes=0;
 	ret=PK_SUCCESS;
-	if (begin(state->db))
+	if (!begin(state->db))
 		return PK_IOERR;
 	query(&qry, state->db, "SELECT sum(length) FROM cache.chunks", NULL);
 	if (!query_has_row(state->db)) {
@@ -507,7 +506,7 @@ int examine_cache(struct pk_state *state)
 	gboolean retry;
 
 again:
-	if (begin(state->db))
+	if (!begin(state->db))
 		return 1;
 	query(&qry, state->db, "SELECT count(*) from cache.chunks", NULL);
 	if (!query_has_row(state->db)) {

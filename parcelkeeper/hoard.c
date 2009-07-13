@@ -34,7 +34,7 @@ TRANSACTION_DECL					\
 {							\
 	gboolean retry;					\
 again:							\
-	if (begin(state->hoard))			\
+	if (!begin(state->hoard))			\
 		return;					\
 	if (TRANSACTION_CALL) {				\
 		retry = query_busy(state->hoard);	\
@@ -499,9 +499,8 @@ pk_err_t hoard_get_chunk(struct pk_state *state, const void *tag, void *buf,
 		return PK_NOTFOUND;
 
 again:
-	ret=begin(state->hoard);
-	if (ret)
-		return ret;
+	if (!begin(state->hoard))
+		return PK_IOERR;
 
 	/* First query the slot cache */
 	if (query(&qry, state->hoard, "SELECT offset, length FROM temp.slots "
@@ -560,6 +559,7 @@ again:
 				state->parcel->hashlen)) {
 		/* Not fatal, but if we got SQLITE_BUSY, retry anyway */
 		pk_log_sqlerr(state->hoard, "Couldn't update chunk timestamp");
+		ret=PK_SQLERR;
 		if (query_busy(state->hoard))
 			goto bad;
 	}
@@ -632,9 +632,8 @@ pk_err_t hoard_put_chunk(struct pk_state *state, const void *tag,
 		return PK_SUCCESS;
 
 again:
-	ret=begin(state->hoard);
-	if (ret)
-		return ret;
+	if (!begin(state->hoard))
+		return PK_IOERR;
 
 	/* See if the tag is already in the slot cache */
 	query(NULL, state->hoard, "SELECT tag FROM temp.slots WHERE tag == ?",
@@ -647,6 +646,7 @@ again:
 	} else if (!query_ok(state->hoard)) {
 		pk_log_sqlerr(state->hoard, "Couldn't look up tag in "
 					"slot cache");
+		ret=PK_SQLERR;
 		goto bad;
 	}
 
@@ -664,6 +664,7 @@ again:
 	} else if (!query_ok(state->hoard)) {
 		pk_log_sqlerr(state->hoard, "Couldn't look up tag in hoard "
 					"cache index");
+		ret=PK_SQLERR;
 		goto bad;
 	}
 
@@ -717,9 +718,8 @@ pk_err_t hoard_sync_refs(struct pk_state *state, gboolean from_cache)
 		return PK_SUCCESS;
 
 again:
-	ret=begin_immediate(state->db);
-	if (ret)
-		return ret;
+	if (!begin_immediate(state->db))
+		return PK_IOERR;
 	if (from_cache)
 		query(NULL, state->db, "CREATE TEMP TABLE newrefs AS "
 					"SELECT DISTINCT tag FROM keys", NULL);
@@ -793,9 +793,8 @@ static pk_err_t get_parcel_ident(struct pk_state *state)
 	gboolean retry;
 
 again:
-	ret=begin(state->hoard);
-	if (ret)
-		return ret;
+	if (!begin(state->hoard))
+		return PK_IOERR;
 	/* Add the row if it's not already there */
 	if (query(NULL, state->hoard, "INSERT OR IGNORE INTO parcels "
 				"(uuid, server, user, name) "
@@ -857,9 +856,10 @@ static pk_err_t open_hoard_index(struct pk_state *state)
 		return ret;
 
 again:
-	ret=begin(state->hoard);
-	if (ret)
+	if (!begin(state->hoard)) {
+		ret=PK_IOERR;
 		goto bad;
+	}
 	query(&qry, state->hoard, "PRAGMA user_version", NULL);
 	if (!query_has_row(state->hoard)) {
 		pk_log_sqlerr(state->hoard, "Couldn't get hoard cache "
@@ -926,9 +926,10 @@ static pk_err_t hoard_try_cleanup(struct pk_state *state)
 
 	pk_log(LOG_INFO, "Cleaning up hoard cache...");
 again:
-	ret=begin(state->hoard);
-	if (ret)
+	if (!begin(state->hoard)) {
+		ret=PK_IOERR;
 		goto out;
+	}
 
 	/* This was originally "DELETE FROM parcels WHERE parcel NOT IN
 	   (SELECT DISTINCT parcel FROM refs)".  But the parcels table is

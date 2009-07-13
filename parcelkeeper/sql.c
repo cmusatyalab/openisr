@@ -494,7 +494,7 @@ out:
 	return ret;
 }
 
-pk_err_t _begin(struct db *db, int immediate)
+gboolean _begin(struct db *db, gboolean immediate)
 {
 	db_get(db);
 again:
@@ -503,9 +503,9 @@ again:
 			goto again;
 		pk_log_sqlerr(db, "Couldn't begin transaction");
 		db_put(db);
-		return PK_IOERR;
+		return FALSE;
 	}
-	return PK_SUCCESS;
+	return TRUE;
 }
 
 pk_err_t commit(struct db *db)
@@ -567,9 +567,8 @@ again_trans:
 	   transaction on the connection to reload the cache; otherwise,
 	   the next transaction on the connection would unexpectedly take
 	   a lock on all attached databases. */
-	ret=begin(db);
-	if (ret)
-		return ret;
+	if (!begin(db))
+		return PK_IOERR;
 	ret=query(NULL, db, "SELECT * FROM sqlite_master LIMIT 1", NULL);
 	if (ret) {
 		pk_log_sqlerr(db, "Couldn't query sqlite_master");
