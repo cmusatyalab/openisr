@@ -269,7 +269,7 @@ gboolean query_constrained(struct db *db);
 void query_row(struct query *qry, const char *fmt, ...);
 void query_free(struct query *qry);
 void query_backoff(struct db *db);
-void pk_log_sqlerr(struct db *db, const char *fmt, ...);
+void sql_log_err(struct db *db, const char *fmt, ...);
 gboolean attach(struct db *db, const char *handle, const char *file);
 gboolean _begin(struct db *db, gboolean immediate);
 #define begin(db) _begin(db, FALSE)

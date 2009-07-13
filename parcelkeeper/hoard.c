@@ -54,7 +54,7 @@ static pk_err_t create_hoard_index(struct pk_state *state)
 	/* XXX auto_vacuum */
 	if (!query(NULL, state->hoard, "PRAGMA user_version = "
 				G_STRINGIFY(HOARD_INDEX_VERSION), NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't set schema version");
+		sql_log_err(state->hoard, "Couldn't set schema version");
 		return PK_IOERR;
 	}
 
@@ -64,7 +64,7 @@ static pk_err_t create_hoard_index(struct pk_state *state)
 				"server TEXT NOT NULL, "
 				"user TEXT NOT NULL, "
 				"name TEXT NOT NULL)", NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't create parcel table");
+		sql_log_err(state->hoard, "Couldn't create parcel table");
 		return PK_IOERR;
 	}
 
@@ -77,30 +77,30 @@ static pk_err_t create_hoard_index(struct pk_state *state)
 				"last_access INTEGER NOT NULL DEFAULT 0, "
 				"referenced INTEGER NOT NULL DEFAULT 0)",
 				NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't create chunk table");
+		sql_log_err(state->hoard, "Couldn't create chunk table");
 		return PK_IOERR;
 	}
 	if (!query(NULL, state->hoard, "CREATE INDEX chunks_lru ON "
 				"chunks (referenced, last_access)", NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't create chunk LRU index");
+		sql_log_err(state->hoard, "Couldn't create chunk LRU index");
 		return PK_IOERR;
 	}
 
 	if (!query(NULL, state->hoard, "CREATE TABLE refs ("
 				"parcel INTEGER NOT NULL, "
 				"tag BLOB NOT NULL)", NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't create reference table");
+		sql_log_err(state->hoard, "Couldn't create reference table");
 		return PK_IOERR;
 	}
 	if (!query(NULL, state->hoard, "CREATE UNIQUE INDEX refs_constraint "
 				"ON refs (parcel, tag)", NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't create chunk LRU index");
+		sql_log_err(state->hoard, "Couldn't create chunk LRU index");
 		return PK_IOERR;
 	}
 	if (!query(NULL, state->hoard, "CREATE INDEX refs_bytag ON refs "
 				"(tag, parcel)", NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't create chunk "
-					"reverse index");
+		sql_log_err(state->hoard, "Couldn't create chunk reverse "
+					"index");
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -117,14 +117,14 @@ static pk_err_t upgrade_hoard_index(struct pk_state *state, int ver)
 		return PK_BADFORMAT;
 	case 5:
 		if (!query(NULL, state->hoard, "DROP INDEX chunks_lru", NULL)) {
-			pk_log_sqlerr(state->hoard, "Couldn't drop old chunk "
+			sql_log_err(state->hoard, "Couldn't drop old chunk "
 						"LRU index");
 			return PK_IOERR;
 		}
 		if (!query(NULL, state->hoard, "CREATE INDEX chunks_lru ON "
 					"chunks (referenced, last_access)",
 					NULL)) {
-			pk_log_sqlerr(state->hoard, "Couldn't create new "
+			sql_log_err(state->hoard, "Couldn't create new "
 						"chunk LRU index");
 			return PK_IOERR;
 		}
@@ -132,14 +132,14 @@ static pk_err_t upgrade_hoard_index(struct pk_state *state, int ver)
 	case 6:
 		if (!query(NULL, state->hoard, "CREATE INDEX refs_bytag ON refs "
 					"(tag, parcel)", NULL)) {
-			pk_log_sqlerr(state->hoard, "Couldn't create chunk "
+			sql_log_err(state->hoard, "Couldn't create chunk "
 						"reverse index");
 			return PK_IOERR;
 		}
 	}
 	if (!query(NULL, state->hoard, "PRAGMA user_version = "
 				G_STRINGIFY(HOARD_INDEX_VERSION), NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't update schema version");
+		sql_log_err(state->hoard, "Couldn't update schema version");
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -154,7 +154,7 @@ static pk_err_t create_slot_cache(struct pk_state *state)
 				"crypto INTEGER NOT NULL DEFAULT 0, "
 				"last_access INTEGER NOT NULL DEFAULT 0)",
 				NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't create slot cache");
+		sql_log_err(state->hoard, "Couldn't create slot cache");
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -178,8 +178,7 @@ static pk_err_t expand_slot_cache(struct pk_state *state)
 				"(offset) SELECT offset FROM chunks "
 				"WHERE referenced == 0 AND tag ISNULL "
 				"LIMIT ?", "d", needed)) {
-		pk_log_sqlerr(state->hoard, "Error reclaiming hoard cache "
-					"slots");
+		sql_log_err(state->hoard, "Error reclaiming hoard cache slots");
 		return PK_IOERR;
 	}
 	query_row(qry, "d", &count);
@@ -192,7 +191,7 @@ static pk_err_t expand_slot_cache(struct pk_state *state)
 		query(&qry, state->hoard, "SELECT count(tag) FROM chunks",
 					NULL);
 		if (!query_has_row(state->hoard)) {
-			pk_log_sqlerr(state->hoard, "Error finding size of "
+			sql_log_err(state->hoard, "Error finding size of "
 						"hoard cache");
 			return PK_IOERR;
 		}
@@ -212,7 +211,7 @@ static pk_err_t expand_slot_cache(struct pk_state *state)
 					"WHERE referenced == 0 AND tag NOTNULL "
 					"ORDER BY last_access LIMIT ?", "d",
 					allowed)) {
-			pk_log_sqlerr(state->hoard, "Error reclaiming hoard "
+			sql_log_err(state->hoard, "Error reclaiming hoard "
 						"cache slots");
 			return PK_IOERR;
 		}
@@ -226,7 +225,7 @@ static pk_err_t expand_slot_cache(struct pk_state *state)
 		query(&qry, state->hoard, "SELECT count(*), max(offset) "
 					"FROM chunks", NULL);
 		if (!query_has_row(state->hoard)) {
-			pk_log_sqlerr(state->hoard, "Couldn't find max hoard "
+			sql_log_err(state->hoard, "Couldn't find max hoard "
 						"cache offset");
 			return PK_IOERR;
 		}
@@ -238,7 +237,7 @@ static pk_err_t expand_slot_cache(struct pk_state *state)
 			if (!query(NULL, state->hoard, "INSERT INTO temp.slots "
 						"(offset) VALUES (?)", "d",
 						start + i * step)) {
-				pk_log_sqlerr(state->hoard, "Couldn't add new "
+				sql_log_err(state->hoard, "Couldn't add new "
 							"offset %d to "
 							"slot cache",
 							start + i * step);
@@ -248,7 +247,7 @@ static pk_err_t expand_slot_cache(struct pk_state *state)
 		if (!query(NULL, state->hoard, "INSERT OR IGNORE INTO chunks "
 					"(offset) SELECT offset FROM "
 					"temp.slots", NULL)) {
-			pk_log_sqlerr(state->hoard, "Couldn't expand "
+			sql_log_err(state->hoard, "Couldn't expand "
 						"hoard cache");
 			return PK_IOERR;
 		}
@@ -259,7 +258,7 @@ static pk_err_t expand_slot_cache(struct pk_state *state)
 				"length = 0, crypto = 0, last_access = 0, "
 				"referenced = 1 WHERE offset IN "
 				"(SELECT offset FROM temp.slots)", NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't allocate chunk slots");
+		sql_log_err(state->hoard, "Couldn't allocate chunk slots");
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -294,14 +293,14 @@ static pk_err_t _flush_slot_cache(struct pk_state *state)
 			if (!query(NULL, state->hoard, "UPDATE chunks "
 						"SET referenced = 0 WHERE "
 						"offset == ?", "d", offset)) {
-				pk_log_sqlerr(state->hoard, "Couldn't release "
+				sql_log_err(state->hoard, "Couldn't release "
 							"reference on offset "
 							"%d", offset);
 				ret=PK_IOERR;
 				goto bad;
 			}
 		} else if (!query_has_row(state->hoard)) {
-			pk_log_sqlerr(state->hoard, "Couldn't update chunks "
+			sql_log_err(state->hoard, "Couldn't update chunks "
 						"table for offset %d", offset);
 			ret=PK_IOERR;
 			goto bad;
@@ -309,24 +308,24 @@ static pk_err_t _flush_slot_cache(struct pk_state *state)
 	}
 	query_free(qry);
 	if (!query_ok(state->hoard)) {
-		pk_log_sqlerr(state->hoard, "Couldn't query slot cache");
+		sql_log_err(state->hoard, "Couldn't query slot cache");
 		return PK_IOERR;
 	}
 
 	if (!query(NULL, state->hoard, "INSERT OR IGNORE INTO refs (parcel, tag) "
 				"SELECT ?, tag FROM temp.slots "
 				"WHERE tag NOTNULL", "d", state->hoard_ident)) {
-		pk_log_sqlerr(state->hoard, "Couldn't add chunk references");
+		sql_log_err(state->hoard, "Couldn't add chunk references");
 		return PK_IOERR;
 	}
 	if (!query(NULL, state->hoard, "UPDATE chunks SET referenced = 0 WHERE "
 				"offset IN (SELECT offset FROM temp.slots "
 				"WHERE tag ISNULL)", NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't free unused cache slots");
+		sql_log_err(state->hoard, "Couldn't free unused cache slots");
 		return PK_IOERR;
 	}
 	if (!query(NULL, state->hoard, "DELETE FROM temp.slots", NULL)) {
-		pk_log_sqlerr(state->hoard, "Couldn't clear slot cache");
+		sql_log_err(state->hoard, "Couldn't clear slot cache");
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -358,7 +357,7 @@ static pk_err_t allocate_slot(struct pk_state *state, int *offset)
 			query_free(qry);
 			break;
 		} else if (!query_ok(state->hoard)) {
-			pk_log_sqlerr(state->hoard, "Error finding unused "
+			sql_log_err(state->hoard, "Error finding unused "
 						"hoard cache slot");
 			return PK_IOERR;
 		}
@@ -386,7 +385,7 @@ static pk_err_t add_chunk_reference(struct pk_state *state, const void *tag)
 				state->hoard_ident, tag,
 				state->parcel->hashlen)) {
 		ftag=format_tag(tag, state->parcel->hashlen);
-		pk_log_sqlerr(state->hoard, "Couldn't add chunk reference "
+		sql_log_err(state->hoard, "Couldn't add chunk reference "
 					"for tag %s", ftag);
 		g_free(ftag);
 		return PK_IOERR;
@@ -395,7 +394,7 @@ static pk_err_t add_chunk_reference(struct pk_state *state, const void *tag)
 				" WHERE tag == ?", "b", tag,
 				state->parcel->hashlen)) {
 		ftag=format_tag(tag, state->parcel->hashlen);
-		pk_log_sqlerr(state->hoard, "Couldn't set referenced flag "
+		sql_log_err(state->hoard, "Couldn't set referenced flag "
 					"for tag %s", ftag);
 		g_free(ftag);
 		return PK_IOERR;
@@ -427,7 +426,7 @@ static pk_err_t _hoard_invalidate_chunk(struct pk_state *state, int offset,
 		g_free(ftag);
 		return PK_SUCCESS;
 	} else if (!query_has_row(state->hoard)) {
-		pk_log_sqlerr(state->hoard, "Could not query chunk list");
+		sql_log_err(state->hoard, "Could not query chunk list");
 		return PK_IOERR;
 	}
 	query_free(qry);
@@ -436,14 +435,14 @@ static pk_err_t _hoard_invalidate_chunk(struct pk_state *state, int offset,
 				"length = 0, crypto = 0, last_access = 0, "
 				"referenced = 0 WHERE offset = ?", "d",
 				offset)) {
-		pk_log_sqlerr(state->hoard, "Couldn't deallocate hoard chunk "
+		sql_log_err(state->hoard, "Couldn't deallocate hoard chunk "
 					"at offset %d", offset);
 		return PK_IOERR;
 	}
 	if (!query(NULL, state->hoard, "DELETE FROM refs WHERE tag == ?", "b",
 				tag, taglen)) {
 		ftag=format_tag(tag, taglen);
-		pk_log_sqlerr(state->hoard, "Couldn't invalidate references "
+		sql_log_err(state->hoard, "Couldn't invalidate references "
 					"to tag %s", ftag);
 		g_free(ftag);
 		return PK_IOERR;
@@ -460,7 +459,7 @@ static pk_err_t _hoard_invalidate_slot_chunk(struct pk_state *state,
 	if (!query(NULL, state->hoard, "UPDATE temp.slots SET tag = NULL, "
 				"length = 0, crypto = 0, last_access = 0 "
 				"WHERE offset = ?", "d", offset)) {
-		pk_log_sqlerr(state->hoard, "Couldn't deallocate hoard slot "
+		sql_log_err(state->hoard, "Couldn't deallocate hoard slot "
 					"at offset %d", offset);
 		return PK_IOERR;
 	}
@@ -506,7 +505,7 @@ again:
 	if (!query(&qry, state->hoard, "SELECT offset, length FROM temp.slots "
 				"WHERE tag == ?", "b", tag,
 				state->parcel->hashlen)) {
-		pk_log_sqlerr(state->hoard, "Couldn't query slot cache");
+		sql_log_err(state->hoard, "Couldn't query slot cache");
 		ret=PK_IOERR;
 		goto bad;
 	}
@@ -528,7 +527,7 @@ again:
 			}
 			return PK_NOTFOUND;
 		} else if (!query_has_row(state->hoard)) {
-			pk_log_sqlerr(state->hoard, "Couldn't query hoard "
+			sql_log_err(state->hoard, "Couldn't query hoard "
 						"chunk index");
 			ret=PK_IOERR;
 			goto bad;
@@ -559,7 +558,7 @@ again:
 	if (!query(NULL, state->hoard, update_timestamp, "db", time(NULL), tag,
 				state->parcel->hashlen)) {
 		/* Not fatal, but if we got SQLITE_BUSY, retry anyway */
-		pk_log_sqlerr(state->hoard, "Couldn't update chunk timestamp");
+		sql_log_err(state->hoard, "Couldn't update chunk timestamp");
 		ret=PK_SQLERR;
 		if (query_busy(state->hoard))
 			goto bad;
@@ -647,8 +646,7 @@ again:
 		}
 		return PK_SUCCESS;
 	} else if (!query_ok(state->hoard)) {
-		pk_log_sqlerr(state->hoard, "Couldn't look up tag in "
-					"slot cache");
+		sql_log_err(state->hoard, "Couldn't look up tag in slot cache");
 		ret=PK_SQLERR;
 		goto bad;
 	}
@@ -666,7 +664,7 @@ again:
 		}
 		return PK_SUCCESS;
 	} else if (!query_ok(state->hoard)) {
-		pk_log_sqlerr(state->hoard, "Couldn't look up tag in hoard "
+		sql_log_err(state->hoard, "Couldn't look up tag in hoard "
 					"cache index");
 		ret=PK_SQLERR;
 		goto bad;
@@ -680,7 +678,7 @@ again:
 				"WHERE offset = ?", "bdddd", tag,
 				state->parcel->hashlen, len,
 				state->parcel->crypto, time(NULL), offset)) {
-		pk_log_sqlerr(state->hoard, "Couldn't add metadata for hoard "
+		sql_log_err(state->hoard, "Couldn't add metadata for hoard "
 					"cache chunk");
 		ret=PK_IOERR;
 		goto bad;
@@ -731,12 +729,12 @@ again:
 					"SELECT DISTINCT tag FROM prev.keys",
 					NULL);
 	if (!query_ok(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't generate tag list");
+		sql_log_err(state->db, "Couldn't generate tag list");
 		goto bad;
 	}
 	if (!query(NULL, state->db, "CREATE INDEX temp.newrefs_tags ON "
 				"newrefs (tag)", NULL)) {
-		pk_log_sqlerr(state->db, "Couldn't create tag index");
+		sql_log_err(state->db, "Couldn't create tag index");
 		goto bad;
 	}
 	if (!query(NULL, state->db, "UPDATE hoard.chunks SET referenced = 0 "
@@ -746,31 +744,31 @@ again:
 				"AND tag NOT IN (SELECT tag FROM hoard.refs "
 				"WHERE parcel != ?))", "dd", state->hoard_ident,
 				state->hoard_ident)) {
-		pk_log_sqlerr(state->db, "Couldn't garbage-collect referenced "
+		sql_log_err(state->db, "Couldn't garbage-collect referenced "
 					"flags");
 		goto bad;
 	}
 	if (!query(NULL, state->db, "DELETE FROM hoard.refs WHERE parcel == ? "
 				"AND tag NOT IN (SELECT tag FROM temp.newrefs)",
 				"d", state->hoard_ident)) {
-		pk_log_sqlerr(state->db, "Couldn't garbage-collect hoard refs");
+		sql_log_err(state->db, "Couldn't garbage-collect hoard refs");
 		goto bad;
 	}
 	if (!query(NULL, state->db, "INSERT OR IGNORE INTO hoard.refs "
 				"(parcel, tag) SELECT ?, tag FROM temp.newrefs "
 				"WHERE tag IN (SELECT tag FROM hoard.chunks)",
 				"d", state->hoard_ident)) {
-		pk_log_sqlerr(state->db, "Couldn't insert new hoard refs");
+		sql_log_err(state->db, "Couldn't insert new hoard refs");
 		goto bad;
 	}
 	if (!query(NULL, state->db, "UPDATE hoard.chunks SET referenced = 1 "
 				"WHERE referenced == 0 AND tag IN "
 				"(SELECT tag FROM temp.newrefs)", NULL)) {
-		pk_log_sqlerr(state->db, "Couldn't updated referenced flags");
+		sql_log_err(state->db, "Couldn't updated referenced flags");
 		goto bad;
 	}
 	if (!query(NULL, state->db, "DROP TABLE temp.newrefs", NULL)) {
-		pk_log_sqlerr(state->db, "Couldn't drop temporary table");
+		sql_log_err(state->db, "Couldn't drop temporary table");
 		goto bad;
 	}
 	if (!commit(state->db))
@@ -801,14 +799,14 @@ again:
 				"VALUES (?, ?, ?, ?)", "SSSS",
 				state->parcel->uuid, state->parcel->server,
 				state->parcel->user, state->parcel->parcel)) {
-		pk_log_sqlerr(state->hoard, "Couldn't insert parcel record");
+		sql_log_err(state->hoard, "Couldn't insert parcel record");
 		goto bad;
 	}
 	/* Find out the parcel ID assigned by SQLite */
 	query(&qry, state->hoard, "SELECT parcel FROM parcels WHERE uuid == ?",
 				"S", state->parcel->uuid);
 	if (!query_has_row(state->hoard)) {
-		pk_log_sqlerr(state->hoard, "Couldn't query parcels table");
+		sql_log_err(state->hoard, "Couldn't query parcels table");
 		goto bad;
 	}
 	query_row(qry, "d", &state->hoard_ident);
@@ -822,7 +820,7 @@ again:
 				state->parcel->user, state->parcel->parcel,
 				state->hoard_ident, state->parcel->server,
 				state->parcel->user, state->parcel->parcel)) {
-		pk_log_sqlerr(state->hoard, "Couldn't update parcel record");
+		sql_log_err(state->hoard, "Couldn't update parcel record");
 		goto bad;
 	}
 	if (!commit(state->hoard))
@@ -857,8 +855,8 @@ again:
 	}
 	query(&qry, state->hoard, "PRAGMA user_version", NULL);
 	if (!query_has_row(state->hoard)) {
-		pk_log_sqlerr(state->hoard, "Couldn't get hoard cache "
-					"index version");
+		sql_log_err(state->hoard, "Couldn't get hoard cache index "
+					"version");
 		ret=PK_IOERR;
 		goto bad_rollback;
 	}
@@ -940,7 +938,7 @@ again:
 		query_row(qry, "d", &ident);
 		if (!query(NULL, state->hoard, "SELECT parcel FROM refs WHERE "
 					"parcel == ? LIMIT 1", "d", ident)) {
-			pk_log_sqlerr(state->hoard, "Couldn't query refs table");
+			sql_log_err(state->hoard, "Couldn't query refs table");
 			query_free(qry);
 			ret=PK_SQLERR;
 			goto bad;
@@ -949,7 +947,7 @@ again:
 			if (!query(NULL, state->hoard, "DELETE FROM parcels "
 						"WHERE parcel == ?", "d",
 						ident)) {
-				pk_log_sqlerr(state->hoard, "Couldn't delete "
+				sql_log_err(state->hoard, "Couldn't delete "
 						"unused parcel from hoard "
 						"cache index");
 				query_free(qry);
@@ -961,7 +959,7 @@ again:
 	}
 	query_free(qry);
 	if (!query_ok(state->hoard)) {
-		pk_log_sqlerr(state->hoard, "Couldn't query parcels table");
+		sql_log_err(state->hoard, "Couldn't query parcels table");
 		ret=PK_SQLERR;
 		goto bad;
 	}

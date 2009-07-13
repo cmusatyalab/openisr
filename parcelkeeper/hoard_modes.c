@@ -37,14 +37,14 @@ again:
 	if (!query(NULL, state->db, "CREATE TEMP TABLE to_hoard "
 				"(chunk INTEGER NOT NULL, "
 				"tag BLOB UNIQUE NOT NULL)", NULL)) {
-		pk_log_sqlerr(state->db, "Couldn't create temporary table");
+		sql_log_err(state->db, "Couldn't create temporary table");
 		goto bad;
 	}
 	if (!query(NULL, state->db, "INSERT OR IGNORE INTO temp.to_hoard "
 				"(chunk, tag) SELECT chunk, tag "
 				"FROM prev.keys WHERE tag NOT IN "
 				"(SELECT tag FROM hoard.chunks)", NULL)) {
-		pk_log_sqlerr(state->db, "Couldn't build list of chunks "
+		sql_log_err(state->db, "Couldn't build list of chunks "
 					"to hoard");
 		goto bad;
 	}
@@ -52,7 +52,7 @@ again:
 	/* See how much we need to hoard */
 	query(&qry, state->db, "SELECT count(*) FROM temp.to_hoard", NULL);
 	if (!query_has_row(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't count unhoarded chunks");
+		sql_log_err(state->db, "Couldn't count unhoarded chunks");
 		goto bad;
 	}
 	query_row(qry, "d", chunks_to_hoard);
@@ -85,7 +85,7 @@ again:
 	if (query_has_row(state->hoard)) {
 		ret = FALSE;
 	} else if (!query_ok(state->hoard)) {
-		pk_log_sqlerr(state->hoard, "Couldn't query hoard cache index");
+		sql_log_err(state->hoard, "Couldn't query hoard cache index");
 		retry = query_busy(state->hoard);
 		rollback(state->hoard);
 		if (retry) {
@@ -161,7 +161,7 @@ again:
 		}
 	}
 	if (!query_ok(state->db))
-		pk_log_sqlerr(state->db, "Querying hoard index failed");
+		sql_log_err(state->db, "Querying hoard index failed");
 	else
 		ret=0;
 out:
@@ -175,13 +175,13 @@ out:
 out_early:
 	g_free(buf);
 	if (!begin(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't drop temporary table (1)");
+		sql_log_err(state->db, "Couldn't drop temporary table (1)");
 		return PK_SQLERR;
 	}
 	if (!query(NULL, state->db, "DROP TABLE temp.to_hoard", NULL))
-		pk_log_sqlerr(state->db, "Couldn't drop temporary table (2)");
+		sql_log_err(state->db, "Couldn't drop temporary table (2)");
 	if (!commit(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't drop temporary table (3)");
+		sql_log_err(state->db, "Couldn't drop temporary table (3)");
 		rollback(state->db);
 	}
 	return ret;
@@ -209,7 +209,7 @@ again:
 				"(SELECT 1 FROM prev.keys GROUP BY tag)",
 				NULL);
 	if (!query_has_row(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't query previous keyring");
+		sql_log_err(state->db, "Couldn't query previous keyring");
 		goto bad;
 	}
 	query_row(qry, "d", &maxchunks);
@@ -217,7 +217,7 @@ again:
 	query(&qry, state->db, "SELECT count(*) FROM hoard.refs WHERE "
 				"parcel == ?", "d", state->hoard_ident);
 	if (!query_has_row(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't query hoard cache");
+		sql_log_err(state->db, "Couldn't query hoard cache");
 		goto bad;
 	}
 	query_row(qry, "d", &validchunks);
@@ -264,7 +264,7 @@ again:
 	query(&qry, state->db, "SELECT count(tag) FROM hoard.chunks WHERE "
 				"referenced == 1", NULL);
 	if (!query_has_row(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't count referenced chunks");
+		sql_log_err(state->db, "Couldn't count referenced chunks");
 		goto out;
 	}
 	query_row(qry, "d", &shared);
@@ -272,7 +272,7 @@ again:
 	query(&qry, state->db, "SELECT count(tag) FROM hoard.chunks WHERE "
 				"referenced == 0", NULL);
 	if (!query_has_row(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't count unreferenced chunks");
+		sql_log_err(state->db, "Couldn't count unreferenced chunks");
 		goto out;
 	}
 	query_row(qry, "d", &unreferenced);
@@ -280,7 +280,7 @@ again:
 	query(&qry, state->db, "SELECT count(*) FROM hoard.chunks WHERE "
 				"tag ISNULL", NULL);
 	if (!query_has_row(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't count unused chunk slots");
+		sql_log_err(state->db, "Couldn't count unused chunk slots");
 		goto out;
 	}
 	query_row(qry, "d", &unused);
@@ -311,8 +311,7 @@ again:
 		printf("unused %d\n", unused);
 		ret=0;
 	} else {
-		pk_log_sqlerr(state->db, "Couldn't list parcels in "
-					"hoard cache");
+		sql_log_err(state->db, "Couldn't list parcels in hoard cache");
 	}
 out:
 	retry = query_busy(state->db);
@@ -347,7 +346,7 @@ again:
 		rollback(state->db);
 		return 0;
 	} else if (!query_has_row(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't query parcel table");
+		sql_log_err(state->db, "Couldn't query parcel table");
 		goto bad;
 	}
 	query_row(qry, "dsss", &parcel, &server, &user, &name);
@@ -361,7 +360,7 @@ again:
 				parcel);
 	if (!query_has_row(state->db)) {
 		g_free(desc);
-		pk_log_sqlerr(state->db, "Couldn't enumerate unique "
+		sql_log_err(state->db, "Couldn't enumerate unique "
 					"parcel chunks");
 		goto bad;
 	}
@@ -375,12 +374,12 @@ again:
 				"(SELECT tag FROM hoard.refs GROUP BY tag "
 				"HAVING parcel == ? AND count(*) == 1)",
 				"d", parcel)) {
-		pk_log_sqlerr(state->db, "Couldn't update referenced flags");
+		sql_log_err(state->db, "Couldn't update referenced flags");
 		goto bad;
 	}
 	if (!query(NULL, state->db, "DELETE FROM hoard.refs WHERE parcel == ?",
 				"d", parcel)) {
-		pk_log_sqlerr(state->db, "Couldn't remove parcel from "
+		sql_log_err(state->db, "Couldn't remove parcel from "
 					"hoard cache");
 		goto bad;
 	}
@@ -427,7 +426,7 @@ again:
 		return PK_IOERR;
 	query(&qry, state->db, "SELECT sum(length) FROM temp.to_check", NULL);
 	if (!query_has_row(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't find the amount of data "
+		sql_log_err(state->db, "Couldn't find the amount of data "
 					"to check");
 		goto bad;
 	}
@@ -468,11 +467,11 @@ again:
 	}
 	query_free(qry);
 	if (!query_ok(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't walk chunk list");
+		sql_log_err(state->db, "Couldn't walk chunk list");
 		goto bad;
 	}
 	if (!query(NULL, state->db, "DROP TABLE temp.to_check", NULL)) {
-		pk_log_sqlerr(state->db, "Couldn't drop temporary table");
+		sql_log_err(state->db, "Couldn't drop temporary table");
 		goto bad;
 	}
 	if (!commit(state->db))
@@ -489,13 +488,13 @@ bad:
 		goto again;
 	}
 	if (!begin(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't drop temporary table (1)");
+		sql_log_err(state->db, "Couldn't drop temporary table (1)");
 		return PK_IOERR;
 	}
 	if (!query(NULL, state->db, "DROP TABLE temp.to_check", NULL))
-		pk_log_sqlerr(state->db, "Couldn't drop temporary table (2)");
+		sql_log_err(state->db, "Couldn't drop temporary table (2)");
 	if (!commit(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't drop temporary table (3)");
+		sql_log_err(state->db, "Couldn't drop temporary table (3)");
 		rollback(state->db);
 	}
 	return PK_IOERR;
@@ -533,7 +532,7 @@ again:
 			if (!query(&qry2, state->db, "DELETE FROM hoard.parcels "
 						"WHERE uuid == ?", "s",
 						uuid)) {
-				pk_log_sqlerr(state->db, "Couldn't remove "
+				sql_log_err(state->db, "Couldn't remove "
 							"invalid parcel record "
 							"from hoard index");
 				query_free(qry);
@@ -546,7 +545,7 @@ again:
 	}
 	query_free(qry);
 	if (!query_ok(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't query parcel list");
+		sql_log_err(state->db, "Couldn't query parcel list");
 		goto bad;
 	}
 	if (count)
@@ -569,7 +568,7 @@ again:
 	}
 	query_free(qry);
 	if (!query_ok(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't query chunk table");
+		sql_log_err(state->db, "Couldn't query chunk table");
 		goto bad;
 	}
 
@@ -587,7 +586,7 @@ again:
 						"crypto = 0, last_access = 0, "
 						"referenced = 0 WHERE "
 						"offset = ?", "d", offset)) {
-				pk_log_sqlerr(state->db, "Couldn't deallocate "
+				sql_log_err(state->db, "Couldn't deallocate "
 							"offset %d", offset);
 				query_free(qry);
 				goto bad;
@@ -596,7 +595,7 @@ again:
 	}
 	query_free(qry);
 	if (!query_ok(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't query chunk list");
+		sql_log_err(state->db, "Couldn't query chunk list");
 		goto bad;
 	}
 	if (count)
@@ -646,7 +645,7 @@ again:
 	if (!query(&qry, state->db, "UPDATE hoard.chunks SET last_access = ? "
 				"WHERE last_access > ?", "dd", curtime,
 				curtime + 10)) {
-		pk_log_sqlerr(state->db, "Couldn't locate chunks with invalid "
+		sql_log_err(state->db, "Couldn't locate chunks with invalid "
 					"timestamps");
 		goto bad;
 	}
@@ -663,7 +662,7 @@ again:
 					"SELECT tag, offset, length, crypto "
 					"FROM hoard.chunks WHERE tag NOTNULL "
 					"ORDER BY offset", NULL)) {
-			pk_log_sqlerr(state->db, "Couldn't enumerate hoarded "
+			sql_log_err(state->db, "Couldn't enumerate hoarded "
 						"chunks");
 			goto bad;
 		}

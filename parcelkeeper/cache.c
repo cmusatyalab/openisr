@@ -200,12 +200,12 @@ again:
 	if (!query(NULL, state->db, "CREATE TABLE cache.chunks ("
 				"chunk INTEGER PRIMARY KEY NOT NULL, "
 				"length INTEGER NOT NULL)", NULL)) {
-		pk_log_sqlerr(state->db, "Couldn't create cache index");
+		sql_log_err(state->db, "Couldn't create cache index");
 		goto bad;
 	}
 	if (!query(NULL, state->db, "PRAGMA cache.user_version = "
 				G_STRINGIFY(CA_INDEX_VERSION), NULL)) {
-		pk_log_sqlerr(state->db, "Couldn't set cache index version");
+		sql_log_err(state->db, "Couldn't set cache index version");
 		goto bad;
 	}
 	if (!commit(state->db))
@@ -233,7 +233,7 @@ again:
 		return PK_IOERR;
 	query(&qry, state->db, "PRAGMA cache.user_version", NULL);
 	if (!query_has_row(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't query cache index version");
+		sql_log_err(state->db, "Couldn't query cache index version");
 		goto bad;
 	}
 	query_row(qry, "d", &found);
@@ -320,7 +320,7 @@ again:
 	}
 	query_free(qry);
 	if (!query_ok(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't query cache index");
+		sql_log_err(state->db, "Couldn't query cache index");
 		ret=PK_SQLERR;
 		goto bad_sql;
 	}
@@ -335,7 +335,7 @@ again:
 	}
 	query_free(qry);
 	if (!query_ok(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't find modified chunks");
+		sql_log_err(state->db, "Couldn't find modified chunks");
 		ret=PK_SQLERR;
 		goto bad_sql;
 	}
@@ -499,7 +499,7 @@ static pk_err_t obtain_chunk(struct pk_state *state, unsigned chunk,
 
 	if (!query(NULL, state->db, "INSERT INTO cache.chunks (chunk, length) "
 				"VALUES(?, ?)", "dd", chunk, (int)len)) {
-		pk_log_sqlerr(state->db, "Couldn't insert chunk %u into "
+		sql_log_err(state->db, "Couldn't insert chunk %u into "
 					"cache index", chunk);
 		return PK_IOERR;
 	}
@@ -527,7 +527,7 @@ again:
 	query(&qry, state->db, "SELECT tag, key, compression FROM keys "
 				"WHERE chunk == ?", "d", chunk);
 	if (!query_has_row(state->db)) {
-		pk_log_sqlerr(state->db, "Couldn't query keyring");
+		sql_log_err(state->db, "Couldn't query keyring");
 		ret=PK_IOERR;
 		goto bad;
 	}
@@ -557,7 +557,7 @@ again:
 		query_row(qry, "d", length);
 		query_free(qry);
 	} else {
-		pk_log_sqlerr(state->db, "Couldn't query cache index");
+		sql_log_err(state->db, "Couldn't query cache index");
 		ret=PK_IOERR;
 		goto bad;
 	}
@@ -604,14 +604,14 @@ again:
 	if (!query(NULL, state->db, "INSERT OR REPLACE INTO cache.chunks "
 				"(chunk, length) VALUES(?, ?)", "dd",
 				chunk, length)) {
-		pk_log_sqlerr(state->db, "Couldn't update cache index");
+		sql_log_err(state->db, "Couldn't update cache index");
 		goto bad;
 	}
 	if (!query(NULL, state->db, "UPDATE keys SET tag = ?, key = ?, "
 				"compression = ? WHERE chunk == ?", "bbdd",
 				tag, state->parcel->hashlen, key,
 				state->parcel->hashlen, compress, chunk)) {
-		pk_log_sqlerr(state->db, "Couldn't update keyring");
+		sql_log_err(state->db, "Couldn't update keyring");
 		goto bad;
 	}
 	if (!commit(state->db))

@@ -305,7 +305,7 @@ void query_free(struct query *qry)
 	g_slice_free(struct query, qry);
 }
 
-void pk_log_sqlerr(struct db *db, const char *fmt, ...)
+void sql_log_err(struct db *db, const char *fmt, ...)
 {
 	gchar *str;
 	va_list ap;
@@ -370,7 +370,7 @@ again:
 			goto again;
 		}
 		g_free(str);
-		pk_log_sqlerr(db, "Couldn't set synchronous pragma for "
+		sql_log_err(db, "Couldn't set synchronous pragma for "
 					"%s database", name);
 		return FALSE;
 	}
@@ -415,7 +415,7 @@ again:
 			query_backoff(db);
 			goto again;
 		}
-		pk_log_sqlerr(db, "Couldn't enable count_changes for %s", path);
+		sql_log_err(db, "Couldn't enable count_changes for %s", path);
 		goto bad;
 	}
 	if (!sql_setup_db(db, "main"))
@@ -478,7 +478,7 @@ again:
 			query_backoff(db);
 			goto again;
 		}
-		pk_log_sqlerr(db, "Couldn't attach %s", file);
+		sql_log_err(db, "Couldn't attach %s", file);
 		ret = FALSE;
 		goto out;
 	}
@@ -490,7 +490,7 @@ again_detach:
 				query_backoff(db);
 				goto again_detach;
 			}
-			pk_log_sqlerr(db, "Couldn't detach %s", handle);
+			sql_log_err(db, "Couldn't detach %s", handle);
 		}
 	}
 out:
@@ -505,7 +505,7 @@ again:
 	if (!query(NULL, db, immediate ? "BEGIN IMMEDIATE" : "BEGIN", NULL)) {
 		if (query_busy(db))
 			goto again;
-		pk_log_sqlerr(db, "Couldn't begin transaction");
+		sql_log_err(db, "Couldn't begin transaction");
 		db_put(db);
 		return FALSE;
 	}
@@ -518,7 +518,7 @@ again:
 	if (!query(NULL, db, "COMMIT", NULL)) {
 		if (query_busy(db))
 			goto again;
-		pk_log_sqlerr(db, "Couldn't commit transaction");
+		sql_log_err(db, "Couldn't commit transaction");
 		return FALSE;
 	}
 	db_put(db);
@@ -536,7 +536,7 @@ again:
 				!sqlite3_get_autocommit(db->conn)) {
 		if (query_busy(db))
 			goto again;
-		pk_log_sqlerr(db, "Couldn't roll back transaction");
+		sql_log_err(db, "Couldn't roll back transaction");
 		return FALSE;
 	} else {
 		db_put(db);
@@ -551,7 +551,7 @@ gboolean vacuum(struct db *db)
 	db_get(db);
 again_vacuum:
 	if (!query(NULL, db, "VACUUM", NULL)) {
-		pk_log_sqlerr(db, "Couldn't vacuum database");
+		sql_log_err(db, "Couldn't vacuum database");
 		if (query_busy(db)) {
 			query_backoff(db);
 			goto again_vacuum;
@@ -570,7 +570,7 @@ again_trans:
 	if (!begin(db))
 		return FALSE;
 	if (!query(NULL, db, "SELECT * FROM sqlite_master LIMIT 1", NULL)) {
-		pk_log_sqlerr(db, "Couldn't query sqlite_master");
+		sql_log_err(db, "Couldn't query sqlite_master");
 		goto bad_trans;
 	}
 	if (!commit(db))
@@ -601,7 +601,7 @@ again:
 		query_backoff(db);
 		goto again;
 	} else if (!query_has_row(db)) {
-		pk_log_sqlerr(db, "Couldn't run SQLite integrity check");
+		sql_log_err(db, "Couldn't run SQLite integrity check");
 		db_put(db);
 		return FALSE;
 	}
