@@ -936,7 +936,7 @@ again:
 	   below approach is much more efficient. */
 	for (ret=query(&qry, state->hoard, "SELECT parcel FROM parcels", NULL),
 				changes=0; query_has_row(state->hoard);
-				ret=query_next(qry)) {
+				query_next(qry)) {
 		query_row(qry, "d", &ident);
 		ret=query(NULL, state->hoard, "SELECT parcel FROM refs WHERE "
 					"parcel == ? LIMIT 1", "d", ident);
@@ -962,6 +962,7 @@ again:
 	query_free(qry);
 	if (!query_ok(state->hoard)) {
 		pk_log_sqlerr(state->hoard, "Couldn't query parcels table");
+		ret=PK_SQLERR;
 		goto bad;
 	}
 	if (changes > 0)

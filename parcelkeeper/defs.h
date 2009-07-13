@@ -263,7 +263,7 @@ pk_err_t sql_conn_open(const char *path, struct db **handle);
 void sql_conn_close(struct db *db);
 pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 			const char *fmt, ...);
-pk_err_t query_next(struct query *qry);
+gboolean query_next(struct query *qry);
 gboolean query_has_row(struct db *db);
 gboolean query_ok(struct db *db);
 gboolean query_busy(struct db *db);

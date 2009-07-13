@@ -191,7 +191,7 @@ pk_err_t query(struct query **new_qry, struct db *db, const char *query,
 		return PK_SQLERR;
 }
 
-pk_err_t query_next(struct query *qry)
+gboolean query_next(struct query *qry)
 {
 	int result;
 
@@ -211,10 +211,10 @@ pk_err_t query_next(struct query *qry)
 		result=SQLITE_BUSY;
 	qry->db->result=result;
 	if (result == SQLITE_OK || result == SQLITE_ROW) {
-		return PK_SUCCESS;
+		return TRUE;
 	} else {
 		sqlerr(qry->db, "%s", sqlite3_errmsg(qry->db->conn));
-		return PK_SQLERR;
+		return FALSE;
 	}
 }
 
