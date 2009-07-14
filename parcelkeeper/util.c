@@ -209,9 +209,32 @@ pk_err_t setup_signal_handlers(void (*caught_handler)(int sig),
 	return PK_SUCCESS;
 }
 
+static void interrupter(void *data, void *set)
+{
+	struct db *db = data;
+
+	if (set)
+		query_interrupt(db);
+	else
+		query_clear_interrupt(db);
+}
+
+void interrupter_add(struct db *db)
+{
+	sigstate.interrupter_dbs = g_list_prepend(sigstate.interrupter_dbs, db);
+}
+
+void interrupter_clear(void)
+{
+	g_list_foreach(sigstate.interrupter_dbs, interrupter, (void *)FALSE);
+	g_list_free(sigstate.interrupter_dbs);
+	sigstate.interrupter_dbs = NULL;
+}
+
 void generic_signal_handler(int sig)
 {
 	sigstate.signal=sig;
+	g_list_foreach(sigstate.interrupter_dbs, interrupter, (void *)TRUE);
 }
 
 int pending_signal(void)
@@ -222,7 +245,7 @@ int pending_signal(void)
 		warned=1;
 		pk_log(LOG_INFO, "Interrupt");
 	}
-	return sigstate.signal && !sigstate.override_signal;
+	return sigstate.signal;
 }
 
 void print_progress_chunks(unsigned chunks, unsigned maxchunks)

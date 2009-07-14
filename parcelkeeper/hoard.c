@@ -888,6 +888,7 @@ again:
 		ret=PK_IOERR;
 		goto bad;
 	}
+	interrupter_add(state->hoard);
 	return PK_SUCCESS;
 
 bad_rollback:

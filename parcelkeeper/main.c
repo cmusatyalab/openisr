@@ -157,7 +157,7 @@ int main(int argc, char **argv)
 	}
 
 shutdown:
-	sigstate.override_signal = TRUE;
+	interrupter_clear();
 	if (have_nexus)
 		nexus_shutdown(&state);
 	if (have_transport)

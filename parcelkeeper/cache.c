@@ -459,6 +459,7 @@ pk_err_t cache_init(struct pk_state *state)
 			pk_log(LOG_ERROR, "Couldn't set up shared memory "
 						"segment; continuing");
 
+	interrupter_add(state->db);
 	return PK_SUCCESS;
 
 bad:

@@ -181,7 +181,7 @@ struct pk_state {
 
 struct pk_sigstate {
 	volatile int signal;  /* Last signal received by generic handler */
-	gboolean override_signal;  /* Ignore pending signals in pending_signal() */
+	GList *interrupter_dbs;
 	int signal_fds[2];
 };
 
@@ -272,6 +272,8 @@ pk_err_t setup_signal_handlers(void (*caught_handler)(int sig),
 			const int *caught_signals, const int *ignored_signals);
 void generic_signal_handler(int sig);
 int pending_signal(void);
+void interrupter_add(struct db *db);
+void interrupter_clear(void);
 void print_progress_chunks(unsigned chunks, unsigned maxchunks);
 void print_progress_mb(off64_t bytes, off64_t max_bytes);
 pk_err_t fork_and_wait(int *status_fd);
