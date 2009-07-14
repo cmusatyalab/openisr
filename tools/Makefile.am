@@ -24,7 +24,7 @@ blobtool_LDFLAGS = $(CRYPTO_LIBS) $(glib_LIBS) -lz -larchive
 dirtometer_CFLAGS = $(AM_CFLAGS) $(gtk_CFLAGS) $(glib_CFLAGS)
 dirtometer_CFLAGS += -Wno-unused-parameter $(NO_FIELD_INITIALIZER_WARNINGS)
 dirtometer_LDFLAGS = $(gtk_LIBS) $(glib_LIBS)
-query_LDFLAGS = -L$(top_builddir)/sqlite -lsqlite
+query_LDFLAGS = -L$(top_builddir)/sqlite -lisrsql
 nextest_LDFLAGS = $(CRYPTO_LIBS)
 
 include $(top_srcdir)/mkrevision.mk

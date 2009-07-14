@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <glib.h>
 #include <pthread.h>
+#include "sql.h"
 
 typedef enum pk_err {
 	PK_SUCCESS=0,
@@ -99,8 +100,6 @@ enum mode_flags {
 };
 
 struct pk_connection;
-struct db;
-struct query;
 struct pk_lockfile;
 
 struct pk_config {
@@ -254,41 +253,6 @@ pk_err_t transport_conn_alloc(struct pk_connection **out,
 void transport_conn_free(struct pk_connection *conn);
 pk_err_t transport_fetch_chunk(struct pk_connection *conn, void *buf,
 			unsigned chunk, const void *tag, unsigned *length);
-
-/* sql.c */
-/* Error levels:
- *	G_LOG_LEVEL_CRITICAL		- Programmer errors
- *	G_LOG_LEVEL_MESSAGE		- Ordinary errors
- *	G_LOG_LEVEL_INFO		- Statistics
- *	SQL_LOG_LEVEL_QUERY		- Query strings
- *	SQL_LOG_LEVEL_SLOW_QUERY	- Slow-query warnings
- */
-enum sql_log_level {
-	SQL_LOG_LEVEL_QUERY		= 1 << G_LOG_LEVEL_USER_SHIFT,
-	SQL_LOG_LEVEL_SLOW_QUERY	= 1 << (G_LOG_LEVEL_USER_SHIFT + 1),
-};
-void sql_init(void);
-gboolean sql_conn_open(const char *path, struct db **handle);
-void sql_conn_close(struct db *db);
-gboolean query(struct query **new_qry, struct db *db, const char *query,
-			const char *fmt, ...);
-gboolean query_next(struct query *qry);
-gboolean query_has_row(struct db *db);
-gboolean query_ok(struct db *db);
-gboolean query_busy(struct db *db);
-gboolean query_constrained(struct db *db);
-void query_row(struct query *qry, const char *fmt, ...);
-void query_free(struct query *qry);
-void query_backoff(struct db *db);
-void sql_log_err(struct db *db, const char *fmt, ...);
-gboolean attach(struct db *db, const char *handle, const char *file);
-gboolean _begin(struct db *db, gboolean immediate);
-#define begin(db) _begin(db, FALSE)
-#define begin_immediate(db) _begin(db, TRUE)
-gboolean commit(struct db *db);
-gboolean rollback(struct db *db);
-gboolean vacuum(struct db *db);
-gboolean validate_db(struct db *db);
 
 /* util.c */
 #define FILE_LOCK_READ     0

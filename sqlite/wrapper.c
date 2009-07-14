@@ -1,5 +1,5 @@
 /*
- * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
+ * libisrsql - Wrapper code around a private version of SQLite
  *
  * Copyright (C) 2006-2009 Carnegie Mellon University
  *
@@ -20,10 +20,12 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
-#include <stdarg.h>
+#include <stdint.h>
 #include <unistd.h>
-#include <sqlite3.h>
-#include "defs.h"
+#include <pthread.h>
+#include <glib.h>
+#include "sqlite3.h"
+#include "sql.h"
 
 #define SLOW_THRESHOLD_MS 200
 #define MAX_WAIT_USEC 10000
