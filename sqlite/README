@@ -1,14 +1,7 @@
 We build against our own copy of SQLite rather than using the one installed
-on the host system.  This allows us to use newer interfaces and avoid having
-to work around data corruption bugs in older versions of SQLite, and gives us
-a more predictable runtime environment.
+on the host system.  This allows us to avoid handling behavior changes across
+SQLite releases (including data corruption bugs) and gives us a more
+predictable runtime environment.
 
 We use "the amalgamation", a single C file which contains the entire SQLite
 implementation, as provided by the official download site at sqlite.org.
-
-We use libtool's -release option when linking, to ensure that we don't
-accidentally fall back to the system library if our copy isn't installed.
-(It also prevents OpenISR programs which use SQLite from having to do
-explicit version checks at runtime, in case an older version of ISR SQLite
-is still installed.)  When updating sqlite3.[ch] to a new version, remember to
-update Makefile.am as well.
