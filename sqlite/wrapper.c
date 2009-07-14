@@ -332,6 +332,8 @@ void sql_log_err(struct db *db, const char *fmt, ...)
 
 void sql_init(void)
 {
+	if (!g_thread_supported())
+		g_thread_init(NULL);
 	srandom(time(NULL));
 }
 
