@@ -39,6 +39,7 @@ struct db {
 	int result;  /* set by query() and query_next() */
 	gchar *file;
 	gchar *errmsg;
+	gint interrupt;  /* glib atomic int operations */
 
 	/* Statistics */
 	unsigned busy_queries;
@@ -199,7 +200,7 @@ gboolean query_next(struct query *qry)
 {
 	int result;
 
-	if (pending_signal()) {
+	if (g_atomic_int_get(&qry->db->interrupt)) {
 		/* Try to stop the query.  If this succeeds, the transaction
 		   will be automatically rolled back.  Often, though, the
 		   attempt will not succeed. */
@@ -351,10 +352,11 @@ static int busy_handler(void *data, int count)
 	return 1;
 }
 
-static int progress_handler(void *db)
+static int progress_handler(void *data)
 {
-	(void)db;  /* silence warning */
-	return pending_signal();
+	struct db *db = data;
+
+	return g_atomic_int_get(&db->interrupt);
 }
 
 static gboolean sql_setup_db(struct db *db, const char *name)
@@ -386,6 +388,7 @@ gboolean sql_conn_open(const char *path, struct db **handle)
 	*handle = NULL;
 	db = g_slice_new0(struct db);
 	pthread_mutex_init(&db->lock, NULL);
+	g_atomic_int_set(&db->interrupt, FALSE);
 	db_get(db);
 	if (sqlite3_open(path, &db->conn)) {
 		g_message("Couldn't open database %s: %s", path,
@@ -466,6 +469,16 @@ void query_backoff(struct db *db)
 	db->wait_usecs += time;
 	usleep(time);
 	db->retries++;
+}
+
+void query_interrupt(struct db *db)
+{
+	g_atomic_int_set(&db->interrupt, TRUE);
+}
+
+void query_clear_interrupt(struct db *db)
+{
+	g_atomic_int_set(&db->interrupt, FALSE);
 }
 
 gboolean attach(struct db *db, const char *handle, const char *file)
