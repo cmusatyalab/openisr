@@ -55,6 +55,26 @@ struct query {
 	GTimer *timer;
 };
 
+struct param {
+	int index;
+	char type;
+
+	void *i_ptr;
+	int64_t i_int;
+	double i_float;
+
+	const unsigned char **o_string;
+	const void **o_data;
+	int *o_int;
+	int64_t *o_int64;
+	double *o_float;
+};
+
+struct query_params {
+	enum sql_param_type type;
+	GList *list;
+};
+
 static void sqlerr(struct db *db, const char *fmt, ...)
 {
 	va_list ap;
@@ -120,15 +140,133 @@ static int alloc_query(struct query **new_qry, struct db *db, const char *sql)
 	return ret;
 }
 
-gboolean query(struct query **new_qry, struct db *db, const char *query,
-			const char *fmt, ...)
+struct query_params *query_params_new(enum sql_param_type type)
+{
+	struct query_params *params;
+
+	params = g_slice_new0(struct query_params);
+	params->type = type;
+	return params;
+}
+
+void query_params_free(struct query_params *params)
+{
+	while (params->list != NULL) {
+		g_slice_free(struct param, params->list->data);
+		params->list = g_list_delete_link(params->list, params->list);
+	}
+	g_slice_free(struct query_params, params);
+}
+
+static struct param *param_get(struct query_params *params, int index)
+{
+	GList *cur;
+	struct param *param;
+
+	for (cur = params->list; cur != NULL; cur = cur->next) {
+		param = cur->data;
+		if (param->index == index)
+			return param;
+	}
+	param = g_slice_new0(struct param);
+	param->index = index;
+	params->list = g_list_prepend(params->list, param);
+	return param;
+}
+
+static gboolean param_set_group(struct query_params *params, int start_idx,
+			const char *types, va_list ap)
+{
+	struct param *param;
+	int i;
+	/* SQLite input parameters are 1-indexed */
+	int offset = params->type == SQL_PARAM_INPUT ? 1 : 0;
+
+	if (types == NULL)
+		return TRUE;
+	for (i = 0; types[i]; i++) {
+		param = param_get(params, start_idx + i + offset);
+		if (params->type == SQL_PARAM_INPUT) {
+			switch (types[i]) {
+			case 'd':
+				param->i_int = va_arg(ap, int);
+				break;
+			case 'D':
+				param->i_int = va_arg(ap, int64_t);
+				break;
+			case 'f':
+				param->i_float = va_arg(ap, double);
+				break;
+			case 's':
+			case 'S':
+				param->i_ptr = va_arg(ap, char *);
+				break;
+			case 'b':
+			case 'B':
+				param->i_ptr = va_arg(ap, void *);
+				param->i_int = va_arg(ap, int);
+				break;
+			default:
+				g_critical("Unknown format specifier %c",
+							types[i]);
+				return FALSE;
+			}
+		} else {
+			switch (types[i]) {
+			case 'd':
+			case 'n':
+				param->o_int = va_arg(ap, int *);
+				break;
+			case 'D':
+				param->o_int64 = va_arg(ap, int64_t *);
+				break;
+			case 'f':
+				param->o_float = va_arg(ap, double *);
+				break;
+			case 's':
+				param->o_string = va_arg(ap,
+							const unsigned char **);
+				break;
+			case 'S':
+				param->o_string = va_arg(ap,
+							const unsigned char **);
+				param->o_int = va_arg(ap, int *);
+				break;
+			case 'b':
+				param->o_data = va_arg(ap, const void **);
+				param->o_int = va_arg(ap, int *);
+				break;
+			default:
+				g_critical("Unknown format specifier %c",
+							types[i]);
+				return FALSE;
+			}
+		}
+		param->type = types[i];
+	}
+	return TRUE;
+}
+
+gboolean query_param_set(struct query_params *params, int index, char type, ...)
+{
+	char types[] = {type, 0};
+	va_list ap;
+	gboolean ret;
+
+	va_start(ap, type);
+	ret = param_set_group(params, index, types, ap);
+	va_end(ap);
+	return ret;
+}
+
+gboolean query_v(struct query **new_qry, struct db *db, const char *query,
+			struct query_params *params)
 {
 	struct query *qry;
+	struct param *param;
 	sqlite3_stmt *stmt;
+	GList *cur;
 	va_list ap;
-	int i=1;
-	int found_unknown=0;
-	void *blob;
 
 	if (new_qry != NULL)
 		*new_qry=NULL;
@@ -138,53 +276,53 @@ gboolean query(struct query **new_qry, struct db *db, const char *query,
 					"a transaction");
 		return FALSE;
 	}
+	if (params->type != SQL_PARAM_INPUT) {
+		db->result = SQLITE_MISUSE;
+		sqlerr(db, "Query parameters are not of type input");
+		return FALSE;
+	}
 	db->result=alloc_query(&qry, db, query);
 	if (db->result)
 		return FALSE;
 	stmt=qry->stmt;
-	va_start(ap, fmt);
-	for (; fmt != NULL && *fmt; fmt++) {
-		switch (*fmt) {
+	for (cur = params->list; cur != NULL; cur = cur->next) {
+		param = cur->data;
+		switch (param->type) {
 		case 'd':
-			db->result=sqlite3_bind_int(stmt, i++, va_arg(ap,
-						int));
-			break;
 		case 'D':
-			db->result=sqlite3_bind_int64(stmt, i++, va_arg(ap,
-						int64_t));
+			db->result = sqlite3_bind_int64(stmt, param->index,
+						param->i_int);
 			break;
 		case 'f':
-			db->result=sqlite3_bind_double(stmt, i++, va_arg(ap,
-						double));
+			db->result = sqlite3_bind_double(stmt, param->index,
+						param->i_float);
 			break;
 		case 's':
 		case 'S':
-			db->result=sqlite3_bind_text(stmt, i++, va_arg(ap,
-						char *), -1, *fmt == 's'
+			db->result = sqlite3_bind_text(stmt, param->index,
+						param->i_ptr, -1,
+						param->type == 's'
 						? SQLITE_TRANSIENT
 						: SQLITE_STATIC);
 			break;
 		case 'b':
 		case 'B':
-			blob=va_arg(ap, void *);
-			db->result=sqlite3_bind_blob(stmt, i++, blob,
-						va_arg(ap, int), *fmt == 'b'
+			db->result = sqlite3_bind_blob(stmt, param->index,
+						param->i_ptr, param->i_int,
+						param->type == 'b'
 						? SQLITE_TRANSIENT
 						: SQLITE_STATIC);
 			break;
 		default:
-			sqlerr(db, "Unknown format specifier %c", *fmt);
-			db->result=SQLITE_MISUSE;
-			found_unknown=1;
+			g_assert_not_reached();
 			break;
 		}
 		if (db->result)
 			break;
 	}
-	va_end(ap);
 	if (db->result == SQLITE_OK)
 		query_next(qry);
-	else if (!found_unknown)
+	else
 		sqlerr(db, "%s", sqlite3_errmsg(db->conn));
 	if (db->result != SQLITE_ROW || new_qry == NULL)
 		query_free(qry);
@@ -194,6 +332,28 @@ gboolean query(struct query **new_qry, struct db *db, const char *query,
 		return TRUE;
 	else
 		return FALSE;
+}
+
+gboolean query(struct query **new_qry, struct db *db, const char *query,
+			const char *fmt, ...)
+{
+	struct query_params *params;
+	va_list ap;
+	gboolean ret;
+
+	params = query_params_new(SQL_PARAM_INPUT);
+	va_start(ap, fmt);
+	if (!param_set_group(params, 0, fmt, ap)) {
+		db->result = SQLITE_MISUSE;
+		sqlerr(db, "Invalid format string");
+		query_params_free(params);
+		va_end(ap);
+		return FALSE;
+	}
+	va_end(ap);
+	ret = query_v(new_qry, db, query, params);
+	query_params_free(params);
+	return ret;
 }
 
 gboolean query_next(struct query *qry)
@@ -247,46 +407,61 @@ gboolean query_constrained(struct db *db)
 	return (db->result == SQLITE_CONSTRAINT);
 }
 
-void query_row(struct query *qry, const char *fmt, ...)
+void query_row_v(struct query *qry, struct query_params *params)
 {
 	struct sqlite3_stmt *stmt=qry->stmt;
-	va_list ap;
-	int i=0;
+	struct param *param;
+	GList *cur;
+	int i;
 
-	va_start(ap, fmt);
-	for (; *fmt; fmt++) {
-		switch (*fmt) {
+	if (params->type != SQL_PARAM_OUTPUT) {
+		g_critical("Query parameters are not of type output");
+		return;
+	}
+	for (cur = params->list; cur != NULL; cur = cur->next) {
+		param = cur->data;
+		i = param->index;
+		switch (param->type) {
 		case 'd':
-			*va_arg(ap, int *)=sqlite3_column_int(stmt, i++);
+			*param->o_int = sqlite3_column_int(stmt, i);
 			break;
 		case 'D':
-			*va_arg(ap, int64_t *)=sqlite3_column_int64(stmt, i++);
+			*param->o_int64 = sqlite3_column_int64(stmt, i);
 			break;
 		case 'f':
-			*va_arg(ap, double *)=sqlite3_column_double(stmt, i++);
+			*param->o_float = sqlite3_column_double(stmt, i);
 			break;
 		case 's':
+			*param->o_string = sqlite3_column_text(stmt, i);
+			break;
 		case 'S':
-			*va_arg(ap, const unsigned char **)=
-						sqlite3_column_text(stmt, i);
-			if (*fmt == 'S')
-				*va_arg(ap, int *)=sqlite3_column_bytes(stmt,
-							i);
-			i++;
+			*param->o_string = sqlite3_column_text(stmt, i);
+			*param->o_int = sqlite3_column_bytes(stmt, i);
 			break;
 		case 'b':
-			*va_arg(ap, const void **)=sqlite3_column_blob(stmt, i);
-			*va_arg(ap, int *)=sqlite3_column_bytes(stmt, i++);
+			*param->o_data = sqlite3_column_blob(stmt, i);
+			*param->o_int = sqlite3_column_bytes(stmt, i);
 			break;
 		case 'n':
-			*va_arg(ap, int *)=sqlite3_column_bytes(stmt, i++);
+			*param->o_int = sqlite3_column_bytes(stmt, i);
 			break;
 		default:
-			g_critical("Unknown format specifier %c", *fmt);
-			break;
+			g_assert_not_reached();
 		}
 	}
+}
+
+void query_row(struct query *qry, const char *fmt, ...)
+{
+	struct query_params *params;
+	va_list ap;
+
+	params = query_params_new(SQL_PARAM_OUTPUT);
+	va_start(ap, fmt);
+	param_set_group(params, 0, fmt, ap);
 	va_end(ap);
+	query_row_v(qry, params);
+	query_params_free(params);
 }
 
 void query_free(struct query *qry)

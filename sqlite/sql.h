@@ -34,8 +34,14 @@ enum sql_log_level {
 	SQL_LOG_LEVEL_SLOW_QUERY	= 1 << (G_LOG_LEVEL_USER_SHIFT + 1),
 };
 
+enum sql_param_type {
+	SQL_PARAM_INPUT			= 0,
+	SQL_PARAM_OUTPUT		= 1,
+};
+
 struct db;
 struct query;
+struct query_params;
 
 
 /***** Basic functions *****/
@@ -179,6 +185,34 @@ gboolean commit(struct db *db);
    Returns FALSE on error.  This function performs query_busy() and
    query_backoff() internally. */
 gboolean rollback(struct db *db);
+
+
+/***** Dynamic query parameters *****/
+
+/* Allocate a query_params struct.  @type indicates whether the struct will
+   be used for input parameters (i.e., for query_params()) or output parameters
+   (query_row_params()). */
+struct query_params *query_params_new(enum sql_param_type type);
+
+/* Free a query_params struct. */
+void query_params_free(struct query_params *params);
+
+/* Add a parameter to @params, corresponding to the given parameter @index
+   in the query string.  @type is one of the type characters accepted by
+   query() (for input parameters) or query_row() (for output parameters).
+   This function never copies the contents of non-primitive types; if
+   such copying is requested, it is done when @params is passed to
+   query_v().  Returns FALSE on error. */
+gboolean query_param_set(struct query_params *params, int index, char type,
+			...);
+
+/* Equivalent to query(), but with a dynamically-constructed parameter list. */
+gboolean query_v(struct query **new_qry, struct db *db, const char *query,
+			struct query_params *params);
+
+/* Equivalent to query_row(), but with a dynamically-constructed parameter
+   list. */
+void query_row_v(struct query *qry, struct query_params *params);
 
 
 /***** Utility functions *****/
