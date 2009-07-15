@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <sqlite3.h>
+#include <sql.h>
 
 #define MAX_PARAMS 256
 #define MAX_ATTACHED 10
