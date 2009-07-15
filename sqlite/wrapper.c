@@ -782,6 +782,24 @@ out:
 	return ret;
 }
 
+int query_parameter_count(struct db *db, const char *sql)
+{
+	sqlite3_stmt *stmt;
+	int ret = -1;
+
+	db_get(db);
+	if (sqlite3_prepare_v2(db->conn, sql, -1, &stmt, NULL)) {
+		g_message("Couldn't parse SQL statement: %s",
+					sqlite3_errmsg(db->conn));
+		goto out;
+	}
+	ret = sqlite3_bind_parameter_count(stmt);
+	sqlite3_finalize(stmt);
+out:
+	db_put(db);
+	return ret;
+}
+
 gchar **query_column_names(struct query *qry)
 {
 	gchar **ret;

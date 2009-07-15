@@ -239,6 +239,12 @@ gchar *query_column_types(struct query *qry);
    g_strfreev().  If @sql fails to parse, returns NULL. */
 gchar **sql_split(struct db *db, const char *sql);
 
+/* Return the number of positional parameters in the given SQL statement.
+   Must be performed outside a transaction.  If @sql fails to parse, returns
+   -1.  If @sql is a compound statement, only the first statement is
+   considered. */
+int query_parameter_count(struct db *db, const char *sql);
+
 /* Reorganize the tables of @db for faster access.  Must be performed outside
    a transaction.  Returns FALSE on error.  This function performs
    query_busy() and query_backoff() internally. */
