@@ -37,6 +37,9 @@ enum sql_log_level {
 struct db;
 struct query;
 
+
+/***** Basic functions *****/
+
 /* Initialize the library. */
 void sql_init(void);
 
@@ -176,6 +179,14 @@ gboolean commit(struct db *db);
    Returns FALSE on error.  This function performs query_busy() and
    query_backoff() internally. */
 gboolean rollback(struct db *db);
+
+
+/***** Utility functions *****/
+
+/* Split @sql into a set of individual SQL queries and return them.  Must be
+   performed outside a transaction.  The returned array should be freed with
+   g_strfreev().  If @sql fails to parse, returns NULL. */
+gchar **sql_split(struct db *db, const char *sql);
 
 /* Reorganize the tables of @db for faster access.  Must be performed outside
    a transaction.  Returns FALSE on error.  This function performs

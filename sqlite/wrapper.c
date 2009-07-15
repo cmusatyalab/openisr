@@ -560,6 +560,53 @@ again:
 	}
 }
 
+static gchar **g_list_to_strv(GList *strings)
+{
+	GList *cur;
+	unsigned n;
+	unsigned count;
+	gchar **ret;
+
+	count = g_list_length(strings);
+	ret = g_new(gchar *, count + 1);
+	ret[count] = NULL;
+	for (cur = strings, n = 0; n < count; cur = cur->next, n++)
+		ret[n] = cur->data;
+	return ret;
+}
+
+gchar **sql_split(struct db *db, const char *sql)
+{
+	const char *query;
+	const char *tail;
+	gchar *cur;
+	unsigned len;
+	sqlite3_stmt *stmt;
+	GList *stmts = NULL;
+	gchar **ret = NULL;
+
+	db_get(db);
+	for (query = sql; *query; ) {
+		if (sqlite3_prepare_v2(db->conn, query, -1, &stmt, &tail)) {
+			g_message("Couldn't parse SQL statement: %s",
+						sqlite3_errmsg(db->conn));
+			goto out;
+		}
+		sqlite3_finalize(stmt);
+		len = tail - query;
+		cur = g_malloc(len + 1);
+		cur[len] = 0;
+		memcpy(cur, query, len);
+		query = tail;
+		stmts = g_list_append(stmts, cur);
+	}
+	ret = g_list_to_strv(stmts);
+out:
+	g_list_free(stmts);
+	db_put(db);
+	return ret;
+}
+
 gboolean vacuum(struct db *db)
 {
 	gboolean retry;
