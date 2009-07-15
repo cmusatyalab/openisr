@@ -782,6 +782,54 @@ out:
 	return ret;
 }
 
+gchar **query_column_names(struct query *qry)
+{
+	gchar **ret;
+	unsigned n;
+	unsigned count;
+
+	count = sqlite3_column_count(qry->stmt);
+	ret = g_new(gchar *, count + 1);
+	ret[count] = NULL;
+	for (n = 0; n < count; n++)
+		ret[n] = g_strdup(sqlite3_column_name(qry->stmt, n));
+	return ret;
+}
+
+gchar *query_column_types(struct query *qry)
+{
+	gchar *ret;
+	unsigned n;
+	unsigned count;
+
+	count = sqlite3_column_count(qry->stmt);
+	ret = g_malloc(count + 1);
+	ret[count] = 0;
+	for (n = 0; n < count; n++) {
+		switch (sqlite3_column_type(qry->stmt, n)) {
+		case SQLITE_INTEGER:
+			ret[n] = 'd';
+			break;
+		case SQLITE_FLOAT:
+			ret[n] = 'f';
+			break;
+		case SQLITE_TEXT:
+			ret[n] = 's';
+			break;
+		case SQLITE_BLOB:
+			ret[n] = 'b';
+			break;
+		case SQLITE_NULL:
+			ret[n] = '0';
+			break;
+		default:
+			ret[n] = '.';
+			break;
+		}
+	}
+	return ret;
+}
+
 gboolean vacuum(struct db *db)
 {
 	gboolean retry;

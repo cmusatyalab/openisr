@@ -214,6 +214,23 @@ gboolean query_v(struct query **new_qry, struct db *db, const char *query,
    list. */
 void query_row_v(struct query *qry, struct query_params *params);
 
+/* Return an array of names of columns in the result set of the specified
+   @qry.  The returned array should be freed with g_strfreev(). */
+gchar **query_column_names(struct query *qry);
+
+/* Return a string containing one type character for each column in the current
+   row of results for the specified @qry.  The returned string should be freed
+   with g_free().  This function must be called *before* obtaining any data
+   from the current row using query_row()/query_row_v().  The type character
+   will be one of:
+   	d - Integer
+	f - Floating-point
+	s - String
+	b - Blob
+	0 - Null
+	. - Unknown
+ */
+gchar *query_column_types(struct query *qry);
 
 /***** Utility functions *****/
 
