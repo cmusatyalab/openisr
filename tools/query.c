@@ -298,7 +298,7 @@ static ret_t make_queries(char *str)
 	return OK;
 }
 
-static ret_t begin(void)
+static ret_t q_begin(void)
 {
 	int ret;
 
@@ -314,7 +314,7 @@ static ret_t begin(void)
 	return OK;
 }
 
-static ret_t rollback(void)
+static ret_t q_rollback(void)
 {
 	int ret;
 
@@ -332,7 +332,7 @@ static ret_t rollback(void)
 	return OK;
 }
 
-static ret_t commit(void)
+static ret_t q_commit(void)
 {
 	int ret;
 
@@ -365,14 +365,14 @@ static ret_t do_transaction(char *sql)
 	ret_t qres;
 
 again:
-	if (begin())
+	if (q_begin())
 		return FAIL;
 	qres=make_queries(sql);
-	if (qres != OK || commit()) {
+	if (qres != OK || q_commit()) {
 		fflush(tmp);
 		rewind(tmp);
 		ftruncate(fileno(tmp), 0);
-		if (rollback() || qres != FAIL_TEMP)
+		if (q_rollback() || qres != FAIL_TEMP)
 			return FAIL;
 		backoff_delay();
 		goto again;
