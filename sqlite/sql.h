@@ -18,6 +18,8 @@
 #ifndef ISR_SQL_H
 #define ISR_SQL_H
 
+#include <glib.h>
+
 /* glib log domain:
  *	isrsql
  * Log levels:
