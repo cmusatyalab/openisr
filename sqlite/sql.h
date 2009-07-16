@@ -172,9 +172,10 @@ gboolean attach(struct db *db, const char *handle, const char *file);
    a transaction open, _begin() will block until it is committed or rolled
    back.  Returns FALSE on error.  This function performs query_busy() and
    query_backoff() internally. */
-gboolean _begin(struct db *db, gboolean immediate);
-#define begin(db) _begin(db, FALSE)
-#define begin_immediate(db) _begin(db, TRUE)
+gboolean _begin(struct db *db, gboolean transaction, gboolean immediate);
+#define begin(db) _begin(db, TRUE, FALSE)
+#define begin_immediate(db) _begin(db, TRUE, TRUE)
+#define begin_bare(db) _begin(db, FALSE, FALSE)
 
 /* Commit the open transaction against @db.  All queries must have been freed.
    Returns FALSE on error.  This function performs query_busy() and

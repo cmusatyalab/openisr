@@ -40,6 +40,7 @@ struct db {
 	gchar *file;
 	gchar *errmsg;
 	gint interrupt;  /* glib atomic int operations */
+	gboolean use_transaction;
 
 	/* Statistics */
 	unsigned busy_queries;
@@ -689,9 +690,12 @@ out:
 	return ret;
 }
 
-gboolean _begin(struct db *db, gboolean immediate)
+gboolean _begin(struct db *db, gboolean transaction, gboolean immediate)
 {
 	db_get(db);
+	db->use_transaction = transaction;
+	if (!transaction)
+		return TRUE;
 again:
 	if (!query(NULL, db, immediate ? "BEGIN IMMEDIATE" : "BEGIN", NULL)) {
 		if (query_busy(db))
@@ -706,11 +710,13 @@ again:
 gboolean commit(struct db *db)
 {
 again:
-	if (!query(NULL, db, "COMMIT", NULL)) {
-		if (query_busy(db))
-			goto again;
-		sql_log_err(db, "Couldn't commit transaction");
-		return FALSE;
+	if (db->use_transaction) {
+		if (!query(NULL, db, "COMMIT", NULL)) {
+			if (query_busy(db))
+				goto again;
+			sql_log_err(db, "Couldn't commit transaction");
+			return FALSE;
+		}
 	}
 	db_put(db);
 	return TRUE;
@@ -718,6 +724,11 @@ again:
 
 gboolean rollback(struct db *db)
 {
+	if (!db->use_transaction) {
+		g_critical("Can't roll back transactions opened with "
+					"begin_bare()");
+		return FALSE;
+	}
 again:
 	/* Several SQLite errors *sometimes* result in an automatic rollback.
 	   Always try to roll back, just to be safe, but don't report an error
