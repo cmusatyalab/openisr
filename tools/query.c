@@ -213,8 +213,34 @@ static void handle_row(struct query *qry)
 	g_free(types);
 }
 
-static ret_t handle_rows(struct query *qry, gboolean do_cols)
+static int get_changes(struct query *qry)
 {
+	gchar *types;
+	gchar **names;
+	int count;
+
+	if (!query_has_row(db))
+		return 0;
+	types = query_column_types(qry);
+	if (strcmp("d", types)) {
+		g_free(types);
+		return 0;
+	}
+	g_free(types);
+	names = query_column_names(qry);
+	if (!g_str_has_prefix(names[0], "rows ")) {
+		g_strfreev(names);
+		return 0;
+	}
+	g_strfreev(names);
+	query_row(qry, "d", &count);
+	query_next(qry);
+	return count;
+}
+
+static ret_t handle_rows(struct query *qry, gboolean do_cols, int *changes)
+{
+	*changes += get_changes(qry);
 	while (query_has_row(db)) {
 		if (show_col_names && do_cols) {
 			do_cols = FALSE;
@@ -241,21 +267,25 @@ static ret_t make_queries(gchar **queries, int param_count[])
 	int i;
 	ret_t ret;
 	int ctr;
+	int changes;
 
 	for (i = 0, cur_param = 0; i < query_count;
 				cur_param += param_count[i++]) {
+		changes = 0;
 		for (ctr = loop_min; ctr <= loop_max; ctr++) {
 			ret = init_query(&qry, queries[i], ctr, cur_param,
 						param_count[i]);
 			if (ret)
 				return ret;
-			ret = handle_rows(qry, ctr == loop_min);
+			ret = handle_rows(qry, ctr == loop_min, &changes);
 			if (ret) {
 				query_free(qry);
 				return ret;
 			}
 			query_free(qry);
 		}
+		if (changes)
+			fprintf(tmp, "%d rows updated\n", changes);
 	}
 	return OK;
 }
