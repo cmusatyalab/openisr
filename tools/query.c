@@ -319,8 +319,13 @@ static ret_t do_transaction(char *sql)
 	}
 
 again:
-	if (!begin(db))
-		goto fail;
+	if (no_transaction) {
+		if (!begin_bare(db))
+			goto fail;
+	} else {
+		if (!begin(db))
+			goto fail;
+	}
 	qres=make_queries(queries, param_count);
 	if (qres != OK || !commit(db)) {
 		fflush(tmp);
