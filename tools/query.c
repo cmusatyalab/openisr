@@ -323,6 +323,17 @@ fail:
 	return FAIL;
 }
 
+static void handle_log_message(const gchar *domain, GLogLevelFlags level,
+			const gchar *message, void *data)
+{
+	/* Silence compiler warnings */
+	(void)domain;
+	(void)data;
+
+	if (level == G_LOG_LEVEL_CRITICAL || level == G_LOG_LEVEL_MESSAGE)
+		fprintf(stderr, "%s\n", message);
+}
+
 static void usage(char *argv0)
 {
 	fprintf(stderr, "Usage: %s [flags] database query\n", argv0);
@@ -421,6 +432,7 @@ int main(int argc, char **argv)
 
 	parse_cmdline(argc, argv, &dbfile, &sql);
 
+	g_log_set_handler("isrsql", G_LOG_LEVEL_MASK, handle_log_message, NULL);
 	sql_init();
 	tmp=tmpfile();
 	if (tmp == NULL)
