@@ -20,15 +20,14 @@
 #include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h>
-#include <sqlite3.h>
+#include <glib.h>
 #include <sql.h>
 
 #define MAX_PARAMS 256
 #define MAX_ATTACHED 10
 #define MAX_RETRY_USECS 5000
 
-static sqlite3 *db;
+static struct db *db;
 static FILE *tmp;
 static char *params[MAX_PARAMS];  /* null if loop counter */
 static unsigned param_length[MAX_PARAMS];  /* zero if not blob */
@@ -39,7 +38,6 @@ static int loop_max=1;
 static int show_col_names;
 static int no_transaction;
 static int num_params;
-static int used_params;
 static int num_attached;
 
 typedef enum {
@@ -47,12 +45,6 @@ typedef enum {
 	FAIL_TEMP = -1,  /* temporary error */
 	FAIL = -2        /* fatal error */
 } ret_t;
-
-static void sqlerr(char *prefix)
-{
-	fprintf(stderr, "%s: %s (%d)\n", prefix, sqlite3_errmsg(db),
-				sqlite3_errcode(db));
-}
 
 static void __attribute__ ((noreturn)) die(char *str, ...)
 {
@@ -112,239 +104,158 @@ static char *mkbin(char *hex, unsigned *length)
 	return buf;
 }
 
-static void backoff_delay(void)
-{
-	usleep(random() % MAX_RETRY_USECS);
-}
-
 static ret_t attach_dbs(void)
 {
-	sqlite3_stmt *stmt;
 	int i;
-	int ret;
 
 	for (i=0; i<MAX_ATTACHED; i++) {
 		if (attached_names[i] == NULL)
 			break;
-		/* A successful ATTACH invalidates prepared statements, so we
-		   have to redo this every iteration.  This doesn't seem to
-		   return SQLITE_BUSY, probably because it doesn't look
-		   up any schema information. */
-		if (sqlite3_prepare_v2(db, "ATTACH ?1 as ?2", -1, &stmt,
-					NULL)) {
-			sqlerr("Preparing ATTACH statement");
+		if (!attach(db, attached_names[i], attached_files[i]))
 			return FAIL;
-		}
-		if (sqlite3_bind_text(stmt, 1, attached_files[i], -1,
-					SQLITE_STATIC)) {
-			sqlerr("Binding database filename");
-			goto bad;
-		}
-		if (sqlite3_bind_text(stmt, 2, attached_names[i], -1,
-					SQLITE_STATIC)) {
-			sqlerr("Binding database name");
-			goto bad;
-		}
-		while ((ret=sqlite3_step(stmt)) == SQLITE_BUSY)
-			backoff_delay();
-		if (ret != SQLITE_DONE) {
-			sqlerr("Executing ATTACH statement");
-			goto bad;
-		}
-		sqlite3_finalize(stmt);
 	}
 	return OK;
-
-bad:
-	sqlite3_finalize(stmt);
-	return FAIL;
 }
 
-/* Returns the number of parameters used in this binding or an error code */
-static int bind_parameters(sqlite3_stmt *stmt, int loop_ctr)
+static ret_t init_query(struct query **new_qry, const char *sql, int loop_ctr,
+			int initial_param, int n_params)
 {
+	struct query_params *qparams;
+	struct query *qry;
 	int i;
-	int count=sqlite3_bind_parameter_count(stmt);
-	int param=used_params;
-	int ret;
+	gboolean ret;
 
-	for (i=1; i <= count; i++) {
-		if (param == num_params) {
-			fprintf(stderr, "Not enough parameters for query\n");
-			return FAIL;
-		}
-		if (param_length[param])
-			ret=sqlite3_bind_blob(stmt, i, params[param],
-						param_length[param],
-						SQLITE_STATIC);
-		else if (params[param])
-			ret=sqlite3_bind_text(stmt, i, params[param], -1,
-						SQLITE_STATIC);
+	qparams = query_params_new(SQL_PARAM_INPUT);
+	for (i = 0; i < n_params; i++) {
+		if (param_length[i + initial_param])
+			 query_param_set(qparams, i, 'B',
+					params[i + initial_param],
+					param_length[i + initial_param]);
+		else if (params[i + initial_param])
+			query_param_set(qparams, i, 'S',
+					params[i + initial_param]);
 		else
-			ret=sqlite3_bind_int(stmt, i, loop_ctr);
-		if (ret) {
-			sqlerr("Binding parameter");
-			return (ret == SQLITE_NOMEM) ? FAIL_TEMP : FAIL;
-		}
-		param++;
+			query_param_set(qparams, i, 'd', loop_ctr);
 	}
-	return count;
+	ret = query_v(&qry, db, sql, qparams);
+	query_params_free(qparams);
+	if (!ret) {
+		sql_log_err(db, "Couldn't construct query");
+		if (query_busy(db))
+			return FAIL_TEMP;
+		else
+			return FAIL;
+	}
+	*new_qry = qry;
+	return OK;
 }
 
-static void handle_col_names(sqlite3_stmt *stmt)
+static void handle_col_names(struct query *qry)
 {
+	gchar **names = query_column_names(qry);
+	int count = g_strv_length(names);
 	int i;
-	int count=sqlite3_column_count(stmt);
 
-	for (i=0; i<count; i++) {
+	for (i = 0; i < count; i++) {
 		if (i)
 			fprintf(tmp, "|");
-		fprintf(tmp, "%s", sqlite3_column_name(stmt, i));
+		fprintf(tmp, "%s", names[i]);
 	}
 	if (count)
 		fprintf(tmp, "\n");
+	g_strfreev(names);
 }
 
-static void handle_row(sqlite3_stmt *stmt)
+static void handle_row(struct query *qry)
 {
+	gchar *types = query_column_types(qry);
+	int count = strlen(types);
+	const char *string[count];
+	const void *blob[count];
+	const int bloblen[count];
+	struct query_params *qparams;
 	int i;
-	int count=sqlite3_column_count(stmt);
-	const void *out;
-	char *buf;
-	int len;
+	gchar *buf;
 
-	for (i=0; i<count; i++) {
+	qparams = query_params_new(SQL_PARAM_OUTPUT);
+	for (i = 0; i < count; i++) {
+		switch (types[i]) {
+		case 'b':
+			query_param_set(qparams, i, 'b', &blob[i], &bloblen[i]);
+			break;
+		case '0':
+			break;
+		default:
+			query_param_set(qparams, i, 's', &string[i]);
+		}
+	}
+	query_row_v(qry, qparams);
+	for (i = 0; i < count; i++) {
 		if (i)
 			fprintf(tmp, "|");
-		switch (sqlite3_column_type(stmt, i)) {
-		case SQLITE_BLOB:
-			out=sqlite3_column_blob(stmt, i);
-			len=sqlite3_column_bytes(stmt, i);
-			buf=malloc(2 * len + 1);
-			if (buf == NULL)
-				die("malloc failure");
-			bin2hex(out, buf, len);
+		switch (types[i]) {
+		case 'b':
+			buf = g_malloc(2 * bloblen[i] + 1);
+			bin2hex(blob[i], buf, bloblen[i]);
 			fprintf(tmp, "%s", buf);
-			free(buf);
+			g_free(buf);
 			break;
-		case SQLITE_NULL:
+		case '0':
 			fprintf(tmp, "<null>");
 			break;
 		default:
-			fprintf(tmp, "%s", sqlite3_column_text(stmt, i));
+			fprintf(tmp, "%s", string[i]);
 		}
 	}
 	if (count)
 		fprintf(tmp, "\n");
+	query_params_free(qparams);
+	g_free(types);
 }
 
-static ret_t handle_rows(sqlite3_stmt *stmt, int do_cols)
+static ret_t handle_rows(struct query *qry, gboolean do_cols)
 {
-	int ret;
-
-	while ((ret=sqlite3_step(stmt)) != SQLITE_DONE) {
-		if (ret == SQLITE_ROW) {
-			if (show_col_names && do_cols) {
-				do_cols=0;
-				handle_col_names(stmt);
-			}
-			handle_row(stmt);
-		} else {
-			if (ret != SQLITE_BUSY)
-				sqlerr("Executing query");
-			return (ret == SQLITE_BUSY) ? FAIL_TEMP : FAIL;
+	while (query_has_row(db)) {
+		if (show_col_names && do_cols) {
+			do_cols = FALSE;
+			handle_col_names(qry);
 		}
+		handle_row(qry);
+		query_next(qry);
 	}
-	return OK;
+	if (query_ok(db)) {
+		return OK;
+	} else if (query_busy(db)) {
+		return FAIL_TEMP;
+	} else {
+		sql_log_err(db, "Executing query");
+		return FAIL;
+	}
 }
 
-static ret_t make_queries(char *str)
+static ret_t make_queries(gchar **queries, int param_count[])
 {
-	const char *query;
-	sqlite3_stmt *stmt;
+	int query_count = g_strv_length(queries);
+	int cur_param;
+	struct query *qry;
+	int i;
 	ret_t ret;
-	int sret;
 	int ctr;
-	unsigned changes=0;
-	int params=0;  /* Silence compiler warning */
 
-	used_params=0;
-	for (query=str; *query; ) {
-		sret=sqlite3_prepare_v2(db, query, -1, &stmt, &query);
-		if (sret == SQLITE_BUSY) {
-			return FAIL_TEMP;
-		} else if (sret) {
-			sqlerr("Preparing query");
-			return FAIL;
-		}
-		for (ctr=loop_min; ctr <= loop_max; ctr++) {
-			params=bind_parameters(stmt, ctr);
-			if (params < 0) {
-				sqlite3_finalize(stmt);
-				return params;
-			}
-			ret=handle_rows(stmt, ctr == loop_min);
+	for (i = 0, cur_param = 0; i < query_count;
+				cur_param += param_count[i++]) {
+		for (ctr = loop_min; ctr <= loop_max; ctr++) {
+			ret = init_query(&qry, queries[i], ctr, cur_param,
+						param_count[i]);
+			if (ret)
+				return ret;
+			ret = handle_rows(qry, ctr == loop_min);
 			if (ret) {
-				sqlite3_finalize(stmt);
+				query_free(qry);
 				return ret;
 			}
-			changes += sqlite3_changes(db);
-			sqlite3_reset(stmt);
+			query_free(qry);
 		}
-		used_params += params;
-		if (changes)
-			fprintf(tmp, "%d rows updated\n", changes);
-		sqlite3_finalize(stmt);
-	}
-	return OK;
-}
-
-static ret_t q_begin(void)
-{
-	int ret;
-
-	if (no_transaction)
-		return OK;
-	while ((ret=sqlite3_exec(db, "BEGIN", NULL, NULL, NULL)) ==
-				SQLITE_BUSY)
-		backoff_delay();
-	if (ret) {
-		sqlerr("Beginning transaction");
-		return FAIL;
-	}
-	return OK;
-}
-
-static ret_t q_rollback(void)
-{
-	int ret;
-
-	if (no_transaction) {
-		fprintf(stderr, "Can't roll back: not within a transaction");
-		return FAIL;
-	}
-	while ((ret=sqlite3_exec(db, "ROLLBACK", NULL, NULL, NULL)) ==
-				SQLITE_BUSY)
-		backoff_delay();
-	if (ret) {
-		sqlerr("Rolling back transaction");
-		return FAIL;
-	}
-	return OK;
-}
-
-static ret_t q_commit(void)
-{
-	int ret;
-
-	if (no_transaction)
-		return OK;
-	while ((ret=sqlite3_exec(db, "COMMIT", NULL, NULL, NULL)) ==
-				SQLITE_BUSY)
-		backoff_delay();
-	if (ret) {
-		sqlerr("Committing transaction");
-		return FAIL;
 	}
 	return OK;
 }
@@ -363,36 +274,53 @@ static void cat_tmp(void)
 
 static ret_t do_transaction(char *sql)
 {
+	gchar **queries;
+	int query_count;
+	int *param_count;
+	int total_params = 0;
+	int i;
 	ret_t qres;
 
-again:
-	if (q_begin())
+	queries = sql_split(db, sql);
+	if (queries == NULL)
 		return FAIL;
-	qres=make_queries(sql);
-	if (qres != OK || q_commit()) {
+	query_count = g_strv_length(queries);
+	param_count = g_new(int, query_count);
+	for (i = 0; i < query_count; i++) {
+		param_count[i] = query_parameter_count(db, queries[i]);
+		total_params += param_count[i];
+	}
+	if (total_params > num_params) {
+		fprintf(stderr, "Not enough parameters for query\n");
+		goto fail;
+	} else if (total_params < num_params) {
+		fprintf(stderr, "Warning: %d params provided but only %d "
+					"used\n", num_params, total_params);
+	}
+
+again:
+	if (!begin(db))
+		goto fail;
+	qres=make_queries(queries, param_count);
+	if (qres != OK || !commit(db)) {
 		fflush(tmp);
 		rewind(tmp);
 		ftruncate(fileno(tmp), 0);
-		if (q_rollback() || qres != FAIL_TEMP)
-			return FAIL;
-		backoff_delay();
+		if (!rollback(db) || qres != FAIL_TEMP)
+			goto fail;
+		query_backoff(db);
 		goto again;
 	}
 
 	cat_tmp();
-	if (used_params < num_params)
-		fprintf(stderr, "Warning: %d params provided but only %d "
-					"used\n", num_params, used_params);
+	g_free(param_count);
+	g_strfreev(queries);
 	return OK;
-}
 
-static int busy_handler(void *unused, int count)
-{
-	(void)unused;  /* silence warning */
-	if (count >= 10)
-		return 0;
-	backoff_delay();
-	return 1;
+fail:
+	g_free(param_count);
+	g_strfreev(queries);
+	return FAIL;
 }
 
 static void usage(char *argv0)
@@ -493,22 +421,16 @@ int main(int argc, char **argv)
 
 	parse_cmdline(argc, argv, &dbfile, &sql);
 
-	srandom(time(NULL));
+	sql_init();
 	tmp=tmpfile();
 	if (tmp == NULL)
 		die("Can't create temporary file");
-	if (sqlite3_open(dbfile, &db)) {
-		sqlerr("Opening database");
-		exit(1);
-	}
-	if (sqlite3_busy_handler(db, busy_handler, NULL)) {
-		sqlerr("Setting busy handler");
-		sqlite3_close(db);
+	if (!sql_conn_open(dbfile, &db)) {
+		g_critical("Couldn't open database");
 		exit(1);
 	}
 	if (attach_dbs() || do_transaction(sql))
 		ret=1;
-	if (sqlite3_close(db))
-		sqlerr("Closing database");
+	sql_conn_close(db);
 	return ret;
 }
