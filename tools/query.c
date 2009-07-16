@@ -25,7 +25,6 @@
 
 #define MAX_PARAMS 256
 #define MAX_ATTACHED 10
-#define MAX_RETRY_USECS 5000
 
 static struct db *db;
 static FILE *tmp;
@@ -152,10 +151,14 @@ static ret_t init_query(struct query **new_qry, const char *sql, int loop_ctr,
 
 static void handle_col_names(struct query *qry)
 {
-	gchar **names = query_column_names(qry);
-	int count = g_strv_length(names);
+	gchar **names;
+	int count;
 	int i;
 
+	if (!show_col_names)
+		return;
+	names = query_column_names(qry);
+	count = g_strv_length(names);
 	for (i = 0; i < count; i++) {
 		if (i)
 			fprintf(tmp, "|");
@@ -211,6 +214,7 @@ static void handle_row(struct query *qry)
 		fprintf(tmp, "\n");
 	query_params_free(qparams);
 	g_free(types);
+	query_next(qry);
 }
 
 static int get_changes(struct query *qry)
@@ -238,27 +242,6 @@ static int get_changes(struct query *qry)
 	return count;
 }
 
-static ret_t handle_rows(struct query *qry, gboolean do_cols, int *changes)
-{
-	*changes += get_changes(qry);
-	while (query_has_row(db)) {
-		if (show_col_names && do_cols) {
-			do_cols = FALSE;
-			handle_col_names(qry);
-		}
-		handle_row(qry);
-		query_next(qry);
-	}
-	if (query_ok(db)) {
-		return OK;
-	} else if (query_busy(db)) {
-		return FAIL_TEMP;
-	} else {
-		sql_log_err(db, "Executing query");
-		return FAIL;
-	}
-}
-
 static ret_t make_queries(gchar **queries, int param_count[])
 {
 	int query_count = g_strv_length(queries);
@@ -271,18 +254,25 @@ static ret_t make_queries(gchar **queries, int param_count[])
 
 	for (i = 0, cur_param = 0; i < query_count;
 				cur_param += param_count[i++]) {
-		changes = 0;
-		for (ctr = loop_min; ctr <= loop_max; ctr++) {
+		for (ctr = loop_min, changes = 0; ctr <= loop_max; ctr++) {
 			ret = init_query(&qry, queries[i], ctr, cur_param,
 						param_count[i]);
 			if (ret)
 				return ret;
-			ret = handle_rows(qry, ctr == loop_min, &changes);
-			if (ret) {
-				query_free(qry);
-				return ret;
-			}
+
+			changes += get_changes(qry);
+			if (query_has_row(db) && ctr == loop_min)
+				handle_col_names(qry);
+			while (query_has_row(db))
+				handle_row(qry);
+
 			query_free(qry);
+			if (query_busy(db)) {
+				return FAIL_TEMP;
+			} else if (!query_ok(db)) {
+				sql_log_err(db, "Executing query");
+				return FAIL;
+			}
 		}
 		if (changes)
 			fprintf(tmp, "%d rows updated\n", changes);
