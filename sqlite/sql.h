@@ -69,13 +69,13 @@ void sql_conn_close(struct db *db);
    fmt may be NULL if there are no positional parameters.  new_qry may be
    NULL, even if the query is a SELECT.  This will set the status flags
    queried by query_has_row(), etc., without returning a query structure.
-   This function returns TRUE on success (whether or not the query returned
-   any rows), FALSE otherwise. */
+   This function returns TRUE if query_ok() or query_has_row() would return
+   TRUE, and FALSE otherwise. */
 gboolean query(struct query **new_qry, struct db *db, const char *query,
 			const char *fmt, ...);
 
-/* Step to the next row of results.  Returns TRUE on success (whether or not
-   there are any more rows), FALSE otherwise. */
+/* Step to the next row of results.  Returns TRUE if query_ok() or
+   query_has_row() would return TRUE, and FALSE otherwise. */
 gboolean query_next(struct query *qry);
 
 /* Returns TRUE if the last database operation caused a row to be returned,
