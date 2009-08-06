@@ -66,11 +66,13 @@ void sql_conn_close(struct db *db);
 	S - string (not copied; must be constant until *new_qry is freed)
 	b - blob (copied into the query) - void * (data) + int (length)
 	B - blob (not copied) - void * (data) + int (length)
-   fmt may be NULL if there are no positional parameters.  new_qry may be
+   @fmt may be NULL if there are no positional parameters.  @new_qry may be
    NULL, even if the query is a SELECT.  This will set the status flags
    queried by query_has_row(), etc., without returning a query structure.
-   This function returns TRUE if query_ok() or query_has_row() would return
-   TRUE, and FALSE otherwise. */
+   If @new_qry is non-NULL, *new_qry will be set to a query structure if
+   at least one row is being returned, and to NULL otherwise.  This function
+   returns TRUE if query_ok() or query_has_row() would return TRUE, and
+   FALSE otherwise. */
 gboolean query(struct query **new_qry, struct db *db, const char *query,
 			const char *fmt, ...);
 
@@ -112,8 +114,8 @@ gboolean query_constrained(struct db *db);
    Returned pointer values are valid until the next row is accessed. */
 void query_row(struct query *qry, const char *fmt, ...);
 
-/* Free an allocated query.  All queries must be freed before ending a
-   transaction. */
+/* Free an allocated query.  If @qry is NULL, does nothing.  All queries must
+   be freed before ending a transaction. */
 void query_free(struct query *qry);
 
 /* Sleeps for a random interval in order to do backoff on @db after
