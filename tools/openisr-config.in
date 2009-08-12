@@ -23,7 +23,7 @@ use Term::ANSIColor;
 use Getopt::Long;
 use constant {
 	SHAREDIR => "!!SHAREDIR!!",
-	INITSCRIPT => "!!INITDIR!!/openisr",
+	INITSCRIPT => "!!INITDIR!!/openisr-client",
 	VERSION => "!!VERSION!!",
 };
 

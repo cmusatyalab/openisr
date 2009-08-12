@@ -22,7 +22,7 @@ use Term::ANSIColor;
 use constant {
 	SBINDIR => "!!SBINDIR!!",
 	ISRGROUP => "!!ISRGROUP!!",
-	INITSCRIPT => "!!INITDIR!!/openisr",
+	INITSCRIPT => "!!INITDIR!!/openisr-client",
 };
 
 sub fail ($) {
@@ -85,7 +85,7 @@ system(SBINDIR . "/openisr-config") == 0
 my $ret;
 if (-x "/usr/sbin/update-rc.d") {
 	status "Enabling initscript (Debian method)...";
-	$ret = system("/usr/sbin/update-rc.d openisr start 20 S .");
+	$ret = system("/usr/sbin/update-rc.d openisr-client start 20 S .");
 } elsif (-x "/sbin/chkconfig") {
 	status "Enabling initscript (Fedora method)...";
 	$ret = system("/sbin/chkconfig --add " . INITSCRIPT);

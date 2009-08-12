@@ -1,4 +1,4 @@
-# OpenISR udev rules
+# OpenISR client udev rules
 # Does not use newer udev syntax for compatibility with old versions
 
 SUBSYSTEM=="misc", KERNEL=="openisrctl", \

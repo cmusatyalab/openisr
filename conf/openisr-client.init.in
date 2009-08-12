@@ -1,6 +1,6 @@
 #!/bin/sh
 ### BEGIN INIT INFO
-# Provides:		openisr
+# Provides:		openisr-client
 # Required-Start:	$local_fs $remote_fs
 # Required-Stop:	$local_fs $remote_fs
 # Default-Start:	S
@@ -14,7 +14,7 @@
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 LIBDIR=!!LIBDIR!!
 SBINDIR=!!SBINDIR!!
-SCRIPTNAME=/etc/init.d/openisr
+SCRIPTNAME=/etc/init.d/openisr-client
 
 # Don't run if the package is no longer installed
 [ -d $LIBDIR ] || exit 0
