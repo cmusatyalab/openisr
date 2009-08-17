@@ -328,10 +328,11 @@ again:
 	}
 	qres=make_queries(queries, param_count);
 	if (qres != OK || !commit(db)) {
+		if (!rollback(db) || qres != FAIL_TEMP)
+			goto fail;
 		fflush(tmp);
 		rewind(tmp);
-		ftruncate(fileno(tmp), 0);
-		if (!rollback(db) || qres != FAIL_TEMP)
+		if (ftruncate(fileno(tmp), 0))
 			goto fail;
 		query_backoff(db);
 		goto again;
