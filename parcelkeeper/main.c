@@ -174,7 +174,7 @@ shutdown:
 	parcel_cfg_free(state.parcel);  /* likewise */
 	cmdline_free(state.conf);  /* likewise */
 	if (completion_fd != -1)
-		write(completion_fd, &ret, 1);
+		(void) write(completion_fd, &ret, 1);
 	sig = sigstate.signal;
 	if (sig) {
 		/* Make sure our exit status reflects the fact that we died

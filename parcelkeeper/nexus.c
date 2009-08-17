@@ -44,7 +44,7 @@ static void nexus_signal_handler(int sig)
 {
 	char c=sig;
 	/* Race-free method of catching signals */
-	write(sigstate.signal_fds[1], &c, 1);
+	(void) write(sigstate.signal_fds[1], &c, 1);
 	/* The fd is set nonblocking, so if the pipe is full, the signal will
 	   be lost */
 }
