@@ -234,16 +234,17 @@ Miscellaneous tools
 	under the GNU General Public License, version 2.
 
 libisrcrypto
-	This is a cryptographic library containing implementations of
-	the AES, Blowfish, SHA-1, and MD5 algorithms.  The ISR user-space
-	components use this library to perform cryptography.  It is licensed
-	under version 2.1 of the GNU Lesser General Public License and can be
-	found in the "crypto" subdirectory.
+	This is a library containing implementations of various cryptographic
+	algorithms.  The ISR user-space components use this library to perform
+	cryptography.  It is licensed under version 2.1 of the GNU Lesser
+	General Public License and can be found in the "crypto" subdirectory.
 
-SQLite
-	The third-party SQLite embedded database is included in the OpenISR
-	distribution.  It can be found in the "sqlite" directory of the source
-	tree and is in the public domain.
+libisrsql
+	This is a library which provides an embedded SQL database engine.
+	It includes an embedded copy of the third-party SQLite database
+	library, but does not export any SQLite symbols.  libisrsql is
+	licensed under version 2 of the GNU General Public License, and can
+	be found in the "sqlite" directory of the source tree.
 
 VMM drivers and support code
 	These are driver programs and associated support code which allow the
