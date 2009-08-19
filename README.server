@@ -23,12 +23,12 @@ The following keys are supported:
 
 content_root
 	This is the path to the directory in which ISR data should be stored,
-	and defaults to /var/www/html.
+	and defaults to /var/lib/openisr/server.
 
 http_path
 	The pathname part of the HTTP URL corresponding to the content root.
-	The default is the empty string, meaning that the content root is also
-	the web server's document root.
+	The default is /isr.  Setting this value to the empty string causes
+	the content root to be the web server's document root.
 
 default_pass
 	The password assigned to user accounts created by isr_admin.
@@ -38,6 +38,19 @@ hostname
 	The hostname by which clients will refer to this server.  The
 	default is the fully-qualified domain name of your server, but
 	you may need to override this if autodetection fails.
+
+UPGRADING FROM 0.9.5 OR EARLIER
+-------------------------------
+
+The source distributions of OpenISR 0.9.5 and earlier used different default
+paths.  To preserve access to your existing parcels, you should add the
+following lines to /etc/openisr/locksrv.conf:
+
+	content_root = /var/www/html
+	http_path =
+
+If you installed the OpenISR 0.9.5 server from a .deb or .rpm package, this
+section does not apply to you.
 
 ADMINISTERING THE SERVER
 ------------------------
