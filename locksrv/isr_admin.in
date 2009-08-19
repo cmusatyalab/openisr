@@ -826,12 +826,9 @@ sub delparcel ($$) {
 sub getusage () {
     my $userid;
     my $locklog;
-    my $sessionlog;
     my $logentry;
     my $logdate;
     my $logstatus;
-    my $laststr;
-    my $lastlog;
     my $msg;
     
     my @isrusers = ();
@@ -854,7 +851,6 @@ sub getusage () {
 	@parcels = sort grep(!/^\./, readdir(ISRDIR));
 	foreach $parcel (@parcels) {
 	    $locklog = "$config{content_root}/$userid/$parcel/lockholder.log";
-	    $sessionlog = "$config{content_root}/$userid/$parcel/session.log";
 	    
 	    # Extract the date of the last release or acquire of this parcel
 	    ($logdate, $logstatus) = ("Never", "");
@@ -865,21 +861,8 @@ sub getusage () {
 		    if $logentry;
 	    }
 	    
-	    # Extract the date of the last activity of any kind on this parcel
-	    if (-e $sessionlog) {
-		$lastlog = `egrep 'Running\ [^ ]+\$' $sessionlog | tail -n 1`;
-		chomp($lastlog);
-		if ($lastlog =~ /^(([^ ]+ ){3}[^ ]+) [0-9]+ (CLIENT: )?Running ([a-zA-Z]+)$/) {
-		    $laststr = "$4 $1";
-		} else {
-		    $laststr = "Unknown";
-		}
-	    } else {
-		$laststr = "Never";
-	    }
-	    
 	    # Now print the message
-	    $msg = "$userid/$parcel $logdate [$laststr]\n";
+	    $msg = "$userid/$parcel $logdate\n";
 	    if ($logstatus eq "released") {
 		print GREEN, $msg, RESET;
 	    } elsif ($logstatus eq "acquired") {
