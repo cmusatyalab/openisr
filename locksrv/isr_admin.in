@@ -862,7 +862,7 @@ sub getusage () {
 	    }
 	    
 	    # Now print the message
-	    $msg = "$userid/$parcel $logdate\n";
+	    $msg = sprintf("%-25s $logdate\n", "$userid/$parcel");
 	    if ($logstatus eq "released") {
 		print GREEN, $msg, RESET;
 	    } elsif ($logstatus eq "acquired") {
