@@ -11,8 +11,8 @@ The server software does not include any persistent daemons, so there is
 nothing to launch.  ISR clients interact with the server by fetching data
 from it via HTTP and by running commands on it via SSH.
 
-CONFIGURING THE SERVER
-----------------------
+CONFIGURING THE ISR SERVER
+--------------------------
 
 The server reads settings from /etc/openisr/locksrv.conf.  Settings
 are key-value pairs of the form:
@@ -39,6 +39,39 @@ hostname
 	default is the fully-qualified domain name of your server, but
 	you may need to override this if autodetection fails.
 
+CONFIGURING THE WEB SERVER
+--------------------------
+
+Your web server must be configured to map http_path to the content_root.
+For example, to configure the Apache web server to map the default http_path
+(/isr) to the default content_root (/var/lib/openisr/server), use the
+following directive:
+
+	Alias /isr /var/lib/openisr/server
+
+In addition, it is recommended that you configure your web server to:
+
+      - Follow symbolic links.  This is required for the proper operation
+	of the server.
+
+      - Disable directory indexes.  By default, most web servers allow
+	browsing the contents of any directory which does not have an
+	"index.html" page; therefore, unless this feature is disabled,
+	anyone (including search engines) can see what users and parcels
+	exist on your server.
+
+      - Always return files with the application/octet-stream MIME type.
+	This prevents the web server from misrecognizing individual
+	encrypted disk chunks as other types of data.
+
+If you are using Apache, you can accomplish these things using the following
+directives (assuming your content_root is /var/lib/openisr/server):
+
+	<Directory /var/lib/openisr/server>
+		Options -Indexes FollowSymLinks
+		ForceType application/octet-stream
+	</Directory>
+
 UPGRADING FROM 0.9.5 OR EARLIER
 -------------------------------
 
@@ -63,29 +96,4 @@ An ISR account on the server is just a regular user account with some extra
 configuration, which is performed automatically when the account is created
 with "isr_admin adduser".
 
-SERVER SECURITY
----------------
-
 Keep in mind that ISR users have shell access to the server.
-
-You should disable directory indexes in your web server configuration.  By
-default, most web servers allow browsing the contents of any directory which
-does not have an "index.html" page; therefore, unless this feature is disabled,
-anyone (including search engines) can see what users and parcels exist on your
-server.  (The data is stored encrypted, so the parcels are not compromised by
-leaving this feature enabled, but it is an information disclosure.)
-
-To disable directory indexes in Apache, find the stanza in your Apache
-configuration which looks like this:
-
-<Directory /var/www/html>
-	...
-</Directory>
-
-where "/var/www/html" is the path to your web server's content root.  If the
-stanza contains an Options line, add "-Indexes" to the list of options;
-otherwise, add the following line to the stanza:
-
-	Options -Indexes
-
-Then restart Apache.
