@@ -1,3 +1,33 @@
+====== 0.9.6 (2009-08-21)
+
+------ General changes
+
+- Add dependencies on libgmp and libtasn1
+- Add build dependency on libtasn1's asn1Parser utility
+- Fix miscompilation on Fedora 11 AMD64
+
+------ Client changes
+
+- Add support for kernel 2.6.30
+- Work around udev bug leading to resume failures on Fedora 11/Ubuntu 9.04
+- No longer upload session log to the server on checkin/sync
+- Properly enable the initscript during postinstall on Fedora systems
+- Run the initscript in the standard runlevels on Debian-derived systems
+- Rename system config files from "openisr" to "openisr-client"
+- Many cleanups
+
+------ VMM driver changes
+
+- virtualbox: Support VirtualBox 2.2 and 3.0
+- virtualbox: Fix DeprecationWarning messages with Python 2.6
+
+------ Server changes
+
+- Add http_path config option giving path to content root in URL space
+- Change default content_root and http_path (see README.server)
+- README.server: Add additional information on web server configuration
+- isr_admin: Simplify getusage output
+
 ====== 0.9.5 (2009-03-20)
 
 ------ Client changes
