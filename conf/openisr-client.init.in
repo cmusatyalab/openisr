@@ -16,7 +16,7 @@ LIBDIR=!!LIBDIR!!
 SBINDIR=!!SBINDIR!!
 SCRIPTNAME=/etc/init.d/openisr-client
 SUBSYSDIR=/var/lock/subsys
-SUBSYSLOCK=$SUBSYSDIR/openisr-client
+SUBSYSLOCK=/var/lock/subsys/openisr-client
 
 # Don't run if the package is no longer installed
 [ -d $LIBDIR ] || exit 0
