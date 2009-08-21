@@ -267,7 +267,6 @@ gboolean query_v(struct query **new_qry, struct db *db, const char *query,
 	struct param *param;
 	sqlite3_stmt *stmt;
 	GList *cur;
-	va_list ap;
 
 	if (new_qry != NULL)
 		*new_qry=NULL;
