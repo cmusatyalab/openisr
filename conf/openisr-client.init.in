@@ -15,6 +15,8 @@ PATH=/sbin:/usr/sbin:/bin:/usr/bin
 LIBDIR=!!LIBDIR!!
 SBINDIR=!!SBINDIR!!
 SCRIPTNAME=/etc/init.d/openisr-client
+SUBSYSDIR=/var/lock/subsys
+SUBSYSLOCK=$SUBSYSDIR/openisr-client
 
 # Don't run if the package is no longer installed
 [ -d $LIBDIR ] || exit 0
@@ -104,6 +106,7 @@ do_start() {
 	probe_module loop insert
 	[ "$arch" != "none" ] && probe_module "aes-$arch" insert
 	[ "$arch" != "none" ] && probe_module "sha1-$arch" insert
+	[ -d $SUBSYSDIR ] && touch $SUBSYSLOCK
 	echo "."
 	return 0
 }
@@ -117,6 +120,7 @@ do_stop() {
 		probe_module loop remove
 		[ "$arch" != "none" ] && probe_module "aes-$arch" remove
 		[ "$arch" != "none" ] && probe_module "sha1-$arch" remove
+		rm -f $SUBSYSLOCK
 	else
 		ret=1
 	fi
