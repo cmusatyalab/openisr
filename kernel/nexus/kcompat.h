@@ -43,8 +43,11 @@
 /***** Linked lists **********************************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
+/* The RHEL 2.6.18 kernel already has this. */
+#ifndef list_first_entry
 #define list_first_entry(head, type, field) \
 			list_entry((head)->next, type, field)
+#endif
 #endif
 
 /***** Task struct ***********************************************************/
