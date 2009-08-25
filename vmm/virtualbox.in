@@ -72,11 +72,19 @@ class VboxCompat:
 					vbox.version))
 
 	def create_machine(self, vmdir, name, uuid):
-		'''Create a machine and return it.'''
+		'''Create a machine, configure it to disable VT support, and
+		return it.'''
 		if self.vbox_ver < (2,1):
-			return vbox.createMachine(vmdir, name, uuid)
+			vm = vbox.createMachine(vmdir, name, uuid)
 		else:
-			return vbox.createMachine(name, 'Other', vmdir, uuid)
+			vm = vbox.createMachine(name, 'Other', vmdir, uuid)
+
+		if self.vbox_ver < (3,0,2):
+			vm.HWVirtExEnabled = ifaces.TSBool.False
+		else:
+			vm.HWVirtExEnabled = False
+
+		return vm
 
 	def register_disk(self, path):
 		'''Register the disk at the specified path and return it.'''
@@ -322,7 +330,6 @@ def create_machine():
 	vm = compat.create_machine(vmm.CFGDIR, vmname, vmm.UUID)
 	vm.memorySize = vmm.MEM
 	vm.VRAMSize = 16
-	vm.HWVirtExEnabled = ifaces.TSBool.False
 	vm.snapshotFolder = '.'
 	vm.audioAdapter.enabled = True
 	vm.audioAdapter.audioDriver = ifaces.AudioDriverType.ALSA
