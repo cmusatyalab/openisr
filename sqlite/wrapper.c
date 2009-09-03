@@ -745,68 +745,42 @@ again:
 	}
 }
 
-static gchar **g_list_to_strv(GList *strings)
+gchar *sql_head(struct db *db, const char *sql, const char **sql_tail)
 {
-	GList *cur;
-	unsigned n;
-	unsigned count;
-	gchar **ret;
-
-	count = g_list_length(strings);
-	ret = g_new(gchar *, count + 1);
-	ret[count] = NULL;
-	for (cur = strings, n = 0; n < count; cur = cur->next, n++)
-		ret[n] = cur->data;
-	return ret;
-}
-
-gchar **sql_split(struct db *db, const char *sql)
-{
-	const char *query;
 	const char *tail;
-	gchar *cur;
+	gchar *ret;
 	unsigned len;
 	sqlite3_stmt *stmt;
-	GList *stmts = NULL;
-	gchar **ret = NULL;
 
-	db_get(db);
-	for (query = sql; *query; ) {
-		if (sqlite3_prepare_v2(db->conn, query, -1, &stmt, &tail)) {
-			g_message("Couldn't parse SQL statement: %s",
-						sqlite3_errmsg(db->conn));
-			goto out;
-		}
-		sqlite3_finalize(stmt);
-		len = tail - query;
-		cur = g_malloc(len + 1);
-		cur[len] = 0;
-		memcpy(cur, query, len);
-		query = tail;
-		stmts = g_list_append(stmts, cur);
+	if (sqlite3_prepare_v2(db->conn, sql, -1, &stmt, &tail)) {
+		g_message("Couldn't parse SQL statement: %s",
+					sqlite3_errmsg(db->conn));
+		if (sql_tail != NULL)
+			*sql_tail = sql;
+		return NULL;
 	}
-	ret = g_list_to_strv(stmts);
-out:
-	g_list_free(stmts);
-	db_put(db);
+	sqlite3_finalize(stmt);
+	len = tail - sql;
+	ret = g_malloc(len + 1);
+	ret[len] = 0;
+	memcpy(ret, sql, len);
+	if (sql_tail != NULL)
+		*sql_tail = tail;
 	return ret;
 }
 
 int query_parameter_count(struct db *db, const char *sql)
 {
 	sqlite3_stmt *stmt;
-	int ret = -1;
+	int ret;
 
-	db_get(db);
 	if (sqlite3_prepare_v2(db->conn, sql, -1, &stmt, NULL)) {
 		g_message("Couldn't parse SQL statement: %s",
 					sqlite3_errmsg(db->conn));
-		goto out;
+		return -1;
 	}
 	ret = sqlite3_bind_parameter_count(stmt);
 	sqlite3_finalize(stmt);
-out:
-	db_put(db);
 	return ret;
 }
 

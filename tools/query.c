@@ -242,41 +242,34 @@ static int get_changes(struct query *qry)
 	return count;
 }
 
-static ret_t make_queries(gchar **queries, int param_count[])
+static ret_t make_query(gchar *sql, int initial_param, int n_params)
 {
-	int query_count = g_strv_length(queries);
-	int cur_param;
 	struct query *qry;
-	int i;
 	ret_t ret;
 	int ctr;
 	int changes;
 
-	for (i = 0, cur_param = 0; i < query_count;
-				cur_param += param_count[i++]) {
-		for (ctr = loop_min, changes = 0; ctr <= loop_max; ctr++) {
-			ret = init_query(&qry, queries[i], ctr, cur_param,
-						param_count[i]);
-			if (ret)
-				return ret;
+	for (ctr = loop_min, changes = 0; ctr <= loop_max; ctr++) {
+		ret = init_query(&qry, sql, ctr, initial_param, n_params);
+		if (ret)
+			return ret;
 
-			changes += get_changes(qry);
-			if (query_has_row(db) && ctr == loop_min)
-				handle_col_names(qry);
-			while (query_has_row(db))
-				handle_row(qry);
+		changes += get_changes(qry);
+		if (query_has_row(db) && ctr == loop_min)
+			handle_col_names(qry);
+		while (query_has_row(db))
+			handle_row(qry);
 
-			query_free(qry);
-			if (query_busy(db)) {
-				return FAIL_TEMP;
-			} else if (!query_ok(db)) {
-				sql_log_err(db, "Executing query");
-				return FAIL;
-			}
+		query_free(qry);
+		if (query_busy(db)) {
+			return FAIL_TEMP;
+		} else if (!query_ok(db)) {
+			sql_log_err(db, "Executing query");
+			return FAIL;
 		}
-		if (changes)
-			fprintf(tmp, "%d rows updated\n", changes);
 	}
+	if (changes)
+		fprintf(tmp, "%d rows updated\n", changes);
 	return OK;
 }
 
@@ -294,58 +287,58 @@ static void cat_tmp(void)
 
 static ret_t do_transaction(char *sql)
 {
-	gchar **queries;
-	int query_count;
-	int *param_count;
-	int total_params = 0;
-	int i;
+	gchar *query;
+	const char *tail;
+	int start_param;
+	int params;
 	ret_t qres;
-
-	queries = sql_split(db, sql);
-	if (queries == NULL)
-		return FAIL;
-	query_count = g_strv_length(queries);
-	param_count = g_new(int, query_count);
-	for (i = 0; i < query_count; i++) {
-		param_count[i] = query_parameter_count(db, queries[i]);
-		total_params += param_count[i];
-	}
-	if (total_params > num_params) {
-		fprintf(stderr, "Not enough parameters for query\n");
-		goto fail;
-	} else if (total_params < num_params) {
-		fprintf(stderr, "Warning: %d params provided but only %d "
-					"used\n", num_params, total_params);
-	}
 
 again:
 	if (no_transaction) {
 		if (!begin_bare(db))
-			goto fail;
+			return FAIL;
 	} else {
 		if (!begin(db))
+			return FAIL;
+	}
+	for (start_param = 0, tail = sql; *tail; start_param += params) {
+		query = sql_head(db, tail, &tail);
+		if (query == NULL)
+			goto fail;
+		params = query_parameter_count(db, query);
+		if (start_param + params > num_params) {
+			fprintf(stderr, "Not enough parameters for query\n");
+			g_free(query);
+			goto fail;
+		}
+		qres = make_query(query, start_param, params);
+		g_free(query);
+		if (qres == FAIL_TEMP)
+			goto retry;
+		else if (qres == FAIL)
 			goto fail;
 	}
-	qres=make_queries(queries, param_count);
-	if (qres != OK || !commit(db)) {
-		if (!rollback(db) || qres != FAIL_TEMP)
-			goto fail;
-		fflush(tmp);
-		rewind(tmp);
-		if (ftruncate(fileno(tmp), 0))
-			goto fail;
-		query_backoff(db);
-		goto again;
-	}
+	if (!commit(db))
+		goto retry;
 
+	if (start_param < num_params)
+		fprintf(stderr, "Warning: %d params provided but only %d "
+					"used\n", num_params, start_param);
 	cat_tmp();
-	g_free(param_count);
-	g_strfreev(queries);
 	return OK;
 
+retry:
+	if (!rollback(db))
+		return FAIL;
+	fflush(tmp);
+	rewind(tmp);
+	if (ftruncate(fileno(tmp), 0))
+		return FAIL;
+	query_backoff(db);
+	goto again;
+
 fail:
-	g_free(param_count);
-	g_strfreev(queries);
+	rollback(db);
 	return FAIL;
 }
 

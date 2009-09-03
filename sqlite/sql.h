@@ -237,13 +237,14 @@ gchar *query_column_types(struct query *qry);
 
 /***** Utility functions *****/
 
-/* Split @sql into a set of individual SQL queries and return them.  Must be
-   performed outside a transaction.  The returned array should be freed with
-   g_strfreev().  If @sql fails to parse, returns NULL. */
-gchar **sql_split(struct db *db, const char *sql);
+/* Return a copy of the first SQL statement in @sql.  If @sql_tail is non-NULL,
+   return a pointer to the remainder of @sql in *sql_tail.  Must be performed
+   inside a transaction.  The returned string should be freed with g_free().
+   If the first statement in @sql fails to parse, returns NULL. */
+gchar *sql_head(struct db *db, const char *sql, const char **sql_tail);
 
 /* Return the number of positional parameters in the given SQL statement.
-   Must be performed outside a transaction.  If @sql fails to parse, returns
+   Must be performed inside a transaction.  If @sql fails to parse, returns
    -1.  If @sql is a compound statement, only the first statement is
    considered. */
 int query_parameter_count(struct db *db, const char *sql);
