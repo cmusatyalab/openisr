@@ -268,8 +268,8 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 	io->dev=dev;
 	io->orig_req=req;
 	io->flags=0;
-	io->first_cid=chunk_of(dev, req->sector);
-	io->last_cid=chunk_of(dev, req->sector + req->nr_sectors - 1);
+	io->first_cid=chunk_of(dev, blk_rq_pos(req));
+	io->last_cid=chunk_of(dev, blk_rq_pos(req) + blk_rq_sectors(req) - 1);
 	io->prio=req->ioprio;
 	if (rq_data_dir(req))
 		io->flags |= IO_WRITE;
@@ -279,14 +279,14 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 				req->nr_phys_segments, nsegs);
 	
 	bytes=0;
-	remaining=(unsigned)req->nr_sectors * 512;
+	remaining=blk_rq_bytes(req);
 	for (i=0; i<io_chunks(io); i++) {
 		chunk=&io->chunks[i];
 		chunk->parent=io;
 		chunk->cid=io->first_cid + i;
 		chunk->orig_offset=bytes;
 		if (i == 0)
-			chunk->offset=chunk_offset(dev, req->sector);
+			chunk->offset=chunk_offset(dev, blk_rq_pos(req));
 		else
 			chunk->offset=0;
 		chunk->len=min(remaining, chunk_remaining(dev, chunk->offset));
@@ -299,9 +299,9 @@ static int nexus_setup_io(struct nexus_dev *dev, struct request *req)
 		bytes += chunk->len;
 	}
 	
-	debug(DBG_REQUEST, "setup_io called: %lu sectors over " SECTOR_FORMAT
+	debug(DBG_REQUEST, "setup_io called: %u sectors over " SECTOR_FORMAT
 				" chunks at chunk " SECTOR_FORMAT,
-				req->nr_sectors,
+				blk_rq_sectors(req),
 				io->last_cid - io->first_cid + 1,
 				io->first_cid);
 	
@@ -430,7 +430,7 @@ void nexus_run_requests(struct list_head *entry)
 				BUG();
 			}
 		} else {
-			nexus_end_request(req, -EIO, req->hard_nr_sectors << 9);
+			nexus_end_request(req, -EIO, blk_rq_bytes(req));
 		}
 		cond_resched();
 		spin_lock_irq(&dev->requests_lock);
@@ -461,13 +461,12 @@ void nexus_request(struct request_queue *q)
 	struct request *req;
 	int need_queue=0;
 	
-	while ((req = elv_next_request(q)) != NULL) {
-		blkdev_dequeue_request(req);
+	while ((req = blk_fetch_request(q)) != NULL) {
 		if (!blk_fs_request(req)) {
 			debug(DBG_REQUEST, "Skipping non-fs request");
-			__blk_end_request(req, -EIO, req->data_len);
+			__blk_end_request(req, -EIO, blk_rq_bytes(req));
 		} else if (dev_is_shutdown(dev)) {
-			__blk_end_request(req, -EIO, req->hard_nr_sectors << 9);
+			__blk_end_request(req, -EIO, blk_rq_bytes(req));
 		} else {
 			/* We don't use _bh or _irq variants since irqs are
 			   already disabled */

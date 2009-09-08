@@ -169,6 +169,17 @@ static inline int __blk_end_request(struct request *req, int error,
 #endif
 
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
+static inline unsigned blk_rq_bytes(const struct request *req)
+{
+	if (blk_fs_request(req))
+		return req->hard_nr_sectors << 9;
+	else
+		return req->data_len;
+}
+#endif
+
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28)
 #define block_open_method(name, handle) \
 	int name(struct inode *handle, struct file *unused)
@@ -194,6 +205,32 @@ static inline struct block_device *open_bdev_exclusive(const char *path,
 	return open_bdev_excl(path, flags, holder);
 }
 #define close_bdev_exclusive(bdev, mode) close_bdev_excl(bdev)
+#endif
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31)
+static inline struct request *blk_fetch_request(struct request_queue *q)
+{
+	struct request *req;
+
+	req = elv_next_request(q);
+	if (req != NULL)
+		blkdev_dequeue_request(req);
+	return req;
+}
+#endif
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31)
+#define blk_rq_pos(req) ((req)->sector)
+#define blk_rq_sectors(req) (blk_rq_bytes(req) >> 9)
+#endif
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31)
+#ifdef CONFIG_LBD
+#define CONFIG_LBDAF
+#endif
 #endif
 
 /***** Scatterlists **********************************************************/

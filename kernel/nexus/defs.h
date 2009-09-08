@@ -310,7 +310,7 @@ static inline void mutex_lock_thread(struct mutex *lock)
 		BUG();
 }
 
-#ifdef CONFIG_LBD
+#ifdef CONFIG_LBDAF
 #define SECTOR_FORMAT "%llu"
 #else
 #define SECTOR_FORMAT "%lu"
