@@ -811,7 +811,7 @@ bad_blkdev:
 bad_thread:
 	chunkdata_shutdown();
 bad_chunkdata:
-	class_unregister(class);
+	class_destroy(class);
 bad_class:
 	request_shutdown();
 bad_request:
@@ -835,7 +835,7 @@ static void __exit nexus_shutdown(void)
 	chunkdata_shutdown();
 	
 	/* Automatically unregisters attributes */
-	class_unregister(class);
+	class_destroy(class);
 	
 	request_shutdown();
 }
