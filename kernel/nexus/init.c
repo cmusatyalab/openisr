@@ -412,12 +412,10 @@ static void nexus_dev_dtr(kdevice_t *kdevice)
 	BUG_ON(!dev_is_shutdown(dev));
 	BUG_ON(!list_empty(&dev->requests));
 	if (dev->gendisk) {
-		if (dev->gendisk->flags & GENHD_FL_UP) {
+		/* The disk may have been created but not yet added */
+		if (dev->gendisk->flags & GENHD_FL_UP)
 			del_gendisk(dev->gendisk);
-		} else {
-			/* Disk was created but not yet added */
-			put_disk(dev->gendisk);
-		}
+		put_disk(dev->gendisk);
 	}
 	chunkdata_free_table(dev);
 	thread_unregister(dev);
