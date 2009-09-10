@@ -6,7 +6,7 @@ REQUIREMENTS
 ------------
 
 To run:
-- Linux kernel (versions 2.6.18 through 2.6.30 supported)
+- Linux kernel (versions 2.6.18 through 2.6.31 supported)
 - Development headers for your Linux kernel version
 - libcurl >= 7.12.3 and curl command-line utility
 - zlib
