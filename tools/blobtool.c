@@ -42,7 +42,6 @@
 #endif
 
 #define BUFSZ 32768
-#define RNDFILE "/dev/urandom"
 #define TTYFILE "/dev/tty"
 #define SALT_MAGIC "Salted__"
 #define SALT_LEN 8
@@ -352,7 +351,7 @@ static void set_cipher_key_direct(struct isrcry_cipher_ctx *ctx)
 static void init_cipher(struct isrcry_cipher_ctx *ctx, const char **in,
 			unsigned *inlen, GString *out)
 {
-	FILE *fp;
+	struct isrcry_random_ctx *rand;
 	char salt[SALT_LEN];
 
 	get_keyroot();
@@ -361,12 +360,12 @@ static void init_cipher(struct isrcry_cipher_ctx *ctx, const char **in,
 		return;
 	}
 	if (encode) {
+		rand = isrcry_random_alloc();
+		if (rand == NULL)
+			die("Couldn't allocate random context");
+		isrcry_random_bytes(rand, salt, sizeof(salt));
+		isrcry_random_free(rand);
 		g_string_append(out, SALT_MAGIC);
-		fp = fopen(RNDFILE, "r");
-		if (fp == NULL)
-			die("Couldn't open " RNDFILE);
-		while (fread(salt, 1, sizeof(salt), fp) < sizeof(salt));
-		fclose(fp);
 		g_string_append_len(out, salt, sizeof(salt));
 		set_cipher_key(ctx, salt);
 	} else {
