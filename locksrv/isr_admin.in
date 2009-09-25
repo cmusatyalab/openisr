@@ -26,6 +26,7 @@ use File::stat;
 use File::Basename;
 use File::Temp qw/tempdir/;
 use MIME::Base64 qw/encode_base64/;
+use POSIX qw/ceil/;
 use Socket;
 use Sys::Hostname;
 use Term::ANSIColor qw(:constants);
@@ -672,7 +673,7 @@ sub makeparcel ($$$$$) {
 	$shift = 20;
     }
     # Avoid integer overflow on 32-bit systems
-    $numchunks = ($1 << $shift) / ($chunksize >> 10);
+    $numchunks = ceil(($1 << $shift) / ($chunksize >> 10));
     $numdirs = int(($numchunks + $chunksperdir - 1) / $chunksperdir);
     $maxkb = ($chunksize >> 10) * $numchunks * 2;
     
