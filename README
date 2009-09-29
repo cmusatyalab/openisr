@@ -49,7 +49,7 @@ INSTALLATION SUMMARY
 --------------------
 
 ./autogen.sh      # Only if building from the Git repository
-./configure --sysconfdir=/etc
+./configure --sysconfdir=/etc --localstatedir=/var
 make
 make install      # As root
 make postinst     # As root

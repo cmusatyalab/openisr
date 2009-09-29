@@ -22,6 +22,7 @@ use constant {
     LIBDIR => "!!LIBDIR!!",
     SHAREDIR => "!!SHAREDIR!!",
     SYSCONFDIR => "!!SYSCONFDIR!!",
+    STATEDIR => "!!STATEDIR!!",
     RCS_REVISION => "!!REVISION!!",
 };
 use lib SHAREDIR;

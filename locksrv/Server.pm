@@ -148,7 +148,7 @@ sub get_config {
     my $conffile = main::SYSCONFDIR . "/locksrv.conf";
     my %conf = (
 	# Absolute path that points to the top level content directory
-	content_root => "/var/lib/openisr/server",
+	content_root => main::STATEDIR . "/server",
 	
 	# Pathname part of HTTP base URL
 	http_path => "/isr",

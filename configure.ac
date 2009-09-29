@@ -220,6 +220,7 @@ fi
 
 AC_SUBST([pkgsysconfdir], [\$\(sysconfdir\)/$PACKAGE])
 AC_SUBST([initexecdir], [\$\(sysconfdir\)/init.d])
+AC_SUBST([pkgstatedir], [\$\(localstatedir\)/lib/$PACKAGE])
 AC_CONFIG_FILES([Makefile
                  conf/Makefile
                  client/Makefile

@@ -10,6 +10,7 @@ $(GEN): %: %.in Makefile $(REVISION_DEPENDS)
 				-e "s=!!BINDIR!!=$(bindir)=g" \
 				-e "s=!!SBINDIR!!=$(sbindir)=g" \
 				-e "s=!!INITDIR!!=$(initexecdir)=g" \
+				-e "s=!!STATEDIR!!=$(pkgstatedir)=g" \
 				-e "s=!!PERLPATH!!=$(PERL)=g" \
 				-e "s=!!PYTHONPATH!!=$(PYTHON)=g" \
 				-e "s=!!ISRGROUP!!=$(ISRGROUP)=g" \
