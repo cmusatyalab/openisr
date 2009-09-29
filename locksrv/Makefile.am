@@ -1,5 +1,9 @@
 SRVCMDS = catlog checkparcel commit getconfig lock ls motd rollback stat
 SRVSCRIPTS = $(patsubst %, srv_%.pm, $(SRVCMDS))
+serverstatedir = $(pkgstatedir)/server
+
+# Dummy variable to cause directory to be created
+dist_serverstate_DATA = 
 
 bin_SCRIPTS = isr_runserv
 sbin_SCRIPTS = isr_admin
