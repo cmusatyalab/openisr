@@ -3,7 +3,8 @@ INSTALLING THE SERVER
 
 Configure your server system with a web server and SSH daemon.  Then:
 
-./configure --disable-client --enable-server --sysconfdir=/etc
+./configure --disable-client --enable-server --sysconfdir=/etc \
+	--localstatedir=/var
 make
 make install
 
