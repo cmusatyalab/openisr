@@ -21,12 +21,32 @@
 
 #include <linux/kernel.h>
 #include <linux/string.h>
-#include <linux/crypto.h>
 
 #ifdef CONFIG_X86_64
 #define DRIVER_NAME "sha1-x86_64"
 #else
 #define DRIVER_NAME "sha1-i586"
+#endif
+
+#include <linux/version.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29)
+#include <linux/crypto.h>
+#define ALG_TYPE CRYPTO_ALG_TYPE_DIGEST
+#define REGISTER_ALG(alg) crypto_register_alg(alg)
+#define UNREGISTER_ALG(alg) crypto_unregister_alg(alg)
+#define CONTEXT_TYPE struct crypto_tfm
+#define PRIVATE_DATA(arg) crypto_tfm_ctx(arg)
+#define METHOD_RETURN_TYPE void
+#define METHOD_RETURN_VALUE
+#else
+#include <crypto/internal/hash.h>
+#define ALG_TYPE CRYPTO_ALG_TYPE_SHASH
+#define REGISTER_ALG(alg) crypto_register_shash(alg)
+#define UNREGISTER_ALG(alg) crypto_unregister_shash(alg)
+#define CONTEXT_TYPE struct shash_desc
+#define PRIVATE_DATA(arg) shash_desc_ctx(arg)
+#define METHOD_RETURN_TYPE int
+#define METHOD_RETURN_VALUE 0
 #endif
 
 #define SHA1_DIGEST_SIZE 20
@@ -50,9 +70,9 @@ static inline void write_u32_be(void *ptr, u32 i)
 	*p=cpu_to_be32(i);
 }
 
-static void sha1_init(struct crypto_tfm *tfm)
+static METHOD_RETURN_TYPE sha1_init(CONTEXT_TYPE *data)
 {
-	struct sha1_ctx *ctx = crypto_tfm_ctx(tfm);
+	struct sha1_ctx *ctx = PRIVATE_DATA(data);
 	
 	/* Set the h-vars to their initial values */
 	ctx->digest[0] = 0x67452301L;
@@ -66,19 +86,22 @@ static void sha1_init(struct crypto_tfm *tfm)
 	
 	/* Initialize buffer */
 	ctx->index = 0;
+	
+	return METHOD_RETURN_VALUE;
 }
 
-static void sha1_update(struct crypto_tfm *tfm, const u8 *buffer,
+static METHOD_RETURN_TYPE sha1_update(CONTEXT_TYPE *data, const u8 *buffer,
 			unsigned length)
 {
-	struct sha1_ctx *ctx = crypto_tfm_ctx(tfm);
+	struct sha1_ctx *ctx = PRIVATE_DATA(data);
+
 	if (ctx->index) {
 		/* Try to fill partial block */
 		unsigned left = SHA1_DATA_SIZE - ctx->index;
 		if (length < left) {
 			memcpy(ctx->block + ctx->index, buffer, length);
 			ctx->index += length;
-			return;	/* Finished */
+			return METHOD_RETURN_VALUE;	/* Finished */
 		} else {
 			memcpy(ctx->block + ctx->index, buffer, left);
 			sha1_compress(ctx->digest, ctx->block);
@@ -96,13 +119,15 @@ static void sha1_update(struct crypto_tfm *tfm, const u8 *buffer,
 	if ((ctx->index = length))
 		/* Buffer leftovers */
 		memcpy(ctx->block, buffer, length);
+
+	return METHOD_RETURN_VALUE;
 }
 
 /* Final wrapup - pad to SHA1_DATA_SIZE-byte boundary with the bit pattern
    1 0* (64-bit count of bits processed, MSB-first) */
-static void sha1_final(struct crypto_tfm *tfm, u8 *digest)
+static METHOD_RETURN_TYPE sha1_final(CONTEXT_TYPE *data, u8 *digest)
 {
-	struct sha1_ctx *ctx = crypto_tfm_ctx(tfm);
+	struct sha1_ctx *ctx = PRIVATE_DATA(data);
 	u64 bitcount;
 	unsigned i = ctx->index;
 	
@@ -137,16 +162,22 @@ static void sha1_final(struct crypto_tfm *tfm, u8 *digest)
 	
 	/* Wipe context */
 	memset(ctx, 0, sizeof(*ctx));
+
+	return METHOD_RETURN_VALUE;
 }
 
+#define CRYPTO_ALG_DATA							\
+	.cra_name	=	"sha1",					\
+	.cra_driver_name=	DRIVER_NAME,				\
+	.cra_flags	=	ALG_TYPE,				\
+	.cra_priority	=	200,					\
+	.cra_blocksize	=	SHA1_DATA_SIZE,				\
+	.cra_module	=	THIS_MODULE
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29)
 static struct crypto_alg alg = {
-	.cra_name	=	"sha1",
-	.cra_driver_name=	DRIVER_NAME,
-	.cra_priority	=	200,
-	.cra_flags	=	CRYPTO_ALG_TYPE_DIGEST,
-	.cra_blocksize	=	SHA1_DATA_SIZE,
+	CRYPTO_ALG_DATA,
 	.cra_ctxsize	=	sizeof(struct sha1_ctx),
-	.cra_module	=	THIS_MODULE,
 	.cra_alignmask	=	3,
 	.cra_list	=	LIST_HEAD_INIT(alg.cra_list),
 	.cra_u		=	{ .digest = {
@@ -155,15 +186,25 @@ static struct crypto_alg alg = {
 	.dia_update	=	sha1_update,
 	.dia_final	=	sha1_final } }
 };
+#else
+static struct shash_alg alg = {
+	.init		=	sha1_init,
+	.update		=	sha1_update,
+	.final		=	sha1_final,
+	.digestsize	=	SHA1_DIGEST_SIZE,
+	.descsize	=	sizeof(struct sha1_ctx),
+	.base		=	{CRYPTO_ALG_DATA}
+};
+#endif
 
 static int __init init(void)
 {
-	return crypto_register_alg(&alg);
+	return REGISTER_ALG(&alg);
 }
 
 static void __exit fini(void)
 {
-	crypto_unregister_alg(&alg);
+	UNREGISTER_ALG(&alg);
 }
 
 module_init(init);
