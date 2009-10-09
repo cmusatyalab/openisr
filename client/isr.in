@@ -175,6 +175,7 @@ my $verbose = 1;     # Verbosity level; by default, we print a few messages
 my $bwlimit;         # Bandwidth limit (KBytes/sec) in ci and sync
 my $forceflag = 0;   # Force release of lock in cleanclient()
 my $do_splice = 0;   # checkp: Restore invalid chunks from prev-keyring
+my $do_dirtometer = 0; # Run dirtometer on resume
 my $vmm;             # Override default VMM driver
 
 # General global state, mostly about the parcel we are working with
@@ -337,6 +338,7 @@ $result = GetOptions(
 		     "b|bwlimit=i"    => \$bwlimit,
 		     "c|checkstate"   => \$checkstate,
 		     "d|disconnected" => \$disconnected,
+		     "D|dirtometer"   => \$do_dirtometer,
 		     "e|remote"       => \$remote,
 		     "f|force"        => \$forceflag,
 		     "F|no-fullscreen"=> sub { $fullscreen = 0 },
@@ -877,7 +879,7 @@ sub run () {
     };
     
     # Run dirtometer, if requested
-    if ($syscfg{'dirtometer'}) {
+    if ($syscfg{'dirtometer'} or $do_dirtometer) {
 	print "Launching dirtometer...\n"
 	    if $verbose;
 	$dirtometer_pid = fork();
@@ -3005,7 +3007,7 @@ sub usage ($) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR server (once per X session only)\n";
 	print "  ls         List info about your parcels (parcel, -lL optional)\n";
- 	print "  resume     Checkout (if necessary) and run a parcel (-cdFmr optional)\n";
+ 	print "  resume     Checkout (if necessary) and run a parcel (-cdDFmr optional)\n";
 	print "  checkin    Sync parcel to server and check it in (-b optional)\n";
 	print "  passwd     Change your ISR password on the server\n";
 	print "  help       Print help message\n";
@@ -3029,6 +3031,7 @@ sub usage ($) {
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [checkin, sync]\n";
     print "  -c,--checkstate    Do extra checks [checkout, resume, checkp, checkhoard]\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [checkout, resume]\n";
+    print "  -D,--dirtometer    Launch dirtometer visualization tool [resume]\n";
     print "  -e,--remote        Perform action on server rather than client [checkp]\n";
     print "  -f,--force         Release parcel lock even if we don't hold it [clean]\n";
     print "  -F,--no-fullscreen Start VMM in windowed mode [resume]\n";
