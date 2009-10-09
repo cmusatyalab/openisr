@@ -638,8 +638,12 @@ sub checkout () {
     
     # If the parcel is already checked out on this machine, return immediately
     if ($parceldir and -e $parceldir) {
-	print(GREEN, "Success: Parcel $userid/$parcel already checked out on this host. Ready to run.\n", RESET)
-	    if $verbose;
+	if ($version) {
+	    print(YELLOW, "Parcel $userid/$parcel already checked out, but --rollback specified.\n--rollback option ignored.\n", RESET);
+	} else {
+	    print(GREEN, "Success: Parcel $userid/$parcel already checked out on this host. Ready to run.\n", RESET)
+		if $verbose;
+	}
 	return;
     }
     
