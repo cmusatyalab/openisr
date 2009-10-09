@@ -139,6 +139,7 @@ sub need_not_parcel ();
 sub need_checked_out ();
 sub need_network ();
 sub need_remote_parcel ();
+sub need_remote_parcel_and_lock ();
 sub need_credentials ();
 sub fcntl_lock ($$$);
 sub acquire_lock ($$$);
@@ -484,7 +485,7 @@ elsif ($command eq "resume") {
     if (!$parceldir or !-e $parceldir or !$disconnected
 	        or !is_fully_hoarded()) {
     	need_network();
-	need_remote_parcel();
+	need_remote_parcel_and_lock();
     }
     $do_sync = 1;
     acquire_lock("checkout-$parcel", "Checkout", 0);
@@ -502,7 +503,7 @@ elsif ($command eq "checkin") {
     need_parcel();
     need_checked_out();
     need_network();
-    need_remote_parcel();
+    need_remote_parcel_and_lock();
     $do_sync = 1;
     acquire_lock("parcel-$uuid", "Parcel", 0);
     checkin();
@@ -511,7 +512,7 @@ elsif ($command eq "sync") {
     need_parcel();
     need_checked_out();
     need_network();
-    need_remote_parcel();
+    need_remote_parcel_and_lock();
     $do_sync = 1;
     acquire_lock("parcel-$uuid", "Parcel", 0);
     sync(0);
@@ -980,10 +981,6 @@ sub sync ($) {
 
     # Tidy up the cfg directory
     vmm_cleanup();
-
-    # Do an early check to make sure we still have the parcel lock
-    srun("lock", "-p $parcel -C $sessionid") == 0
-	or errexit("Parcel lock no longer held; aborting");
 
     if (-e $cleancache_file) {
 	print "Local cache is clean.  Skipping upload and commit.\n"
@@ -1602,9 +1599,22 @@ sub need_remote_parcel () {
 }
 
 #
+# Error out if the specified parcel does not exist, or if we do not hold
+# the parcel lock (perhaps because another client did "isr clean -f")
+#
+sub need_remote_parcel_and_lock () {
+    return unless srun("lock", "-p $parcel -C $sessionid",
+	    OUTFILE => "/dev/null", CHECK_AUTH => 1);
+    # Okay, we have a problem.  Now make the extra RPC to determine which
+    # problem it is.
+    need_remote_parcel();
+    errexit("Parcel lock no longer held on server; aborting.");
+}
+
+#
 # Error out if we are not authenticated to the ISR server.  This is normally
-# subsumed by need_remote_parcel() but is available separately for when
-# need_remote_parcel is not appropriate.
+# subsumed by need_remote_parcel()/need_remote_parcel_and_lock() but is
+# available separately for when those are not appropriate.
 #
 sub need_credentials () {
     # Reasonably close to a no-op, used for the CHECK_AUTH side-effect
