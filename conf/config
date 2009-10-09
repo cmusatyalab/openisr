@@ -15,10 +15,10 @@ userid =
 # To override the default command used to start a particular VMM, provide an
 # entry of the form "<vmm>.command = <command>".
 
-# Vulpes logging mask
+# Parcelkeeper logging mask
 logmask = info,error,stats,slow
 
-# Vulpes console logging mask
+# Parcelkeeper console logging mask
 console_logmask = error
 
 # How many seconds should elapse before we decide the client is unconnected
