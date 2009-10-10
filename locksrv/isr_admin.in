@@ -448,8 +448,8 @@ sub adduser ($) {
 	or errexit("Unable to chown .ssh ownership to $userid");
     system("ssh-keygen -C $userid -t rsa -f $sshdir/id_rsa -P ''") == 0
 	or errexit("Unable to generate ssh keys for $userid");
-    system("cp $sshdir/id_rsa.pub $sshdir/authorized_keys") == 0
-	or errexit("Unable to create authorized_keys file");
+    copy("$sshdir/id_rsa.pub", "$sshdir/authorized_keys")
+	or unix_errexit("Unable to create authorized_keys file");
     system("chown $userid:$userid $sshdir/id_rsa $sshdir/id_rsa.pub $sshdir/authorized_keys") == 0
 	or errexit("Unable to chown key files to $userid");
 
