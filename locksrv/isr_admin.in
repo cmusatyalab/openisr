@@ -53,6 +53,8 @@ sub deluser ($);
 sub init_parceldir ($$);
 sub finalize_parceldir ($$);
 sub gen_uuid ();
+sub parse_disk_size ($$);
+sub gen_chunks ($$$$$);
 sub copyparcel ($$$$);
 sub makeparcel ($$$$$);
 sub delparcel ($$);
@@ -553,6 +555,102 @@ sub gen_uuid () {
 }
 
 #
+# parse_disk_size - Parse a disk size parameter and return (numchunks, maxkb)
+#
+sub parse_disk_size ($$) {
+    my $chunksize = shift;
+    my $size = shift;
+
+    my $shift;
+    my $numchunks;
+    my $maxkb;
+
+    unless ($size =~ /^([0-9]+)([KMG])$/) {
+	errexit("Can't parse specified parcel size '$size'");
+    }
+    if ($2 eq "K") {
+	$shift = 0;
+    } elsif ($2 eq "M") {
+	$shift = 10;
+    } elsif ($2 eq "G") {
+	$shift = 20;
+    }
+    # Avoid integer overflow on 32-bit systems
+    $numchunks = ceil(($1 << $shift) / ($chunksize >> 10));
+    $maxkb = ($chunksize >> 10) * $numchunks * 2;
+    return ($numchunks, $maxkb);
+}
+
+#
+# gen_chunks - Populate a parcel with zeroed chunks
+#
+sub gen_chunks ($$$$$) {
+    my $parcelverdir = shift;
+    my $start = shift;
+    my $count = shift;
+    my $chunksize = shift;
+    my $chunksperdir = shift;
+
+    my $blobtool = LIBDIR . "/blobtool";
+    my $tmp1 = mktempfile();
+    my $tmp2 = mktempfile();
+    my $data;
+    my $key;
+    my $tag;
+    my $rh;
+    my $fd;
+    my $lastdir = "";
+    my $dir;
+    my $file;
+    my $i;
+
+    # Generate a single, zeroed chunk
+    open(ZL, "|-", "$blobtool -Zo $tmp1")
+        or errexit("Unable to generate zeroed chunk");
+    print ZL (pack("c", 0) x $chunksize);
+    close ZL
+        or errexit("Unable to generate zeroed chunk");
+    $key = `$blobtool -hi $tmp1`
+        or errexit("Unable to generate key");
+    chomp $key;
+    ($rh, $fd) = keyroot_pipe(substr($key, 0, 32));
+    system("$blobtool -ec -i $tmp1 -o $tmp2 -k $fd") == 0
+        or errexit("Unable to encrypt chunk");
+    $tag = `$blobtool -hi $tmp2`
+        or errexit("Unable to generate tag");
+    chomp $tag;
+    open(FD, $tmp2)
+        or errexit("Unable to read encrypted chunk");
+    read(FD, $data, $chunksize)
+        or errexit("Unable to read encrypted chunk data");
+    close(FD);
+    
+    # Generate the chunk tree
+    for ($i = $start; $i < $start + $count; $i++) {
+	$dir = "$parcelverdir/hdk/" . sprintf("%04d", int($i / $chunksperdir));
+	$file = "$dir/" . sprintf("%04d", $i % $chunksperdir);
+	if ($dir ne $lastdir and ! -d $dir) {
+	    mkdir($dir)
+		or errexit("Can't create $dir");
+	}
+	$lastdir = $dir;
+	open(FD, ">", $file)
+	    or errexit("Can't write $file");
+	print FD $data;
+	close(FD);
+    }
+    
+    # Populate the keyring
+    # zlib is compresstype 2
+    system(LIBDIR . "/query $parcelverdir/keyring " .
+	            "'INSERT INTO keys (chunk, tag, key, compression) " .
+		    "VALUES (?, ?, ?, 2)' -i -b $tag -b $key " .
+		    "-r " . $start . ":" . ($start + $count - 1) .
+		    " > /dev/null") == 0
+        or errexit("Couldn't populate keyring");
+}
+
+#
 # copyparcel - Create a new parcel based on an existing one
 #             
 sub copyparcel ($$$$) {
@@ -642,93 +740,29 @@ sub makeparcel ($$$$$) {
     my $keyroot;
     my $uuid;
     my $umask;
-    my $shift;
     my $numchunks;
-    my $numdirs;
     my $maxkb;
-    my $data;
-    my $key;
-    my $tag;
-    my $i;
-    my $j;
-    my $ifmt;
-    my $jfmt;
-    my $rh;
-    my $fd;
 
-    my $blobtool = LIBDIR . "/blobtool";
     my $chunksize = CHUNKSIZE;
     my $chunksperdir = CHUNKSPERDIR;
-    my $tmp1 = mktempfile();
-    my $tmp2 = mktempfile();
 
     # Calculate parcel size
-    unless ($size =~ /^([0-9]+)([KMG])$/) {
-	errexit("Can't parse specified parcel size '$size'");
-    }
-    if ($2 eq "K") {
-	$shift = 0;
-    } elsif ($2 eq "M") {
-	$shift = 10;
-    } elsif ($2 eq "G") {
-	$shift = 20;
-    }
-    # Avoid integer overflow on 32-bit systems
-    $numchunks = ceil(($1 << $shift) / ($chunksize >> 10));
-    $numdirs = int(($numchunks + $chunksperdir - 1) / $chunksperdir);
-    $maxkb = ($chunksize >> 10) * $numchunks * 2;
+    ($numchunks, $maxkb) = parse_disk_size($chunksize, $size);
     
     # Validate memory image size
     errexit("Invalid memory image size '$memsize'")
         unless $memsize > 0;
     
     # Create new content directory for this user and parcel
+    print "Initializing parcel...\n";
     ($parceldir, $parcelcfg) = init_parceldir($userid, $parcel);
     $parcelverdir = "$parceldir/000001";
-
-    # Generate a single, zeroed chunk
-    print "Generating chunk directories...\n";
-    open(ZL, "|-", "$blobtool -Zo $tmp1")
-        or errexit("Unable to generate zeroed chunk");
-    print ZL (pack("c", 0) x $chunksize);
-    close ZL
-        or errexit("Unable to generate zeroed chunk");
-    $key = `$blobtool -hi $tmp1`
-        or errexit("Unable to generate key");
-    chomp $key;
-    ($rh, $fd) = keyroot_pipe(substr($key, 0, 32));
-    system("$blobtool -ec -i $tmp1 -o $tmp2 -k $fd") == 0
-        or errexit("Unable to encrypt chunk");
-    $tag = `$blobtool -hi $tmp2`
-        or errexit("Unable to generate tag");
-    chomp $tag;
-    open(FD, $tmp2)
-        or errexit("Unable to read encrypted chunk");
-    read(FD, $data, $chunksize)
-        or errexit("Unable to read encrypted chunk data");
-    close(FD);
-    
-    # Generate the chunk tree
     mkdir($parcelverdir)
         or errexit("Can't make parcel version directory");
     mkdir("$parcelverdir/hdk")
         or errexit("Can't make hdk directory");
-    for ($i = 0; $i < $numdirs; $i++) {
-	$ifmt = sprintf("%04d", $i);
-	mkdir("$parcelverdir/hdk/$ifmt")
-	    or errexit("Can't make $ifmt directory");
-	for ($j = 0; $j < $chunksperdir; $j++) {
-	    last if $i * $chunksperdir + $j >= $numchunks;
-	    $jfmt = sprintf("%04d", $j);
-	    open(FD, ">", "$parcelverdir/hdk/$ifmt/$jfmt")
-	        or errexit("Can't write $ifmt/$jfmt");
-	    print FD $data;
-	    close(FD);
-	}
-    }
     
-    # Generate the keyring
-    print "Generating keyring and memory image...\n";
+    # Create the keyring
     system(LIBDIR . "/query $parcelverdir/keyring " .
 	            "'PRAGMA auto_vacuum = 0; " .
 	            "PRAGMA legacy_file_format = ON; " .
@@ -740,17 +774,16 @@ sub makeparcel ($$$$$) {
 		    "compression INTEGER NOT NULL); " .
 		    "CREATE INDEX keys_tags ON keys (tag)'") == 0
         or errexit("Couldn't create keyring");
-    # zlib is compresstype 2
-    system(LIBDIR . "/query $parcelverdir/keyring " .
-	            "'INSERT INTO keys (chunk, tag, key, compression) " .
-		    "VALUES (?, ?, ?, 2)' -i -b $tag -b $key " .
-		    "-r 0:" . ($numchunks - 1) . " > /dev/null") == 0
-        or errexit("Couldn't populate keyring");
+    
+    # Generate the chunk tree and populate the keyring
+    print "Generating chunk directories...\n";
+    gen_chunks($parcelverdir, 0, $numchunks, $chunksize, $chunksperdir);
     
     # Generate the cfg tarball
+    print "Populating memory image...\n";
     mkdir("$parcelverdir/cfg")
         or errexit("Couldn't create cfg directory");
-    system("$blobtool -to $parcelverdir/cfg.tgz -C $parcelverdir cfg") == 0
+    system(LIBDIR . "/blobtool -to $parcelverdir/cfg.tgz -C $parcelverdir cfg") == 0
         or errexit("Couldn't generate cfg tarball");
     rmdir("$parcelverdir/cfg")
 	or errexit("Couldn't remove cfg directory");
