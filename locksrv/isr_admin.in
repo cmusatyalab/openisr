@@ -57,7 +57,7 @@ sub gen_uuid ();
 sub parse_disk_size ($$);
 sub gen_chunks ($$$$$);
 sub copy_chunks ($$$$);
-sub copyparcel ($$$$);
+sub copyparcel ($$$$$);
 sub makeparcel ($$$$$);
 sub delparcel ($$);
 sub prune ($$$);
@@ -174,6 +174,7 @@ if ($command eq "copyparcel") {
     	if (!$srcuserid);
     usage("Missing source parcel (-P)")
 	if (!$srcparcel);
+    # -s is optional
 }
 
 if ($command eq "makeparcel") {
@@ -231,7 +232,7 @@ elsif ($command eq "deluser") {
     deluser($userid);
 }
 elsif ($command eq "copyparcel") {
-    copyparcel($userid, $parcel, $srcuserid, $srcparcel);
+    copyparcel($userid, $parcel, $srcuserid, $srcparcel, $size);
 }
 elsif ($command eq "makeparcel") {
     makeparcel($userid, $parcel, $size, $memsize, $vmm);
@@ -691,11 +692,12 @@ sub copy_chunks ($$$$) {
 #
 # copyparcel - Create a new parcel based on an existing one
 #             
-sub copyparcel ($$$$) {
+sub copyparcel ($$$$$) {
     my $userid = shift;      # Destination user id
     my $parcel = shift;      # Destination parcel name
     my $srcuserid = shift;   # Source user id
     my $srcparcel = shift;   # Source parcel name
+    my $size = shift;        # New parcel size, if resize desired
 
     my $dstparcelcfg;
     my $parceldir;
@@ -706,11 +708,23 @@ sub copyparcel ($$$$) {
     my $uuid;
     my $umask;
     my @files;
+    my %map;
 
     my $srcpath = "$config{content_root}/$srcuserid/$srcparcel";
     my $srcparcelcfg = get_parcelcfg_path($srcuserid, $srcparcel);
-    my $numchunks = int(get_value($srcparcelcfg, "NUMCHUNKS"));
+
+    my $chunksize = int(get_value($srcparcelcfg, "CHUNKSIZE"));
     my $chunksperdir = int(get_value($srcparcelcfg, "CHUNKSPERDIR"));
+    my $srcchunks = int(get_value($srcparcelcfg, "NUMCHUNKS"));
+    my $numchunks = $srcchunks;
+    my $maxkb = int(get_value($srcparcelcfg, "MAXKB"));
+    ($numchunks, $maxkb) = parse_disk_size($chunksize, $size)
+        if defined $size;
+
+    # Warn user if they asked to reduce the disk size
+    print YELLOW, "Warning: Copied parcel has smaller disk than original.\n",
+			RESET
+	if $srcchunks > $numchunks;
 
     # Create new content directory for this user and parcel
     ($parceldir, $dstparcelcfg) = init_parceldir($userid, $parcel);
@@ -734,8 +748,16 @@ sub copyparcel ($$$$) {
     decrypt($userid, $parcel, 1, $srckeyroot);
 
     # Copy the disk to the destination, trimming the keyring if necessary
-    copy_chunks("$srcpath/$lastver", "$parceldir/000001", $numchunks,
+    copy_chunks("$srcpath/$lastver", "$parceldir/000001",
+			$numchunks > $srcchunks ? $srcchunks : $numchunks,
 			$chunksperdir);
+
+    # Extend the parcel if requested
+    if ($numchunks > $srcchunks) {
+        print "Generating new chunks...\n";
+        gen_chunks("$parceldir/000001", $srcchunks, $numchunks - $srcchunks,
+			$chunksize, $chunksperdir);
+    }
 
     # Re-encrypt the cfg tarball with a new keyroot
     $dstkeyroot = keygen(KEYROOT_BYTES);
@@ -748,15 +770,17 @@ sub copyparcel ($$$$) {
     	or unix_errexit("Couldn't read $srcparcelcfg");
     open(OUT, ">", $dstparcelcfg)
     	or unix_errexit("Couldn't write $dstparcelcfg");
+    %map = (
+        KEYROOT => $dstkeyroot,
+        UUID => $uuid,
+        USER => $userid,
+        PARCEL => $parcel,
+        NUMCHUNKS => $numchunks,
+        MAXKB => $maxkb
+    );
     while (<IN>) {
-	if (/^KEYROOT/) {
-	    print OUT "KEYROOT = $dstkeyroot\n";
-	} elsif (/^UUID/) {
-	    print OUT "UUID = $uuid\n";
-	} elsif (/^USER/) {
-	    print OUT "USER = $userid\n";
-	} elsif (/^PARCEL/) {
-	    print OUT "PARCEL = $parcel\n";
+    	if (/^([[:alpha:]]+)/ and exists $map{$1}) {
+	    print OUT "$1 = $map{$1}\n";
 	} else {
 	    print OUT;
 	}
@@ -1001,7 +1025,7 @@ sub usage {
 
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u).\n";
-    print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P).\n";
+    print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P, [-s]).\n";
     print "  makeparcel Create an empty parcel from scratch (-u, -p, -m, -s, -M).\n";
     print "  delparcel  Delete parcel from system (-u, -p).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
@@ -1035,6 +1059,8 @@ sub usage {
 	print RED, "copyparcel - ", RESET, "Create new parcel winxp for existing user bovik in $croot\n";
 	print "using latest version of existing parcel in $croot/gold/goldwinxp\n";
 	print BLUE, "# isr_admin copyparcel -u bovik -p winxp -U gold -Pgoldwinxp\n", RESET;
+	print "\nLikewise, but make the disk of the new parcel 10 GB\n";
+	print BLUE, "# isr_admin copyparcel -u bovik -p winxp -U gold -Pgoldwinxp -s 10G\n", RESET;
 	print "\n";
 	print RED, "makeparcel - ", RESET, "Create empty parcel debian, with 512 MB memory image and 8 GB\n";
 	print "disk, using VMware as the VMM, in $croot for existing user bovik\n";
