@@ -23,6 +23,7 @@
 use strict;
 use Getopt::Long;
 use File::stat;
+use File::Copy;
 use File::Basename;
 use File::Temp qw/tempdir/;
 use MIME::Base64 qw/encode_base64/;
@@ -55,6 +56,7 @@ sub finalize_parceldir ($$);
 sub gen_uuid ();
 sub parse_disk_size ($$);
 sub gen_chunks ($$$$$);
+sub copy_chunks ($$$$);
 sub copyparcel ($$$$);
 sub makeparcel ($$$$$);
 sub delparcel ($$);
@@ -511,6 +513,10 @@ sub init_parceldir ($$) {
 	or unix_errexit("Unable to make directory $parceldir.");
     mkdir("$parceldir/cache")
 	or unix_errexit("Unable to make directory $parceldir/cache.");
+    mkdir("$parceldir/000001")
+        or unix_errexit("Can't make parcel version directory");
+    mkdir("$parceldir/000001/hdk")
+        or unix_errexit("Can't make hdk directory");
     $umask = umask(0077);
     mkdir($parcelcfgdir)
 	or unix_errexit("Unable to make directory $parcelcfgdir.");
@@ -651,6 +657,38 @@ sub gen_chunks ($$$$$) {
 }
 
 #
+# Copy the specified number of chunks from oldbase to newbase.
+#
+sub copy_chunks ($$$$) {
+    my $oldbase = shift;
+    my $newbase = shift;
+    my $numchunks = shift;
+    my $chunksperdir = shift;
+
+    my $dir;
+    my $file;
+    my $newdir;
+    my $lastdir = "";
+    my $i;
+
+    for ($i = 0; $i < $numchunks; $i++) {
+	$dir = sprintf("%04d", int($i / $chunksperdir));
+	$file = sprintf("%04d", $i % $chunksperdir);
+	$newdir = "$newbase/hdk/$dir";
+	if ($newdir ne $lastdir and ! -d $newdir) {
+	    mkdir($newdir)
+		or errexit("Can't create $newdir");
+	}
+	$lastdir = $newdir;
+	copy("$oldbase/hdk/$dir/$file", "$newdir/$file")
+	    or unix_errexit("Couldn't write $newdir/$file");
+    }
+    system(LIBDIR . "/query $newbase/keyring 'DELETE FROM keys WHERE " .
+			"chunk >= " . $numchunks . "' > /dev/null") == 0
+        or errexit("Couldn't update keyring");
+}
+
+#
 # copyparcel - Create a new parcel based on an existing one
 #             
 sub copyparcel ($$$$) {
@@ -664,12 +702,15 @@ sub copyparcel ($$$$) {
     my $lastver;
     my $srckeyroot;
     my $dstkeyroot;
+    my $file;
     my $uuid;
     my $umask;
     my @files;
 
     my $srcpath = "$config{content_root}/$srcuserid/$srcparcel";
     my $srcparcelcfg = get_parcelcfg_path($srcuserid, $srcparcel);
+    my $numchunks = int(get_value($srcparcelcfg, "NUMCHUNKS"));
+    my $chunksperdir = int(get_value($srcparcelcfg, "CHUNKSPERDIR"));
 
     # Create new content directory for this user and parcel
     ($parceldir, $dstparcelcfg) = init_parceldir($userid, $parcel);
@@ -683,15 +724,21 @@ sub copyparcel ($$$$) {
     closedir(DIR);
     $lastver = sprintf("%06d", int($files[0]));
 
-    # Copy the most recent source parcel to the destination
+    # Copy the parcel metadata and memory image, and decrypt it
     print "Copying $srcpath/$lastver to $parceldir/000001...\n";
-    system("cp -R $srcpath/$lastver $parceldir/000001") == 0
-	or errexit("Unable to copy $srcpath/$lastver to $parceldir/000001");
+    for $file ("cfg.tgz.enc", "keyring.enc") {
+        copy("$srcpath/$lastver/$file", "$parceldir/000001/$file")
+            or unix_errexit("Couldn't write new $file");
+    }
+    $srckeyroot = get_value($srcparcelcfg, "KEYROOT");
+    decrypt($userid, $parcel, 1, $srckeyroot);
+
+    # Copy the disk to the destination, trimming the keyring if necessary
+    copy_chunks("$srcpath/$lastver", "$parceldir/000001", $numchunks,
+			$chunksperdir);
 
     # Re-encrypt the cfg tarball with a new keyroot
-    $srckeyroot = get_value($srcparcelcfg, "KEYROOT");
     $dstkeyroot = keygen(KEYROOT_BYTES);
-    decrypt($userid, $parcel, 1, $srckeyroot);
     encrypt($userid, $parcel, 1, $dstkeyroot);
     
     # Write out the new parcel.cfg
@@ -757,10 +804,6 @@ sub makeparcel ($$$$$) {
     print "Initializing parcel...\n";
     ($parceldir, $parcelcfg) = init_parceldir($userid, $parcel);
     $parcelverdir = "$parceldir/000001";
-    mkdir($parcelverdir)
-        or errexit("Can't make parcel version directory");
-    mkdir("$parcelverdir/hdk")
-        or errexit("Can't make hdk directory");
     
     # Create the keyring
     system(LIBDIR . "/query $parcelverdir/keyring " .
