@@ -12,6 +12,11 @@ server = endurance.isr.cs.cmu.edu
 # login name
 userid = 
 
+# Top-level directory for ISR data.  Valid escape sequences:
+# \u - Local username
+# \h - User's home directory
+isrdir = \h/.isr
+
 # To override the default command used to start a particular VMM, provide an
 # entry of the form "<vmm>.command = <command>".
 

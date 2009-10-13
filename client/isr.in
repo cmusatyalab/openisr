@@ -181,7 +181,7 @@ my $vmm;             # Override default VMM driver
 
 # General global state, mostly about the parcel we are working with
 my $progname;        # $0 without the directory part
-my $isrdir;          # Path to toplevel ~/.isr directory
+my $isrdir;          # Path to toplevel ISR data directory
 my $server;          # Server domain name
 my $userid;          # ISR userid
 my $parcel;          # Parcel name
@@ -362,7 +362,9 @@ if ($result == 0) {
 # Set the the directory where ISR parcels will be stored and if
 # it doesn't yet exist, create an empty one.
 #
-$isrdir = "$ENV{HOME}/.isr";
+$isrdir = $syscfg{'isrdir'};
+$isrdir =~ s:\\u:$ENV{USER}:g;
+$isrdir =~ s:\\h:$ENV{HOME}:g;
 
 if (!-e $isrdir) {
     mkdir($isrdir, 0700)
@@ -2492,7 +2494,7 @@ sub check_for_old_isrdir () {
                         or system_errexit("Couldn't remove $isrdir/$ientry/$uentry");
                 }
             } elsif (-e "$isrdir/$ientry/$uentry/parcel.cfg") {
-                err("Found old-style checkout ~/.isr/$ientry/$uentry, ignoring");
+                err("Found old-style checkout $isrdir/$ientry/$uentry, ignoring");
             }
         }
         closedir(UDIR);
