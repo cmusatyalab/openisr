@@ -300,10 +300,23 @@ def check_runnable():
 					% (format_version(found_cfg_ver), \
 					format_version(want_cfg_ver)))
 
-def create_disk():
+def get_disk_geometry():
 	# Always round down
 	cyls = min(int(vmm.SECTORS) / (16 * 63), 16383)
 	bioscyls = min(int(vmm.SECTORS) / (255 * 63), 1024)
+	ddb = dict()
+	ddb['ddb.geometry.cylinders'] = cyls
+	ddb['ddb.geometry.heads'] = 16
+	ddb['ddb.geometry.sectors'] = 63
+	ddb['ddb.geometry.biosCylinders'] = bioscyls
+	ddb['ddb.geometry.biosHeads'] = 255
+	ddb['ddb.geometry.biosSectors'] = 63
+	return ddb
+
+def create_disk():
+	geom = get_disk_geometry()
+	keys = geom.keys()
+	keys.sort()
 	cid = '%x' % random.randint(0, 0xffffffff)
 
 	f = file(disk_path, 'w')
@@ -315,14 +328,10 @@ createType="fullDevice"
 
 RW %s FLAT "%s" 0
 
-ddb.geometry.cylinders = "%s"
-ddb.geometry.heads = "16"
-ddb.geometry.sectors = "63"
-ddb.geometry.biosCylinders = "%s"
-ddb.geometry.biosHeads = "255"
-ddb.geometry.biosSectors = "63"
 ddb.adapterType = "ide"
-''' % (cid, vmm.SECTORS, vmm.DISK, cyls, bioscyls))
+''' % (cid, vmm.SECTORS, vmm.DISK))
+	for k in keys:
+		f.write('%s = "%s"\n' % (k, geom[k]))
 	f.close()
 
 def create_machine():
@@ -484,6 +493,33 @@ def fixup_inaccessible_devices(vm):
 				modified = True
 	return modified
 
+def fixup_disk_size():
+	"""Update the virtual disk size in the VMDK file if necessary."""
+
+	new_disk_path = disk_path + '.new'
+	geom = get_disk_geometry()
+
+	ifd = file(disk_path)
+	out = list()
+	for line in ifd:
+		key = line.split('=')[0].strip()
+		if line.startswith('RW '):
+			parts = line.split(' ')
+			if int(parts[1]) == int(vmm.SECTORS):
+				return False
+			parts[1] = vmm.SECTORS
+			out.append(' '.join(parts))
+		elif geom.has_key(key):
+			out.append(key + ' = "' + str(geom[key]) + '"\n')
+		else:
+			out.append(line)
+	ofd = file(new_disk_path, 'w')
+	ofd.writelines(out)
+	ifd.close()
+	ofd.close()
+	os.rename(new_disk_path, disk_path)
+	return True
+
 def fixup_machine():
 	"""Fix the machine configuration prior to running it."""
 
@@ -495,6 +531,7 @@ def fixup_machine():
 	did_upgrade = fixup_upgrade_settings(mf)
 	did_uuid = fixup_uuid_1(mf)
 	did_invalid = fixup_invalid_images(mf)
+	fixup_disk_size()
 	if did_uuid or did_invalid:
 		mf.write()
 	mf.close()
