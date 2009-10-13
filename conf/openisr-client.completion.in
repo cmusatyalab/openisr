@@ -59,6 +59,10 @@ _isr_config_value() {
 	[ -n "$ret" ] && echo "$ret"
 }
 
+_isr_data_dir() {
+	_isr_config_value isrdir | sed -e "s:\\\u:$USER:g" -e "s:\\\h:$HOME:g"
+}
+
 _isr_cur_server() {
 	local ret i
 	i=`_isr_find_word -s`
@@ -80,7 +84,7 @@ _isr_cur_user() {
 
 _isr_checked_out() {
 	local file
-	for file in ~/.isr/*/parcel.cfg
+	for file in "`_isr_data_dir`"/*/parcel.cfg
 	do
 		[ -r $file ] || continue
 		awk -F '[ \t]*=[ \t]*' \
@@ -93,8 +97,10 @@ _isr_checked_out() {
 }
 
 _isr_query_hoard() {
-	[ -x !!LIBDIR!!/query -a -r ~/.isr/hoard/hoard.idx ] || return
-	!!LIBDIR!!/query ~/.isr/hoard/hoard.idx "$1" 2>/dev/null
+	local datadir
+	datadir=`_isr_data_dir`
+	[ -x !!LIBDIR!!/query -a -r "$datadir/hoard/hoard.idx" ] || return
+	!!LIBDIR!!/query "$datadir/hoard/hoard.idx" "$1" 2>/dev/null
 }
 
 _isr_local_parcel() {
@@ -106,31 +112,31 @@ _isr_local_parcel() {
 
 _isr_remote_parcel() {
 	local dir file
-	dir=~/.isr/completion
-	file=$dir/$1-$2
-	if [ ! -d $dir ] ; then
-		mkdir -p $dir 2>/dev/null || return
+	dir="`_isr_data_dir`/completion"
+	file="$dir/$1-$2"
+	if [ ! -d "$dir" ] ; then
+		mkdir -p "$dir" 2>/dev/null || return
 	fi
 	# Proactively remove stale caches to cut down on the amount of
 	# semi-sensitive information we leave lying around.
-	find $dir -mmin +30 -exec rm {} \; 2>/dev/null
-	if [ ! -f $file ] ; then
-		if isr ls -s $1 -u $2 > $file.$$ 2>/dev/null ; then
-			sed -re "s/.*\[[0-9]+m//" $file.$$ | \
-				awk '!/Parcels for/ {print $1}' > $file
+	find "$dir" -mmin +30 -exec rm {} \; 2>/dev/null
+	if [ ! -f "$file" ] ; then
+		if isr ls -s $1 -u $2 > "$file.$$" 2>/dev/null ; then
+			sed -re "s/.*\[[0-9]+m//" "$file.$$" | \
+				awk '!/Parcels for/ {print $1}' > "$file"
 		else
 			# "isr ls" returned an error.  Cache a negative result.
-			>$file
+			>"$file"
 		fi
-		rm -f $file.$$
+		rm -f "$file.$$"
 	fi
-	compgen -W "`cat $file 2>/dev/null`" -- $3
+	compgen -W "`cat "$file" 2>/dev/null`" -- $3
 }
 
 _isr_hoard_uuids() {
 	local ret uuid file
 	# Get UUIDs of hoard images
-	for file in ~/.isr/hoard/img/*-*-*-*.* ; do
+	for file in "`_isr_data_dir`"/hoard/img/*-*-*-*.* ; do
 		uuid=`echo "$file" | sed -e "s:^.*/::" -e "s:\..*$::"`
 		ret=$ret$uuid$'\n'
 	done
