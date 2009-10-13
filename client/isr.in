@@ -2917,13 +2917,16 @@ sub system_errexit ($) {
 sub message ($) {
     my $msg = shift;
 
-    my $logdir = "$ENV{HOME}/.isr/logs";
+    my $logdir;
     my @time = gettimeofday();
     my $ms = sprintf("%.3d", int($time[1] / 1000));
     my $date = strftime("%b %d %Y %H:%M:%S.$ms", localtime($time[0]));
     my @logs;
     my $file;
 
+    return
+        unless defined $isrdir;
+    $logdir = "$isrdir/logs";
     if ($uuid) {
 	if (!mkdirs($logdir)) {
 	    # If we call errexit() we'll recurse forever
