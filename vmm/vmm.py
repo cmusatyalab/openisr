@@ -93,15 +93,16 @@ def _executable(path):
 	return st[stat.ST_MODE] & stat.S_IXUSR|stat.S_IXGRP|stat.S_IXOTH > 0
 
 # If prog is an absolute path and executable, return it.  If it is a relative
-# path and executable via PATH, return the absolute path to the executable.
-# If no executable is found, return false.
-def find_program(prog):
+# path and executable via the specified search path (defaulting to PATH),
+# return the absolute path to the executable.  If no executable is found,
+# return false.
+def find_program(prog, search_path = os.environ['PATH'].split(':')):
 	if prog[0] == '/':
 		if _executable(prog):
 			return prog
 		else:
 			return False
-	for dirname in os.environ['PATH'].split(':'):
+	for dirname in search_path:
 		path = dirname + '/' + prog
 		if _executable(path):
 			return path
