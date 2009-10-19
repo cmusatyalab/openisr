@@ -25,6 +25,7 @@ BEGIN {
 	import vmm;
 }
 
+use File::Spec;
 use POSIX;
 use IO::Socket::UNIX;
 use Term::ANSIColor qw/:constants/;
@@ -51,7 +52,7 @@ sub validate_kvm {
 	return 0
 		unless $help =~ /-no-kvm|-enable-kvm/;
 	$need_enable_kvm = ($help =~ /-enable-kvm/);
-	if ($help =~ m/QEMU PC emulator version .* \(kvm-([0-9]+)\)/) {
+	if ($help =~ m/QEMU PC emulator version .* \(kvm-([0-9]+)/) {
 		# KVM >= 56
 		if ($1 < 78) {
 			$incoming_method = "file";
@@ -93,9 +94,11 @@ sub check_runnable {
 		# Fedora packages call it "qemu-kvm".  Source installs call
 		# it "qemu-system-x86_64".  If we're using qemu >= 0.10.0
 		# with built-in KVM support, it might be called "qemu" or
-		# "qemu-system-x86_64".
+		# "qemu-system-x86_64".  And RHEL5 puts KVM in /usr/libexec
+		# for some reason.
 		foreach my $prog (qw/kvm qemu-kvm qemu qemu-system-x86_64/) {
-			$program = find_program $prog;
+			$program = find_program $prog,
+					[File::Spec->path(), '/usr/libexec'];
 			last if defined $program and validate_kvm $program;
 			undef $program;
 		}
