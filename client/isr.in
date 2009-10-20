@@ -366,21 +366,22 @@ $isrdir = $syscfg{'isrdir'};
 $isrdir =~ s:\\u:$ENV{USER}:g;
 $isrdir =~ s:\\h:$ENV{HOME}:g;
 
-if (!-e $isrdir) {
+unless (-e $isrdir) {
     mkdir($isrdir, 0700)
 	or unix_errexit("Unable to make $isrdir");
 }
-if (!-d $isrdir) {
-    errexit("$isrdir is not a directory");
-}
 
 #
-# Make sure $isrdir is not world-readable.
-# XXX: this is temporary code to fix the permissions on existing client
-# installations, and should go away after a couple releases.
+# Avoid symlink attacks if $isrdir is in a shared directory.
 #
-chmod(0700, $isrdir)
-    or unix_errexit("Couldn't set $isrdir to mode 700");
+-l $isrdir
+    and errexit("$isrdir is a symbolic link");
+-d $isrdir
+    or errexit("$isrdir is not a directory");
+-o $isrdir
+    or errexit("$isrdir must be owned by user");
+S_IMODE(stat($isrdir)->mode) == 0700
+    or errexit("$isrdir must be mode 0700");
 
 #
 # Extract the command name
