@@ -76,6 +76,22 @@ if (-x "/sbin/udevadm") {
 		or fail "Couldn't run udevcontrol";
 }
 
+# If the loop driver is built into the kernel, running openisr-config won't
+# change the permissions of the loop device nodes.  Thus we set the right
+# permissions by hand.
+status "Setting permissions on loop device nodes...";
+my $gid = (getgrnam(ISRGROUP))[2]
+	or fail "Couldn't get GID of " . ISRGROUP;
+opendir(DEV, "/dev")
+	or fail "Couldn't list /dev";
+for my $node (grep(/^loop[0-9]+$/, readdir(DEV))) {
+	chown(-1, $gid, "/dev/$node") == 1
+		or fail "Couldn't chgrp /dev/$node";
+	chmod(0660, "/dev/$node") == 1
+		or fail "Couldn't chmod /dev/$node";
+}
+closedir(DEV);
+
 # Build and install kernel module
 # Don't print a status message, since openisr-config will do that for us.
 system(SBINDIR . "/openisr-config") == 0
