@@ -111,13 +111,26 @@ sub info {
 	check_runnable;
 }
 
-sub new_vmdata {
-	my $cid = sprintf("%x", int(rand(0xffffffff)));
+sub get_geometry {
 	# Always round down
 	my $cyls = int($SECTORS / (16 * 63));
 	my $bioscyls = int($SECTORS / (255 * 63));
 	$cyls = 16383 if $cyls > 16383;
 	$bioscyls = 1024 if $bioscyls > 1024;
+	return (
+		'ddb.geometry.cylinders' => $cyls,
+		'ddb.geometry.heads' => 16,
+		'ddb.geometry.sectors' => 63,
+		'ddb.geometry.biosCylinders' => $bioscyls,
+		'ddb.geometry.biosHeads' => 255,
+		'ddb.geometry.biosSectors' => 63
+	);
+}
+
+sub new_vmdata {
+	my $cid = sprintf("%x", int(rand(0xffffffff)));
+	my %geom = get_geometry();
+	my $key;
 
 	open(VMDK, ">", "$CFGDIR/vmware.vmdk")
 		or fail "Unable to write to $CFGDIR/vmware.vmdk";
@@ -130,14 +143,11 @@ createType="fullDevice"
 RW $SECTORS FLAT "/dev/hdk" 0
 
 ddb.virtualHWVersion = "6"
-ddb.geometry.cylinders = "$cyls"
-ddb.geometry.heads = "16"
-ddb.geometry.sectors = "63"
-ddb.geometry.biosCylinders = "$bioscyls"
-ddb.geometry.biosHeads = "255"
-ddb.geometry.biosSectors = "63"
 ddb.adapterType = "ide"
 EOF
+	for $key (sort keys %geom) {
+		print VMDK "$key = \"$geom{$key}\"\n";
+	}
 	close(VMDK);
 
 	open(VMX, ">", "$CFGDIR/vmware.vmx")
