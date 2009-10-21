@@ -61,6 +61,34 @@ sub find_vmx {
 	return $vmx;
 }
 
+sub find_vmdk {
+	my $vmx = shift;
+	my $vmdk;
+	my $fh;
+	my $line;
+	my $key;
+	my $value;
+
+	open($fh, $vmx)
+		or fail "Couldn't read $vmx";
+	while ($line = <$fh>) {
+		($key, $value) = split_record($line);
+		if (defined $key and $key =~ /fileName$/ and
+					$value =~ /.vmdk"$/) {
+			fail "Parcel associated with more than one VMDK; "
+						. "bailing out"
+				if defined $vmdk;
+			$vmdk = $value;
+			$vmdk =~ s/"//g;
+			$vmdk = "$CFGDIR/$vmdk";
+		}
+	}
+	close $fh;
+	fail "Unable to find reference to virtual disk"
+		unless defined $vmdk;
+	return $vmdk;
+}
+
 sub check_runnable {
 	fail "Cannot resume: parcel already suspended with $SUSPENDED"
 		if $SUSPENDED ne "no" and $SUSPENDED ne "vmware";
@@ -248,7 +276,7 @@ sub new_filenames {
 
 sub new_uuid {
 	my $vmx = "$CFGDIR/vmware.vmx";
-	my $vmdk;
+	my $vmdk = find_vmdk($vmx);
 	my $line;
 	my $key;
 	my $value;
@@ -266,14 +294,6 @@ sub new_uuid {
 		next if $key =~ /ethernet[0-9]+\.addressType/;
 		next if $key =~ /ethernet[0-9]+\.generatedAddress/;
 		next if $key =~ /uuid\.(location|bios)/;
-		if ($key =~ /fileName$/ and $value =~ /.vmdk"$/) {
-			fail "Parcel associated with more than one VMDK; "
-						. "bailing out"
-				if defined $vmdk;
-			$vmdk = $value;
-			$vmdk =~ s/"//g;
-			$vmdk = "$CFGDIR/$vmdk";
-		}
 		if ($key eq "displayName") {
 			print NEW "displayName = \"$NAME\"\n";
 		} else {
