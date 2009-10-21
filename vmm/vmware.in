@@ -334,6 +334,62 @@ sub new_uuid {
 		or fail "Couldn't update $vmdk";
 }
 
+sub new_disk_size {
+	my $vmdk = find_vmdk("$CFGDIR/vmware.vmx");
+	my %geom = get_geometry();
+	my $fh;
+	my $line;
+	my $key;
+	my $value;
+	my @fields;
+	my @data;
+
+	open($fh, "<", $vmdk)
+		or fail "Couldn't read $vmdk";
+	while ($line = <$fh>) {
+		($key, $value) = split_record($line);
+		if ($line =~ /^RW /) {
+			@fields = split ' ', $line;
+			$fields[1] = $SECTORS;
+			push @data, join(' ', @fields) . "\n";
+		} elsif (! defined $key) {
+			push @data, $line;
+		} else {
+			$value =~ s/"//g;
+			if ($key eq "ddb.geometry.heads" && int($value) > 16) {
+				# Old ISR-3 parcels have invalid geometry,
+				# and their sector count in the VMDK file is
+				# less than the number of sectors in the real
+				# disk.  We can't resize such a parcel
+				# because it would confuse the guest OS;
+				# also, we can't detect whether resize was
+				# really desired because SECTORS already
+				# doesn't match the VMDK.  So, we notice this
+				# case and refuse to resize.
+				print STDERR "Refusing to resize parcel " .
+						"with invalid geometry\n";
+				close $fh;
+				return;
+			}
+			if (exists $geom{$key}) {
+				push @data, "$key = \"$geom{$key}\"\n";
+			} else {
+				push @data, $line;
+			}
+		}
+	}
+	close($fh);
+	undef $fh;
+	open($fh, ">", "$vmdk.new")
+		or fail "Couldn't write $vmdk.new";
+	for $line (@data) {
+		print $fh $line;
+	}
+	close($fh);
+	rename("$vmdk.new", $vmdk)
+		or fail "Couldn't update $vmdk";
+}
+
 sub update_cfg {
 	my $need_refresh = 0;
 	my $refreshed = 0;
@@ -374,6 +430,13 @@ sub update_cfg {
 
 	if ($need_refresh) {
 		new_uuid;
+		# Old ISR-3 parcels have VMDK files which don't match the
+		# actual size of the parcel, which would normally cause us
+		# to try to resize the parcel on every resume.
+		# new_disk_size() detects this case and prints a warning,
+		# but we don't want to do that on every resume.  Compromise:
+		# only attempt to resize the disk if the parcel was cloned.
+		new_disk_size;
 		$refreshed = 1;
 	}
 	if ($refreshed) {
