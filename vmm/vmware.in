@@ -31,6 +31,15 @@ use warnings;
 
 my $program;
 
+# Return key and value, or undef on parse error.
+sub split_record {
+	my $line = shift;
+
+	$line =~ /^([^=\s]+)\s*=\s*([^\n]+)\n$/
+		or return undef;
+	return ($1, $2);
+}
+
 sub find_vmx {
 	my $vmx;
 	my $dent;
@@ -161,11 +170,11 @@ sub new_filenames {
 	open(NEW, ">", "$CFGDIR/vmware.vmx")
 		or fail "Couldn't write new vmware.vmx";
 	while ($line = <OLD>) {
-		if ($line !~ /^([^=\s]+)\s*=\s*([^\n]+)\n$/) {
+		($key, $value) = split_record($line);
+		unless (defined $key) {
 			print NEW $line;
 			next;
 		}
-		($key, $value) = ($1, $2);
 		$value =~ s/"//g;
 		if ($key =~ /fileName$/ and $value =~ /.vmdk$/) {
 			fail "Parcel associated with more than one VMDK; "
@@ -249,11 +258,11 @@ sub new_uuid {
 	open(NEW, ">", "$vmx.new")
 		or fail "Couldn't write $vmx.new";
 	while ($line = <OLD>) {
-		if ($line !~ /^([^=\s]+)\s*=\s*([^\n]+)\n$/) {
+		($key, $value) = split_record($line);
+		unless (defined $key) {
 			print NEW $line;
 			next;
 		}
-		($key, $value) = ($1, $2);
 		next if $key =~ /ethernet[0-9]+\.addressType/;
 		next if $key =~ /ethernet[0-9]+\.generatedAddress/;
 		next if $key =~ /uuid\.(location|bios)/;
@@ -281,11 +290,11 @@ sub new_uuid {
 	open(NEW, ">", "$vmdk.new")
 		or fail "Couldn't write $vmdk.new";
 	while ($line = <OLD>) {
-		if ($line !~ /^([^=\s]+)\s*=\s*([^\n]+)\n$/) {
+		($key, $value) = split_record($line);
+		unless (defined $key) {
 			print NEW $line;
 			next;
 		}
-		($key, $value) = ($1, $2);
 		next if $key =~ /ddb\.uuid/;
 		print NEW $line;
 	}
