@@ -1,12 +1,13 @@
 include $(top_srcdir)/vmm.mk
 
-GEN = shell $(ALL_VMMS)
+DUMMY_VMMS = shell none
+GEN = $(DUMMY_VMMS) $(ALL_VMMS)
 CLEANFILES = $(GEN) vmm.pyc
 EXTRA_DIST = $(GEN:=.in)
 vmmdir = $(pkgdatadir)/vmm
 
 if WANT_CLIENT
-VMM_SHELL = shell
+CLIENT_VMMS = $(DUMMY_VMMS)
 dist_pkgdata_DATA = vmm.pm vmm.py
 endif
 
@@ -18,7 +19,7 @@ if WANT_LIBVDISK
 LIBVDISK = libvdisk
 endif
 
-vmm_SCRIPTS = $(VMM_SHELL) $(VMMS)
+vmm_SCRIPTS = $(CLIENT_VMMS) $(VMMS)
 EXTRA_SCRIPTS = $(ALL_VMMS)
 
 SUBDIRS = . $(XPCOM) $(LIBVDISK)

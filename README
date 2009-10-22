@@ -89,6 +89,14 @@ machine monitors.  The name of the driver is listed in parentheses.
 	--disable-client is specified to configure, and is not affected
 	by the setting of --enable-vmm-drivers.
 
+- Dummy VMM (none)
+	This is a stub VMM driver that merely waits for the invoking ISR
+	client program to receive SIGINT, and then shuts down.  It can be
+	used by wrapper scripts to obtain access to a parcel's disk under
+	program control.  This driver is always built and installed unless
+	--disable-client is specified to configure, and is not affected
+	by the setting of --enable-vmm-drivers.
+
 CONFIGURE OPTIONS
 -----------------
 
