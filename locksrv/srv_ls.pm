@@ -37,12 +37,13 @@ our %config = get_config();
 # Variables
 my $parcel;
 my $isrdir;
+my $verbose;
 
 #
 # Parse the command line args
 #
 no strict 'vars';
-getopts('hu:p:L:');
+getopts('hu:p:L:v');
 
 if ($opt_h) {
     usage();
@@ -53,6 +54,7 @@ if (!$opt_u) {
 $longvers = $opt_L;  # Use long format using specific number of versions
 $username = $opt_u;
 $parcel = $opt_p;
+$verbose = $opt_v;
 $userdir = "$config{content_root}/$username";
 use strict 'vars';
 
@@ -97,9 +99,12 @@ sub print_one {
     my $user;
     my $state;
     my $version;
+    my $memory;
+    my $disk;
     my $size;
     my $line;
     my $count;
+    my %data;
     
     my @versions;
     
@@ -159,6 +164,18 @@ sub print_one {
 	print("$parcel has never been checked out.\n");
     }
     
+    #
+    # Print extra information about the parcel if requested.
+    #
+    if ($verbose) {
+        %data = get_values(get_parcelcfg_path($username, $parcel));
+        $memory = "unknown";
+        $memory = "$data{'MEM'} MB"
+            if exists $data{'MEM'};
+        $disk = (($data{'CHUNKSIZE'} >> 10) * $data{'NUMCHUNKS'}) >> 10;
+        print "$data{'UUID'}, $data{'VMM'}, memory $memory, disk $disk MB\n";
+    }
+    
     # 
     # If the user wants to see the available versions of the parcel, print 
     # those too.
@@ -207,12 +224,13 @@ sub usage
         print "$progname: $msg\n\n";
     }
     
-    print "Usage: $progname [-h] [-L <n>] [-u <username>] [-p <parcel>]\n";
+    print "Usage: $progname [-h] [-L <n>] [-u <username>] [-p <parcel>] [-v]\n";
     print "Options:\n";
     print "  -h              Print this message\n";
     print "  -L <n>          List the <n> most recent versions\n";  
     print "  -u <username>   User name (default is $ENV{'USER'})\n";
     print "  -p <parcel>     Parcel name\n";
+    print "  -v              Show extra information about each parcel\n";
     print "\n";
     exit 0;
 }
