@@ -39,6 +39,7 @@ sub main {
 	our $SUSPENDED;
 	my $msg;
 
+	undef $@;
 	if (@ARGV and $ARGV[0] eq "info") {
 		eval {main::info()};
 		if ($@) {
@@ -68,7 +69,8 @@ EOF
 EOF
 		}
 	} elsif (@ARGV and $ARGV[0] eq "cleanup") {
-		eval {main::cleanup()};
+		eval {main::cleanup()}
+			if exists &main::cleanup;
 		if ($@) {
 			($msg = <<EOF) =~ s/^\s+//gm;
 				SUCCESS=no

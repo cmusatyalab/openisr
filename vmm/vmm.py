@@ -74,7 +74,8 @@ def main():
 			print "SUCCESS=yes"
 	elif sys.argv[1] == "cleanup":
 		try:
-			__main__.cleanup()
+			if hasattr(__main__, 'cleanup'):
+				__main__.cleanup()
 		except Exception, inst:
 			print "SUCCESS=no"
 			print "ERROR=%s" % _exception_msg(inst)
