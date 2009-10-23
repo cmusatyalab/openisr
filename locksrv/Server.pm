@@ -39,6 +39,7 @@ require Exporter;
 	     unix_errexit
 	     system_errexit
 	     get_value
+	     get_values
 	     get_config
 	     get_offset
 	     get_parcelcfg_path
@@ -110,17 +111,16 @@ sub system_errexit {
 }
 
 #
-# get_value - Given key, return corresponding value in a file with key=value pairs
+# get_values - Return key/value pairs parsed from a file containing key=value
 #
-sub get_value
+sub get_values
 {
     my $indexfile = shift;
-    my $search_key = shift;
 
     my $line;
     my $line_key;
     my $line_value;
-    my $return_value = -1;
+    my %data;
 
     open(INFILE, $indexfile) 
 	or errexit("Unable to open $indexfile");
@@ -128,20 +128,30 @@ sub get_value
     while ($line = <INFILE>) {
 	chomp($line);
 	($line_key, $line_value) = split(/[= ]+/, $line);
-	if ($line_key eq $search_key) {
-	    $return_value = $line_value;
-	    last;
-	}
+	$data{$line_key} = $line_value;
     }
 
     close(INFILE) 
 	or errexit("Unable to close $indexfile");
 
-    if ($return_value == -1) {
+    return %data;
+}
+
+#
+# get_value - Given key, return corresponding value in a file with key=value pairs
+#
+sub get_value
+{
+    my $indexfile = shift;
+    my $search_key = shift;
+
+    my %data = get_values($indexfile);
+
+    unless (exists $data{$search_key}) {
 	errexit("get_value unable to find key=$search_key in $indexfile.");
     }
 
-    return $return_value;
+    return $data{$search_key};
 }
 
 sub get_config {
