@@ -1,4 +1,4 @@
-#!/bin/sh
+#!!!PERLPATH!!
 #
 # set_device_owner - chown a Nexus block device newly created by udev
 #
@@ -33,32 +33,70 @@
 # then overrides its ownership.
 #
 
-TIMEOUT=15
+use File::Basename;
+use strict;
+use warnings;
+use constant {
+	TIMEOUT => 15,
+	DEBUG => 0
+};
 
-run() {
-	if [ -x /sbin/udevadm ] ; then
-		/sbin/udevadm settle --timeout=$TIMEOUT || exit 0
-	else
-		/sbin/udevsettle --timeout=$TIMEOUT || exit 0
-	fi
+sub fail ($) {
+	my $msg = shift;
 
-	basename=`basename "$DEVNAME" | tr -d 0-9`
-	attrfile="/sys/class/openisr/$basename/owner"
-	[ -b "$DEVNAME" ] || exit 0
-	[ -f "$attrfile" ] || exit 0
-	uid=`cat "$attrfile"`
-	chown "$uid" "$DEVNAME"
+	print STDERR "$msg\n";
+	exit 1;
 }
 
-if [ -z "$DEVNAME" ] ; then
-	echo "This script must be run by udev." >&2
-	exit 1
-fi
+exists $ENV{'DEVNAME'}
+	or fail "This script must be run by udev.";
 
 # If the udev log priority is set to "debug", stdout and stderr are pipes to
 # udevd, which will block until there are no writers, causing "udevadm settle"
 # to deadlock.  Close the pipes.
-exec > /dev/null 2>&1
+unless (DEBUG) {
+	open(STDIN, "/dev/null")
+		or fail "Couldn't reopen stdin";
+	open(STDOUT, ">/dev/null")
+		or fail "Couldn't reopen stdout";
+	open(STDERR, ">/dev/null")
+		or fail "Couldn't reopen stderr";
+}
 
-run &
-exit 0
+# Do the work in a child.  The parent exits so that udev will finish
+# processing the event.
+my $ret = fork();
+defined $ret
+	or fail "Fork failed";
+exit(0)
+	if $ret > 0;
+
+# Wait for udev to finish processing the device node.
+if (-x "/sbin/udevadm") {
+	$ret = system("/sbin/udevadm settle --timeout=" . TIMEOUT);
+} else {
+	$ret = system("/sbin/udevsettle --timeout=" . TIMEOUT);
+}
+$ret == 0
+	or fail "Timed out waiting for udev";
+
+my $devname = $ENV{'DEVNAME'};
+my $basename = basename($devname);
+$basename =~ s/[0-9]//g;
+my $attrfile = "/sys/class/openisr/$basename/owner";
+
+# Validate files
+-b $devname
+	or fail "$devname is not a block device";
+-f $attrfile
+	or fail "$attrfile does not exist";
+
+# Get the target UID and chown the device node.
+open(ATTR, $attrfile)
+	or fail "Couldn't read $attrfile";
+my $uid = <ATTR>;
+close ATTR;
+chomp $uid;
+chown(int($uid), -1, $devname);
+
+exit 0;

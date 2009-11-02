@@ -3,7 +3,7 @@ AM_CPPFLAGS += -I$(top_srcdir)/crypto -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
 AM_CFLAGS = -W -Wall -Wstrict-prototypes
 CRYPTO_LIBS = -L$(top_builddir)/crypto -lisrcrypto
 
-GEN = openisr-config openisr-config.8 post
+GEN = openisr-config openisr-config.8 post set_device_owner
 
 if WANT_CLIENT
 CLIENTPROGS = dirtometer readstats nexus_debug
