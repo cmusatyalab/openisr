@@ -148,6 +148,8 @@ sub release_locks ();
 sub exit_handler ($);
 sub srun ($$%);
 sub run_vmm ($$);
+sub get_suspended ();
+sub set_suspended (%);
 sub vmm_cleanup ();
 sub parcelkeeper_cmd ($$);
 sub run_parcelkeeper ($$);
@@ -801,7 +803,6 @@ sub run () {
     
     my $driver = (defined $vmm) ? $vmm : $cfg{'VMM'};
     my $pkcmd = LIBDIR . "/parcelkeeper";
-    my $suspflag = "$parceldir/cfg/suspended";
 
     # Block receipt of the SIGTSTP (ctrl-z)
     block_sigtstp();
@@ -824,18 +825,7 @@ sub run () {
     unlink($cdcache_file);
     
     # Find out what memory image type we have.
-    if (-e $suspflag) {
-	open(SUSP, $suspflag)
-	    or unix_errexit("Couldn't read $suspflag");
-	$memtype = <SUSP>;
-	chomp $memtype;
-	close SUSP;
-    } elsif ($cfg{'VMM'} eq "vmware") {
-	# Compatibility with old versions of OpenISR
-	$memtype = "vmware";
-    } else {
-	$memtype = "no";
-    }
+    $memtype = get_suspended();
 
     # See if the VMM plugin thinks the parcel is runnable.
     {
@@ -922,12 +912,7 @@ sub run () {
         if defined $results{'SUCCESS'} and $results{'SUCCESS'} ne "yes";
     
     # Write out the new memory image type
-    if (defined $results{'SUSPENDED'} and open(SUSP, ">", $suspflag)) {
-	print SUSP $results{'SUSPENDED'} . "\n";
-	close SUSP;
-    } else {
-	err("Couldn't save new memory image type");
-    }
+    set_suspended(%results);
     
     # Signal Parcelkeeper to shut down and wait until it is gone
     print "Shutting down Parcelkeeper (pid=$pk_pid)"
@@ -1998,6 +1983,45 @@ sub run_vmm ($$) {
     errexit("VMM driver '$driver' returned $?")
         if $?;
     return %results;
+}
+
+#
+# get_suspended - Read and return the value of the "suspended" flag in the
+#                 cfg directory
+#
+sub get_suspended () {
+    my $suspflag = "$parceldir/cfg/suspended";
+    my $memtype;
+    
+    if (-e $suspflag) {
+	open(SUSP, $suspflag)
+	    or unix_errexit("Couldn't read $suspflag");
+	$memtype = <SUSP>;
+	chomp $memtype;
+	close SUSP;
+    } elsif ($cfg{'VMM'} eq "vmware") {
+	# Compatibility with old versions of OpenISR
+	$memtype = "vmware";
+    } else {
+	$memtype = "no";
+    }
+    return $memtype;
+}
+
+#
+# set_suspended - Update the value of the "suspended" flag in the cfg directory
+#
+sub set_suspended (%) {
+    my %results = @_;
+
+    # Write out the new memory image type
+    if (defined $results{'SUSPENDED'} and
+			open(SUSP, ">", "$parceldir/cfg/suspended")) {
+	print SUSP $results{'SUSPENDED'} . "\n";
+	close SUSP;
+    } else {
+	err("Couldn't save new memory image type");
+    }
 }
 
 #
