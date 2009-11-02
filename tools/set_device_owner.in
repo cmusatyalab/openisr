@@ -32,8 +32,15 @@
 # PROGRAM run this script, which waits for the device node to be created and
 # then overrides its ownership.
 #
+# Fedora 12, on the other hand, uses udev 145, which calls us with SIGUSR1
+# (among others) blocked.  This interferes with udevd's use of SIGUSR1 to
+# tell "udevadm settle" that udev is no longer busy, causing "udevadm settle"
+# to time out.  So, we unblock signals before calling "udevadm settle".  This
+# is fixed in udev >= 147.
+#
 
 use File::Basename;
+use POSIX;
 use strict;
 use warnings;
 use constant {
@@ -72,6 +79,8 @@ exit(0)
 	if $ret > 0;
 
 # Wait for udev to finish processing the device node.
+# Unblock all signals to work around a udev bug in Fedora 12; see above
+sigprocmask(POSIX::SIG_SETMASK, POSIX::SigSet->new);
 if (-x "/sbin/udevadm") {
 	$ret = system("/sbin/udevadm settle --timeout=" . TIMEOUT);
 } else {
