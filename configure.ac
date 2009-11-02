@@ -146,7 +146,7 @@ fi
 AC_SUBST([PERL])
 AC_ARG_VAR([PERL], [path to Perl])
 
-if WANT_VMM([virtualbox]) ; then
+if test z$enable_client = zyes || WANT_VMM([virtualbox]) ; then
 	AC_PATH_PROG([PYTHON], [python], [no])
 	if test z$PYTHON = zno ; then
 		AC_MSG_ERROR([Python not found])
