@@ -210,8 +210,8 @@ _isr_subcommand_opts() {
 		long="--long"
 		;;
 	resume)
-		short="-c -d -F -m -r -s -u"
-		long="--checkstate --disconnected --no-fullscreen --rollback --server --user --vmm"
+		short="-c -d -D -F -m -r -s -u"
+		long="--checkstate --disconnected --dirtometer --no-fullscreen --rollback --server --user --vmm"
 		;;
 	esac
 	short="-q -v $short"
