@@ -72,6 +72,16 @@ def main():
 		else:
 			print "SUSPENDED=%s" % SUSPENDED
 			print "SUCCESS=yes"
+	elif sys.argv[1] == "poweroff":
+		try:
+			__main__.poweroff()
+		except Exception, inst:
+			print "SUSPENDED=%s" % SUSPENDED
+			print "SUCCESS=no"
+			print "ERROR=%s" % _exception_msg(inst)
+		else:
+			print "SUSPENDED=%s" % SUSPENDED
+			print "SUCCESS=yes"
 	elif sys.argv[1] == "cleanup":
 		try:
 			if hasattr(__main__, 'cleanup'):

@@ -34,4 +34,7 @@ def run():
 	print >>sys.stderr, 'Waiting for interrupt...'
 	signal.pause()
 
+def poweroff():
+	pass
+
 main()

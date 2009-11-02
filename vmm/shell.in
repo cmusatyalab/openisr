@@ -63,4 +63,6 @@ sub run {
 		if $ret == -1;
 }
 
+sub poweroff {}
+
 main;

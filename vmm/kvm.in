@@ -318,6 +318,12 @@ out:
 		if $ret;
 }
 
+sub poweroff {
+	unlink("$CFGDIR/kvm.mem");
+	$SUSPENDED = "no"
+		if $SUSPENDED eq "kvm";
+}
+
 sub cleanup {
 	unlink("$CFGDIR/kvm.mem.old", "$CFGDIR/kvm.ctl");
 }

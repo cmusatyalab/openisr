@@ -657,6 +657,21 @@ def run():
 			if success:
 				raise
 
+def poweroff():
+	# Try to unregister the machine if it's still registered.  Fail
+	# silently if VirtualBox isn't installed.
+	try:
+		vbox_init()
+	except:
+		pass
+	else:
+		unregister_machine(do_save = False)
+
+	if os.path.isfile(saved_path):
+		os.unlink(saved_path)
+	if vmm.SUSPENDED == 'virtualbox':
+		vmm.SUSPENDED = 'no'
+
 def cleanup():
 	# Try to unregister the machine if it's still registered.  Fail
 	# silently if VirtualBox isn't installed.

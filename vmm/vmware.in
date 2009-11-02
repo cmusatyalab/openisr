@@ -516,6 +516,17 @@ sub run {
 		if $ret;
 }
 
+sub poweroff {
+	# If this is an old parcel which has never been run through
+	# new_filenames(), the memory image won't be where we expect it.
+	# Be noisy about the fact that we won't work correctly.
+	fail "Old or missing VMware metadata; try resuming the parcel first"
+		unless -e "$CFGDIR/vmware.vmx";
+	unlink "$CFGDIR/vmware.vmem";
+	$SUSPENDED = "no"
+		if $SUSPENDED eq "vmware";
+};
+
 sub cleanup {
 	opendir(CDIR, $CFGDIR)
 		or fail "Can't read directory $CFGDIR";

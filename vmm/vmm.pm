@@ -68,6 +68,20 @@ EOF
 				SUCCESS=yes
 EOF
 		}
+	} elsif (@ARGV and $ARGV[0] eq "poweroff") {
+		eval {main::poweroff()};
+		if ($@) {
+			($msg = <<EOF) =~ s/^\s+//gm;
+				SUSPENDED=$SUSPENDED
+				SUCCESS=no
+				ERROR=$@
+EOF
+		} else {
+			($msg = <<EOF) =~ s/^\s+//gm;
+				SUSPENDED=$SUSPENDED
+				SUCCESS=yes
+EOF
+		}
 	} elsif (@ARGV and $ARGV[0] eq "cleanup") {
 		eval {main::cleanup()}
 			if exists &main::cleanup;
