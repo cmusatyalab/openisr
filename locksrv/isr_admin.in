@@ -279,7 +279,7 @@ sub prune ($$$) {
     
     # Not allowed to prune all of the versions!
     if ($retain < 1) {
-	errexit("You must retain at least one file when pruning.");
+	errexit("You must retain at least one version when pruning.");
     }
 
     # Get the list of versions
