@@ -18,15 +18,15 @@ isr \- Internet Suspend/Resume client program
 .B isr 
 .I command
 .RI [ parcel ]
-.RB [ \-bcdeFlqvxXY ]
-.RB [ \-r
-.IR version ]
+.RB [ \-bcdDefFlqvY ]
 .RB [ \-s
 .IR server ]
-.RB [ \-m
-.IR vmm ]
 .RB [ \-u
 .IR userid ]
+.RB [ \-r
+.IR version ]
+.RB [ \-m
+.IR vmm ]
 .RB [ \-L
 .IR count ]
 
