@@ -81,6 +81,7 @@ my $parceldir;
 my $parcel;
 my $srcparcel;
 my $verbose;
+my $force;
 my $command;
 my $keyroot;
 my $userid;
@@ -99,6 +100,7 @@ my %config = get_config();
 #
 Getopt::Long::Configure("no_ignore_case", "bundling_override");
 $result = GetOptions(
+                     "f|force"         => \$force,
                      "h|help+"         => \$help,
                      "m|memsize=i"     => \$memsize,
                      "M|vmm=s"         => \$vmm,
@@ -985,16 +987,16 @@ sub getusage () {
 #############################
 
 #
-# query - Ask the user a question and return the reply
+# query - Ask the user a question and return the reply.  If -f/--force was
+#         specified, return "y" without prompting the user.
 #
 sub query ($) {
     my $question = shift;
 
-    my $reply;
+    my $reply = "";
 
-    print "$question (y/n): ";
-    $reply = <STDIN>;
-    chomp($reply);
+    return "y"
+	if $force;
 
     # Keep asking until the user replies either y or n
     while ($reply ne "y" and $reply ne "n") {
@@ -1024,18 +1026,19 @@ sub usage {
     print "          getkeyroot, getusage, keygen, makeparcel, prune.\n", RESET;
 
     print "  adduser    Add user to system (-u).\n";
-    print "  deluser    Delete user from system (-u).\n";
+    print "  deluser    Delete user from system (-u, [-f]).\n";
     print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P, [-s]).\n";
     print "  makeparcel Create an empty parcel from scratch (-u, -p, -m, -s, -M).\n";
-    print "  delparcel  Delete parcel from system (-u, -p).\n";
+    print "  delparcel  Delete parcel from system (-u, -p, [-f]).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
     print "  encrypt    Encrypt parcel version (-u, -p, -v).\n";
     print "  getkeyroot Show parcel keyroot (-u, -p).\n";
     print "  getusage   List recent activity for each parcel (no args)\n";
     print "  keygen     Generate a keyroot (no args).\n";
-    print "  prune      Prune old versions of a parcel (-u, -p, -r).\n";
+    print "  prune      Prune old versions of a parcel (-u, -p, -r, [-f]).\n";
 
     print "Options:\n";
+    print "  -f,--force        Don't ask to confirm dangerous operations.\n";
     print "  -h,--help         Print help message (Try '-hh' for some concrete examples).\n";
     print "  -m,--memsize      Size of the parcel's memory image in MB.\n";
     print "  -M,--vmm          Default VMM for the parcel.\n";
