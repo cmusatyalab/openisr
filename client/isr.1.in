@@ -31,7 +31,7 @@ isr \- Internet Suspend/Resume client program
 .IR count ]
 
 .I Commands: 
-.B auth, checkin (ci), checkout (co), checkhoard, checkp, clean, deauth, discard, help, hoard, ls, lshoard, passwd, resume, rmhoard, stat, sync, uuid, version
+.B auth, checkin (ci), checkout (co), checkhoard, checkp, clean, deauth, discard, help, hoard, ls, lshoard, passwd, poweroff, resume, rmhoard, stat, sync, uuid, version
 
 .SH DESCRIPTION
 An Internet Suspend/Resume\*R (ISR) system is a collection of
@@ -382,6 +382,20 @@ account on your client host. (Use the local
 command for that.)  
 
 .TP
+.BI "isr poweroff " "parcel" " [-m " "vmm" "]"
+Forcibly power off a suspended
+.I parcel
+by deleting its memory image.  When
+.I parcel
+is next resumed, it will perform a cold boot.  This command can be used to
+reboot a misbehaving parcel or to recover if its memory image is damaged.
+The
+.B -m
+option will delete the memory image for the specified
+.IR vmm ,
+rather than for the parcel's default VMM.
+
+.TP
 .BI "isr resume " "parcel" " [-r " "oldversion" "] [-m " "vmm" "] [-c] [-d] [-D] [-F]"
 Checkout a 
 .I parcel
@@ -589,8 +603,9 @@ can be a fully qualified domain name or an IP address.
 
 .TP
 .BI -m/--vmm " vmm"
-Resume a parcel using a virtual machine monitor other than the parcel's
-default.
+For
+.BR resume " or " poweroff ,
+use a virtual machine monitor other than the parcel's default.
 
 .TP
 .BI -u/--user " userid"

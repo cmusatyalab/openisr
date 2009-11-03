@@ -81,6 +81,7 @@ sub checkout ();
 sub run ();
 sub checkin ();
 sub sync ($);
+sub poweroff ();
 sub discard ();
 sub disconnect ();
 sub listparcels ();
@@ -522,6 +523,13 @@ elsif ($command eq "sync") {
     acquire_lock("parcel-$uuid", "Parcel", 0);
     sync(0);
 } 
+elsif ($command eq "poweroff") {
+    need_parcel();
+    need_checked_out();
+    $do_sync = 1;
+    acquire_lock("parcel-$uuid", "Parcel", 0);
+    poweroff();
+}
 elsif ($command eq "discard") {
     need_parcel();
     need_checked_out();
@@ -995,6 +1003,61 @@ sub sync ($) {
     $relstring = " (but not released)"
 	if !$releasing;
     print(GREEN, "Success: Sync completed. Parcel checkpointed$relstring.\n", RESET)
+	if $verbose;
+}
+
+#
+# poweroff - Tell the VMM driver to delete the memory image
+#
+sub poweroff () {
+    my %results;
+    my $vmname;
+    my $err;
+    my $memtype;
+    my $reply;
+    
+    my $driver = (defined $vmm) ? $vmm : $cfg{'VMM'};
+
+    # Find out what memory image type we have.
+    $memtype = get_suspended();
+
+    # Get the VMM name.
+    {
+	local $ENV{'SUSPENDED'} = $memtype;
+	%results = run_vmm($driver, 'info');
+    }
+    $vmname = $results{'VMM'} ? $results{'VMM'} : "UnknownVMM";
+
+    # Give users a chance to change their minds.
+    if ($verbose) {
+	$reply = query("This command forcibly powers off a suspended parcel. Proceed?");
+	if ($reply eq "n") {
+	    return;
+	}
+    }
+    print "Deleting $vmname memory image...\n"
+        if $verbose;
+
+    # Reset the clean-cache flag, since we're about to make the cache dirty.
+    unlink($cleancache_file);
+
+    # Reset the consistent dirty cache flag, since any temporary dirty
+    # cache directory is about to become inconsistent with the local cache.
+    unlink($cdcache_file);
+
+    # Delete the memory image.
+    {
+	local $ENV{'SUSPENDED'} = $memtype;
+	%results = run_vmm($driver, 'poweroff');
+    }
+    $err = $results{'ERROR'} ? $results{'ERROR'} : "Unknown error";
+    errexit("$vmname returned error: $err")
+        if ! defined $results{'SUCCESS'} or $results{'SUCCESS'} ne "yes";
+    
+    # Write out the new memory image type.
+    set_suspended(%results);
+
+    print(GREEN, "Success: Parcel $userid/$parcel powered off.\n", RESET)
 	if $verbose;
 }
 
@@ -3040,8 +3103,8 @@ sub usage ($) {
 
     print RED, "Usage: $progname command [parcel] [options...]\n", RESET;
     print BLUE, "Commands: auth, checkhoard, checkin (ci), checkout (co), checkp, clean, deauth,\n", RESET;
-    print BLUE, "          discard, help, hoard, ls, lshoard, passwd, resume, rmhoard, stat,\n", RESET;
-    print BLUE, "          sync, uuid, version\n", RESET;
+    print BLUE, "          discard, help, hoard, ls, lshoard, passwd, poweroff, resume, rmhoard,\n", RESET;
+    print BLUE, "          stat, sync, uuid, version\n", RESET;
     print BLUE, "Parcel is required for most commands\n", RESET;
     if (!$msg) {
 	print "Basic commands:\n";
@@ -3060,6 +3123,7 @@ sub usage ($) {
 	print "  hoard      Fetch entire virtual disk for improved performance\n";
 	print "  deauth     Remove authentication credentials from your client\n";
 	print "Debugging and maintenance commands:\n";
+	print "  poweroff   Discard memory image for a suspended parcel (-m optional)\n";
 	print "  checkp     Check parcel for consistency (-cerY optional)\n";
 	print "  checkhoard Check hoard cache for consistency (-c optional)\n";
 	print "  lshoard    List info about the hoard cache (-l optional)\n";
@@ -3077,7 +3141,7 @@ sub usage ($) {
     print "  -F,--no-fullscreen Start VMM in windowed mode [resume]\n";
     print "  -l,--long          Long listing [ls, lshoard, stat]\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls]\n";
-    print "  -m,--vmm           Override default VMM for this parcel\n";
+    print "  -m,--vmm           Override default VMM for this parcel [resume, poweroff]\n";
     print "  -q,--quiet         Run silently (except if things go wrong)\n";
     print "  -r,--rollback      Rollback to or check version [checkout, checkp, resume]\n";
     print "  -s,--server        Server domain name (optional)\n";
