@@ -402,6 +402,24 @@ sub getkeyroot ($$) {
     return get_value(get_parcelcfg_path($userid, $parcel), "KEYROOT");
 }
 
+#
+# make_userdir - Create the user's base directory in the content root, if it
+#                doesn't already exist
+#
+sub make_userdir ($) {
+    my $userid = shift;
+
+    my $userdir = "$config{content_root}/$userid";
+
+    if (!-d $userdir) {
+	mkdir($userdir)
+	    or unix_errexit("Unable to create user directory ($userdir)");
+	system("chown $userid:$userid $userdir") == 0
+	    or system_errexit("Unable to set owner of $userdir");
+	chmod(0755, $userdir) == 1
+	    or unix_errexit("Unable to set permissions on $userdir");
+    }
+}
 
 #
 # adduser - Add a new user
@@ -431,10 +449,13 @@ sub adduser ($) {
     print CHP "$userid:$passwd\n";
     close CHP
 	or system_errexit("Unable to change password for $userid");
+
+    # Create data directories
     if (!-d $isrdir) {
 	mkdir("$isrdir")
 	    or unix_errexit("Unable to make .isr directory for $userid");
     }
+    make_userdir($userid);
 
     # Set the file permissions
     system("chown $userid:$userid $isrdir") == 0
@@ -495,8 +516,7 @@ sub init_parceldir ($$) {
     
     my $umask;
     
-    my $userdir = "$config{content_root}/$userid";
-    my $parceldir = "$userdir/$parcel";
+    my $parceldir = "$config{content_root}/$userid/$parcel";
     my $parcelcfg = get_parcelcfg_path($userid, $parcel);
     my $parcelcfgdir = dirname($parcelcfg);
     
@@ -504,14 +524,7 @@ sub init_parceldir ($$) {
         if -d $parceldir;
     
     # Create new content directory for this user if one doesn't already exist
-    if (!-d $userdir) {
-	mkdir($userdir)
-	    or unix_errexit("Unable to create user directory ($userdir)");
-	system("chown $userid:$userid $userdir") == 0
-	    or errexit("Unable to set owner of $userdir");
-	system("chmod 755 $userdir" ) == 0
-	    or errexit("Unable to set permissions on $userdir");
-    }	
+    make_userdir($userid);
 
     # Create empty directories for the parcel
     mkdir($parceldir)
@@ -905,8 +918,7 @@ sub delparcel ($$) {
     my $userid = shift;
     my $parcel = shift;
 
-    my $userdir = "$config{content_root}/$userid";
-    my $parceldir = "$userdir/$parcel";
+    my $parceldir = "$config{content_root}/$userid/$parcel";
     my $parcelcfg = get_parcelcfg_path($userid, $parcel);
     my $parcelcfgdir = dirname($parcelcfg);
     my $reply;
