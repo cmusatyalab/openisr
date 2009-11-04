@@ -14,13 +14,15 @@ man_MANS = openisr-config.8
 noinst_SCRIPTS = post
 endif
 
-pkglib_PROGRAMS = query blobtool $(CLIENTPROGS)
+pkglib_PROGRAMS = query blobtool disktool $(CLIENTPROGS)
 EXTRA_PROGRAMS = nextest
 CLEANFILES = $(GEN) nextest
 EXTRA_DIST = $(GEN:=.in)
 
 blobtool_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS) $(NO_FIELD_INITIALIZER_WARNINGS)
 blobtool_LDFLAGS = $(CRYPTO_LIBS) $(glib_LIBS) -lz -larchive
+disktool_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS) $(NO_FIELD_INITIALIZER_WARNINGS)
+disktool_LDFLAGS = $(CRYPTO_LIBS) $(glib_LIBS) -lz -L$(top_builddir)/sqlite -lisrsql
 dirtometer_CFLAGS = $(AM_CFLAGS) $(gtk_CFLAGS) $(glib_CFLAGS)
 dirtometer_CFLAGS += -Wno-unused-parameter $(NO_FIELD_INITIALIZER_WARNINGS)
 dirtometer_LDFLAGS = $(gtk_LIBS) $(glib_LIBS)
