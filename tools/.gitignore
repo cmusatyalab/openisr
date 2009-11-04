@@ -4,6 +4,7 @@ nextest
 nexus_debug
 openisr-config
 openisr-config.8
+post
 query
 readstats
-post
+set_device_owner
