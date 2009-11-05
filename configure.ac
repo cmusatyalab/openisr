@@ -19,6 +19,7 @@
 
 AC_PREREQ(2.59)
 AC_INIT([OpenISR], [0.9.6])
+AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign 1.10])
 AC_COPYRIGHT([Copyright (C) 2007-2009 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([parcelkeeper/nexus.c])

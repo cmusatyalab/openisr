@@ -5,13 +5,6 @@ config.status
 autom4te.cache
 libtool
 aclocal.m4
-config.guess
-config.sub
-depcomp
-ltmain.sh
-compile
-missing
-install-sh
 config.h.in
 config.h
 stamp-h1
