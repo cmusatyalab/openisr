@@ -22,6 +22,7 @@ AC_INIT([OpenISR], [0.9.6])
 AM_INIT_AUTOMAKE([foreign 1.10])
 AC_COPYRIGHT([Copyright (C) 2007-2009 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([parcelkeeper/nexus.c])
+AC_CONFIG_MACRO_DIR([m4])
 AC_DISABLE_STATIC
 
 # Generating a config.h prevents the introduction of several lines' worth of

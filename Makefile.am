@@ -19,6 +19,7 @@ dist_noinst_SCRIPTS = mkrevision.sh autogen.sh
 EXTRA_DIST  = LICENSE.Eclipse LICENSE.GPL LICENSE.LGPL CHANGES README.server
 EXTRA_DIST += .gitrevision
 
+ACLOCAL_AMFLAGS = -I m4
 # "make distcheck" should check as much as possible, but not the VMware
 # driver, because libvdisk installs into an absolute path
 DISTCHECK_CONFIGURE_FLAGS = --enable-server --enable-vmm-drivers=all,-vmware
