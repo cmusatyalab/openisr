@@ -485,24 +485,26 @@ if ($command eq "checkout") {
 } 
 elsif ($command eq "resume") {
     need_parcel();
-    # Resume will need a network connection if the requested parcel is not
-    # currently checked out, or if we're not planning on running disconnected,
-    # or if we need to do some hoarding to run disconnected.
-    if (!$parceldir or !-e $parceldir or !$disconnected
-	        or !is_fully_hoarded()) {
+    if ($disconnected) {
+	errexit("Parcel is not prepared for disconnected operation.\nRun \"isr checkout -d\" first.")
+	    unless $parceldir and -e $parceldir and is_fully_hoarded();
+    } else {
     	need_network();
-	need_remote_parcel_and_lock();
+	if ($parceldir and -e $parceldir) {
+	    # We already have a checkout.  Check that we still have the lock
+	    # on the server.
+	    need_remote_parcel_and_lock();
+	} else {
+	    need_remote_parcel();
+	}
     }
     $do_sync = 1;
+    # We call checkout() even if we're running disconnected so that it can
+    # print a status message
     acquire_lock("checkout-$parcel", "Checkout", 0);
     checkout();
     release_lock("Checkout");
     acquire_lock("parcel-$uuid", "Parcel", 0);
-    if ($disconnected) {
-	acquire_lock("hoard-$uuid", "Hoard cache", 0);
-	disconnect();
-	release_lock("Hoard cache");
-    }
     run();
 } 
 elsif ($command eq "checkin") {
@@ -3112,7 +3114,7 @@ sub usage ($) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR server (once per X session only)\n";
 	print "  ls         List info about your parcels (parcel, -lL optional)\n";
- 	print "  resume     Checkout (if necessary) and run a parcel (-cdDFmr optional)\n";
+ 	print "  resume     Checkout (if necessary) and run a parcel (-dDFmr optional)\n";
 	print "  checkin    Sync parcel to server and check it in (-b optional)\n";
 	print "  passwd     Change your ISR password on the server\n";
 	print "  help       Print help message\n";
@@ -3135,7 +3137,7 @@ sub usage ($) {
     }
     print "Options:\n";
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [checkin, sync]\n";
-    print "  -c,--checkstate    Do extra checks [checkout, resume, checkp, checkhoard]\n";
+    print "  -c,--checkstate    Do extra checks [checkout, checkp, checkhoard]\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [checkout, resume]\n";
     print "  -D,--dirtometer    Launch dirtometer visualization tool [resume]\n";
     print "  -e,--remote        Perform action on server rather than client [checkp]\n";

@@ -396,7 +396,7 @@ option will delete the memory image for the specified
 rather than for the parcel's default VMM.
 
 .TP
-.BI "isr resume " "parcel" " [-r " "oldversion" "] [-m " "vmm" "] [-c] [-d] [-D] [-F]"
+.BI "isr resume " "parcel" " [-r " "oldversion" "] [-m " "vmm" "] [-d] [-D] [-F]"
 Checkout a 
 .I parcel
 (if necessary) and then run it. Any additional state that the parcel
@@ -412,17 +412,9 @@ option to resume
 .IR disconnected .
 If the parcel is not fully hoarded, the
 .B -d
-option will cause the parcel to be hoarded (which requires a network
-connection) and then will resume disconnected.  (To ensure that no network
-access is needed in order to resume disconnected, run
-.B checkout -d
-beforehand to ensure that the parcel is both checked out and fully
-hoarded.)  The
-.B -c
-option, when used in conjunction with
-.BR -d ,
-will cause a lengthy consistency check to be performed on the hoard
-cache before resuming.
+option will remind you to run
+.B isr checkout -d
+to check out and hoard the parcel.
 
 The
 .B -r
@@ -521,7 +513,7 @@ to
 .TP
 .B -c/--checkstate
 Perform an additional content consistency check during the 
-.BR checkp ", " checkhoard ", " checkout ", and " resume
+.BR checkp ", " checkhoard ", and " checkout
 commands.
 
 .TP
