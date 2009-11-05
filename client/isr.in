@@ -1654,6 +1654,8 @@ sub need_remote_parcel () {
 # the parcel lock (perhaps because another client did "isr clean -f")
 #
 sub need_remote_parcel_and_lock () {
+    errexit("Parcel lock not held; aborting.")
+        unless $sessionid > 0;
     return unless srun("lock", "-p $parcel -C $sessionid",
 	    OUTFILE => "/dev/null", CHECK_AUTH => 1);
     # Okay, we have a problem.  Now make the extra RPC to determine which
