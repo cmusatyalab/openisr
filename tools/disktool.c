@@ -334,8 +334,6 @@ static void fini(void)
 	isrcry_cipher_free(cipher_ctx);
 	isrcry_hash_free(hash_ctx);
 
-	deflateEnd(&zstrm);
-
 	g_free(zerodata);
 	g_free(tmpdata);
 }
@@ -546,6 +544,7 @@ static void import_image(const gchar *img)
 	g_free(chunk.data);
 	g_free(chunk.tag);
 	g_free(chunk.key);
+	deflateEnd(&zstrm);
 }
 
 static void export_image(const gchar *img)
@@ -622,6 +621,7 @@ static void export_image(const gchar *img)
 	finish_progress();
 
 	g_free(chunk.data);
+	inflateEnd(&zstrm);
 }
 
 int main(int argc, char **argv)
