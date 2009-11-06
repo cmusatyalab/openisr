@@ -38,6 +38,8 @@ enum compressiontype {
 };
 
 /* command line parameters */
+static const char *importimage;
+static const char *exportimage;
 static const char *destpath = ".";
 static const char *keyring = "keyring";
 static int chunksize = 128; /* chunk size in KiB */
@@ -47,7 +49,9 @@ static int compress_level = Z_DEFAULT_COMPRESSION;
 static gboolean want_progress;
 
 static GOptionEntry options[] = {
-	{"out", 'o', 0, G_OPTION_ARG_FILENAME, &destpath, "Output path (default: .)", "PATH"},
+	{"in", 'i', 0, G_OPTION_ARG_FILENAME, &importimage, "Image to import from", "PATH"},
+	{"out", 'o', 0, G_OPTION_ARG_FILENAME, &exportimage, "Image to export to", "PATH"},
+	{"hdk", 'h', 0, G_OPTION_ARG_FILENAME, &destpath, "Path to parcel directory (default: .)", "PATH"},
 	{"keyring", 'k', 0, G_OPTION_ARG_FILENAME, &keyring, "Keyring (default: keyring)", "PATH"},
 	{"chunksize", 's', 0, G_OPTION_ARG_INT, &chunksize, "Chunksize (default: 128)", "KiB"},
 	{"chunksperdir", 'd', 0, G_OPTION_ARG_INT, &chunksperdir, "Chunks per directory (default: 512)", "N"},
@@ -79,6 +83,10 @@ static unsigned int hash_len;
 
 static z_stream zstrm;
 static struct db *sqlitedb;
+
+static gulong chunklen;
+static gpointer zerodata;
+static gpointer tmpdata;
 
 /** Progress bar *************************************************************/
 
@@ -229,7 +237,7 @@ static void clear_progress(void)
 static void init_progress_fd(int fd)
 {
 	off_t imagelen;
-	int64_t nchunks, chunklen = chunksize * 1024;
+	int64_t nchunks;
 
 	imagelen = lseek(fd, 0, SEEK_END);
 	if (imagelen == -1)
@@ -259,8 +267,9 @@ static void handle_log_message(const gchar *domain, GLogLevelFlags level,
 
 static void init(void)
 {
-	if (deflateInit(&zstrm, compress_level) != Z_OK)
-		die("Failed to initialize zlib: %s", zstrm.msg);
+	GString *dbfile = g_string_new("");
+	struct query *qry;
+	int user_version = 0;
 
 	hash_ctx = isrcry_hash_alloc(hash);
 	if (hash_ctx == NULL)
@@ -274,68 +283,97 @@ static void init(void)
 		die("Couldn't allocate cipher");
 	cipher_block = isrcry_cipher_block(cipher);
 
-	/* initialize sqlite wrappers */
+	/* allocate an empty chunk to compare against */
+	chunklen = chunksize * 1024;
+	zerodata = g_malloc0(chunklen);
+	tmpdata = g_malloc(chunklen);
+
+	/* initialize sqlite */
 	g_log_set_handler("isrsql", G_LOG_LEVEL_INFO | SQL_LOG_LEVEL_QUERY |
 			  SQL_LOG_LEVEL_SLOW_QUERY, handle_log_message, NULL);
 	sql_init();
-	sql_conn_open(keyring, &sqlitedb);
 
-	/* In case the db wasn't created, initialize a basic keyring schema */
+	/* check if keyring path is absolute or relative to cwd */
+	if (!((keyring[0] == '/') ||
+	      (keyring[0] == '.' && keyring[1] == '/') ||
+	      (keyring[0] == '.' && keyring[1] == '.' && keyring[2] == '/')))
+	{
+		g_string_append(dbfile, destpath);
+		g_string_append_c(dbfile, '/');
+	}
+	g_string_append(dbfile, keyring);
+	sql_conn_open(dbfile->str, &sqlitedb);
+	g_string_free(dbfile, TRUE);
+
+	/* In case the db is not yet initialized, create a basic schema */
 	begin(sqlitedb);
-	query(NULL, sqlitedb,
-	      "CREATE TABLE IF NOT EXISTS keys ( "
-	      "chunk INTEGER PRIMARY KEY NOT NULL, "
-	      "tag BLOB NOT NULL, "
-	      "key BLOB NOT NULL, "
-	      "compression INTEGER NOT NULL)", NULL);
-	query(NULL, sqlitedb,
-	      "CREATE INDEX IF NOT EXISTS keys_tags ON keys (tag)", NULL);
+	if (query(&qry, sqlitedb, "PRAGMA user_version", NULL)) {
+	    query_row(qry, "d", &user_version);
+	    query_free(qry);
+	}
+
+	if (!user_version) {
+		query(NULL, sqlitedb, "PRAGMA auto_vacuum = 0", NULL);
+		query(NULL, sqlitedb, "PRAGMA legacy_file_format = ON", NULL);
+		query(NULL, sqlitedb, "PRAGMA user_version = 1", NULL);
+		query(NULL, sqlitedb, "CREATE TABLE keys ( "
+				      "chunk INTEGER PRIMARY KEY NOT NULL, "
+				      "tag BLOB NOT NULL, "
+				      "key BLOB NOT NULL, "
+				      "compression INTEGER NOT NULL)", NULL);
+		query(NULL, sqlitedb, "CREATE INDEX keys_tags ON "
+				      "keys (tag)", NULL);
+	}
 	commit(sqlitedb);
-
-	begin(sqlitedb);
 }
 
 static void fini(void)
 {
-	commit(sqlitedb);
 	sql_conn_close(sqlitedb);
 
 	isrcry_cipher_free(cipher_ctx);
 	isrcry_hash_free(hash_ctx);
 
 	deflateEnd(&zstrm);
+
+	g_free(zerodata);
+	g_free(tmpdata);
 }
 
 struct chunk_desc {
-    guchar tag[HASH_LEN];
-    guchar key[HASH_LEN];
+    gpointer tag;
+    gpointer key;
     gpointer data;
     gulong len;
     unsigned int compression;
 };
 
-static void encrypt_chunk(struct chunk_desc *chunk, gpointer tmp, gulong len)
+static void encrypt_chunk(struct chunk_desc *chunk)
 {
+	gpointer chunkdata;
+	gulong tmplen;
 	int rc;
 
 	/* compress chunk */
 	zstrm.next_in = chunk->data;
 	zstrm.avail_in = chunk->len;
-	zstrm.next_out = tmp;
-	zstrm.avail_out = len;
+	zstrm.next_out = tmpdata;
+	zstrm.avail_out = chunklen;
 
 	rc = deflate(&zstrm, Z_FINISH);
 	if (rc == Z_STREAM_END && zstrm.avail_out > (cipher_block + 1)) {
-		chunk->len = len - zstrm.avail_out;
 		chunk->compression = COMP_ZLIB;
+		chunkdata = tmpdata;
+		tmplen = chunklen - zstrm.avail_out;
 	} else { /* no room in output buffer / compression failed */
-		memcpy(chunk->data, tmp, chunk->len);
 		chunk->compression = COMP_NONE;
+		chunkdata = chunk->data;
+		tmplen = chunk->len;
 	}
 	deflateReset(&zstrm);
 
 	/* calculate key */
-	isrcry_hash_update(hash_ctx, tmp, chunk->len);
+	isrcry_hash_update(hash_ctx, chunkdata, tmplen);
 	isrcry_hash_final(hash_ctx, chunk->key);
 
 	/* encrypt chunk */
@@ -345,13 +383,13 @@ static void encrypt_chunk(struct chunk_desc *chunk, gpointer tmp, gulong len)
 		die("Couldn't initialize cipher: %s", isrcry_strerror(rc));
 
 	if (chunk->compression == COMP_NONE) {
-		isrcry_cipher_process(cipher_ctx, tmp, chunk->len, chunk->data);
-		len = chunk->len;
+		isrcry_cipher_process(cipher_ctx, chunk->data, chunk->len,
+				      chunk->data);
 	} else {
-		isrcry_cipher_final(cipher_ctx, padding, tmp,
-				    chunk->len, chunk->data, &len);
+		chunk->len = chunklen;
+		isrcry_cipher_final(cipher_ctx, padding, tmpdata, tmplen,
+				    chunk->data, &chunk->len);
 	}
-	chunk->len = len;
 
 	/* calculate tag */
 	isrcry_hash_update(hash_ctx, chunk->data, chunk->len);
@@ -365,7 +403,7 @@ static void write_chunk(unsigned int idx, struct chunk_desc *chunk)
 
 	dest = g_string_new(destpath);
 
-	g_string_append_printf(dest, "/%04d", idx / chunksperdir);
+	g_string_append_printf(dest, "/hdk/%04d", idx / chunksperdir);
 	g_mkdir_with_parents(dest->str, 0755);
 
 	g_string_append_printf(dest, "/%04d", idx % chunksperdir);
@@ -389,29 +427,94 @@ static void write_chunk(unsigned int idx, struct chunk_desc *chunk)
 	g_string_free(dest, TRUE);
 }
 
+static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
+{
+	GString *dest;
+	int fd, rc;
+	gulong tmplen;
+
+	dest = g_string_new(destpath);
+
+	g_string_append_printf(dest, "/hdk/%04d/%04d",
+			       idx / chunksperdir, idx % chunksperdir);
+
+	fd = g_open(dest->str, O_RDONLY, 0);
+	if (fd == -1)
+		die("Failed to open chunk #%d: %s", idx, strerror(errno));
+	chunk->len = read(fd, chunk->data, chunklen);
+	close(fd);
+
+	g_string_free(dest, TRUE);
+
+	/* decrypt chunk */
+	rc = isrcry_cipher_init(cipher_ctx, ISRCRY_DECRYPT, chunk->key,
+				cipher_keylen, NULL);
+	if (rc)
+		die("Couldn't initialize cipher: %s", isrcry_strerror(rc));
+
+	if (chunk->compression == COMP_NONE) {
+		if (chunk->len != chunklen)
+			die("Short read on uncompressed chunk");
+
+		rc = isrcry_cipher_process(cipher_ctx, chunk->data, chunk->len,
+					   chunk->data);
+		if (rc)
+			die("Failed to decrypt uncompressed chunk: %s",
+			    isrcry_strerror(rc));
+		return;
+	}
+
+	tmplen = chunklen;
+	rc = isrcry_cipher_final(cipher_ctx, padding, chunk->data, chunk->len,
+				 tmpdata, &tmplen);
+	if (rc)
+		die("Failed to decrypt compressed chunk: %s",
+		    isrcry_strerror(rc));
+
+	if (chunk->compression == COMP_ZLIB) {
+		/* decompress chunk */
+		zstrm.next_in = tmpdata;
+		zstrm.avail_in = tmplen;
+		zstrm.next_out = chunk->data;
+		zstrm.avail_out = chunklen;
+
+		rc = inflate(&zstrm, Z_FINISH);
+		if (rc != Z_STREAM_END || zstrm.avail_out)
+		    die("failed to decompress");
+
+		chunk->len = chunklen;
+		inflateReset(&zstrm);
+	} else
+		die("Unsupported compression type");
+}
+
 static void import_image(const gchar *img)
 {
 	int fd;
 	unsigned int idx;
 	ssize_t n;
 	struct chunk_desc chunk, zerochunk;
-	gpointer tmp, zerodata;
-	gulong chunklen;
+
+	if (deflateInit(&zstrm, compress_level) != Z_OK)
+		die("Failed to initialize zlib: %s", zstrm.msg);
 
 	fd = g_open(img, O_RDONLY, 0);
 	if (fd == -1)
 		die("unable to open image: %s", strerror(errno));
 
-	chunklen = chunksize * 1024;
-	tmp = g_malloc(chunklen);
 	chunk.data = g_malloc(chunklen);
+	chunk.tag = g_malloc(hash_len);
+	chunk.key = g_malloc(hash_len);
 
 	zerochunk.len = chunklen;
 	zerochunk.data = g_malloc0(chunklen);
-	zerodata = g_malloc0(chunklen);
-	encrypt_chunk(&zerochunk, tmp, chunklen);
+	zerochunk.tag = g_malloc(hash_len);
+	zerochunk.key = g_malloc(hash_len);
+	encrypt_chunk(&zerochunk);
 
 	init_progress_fd(fd);
+
+	begin(sqlitedb);
 	for (idx = 0; maxchunks != 0; idx++, maxchunks--)
 	{
 		n = read(fd, chunk.data, chunklen);
@@ -426,20 +529,99 @@ static void import_image(const gchar *img)
 		if (memcmp(chunk.data, zerodata, chunklen) == 0) {
 			write_chunk(idx, &zerochunk);
 		} else {
-			encrypt_chunk(&chunk, tmp, chunklen);
+			encrypt_chunk(&chunk);
 			write_chunk(idx, &chunk);
 		}
-
 		progress(chunklen);
 	}
+	commit(sqlitedb);
+
 	finish_progress();
 
 	close(fd);
 
 	g_free(zerochunk.data);
-	g_free(zerodata);
+	g_free(zerochunk.tag);
+	g_free(zerochunk.key);
 	g_free(chunk.data);
-	g_free(tmp);
+	g_free(chunk.tag);
+	g_free(chunk.key);
+}
+
+static void export_image(const gchar *img)
+{
+	int fd, skip;
+	unsigned int idx, nchunk;
+	struct chunk_desc chunk;
+	struct query *qry;
+	ssize_t n;
+	int write_zeros;
+
+	if (inflateInit(&zstrm) != Z_OK)
+		die("Failed to initialize zlib: %s", zstrm.msg);
+
+	fd = g_creat(img, 0600);
+	if (fd == -1)
+		die("unable to create image: %s", strerror(errno));
+
+	chunk.data = g_malloc(chunklen);
+
+	begin(sqlitedb);
+
+	if (query(&qry, sqlitedb, "SELECT COUNT(*) FROM keys", NULL)) {
+	    query_row(qry, "d", &nchunk);
+	    query_free(qry);
+	}
+	if (maxchunks != -1 && nchunk > maxchunks)
+		nchunk = maxchunks;
+
+	if (!query(&qry, sqlitedb,
+		   "SELECT chunk, tag, key, compression FROM keys "
+		   "ORDER BY chunk", NULL))
+		die("failed to query keyring");
+
+	init_progress(nchunk * chunklen);
+
+	/* if the image is a disk or pipe ftruncate will fail and we should
+	 * write out zero blocks */
+	write_zeros = (ftruncate(fd, 0) != 0);
+	ftruncate(fd, nchunk * chunklen);
+
+	for (idx = 0; query_has_row(sqlitedb) && maxchunks != 0;
+	     idx++, maxchunks--)
+	{
+		unsigned int tmp0, tmp1, tmp2;
+		query_row(qry, "dbbd", &tmp0, &chunk.tag, &tmp1,
+			  &chunk.key, &tmp2, &chunk.compression);
+
+		if (tmp0 != idx)
+			die("missing chunk %u", idx);
+
+		if (tmp1 != hash_len || tmp2 != hash_len)
+			die("incorrect tag or key length");
+
+		read_chunk(idx, &chunk);
+
+		skip = !write_zeros && !memcmp(chunk.data, zerodata, chunklen);
+		if (!skip) {
+			n = write(fd, chunk.data, chunklen);
+			if (n != (ssize_t)chunklen)
+				die("Failed to write to image file: %s",
+				    strerror(errno));
+		} else
+			lseek(fd, chunklen, SEEK_CUR);
+
+		progress(chunklen);
+		query_next(qry);
+	}
+	query_free(qry);
+	commit(sqlitedb);
+
+	close(fd);
+
+	finish_progress();
+
+	g_free(chunk.data);
 }
 
 int main(int argc, char **argv)
@@ -447,7 +629,7 @@ int main(int argc, char **argv)
 	GOptionContext *ctx;
 	GError *err = NULL;
 
-	ctx = g_option_context_new("[image] - import VM disk image");
+	ctx = g_option_context_new(" - import VM disk image");
 	g_option_context_add_main_entries(ctx, options, NULL);
 	if (!g_option_context_parse(ctx, &argc, &argv, &err))
 		die("%s", err->message);
@@ -459,12 +641,15 @@ int main(int argc, char **argv)
 	if (chunksperdir <= 0)
 		die("Invalid number of chunks per directory specified");
 
-	if (argc < 2)
-		die("No image specified");
+	if (!(!importimage ^ !exportimage))
+		die("Specify an image to import or export");
 
 	init();
 
-	import_image(argv[1]);
+	if (importimage)
+		import_image(importimage);
+	else
+		export_image(exportimage);
 
 	fini();
 
