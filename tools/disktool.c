@@ -259,10 +259,10 @@ static void init_progress_fd(int fd)
 static void handle_log_message(const gchar *domain, GLogLevelFlags level,
 			       const gchar *message, gpointer data)
 {
-    (void)domain;
-    (void)level;
-    (void)message;
-    (void)data;
+	(void)domain;
+	(void)level;
+	(void)message;
+	(void)data;
 }
 
 static void init(void)
@@ -308,8 +308,8 @@ static void init(void)
 	/* In case the db is not yet initialized, create a basic schema */
 	begin(sqlitedb);
 	if (query(&qry, sqlitedb, "PRAGMA user_version", NULL)) {
-	    query_row(qry, "d", &user_version);
-	    query_free(qry);
+		query_row(qry, "d", &user_version);
+		query_free(qry);
 	}
 
 	if (!user_version) {
@@ -341,11 +341,11 @@ static void fini(void)
 }
 
 struct chunk_desc {
-    gpointer tag;
-    gpointer key;
-    gpointer data;
-    gulong len;
-    unsigned int compression;
+	gpointer tag;
+	gpointer key;
+	gpointer data;
+	gulong len;
+	unsigned int compression;
 };
 
 static void encrypt_chunk(struct chunk_desc *chunk)
@@ -480,7 +480,7 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 
 		rc = inflate(&zstrm, Z_FINISH);
 		if (rc != Z_STREAM_END || zstrm.avail_out)
-		    die("failed to decompress");
+			die("failed to decompress");
 
 		chunk->len = chunklen;
 		inflateReset(&zstrm);
@@ -569,8 +569,8 @@ static void export_image(const gchar *img)
 	begin(sqlitedb);
 
 	if (query(&qry, sqlitedb, "SELECT COUNT(*) FROM keys", NULL)) {
-	    query_row(qry, "d", &nchunk);
-	    query_free(qry);
+		query_row(qry, "d", &nchunk);
+		query_free(qry);
 	}
 	if (maxchunks != -1 && nchunk > maxchunks)
 		nchunk = maxchunks;
