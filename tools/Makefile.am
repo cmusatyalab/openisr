@@ -14,7 +14,11 @@ man_MANS = openisr-config.8
 noinst_SCRIPTS = post
 endif
 
-pkglib_PROGRAMS = query blobtool disktool $(CLIENTPROGS)
+if WANT_SERVER
+SERVERPROGS = disktool
+endif
+
+pkglib_PROGRAMS = query blobtool $(CLIENTPROGS) $(SERVERPROGS)
 EXTRA_PROGRAMS = nextest
 CLEANFILES = $(GEN) nextest
 EXTRA_DIST = $(GEN:=.in)
