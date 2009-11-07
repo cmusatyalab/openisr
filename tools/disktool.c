@@ -52,10 +52,10 @@ static gboolean want_progress;
 static GOptionEntry options[] = {
 	{"in", 'i', 0, G_OPTION_ARG_FILENAME, &importimage, "Image to import from", "PATH"},
 	{"out", 'o', 0, G_OPTION_ARG_FILENAME, &exportimage, "Image to export to", "PATH"},
-	{"hdk", 'h', 0, G_OPTION_ARG_FILENAME, &destpath, "Path to parcel directory (default: .)", "PATH"},
+	{"directory", 'd', 0, G_OPTION_ARG_FILENAME, &destpath, "Path to parcel version directory (default: .)", "PATH"},
 	{"keyring", 'k', 0, G_OPTION_ARG_FILENAME, &keyring, "Keyring (default: keyring)", "PATH"},
 	{"chunksize", 's', 0, G_OPTION_ARG_INT, &chunksize, "Chunksize (default: 128)", "KiB"},
-	{"chunksperdir", 'd', 0, G_OPTION_ARG_INT, &chunksperdir, "Chunks per directory (default: 512)", "N"},
+	{"chunksperdir", 'm', 0, G_OPTION_ARG_INT, &chunksperdir, "Chunks per directory (default: 512)", "N"},
 	{"nchunks", 'n', 0, G_OPTION_ARG_INT64, &maxchunks, "Number of chunks", "N"},
 	{"compress", 'z', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (default: 6)", "1-9"},
 	{"progress", 'p', 0, G_OPTION_ARG_NONE, &want_progress, "Show progress bar", NULL},
