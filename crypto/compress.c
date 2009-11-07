@@ -25,6 +25,8 @@ static const struct isrcry_compress_desc *compress_desc(
 	switch (type) {
 	case ISRCRY_COMPRESS_ZLIB:
 		return &_isrcry_zlib_desc;
+	case ISRCRY_COMPRESS_LZF:
+		return &_isrcry_lzf_desc;
 	}
 	return NULL;
 }

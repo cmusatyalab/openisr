@@ -82,6 +82,7 @@ enum isrcry_dh {
 
 enum isrcry_compress {
 	ISRCRY_COMPRESS_ZLIB		= 0,
+	ISRCRY_COMPRESS_LZF		= 1,
 };
 
 struct isrcry_cipher_ctx;

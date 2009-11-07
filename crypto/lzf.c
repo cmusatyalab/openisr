@@ -64,6 +64,9 @@
 
 #include <string.h>
 #include <errno.h>
+#include "isrcrypto.h"
+#define LIBISRCRYPTO_INTERNAL
+#include "internal.h"
 
 /*
  * Size of hashtable is (1 << HLOG) * sizeof (char *)
@@ -106,9 +109,8 @@
 /*
  * Wether to pass the LZF_STATE variable as argument, or allocate it
  * on the stack. For small-stack environments, define this to 1.
- * NOTE: this breaks the prototype in lzf.h.
  */
-#define LZF_STATE_ARG 0
+#define LZF_STATE_ARG 1
 
 /*
  * Wether to add extra checks for input validity in lzf_decompress
@@ -237,8 +239,8 @@ typedef const u8 *LZF_STATE[1 << (HLOG)];
  * and lzf_c.c.
  *
  */
-unsigned int
-lzf_compress (const void *const in_data, unsigned int in_len,
+static unsigned int
+lzf_compress(const void *const in_data, unsigned int in_len,
 	      void *out_data, unsigned int out_len
 #if LZF_STATE_ARG
               , LZF_STATE htab
@@ -450,7 +452,7 @@ lzf_compress (const void *const in_data, unsigned int in_len,
  *
  * This function is very fast, about as fast as a copying loop.
  */
-int 
+static int 
 lzf_decompress (const void *const in_data,  unsigned int in_len,
                 void             *out_data, unsigned int out_len)
 {
@@ -539,3 +541,79 @@ lzf_decompress (const void *const in_data,  unsigned int in_len,
 
   return op - (u8 *)out_data;
 }
+
+
+/* Wrapper code starts here.  For ease of updating to newer versions of
+   liblzf, the above code is modified as little as possible from the
+   upstream version. */
+
+static enum isrcry_result lzf_alloc(struct isrcry_compress_ctx *cctx)
+{
+	if (cctx->level != 0)
+		return ISRCRY_INVALID_ARGUMENT;
+	cctx->ctx = g_slice_new(LZF_STATE);
+	return ISRCRY_OK;
+}
+
+static void lzf_free(struct isrcry_compress_ctx *cctx)
+{
+	g_slice_free(LZF_STATE, cctx->ctx);
+}
+
+static enum isrcry_result lzf_do_compress(struct isrcry_compress_ctx *cctx,
+			const unsigned char *in, unsigned *inlen,
+			unsigned char *out, unsigned *outlen)
+{
+	unsigned result;
+	enum isrcry_result ret = ISRCRY_OK;
+
+	if (*inlen == 0) {
+		/* lzf_compress() returns 0 on error, which almost always
+		   means that the buffer is too small.  Separately detect
+		   the one case where it means something else. */
+		ret = ISRCRY_INVALID_ARGUMENT;
+	} else {
+		result = lzf_compress(in, *inlen, out, *outlen, cctx->ctx);
+		if (result)
+			*outlen = result;
+		else
+			ret = ISRCRY_BUFFER_OVERFLOW;
+	}
+	if (ret) {
+		*inlen = 0;
+		*outlen = 0;
+		return ret;
+	}
+	return ISRCRY_OK;
+}
+
+static enum isrcry_result lzf_do_decompress(struct isrcry_compress_ctx *cctx,
+			const unsigned char *in, unsigned *inlen,
+			unsigned char *out, unsigned *outlen)
+{
+	int result;
+
+	(void)cctx;  /* silence compiler warning */
+
+	result = lzf_decompress(in, *inlen, out, *outlen);
+	if (result < 0) {
+		*inlen = 0;
+		*outlen = 0;
+		if (result == -E2BIG)
+			return ISRCRY_BUFFER_OVERFLOW;
+		else if (result == -EINVAL)
+			return ISRCRY_BAD_FORMAT;
+		else
+			g_assert_not_reached();
+	}
+	*outlen = result;
+	return ISRCRY_OK;
+}
+
+const struct isrcry_compress_desc _isrcry_lzf_desc = {
+	.can_stream = FALSE,
+	.alloc = lzf_alloc,
+	.free = lzf_free,
+	.compress_final = lzf_do_compress,
+	.decompress_final = lzf_do_decompress
+};

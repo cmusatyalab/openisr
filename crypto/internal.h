@@ -176,6 +176,7 @@ struct isrcry_compress_desc {
 };
 
 extern const struct isrcry_compress_desc _isrcry_zlib_desc;
+extern const struct isrcry_compress_desc _isrcry_lzf_desc;
 
 struct isrcry_compress_ctx {
 	const struct isrcry_compress_desc *desc;

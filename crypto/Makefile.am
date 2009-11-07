@@ -8,8 +8,9 @@ AM_LDFLAGS = -lgmp -lz $(glib_LIBS) $(libtasn1_LIBS)
 
 pkglib_LTLIBRARIES = libisrcrypto.la
 libisrcrypto_la_SOURCES = aes.c blowfish.c cbc.c cipher.c compress.c dh.c
-libisrcrypto_la_SOURCES += ecb.c hash.c hmac.c mac.c md5.c md5-compress.c pad.c
-libisrcrypto_la_SOURCES += random.c rsa.c sha1.c sign.c util.c zlib.c
+libisrcrypto_la_SOURCES += ecb.c hash.c hmac.c lzf.c mac.c md5.c
+libisrcrypto_la_SOURCES += md5-compress.c pad.c random.c rsa.c sha1.c
+libisrcrypto_la_SOURCES += sign.c util.c zlib.c
 libisrcrypto_la_SOURCES += isrcrypto.h internal.h
 libisrcrypto_la_SOURCES += aes_tab.h blowfish_tab.h dh_tab.h
 nodist_libisrcrypto_la_SOURCES = rsa-key-tab.c
