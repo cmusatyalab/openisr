@@ -63,6 +63,7 @@
 ***********************************************************************/
 
 #include <string.h>
+#include <errno.h>
 
 /*
  * Size of hashtable is (1 << HLOG) * sizeof (char *)
@@ -101,13 +102,6 @@
  * deterministic/repeatable when the configuration otherwise is the same).
  */
 #define INIT_HTAB 1
-
-/*
- * Avoid assigning values to errno variable? for some embedding purposes
- * (linux kernel for example), this is neccessary. NOTE: this breaks
- * the documentation in lzf.h.
- */
-#define AVOID_ERRNO 1
 
 /*
  * Wether to pass the LZF_STATE variable as argument, or allocate it
@@ -201,13 +195,6 @@ typedef const u8 *LZF_STATE[1 << (HLOG)];
 
 #define expect_false(expr) expect ((expr) != 0, 0)
 #define expect_true(expr)  expect ((expr) != 0, 1)
-
-#if AVOID_ERRNO
-# define SET_ERRNO(n)
-#else
-# include <errno.h>
-# define SET_ERRNO(n) errno = (n)
-#endif
 
 #if (__i386 || __amd64) && __GNUC__ >= 3
 # define lzf_movsb(dst, src, len)                \
@@ -455,16 +442,15 @@ lzf_compress (const void *const in_data, unsigned int in_len,
  * will be stored at out_data up to a maximum of out_len characters.
  *
  * If the output buffer is not large enough to hold the decompressed
- * data, a 0 is returned and errno is set to E2BIG. Otherwise the number
+ * data, -E2BIG is returned. Otherwise the number
  * of decompressed bytes (i.e. the original length of the data) is
  * returned.
  *
- * If an error in the compressed data is detected, a zero is returned and
- * errno is set to EINVAL.
+ * If an error in the compressed data is detected, -EINVAL is returned.
  *
  * This function is very fast, about as fast as a copying loop.
  */
-unsigned int 
+int 
 lzf_decompress (const void *const in_data,  unsigned int in_len,
                 void             *out_data, unsigned int out_len)
 {
@@ -483,15 +469,13 @@ lzf_decompress (const void *const in_data,  unsigned int in_len,
 
           if (op + ctrl > out_end)
             {
-              SET_ERRNO (E2BIG);
-              return 0;
+              return -E2BIG;
             }
 
 #if CHECK_INPUT
           if (ip + ctrl > in_end)
             {
-              SET_ERRNO (EINVAL);
-              return 0;
+              return -EINVAL;
             }
 #endif
 
@@ -512,8 +496,7 @@ lzf_decompress (const void *const in_data,  unsigned int in_len,
 #if CHECK_INPUT
           if (ip >= in_end)
             {
-              SET_ERRNO (EINVAL);
-              return 0;
+              return -EINVAL;
             }
 #endif
           if (len == 7)
@@ -522,8 +505,7 @@ lzf_decompress (const void *const in_data,  unsigned int in_len,
 #if CHECK_INPUT
               if (ip >= in_end)
                 {
-                  SET_ERRNO (EINVAL);
-                  return 0;
+                  return -EINVAL;
                 }
 #endif
             }
@@ -532,14 +514,12 @@ lzf_decompress (const void *const in_data,  unsigned int in_len,
 
           if (op + len + 2 > out_end)
             {
-              SET_ERRNO (E2BIG);
-              return 0;
+              return -E2BIG;
             }
 
           if (ref < (u8 *)out_data)
             {
-              SET_ERRNO (EINVAL);
-              return 0;
+              return -EINVAL;
             }
 
 #ifdef lzf_movsb
