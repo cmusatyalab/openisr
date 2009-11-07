@@ -97,4 +97,12 @@ struct rsa_sign_test {
 	unsigned siglen;
 };
 
+struct compress_test {
+	int level;
+	const uint8_t *plain;
+	unsigned plainlen;
+	const uint8_t *compress;
+	unsigned compresslen;
+};
+
 #endif

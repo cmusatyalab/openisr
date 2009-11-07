@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <libtasn1.h>
 #include "isrcrypto.h"
 #include "vectors.h"
@@ -26,6 +27,7 @@
 #include "vectors_md5.h"
 #include "vectors_hmac.h"
 #include "vectors_rsa.h"
+#include "vectors_compress.h"
 
 int failed;
 
@@ -615,6 +617,227 @@ void dh_test(const char *alg, enum isrcry_dh type, unsigned reps)
 	isrcry_random_free(rctx);
 }
 
+unsigned compress_stream(const char *alg, const char *direction, unsigned test,
+			struct isrcry_compress_ctx *ctx, const void *inbuf,
+			unsigned inlen, void *outbuf)
+{
+	unsigned in_count;
+	unsigned out_count;
+	unsigned in_offset = 0;
+	unsigned out_offset = 0;
+	enum isrcry_result ret;
+
+	while (in_offset < inlen) {
+		in_count = out_count = 1;
+		if (isrcry_compress_process(ctx, inbuf + in_offset,
+					&in_count, outbuf + out_offset,
+					&out_count)) {
+			fail("%s %s stream-process %u", alg, direction, test);
+			return 0;
+		}
+		if (in_count == 0 && out_count == 0) {
+			fail("%s %s stream-progress %u", alg, direction, test);
+			return 0;
+		}
+		in_offset += in_count;
+		out_offset += out_count;
+	}
+	do {
+		in_count = 0;
+		out_count = 1;
+		ret = isrcry_compress_final(ctx, inbuf + in_offset, &in_count,
+					outbuf + out_offset, &out_count);
+		out_offset += out_count;
+	} while (ret == ISRCRY_BUFFER_OVERFLOW);
+	if (ret != ISRCRY_OK) {
+		fail("%s %s stream-final %u", alg, direction, test);
+		return 0;
+	}
+	return out_offset;
+}
+
+void compress_test(const char *alg, enum isrcry_compress type,
+			const struct compress_test *vectors,
+			unsigned vec_count)
+{
+	struct isrcry_compress_ctx *ctx;
+	const struct compress_test *test;
+	uint8_t *plain;
+	uint8_t *compress;
+	unsigned buflen;
+	unsigned inlen;
+	unsigned outlen;
+	unsigned n;
+
+	ctx = isrcry_compress_alloc(type);
+	if (ctx == NULL) {
+		fail("%s alloc", alg);
+		return;
+	}
+	for (n = 0; n < vec_count; n++) {
+		test = &vectors[n];
+		buflen = 2 * (test->plainlen + test->compresslen);
+		plain = malloc(buflen);
+		compress = malloc(buflen);
+
+		/* Test a round-trip of the plaintext. */
+		memset(compress, 0, buflen);
+		if (isrcry_compress_init(ctx, ISRCRY_ENCODE, test->level)) {
+			fail("%s init %u", alg, n);
+			continue;
+		}
+		inlen = test->plainlen;
+		outlen = buflen;
+		if (isrcry_compress_final(ctx, test->plain, &inlen, compress,
+					&outlen)) {
+			fail("%s compress %u", alg, n);
+			continue;
+		}
+		if (isrcry_compress_init(ctx, ISRCRY_DECODE, 0)) {
+			fail("%s init %u", alg, n);
+			continue;
+		}
+		inlen = outlen;
+		outlen = buflen;
+		if (isrcry_compress_final(ctx, compress, &inlen, plain,
+					&outlen)) {
+			fail("%s decompress %u", alg, n);
+			continue;
+		}
+		if (outlen != test->plainlen) {
+			fail("%s plainlen %u", alg, n);
+			continue;
+		}
+		if (memcmp(plain, test->plain, test->plainlen)) {
+			fail("%s compress mismatch %u", alg, n);
+			continue;
+		}
+
+		/* Test a streaming round-trip of the plaintext. */
+		if (isrcry_compress_can_stream(type)) {
+			memset(compress, 0, buflen);
+			if (isrcry_compress_init(ctx, ISRCRY_ENCODE,
+						test->level)) {
+				fail("%s init %u", alg, n);
+				continue;
+			}
+			inlen = compress_stream(alg, "encode", n, ctx,
+						test->plain, test->plainlen,
+						compress);
+			if (inlen == 0)
+				continue;
+			if (isrcry_compress_init(ctx, ISRCRY_DECODE, 0)) {
+				fail("%s init %u", alg, n);
+				continue;
+			}
+			outlen = compress_stream(alg, "decode", n, ctx,
+						compress, inlen, plain);
+			if (outlen == 0)
+				continue;
+			if (outlen != test->plainlen) {
+				fail("%s stream-plainlen %u", alg, n);
+				continue;
+			}
+			if (memcmp(plain, test->plain, test->plainlen)) {
+				fail("%s stream-compress mismatch %u", alg, n);
+				continue;
+			}
+		} else {
+			if (isrcry_compress_init(ctx, ISRCRY_ENCODE,
+						test->level)) {
+				fail("%s init %u", alg, n);
+				continue;
+			}
+			inlen = test->plainlen;
+			outlen = buflen;
+			if (isrcry_compress_process(ctx, test->plain, &inlen,
+						compress, &outlen) !=
+						ISRCRY_NO_STREAMING) {
+				fail("%s no-streaming %u", alg, n);
+				continue;
+			}
+			if (inlen != 0 || outlen != 0) {
+				fail("%s false-progress-streaming %u", alg, n);
+				continue;
+			}
+		}
+
+		/* Test a decode of the compresstext. */
+		memset(plain, 0, buflen);
+		if (isrcry_compress_init(ctx, ISRCRY_DECODE, 0)) {
+			fail("%s init %u", alg, n);
+       			continue;
+		}
+		inlen = test->compresslen;
+		outlen = buflen;
+		if (isrcry_compress_final(ctx, test->compress, &inlen, plain,
+					&outlen)) {
+			fail("%s decompress-prepared %u", alg, n);
+			continue;
+		}
+		if (outlen != test->plainlen) {
+			fail("%s prepared-plainlen %u", alg, n);
+			continue;
+		}
+		if (memcmp(plain, test->plain, test->plainlen)) {
+			fail("%s prepared mismatch %u", alg, n);
+			continue;
+		}
+
+		/* Test trailing garbage on decode. */
+		memcpy(compress, test->compress, test->compresslen);
+		compress[test->compresslen] = 12;
+		memset(plain, 0, buflen);
+		if (isrcry_compress_init(ctx, ISRCRY_DECODE, 0)) {
+			fail("%s init %u", alg, n);
+       			continue;
+		}
+		inlen = test->compresslen + 1;
+		outlen = buflen;
+		if (isrcry_compress_final(ctx, test->compress, &inlen, plain,
+					&outlen) != ISRCRY_BAD_FORMAT) {
+			fail("%s trailing-garbage %u", alg, n);
+			continue;
+		}
+
+		/* Test overflow detection. */
+		if (isrcry_compress_init(ctx, ISRCRY_ENCODE, test->level)) {
+			fail("%s init %u", alg, n);
+       			continue;
+		}
+		inlen = test->plainlen;
+		outlen = 1;
+		if (isrcry_compress_final(ctx, test->plain, &inlen, compress,
+					&outlen) != ISRCRY_BUFFER_OVERFLOW) {
+			fail("%s overflow-compress %u", alg, n);
+			continue;
+		}
+		if (!isrcry_compress_can_stream(type) && (inlen || outlen)) {
+			fail("%s false-progress-compress %u", alg, n);
+			continue;
+		}
+		if (isrcry_compress_init(ctx, ISRCRY_DECODE, 0)) {
+			fail("%s init %u", alg, n);
+       			continue;
+		}
+		inlen = test->compresslen;
+		outlen = test->plainlen - 1;
+		if (isrcry_compress_final(ctx, test->compress, &inlen, plain,
+					&outlen) != ISRCRY_BUFFER_OVERFLOW) {
+			fail("%s overflow-decompress %u", alg, n);
+			continue;
+		}
+		if (!isrcry_compress_can_stream(type) && (inlen || outlen)) {
+			fail("%s false-progress-decompress %u", alg, n);
+			continue;
+		}
+
+		free(plain);
+		free(compress);
+	}
+	isrcry_compress_free(ctx);
+}
+
 /* Statistical random number generator tests defined in
  * FIPS 140-1 - 4.11.1 Power-Up Tests.  Originally from RPC2.
  *
@@ -770,6 +993,8 @@ int main(void)
 				MEMBERS(rsa_sign_genkey_lengths));
 	rsa_sign_test(rsa_sign_vectors, MEMBERS(rsa_sign_vectors));
 	dh_test("ike-2048", ISRCRY_DH_IKE_2048, 8);
+	compress_test("zlib", ISRCRY_COMPRESS_ZLIB, zlib_compress_vectors,
+			MEMBERS(zlib_compress_vectors));
 	random_fips_test();
 
 	if (failed) {
