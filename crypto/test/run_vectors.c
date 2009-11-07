@@ -994,7 +994,9 @@ int main(void)
 	rsa_sign_test(rsa_sign_vectors, MEMBERS(rsa_sign_vectors));
 	dh_test("ike-2048", ISRCRY_DH_IKE_2048, 8);
 	compress_test("zlib", ISRCRY_COMPRESS_ZLIB, zlib_compress_vectors,
-			MEMBERS(zlib_compress_vectors));
+				MEMBERS(zlib_compress_vectors));
+	compress_test("lzf", ISRCRY_COMPRESS_LZF, lzf_compress_vectors,
+				MEMBERS(lzf_compress_vectors));
 	random_fips_test();
 
 	if (failed) {
