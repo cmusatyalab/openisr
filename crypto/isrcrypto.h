@@ -29,11 +29,14 @@ enum isrcry_result {
 	ISRCRY_BUFFER_OVERFLOW		= 5,
 	ISRCRY_NEED_RANDOM		= 6,
 	ISRCRY_NEED_KEY			= 7,
+	ISRCRY_NO_STREAMING		= 8,
 };
 
 enum isrcry_direction {
-	ISRCRY_DECRYPT			= 0,
-	ISRCRY_ENCRYPT			= 1
+	ISRCRY_DECRYPT			= 0,  /* legacy */
+	ISRCRY_ENCRYPT			= 1,  /* legacy */
+	ISRCRY_DECODE			= 0,
+	ISRCRY_ENCODE			= 1
 };
 
 enum isrcry_key_type {
@@ -77,12 +80,17 @@ enum isrcry_dh {
 	ISRCRY_DH_IKE_2048		= 0,
 };
 
+enum isrcry_compress {
+	ISRCRY_COMPRESS_ZLIB		= 0,
+};
+
 struct isrcry_cipher_ctx;
 struct isrcry_hash_ctx;
 struct isrcry_random_ctx;
 struct isrcry_mac_ctx;
 struct isrcry_sign_ctx;
 struct isrcry_dh_ctx;
+struct isrcry_compress_ctx;
 
 /***** Cipher functions *****/
 
@@ -282,6 +290,59 @@ enum isrcry_result isrcry_dh_run(struct isrcry_dh_ctx *dctx,
    generated using the given DH parameters.  Note that the shared secrets
    will contain less entropy than this. */
 unsigned isrcry_dh_key_len(enum isrcry_dh type);
+
+
+/***** Compression functions *****/
+
+/* Allocate a compression context for the given algorithm.  Returns NULL
+   on error. */
+struct isrcry_compress_ctx *isrcry_compress_alloc(
+			enum isrcry_compress compress);
+
+/* Free the compression context. */
+void isrcry_compress_free(struct isrcry_compress_ctx *cctx);
+
+/* Prepare the compression context to encode (compress) or decode
+   (decompress) data.  @level specifies an algorithm-specific compression
+   level, and probably only makes sense on encode. */
+enum isrcry_result isrcry_compress_init(struct isrcry_compress_ctx *cctx,
+			enum isrcry_direction direction, int level);
+
+/* Incrementally process up to @inlen bytes of data from @in and produce
+   up to @outlen bytes of data in @out.  On return, @inlen will contain the
+   number of bytes consumed (which may be fewer than were provided) and
+   @outlen will contain the number of bytes produced.  The compression
+   algorithm may buffer input data internally; a series of calls to this
+   function must be terminated by a call to isrcry_compress_final() to flush
+   buffered data.  Not all compression algorithms support incrementally
+   processing data; others will return ISRCRY_NO_STREAMING.
+   isrcry_compress_can_stream() can be used to determine whether a particular
+   algorithm supports incremental processing. */
+enum isrcry_result isrcry_compress_process(struct isrcry_compress_ctx *cctx,
+			const void *in, unsigned *inlen, void *out,
+			unsigned *outlen);
+
+/* Finish processing the data being compressed or decompressed, consuming
+   up to @inlen bytes of data from @in and producing up to @outlen bytes of
+   data in @out.  On return, @inlen will contain the number of bytes consumed
+   and @outlen will contain the number of bytes produced.  If all data has
+   been processed, ISRCRY_OK will be returned.  A return value of
+   ISRCRY_BUFFER_OVERFLOW indicates that not all input has been consumed
+   or not all output has been produced, and the function must be called again
+   with more output buffer space.  Non-streaming algorithms must process
+   all input and produce all output in a single call to
+   isrcry_compress_final(); when these algorithms return
+   ISRCRY_BUFFER_OVERFLOW, @inlen and @outlen will always be set to zero.
+   After this function completes successfully, the only valid subsequent
+   operations on @cctx are isrcry_compress_init() and
+   isrcry_compress_free(). */
+enum isrcry_result isrcry_compress_final(struct isrcry_compress_ctx *cctx,
+			const void *in, unsigned *inlen, void *out,
+			unsigned *outlen);
+
+/* Return nonzero if the given algorithm can process data incrementally via
+   isrcry_compress_process(), zero otherwise. */
+int isrcry_compress_can_stream(enum isrcry_compress compress);
 
 
 /***** Utility functions *****/

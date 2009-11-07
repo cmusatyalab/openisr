@@ -153,6 +153,37 @@ struct isrcry_sign_ctx {
 	void *salt;
 };
 
+struct isrcry_compress_desc {
+	gboolean can_stream;
+	enum isrcry_result (*alloc)(struct isrcry_compress_ctx *cctx);
+	enum isrcry_result (*compress_process)(
+				struct isrcry_compress_ctx *cctx,
+				const unsigned char *in, unsigned *inlen,
+				unsigned char *out, unsigned *outlen);
+	enum isrcry_result (*compress_final)(
+				struct isrcry_compress_ctx *cctx,
+				const unsigned char *in, unsigned *inlen,
+				unsigned char *out, unsigned *outlen);
+	enum isrcry_result (*decompress_process)(
+				struct isrcry_compress_ctx *cctx,
+				const unsigned char *in, unsigned *inlen,
+				unsigned char *out, unsigned *outlen);
+	enum isrcry_result (*decompress_final)(
+				struct isrcry_compress_ctx *cctx,
+				const unsigned char *in, unsigned *inlen,
+				unsigned char *out, unsigned *outlen);
+	void (*free)(struct isrcry_compress_ctx *cctx);
+};
+
+extern const struct isrcry_compress_desc _isrcry_zlib_desc;
+
+struct isrcry_compress_ctx {
+	const struct isrcry_compress_desc *desc;
+	enum isrcry_direction direction;
+	int level;
+	void *ctx;
+};
+
 gchar *isrcry_pem_encode(const char *alg, enum isrcry_key_type type,
 			void *data, unsigned datalen);
 enum isrcry_result isrcry_pem_decode(const char *alg,

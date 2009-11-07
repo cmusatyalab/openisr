@@ -40,6 +40,8 @@ exported const char *isrcry_strerror(enum isrcry_result result)
 		return "Need random bytes but no randomness source specified";
 	case ISRCRY_NEED_KEY:
 		return "Required key has not been provided";
+	case ISRCRY_NO_STREAMING:
+		return "Algorithm does not support streaming";
 	}
 	return "Unknown error";
 }
