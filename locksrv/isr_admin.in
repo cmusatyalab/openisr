@@ -55,13 +55,16 @@ sub init_parceldir ($$);
 sub finalize_parceldir ($$);
 sub gen_uuid ();
 sub parse_disk_size ($$);
+sub get_image_size ($$);
 sub get_maxkb ($$);
 sub gen_chunks ($$$$$);
+sub import_chunks ($$$$$);
 sub copy_chunks ($$$$);
 sub copyparcel ($$$$$);
 sub new_parcel ($$$$$$$);
 sub makeparcel_gen_chunks ($$$$$);
 sub makeparcel ($$$$$);
+sub import ($$$$$);
 sub delparcel ($$);
 sub prune ($$$);
 sub getusage ();
@@ -94,6 +97,7 @@ my $version;
 my $size;
 my $memsize;
 my $vmm;
+my $imgfile;
 
 # Server configuration
 my %config = get_config();
@@ -104,6 +108,7 @@ my %config = get_config();
 Getopt::Long::Configure("no_ignore_case", "bundling_override");
 $result = GetOptions(
                      "f|force"         => \$force,
+                     "F|file=s"        => \$imgfile,
                      "h|help+"         => \$help,
                      "m|memsize=i"     => \$memsize,
                      "M|vmm=s"         => \$vmm,
@@ -195,6 +200,19 @@ if ($command eq "makeparcel") {
         if (!$vmm);
 }
 
+if ($command eq "import") {
+    usage("Missing userid (-u)")
+        if (!$userid);
+    usage("Missing parcel name (-p)")
+	if (!$parcel);
+    usage("Missing memory image size (-m)")
+        if (!$memsize);
+    usage("Missing disk image file (-F)")
+        if (!$imgfile);
+    usage("Missing VMM type (-M)")
+        if (!$vmm);
+}
+
 if ($command eq "delparcel") {
     usage("Missing userid (-u)")
         if (!$userid);
@@ -241,6 +259,9 @@ elsif ($command eq "copyparcel") {
 }
 elsif ($command eq "makeparcel") {
     makeparcel($userid, $parcel, $size, $memsize, $vmm);
+}
+elsif ($command eq "import") {
+    import($userid, $parcel, $imgfile, $memsize, $vmm);
 }
 elsif ($command eq "delparcel") {
     delparcel($userid, $parcel);
@@ -605,6 +626,19 @@ sub parse_disk_size ($$) {
 }
 
 #
+# get_image_size - Examine a flat disk image and return its size in chunks
+#
+sub get_image_size ($$) {
+    my $chunksize = shift;
+    my $disk = shift;
+
+    -r $disk
+	or errexit("Can't read $disk");
+
+    return int((-s _ + $chunksize - 1) / $chunksize);
+}
+
+#
 # get_maxkb - Calculate the MAXKB setting for a given CHUNKSIZE and
 #             NUMCHUNKS
 #
@@ -682,6 +716,22 @@ sub gen_chunks ($$$$$) {
 		    "-r " . $start . ":" . ($start + $count - 1) .
 		    " > /dev/null") == 0
         or errexit("Couldn't populate keyring");
+}
+
+#
+# import_chunks - Populate a parcel with chunks from a flat disk image
+#
+sub import_chunks ($$$$$) {
+    my $image = shift;
+    my $parcelverdir = shift;
+    my $numchunks = shift;
+    my $chunksize = shift;
+    my $chunksperdir = shift;
+
+    $chunksize /= 1024;
+    system(LIBDIR . "/disktool -i $image -d $parcelverdir -s $chunksize " .
+			"-m $chunksperdir -p") == 0
+	or system_errexit("Couldn't import disk image");
 }
 
 #
@@ -955,6 +1005,20 @@ sub makeparcel ($$$$$) {
 }
 
 #
+# import - Create a parcel from a flat disk image
+#
+sub import ($$$$$) {
+    my $userid = shift;      # Destination user id
+    my $parcel = shift;      # Destination parcel name
+    my $disk = shift;        # Path to disk image
+    my $memsize = shift;     # Memory image size
+    my $vmm = shift;         # VMM type
+
+    new_parcel($userid, $parcel, $memsize, $vmm, \&get_image_size,
+			\&import_chunks, $disk);
+}
+
+#
 # delparcel - Delete a user's parcel
 #
 sub delparcel ($$) {
@@ -1080,12 +1144,13 @@ sub usage {
     print "$progname revision " . RCS_REVISION . "\n";
     print RED, "Usage: $progname cmd [options...]\n", RESET;
     print BLUE, "Commands: adduser, copyparcel, decrypt, delparcel, deluser, encrypt,\n";
-    print "          getkeyroot, getusage, keygen, makeparcel, prune.\n", RESET;
+    print "          getkeyroot, getusage, import, keygen, makeparcel, prune.\n", RESET;
 
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u, [-f]).\n";
     print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P, [-s]).\n";
     print "  makeparcel Create an empty parcel from scratch (-u, -p, -m, -s, -M).\n";
+    print "  import     Create a parcel from an existing disk image (-u, -p, -m, -M, -F).\n";
     print "  delparcel  Delete parcel from system (-u, -p, [-f]).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
     print "  encrypt    Encrypt parcel version (-u, -p, -v).\n";
@@ -1096,6 +1161,7 @@ sub usage {
 
     print "Options:\n";
     print "  -f,--force        Don't ask to confirm dangerous operations.\n";
+    print "  -F,--file         Disk image file to import/export.\n";
     print "  -h,--help         Print help message (Try '-hh' for some concrete examples).\n";
     print "  -m,--memsize      Size of the parcel's memory image in MB.\n";
     print "  -M,--vmm          Default VMM for the parcel.\n";
@@ -1125,6 +1191,10 @@ sub usage {
 	print RED, "makeparcel - ", RESET, "Create empty parcel debian, with 512 MB memory image and 8 GB\n";
 	print "disk, using VMware as the VMM, in $croot for existing user bovik\n";
 	print BLUE, "# isr_admin makeparcel -u bovik -p debian -m 512 -s 8G -M vmware\n";
+	print "\n";
+	print RED, "import - ", RESET, "Create parcel debian from flat disk image debian.img, with 512 MB\n";
+	print "memory image, using VirtualBox as the VMM, for existing user bovik\n";
+	print BLUE, "# isr_admin import -u bovik -p debian -m 512 -M virtualbox -F debian.img\n";
 	print "\n";
 	print RED, "delparcel - ", RESET, "Delete all data for parcel winxp belonging to existing user bovik\n";
 	print BLUE, "# isr_admin delparcel -u bovik -p winxp\n";
