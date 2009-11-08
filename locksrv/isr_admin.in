@@ -53,6 +53,7 @@ sub adduser ($);
 sub deluser ($);
 sub init_parceldir ($$);
 sub finalize_parceldir ($$);
+sub get_last_parcelverdir ($);
 sub gen_uuid ();
 sub parse_disk_size ($$);
 sub get_image_size ($$);
@@ -592,6 +593,23 @@ sub finalize_parceldir ($$) {
 }
 
 #
+# get_last_parcelverdir - Return the path to the most recent version
+#                         directory in the given parcel directory
+#
+sub get_last_parcelverdir ($) {
+    my $parceldir = shift;
+
+    my @files;
+
+    # Don't trust the last symlink
+    opendir(DIR, $parceldir)
+	or unix_errexit("Could not open directory $parceldir");
+    @files = reverse sort grep(/^\d+$/, readdir(DIR));
+    closedir(DIR);
+    return $parceldir . "/" . sprintf("%06d", int($files[0]));
+}
+
+#
 # gen_uuid - Generate a new UUID
 #
 sub gen_uuid () {
@@ -778,13 +796,12 @@ sub copyparcel ($$$$$) {
 
     my $dstparcelcfg;
     my $parceldir;
-    my $lastver;
+    my $srcverpath;
     my $srckeyroot;
     my $dstkeyroot;
     my $file;
     my $uuid;
     my $umask;
-    my @files;
     my %map;
 
     my $srcpath = "$config{content_root}/$srcuserid/$srcparcel";
@@ -808,26 +825,20 @@ sub copyparcel ($$$$$) {
     # Create new content directory for this user and parcel
     ($parceldir, $dstparcelcfg) = init_parceldir($userid, $parcel);
 
-    # Determine the last version that was checked in (note that
-    # we can't use the last link because it might not be the
-    # same on the nfs server
-    opendir(DIR, $srcpath)
-	or unix_errexit("Could not open directory $srcpath");
-    @files = reverse sort grep(/^\d+$/, readdir(DIR));
-    closedir(DIR);
-    $lastver = sprintf("%06d", int($files[0]));
+    # Determine the last version that was checked in
+    $srcverpath = get_last_parcelverdir($srcpath);
 
     # Copy the parcel metadata and memory image, and decrypt it
-    print "Copying $srcpath/$lastver to $parceldir/000001...\n";
+    print "Copying $srcverpath to $parceldir/000001...\n";
     for $file ("cfg.tgz.enc", "keyring.enc") {
-        copy("$srcpath/$lastver/$file", "$parceldir/000001/$file")
+        copy("$srcverpath/$file", "$parceldir/000001/$file")
             or unix_errexit("Couldn't write new $file");
     }
     $srckeyroot = get_value($srcparcelcfg, "KEYROOT");
     decrypt($userid, $parcel, 1, $srckeyroot);
 
     # Copy the disk to the destination, trimming the keyring if necessary
-    copy_chunks("$srcpath/$lastver", "$parceldir/000001",
+    copy_chunks("$srcverpath", "$parceldir/000001",
 			$numchunks > $srcchunks ? $srcchunks : $numchunks,
 			$chunksperdir);
 
