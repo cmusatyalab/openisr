@@ -26,6 +26,7 @@ class VncViewer(object):
 
 	def __init__(self, path):
 		self.hostkey_down = False
+		self.fullscreen = False
 
 		self.wind = gtk.Window()
 		self.wind.connect('destroy', gtk.main_quit)
