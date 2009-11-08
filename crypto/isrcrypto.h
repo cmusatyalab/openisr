@@ -305,7 +305,8 @@ void isrcry_compress_free(struct isrcry_compress_ctx *cctx);
 
 /* Prepare the compression context to encode (compress) or decode
    (decompress) data.  @level specifies an algorithm-specific compression
-   level, and probably only makes sense on encode. */
+   level, and probably only makes sense on encode.  A @level of zero will
+   use the algorithm's default. */
 enum isrcry_result isrcry_compress_init(struct isrcry_compress_ctx *cctx,
 			enum isrcry_direction direction, int level);
 
