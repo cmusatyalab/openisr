@@ -46,6 +46,7 @@ static int chunksize = 128; /* chunk size in KiB */
 static int chunksperdir = 512;
 static int64_t maxchunks = -1; /* infinite for all intents and purposes */
 static int compress_level;
+static gboolean want_lzf;
 static gboolean want_progress;
 
 static GOptionEntry options[] = {
@@ -57,6 +58,7 @@ static GOptionEntry options[] = {
 	{"chunksperdir", 'm', 0, G_OPTION_ARG_INT, &chunksperdir, "Chunks per directory (default: 512)", "N"},
 	{"nchunks", 'n', 0, G_OPTION_ARG_INT64, &maxchunks, "Number of chunks", "N"},
 	{"compress", 'z', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (default: 6)", "1-9"},
+	{"lzf", 'l', 0, G_OPTION_ARG_NONE, &want_lzf, "Use LZF compression", NULL},
 	{"progress", 'p', 0, G_OPTION_ARG_NONE, &want_progress, "Show progress bar", NULL},
 	{NULL}
 };
@@ -82,6 +84,7 @@ static unsigned int hash_len;
 #define HASH_LEN 20
 
 static enum isrcry_compress compressor = ISRCRY_COMPRESS_ZLIB;
+static enum compressiontype db_compress_type = COMP_ZLIB;
 static struct isrcry_compress_ctx *compress_ctx;
 
 static struct db *sqlitedb;
@@ -285,10 +288,6 @@ static void init(void)
 		die("Couldn't allocate cipher");
 	cipher_block = isrcry_cipher_block(cipher);
 
-	compress_ctx = isrcry_compress_alloc(compressor);
-	if (compress_ctx == NULL)
-		die("Couldn't allocate compressor");
-
 	/* allocate an empty chunk to compare against */
 	chunklen = chunksize * 1024;
 	zerodata = g_malloc0(chunklen);
@@ -339,7 +338,6 @@ static void fini(void)
 
 	isrcry_cipher_free(cipher_ctx);
 	isrcry_hash_free(hash_ctx);
-	isrcry_compress_free(compress_ctx);
 
 	g_free(zerodata);
 	g_free(tmpdata);
@@ -371,7 +369,7 @@ static void encrypt_chunk(struct chunk_desc *chunk)
 	rc = isrcry_compress_final(compress_ctx, chunk->data, &plainlen,
 				tmpdata, &compresslen);
 	if (rc == ISRCRY_OK && (chunklen - compresslen) > (cipher_block + 1)) {
-		chunk->compression = COMP_ZLIB;
+		chunk->compression = db_compress_type;
 		chunkdata = tmpdata;
 	} else { /* no room in output buffer / compression failed */
 		chunk->compression = COMP_NONE;
@@ -481,24 +479,34 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 		die("Failed to decrypt compressed chunk: %s",
 		    isrcry_strerror(rc));
 
-	if (chunk->compression == COMP_ZLIB) {
-		/* decompress chunk */
-		rc = isrcry_compress_init(compress_ctx, ISRCRY_DECODE, 0);
-		if (rc)
-			die("Failed to initialize decompressor: %s",
-						isrcry_strerror(rc));
-		inlen = tmplen;
-		outlen = chunklen;
-		rc = isrcry_compress_final(compress_ctx, tmpdata, &inlen,
-					chunk->data, &outlen);
-		if (rc)
-			die("Failed to decompress: %s", isrcry_strerror(rc));
-		if (outlen != chunklen)
-			die("Decompression produced invalid length %u",
-						outlen);
-		chunk->len = chunklen;
-	} else
-		die("Unsupported compression type");
+	/* decompress chunk */
+	switch (chunk->compression) {
+	case COMP_ZLIB:
+		compressor = ISRCRY_COMPRESS_ZLIB;
+		break;
+	case COMP_LZF:
+		compressor = ISRCRY_COMPRESS_LZF;
+		break;
+	default:
+		die("Unsupported compression type %d", chunk->compression);
+	}
+	compress_ctx = isrcry_compress_alloc(compressor);
+	if (compress_ctx == NULL)
+		die("Couldn't allocate compressor");
+	rc = isrcry_compress_init(compress_ctx, ISRCRY_DECODE, 0);
+	if (rc)
+		die("Failed to initialize decompressor: %s",
+					isrcry_strerror(rc));
+	inlen = tmplen;
+	outlen = chunklen;
+	rc = isrcry_compress_final(compress_ctx, tmpdata, &inlen,
+				chunk->data, &outlen);
+	if (rc)
+		die("Failed to decompress: %s", isrcry_strerror(rc));
+	if (outlen != chunklen)
+		die("Decompression produced invalid length %u", outlen);
+	chunk->len = chunklen;
+	isrcry_compress_free(compress_ctx);
 }
 
 static void import_image(const gchar *img)
@@ -507,6 +515,10 @@ static void import_image(const gchar *img)
 	unsigned int idx;
 	ssize_t n;
 	struct chunk_desc chunk, zerochunk;
+
+	compress_ctx = isrcry_compress_alloc(compressor);
+	if (compress_ctx == NULL)
+		die("Couldn't allocate compressor");
 
 	fd = g_open(img, O_RDONLY, 0);
 	if (fd == -1)
@@ -556,6 +568,7 @@ static void import_image(const gchar *img)
 	g_free(chunk.data);
 	g_free(chunk.tag);
 	g_free(chunk.key);
+	isrcry_compress_free(compress_ctx);
 }
 
 static void export_image(const gchar *img)
@@ -650,6 +663,11 @@ int main(int argc, char **argv)
 
 	if (!(!importimage ^ !exportimage))
 		die("Specify an image to import or export");
+
+	if (want_lzf) {
+		compressor = ISRCRY_COMPRESS_LZF;
+		db_compress_type = COMP_LZF;
+	}
 
 	init();
 
