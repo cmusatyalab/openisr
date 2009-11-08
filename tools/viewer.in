@@ -40,6 +40,7 @@ class VncViewer(object):
 		self.vnc.set_keyboard_grab(True)
 		self.vnc.connect('vnc-auth-credential', self._auth_cred)
 		self.vnc.connect('vnc-initialized', self._initialized)
+		self.vnc.connect('vnc-desktop-resize', self._vnc_resize)
 		self.vnc.connect('vnc-disconnected', gtk.main_quit)
 		self.wind.add(self.vnc)
 		# Since we're not going to show the VNC widget until later,
@@ -57,6 +58,12 @@ class VncViewer(object):
 	def _initialized(self, wid):
 		self.wind.set_title(self.vnc.get_name())
 		self.wind.show_all()
+
+	def _vnc_resize(self, wid, width, height):
+		# Resize the window to the minimum allowed by its geometry
+		# constraints
+		if not self.fullscreen:
+			self.wind.resize(1, 1)
 
 	def _key_press(self, wid, ev):
 		key = gtk.gdk.keyval_from_name
@@ -87,15 +94,20 @@ class VncViewer(object):
 		return False
 
 	def _window_state(self, wid, ev):
-		self.fullscreen = (ev.new_window_state &
+		fullscreen = (ev.new_window_state &
 					gtk.gdk.WINDOW_STATE_FULLSCREEN) == \
 					gtk.gdk.WINDOW_STATE_FULLSCREEN
 		maximized = (ev.new_window_state &
 					gtk.gdk.WINDOW_STATE_MAXIMIZED) == \
 					gtk.gdk.WINDOW_STATE_MAXIMIZED
-		if maximized and not self.fullscreen:
+		if maximized and not fullscreen:
 			self.wind.fullscreen()
 			self.wind.unmaximize()
+		if self.fullscreen and not fullscreen:
+			# Resize the window to the minimum allowed by its
+			# geometry constraints
+			self.wind.resize(1, 1)
+		self.fullscreen = fullscreen
 		return False
 
 if __name__ == '__main__':
