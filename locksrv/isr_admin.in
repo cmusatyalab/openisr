@@ -100,6 +100,7 @@ my $size;
 my $memsize;
 my $vmm;
 my $imgfile;
+my $quick;
 
 # Server configuration
 my %config = get_config();
@@ -116,6 +117,7 @@ $result = GetOptions(
                      "M|vmm=s"         => \$vmm,
                      "p|parcel=s"      => \$parcel,
                      "P|srcparcel=s"   => \$srcparcel,
+                     "Q|quick"         => \$quick,
                      "r|retain=i"      => \$retain,
                      "s|size=s"        => \$size,
                      "u|userid=s"      => \$userid,
@@ -213,6 +215,7 @@ if ($command eq "import") {
         if (!$imgfile);
     usage("Missing VMM type (-M)")
         if (!$vmm);
+    # -Q optional
 }
 
 if ($command eq "export") {
@@ -759,9 +762,11 @@ sub import_chunks ($$$$$) {
     my $chunksize = shift;
     my $chunksperdir = shift;
 
+    my $lzf = $quick ? "-l" : "";
+
     $chunksize /= 1024;
     system(LIBDIR . "/disktool -i $image -d $parcelverdir -s $chunksize " .
-			"-m $chunksperdir -p") == 0
+			"-m $chunksperdir -p $lzf") == 0
 	or system_errexit("Couldn't import disk image");
 }
 
@@ -1232,8 +1237,8 @@ sub usage {
     print "  deluser    Delete user from system (-u, [-f]).\n";
     print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P, [-s]).\n";
     print "  makeparcel Create an empty parcel from scratch (-u, -p, -m, -s, -M).\n";
-    print "  import     Create a parcel from an existing disk image (-u, -p, -m, -M, -F).\n";
-    print "  export     Create a disk image from an existing parcel (-u, -p, -F).\n";
+    print "  import     Create a parcel from a disk image (-u, -p, -m, -M, -F, [-Q]).\n";
+    print "  export     Create a disk image from a parcel (-u, -p, -F).\n";
     print "  delparcel  Delete parcel from system (-u, -p, [-f]).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
     print "  encrypt    Encrypt parcel version (-u, -p, -v).\n";
@@ -1250,6 +1255,7 @@ sub usage {
     print "  -M,--vmm          Default VMM for the parcel.\n";
     print "  -p,--parcel       Parcel name (e.g., winxp).\n";
     print "  -P,--srcparcel    Source parcel name.\n";
+    print "  -Q,--quick        Optimize for import speed rather than space.\n";
     print "  -r,--retain       How many of the most recent versions to retain when pruning.\n";
     print "  -s,--size         Size of the parcel's virtual disk (e.g. '256M', '8G')\n";
     print "  -u,--userid       ISR userid.\n";
