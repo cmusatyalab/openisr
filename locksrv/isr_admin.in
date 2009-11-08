@@ -66,6 +66,7 @@ sub new_parcel ($$$$$$$);
 sub makeparcel_gen_chunks ($$$$$);
 sub makeparcel ($$$$$);
 sub import ($$$$$);
+sub export ($$$);
 sub delparcel ($$);
 sub prune ($$$);
 sub getusage ();
@@ -214,6 +215,15 @@ if ($command eq "import") {
         if (!$vmm);
 }
 
+if ($command eq "export") {
+    usage("Missing userid (-u)")
+        if (!$userid);
+    usage("Missing parcel name (-p)")
+	if (!$parcel);
+    usage("Missing output file (-F)")
+        if (!$imgfile);
+}
+
 if ($command eq "delparcel") {
     usage("Missing userid (-u)")
         if (!$userid);
@@ -263,6 +273,9 @@ elsif ($command eq "makeparcel") {
 }
 elsif ($command eq "import") {
     import($userid, $parcel, $imgfile, $memsize, $vmm);
+}
+elsif ($command eq "export") {
+    export($userid, $parcel, $imgfile);
 }
 elsif ($command eq "delparcel") {
     delparcel($userid, $parcel);
@@ -1030,6 +1043,64 @@ sub import ($$$$$) {
 }
 
 #
+# export - Create a flat disk image from a shut-down parcel
+#
+sub export ($$$) {
+    my $userid = shift;      # Destination user id
+    my $parcel = shift;      # Destination parcel name
+    my $file = shift;        # Path to output file
+
+    my $parceldir = "$config{content_root}/$userid/$parcel";
+    my $parcelverdir;
+    my $parcelcfg;
+    my $tempdir;
+    my $suspended;
+    my $chunksize;
+    my $rh;
+    my $fd;
+    my %cfg;
+
+    # Check parcel existence and get parameters
+    $parcelcfg = get_parcelcfg_path($userid, $parcel);
+    errexit("No such parcel $userid/$parcel")
+	unless -d $parceldir and -e $parcelcfg;
+    %cfg = get_values($parcelcfg);
+    $parcelverdir = get_last_parcelverdir($parceldir);
+
+    # Decode the memory image and make sure the parcel is shut down
+    print "Checking memory image...\n";
+    $tempdir = tempdir("export-XXXXXX", DIR => $parcelverdir, CLEANUP => 1);
+    ($rh, $fd) = keyroot_pipe($cfg{'KEYROOT'});
+    system(LIBDIR . "/blobtool -etdp -i $parcelverdir/cfg.tgz.enc " .
+			"-C $tempdir -k $fd") == 0
+	or errexit("Couldn't extract cfg tarball");
+    if (-e "$tempdir/cfg/suspended") {
+	open(SUSPFLAG, "$tempdir/cfg/suspended")
+	    or unix_errexit("Couldn't read suspended flag");
+	$suspended = <SUSPFLAG>;
+	close SUSPFLAG;
+	chomp $suspended;
+	$suspended eq "no"
+	    or errexit("Cannot export a suspended parcel");
+    }
+    
+    # Decode the keyring
+    ($rh, $fd) = keyroot_pipe($cfg{'KEYROOT'});
+    system(LIBDIR . "/blobtool -ed -i $parcelverdir/keyring.enc " .
+			"-o $tempdir/keyring -k $fd") == 0
+	or errexit("Couldn't decode keyring");
+    
+    # Generate the image
+    print "Writing disk image...\n";
+    $chunksize = int($cfg{'CHUNKSIZE'}) / 1024;
+    system(LIBDIR . "/disktool -o $file -d $parcelverdir -s $chunksize " .
+			"-m $cfg{'CHUNKSPERDIR'} -k $tempdir/keyring -p") == 0
+	or system_errexit("Couldn't export disk image");
+
+    print "Success: Created $file from $userid/$parcel.\n";
+}
+
+#
 # delparcel - Delete a user's parcel
 #
 sub delparcel ($$) {
@@ -1155,13 +1226,14 @@ sub usage {
     print "$progname revision " . RCS_REVISION . "\n";
     print RED, "Usage: $progname cmd [options...]\n", RESET;
     print BLUE, "Commands: adduser, copyparcel, decrypt, delparcel, deluser, encrypt,\n";
-    print "          getkeyroot, getusage, import, keygen, makeparcel, prune.\n", RESET;
+    print "          export, getkeyroot, getusage, import, keygen, makeparcel, prune.\n", RESET;
 
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u, [-f]).\n";
     print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P, [-s]).\n";
     print "  makeparcel Create an empty parcel from scratch (-u, -p, -m, -s, -M).\n";
     print "  import     Create a parcel from an existing disk image (-u, -p, -m, -M, -F).\n";
+    print "  export     Create a disk image from an existing parcel (-u, -p, -F).\n";
     print "  delparcel  Delete parcel from system (-u, -p, [-f]).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
     print "  encrypt    Encrypt parcel version (-u, -p, -v).\n";
@@ -1206,6 +1278,10 @@ sub usage {
 	print RED, "import - ", RESET, "Create parcel debian from flat disk image debian.img, with 512 MB\n";
 	print "memory image, using VirtualBox as the VMM, for existing user bovik\n";
 	print BLUE, "# isr_admin import -u bovik -p debian -m 512 -M virtualbox -F debian.img\n";
+	print "\n";
+	print RED, "export - ", RESET, "Create flat disk image debian.img from shut-down parcel debian\n";
+	print "belonging to user bovik\n";
+	print BLUE, "# isr_admin export -u bovik -p debian -F debian.img\n";
 	print "\n";
 	print RED, "delparcel - ", RESET, "Delete all data for parcel winxp belonging to existing user bovik\n";
 	print BLUE, "# isr_admin delparcel -u bovik -p winxp\n";
