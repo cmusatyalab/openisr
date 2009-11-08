@@ -26,7 +26,6 @@
 #include <errno.h>
 #include <glib.h>
 #include <glib/gstdio.h>
-#include <zlib.h>
 #include "isrcrypto.h"
 #include "sql.h"
 
@@ -46,7 +45,7 @@ static const char *keyring = "keyring";
 static int chunksize = 128; /* chunk size in KiB */
 static int chunksperdir = 512;
 static int64_t maxchunks = -1; /* infinite for all intents and purposes */
-static int compress_level = Z_DEFAULT_COMPRESSION;
+static int compress_level;
 static gboolean want_progress;
 
 static GOptionEntry options[] = {
@@ -82,7 +81,9 @@ static struct isrcry_hash_ctx *hash_ctx;
 static unsigned int hash_len;
 #define HASH_LEN 20
 
-static z_stream zstrm;
+static enum isrcry_compress compressor = ISRCRY_COMPRESS_ZLIB;
+static struct isrcry_compress_ctx *compress_ctx;
+
 static struct db *sqlitedb;
 
 static gulong chunklen;
@@ -284,6 +285,10 @@ static void init(void)
 		die("Couldn't allocate cipher");
 	cipher_block = isrcry_cipher_block(cipher);
 
+	compress_ctx = isrcry_compress_alloc(compressor);
+	if (compress_ctx == NULL)
+		die("Couldn't allocate compressor");
+
 	/* allocate an empty chunk to compare against */
 	chunklen = chunksize * 1024;
 	zerodata = g_malloc0(chunklen);
@@ -334,6 +339,7 @@ static void fini(void)
 
 	isrcry_cipher_free(cipher_ctx);
 	isrcry_hash_free(hash_ctx);
+	isrcry_compress_free(compress_ctx);
 
 	g_free(zerodata);
 	g_free(tmpdata);
@@ -350,29 +356,31 @@ struct chunk_desc {
 static void encrypt_chunk(struct chunk_desc *chunk)
 {
 	gpointer chunkdata;
-	gulong tmplen;
-	int rc;
+	enum isrcry_result rc;
+	unsigned plainlen;
+	unsigned compresslen;
 
 	/* compress chunk */
-	zstrm.next_in = chunk->data;
-	zstrm.avail_in = chunk->len;
-	zstrm.next_out = tmpdata;
-	zstrm.avail_out = chunklen;
-
-	rc = deflate(&zstrm, Z_FINISH);
-	if (rc == Z_STREAM_END && zstrm.avail_out > (cipher_block + 1)) {
+	rc = isrcry_compress_init(compress_ctx, ISRCRY_ENCODE,
+				compress_level);
+	if (rc)
+		die("Failed to initialize compressor: %s",
+					isrcry_strerror(rc));
+	plainlen = chunk->len;
+	compresslen = chunklen;
+	rc = isrcry_compress_final(compress_ctx, chunk->data, &plainlen,
+				tmpdata, &compresslen);
+	if (rc == ISRCRY_OK && (chunklen - compresslen) > (cipher_block + 1)) {
 		chunk->compression = COMP_ZLIB;
 		chunkdata = tmpdata;
-		tmplen = chunklen - zstrm.avail_out;
 	} else { /* no room in output buffer / compression failed */
 		chunk->compression = COMP_NONE;
 		chunkdata = chunk->data;
-		tmplen = chunk->len;
+		compresslen = chunk->len;
 	}
-	deflateReset(&zstrm);
 
 	/* calculate key */
-	isrcry_hash_update(hash_ctx, chunkdata, tmplen);
+	isrcry_hash_update(hash_ctx, chunkdata, compresslen);
 	isrcry_hash_final(hash_ctx, chunk->key);
 
 	/* encrypt chunk */
@@ -386,7 +394,7 @@ static void encrypt_chunk(struct chunk_desc *chunk)
 				      chunk->data);
 	} else {
 		chunk->len = chunklen;
-		isrcry_cipher_final(cipher_ctx, padding, tmpdata, tmplen,
+		isrcry_cipher_final(cipher_ctx, padding, tmpdata, compresslen,
 				    chunk->data, &chunk->len);
 	}
 
@@ -429,8 +437,11 @@ static void write_chunk(unsigned int idx, struct chunk_desc *chunk)
 static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 {
 	GString *dest;
-	int fd, rc;
+	int fd;
+	enum isrcry_result rc;
 	gulong tmplen;
+	unsigned inlen;
+	unsigned outlen;
 
 	dest = g_string_new(destpath);
 
@@ -472,17 +483,20 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 
 	if (chunk->compression == COMP_ZLIB) {
 		/* decompress chunk */
-		zstrm.next_in = tmpdata;
-		zstrm.avail_in = tmplen;
-		zstrm.next_out = chunk->data;
-		zstrm.avail_out = chunklen;
-
-		rc = inflate(&zstrm, Z_FINISH);
-		if (rc != Z_STREAM_END || zstrm.avail_out)
-			die("failed to decompress");
-
+		rc = isrcry_compress_init(compress_ctx, ISRCRY_DECODE, 0);
+		if (rc)
+			die("Failed to initialize decompressor: %s",
+						isrcry_strerror(rc));
+		inlen = tmplen;
+		outlen = chunklen;
+		rc = isrcry_compress_final(compress_ctx, tmpdata, &inlen,
+					chunk->data, &outlen);
+		if (rc)
+			die("Failed to decompress: %s", isrcry_strerror(rc));
+		if (outlen != chunklen)
+			die("Decompression produced invalid length %u",
+						outlen);
 		chunk->len = chunklen;
-		inflateReset(&zstrm);
 	} else
 		die("Unsupported compression type");
 }
@@ -493,9 +507,6 @@ static void import_image(const gchar *img)
 	unsigned int idx;
 	ssize_t n;
 	struct chunk_desc chunk, zerochunk;
-
-	if (deflateInit(&zstrm, compress_level) != Z_OK)
-		die("Failed to initialize zlib: %s", zstrm.msg);
 
 	fd = g_open(img, O_RDONLY, 0);
 	if (fd == -1)
@@ -545,7 +556,6 @@ static void import_image(const gchar *img)
 	g_free(chunk.data);
 	g_free(chunk.tag);
 	g_free(chunk.key);
-	deflateEnd(&zstrm);
 }
 
 static void export_image(const gchar *img)
@@ -556,9 +566,6 @@ static void export_image(const gchar *img)
 	struct query *qry;
 	ssize_t n;
 	int write_zeros;
-
-	if (inflateInit(&zstrm) != Z_OK)
-		die("Failed to initialize zlib: %s", zstrm.msg);
 
 	fd = g_creat(img, 0600);
 	if (fd == -1)
@@ -622,7 +629,6 @@ static void export_image(const gchar *img)
 	finish_progress();
 
 	g_free(chunk.data);
-	inflateEnd(&zstrm);
 }
 
 int main(int argc, char **argv)
