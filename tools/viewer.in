@@ -37,6 +37,7 @@ class VncViewer(object):
 		self.vnc = gtkvnc.Display()
 		self.vnc.set_pointer_grab(True)
 		self.vnc.set_keyboard_grab(True)
+		self.vnc.connect('vnc-auth-credential', self._auth_cred)
 		self.vnc.connect('vnc-initialized', self._initialized)
 		self.vnc.connect('vnc-disconnected', gtk.main_quit)
 		self.wind.add(self.vnc)
@@ -47,6 +48,10 @@ class VncViewer(object):
 		self.sock = socket.socket(socket.AF_UNIX)
 		self.sock.connect(path)
 		self.vnc.open_fd(self.sock.fileno())
+
+	def _auth_cred(self, wid, ev):
+		gtk.main_quit()
+		raise Exception("Can't supply authentication credentials")
 
 	def _initialized(self, wid):
 		self.wind.set_title(self.vnc.get_name())
