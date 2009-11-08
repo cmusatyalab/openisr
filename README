@@ -15,6 +15,7 @@ To run:
 - libtasn1
 - GMP
 - GTK+
+- gtk-vnc Python bindings
 - Perl
 - Python >= 2.4
 - udev

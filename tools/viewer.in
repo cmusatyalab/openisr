@@ -1,0 +1,97 @@
+#!!!PYTHONPATH!!
+#
+# viewer - VNC viewer for the OpenISR (R) system
+#
+# Copyright (C) 2009 Carnegie Mellon University
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of version 2 of the GNU General Public License as published
+# by the Free Software Foundation.  A copy of the GNU General Public License
+# should have been distributed along with this program in the file
+# LICENSE.GPL.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+# or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+# for more details.
+#
+
+import gtk
+import gtkvnc
+import socket
+import sys
+
+class VncViewer(object):
+	HOSTKEY = gtk.gdk.keyval_from_name('Control_R')
+
+	def __init__(self, path):
+		self.hostkey_down = False
+
+		self.wind = gtk.Window()
+		self.wind.connect('destroy', gtk.main_quit)
+		self.wind.connect('key-press-event', self._key_press)
+		self.wind.connect('key-release-event', self._key_release)
+		self.wind.connect('focus-out-event', self._focus_out)
+		self.wind.connect('window-state-event', self._window_state)
+
+		self.vnc = gtkvnc.Display()
+		self.vnc.set_pointer_grab(True)
+		self.vnc.set_keyboard_grab(True)
+		self.vnc.connect('vnc-initialized', self._initialized)
+		self.vnc.connect('vnc-disconnected', gtk.main_quit)
+		self.wind.add(self.vnc)
+		# Since we're not going to show the VNC widget until later,
+		# we need to realize it by hand before using it
+		self.vnc.realize()
+
+		self.sock = socket.socket(socket.AF_UNIX)
+		self.sock.connect(path)
+		self.vnc.open_fd(self.sock.fileno())
+
+	def _initialized(self, wid):
+		self.wind.set_title(self.vnc.get_name())
+		self.wind.show_all()
+
+	def _key_press(self, wid, ev):
+		key = gtk.gdk.keyval_from_name
+		lower = gtk.gdk.keyval_to_lower
+
+		if ev.keyval == self.HOSTKEY:
+			self.hostkey_down = True
+		elif self.hostkey_down and lower(ev.keyval) == key('f'):
+			if self.fullscreen:
+				self.wind.unfullscreen()
+			else:
+				self.wind.fullscreen()
+			return True
+		elif self.hostkey_down and lower(ev.keyval) == key('q'):
+			gtk.main_quit()
+			return True
+		return False
+
+	def _key_release(self, wid, ev):
+		if ev.keyval == self.HOSTKEY:
+			self.hostkey_down = False
+			if not self.fullscreen:
+				self.vnc.force_grab(False)
+		return False
+
+	def _focus_out(self, wid, ev):
+		self.hostkey_down = False
+		return False
+
+	def _window_state(self, wid, ev):
+		self.fullscreen = (ev.new_window_state &
+					gtk.gdk.WINDOW_STATE_FULLSCREEN) == \
+					gtk.gdk.WINDOW_STATE_FULLSCREEN
+		maximized = (ev.new_window_state &
+					gtk.gdk.WINDOW_STATE_MAXIMIZED) == \
+					gtk.gdk.WINDOW_STATE_MAXIMIZED
+		if maximized and not self.fullscreen:
+			self.wind.fullscreen()
+			self.wind.unmaximize()
+		return False
+
+if __name__ == '__main__':
+	vnc = VncViewer(sys.argv[1])
+	gtk.main()
