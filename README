@@ -16,15 +16,13 @@ To run:
 - GMP
 - GTK+
 - Perl
+- Python >= 2.4
 - udev
 - ssh
 - rsync
 - ssh-agent running in your X session (most systems provide this by default)
 - VirtualBox, KVM, VMware Workstation, or VMware Player
 - An accessible OpenISR 0.9-series server
-
-Additional requirements for the virtualbox driver:
-- Python >= 2.4
 
 Additional requirements for the vmware driver:
 - On 64-bit systems: 32-bit glibc
