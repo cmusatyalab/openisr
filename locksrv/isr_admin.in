@@ -61,6 +61,7 @@ sub get_maxkb ($$);
 sub gen_chunks ($$$$$);
 sub import_chunks ($$$$$);
 sub copy_chunks ($$$$);
+sub copydir ($$);
 sub copyparcel ($$$$$);
 sub new_parcel ($$$$$$$);
 sub makeparcel_gen_chunks ($$$$$);
@@ -100,6 +101,7 @@ my $size;
 my $memsize;
 my $vmm;
 my $imgfile;
+my $cfgdir;
 my $quick;
 
 # Server configuration
@@ -110,6 +112,7 @@ my %config = get_config();
 #
 Getopt::Long::Configure("no_ignore_case", "bundling_override");
 $result = GetOptions(
+                     "C|cfgdir=s"      => \$cfgdir,
                      "f|force"         => \$force,
                      "F|file=s"        => \$imgfile,
                      "h|help+"         => \$help,
@@ -202,6 +205,7 @@ if ($command eq "makeparcel") {
         if (!$size);
     usage("Missing VMM type (-M)")
         if (!$vmm);
+    # -C is optional
 }
 
 if ($command eq "import") {
@@ -215,7 +219,7 @@ if ($command eq "import") {
         if (!$imgfile);
     usage("Missing VMM type (-M)")
         if (!$vmm);
-    # -Q optional
+    # -C, -Q optional
 }
 
 if ($command eq "export") {
@@ -225,6 +229,7 @@ if ($command eq "export") {
 	if (!$parcel);
     usage("Missing output file (-F)")
         if (!$imgfile);
+    # -C optional
 }
 
 if ($command eq "delparcel") {
@@ -803,6 +808,40 @@ sub copy_chunks ($$$$) {
 }
 
 #
+# copydir - Copy the contents of $srcdir to $dstdir
+#
+sub copydir ($$) {
+    my $srcdir = shift;
+    my $dstdir = shift;
+
+    my $dh;
+    my @files;
+    my $file;
+    my $srcfile;
+    my $dstfile;
+
+    opendir($dh, $srcdir)
+	or unix_errexit("Couldn't read $srcdir");
+    @files = readdir($dh);
+    closedir($dh);
+    foreach $file (@files) {
+	next if $file =~ /^\.{1,2}$/;
+	$srcfile = "$srcdir/$file";
+	$dstfile = "$dstdir/$file";
+	if (-f $srcfile) {
+	    copy($srcfile, $dstfile)
+		or unix_errexit("Couldn't copy $srcfile");
+	} elsif (-d $srcfile) {
+	    mkdir($dstfile)
+		or unix_errexit("Couldn't create directory $dstfile");
+	    copydir($srcfile, $dstfile);
+	} else {
+	    err("Skipping copy of $srcfile");
+	}
+    }
+}
+
+#
 # copyparcel - Create a new parcel based on an existing one
 #             
 sub copyparcel ($$$$$) {
@@ -934,6 +973,10 @@ sub new_parcel ($$$$$$$) {
     # Validate memory image size
     errexit("Invalid memory image size '$memsize'")
         unless $memsize > 0;
+
+    # Validate cfgdir, if specified
+    errexit("Couldn't read $cfgdir")
+	if $cfgdir and not -d $cfgdir;
     
     # Create new content directory for this user and parcel
     print "Initializing parcel...\n";
@@ -962,10 +1005,12 @@ sub new_parcel ($$$$$$$) {
     print "Populating memory image...\n";
     mkdir("$parcelverdir/cfg")
         or errexit("Couldn't create cfg directory");
+    copydir($cfgdir, "$parcelverdir/cfg")
+	if $cfgdir;
     system(LIBDIR . "/blobtool -to $parcelverdir/cfg.tgz -C $parcelverdir cfg") == 0
         or errexit("Couldn't generate cfg tarball");
-    rmdir("$parcelverdir/cfg")
-	or errexit("Couldn't remove cfg directory");
+    system("rm -rf $parcelverdir/cfg") == 0
+	or system_errexit("Couldn't remove cfg directory");
     
     # Encrypt the parcel with a new keyroot
     print "Encrypting metadata...\n";
@@ -1073,7 +1118,7 @@ sub export ($$$) {
     $parcelverdir = get_last_parcelverdir($parceldir);
 
     # Decode the memory image and make sure the parcel is shut down
-    print "Checking memory image...\n";
+    print "Decoding memory image...\n";
     $tempdir = tempdir("export-XXXXXX", DIR => $parcelverdir, CLEANUP => 1);
     ($rh, $fd) = keyroot_pipe($cfg{'KEYROOT'});
     system(LIBDIR . "/blobtool -etdp -i $parcelverdir/cfg.tgz.enc " .
@@ -1087,6 +1132,13 @@ sub export ($$$) {
 	chomp $suspended;
 	$suspended eq "no"
 	    or errexit("Cannot export a suspended parcel");
+    }
+    if ($cfgdir) {
+	unless (-d $cfgdir) {
+	    mkdir($cfgdir)
+		or unix_errexit("Couldn't create $cfgdir");
+	}
+	copydir("$tempdir/cfg", $cfgdir);
     }
     
     # Decode the keyring
@@ -1236,9 +1288,9 @@ sub usage {
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u, [-f]).\n";
     print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P, [-s]).\n";
-    print "  makeparcel Create an empty parcel from scratch (-u, -p, -m, -s, -M).\n";
-    print "  import     Create a parcel from a disk image (-u, -p, -m, -M, -F, [-Q]).\n";
-    print "  export     Create a disk image from a parcel (-u, -p, -F).\n";
+    print "  makeparcel Create an empty parcel from scratch (-u, -p, -m, -s, -M, [-C]).\n";
+    print "  import     Create a parcel from a disk image (-u, -p, -m, -M, -F, [-C], [-Q]).\n";
+    print "  export     Create a disk image from a parcel (-u, -p, -F, [-C]).\n";
     print "  delparcel  Delete parcel from system (-u, -p, [-f]).\n";
     print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
     print "  encrypt    Encrypt parcel version (-u, -p, -v).\n";
@@ -1248,6 +1300,7 @@ sub usage {
     print "  prune      Prune old versions of a parcel (-u, -p, -r, [-f]).\n";
 
     print "Options:\n";
+    print "  -C,--cfgdir       Obtain/put the contents of the memory image here.\n";
     print "  -f,--force        Don't ask to confirm dangerous operations.\n";
     print "  -F,--file         Disk image file to import/export.\n";
     print "  -h,--help         Print help message (Try '-hh' for some concrete examples).\n";
