@@ -23,6 +23,7 @@ import sys
 
 class VncViewer(object):
 	HOSTKEY = gtk.gdk.keyval_from_name('Control_R')
+	HOSTKEY_HUMAN = 'Right-Ctrl'
 
 	def __init__(self, path):
 		self.hostkey_down = False
@@ -35,17 +36,26 @@ class VncViewer(object):
 		self.wind.connect('focus-out-event', self._focus_out)
 		self.wind.connect('window-state-event', self._window_state)
 
+		box = gtk.VBox()
+		self.wind.add(box)
+
 		self.vnc = gtkvnc.Display()
 		self.vnc.set_pointer_grab(True)
 		self.vnc.set_keyboard_grab(True)
 		self.vnc.connect('vnc-auth-credential', self._auth_cred)
 		self.vnc.connect('vnc-initialized', self._initialized)
+		self.vnc.connect('vnc-pointer-grab', self._grab)
+		self.vnc.connect('vnc-pointer-ungrab', self._ungrab)
 		self.vnc.connect('vnc-desktop-resize', self._vnc_resize)
 		self.vnc.connect('vnc-disconnected', gtk.main_quit)
-		self.wind.add(self.vnc)
+		box.pack_start(self.vnc)
 		# Since we're not going to show the VNC widget until later,
 		# we need to realize it by hand before using it
 		self.vnc.realize()
+
+		self.status = gtk.Statusbar()
+		self.status.set_has_resize_grip(False)
+		box.pack_end(self.status, expand = False)
 
 		self.sock = socket.socket(socket.AF_UNIX)
 		self.sock.connect(path)
@@ -58,6 +68,14 @@ class VncViewer(object):
 	def _initialized(self, wid):
 		self.wind.set_title(self.vnc.get_name())
 		self.wind.show_all()
+
+	def _grab(self, wid):
+		self.status.push(self.status.get_context_id('grab'),
+					'Press ' + self.HOSTKEY_HUMAN + \
+					' to release mouse')
+
+	def _ungrab(self, wid):
+		self.status.pop(self.status.get_context_id('grab'))
 
 	def _vnc_resize(self, wid, width, height):
 		# Resize the window to the minimum allowed by its geometry
@@ -104,9 +122,12 @@ class VncViewer(object):
 			self.wind.fullscreen()
 			self.wind.unmaximize()
 		if self.fullscreen and not fullscreen:
+			self.status.show()
 			# Resize the window to the minimum allowed by its
 			# geometry constraints
 			self.wind.resize(1, 1)
+		if fullscreen and not self.fullscreen:
+			self.status.hide()
 		self.fullscreen = fullscreen
 		return False
 
