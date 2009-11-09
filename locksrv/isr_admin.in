@@ -674,7 +674,7 @@ sub get_image_size ($$) {
     -r $disk
 	or errexit("Can't read $disk");
 
-    return int((-s _ + $chunksize - 1) / $chunksize);
+    return int(((-s _) + $chunksize - 1) / $chunksize);
 }
 
 #
