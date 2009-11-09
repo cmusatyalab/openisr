@@ -171,4 +171,7 @@ if __name__ == '__main__':
 		parser.error('No VNC server specified')
 	vnc = VncViewer(args[0], fullscreen = opts.fullscreen)
 
-	gtk.main()
+	try:
+		gtk.main()
+	except KeyboardInterrupt:
+		pass
