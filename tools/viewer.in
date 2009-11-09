@@ -103,14 +103,16 @@ class VncViewer(object):
 
 		if ev.keyval == self.HOSTKEY:
 			self.hostkey_down = True
-		elif self.hostkey_down and lower(ev.keyval) == key('f'):
-			if self.fullscreen:
-				self.wind.unfullscreen()
-			else:
-				self.wind.fullscreen()
-			return True
-		elif self.hostkey_down and lower(ev.keyval) == key('q'):
-			gtk.main_quit()
+		if self.hostkey_down:
+			if lower(ev.keyval) == key('f'):
+				if self.fullscreen:
+					self.wind.unfullscreen()
+				else:
+					self.wind.fullscreen()
+			elif lower(ev.keyval) == key('q'):
+				gtk.main_quit()
+			# Squash the keystroke, whether we recognized it
+			# or not
 			return True
 		return False
 
@@ -119,6 +121,9 @@ class VncViewer(object):
 			self.hostkey_down = False
 			if not self.fullscreen:
 				self.vnc.force_grab(False)
+			return True
+		elif self.hostkey_down:
+			return True
 		return False
 
 	def _focus_out(self, wid, ev):
