@@ -24,6 +24,10 @@ import socket
 class VncViewer(object):
 	HOSTKEY = gtk.gdk.keyval_from_name('Control_R')
 	HOSTKEY_HUMAN = 'Right-Ctrl'
+	# Keys we translate from HostKey-<key> to Ctrl-Alt-<key>
+	FORWARD_KEYS = dict([(gtk.gdk.keyval_from_name(key), key) for key in
+				['Delete', 'BackSpace'] +
+				['F' + str(n) for n in range(1, 13)]])
 
 	def __init__(self, dest, fullscreen = False):
 		self.hostkey_down = False
@@ -111,6 +115,9 @@ class VncViewer(object):
 					self.wind.fullscreen()
 			elif lower(ev.keyval) == key('q'):
 				gtk.main_quit()
+			elif self.FORWARD_KEYS.has_key(ev.keyval):
+				self.vnc.send_keys(['Control_L', 'Alt_L',
+						self.FORWARD_KEYS[ev.keyval]])
 			# Squash the keystroke, whether we recognized it
 			# or not
 			return True
