@@ -25,7 +25,7 @@ class VncViewer(object):
 	HOSTKEY = gtk.gdk.keyval_from_name('Control_R')
 	HOSTKEY_HUMAN = 'Right-Ctrl'
 
-	def __init__(self, path):
+	def __init__(self, dest):
 		self.hostkey_down = False
 		self.fullscreen = False
 
@@ -57,8 +57,20 @@ class VncViewer(object):
 		self.status.set_has_resize_grip(False)
 		box.pack_end(self.status, expand = False)
 
-		self.sock = socket.socket(socket.AF_UNIX)
-		self.sock.connect(path)
+		if dest.find('/') == -1:
+			# gtk-vnc has an open_host() method that will do
+			# this for us, but it has no error reporting: on
+			# any sort of failure it will just send a
+			# vnc-disconnected signal.
+			self.sock = socket.socket(socket.AF_INET)
+			if dest.find(':') == -1:
+				dest = (dest, 5900)
+			else:
+				host, port = dest.split(':', 1)
+				dest = (host, int(port))
+		else:
+			self.sock = socket.socket(socket.AF_UNIX)
+		self.sock.connect(dest)
 		self.vnc.open_fd(self.sock.fileno())
 
 	def _auth_cred(self, wid, ev):
