@@ -28,9 +28,11 @@ BEGIN {
 use File::Spec;
 use POSIX;
 use IO::Socket::UNIX;
-use Term::ANSIColor qw/:constants/;
 use strict;
 use warnings;
+use constant {
+	SHAREDIR => "!!SHAREDIR!!"
+};
 
 my $program;
 my $need_enable_kvm;
@@ -203,21 +205,20 @@ sub run {
 	my $sock;
 	my $buf;
 	my $sockpath = "$CFGDIR/kvm.ctl";
+	my $vncsock = "$CFGDIR/kvm.vnc";
 	my $loadmem = 0;
 
 	check_runnable;
 
 	# First, some housecleaning
-	unlink("$CFGDIR/kvm.mem.old", $sockpath);
+	cleanup();
 
 	# Calculate command-line options
 	$opts  = "-name \"$NAME\" -hda $DISK -m $MEM";
-	$opts .= " -monitor unix:$sockpath";
+	$opts .= " -monitor unix:$sockpath -vnc unix:$vncsock";
 	$opts .= " -enable-kvm"
 		if $need_enable_kvm;
 	$opts .= get_config;
-	$opts .= " -full-screen"
-		if $FULLSCREEN eq "yes";
 	if ($SUSPENDED eq "kvm" and -e "$CFGDIR/kvm.mem") {
 		if ($incoming_method eq "exec") {
 			$opts .= " -incoming \"exec:cat $CFGDIR/kvm.mem.old\"";
@@ -285,22 +286,21 @@ sub run {
 	send_cmd $sock, "cont"
 		if $loadmem;
 
-	# Wait for KVM to die or the user to request suspend
-	local $SIG{'INT'} = sub {syswrite($pipewr, 'I')};
-	print STDERR YELLOW, "Hit Ctrl-C to suspend your parcel.\n", RESET;
-	# For some reason Perl is squashing the EINTR error code, so on
-	# interrupt we get an undef return with $! set to 0, which is an
-	# invalid combination.  Ignore error returns.
-	until (sysread($piperd, $buf, 1)) {};
-	if ($buf eq "I") {
-		# User suspend request
-		print STDERR "Suspending parcel...\n";
-		send_cmd $sock, "migrate_set_speed 1g";
-		send_cmd $sock, "stop";
-		send_cmd $sock, "migrate \"exec:dd of=$CFGDIR/kvm.mem " .
-					"2>/dev/null\"";
-		send_cmd $sock, "quit";
-	}
+	# Start VNC viewer and wait for it to exit.  Ignore SIGINT after
+	# it exits so that multiple SIGINTs won't prevent us from saving
+	# the memory image.
+	local $SIG{'INT'} = sub {};
+	$opts = ($FULLSCREEN eq "yes") ? "-f" : "";
+	run_program(SHAREDIR . "/viewer $opts $vncsock",
+				sub { kill 'INT', shift });
+
+	# Ask KVM to suspend.  If it has already exited, send_cmd() will
+	# silently fail.
+	print STDERR "Suspending parcel...\n";
+	send_cmd $sock, "migrate_set_speed 1g";
+	send_cmd $sock, "stop";
+	send_cmd $sock, "migrate \"exec:dd of=$CFGDIR/kvm.mem 2>/dev/null\"";
+	send_cmd $sock, "quit";
 	close $sock;
 
 out:
@@ -309,8 +309,9 @@ out:
 		or fail "Couldn't obtain exit status of $program";
 	$ret = $?;
 
-	# Remove old memory image; determine if we have a new memory image
-	unlink "$CFGDIR/kvm.mem.old";
+	# Remove old memory image and VNC socket; determine if we have a new
+	# memory image
+	unlink "$CFGDIR/kvm.mem.old", "$CFGDIR/kvm.vnc";
 	$SUSPENDED = "kvm"
 		if -e "$CFGDIR/kvm.mem";
 
@@ -326,7 +327,7 @@ sub poweroff {
 }
 
 sub cleanup {
-	unlink("$CFGDIR/kvm.mem.old", "$CFGDIR/kvm.ctl");
+	unlink("$CFGDIR/kvm.mem.old", "$CFGDIR/kvm.ctl", "$CFGDIR/kvm.vnc");
 }
 
 main;
