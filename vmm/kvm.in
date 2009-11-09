@@ -244,6 +244,7 @@ sub run {
 		if $loadmem;
 
 	# Fork, and run KVM in the child
+	local $SIG{'PIPE'} = 'IGNORE';
 	local $SIG{'CHLD'} = sub {syswrite($pipewr, 'C')};
 	$pid = fork;
 	fail "Couldn't fork"
