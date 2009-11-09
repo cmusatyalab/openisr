@@ -18,14 +18,14 @@
 
 import gtk
 import gtkvnc
+import optparse
 import socket
-import sys
 
 class VncViewer(object):
 	HOSTKEY = gtk.gdk.keyval_from_name('Control_R')
 	HOSTKEY_HUMAN = 'Right-Ctrl'
 
-	def __init__(self, dest):
+	def __init__(self, dest, fullscreen = False):
 		self.hostkey_down = False
 		self.fullscreen = False
 
@@ -35,6 +35,8 @@ class VncViewer(object):
 		self.wind.connect('key-release-event', self._key_release)
 		self.wind.connect('focus-out-event', self._focus_out)
 		self.wind.connect('window-state-event', self._window_state)
+		if fullscreen:
+			self.wind.fullscreen()
 
 		box = gtk.VBox()
 		self.wind.add(box)
@@ -144,5 +146,17 @@ class VncViewer(object):
 		return False
 
 if __name__ == '__main__':
-	vnc = VncViewer(sys.argv[1])
+	usage = '%prog [-fh] <vnc-server>'
+	description = 'Accepted forms of <vnc-server> are "host", ' +\
+				'"host:port", and "/path/to/unix/socket".'
+	parser = optparse.OptionParser(usage = usage,
+				description = description)
+	parser.add_option('-f', '--fullscreen', action = 'store_true',
+				help = 'Start in full-screen mode')
+
+	(opts, args) = parser.parse_args()
+	if len(args) < 1:
+		parser.error('No VNC server specified')
+	vnc = VncViewer(args[0], fullscreen = opts.fullscreen)
+
 	gtk.main()
