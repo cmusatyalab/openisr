@@ -1,3 +1,45 @@
+====== 0.9.7 (2009-11-10)
+
+------ Client changes
+
+- Support kernel 2.6.31
+- Add "isr poweroff" command to delete a parcel's memory image
+- Add -D/--dirtometer option to launch dirtometer at resume time
+- Show extra parcel information in "ls -l" output (requires 0.9.7 server)
+- Complain if --rollback specified but parcel already checked out
+- Only permit "resume -d" if the parcel has been prepared with "checkout -d"
+- Check parcel lock at resume time unless running disconnected
+- Make path to user data directory configurable with "isrdir" option
+- Fix small leak of kernel memory at parcel suspend
+- Work around udev bug leading to resume failures on Fedora 12
+- No longer require a reboot after initial install on some Linux distributions
+- Various minor fixes and cleanups
+
+------ VMM driver changes
+
+- virtualbox: Fix failure to resume a new parcel on VirtualBox >= 3.0.2
+- kvm: Use our own VNC viewer rather than SDL.  RightCtrl-F will now toggle
+  full-screen mode and RightCtrl-Q will suspend the parcel.  The window's
+  maximize and close buttons now work as expected.
+- kvm: Work with KVM version shipped with RHEL 5.4
+- Add "none" driver that just waits for SIGINT
+
+------ Server changes
+
+- Place default content root under --localstatedir specified to ./configure
+- Create content root during "make install"
+
+------ isr_admin changes
+
+- makeparcel: Fix breakage introduced in 0.9.6
+- import/export: New commands to convert a parcel from/to a flat disk image
+- copyparcel: Resize copied parcel when -s specified (first resume requires
+  client >= 0.9.7)
+- makeparcel: Allow specifying memory image contents with -C/--cfgdir
+- Add -f/--force option to skip prompting in deluser, delparcel, and prune
+- Fix error when a user's first parcel is created by the user instead of root
+- Various minor fixes and cleanups
+
 ====== 0.9.6 (2009-08-21)
 
 ------ General changes
