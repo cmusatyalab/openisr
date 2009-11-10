@@ -99,6 +99,7 @@ void update_label(GtkLabel *lbl, const char *val)
 
 #define CONFIG_GROUP "dirtometer"
 
+const char *isrdir;
 const char *confdir;
 const char *conffile;
 GKeyFile *config;
@@ -147,6 +148,12 @@ void write_config(void)
 	char *contents;
 	gsize length;
 
+	/* XXX: we should respect the isrdir config setting */
+	if (!g_file_test(isrdir, G_FILE_TEST_IS_DIR) &&
+				mkdir(isrdir, 0700)) {
+		fprintf(stderr, "Couldn't create directory %s\n", isrdir);
+		return;
+	}
 	if (!g_file_test(confdir, G_FILE_TEST_IS_DIR) &&
 				mkdir(confdir, 0777)) {
 		fprintf(stderr, "Couldn't create directory %s\n", confdir);
@@ -998,7 +1005,8 @@ int main(int argc, char **argv)
 	uuid = argv[1];
 	if (name == NULL)
 		name = uuid;
-	confdir = g_strdup_printf("%s/.isr/dirtometer", getenv("HOME"));
+	isrdir = g_strdup_printf("%s/.isr", getenv("HOME"));
+	confdir = g_strdup_printf("%s/dirtometer", isrdir);
 	conffile = g_strdup_printf("%s/%s", confdir, uuid);
 
 	init_files();
