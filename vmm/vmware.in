@@ -522,7 +522,7 @@ sub poweroff {
 	# Be noisy about the fact that we won't work correctly.
 	fail "Old or missing VMware metadata; try resuming the parcel first"
 		unless -e "$CFGDIR/vmware.vmx";
-	unlink "$CFGDIR/vmware.vmem";
+	unlink "$CFGDIR/vmware.vmem", "$CFGDIR/vmware.vmss";
 	$SUSPENDED = "no"
 		if $SUSPENDED eq "vmware";
 };
