@@ -1270,11 +1270,9 @@ sub query ($) {
 sub usage {
     my $msg = shift;
     my $progname;
-    my $croot;
     
     # Strip any path information from the program name
     ($progname = $0) =~ s#.*/##s;
-    ($croot = $config{content_root}) =~ s:/$::;
     
     if ($msg) {
         print "Error: $msg\n";
@@ -1324,14 +1322,14 @@ sub usage {
 	print RED, "deluser - ", RESET, "Delete user bovik from the system\n";
 	print BLUE, "# isr_admin deluser -u bovik\n", RESET;
 	print "\n";
-	print RED, "copyparcel - ", RESET, "Create new parcel winxp for existing user bovik in $croot\n";
-	print "using latest version of existing parcel in $croot/gold/goldwinxp\n";
-	print BLUE, "# isr_admin copyparcel -u bovik -p winxp -U gold -Pgoldwinxp\n", RESET;
+	print RED, "copyparcel - ", RESET, "Create new parcel winxp for existing user bovik, using latest\n";
+	print "version of existing parcel goldwinxp owned by user gold\n";
+	print BLUE, "# isr_admin copyparcel -u bovik -p winxp -U gold -P goldwinxp\n", RESET;
 	print "\nLikewise, but make the disk of the new parcel 10 GB\n";
-	print BLUE, "# isr_admin copyparcel -u bovik -p winxp -U gold -Pgoldwinxp -s 10G\n", RESET;
+	print BLUE, "# isr_admin copyparcel -u bovik -p winxp -U gold -P goldwinxp -s 10G\n", RESET;
 	print "\n";
 	print RED, "makeparcel - ", RESET, "Create empty parcel debian, with 512 MB memory image and 8 GB\n";
-	print "disk, using VMware as the VMM, in $croot for existing user bovik\n";
+	print "disk, using VMware as the VMM, for existing user bovik\n";
 	print BLUE, "# isr_admin makeparcel -u bovik -p debian -m 512 -s 8G -M vmware\n";
 	print "\n";
 	print RED, "import - ", RESET, "Create parcel debian from flat disk image debian.img, with 512 MB\n";
@@ -1345,10 +1343,10 @@ sub usage {
 	print RED, "delparcel - ", RESET, "Delete all data for parcel winxp belonging to existing user bovik\n";
 	print BLUE, "# isr_admin delparcel -u bovik -p winxp\n";
 	print "\n";
-	print RED, "decrypt - ", RESET, "Decrypt files in $croot/bovik/winxp/00003\n";
+	print RED, "decrypt - ", RESET, "Decrypt metadata for version 3 of parcel winxp belonging to user bovik\n";
 	print BLUE, "# isr_admin decrypt -u bovik -p winxp -v 3\n", RESET;
 	print "\n";
-	print RED, "encrypt - ", RESET, "Encrypt files in $croot/bovik/winxp/00003\n";
+	print RED, "encrypt - ", RESET, "Encrypt metadata for version 3 of parcel winxp belonging to user bovik\n";
 	print BLUE, "# isr_admin encrypt -u bovik -p winxp -v 3\n", RESET;
 	print "\n";
 
@@ -1364,8 +1362,8 @@ sub usage {
 	print BLUE, "# isr_admin keygen\n", RESET;
 	print "\n";
 
-	print RED, "prune - ", RESET, "Prune all but the last 10 versions of the parcel stored at\n";
-	print "$croot/bovik/winxp.\n";
+	print RED, "prune - ", RESET, "Prune all but the last 10 versions of the winxp parcel owned by\n";
+	print "user bovik\n";
 	print BLUE, "# isr_admin prune -u bovik -p winxp -r 10\n", RESET;
     }
     exit 0;
