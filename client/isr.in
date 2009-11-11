@@ -369,21 +369,24 @@ $isrdir = $syscfg{'isrdir'};
 $isrdir =~ s:\\u:$ENV{USER}:g;
 $isrdir =~ s:\\h:$ENV{HOME}:g;
 
-unless (-e $isrdir) {
-    mkdir($isrdir, 0700)
-	or unix_errexit("Unable to make $isrdir");
+my $st = lstat($isrdir);
+
+unless ($st) {
+    mkdir($isrdir, 0700);
+    $st = lstat($isrdir)
+ 	or errexit("Unable to make $isrdir");
 }
 
 #
 # Avoid symlink attacks if $isrdir is in a shared directory.
 #
--l $isrdir
+S_ISLNK($st->mode)
     and errexit("$isrdir is a symbolic link");
--d $isrdir
+S_ISDIR($st->mode)
     or errexit("$isrdir is not a directory");
--o $isrdir
+$st->uid == $>
     or errexit("$isrdir must be owned by user");
-S_IMODE(stat($isrdir)->mode) == 0700
+S_IMODE($st->mode) == 0700
     or errexit("$isrdir must be mode 0700");
 
 #
