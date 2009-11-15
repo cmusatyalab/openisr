@@ -23,7 +23,7 @@ import socket
 
 class VncViewer(object):
 	HOSTKEY = gtk.gdk.keyval_from_name('Control_R')
-	HOSTKEY_HUMAN = 'Right-Ctrl'
+	HOSTKEY_HUMAN = 'Right Ctrl'
 	# Keys we translate from HostKey-<key> to Ctrl-Alt-<key>
 	FORWARD_KEYS = dict([(gtk.gdk.keyval_from_name(key), key) for key in
 				['Delete', 'BackSpace'] +
@@ -50,8 +50,6 @@ class VncViewer(object):
 		self.vnc.set_keyboard_grab(True)
 		self.vnc.connect('vnc-auth-credential', self._auth_cred)
 		self.vnc.connect('vnc-initialized', self._initialized)
-		self.vnc.connect('vnc-pointer-grab', self._grab)
-		self.vnc.connect('vnc-pointer-ungrab', self._ungrab)
 		self.vnc.connect('vnc-desktop-resize', self._vnc_resize)
 		self.vnc.connect('vnc-disconnected', gtk.main_quit)
 		box.pack_start(self.vnc)
@@ -59,9 +57,33 @@ class VncViewer(object):
 		# we need to realize it by hand before using it
 		self.vnc.realize()
 
-		self.status = gtk.Statusbar()
-		self.status.set_has_resize_grip(False)
-		box.pack_end(self.status, expand = False)
+		self.statusbar = gtk.HBox(spacing = 3)
+		self.statusbar.pack_start(gtk.Label())  # filler
+		box.pack_end(self.statusbar, expand = False)
+
+		theme = gtk.icon_theme_get_default()
+		def add_icon(name, sensitive = True):
+			icon = gtk.Image()
+			icon.set_from_pixbuf(theme.load_icon(name, 24, 0))
+			icon.set_sensitive(sensitive)
+			self.statusbar.pack_start(icon, expand = False)
+			return icon
+
+		hostkey_label = gtk.Label(self.HOSTKEY_HUMAN)
+		hostkey_label.set_alignment(0.5, 0.8)
+		hostkey_label.set_padding(3, 0)
+		self.statusbar.pack_start(hostkey_label, expand = False)
+
+		keyboard_icon = add_icon('input-keyboard', False)
+		mouse_icon = add_icon('input-mouse', False)
+		self.vnc.connect('vnc-keyboard-grab', self._grabbed,
+					keyboard_icon, True)
+		self.vnc.connect('vnc-keyboard-ungrab', self._grabbed,
+					keyboard_icon, False)
+		self.vnc.connect('vnc-pointer-grab', self._grabbed,
+					mouse_icon, True)
+		self.vnc.connect('vnc-pointer-ungrab', self._grabbed,
+					mouse_icon, False)
 
 		if dest.find('/') == -1:
 			# gtk-vnc has an open_host() method that will do
@@ -87,13 +109,8 @@ class VncViewer(object):
 		self.wind.set_title(self.vnc.get_name())
 		self.wind.show_all()
 
-	def _grab(self, wid):
-		self.status.push(self.status.get_context_id('grab'),
-					'Press ' + self.HOSTKEY_HUMAN + \
-					' to release mouse')
-
-	def _ungrab(self, wid):
-		self.status.pop(self.status.get_context_id('grab'))
+	def _grabbed(self, wid, icon, grabbed):
+		icon.set_sensitive(grabbed)
 
 	def _vnc_resize(self, wid, width, height):
 		# Resize the window to the minimum allowed by its geometry
@@ -148,12 +165,12 @@ class VncViewer(object):
 			self.wind.fullscreen()
 			self.wind.unmaximize()
 		if self.fullscreen and not fullscreen:
-			self.status.show()
+			self.statusbar.show()
 			# Resize the window to the minimum allowed by its
 			# geometry constraints
 			self.wind.resize(1, 1)
 		if fullscreen and not self.fullscreen:
-			self.status.hide()
+			self.statusbar.hide()
 		self.fullscreen = fullscreen
 		return False
 
