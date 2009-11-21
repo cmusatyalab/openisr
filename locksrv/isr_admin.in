@@ -33,6 +33,7 @@ use Sys::Hostname;
 use Term::ANSIColor qw(:constants);
 use constant {
 	RCS_REVISION => "!!REVISION!!",
+	BINDIR => "!!BINDIR!!",
 	LIBDIR => "!!LIBDIR!!",
 	SYSCONFDIR => "!!SYSCONFDIR!!",
 	STATEDIR => "!!STATEDIR!!",
@@ -475,6 +476,7 @@ sub adduser ($) {
 
     my $sshdir = "/home/$userid/.ssh";
     my $isrdir = "/home/$userid/.isr";
+    my $shell = BINDIR . "/isr_shell";
     my $passwd;
 
     # Make sure the account doesn't already exist
@@ -483,7 +485,7 @@ sub adduser ($) {
 
     # Create the user's account 
     print "Adding $userid...\n";
-    system("/usr/sbin/useradd -d /home/$userid -m $userid") == 0
+    system("/usr/sbin/useradd -d /home/$userid -m $userid -s $shell") == 0
 	or errexit("Unable to create new account for $userid");
 
     # Change the password
