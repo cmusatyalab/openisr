@@ -93,8 +93,10 @@ The server includes a tool, "isr_admin", which automates creating and
 deleting users and parcels.  For a usage summary, run "isr_admin"
 without arguments.  For examples, run "isr_admin -hh".
 
-An ISR account on the server is just a regular user account with some extra
-configuration, which is performed automatically when the account is created
-with "isr_admin adduser".
-
-Keep in mind that ISR users have shell access to the server.
+An ISR account on the server is a regular Unix user account with some extra
+configuration, including a special restricted shell which only allows the
+user to perform ISR server operations.  This configuration is performed
+automatically when the account is created with "isr_admin adduser".  Note
+that server accounts created with OpenISR 0.9.7 and earlier were not
+configured to use the restricted shell, so by default such accounts will
+have shell access to the server.
