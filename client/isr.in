@@ -1865,7 +1865,10 @@ sub upload () {
     # Retry if the upload fails
     for ($i = 0; $i < $syscfg{retries}; $i++) {
 	last
-	    if mysystem("rsync -e 'ssh -o PasswordAuthentication=no' --delete --partial --recursive -z $vflag $bwflag $uploaddir/ $userid\@$cfg{WPATH}/cache/$sessionid") == 0;
+	    if mysystem("rsync -e 'ssh -o PasswordAuthentication=no' " .
+			"--delete --partial --recursive $vflag $bwflag " .
+			"$uploaddir/ $userid\@$cfg{WPATH}/cache/$sessionid")
+			== 0;
 	print "[isr] upload failed. Retrying...\n"
 	    if $verbose;
     }
