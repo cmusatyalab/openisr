@@ -8,7 +8,7 @@
 # Foundation, in version 2 as it comes in the "COPYING" file of the
 # VirtualBox OSE distribution. VirtualBox OSE is distributed in the
 # hope that it will be useful, but WITHOUT ANY WARRANTY of any kind.
-# 
+#
 # Please contact Sun Microsystems, Inc., 4150 Network Circle, Santa
 # Clara, CA 95054 USA or visit http://www.sun.com if you need
 # additional information or have any questions.
@@ -48,7 +48,7 @@ if platform.system() == 'Darwin':
     sys.path.remove('/Applications/VirtualBox.app/Contents/MacOS')
 
 if cglue == None:
-    raise Exception, "Cannot find VBoxPython module (make sure you use 64-bit Python build with 64-bit VirtualBox, such as /usr/bin/amd64/python)"
+    raise Exception, "Cannot find VBoxPython module"
 
 sys.modules['xpcom._xpcom'] = cglue
 xpcom._xpcom = cglue
