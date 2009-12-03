@@ -838,6 +838,186 @@ void compress_test(const char *alg, enum isrcry_compress type,
 	isrcry_compress_free(ctx);
 }
 
+void decompress_test(const char *alg, enum isrcry_compress type,
+			const struct decompress_test *vectors,
+			unsigned vec_count)
+{
+	struct isrcry_compress_ctx *ctx;
+	const struct decompress_test *test;
+	uint8_t out[64];
+	unsigned inlen;
+	unsigned outlen;
+	unsigned n;
+	int ret;
+
+	ctx = isrcry_compress_alloc(type);
+	if (ctx == NULL) {
+		fail("%s alloc", alg);
+		return;
+	}
+	for (n = 0; n < vec_count; n++) {
+		test = &vectors[n];
+		if (isrcry_compress_init(ctx, ISRCRY_DECODE, 0)) {
+			fail("%s init %u", alg, n);
+			continue;
+		}
+		inlen = test->len;
+		outlen = sizeof(out);
+		ret = isrcry_compress_final(ctx, test->data, &inlen, out,
+					&outlen);
+		if (ret && test->success) {
+			fail("%s fail-decomp %u", alg, n);
+			continue;
+		}
+		if (!ret && !test->success) {
+			fail("%s xfail-decomp %u", alg, n);
+			continue;
+		}
+		if (!ret && inlen != test->len) {
+			fail("%s incomplete-decomp %u", alg, n);
+			continue;
+		}
+	}
+	isrcry_compress_free(ctx);
+}
+
+unsigned min(unsigned a, unsigned b)
+{
+	return a < b ? a : b;
+}
+
+void compress_stream_fuzz_test(const char *alg, enum isrcry_compress type,
+			unsigned count)
+{
+	struct isrcry_compress_ctx *ctx;
+	struct isrcry_random_ctx *rctx;
+	uint8_t plain[131100];
+	uint8_t compress[140000];
+	unsigned compress_size;
+	uint8_t out[140000];
+	unsigned in_offset;
+	unsigned out_offset;
+	unsigned inlen;
+	unsigned outlen;
+	unsigned n;
+	int ret;
+
+	/* Initialize plaintext */
+	for (n = 0; n < sizeof(plain); n++)
+		plain[n] = n;
+	rctx = isrcry_random_alloc();
+	isrcry_random_bytes(rctx, plain + 65536, 65536);
+	isrcry_random_free(rctx);
+
+	ctx = isrcry_compress_alloc(type);
+	if (ctx == NULL) {
+		fail("%s alloc", alg);
+		return;
+	}
+	/* Obtain canonical compresstext */
+	if (isrcry_compress_init(ctx, ISRCRY_ENCODE, 0)) {
+		fail("%s init", alg);
+		isrcry_compress_free(ctx);
+		return;
+	}
+	inlen = sizeof(plain);
+	outlen = sizeof(compress);
+	if (isrcry_compress_final(ctx, plain, &inlen, compress, &outlen)) {
+		fail("%s compress-fuzz", alg);
+		isrcry_compress_free(ctx);
+		return;
+	}
+	compress_size = outlen;
+
+	/* Fuzz compression buffering */
+	for (n = 0; n < count; n++) {
+		srandom(n);
+		if (isrcry_compress_init(ctx, ISRCRY_ENCODE, 0)) {
+			fail("%s init %u", alg, n);
+			continue;
+		}
+		in_offset = out_offset = 0;
+		while (in_offset < sizeof(plain)) {
+			inlen = min(random() % 8, sizeof(plain) - in_offset);
+			outlen = min(random() % 8, sizeof(out) - out_offset);
+			if (isrcry_compress_process(ctx, plain + in_offset,
+						&inlen, out + out_offset,
+						&outlen)) {
+				fail("%s compress-fuzz %u", alg, n);
+				goto out;
+			}
+			in_offset += inlen;
+			out_offset += outlen;
+		}
+		while (1) {
+			inlen = 0;
+			outlen = min(random() % 8, sizeof(out) - out_offset);
+			ret = isrcry_compress_final(ctx, NULL, &inlen,
+						out + out_offset, &outlen);
+			out_offset += outlen;
+			if (ret == ISRCRY_OK)
+				break;
+			if (ret != ISRCRY_BUFFER_OVERFLOW) {
+				fail("%s compress-fuzz-final %u", alg, n);
+				goto out;
+			}
+		}
+		if (out_offset != compress_size) {
+			fail("%s compress-fuzz-size-mismatch %u", alg, n);
+			goto out;
+		}
+		if (memcmp(compress, out, compress_size)) {
+			fail("%s compress-fuzz-mismatch %u", alg, n);
+			goto out;
+		}
+	}
+
+	/* Fuzz decompression buffering */
+	for (n = 0; n < count; n++) {
+		srandom(n);
+		if (isrcry_compress_init(ctx, ISRCRY_DECODE, 0)) {
+			fail("%s init %u", alg, n);
+			continue;
+		}
+		in_offset = out_offset = 0;
+		while (in_offset < compress_size) {
+			inlen = min(random() % 8, compress_size - in_offset);
+			outlen = min(random() % 8, sizeof(out) - out_offset);
+			if (isrcry_compress_process(ctx, compress + in_offset,
+						&inlen, out + out_offset,
+						&outlen)) {
+				fail("%s decompress-fuzz %u", alg, n);
+				goto out;
+			}
+			in_offset += inlen;
+			out_offset += outlen;
+		}
+		while (1) {
+			inlen = 0;
+			outlen = min(random() % 8, sizeof(out) - out_offset);
+			ret = isrcry_compress_final(ctx, NULL, &inlen,
+						out + out_offset, &outlen);
+			out_offset += outlen;
+			if (ret == ISRCRY_OK)
+				break;
+			if (ret != ISRCRY_BUFFER_OVERFLOW) {
+				fail("%s decompress-fuzz-final %u", alg, n);
+				goto out;
+			}
+		}
+		if (out_offset != sizeof(plain)) {
+			fail("%s decompress-fuzz-size-mismatch %u", alg, n);
+			goto out;
+		}
+		if (memcmp(plain, out, sizeof(plain))) {
+			fail("%s decompress-fuzz-mismatch %u", alg, n);
+			goto out;
+		}
+	}
+out:
+	isrcry_compress_free(ctx);
+}
+
 /* Statistical random number generator tests defined in
  * FIPS 140-1 - 4.11.1 Power-Up Tests.  Originally from RPC2.
  *
@@ -997,6 +1177,13 @@ int main(void)
 				MEMBERS(zlib_compress_vectors));
 	compress_test("lzf", ISRCRY_COMPRESS_LZF, lzf_compress_vectors,
 				MEMBERS(lzf_compress_vectors));
+	compress_test("lzf-stream", ISRCRY_COMPRESS_LZF_STREAM,
+				lzf_stream_compress_vectors,
+				MEMBERS(lzf_stream_compress_vectors));
+	decompress_test("lzf-stream", ISRCRY_COMPRESS_LZF_STREAM,
+				lzf_stream_decompress_vectors,
+				MEMBERS(lzf_stream_decompress_vectors));
+	compress_stream_fuzz_test("lzf-stream", ISRCRY_COMPRESS_LZF_STREAM, 5);
 	random_fips_test();
 
 	if (failed) {

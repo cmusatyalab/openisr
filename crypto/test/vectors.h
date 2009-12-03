@@ -105,4 +105,10 @@ struct compress_test {
 	unsigned compresslen;
 };
 
+struct decompress_test {
+	int success;  /* should the decompression succeed? */
+	unsigned len;
+	uint8_t data[32];
+};
+
 #endif
