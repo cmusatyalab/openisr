@@ -177,6 +177,7 @@ struct isrcry_compress_desc {
 
 extern const struct isrcry_compress_desc _isrcry_zlib_desc;
 extern const struct isrcry_compress_desc _isrcry_lzf_desc;
+extern const struct isrcry_compress_desc _isrcry_lzf_stream_desc;
 
 struct isrcry_compress_ctx {
 	const struct isrcry_compress_desc *desc;
@@ -201,6 +202,20 @@ enum isrcry_result isrcry_pem_decode(const char *alg,
 #if defined(HAVE_X86_32)
 #define ISRCRY_FAST_TYPE unsigned long
 #endif
+
+#define STORE16H(x, y)				\
+	do {					\
+		uint16_t __t = (x);		\
+		__t = GUINT16_TO_BE(__t);	\
+		memcpy((y), &__t, 2);		\
+	} while (0)
+
+#define LOAD16H(x, y)				\
+	do {					\
+		uint16_t __t;			\
+		memcpy(&__t, (y), 2);		\
+		x = GUINT16_FROM_BE(__t);	\
+	} while (0)
 
 #define STORE32H(x, y)				\
 	do {					\

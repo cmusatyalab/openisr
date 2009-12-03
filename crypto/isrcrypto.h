@@ -81,8 +81,12 @@ enum isrcry_dh {
 };
 
 enum isrcry_compress {
+	/* Deflate wrapped in a zlib header/trailer */
 	ISRCRY_COMPRESS_ZLIB		= 0,
+	/* Raw LZF block, no streaming */
 	ISRCRY_COMPRESS_LZF		= 1,
+	/* Series of LZF blocks framed as by lzf.c, with a trailing CRC */
+	ISRCRY_COMPRESS_LZF_STREAM	= 2,
 };
 
 struct isrcry_cipher_ctx;
