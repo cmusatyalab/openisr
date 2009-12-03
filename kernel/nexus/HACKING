@@ -220,7 +220,7 @@ buffers allocated to each worker thread.
 === kcompat
 
 Nexus works on several kernel versions (as of this writing, it supports 2.6.18
-through 2.6.31).  kcompat.h includes compatibility functions and macros which
+through 2.6.32).  kcompat.h includes compatibility functions and macros which
 allow this to work.  The general approach is to always use the most recent
 kernel API in the Nexus codebase, and provide wrappers for older kernels in
 kcompat.h.  When this is not possible, a Nexus-specific function is defined in
