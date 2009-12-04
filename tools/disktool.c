@@ -473,14 +473,19 @@ static void make_chunk_dir(unsigned int chunk_idx)
 	g_free(path);
 }
 
+static gchar *form_chunk_path(unsigned int idx)
+{
+	return g_strdup_printf("%s/hdk/%04u/%04u", destpath,
+				idx / chunksperdir, idx % chunksperdir);
+}
+
 static void write_chunk(unsigned int idx, struct chunk_desc *chunk)
 {
 	gchar *dest;
 	int fd;
 
 	make_chunk_dir(idx);
-	dest = g_strdup_printf("%s/hdk/%04u/%04u", destpath,
-				idx / chunksperdir, idx % chunksperdir);
+	dest = form_chunk_path(idx);
 	fd = g_creat(dest, 0444);
 	if (fd == -1)
 		die("Failed to create chunk #%d: %s", idx, strerror(errno));
@@ -502,24 +507,19 @@ static void write_chunk(unsigned int idx, struct chunk_desc *chunk)
 
 static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 {
-	GString *dest;
+	gchar *dest;
 	int fd;
 	enum isrcry_result rc;
 	unsigned inlen;
 	unsigned outlen;
 
-	dest = g_string_new(destpath);
-
-	g_string_append_printf(dest, "/hdk/%04d/%04d",
-			       idx / chunksperdir, idx % chunksperdir);
-
-	fd = g_open(dest->str, O_RDONLY, 0);
+	dest = form_chunk_path(idx);
+	fd = g_open(dest, O_RDONLY, 0);
 	if (fd == -1)
 		die("Failed to open chunk #%d: %s", idx, strerror(errno));
 	chunk->len = read(fd, chunk->data, chunklen);
 	close(fd);
-
-	g_string_free(dest, TRUE);
+	g_free(dest);
 
 	/* decrypt chunk */
 	rc = isrcry_cipher_init(cipher_ctx, ISRCRY_DECRYPT, chunk->key,
