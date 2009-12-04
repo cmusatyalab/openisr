@@ -93,6 +93,8 @@ static unsigned chunklen;
 static gpointer zerodata;
 static gpointer tmpdata;
 
+#define KEYRING_VERSION 1
+
 /** Progress bar *************************************************************/
 
 static FILE *tty;
@@ -270,11 +272,70 @@ static void handle_log_message(const gchar *domain, GLogLevelFlags level,
 	(void)data;
 }
 
+static void init_keyring(void)
+{
+	struct query *qry;
+	int user_version;
+
+	begin(sqlitedb);
+	if (!query(&qry, sqlitedb, "PRAGMA user_version", NULL)) {
+		sql_log_err(sqlitedb, "Couldn't query user version");
+		goto bad;
+	}
+	query_row(qry, "d", &user_version);
+	query_free(qry);
+
+	switch (user_version) {
+	case 0:
+		break;
+	case KEYRING_VERSION:
+		rollback(sqlitedb);
+		return;
+	default:
+		fprintf(stderr, "Unknown keyring version %d", user_version);
+		goto bad;
+	}
+
+	if (!query(NULL, sqlitedb, "PRAGMA auto_vacuum = 0", NULL)) {
+		sql_log_err(sqlitedb, "Couldn't disable auto-vacuum");
+		goto bad;
+	}
+	if (!query(NULL, sqlitedb, "PRAGMA legacy_file_format = ON", NULL)) {
+		sql_log_err(sqlitedb, "Couldn't set legacy_file_format");
+		goto bad;
+	}
+	if (!query(NULL, sqlitedb, "PRAGMA user_version = "
+				G_STRINGIFY(KEYRING_VERSION), NULL)) {
+		sql_log_err(sqlitedb, "Couldn't set schema version");
+		goto bad;
+	}
+	if (!query(NULL, sqlitedb, "CREATE TABLE keys ( "
+				"chunk INTEGER PRIMARY KEY NOT NULL, "
+				"tag BLOB NOT NULL, "
+				"key BLOB NOT NULL, "
+				"compression INTEGER NOT NULL)", NULL)) {
+		sql_log_err(sqlitedb, "Couldn't create keys table");
+		goto bad;
+	}
+	if (!query(NULL, sqlitedb, "CREATE INDEX keys_tags ON keys (tag)",
+				NULL)) {
+		sql_log_err(sqlitedb, "Couldn't create keys_tags index");
+		goto bad;
+	}
+	if (!commit(sqlitedb)) {
+		sql_log_err(sqlitedb, "Couldn't commit keyring");
+		goto bad;
+	}
+	return;
+
+bad:
+	rollback(sqlitedb);
+	die("Couldn't initialize keyring");
+}
+
 static void init(void)
 {
 	GString *dbfile = g_string_new("");
-	struct query *qry;
-	int user_version = 0;
 
 	hash_ctx = isrcry_hash_alloc(hash);
 	if (hash_ctx == NULL)
@@ -307,29 +368,12 @@ static void init(void)
 		g_string_append_c(dbfile, '/');
 	}
 	g_string_append(dbfile, keyring);
-	sql_conn_open(dbfile->str, &sqlitedb);
+	if (!sql_conn_open(dbfile->str, &sqlitedb))
+		die("Couldn't open keyring");
 	g_string_free(dbfile, TRUE);
 
-	/* In case the db is not yet initialized, create a basic schema */
-	begin(sqlitedb);
-	if (query(&qry, sqlitedb, "PRAGMA user_version", NULL)) {
-		query_row(qry, "d", &user_version);
-		query_free(qry);
-	}
-
-	if (!user_version) {
-		query(NULL, sqlitedb, "PRAGMA auto_vacuum = 0", NULL);
-		query(NULL, sqlitedb, "PRAGMA legacy_file_format = ON", NULL);
-		query(NULL, sqlitedb, "PRAGMA user_version = 1", NULL);
-		query(NULL, sqlitedb, "CREATE TABLE keys ( "
-				      "chunk INTEGER PRIMARY KEY NOT NULL, "
-				      "tag BLOB NOT NULL, "
-				      "key BLOB NOT NULL, "
-				      "compression INTEGER NOT NULL)", NULL);
-		query(NULL, sqlitedb, "CREATE INDEX keys_tags ON "
-				      "keys (tag)", NULL);
-	}
-	commit(sqlitedb);
+	/* Initialize DB schema if necessary */
+	init_keyring();
 }
 
 static void fini(void)
