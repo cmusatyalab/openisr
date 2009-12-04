@@ -267,9 +267,17 @@ static void handle_log_message(const gchar *domain, GLogLevelFlags level,
 			       const gchar *message, gpointer data)
 {
 	(void)domain;
-	(void)level;
-	(void)message;
 	(void)data;
+
+	switch (level & G_LOG_LEVEL_MASK) {
+	case G_LOG_LEVEL_INFO:
+	case SQL_LOG_LEVEL_QUERY:
+	case SQL_LOG_LEVEL_SLOW_QUERY:
+		break;
+	default:
+		fprintf(stderr, "%s\n", message);
+		break;
+	}
 }
 
 static void init_keyring(void)
@@ -355,8 +363,8 @@ static void init(void)
 	tmpdata = g_malloc(chunklen);
 
 	/* initialize sqlite */
-	g_log_set_handler("isrsql", G_LOG_LEVEL_INFO | SQL_LOG_LEVEL_QUERY |
-			  SQL_LOG_LEVEL_SLOW_QUERY, handle_log_message, NULL);
+	g_log_set_handler("isrsql", G_LOG_LEVEL_MASK, handle_log_message,
+				NULL);
 	sql_init();
 
 	/* check if keyring path is absolute or relative to cwd */
