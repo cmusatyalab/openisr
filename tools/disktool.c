@@ -345,6 +345,7 @@ bad:
 static void init(void)
 {
 	GString *dbfile = g_string_new("");
+	gchar *hdkdir;
 
 	hash_ctx = isrcry_hash_alloc(hash);
 	if (hash_ctx == NULL)
@@ -372,6 +373,12 @@ static void init(void)
 	if (!g_file_test(destpath, G_FILE_TEST_IS_DIR))
 		if (g_mkdir(destpath, 0700))
 			die("Couldn't create %s", destpath);
+	/* make hdk subdirectory */
+	hdkdir = g_strdup_printf("%s/hdk", destpath);
+	if (!g_file_test(hdkdir, G_FILE_TEST_IS_DIR))
+		if (g_mkdir(hdkdir, 0755))
+			die("Couldn't create %s", hdkdir);
+	g_free(hdkdir);
 
 	/* check if keyring path is absolute or relative to cwd */
 	if (!((keyring[0] == '/') ||
@@ -471,8 +478,9 @@ static void make_chunk_dir(unsigned int chunk_idx)
 		return;
 	last = dir;
 	path = g_strdup_printf("%s/hdk/%04u", destpath, dir);
-	if (g_mkdir_with_parents(path, 0755))
-		die("Couldn't create directory %s", path);
+	if (!g_file_test(path, G_FILE_TEST_IS_DIR))
+		if (g_mkdir(path, 0755))
+			die("Couldn't create directory %s", path);
 	g_free(path);
 }
 
