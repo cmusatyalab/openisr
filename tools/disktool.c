@@ -458,19 +458,30 @@ static void encrypt_chunk(struct chunk_desc *chunk)
 	isrcry_hash_final(hash_ctx, chunk->tag);
 }
 
+static void make_chunk_dir(unsigned int chunk_idx)
+{
+	static unsigned last = -1;
+	unsigned dir = chunk_idx / chunksperdir;
+	gchar *path;
+
+	if (last == dir)
+		return;
+	last = dir;
+	path = g_strdup_printf("%s/hdk/%04u", destpath, dir);
+	if (g_mkdir_with_parents(path, 0755))
+		die("Couldn't create directory %s", path);
+	g_free(path);
+}
+
 static void write_chunk(unsigned int idx, struct chunk_desc *chunk)
 {
-	GString *dest;
+	gchar *dest;
 	int fd;
 
-	dest = g_string_new(destpath);
-
-	g_string_append_printf(dest, "/hdk/%04d", idx / chunksperdir);
-	g_mkdir_with_parents(dest->str, 0755);
-
-	g_string_append_printf(dest, "/%04d", idx % chunksperdir);
-
-	fd = g_creat(dest->str, 0444);
+	make_chunk_dir(idx);
+	dest = g_strdup_printf("%s/hdk/%04u/%04u", destpath,
+				idx / chunksperdir, idx % chunksperdir);
+	fd = g_creat(dest, 0444);
 	if (fd == -1)
 		die("Failed to create chunk #%d: %s", idx, strerror(errno));
 	if (write(fd, chunk->data, chunk->len) != (ssize_t)chunk->len)
@@ -486,7 +497,7 @@ static void write_chunk(unsigned int idx, struct chunk_desc *chunk)
 		sql_log_err(sqlitedb, "Couldn't update keyring");
 		exit(1);
 	}
-	g_string_free(dest, TRUE);
+	g_free(dest);
 }
 
 static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
