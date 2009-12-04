@@ -285,7 +285,8 @@ static void init_keyring(void)
 	struct query *qry;
 	int user_version;
 
-	begin(sqlitedb);
+	if (!begin(sqlitedb))
+		die("Couldn't begin transaction");
 	if (!query(&qry, sqlitedb, "PRAGMA user_version", NULL)) {
 		sql_log_err(sqlitedb, "Couldn't query user version");
 		goto bad;
@@ -445,13 +446,15 @@ static void encrypt_chunk(struct chunk_desc *chunk)
 		die("Couldn't initialize cipher: %s", isrcry_strerror(rc));
 
 	if (chunk->compression == COMP_NONE) {
-		isrcry_cipher_process(cipher_ctx, chunk->data, chunk->len,
-				      chunk->data);
+		rc = isrcry_cipher_process(cipher_ctx, chunk->data,
+					chunk->len, chunk->data);
 	} else {
 		chunk->len = chunklen;
-		isrcry_cipher_final(cipher_ctx, padding, tmpdata, compresslen,
-				    chunk->data, &chunk->len);
+		rc = isrcry_cipher_final(cipher_ctx, padding, tmpdata,
+					compresslen, chunk->data, &chunk->len);
 	}
+	if (rc)
+		die("Couldn't run cipher: %s", isrcry_strerror(rc));
 
 	/* calculate tag */
 	isrcry_hash_update(hash_ctx, chunk->data, chunk->len);
@@ -603,11 +606,14 @@ static void import_image(const gchar *img)
 
 	init_progress_fd(fd);
 
-	begin(sqlitedb);
+	if (!begin(sqlitedb))
+		die("Couldn't begin transaction");
 	for (idx = 0; maxchunks != 0; idx++, maxchunks--)
 	{
 		n = read(fd, chunk.data, chunklen);
-		if (n <= 0)
+		if (n < 0)
+			die("Error reading image file");
+		if (n == 0)
 			break;
 
 		/* zero tail of a partial (last) chunk */
@@ -623,7 +629,10 @@ static void import_image(const gchar *img)
 		}
 		progress(chunklen);
 	}
-	commit(sqlitedb);
+	if (!commit(sqlitedb)) {
+		rollback(sqlitedb);
+		die("Couldn't commit transaction");
+	}
 
 	finish_progress();
 
@@ -653,19 +662,26 @@ static void export_image(const gchar *img)
 
 	chunk.data = g_malloc(chunklen);
 
-	begin(sqlitedb);
+	if (!begin(sqlitedb))
+		die("Couldn't begin transaction");
 
-	if (query(&qry, sqlitedb, "SELECT COUNT(*) FROM keys", NULL)) {
-		query_row(qry, "d", &nchunk);
-		query_free(qry);
+	if (!query(&qry, sqlitedb, "SELECT COUNT(*) FROM keys", NULL)) {
+		sql_log_err(sqlitedb, "Couldn't enumerate keyring");
+		rollback(sqlitedb);
+		exit(1);
 	}
+	query_row(qry, "d", &nchunk);
+	query_free(qry);
 	if (maxchunks != -1 && nchunk > maxchunks)
 		nchunk = maxchunks;
 
 	if (!query(&qry, sqlitedb,
 		   "SELECT chunk, tag, key, compression FROM keys "
-		   "ORDER BY chunk", NULL))
-		die("failed to query keyring");
+		   "ORDER BY chunk", NULL)) {
+		sql_log_err(sqlitedb, "failed to query keyring");
+		rollback(sqlitedb);
+		exit(1);
+	}
 
 	init_progress(nchunk * chunklen);
 
@@ -695,14 +711,24 @@ static void export_image(const gchar *img)
 			if (n != (ssize_t)chunklen)
 				die("Failed to write to image file: %s",
 				    strerror(errno));
-		} else
-			lseek(fd, chunklen, SEEK_CUR);
+		} else {
+			if (lseek(fd, chunklen, SEEK_CUR) == (off_t)-1)
+				die("lseek failed");
+		}
 
 		progress(chunklen);
 		query_next(qry);
 	}
 	query_free(qry);
-	commit(sqlitedb);
+	if (!query_ok(sqlitedb)) {
+		sql_log_err(sqlitedb, "Select failed");
+		rollback(sqlitedb);
+		exit(1);
+	}
+	if (!commit(sqlitedb)) {
+		rollback(sqlitedb);
+		die("Couldn't commit transaction");
+	}
 
 	close(fd);
 
