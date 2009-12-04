@@ -389,6 +389,8 @@ static void init(void)
 		g_string_append_c(dbfile, '/');
 	}
 	g_string_append(dbfile, keyring);
+	if (exportimage && !g_file_test(dbfile->str, G_FILE_TEST_IS_REGULAR))
+		die("Keyring does not exist");
 	if (!sql_conn_open(dbfile->str, &sqlitedb))
 		die("Couldn't open keyring");
 	g_string_free(dbfile, TRUE);
