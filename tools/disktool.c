@@ -56,7 +56,7 @@ static GOptionEntry options[] = {
 	{"keyring", 'k', 0, G_OPTION_ARG_FILENAME, &keyring, "Keyring (default: keyring)", "PATH"},
 	{"chunksize", 's', 0, G_OPTION_ARG_INT, &chunksize, "Chunksize (default: 128)", "KiB"},
 	{"chunksperdir", 'm', 0, G_OPTION_ARG_INT, &chunksperdir, "Chunks per directory (default: 512)", "N"},
-	{"nchunks", 'n', 0, G_OPTION_ARG_INT64, &maxchunks, "Number of chunks", "N"},
+	{"nchunks", 'n', 0, G_OPTION_ARG_INT64, &maxchunks, "Number of chunks (default: calculated from input)", "N"},
 	{"compress", 'z', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (default: 6)", "1-9"},
 	{"lzf", 'l', 0, G_OPTION_ARG_NONE, &want_lzf, "Use LZF compression", NULL},
 	{"progress", 'p', 0, G_OPTION_ARG_NONE, &want_progress, "Show progress bar", NULL},
@@ -750,7 +750,7 @@ int main(int argc, char **argv)
 	GOptionContext *ctx;
 	GError *err = NULL;
 
-	ctx = g_option_context_new(" - import VM disk image");
+	ctx = g_option_context_new(" - import/export VM disk image");
 	g_option_context_add_main_entries(ctx, options, NULL);
 	if (!g_option_context_parse(ctx, &argc, &argv, &err))
 		die("%s", err->message);
