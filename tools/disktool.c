@@ -367,6 +367,11 @@ static void init(void)
 				NULL);
 	sql_init();
 
+	/* make destination directory if it doesn't exist */
+	if (!g_file_test(destpath, G_FILE_TEST_IS_DIR))
+		if (g_mkdir(destpath, 0700))
+			die("Couldn't create %s", destpath);
+
 	/* check if keyring path is absolute or relative to cwd */
 	if (!((keyring[0] == '/') ||
 	      (keyring[0] == '.' && keyring[1] == '/') ||
