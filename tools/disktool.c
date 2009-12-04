@@ -525,14 +525,19 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 	enum isrcry_result rc;
 	unsigned inlen;
 	unsigned outlen;
+	gboolean uncompressed = (chunk->compression == COMP_NONE);
+	void *tmp;
 
 	dest = form_chunk_path(idx);
 	fd = g_open(dest, O_RDONLY, 0);
 	if (fd == -1)
-		die("Failed to open chunk #%d: %s", idx, strerror(errno));
-	chunk->len = read(fd, chunk->data, chunklen);
+		die("Failed to open chunk #%u: %s", idx, strerror(errno));
+	inlen = read(fd, tmpdata, chunklen);
 	close(fd);
 	g_free(dest);
+	if ((uncompressed && inlen != chunklen) || inlen == 0 ||
+				inlen > chunklen /* -1 */)
+		die("Invalid length %u for chunk #%u", inlen, idx);
 
 	/* decrypt chunk */
 	rc = isrcry_cipher_init(cipher_ctx, ISRCRY_DECRYPT, chunk->key,
@@ -540,53 +545,53 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 	if (rc)
 		die("Couldn't initialize cipher: %s", isrcry_strerror(rc));
 
-	if (chunk->compression == COMP_NONE) {
-		if (chunk->len != chunklen)
-			die("Short read on uncompressed chunk");
-
-		rc = isrcry_cipher_process(cipher_ctx, chunk->data, chunk->len,
-					   chunk->data);
-		if (rc)
-			die("Failed to decrypt uncompressed chunk: %s",
-			    isrcry_strerror(rc));
-		return;
-	}
-
 	outlen = chunklen;
-	rc = isrcry_cipher_final(cipher_ctx, padding, chunk->data, chunk->len,
-				 tmpdata, &outlen);
+	if (uncompressed)
+		rc = isrcry_cipher_process(cipher_ctx, tmpdata, inlen,
+					chunk->data);
+	else
+		rc = isrcry_cipher_final(cipher_ctx, padding, tmpdata, inlen,
+					chunk->data, &outlen);
 	if (rc)
-		die("Failed to decrypt compressed chunk: %s",
-		    isrcry_strerror(rc));
+		die("Failed to decrypt chunk #%u: %s", idx,
+					isrcry_strerror(rc));
 
 	/* decompress chunk */
-	switch (chunk->compression) {
-	case COMP_ZLIB:
-		compressor = ISRCRY_COMPRESS_ZLIB;
-		break;
-	case COMP_LZF:
-		compressor = ISRCRY_COMPRESS_LZF;
-		break;
-	default:
-		die("Unsupported compression type %d", chunk->compression);
+	if (!uncompressed) {
+		switch (chunk->compression) {
+		case COMP_ZLIB:
+			compressor = ISRCRY_COMPRESS_ZLIB;
+			break;
+		case COMP_LZF:
+			compressor = ISRCRY_COMPRESS_LZF;
+			break;
+		default:
+			die("Unsupported compression type %d on chunk #%u",
+						chunk->compression, idx);
+		}
+		compress_ctx = isrcry_compress_alloc(compressor);
+		if (compress_ctx == NULL)
+			die("Couldn't allocate compressor");
+		rc = isrcry_compress_init(compress_ctx, ISRCRY_DECODE, 0);
+		if (rc)
+			die("Failed to initialize decompressor: %s",
+						isrcry_strerror(rc));
+		inlen = outlen;
+		outlen = chunklen;
+		rc = isrcry_compress_final(compress_ctx, chunk->data, &inlen,
+					tmpdata, &outlen);
+		if (rc)
+			die("Failed to decompress chunk #%u: %s", idx,
+						isrcry_strerror(rc));
+		isrcry_compress_free(compress_ctx);
+		tmp = tmpdata;
+		tmpdata = chunk->data;
+		chunk->data = tmp;
 	}
-	compress_ctx = isrcry_compress_alloc(compressor);
-	if (compress_ctx == NULL)
-		die("Couldn't allocate compressor");
-	rc = isrcry_compress_init(compress_ctx, ISRCRY_DECODE, 0);
-	if (rc)
-		die("Failed to initialize decompressor: %s",
-					isrcry_strerror(rc));
-	inlen = outlen;
-	outlen = chunklen;
-	rc = isrcry_compress_final(compress_ctx, tmpdata, &inlen,
-				chunk->data, &outlen);
-	if (rc)
-		die("Failed to decompress: %s", isrcry_strerror(rc));
 	if (outlen != chunklen)
-		die("Decompression produced invalid length %u", outlen);
+		die("Invalid decoded chunk length %u on chunk #%u", outlen,
+					idx);
 	chunk->len = chunklen;
-	isrcry_compress_free(compress_ctx);
 }
 
 static void import_image(const gchar *img)
