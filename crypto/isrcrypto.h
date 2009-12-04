@@ -114,7 +114,7 @@ enum isrcry_result isrcry_cipher_init(struct isrcry_cipher_ctx *cctx,
    be a multiple of the block length.  @out must be able to store @inlen
    bytes. */
 enum isrcry_result isrcry_cipher_process(struct isrcry_cipher_ctx *cctx,
-			const void *in, unsigned long inlen, void *out);
+			const void *in, unsigned inlen, void *out);
 
 /* Process the final cipher block, padding appropriately with the specified
    @padding.  This function should not be called if the application wishes
@@ -125,9 +125,8 @@ enum isrcry_result isrcry_cipher_process(struct isrcry_cipher_ctx *cctx,
    isrcry_cipher_init() or used for further cipher operations with
    isrcry_cipher_process()/isrcry_cipher_final(). */
 enum isrcry_result isrcry_cipher_final(struct isrcry_cipher_ctx *cctx,
-			enum isrcry_padding padding,
-			const void *in, unsigned long inlen,
-			void *out, unsigned long *outlen);
+			enum isrcry_padding padding, const void *in,
+			unsigned inlen, void *out, unsigned *outlen);
 
 /* Return the cipher block length for the given cipher, in bytes. */
 unsigned isrcry_cipher_block(enum isrcry_cipher type);

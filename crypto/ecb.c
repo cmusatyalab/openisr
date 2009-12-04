@@ -20,7 +20,7 @@
 #include "internal.h"
 
 static enum isrcry_result ecb_encrypt(struct isrcry_cipher_ctx *cctx,
-			const unsigned char *in, unsigned long len,
+			const unsigned char *in, unsigned len,
 			unsigned char *out)
 {
 	enum isrcry_result ret;
@@ -41,7 +41,7 @@ static enum isrcry_result ecb_encrypt(struct isrcry_cipher_ctx *cctx,
 }
 
 static enum isrcry_result ecb_decrypt(struct isrcry_cipher_ctx *cctx,
-			const unsigned char *in, unsigned long len,
+			const unsigned char *in, unsigned len,
 			unsigned char *out)
 {
 	enum isrcry_result ret;

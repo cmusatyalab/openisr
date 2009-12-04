@@ -54,10 +54,10 @@ extern const struct isrcry_cipher_desc _isrcry_bf_desc;
 
 struct isrcry_mode_desc {
 	enum isrcry_result (*encrypt)(struct isrcry_cipher_ctx *cctx,
-				const unsigned char *in, unsigned long len,
+				const unsigned char *in, unsigned len,
 				unsigned char *out);
 	enum isrcry_result (*decrypt)(struct isrcry_cipher_ctx *cctx,
-				const unsigned char *in, unsigned long len,
+				const unsigned char *in, unsigned len,
 				unsigned char *out);
 };
 

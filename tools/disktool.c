@@ -89,7 +89,7 @@ static struct isrcry_compress_ctx *compress_ctx;
 
 static struct db *sqlitedb;
 
-static gulong chunklen;
+static unsigned chunklen;
 static gpointer zerodata;
 static gpointer tmpdata;
 
@@ -347,7 +347,7 @@ struct chunk_desc {
 	gpointer tag;
 	gpointer key;
 	gpointer data;
-	gulong len;
+	unsigned len;
 	unsigned int compression;
 };
 
@@ -437,7 +437,6 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 	GString *dest;
 	int fd;
 	enum isrcry_result rc;
-	gulong tmplen;
 	unsigned inlen;
 	unsigned outlen;
 
@@ -472,9 +471,9 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 		return;
 	}
 
-	tmplen = chunklen;
+	outlen = chunklen;
 	rc = isrcry_cipher_final(cipher_ctx, padding, chunk->data, chunk->len,
-				 tmpdata, &tmplen);
+				 tmpdata, &outlen);
 	if (rc)
 		die("Failed to decrypt compressed chunk: %s",
 		    isrcry_strerror(rc));
@@ -497,7 +496,7 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 	if (rc)
 		die("Failed to initialize decompressor: %s",
 					isrcry_strerror(rc));
-	inlen = tmplen;
+	inlen = outlen;
 	outlen = chunklen;
 	rc = isrcry_compress_final(compress_ctx, tmpdata, &inlen,
 				chunk->data, &outlen);

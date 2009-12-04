@@ -141,7 +141,7 @@ void chain_pad_test(const char *alg, enum isrcry_cipher type,
 	const struct chain_test *test;
 	enum isrcry_result ret;
 	unsigned char buf[1024];
-	unsigned long outlen;
+	unsigned outlen;
 	unsigned n;
 	unsigned blocksize;
 
@@ -168,7 +168,7 @@ void chain_pad_test(const char *alg, enum isrcry_cipher type,
 			fail("%s %u encrypt %d", alg, n, ret);
 		if (outlen != test->plainlen + (blocksize -
 					(test->plainlen % blocksize)))
-			fail("%s %u encrypt invalid len %lu", alg, n, outlen);
+			fail("%s %u encrypt invalid len %u", alg, n, outlen);
 		if (memcmp(buf, test->cipher, outlen))
 			fail("%s %u encrypt mismatch", alg, n);
 

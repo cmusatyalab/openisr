@@ -388,7 +388,7 @@ static void run_cipher(const char *in, unsigned inlen, GString *out,
 	static unsigned offset;
 	char finalbuf[2 * cipher_block];
 	unsigned count;
-	unsigned long outlen;
+	unsigned outlen;
 	enum isrcry_result ret;
 
 	if (ctx == NULL) {

@@ -42,7 +42,7 @@
   @return ISRCRY_OK if successful
 */
 static enum isrcry_result cbc_encrypt(struct isrcry_cipher_ctx *cctx,
-			const unsigned char *in, unsigned long len,
+			const unsigned char *in, unsigned len,
 			unsigned char *out)
 {
    unsigned blocklen = cctx->cipher->blocklen;
@@ -103,7 +103,7 @@ static enum isrcry_result cbc_encrypt(struct isrcry_cipher_ctx *cctx,
   @return ISRCRY_OK if successful
 */
 static enum isrcry_result cbc_decrypt(struct isrcry_cipher_ctx *cctx,
-			const unsigned char *in, unsigned long len,
+			const unsigned char *in, unsigned len,
 			unsigned char *out)
 {
    unsigned blocklen = cctx->cipher->blocklen;
