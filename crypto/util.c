@@ -129,6 +129,7 @@ enum isrcry_result isrcry_pem_decode(const char *alg,
 	gchar *buf;
 	gchar *header;
 	gchar *footer;
+	gsize len;
 	enum isrcry_result ret = ISRCRY_OK;
 
 	buf = g_memdup(data, datalen);
@@ -136,7 +137,8 @@ enum isrcry_result isrcry_pem_decode(const char *alg,
 	pem_wrappers(alg, type, &header, &footer);
 	if (g_str_has_prefix(buf, header) && g_str_has_suffix(buf, footer)) {
 		buf[strlen(buf) - strlen(footer)] = 0;
-		*out = g_base64_decode(buf + strlen(header), outlen);
+		*out = g_base64_decode(buf + strlen(header), &len);
+		*outlen = len;
 	} else {
 		ret = ISRCRY_BAD_FORMAT;
 	}
