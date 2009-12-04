@@ -527,6 +527,7 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 	unsigned outlen;
 	gboolean uncompressed = (chunk->compression == COMP_NONE);
 	void *tmp;
+	uint8_t calc_hash[hash_len];
 
 	dest = form_chunk_path(idx);
 	fd = g_open(dest, O_RDONLY, 0);
@@ -538,6 +539,12 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 	if ((uncompressed && inlen != chunklen) || inlen == 0 ||
 				inlen > chunklen /* -1 */)
 		die("Invalid length %u for chunk #%u", inlen, idx);
+
+	/* check chunk tag */
+	isrcry_hash_update(hash_ctx, tmpdata, inlen);
+	isrcry_hash_final(hash_ctx, calc_hash);
+	if (memcmp(chunk->tag, calc_hash, hash_len))
+		die("Bad tag for chunk #%u", idx);
 
 	/* decrypt chunk */
 	rc = isrcry_cipher_init(cipher_ctx, ISRCRY_DECRYPT, chunk->key,
@@ -555,6 +562,12 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 	if (rc)
 		die("Failed to decrypt chunk #%u: %s", idx,
 					isrcry_strerror(rc));
+
+	/* check chunk key */
+	isrcry_hash_update(hash_ctx, chunk->data, outlen);
+	isrcry_hash_final(hash_ctx, calc_hash);
+	if (memcmp(chunk->key, calc_hash, hash_len))
+		die("Bad key for chunk #%u", idx);
 
 	/* decompress chunk */
 	if (!uncompressed) {
