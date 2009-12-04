@@ -693,7 +693,7 @@ static void export_image(const gchar *img)
 		exit(1);
 	}
 
-	init_progress(nchunk * chunklen);
+	init_progress((off_t)nchunk * chunklen);
 
 	/* if the image is a disk or pipe ftruncate will fail and we should
 	 * write out zero blocks */
