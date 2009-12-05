@@ -716,7 +716,9 @@ static void export_image(const gchar *img)
 	/* if the image is a disk or pipe ftruncate will fail and we should
 	 * write out zero blocks */
 	write_zeros = (ftruncate(fd, 0) != 0);
-	ftruncate(fd, nchunk * chunklen);
+	/* gcc warns if the ftruncate() return value is ignored, and a void
+	   cast isn't sufficient to fix it. */
+	if (ftruncate(fd, nchunk * chunklen)) {}
 
 	for (idx = 0; query_has_row(sqlitedb) && maxchunks != 0;
 	     idx++, maxchunks--)
