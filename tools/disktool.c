@@ -90,7 +90,6 @@ static struct isrcry_compress_ctx *compress_ctx;
 static struct db *sqlitedb;
 
 static unsigned chunklen;
-static gpointer zerodata;
 static gpointer tmpdata;
 
 #define KEYRING_VERSION 1
@@ -361,7 +360,6 @@ static void init(void)
 
 	/* allocate an empty chunk to compare against */
 	chunklen = chunksize * 1024;
-	zerodata = g_malloc0(chunklen);
 	tmpdata = g_malloc(chunklen);
 
 	/* initialize sqlite */
@@ -406,7 +404,6 @@ static void fini(void)
 	isrcry_cipher_free(cipher_ctx);
 	isrcry_hash_free(hash_ctx);
 
-	g_free(zerodata);
 	g_free(tmpdata);
 }
 
@@ -607,6 +604,40 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 	chunk->len = chunklen;
 }
 
+/* Return TRUE if the first len bytes of buf are zero, FALSE otherwise. */
+static gboolean is_zero(void *buf, unsigned len)
+{
+	unsigned unaligned_mask;
+	unsigned count_head;
+	unsigned count_body;
+	unsigned count_tail;
+	char *cp;
+	long *lp;
+
+	unaligned_mask = sizeof(long) - 1;
+	/* 1. If buf is one byte past an aligned offset, count_head should be
+	      sizeof(long) - 1 bytes.
+	   2. If buf is aligned, count_head should be zero.
+	   3. count_head should never be greater than len. */
+	count_head = MIN((sizeof(long) - ((long) buf & unaligned_mask)) &
+				unaligned_mask, len);
+	count_body = (len - count_head) / sizeof(long);
+	count_tail = len - count_head - sizeof(long) * count_body;
+	cp = buf;
+	while (count_head--)
+		if (*cp++)
+			return FALSE;
+	lp = (long *) cp;
+	while (count_body--)
+		if (*lp++)
+			return FALSE;
+	cp = (char *) lp;
+	while (count_tail--)
+		if (*cp++)
+			return FALSE;
+	return TRUE;
+}
+
 static void import_image(const gchar *img)
 {
 	int fd;
@@ -649,7 +680,7 @@ static void import_image(const gchar *img)
 			memset(chunk.data + n, 0, chunklen - n);
 		chunk.len = chunklen;
 
-		if (memcmp(chunk.data, zerodata, chunklen) == 0) {
+		if (is_zero(chunk.data, chunklen)) {
 			write_chunk(idx, &zerochunk);
 		} else {
 			encrypt_chunk(&chunk);
@@ -735,7 +766,7 @@ static void export_image(const gchar *img)
 
 		read_chunk(idx, &chunk);
 
-		skip = !write_zeros && !memcmp(chunk.data, zerodata, chunklen);
+		skip = !write_zeros && is_zero(chunk.data, chunklen);
 		if (!skip) {
 			n = write(fd, chunk.data, chunklen);
 			if (n != (ssize_t)chunklen)
