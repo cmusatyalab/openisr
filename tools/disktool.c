@@ -727,14 +727,6 @@ static void export_image(const gchar *img)
 	query_row(qry, "d", &nchunk);
 	query_free(qry);
 
-	if (!query(&qry, sqlitedb,
-		   "SELECT chunk, tag, key, compression FROM keys "
-		   "ORDER BY chunk", NULL)) {
-		sql_log_err(sqlitedb, "failed to query keyring");
-		rollback(sqlitedb);
-		exit(1);
-	}
-
 	init_progress((off_t)nchunk * chunklen);
 
 	/* if the image is a disk or pipe ftruncate will fail and we should
@@ -744,7 +736,10 @@ static void export_image(const gchar *img)
 	   cast isn't sufficient to fix it. */
 	if (ftruncate(fd, nchunk * chunklen)) {}
 
-	for (idx = 0; query_has_row(sqlitedb); idx++) {
+	for (query(&qry, sqlitedb, "SELECT chunk, tag, key, compression "
+				"FROM keys ORDER BY chunk", NULL), idx = 0;
+				query_has_row(sqlitedb);
+				query_next(qry), idx++) {
 		unsigned int tmp0, tmp1, tmp2;
 		query_row(qry, "dbbd", &tmp0, &chunk.tag, &tmp1,
 			  &chunk.key, &tmp2, &chunk.compression);
@@ -769,7 +764,6 @@ static void export_image(const gchar *img)
 		}
 
 		progress(chunklen);
-		query_next(qry);
 	}
 	query_free(qry);
 	if (!query_ok(sqlitedb)) {
