@@ -1,5 +1,5 @@
 /*
- * disktool - import VM disk image as OpenISR parcel
+ * disktool - perform server-side operations on parcel disk images
  *
  * Copyright (C) 2009 Carnegie Mellon University
  *
@@ -834,7 +834,7 @@ int main(int argc, char **argv)
 	GOptionContext *ctx;
 	GError *err = NULL;
 
-	ctx = g_option_context_new(" - import/export VM disk image");
+	ctx = g_option_context_new(" - generate/import/export VM disk image");
 	g_option_context_add_main_entries(ctx, options, NULL);
 	if (!g_option_context_parse(ctx, &argc, &argv, &err))
 		die("%s", err->message);
