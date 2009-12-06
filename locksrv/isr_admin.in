@@ -930,19 +930,6 @@ sub new_parcel ($$$$$$$) {
     ($parceldir, $parcelcfg) = init_parceldir($userid, $parcel);
     $parcelverdir = "$parceldir/000001";
     
-    # Create the keyring
-    system(LIBDIR . "/query $parcelverdir/keyring " .
-	            "'PRAGMA auto_vacuum = 0; " .
-	            "PRAGMA legacy_file_format = ON; " .
-		    "PRAGMA user_version = 1; " .
-		    "CREATE TABLE keys (" . 
-		    "chunk INTEGER PRIMARY KEY NOT NULL, " .
-		    "tag BLOB NOT NULL, " .
-		    "key BLOB NOT NULL, " .
-		    "compression INTEGER NOT NULL); " .
-		    "CREATE INDEX keys_tags ON keys (tag)'") == 0
-        or errexit("Couldn't create keyring");
-    
     # Generate the chunk tree and populate the keyring
     print "Generating virtual disk...\n";
     $make_chunks->($diskinfo, $parcelverdir, $numchunks, $chunksize,
