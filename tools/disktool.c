@@ -44,7 +44,7 @@ static const char *destpath = ".";
 static const char *keyring = "keyring";
 static int chunksize = 128; /* chunk size in KiB */
 static int chunksperdir = 512;
-static int64_t maxchunks = -1; /* infinite for all intents and purposes */
+//static int64_t maxchunks = -1; /* infinite for all intents and purposes */
 static int compress_level;
 static gboolean want_lzf;
 static gboolean want_progress;
@@ -56,7 +56,7 @@ static GOptionEntry options[] = {
 	{"keyring", 'k', 0, G_OPTION_ARG_FILENAME, &keyring, "Keyring (default: keyring)", "PATH"},
 	{"chunksize", 's', 0, G_OPTION_ARG_INT, &chunksize, "Chunksize (default: 128)", "KiB"},
 	{"chunksperdir", 'm', 0, G_OPTION_ARG_INT, &chunksperdir, "Chunks per directory (default: 512)", "N"},
-	{"nchunks", 'n', 0, G_OPTION_ARG_INT64, &maxchunks, "Number of chunks (default: calculated from input)", "N"},
+//	{"nchunks", 'n', 0, G_OPTION_ARG_INT64, &maxchunks, "Number of chunks (default: calculated from input)", "N"},
 	{"compress", 'z', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (default: 6)", "1-9"},
 	{"lzf", 'l', 0, G_OPTION_ARG_NONE, &want_lzf, "Use LZF compression", NULL},
 	{"progress", 'p', 0, G_OPTION_ARG_NONE, &want_progress, "Show progress bar", NULL},
@@ -254,9 +254,6 @@ static void init_progress_fd(int fd)
 		    strerror(errno));
 
 	nchunks = ((int64_t)imagelen + chunklen - 1) / chunklen;
-	if (maxchunks != -1 && (nchunks == 0 || nchunks > maxchunks))
-		nchunks = maxchunks;
-
 	init_progress(nchunks * chunklen);
 }
 
@@ -667,14 +664,8 @@ static void import_image(const gchar *img)
 
 	if (!begin(sqlitedb))
 		die("Couldn't begin transaction");
-	for (idx = 0; maxchunks != 0; idx++, maxchunks--)
+	for (idx = 0; (n = read(fd, chunk.data, chunklen)) > 0; idx++)
 	{
-		n = read(fd, chunk.data, chunklen);
-		if (n < 0)
-			die("Error reading image file");
-		if (n == 0)
-			break;
-
 		/* zero tail of a partial (last) chunk */
 		if ((unsigned)n < chunklen)
 			memset(chunk.data + n, 0, chunklen - n);
@@ -687,6 +678,10 @@ static void import_image(const gchar *img)
 			write_chunk(idx, &chunk);
 		}
 		progress(chunklen);
+	}
+	if (n < 0) {
+		rollback(sqlitedb);
+		die("Error reading image file");
 	}
 	if (!commit(sqlitedb)) {
 		rollback(sqlitedb);
@@ -731,8 +726,6 @@ static void export_image(const gchar *img)
 	}
 	query_row(qry, "d", &nchunk);
 	query_free(qry);
-	if (maxchunks != -1 && nchunk > maxchunks)
-		nchunk = maxchunks;
 
 	if (!query(&qry, sqlitedb,
 		   "SELECT chunk, tag, key, compression FROM keys "
@@ -751,9 +744,7 @@ static void export_image(const gchar *img)
 	   cast isn't sufficient to fix it. */
 	if (ftruncate(fd, nchunk * chunklen)) {}
 
-	for (idx = 0; query_has_row(sqlitedb) && maxchunks != 0;
-	     idx++, maxchunks--)
-	{
+	for (idx = 0; query_has_row(sqlitedb); idx++) {
 		unsigned int tmp0, tmp1, tmp2;
 		query_row(qry, "dbbd", &tmp0, &chunk.tag, &tmp1,
 			  &chunk.key, &tmp2, &chunk.compression);
