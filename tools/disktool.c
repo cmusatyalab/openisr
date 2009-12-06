@@ -708,7 +708,7 @@ static void export_image(const gchar *img)
 	struct chunk_desc chunk;
 	struct query *qry;
 	ssize_t n;
-	int write_zeros;
+	gboolean write_zeros;
 
 	fd = g_creat(img, 0600);
 	if (fd == -1)
@@ -732,9 +732,8 @@ static void export_image(const gchar *img)
 	/* if the image is a disk or pipe ftruncate will fail and we should
 	 * write out zero blocks */
 	write_zeros = (ftruncate(fd, 0) != 0);
-	/* gcc warns if the ftruncate() return value is ignored, and a void
-	   cast isn't sufficient to fix it. */
-	if (ftruncate(fd, nchunk * chunklen)) {}
+	if (!write_zeros && ftruncate(fd, (off_t) nchunk * chunklen))
+		die("Couldn't resize image file: %s", strerror(errno));
 
 	for (query(&qry, sqlitedb, "SELECT chunk, tag, key, compression "
 				"FROM keys ORDER BY chunk", NULL), idx = 0;
