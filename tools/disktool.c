@@ -40,11 +40,11 @@ enum compressiontype {
 /* command line parameters */
 static const char *importimage;
 static const char *exportimage;
+static int64_t expand_chunks;
 static const char *destpath = ".";
 static const char *keyring = "keyring";
 static int chunksize = 128; /* chunk size in KiB */
 static int chunksperdir = 512;
-//static int64_t maxchunks = -1; /* infinite for all intents and purposes */
 static int compress_level;
 static gboolean want_lzf;
 static gboolean want_progress;
@@ -52,11 +52,11 @@ static gboolean want_progress;
 static GOptionEntry options[] = {
 	{"in", 'i', 0, G_OPTION_ARG_FILENAME, &importimage, "Image to import from", "PATH"},
 	{"out", 'o', 0, G_OPTION_ARG_FILENAME, &exportimage, "Image to export to", "PATH"},
+	{"expand", 'e', 0, G_OPTION_ARG_INT64, &expand_chunks, "Target size of parcel", "CHUNKS"},
 	{"directory", 'd', 0, G_OPTION_ARG_FILENAME, &destpath, "Path to parcel version directory (default: .)", "PATH"},
 	{"keyring", 'k', 0, G_OPTION_ARG_FILENAME, &keyring, "Keyring (default: keyring)", "PATH"},
 	{"chunksize", 's', 0, G_OPTION_ARG_INT, &chunksize, "Chunksize (default: 128)", "KiB"},
 	{"chunksperdir", 'm', 0, G_OPTION_ARG_INT, &chunksperdir, "Chunks per directory (default: 512)", "N"},
-//	{"nchunks", 'n', 0, G_OPTION_ARG_INT64, &maxchunks, "Number of chunks (default: calculated from input)", "N"},
 	{"compress", 'z', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (default: 6)", "1-9"},
 	{"lzf", 'l', 0, G_OPTION_ARG_NONE, &want_lzf, "Use LZF compression", NULL},
 	{"progress", 'p', 0, G_OPTION_ARG_NONE, &want_progress, "Show progress bar", NULL},
@@ -782,6 +782,53 @@ static void export_image(const gchar *img)
 	g_free(chunk.data);
 }
 
+static void expand_parcel(void)
+{
+	struct query *qry;
+	struct chunk_desc zerochunk;
+	unsigned int existing;
+	unsigned int idx;
+
+	compress_ctx = isrcry_compress_alloc(compressor);
+	if (compress_ctx == NULL)
+		die("Couldn't allocate compressor");
+	zerochunk.len = chunklen;
+	zerochunk.data = g_malloc0(chunklen);
+	zerochunk.tag = g_malloc(hash_len);
+	zerochunk.key = g_malloc(hash_len);
+	encrypt_chunk(&zerochunk);
+	isrcry_compress_free(compress_ctx);
+
+	if (!begin(sqlitedb))
+		die("Couldn't begin transaction");
+
+	if (!query(&qry, sqlitedb, "SELECT count(*) FROM keys", NULL)) {
+		sql_log_err(sqlitedb, "Couldn't enumerate keyring");
+		rollback(sqlitedb);
+		exit(1);
+	}
+	query_row(qry, "d", &existing);
+	query_free(qry);
+
+	if (expand_chunks > existing)
+		init_progress((expand_chunks - existing) * chunklen);
+
+	for (idx = existing; idx < expand_chunks; idx++) {
+		write_chunk(idx, &zerochunk);
+		progress(chunklen);
+	}
+	if (!commit(sqlitedb)) {
+		rollback(sqlitedb);
+		die("Couldn't commit transaction");
+	}
+
+	finish_progress();
+
+	g_free(zerochunk.data);
+	g_free(zerochunk.tag);
+	g_free(zerochunk.key);
+}
+
 int main(int argc, char **argv)
 {
 	GOptionContext *ctx;
@@ -793,14 +840,17 @@ int main(int argc, char **argv)
 		die("%s", err->message);
 	g_option_context_free(ctx);
 
+	if (expand_chunks < 0)
+		die("Invalid argument to --expand");
+
 	if (chunksize <= 0)
 		die("Invalid chunksize specified");
 
 	if (chunksperdir <= 0)
 		die("Invalid number of chunks per directory specified");
 
-	if (!(!importimage ^ !exportimage))
-		die("Specify an image to import or export");
+	if (!!importimage + !!exportimage + !!expand_chunks != 1)
+		die("Specify one of --in, --out, or --expand");
 
 	if (want_lzf) {
 		compressor = ISRCRY_COMPRESS_LZF;
@@ -811,8 +861,10 @@ int main(int argc, char **argv)
 
 	if (importimage)
 		import_image(importimage);
-	else
+	else if (exportimage)
 		export_image(exportimage);
+	else
+		expand_parcel();
 
 	fini();
 
