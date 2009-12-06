@@ -71,7 +71,6 @@ static gboolean encode = TRUE;
 static gboolean want_encrypt;
 static gboolean want_hash;
 static gboolean want_zlib;
-static gboolean want_chunk_crypto;
 static gboolean want_tar;
 static gboolean want_progress;
 static int compress_level = Z_BEST_COMPRESSION;
@@ -292,16 +291,6 @@ static void get_keyroot(void)
 	keyroot = g_strchomp(g_string_free(str, FALSE));
 }
 
-static void hex2bin(const char *hex, char *bin, int bin_len)
-{
-	unsigned char *uhex=(unsigned char *)hex;
-	int i;
-
-	for (i=0; i<bin_len; i++)
-		bin[i] = (g_ascii_xdigit_value(uhex[2*i]) << 4) +
-					g_ascii_xdigit_value(uhex[2*i+1]);
-}
-
 /* enc(1)-compatible key derivation */
 static void set_cipher_key(struct isrcry_cipher_ctx *ctx, const char *salt)
 {
@@ -333,21 +322,6 @@ static void set_cipher_key(struct isrcry_cipher_ctx *ctx, const char *salt)
 		die("Couldn't initialize cipher: %s", isrcry_strerror(ret));
 }
 
-static void set_cipher_key_direct(struct isrcry_cipher_ctx *ctx)
-{
-	unsigned krlen = strlen(keyroot);
-	char key[krlen / 2];
-	enum isrcry_result ret;
-
-	if (krlen == 0 || krlen % 2)
-		die("Provided key is not a valid hex string");
-	hex2bin(keyroot, key, sizeof(key));
-	ret = isrcry_cipher_init(ctx, encode ? ISRCRY_ENCRYPT : ISRCRY_DECRYPT,
-				key, sizeof(key), NULL);
-	if (ret)
-		die("Couldn't initialize cipher: %s", isrcry_strerror(ret));
-}
-
 static void init_cipher(struct isrcry_cipher_ctx *ctx, const char **in,
 			unsigned *inlen, GString *out)
 {
@@ -355,10 +329,6 @@ static void init_cipher(struct isrcry_cipher_ctx *ctx, const char **in,
 	char salt[SALT_LEN];
 
 	get_keyroot();
-	if (want_chunk_crypto) {
-		set_cipher_key_direct(ctx);
-		return;
-	}
 	if (encode) {
 		rand = isrcry_random_alloc();
 		if (rand == NULL)
@@ -822,7 +792,6 @@ static GOptionEntry general_options[] = {
 static GOptionEntry encrypt_options[] = {
 	{"encrypt", 'e', 0, G_OPTION_ARG_NONE, &want_encrypt, "Encrypt data", NULL},
 	{"keyroot-fd", 'k', 0, G_OPTION_ARG_INT, &keyroot_fd, "File descriptor from which to read the keyroot", "FD"},
-	{"chunk", 'c', 0, G_OPTION_ARG_NONE, &want_chunk_crypto, "Encrypt with no salt, zero IV, and provided hex key", NULL},
 	{NULL}
 };
 
