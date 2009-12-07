@@ -11,6 +11,8 @@ nodist_run_vectors_SOURCES = $(builddir)/../rsa-key-tab.c
 run_vectors_CFLAGS = $(AM_CFLAGS) $(libtasn1_CFLAGS)
 run_vectors_LDFLAGS = $(AM_LDFLAGS) $(libtasn1_LIBS)
 
-EXTRA_PROGRAMS = sign
+EXTRA_PROGRAMS = sign compress
 sign_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS)
 sign_LDFLAGS = $(AM_LDFLAGS) $(glib_LIBS)
+compress_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS)
+compress_LDFLAGS = $(AM_LDFLAGS) $(glib_LIBS)
