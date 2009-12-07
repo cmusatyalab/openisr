@@ -87,6 +87,8 @@ enum isrcry_compress {
 	ISRCRY_COMPRESS_LZF		= 1,
 	/* Series of LZF blocks framed as by lzf.c, with a trailing CRC */
 	ISRCRY_COMPRESS_LZF_STREAM	= 2,
+	/* xz-format LZMA compression */
+	ISRCRY_COMPRESS_LZMA		= 3,
 };
 
 struct isrcry_cipher_ctx;

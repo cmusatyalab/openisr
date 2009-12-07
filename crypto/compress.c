@@ -29,6 +29,8 @@ static const struct isrcry_compress_desc *compress_desc(
 		return &_isrcry_lzf_desc;
 	case ISRCRY_COMPRESS_LZF_STREAM:
 		return &_isrcry_lzf_stream_desc;
+	case ISRCRY_COMPRESS_LZMA:
+		return &_isrcry_lzma_desc;
 	}
 	return NULL;
 }
