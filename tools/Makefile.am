@@ -24,7 +24,7 @@ CLEANFILES = $(GEN) nextest
 EXTRA_DIST = $(GEN:=.in)
 
 blobtool_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS) $(NO_FIELD_INITIALIZER_WARNINGS)
-blobtool_LDFLAGS = $(CRYPTO_LIBS) $(glib_LIBS) -lz -larchive
+blobtool_LDFLAGS = $(CRYPTO_LIBS) $(glib_LIBS) -larchive
 disktool_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS) $(NO_FIELD_INITIALIZER_WARNINGS)
 disktool_LDFLAGS = $(CRYPTO_LIBS) $(glib_LIBS) -L$(top_builddir)/sqlite -lisrsql
 dirtometer_CFLAGS = $(AM_CFLAGS) $(gtk_CFLAGS) $(glib_CFLAGS)

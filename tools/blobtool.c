@@ -28,7 +28,6 @@
 #include <ftw.h>
 #include <termios.h>
 #include <glib.h>
-#include <zlib.h>
 #include <archive.h>
 #include <archive_entry.h>
 #include "isrcrypto.h"
@@ -70,10 +69,8 @@ static const char *parent_dir;
 static gboolean encode = TRUE;
 static gboolean want_encrypt;
 static gboolean want_hash;
-static gboolean want_zlib;
 static gboolean want_tar;
 static gboolean want_progress;
-static int compress_level = Z_BEST_COMPRESSION;
 
 /** Utility ******************************************************************/
 
@@ -429,82 +426,6 @@ static void run_hash(const char *in, unsigned inlen, GString *out,
 	}
 }
 
-/** Zlib compression *********************************************************/
-
-static void run_zlib_compress(const char *in, unsigned inlen, GString *out,
-			gboolean final)
-{
-	static z_stream strm;
-	char buf[BUFSZ];
-	int ret;
-
-	if (strm.state == NULL) {
-		if (deflateInit(&strm, compress_level) != Z_OK)
-			die("zlib init failed: %s", strm.msg);
-	}
-	strm.next_in = (void *) in;
-	strm.avail_in = inlen;
-	while (strm.avail_in > 0) {
-		strm.next_out = (void *) buf;
-		strm.avail_out = sizeof(buf);
-		if (deflate(&strm, 0) != Z_OK)
-			die("zlib deflate failed: %s", strm.msg);
-		g_string_append_len(out, buf, sizeof(buf) - strm.avail_out);
-	}
-	if (final) {
-		do {
-			strm.next_out = (void *) buf;
-			strm.avail_out = sizeof(buf);
-			ret = deflate(&strm, Z_FINISH);
-			if (ret != Z_STREAM_END && ret != Z_OK)
-				die("zlib deflate failed: %s", strm.msg);
-			g_string_append_len(out, buf, sizeof(buf) -
-						strm.avail_out);
-		} while (ret != Z_STREAM_END);
-		if (deflateEnd(&strm) != Z_OK)
-			die("zlib deflate failed: %s", strm.msg);
-	}
-}
-
-static void run_zlib_decompress(const char *in, unsigned inlen, GString *out,
-			gboolean final)
-{
-	static z_stream strm;
-	static gboolean done;
-	static gboolean warned;
-	char buf[BUFSZ];
-	int ret;
-
-	if (strm.state == NULL) {
-		if (inflateInit(&strm) != Z_OK)
-			die("zlib init failed: %s", strm.msg);
-	}
-	strm.next_in = (void *) in;
-	strm.avail_in = inlen;
-	while (strm.avail_in > 0 && !done) {
-		strm.next_out = (void *) buf;
-		strm.avail_out = sizeof(buf);
-		ret = inflate(&strm, Z_SYNC_FLUSH);
-		if (ret != Z_STREAM_END && ret != Z_OK)
-			die("zlib inflate failed: %s", strm.msg);
-		g_string_append_len(out, buf, sizeof(buf) - strm.avail_out);
-		/* If zlib says we're done decoding, then we are, even
-		   if there's input left over */
-		if (ret == Z_STREAM_END)
-			done = TRUE;
-	}
-	if (done && strm.avail_in > 0 && !warned) {
-		warned = TRUE;
-		warn("ignoring trailing garbage in zlib stream");
-	}
-	if (final) {
-		if (!done)
-			die("zlib stream ended prematurely");
-		if (inflateEnd(&strm) != Z_OK)
-			die("zlib inflate failed: %s", strm.msg);
-	}
-}
-
 /** Generic control **********************************************************/
 
 #define action(name) do { \
@@ -516,17 +437,8 @@ static void run_buffer(struct iodata *iod, gboolean final)
 {
 	int ops = 0;
 
-	if (encode) {
-		if (want_zlib)
-			action(zlib_compress);
-		if (want_encrypt)
-			action(cipher);
-	} else {
-		if (want_encrypt)
-			action(cipher);
-		if (want_zlib)
-			action(zlib_decompress);
-	}
+	if (want_encrypt)
+		action(cipher);
 	if (want_hash)
 		action(hash);
 	/* If we haven't been asked to do anything, copy in to out */
@@ -800,12 +712,6 @@ static GOptionEntry hash_options[] = {
 	{NULL}
 };
 
-static GOptionEntry compress_options[] = {
-	{"zlib", 'Z', 0, G_OPTION_ARG_NONE, &want_zlib, "Compress data with zlib", NULL},
-	{"level", 'l', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (1-9)", "LEVEL"},
-	{NULL}
-};
-
 static GOptionEntry tar_options[] = {
 	{"tar", 't', 0, G_OPTION_ARG_NONE, &want_tar, "Generate or extract a gzipped tar archive", NULL},
 	{"directory", 'C', 0, G_OPTION_ARG_FILENAME, &parent_dir, "Change to DIR before tarring/untarring files", "DIR"},
@@ -830,12 +736,6 @@ static GOptionContext *build_option_context(void)
 				"Show help on hash options",
 				NULL, NULL);
 	g_option_group_add_entries(grp, hash_options);
-	g_option_context_add_group(ctx, grp);
-
-	grp = g_option_group_new("compress", "Compression Options:",
-				"Show help on compression options",
-				NULL, NULL);
-	g_option_group_add_entries(grp, compress_options);
 	g_option_context_add_group(ctx, grp);
 
 	grp = g_option_group_new("tar", "Tar Options:",
