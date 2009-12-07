@@ -214,6 +214,7 @@ if test z$enable_client = zyes -o z$enable_server = zyes ; then
 	PKG_CHECK_MODULES([glib], [glib-2.0 >= 2.12])
 	PKG_CHECK_MODULES([gthread], [gthread-2.0])
 	PKG_CHECK_MODULES([libtasn1], [libtasn1])
+	PKG_CHECK_MODULES([liblzma], [liblzma])
 	AC_SUBST([ASN1PARSER], [`pkg-config --variable=prefix libtasn1`/bin/asn1Parser])
 	if ! test -x $ASN1PARSER ; then
 		AC_MSG_ERROR([asn1Parser not found])

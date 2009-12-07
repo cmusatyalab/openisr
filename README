@@ -10,6 +10,7 @@ To run:
 - Development headers for your Linux kernel version
 - libcurl >= 7.12.3 and curl command-line utility
 - zlib
+- liblzma from XZ Utils
 - libuuid from e2fsprogs
 - libarchive
 - libtasn1
