@@ -28,12 +28,10 @@
 
 static struct db *db;
 static FILE *tmp;
-static char *params[MAX_PARAMS];  /* null if loop counter */
+static char *params[MAX_PARAMS];
 static unsigned param_length[MAX_PARAMS];  /* zero if not blob */
 static char *attached_names[MAX_ATTACHED];
 static char *attached_files[MAX_ATTACHED];
-static int loop_min=1;
-static int loop_max=1;
 static int show_col_names;
 static int no_transaction;
 static int num_params;
@@ -116,7 +114,7 @@ static ret_t attach_dbs(void)
 	return OK;
 }
 
-static ret_t init_query(struct query **new_qry, const char *sql, int loop_ctr,
+static ret_t init_query(struct query **new_qry, const char *sql,
 			int initial_param, int n_params)
 {
 	struct query_params *qparams;
@@ -130,11 +128,9 @@ static ret_t init_query(struct query **new_qry, const char *sql, int loop_ctr,
 			 query_param_set(qparams, i, 'B',
 					params[i + initial_param],
 					param_length[i + initial_param]);
-		else if (params[i + initial_param])
+		else
 			query_param_set(qparams, i, 'S',
 					params[i + initial_param]);
-		else
-			query_param_set(qparams, i, 'd', loop_ctr);
 	}
 	ret = query_v(&qry, db, sql, qparams);
 	query_params_free(qparams);
@@ -246,27 +242,24 @@ static ret_t make_query(gchar *sql, int initial_param, int n_params)
 {
 	struct query *qry;
 	ret_t ret;
-	int ctr;
 	int changes;
 
-	for (ctr = loop_min, changes = 0; ctr <= loop_max; ctr++) {
-		ret = init_query(&qry, sql, ctr, initial_param, n_params);
-		if (ret)
-			return ret;
+	ret = init_query(&qry, sql, initial_param, n_params);
+	if (ret)
+		return ret;
 
-		changes += get_changes(qry);
-		if (query_has_row(db) && ctr == loop_min)
-			handle_col_names(qry);
-		while (query_has_row(db))
-			handle_row(qry);
+	changes = get_changes(qry);
+	if (query_has_row(db))
+		handle_col_names(qry);
+	while (query_has_row(db))
+		handle_row(qry);
 
-		query_free(qry);
-		if (query_busy(db)) {
-			return FAIL_TEMP;
-		} else if (!query_ok(db)) {
-			sql_log_err(db, "Executing query");
-			return FAIL;
-		}
+	query_free(qry);
+	if (query_busy(db)) {
+		return FAIL_TEMP;
+	} else if (!query_ok(db)) {
+		sql_log_err(db, "Executing query");
+		return FAIL;
 	}
 	if (changes)
 		fprintf(tmp, "%d rows updated\n", changes);
@@ -357,24 +350,11 @@ static void usage(char *argv0)
 {
 	fprintf(stderr, "Usage: %s [flags] database query\n", argv0);
 	fprintf(stderr, "\t-a name:file - attach database\n");
-	fprintf(stderr, "\t-r min:max - iterate each statement over counter range\n");
 	fprintf(stderr, "\t-p param - statement parameter\n");
 	fprintf(stderr, "\t-b param - blob parameter in hex\n");
-	fprintf(stderr, "\t-i - use loop counter as statement parameter\n");
 	fprintf(stderr, "\t-c - print column names\n");
 	fprintf(stderr, "\t-t - don't execute query within a transaction\n");
 	exit(2);
-}
-
-static int parseInt(char *argv0, char *str)
-{
-	char *endptr;
-	int ret;
-
-	ret=strtol(str, &endptr, 10);
-	if (*str == 0 || *endptr != 0)
-		usage(argv0);
-	return ret;
 }
 
 static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
@@ -390,15 +370,13 @@ static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
 			break;
 		case 'b':
 		case 'p':
-		case 'i':
 			if (num_params == MAX_PARAMS)
 				die("Too many parameters");
-			if (opt == 'b') {
+			if (opt == 'b')
 				params[num_params]=mkbin(optarg,
 						&param_length[num_params]);
-			} else if (opt == 'p') {
+			else
 				params[num_params]=optarg;
-			}
 			num_params++;
 			break;
 		case 'a':
@@ -414,20 +392,6 @@ static void parse_cmdline(int argc, char **argv, char **dbfile, char **sql)
 			attached_names[num_attached]=arg;
 			attached_files[num_attached]=cp+1;
 			num_attached++;
-			break;
-		case 'r':
-			arg=strdup(optarg);
-			if (arg == NULL)
-				die("malloc error");
-			cp=strchr(arg, ':');
-			if (cp == NULL)
-				usage(argv[0]);
-			*cp=0;
-			loop_min=parseInt(argv[0], arg);
-			loop_max=parseInt(argv[0], cp+1);
-			if (loop_min > loop_max)
-				die("min cannot be greater than max for -r");
-			free(arg);
 			break;
 		case 'c':
 			show_col_names=1;
