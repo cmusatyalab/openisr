@@ -30,7 +30,7 @@ int level;
 
 static GOptionEntry options[] = {
 	{"decode", 'd', 0, G_OPTION_ARG_NONE, &decode, "Decompress", NULL},
-	{"alg", 'a', 0, G_OPTION_ARG_STRING, &algname, "Algorithm (default: zlib)", "{zlib|lzf}"},
+	{"alg", 'a', 0, G_OPTION_ARG_STRING, &algname, "Algorithm (default: zlib)", "{zlib|lzf|lzma}"},
 	{"level", 'l', 0, G_OPTION_ARG_INT, &level, "Compression level", "LEVEL"},
 	{NULL, 0, 0, 0, NULL, NULL, NULL}
 };
@@ -73,6 +73,8 @@ int main(int argc, char **argv)
 		alg = ISRCRY_COMPRESS_ZLIB;
 	else if (!strcmp(algname, "lzf"))
 		alg = ISRCRY_COMPRESS_LZF_STREAM;
+	else if (!strcmp(algname, "lzma"))
+		alg = ISRCRY_COMPRESS_LZMA;
 	else
 		die("Unknown algorithm: %s", algname);
 
