@@ -1184,6 +1184,8 @@ int main(void)
 				lzf_stream_decompress_vectors,
 				MEMBERS(lzf_stream_decompress_vectors));
 	compress_stream_fuzz_test("lzf-stream", ISRCRY_COMPRESS_LZF_STREAM, 5);
+	compress_test("lzma", ISRCRY_COMPRESS_LZMA, lzma_compress_vectors,
+				MEMBERS(lzma_compress_vectors));
 	random_fips_test();
 
 	if (failed) {
