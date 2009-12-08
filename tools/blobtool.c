@@ -59,6 +59,9 @@ static enum isrcry_mode mode = ISRCRY_MODE_CBC;
 static enum isrcry_padding padding = ISRCRY_PADDING_PKCS5;
 static enum isrcry_hash hash = ISRCRY_HASH_SHA1;
 static unsigned hashlen = 20;
+static gboolean detect_compress = TRUE;		/* Only for decode */
+static gboolean use_internal_compress = FALSE;	/* If false, use gzip */
+static enum isrcry_compress compress;
 
 /* Command-line parameters */
 static int keyroot_fd;
@@ -66,6 +69,7 @@ static const char *keyroot;
 static const char *infile;
 static const char *outfile;
 static const char *parent_dir;
+static const char *compress_alg;
 static gboolean encode = TRUE;
 static gboolean want_encrypt;
 static gboolean want_hash;
@@ -427,6 +431,105 @@ static void run_hash(const char *in, unsigned inlen, GString *out,
 	}
 }
 
+/** Compression **************************************************************/
+
+static const struct compress_desc {
+	const char *name;
+	gboolean internal;
+	enum isrcry_compress type;
+	unsigned magiclen;
+	const char magic[6];
+} compress_algs[] = {
+	{"gzip", FALSE},
+	{"lzf", TRUE, ISRCRY_COMPRESS_LZF_STREAM, 2, "ZV"},
+	{"lzma", TRUE, ISRCRY_COMPRESS_LZMA, 6, {0xfd, '7', 'z', 'X', 'Z', 0}},
+	{NULL}
+};
+
+static void parse_compress_alg(void)
+{
+	const struct compress_desc *desc;
+
+	if (compress_alg == NULL)
+		return;  /* Use defaults */
+	detect_compress = FALSE;
+	for (desc = compress_algs; desc->name != NULL; desc++) {
+		if (!strcmp(compress_alg, desc->name)) {
+			use_internal_compress = desc->internal;
+			compress = desc->type;
+			return;
+		}
+	}
+	die("Unknown compression algorithm: %s", compress_alg);
+}
+
+static void detect_compression(const char *in, unsigned inlen)
+{
+	const struct compress_desc *desc;
+
+	detect_compress = FALSE;
+	for (desc = compress_algs; desc->name != NULL; desc++) {
+		if (!desc->internal || inlen < desc->magiclen)
+			continue;
+		if (!memcmp(in, desc->magic, desc->magiclen)) {
+			use_internal_compress = TRUE;
+			compress = desc->type;
+			break;
+		}
+	}
+}
+
+static void run_compression(const char *in, unsigned inlen, GString *out,
+			gboolean final)
+{
+	static struct isrcry_compress_ctx *ctx;
+	unsigned in_offset = 0;
+	unsigned in_count;
+	unsigned out_offset = 0;
+	unsigned out_count;
+	enum isrcry_result ret;
+
+	if (ctx == NULL) {
+		ctx = isrcry_compress_alloc(compress);
+		if (ctx == NULL)
+			die("Couldn't allocate compression algorithm");
+		ret = isrcry_compress_init(ctx, encode ? ISRCRY_ENCODE :
+					ISRCRY_DECODE, 0);
+		if (ret)
+			die("Couldn't initialize compression: %s",
+						isrcry_strerror(ret));
+	}
+
+	do {
+		in_count = inlen - in_offset;
+		out_count = BUFSZ;
+		g_string_set_size(out, out_offset + BUFSZ);
+		ret = isrcry_compress_process(ctx, in + in_offset, &in_count,
+					out->str + out_offset, &out_count);
+		if (ret)
+			die("Compression failed: %s", isrcry_strerror(ret));
+		in_offset += in_count;
+		out_offset += out_count;
+	} while (in_offset < inlen);
+
+	if (final) {
+		do {
+			in_count = 0;
+			out_count = BUFSZ;
+			g_string_set_size(out, out_offset + BUFSZ);
+			ret = isrcry_compress_final(ctx, NULL, &in_count,
+						out->str + out_offset,
+						&out_count);
+			out_offset += out_count;
+		} while (ret == ISRCRY_BUFFER_OVERFLOW);
+		if (ret)
+			die("Finalizing compression failed: %s",
+						isrcry_strerror(ret));
+	}
+
+	g_string_set_size(out, out_offset);
+}
+
 /** Generic control **********************************************************/
 
 #define action(name) do { \
@@ -435,8 +538,23 @@ static void run_hash(const char *in, unsigned inlen, GString *out,
 	} while (0)
 static void run_buffer(struct iodata *iod, gboolean final)
 {
-	if (want_encrypt)
-		action(cipher);
+	if (encode) {
+		if (want_tar && use_internal_compress)
+			action(compression);
+		if (want_encrypt)
+			action(cipher);
+	} else {
+		if (want_encrypt)
+			action(cipher);
+		if (want_tar) {
+			/* detect_compression() just peeks in the input
+			   buffer, so we don't use action() */
+			if (detect_compress)
+				detect_compression(iod->in->str, iod->in->len);
+			if (use_internal_compress)
+				action(compression);
+		}
+	}
 	if (want_hash)
 		action(hash);
 	/* Now the output is positioned as the input buffer.  Fix this with
@@ -543,7 +661,8 @@ static void read_archive(struct iodata *iod)
 		die("Couldn't read archive read object");
 	if (archive_read_support_format_tar(arch))
 		die("Enabling tar format: %s", archive_error_string(arch));
-	if (archive_read_support_compression_gzip(arch))
+	if (!use_internal_compress &&
+				archive_read_support_compression_gzip(arch))
 		die("Enabling gzip format: %s", archive_error_string(arch));
 	if (archive_read_open(arch, iod, NULL, archive_read, NULL))
 		die("Opening archive: %s", archive_error_string(arch));
@@ -666,7 +785,8 @@ static void write_archive(struct iodata *iod, char * const *paths)
 		die("Couldn't read archive write object");
 	if (archive_write_set_format_pax_restricted(arch))
 		die("Setting tar format: %s", archive_error_string(arch));
-	if (archive_write_set_compression_gzip(arch))
+	if (!use_internal_compress &&
+				archive_write_set_compression_gzip(arch))
 		die("Setting compression format: %s",
 					archive_error_string(arch));
 	if (archive_write_set_bytes_in_last_block(arch, 1))
@@ -711,7 +831,8 @@ static GOptionEntry hash_options[] = {
 };
 
 static GOptionEntry tar_options[] = {
-	{"tar", 't', 0, G_OPTION_ARG_NONE, &want_tar, "Generate or extract a gzipped tar archive", NULL},
+	{"tar", 't', 0, G_OPTION_ARG_NONE, &want_tar, "Generate or extract a compressed tar archive", NULL},
+	{"compression", 'c', 0, G_OPTION_ARG_STRING, &compress_alg, "Compress with ALG (gzip, lzf, lzma)", "ALG"},
 	{"directory", 'C', 0, G_OPTION_ARG_FILENAME, &parent_dir, "Change to DIR before tarring/untarring files", "DIR"},
 	{NULL}
 };
@@ -742,6 +863,10 @@ static GOptionContext *build_option_context(void)
 	g_option_group_add_entries(grp, tar_options);
 	g_option_context_add_group(ctx, grp);
 
+	g_option_context_set_description(ctx, "tar defaults to gzip on "
+				"encode and auto-detected compression on "
+				"decode.");
+
 	return ctx;
 }
 
@@ -760,6 +885,7 @@ int main(int argc, char **argv)
 	if (!g_option_context_parse(octx, &argc, &argv, &err))
 		die("%s", err->message);
 	g_option_context_free(octx);
+	parse_compress_alg();
 	if (want_tar && want_hash)
 		die("--tar is incompatible with --hash");
 	if (want_tar && encode && infile != NULL)
