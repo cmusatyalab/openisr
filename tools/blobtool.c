@@ -102,14 +102,15 @@ static void *expand_string(GString *str, unsigned len)
 	return str->str + offset;
 }
 
-static void swap_strings(struct iodata *iod)
+static void swap_strings(struct iodata *iod, gboolean truncate_out)
 {
 	GString *tmp;
 
 	tmp = iod->in;
 	iod->in = iod->out;
 	iod->out = tmp;
-	g_string_truncate(iod->out, 0);
+	if (truncate_out)
+		g_string_truncate(iod->out, 0);
 }
 
 static void set_signal_handler(int sig, void (*handler)(int))
@@ -429,21 +430,18 @@ static void run_hash(const char *in, unsigned inlen, GString *out,
 /** Generic control **********************************************************/
 
 #define action(name) do { \
-		if (ops++) \
-			swap_strings(iod); \
 		run_ ## name(iod->in->str, iod->in->len, iod->out, final); \
+		swap_strings(iod, TRUE); \
 	} while (0)
 static void run_buffer(struct iodata *iod, gboolean final)
 {
-	int ops = 0;
-
 	if (want_encrypt)
 		action(cipher);
 	if (want_hash)
 		action(hash);
-	/* If we haven't been asked to do anything, copy in to out */
-	if (ops == 0)
-		g_string_append_len(iod->out, iod->in->str, iod->in->len);
+	/* Now the output is positioned as the input buffer.  Fix this with
+	   one final swap. */
+	swap_strings(iod, FALSE);
 }
 #undef action
 
