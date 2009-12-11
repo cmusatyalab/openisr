@@ -26,10 +26,20 @@
  *   "ZV\1" 2-byte-csize 2-byte-usize <compressed data>
  *   "ZV\2" 4-byte-crc32-0xdebb20e3 (NYI)
  *
- * Unlike lzf.c, we implement the CRC32.  0xdebb20e3 turns out to be an odd
- * way of spelling the IEEE 802.3 CRC used by zlib; we use zlib's crc32()
- * function rather than reimplementing it here.  We store the CRC in
- * network byte order, like the other multi-byte header fields.
+ * (0xdebb20e3 turns out to be an odd way of spelling the IEEE 802.3 CRC used
+ * by zlib.)
+ *
+ * According to Marc Lehmann, ZV2 will most likely never be implemented
+ * upstream.  If it were, he says it would likely be a running CRC of the ZV0
+ * and ZV1 payloads (i.e., the compressed data).  However, we want a checksum
+ * of the *uncompressed* data to catch bugs in LZF and the buffering code.
+ * Therefore, rather than implementing ZV2, we make up our own block:
+ *
+ *   "ZV\x30" 4-byte-big-endian-IEEE-802.3-CRC32-of-uncompressed-data
+ *
+ * We could use Adler32 instead for a marginal increase in performance, but
+ * the net difference in throughput is not large, and CRC32 is both more
+ * effective and more widely used.
  */
 
 #define MAX_BLOCK ((1 << 16) - 1)
@@ -322,7 +332,7 @@ static enum isrcry_result lzf_stream_compress_final(
 	/* Write the trailer. */
 	if (!sctx->wrote_trailer) {
 		outbuf = get_output_buffer(sctx, 7, &outp, &out_avail);
-		memcpy(outbuf, "ZV\2", 3);
+		memcpy(outbuf, "ZV\x30", 3);
 		STORE32H(sctx->crc, &outbuf[3]);
 		sctx->wrote_trailer = TRUE;
 		*outlen = outlen_orig - out_avail;
@@ -366,7 +376,7 @@ static void header_decode_2(struct lzf_stream_ctx *sctx, const uint8_t *buf)
 	case 1:
 		set_state(sctx, WANT_HEADER_3, 4);
 		break;
-	case 2:
+	case 0x30:
 		set_state(sctx, WANT_HEADER_3, 4);
 		break;
 	default:
@@ -393,8 +403,8 @@ static void header_decode_3(struct lzf_stream_ctx *sctx, const uint8_t *buf)
 		LOAD16H(csize, &buf[0]);
 		LOAD16H(usize, &buf[2]);
 		break;
-	case 2:
-		/* IEEE 802.3 CRC in big-endian order */
+	case 0x30:
+		/* IEEE 802.3 CRC of uncompressed data in big-endian order */
 		LOAD32H(crc, &buf[0]);
 		if (sctx->crc != crc)
 			set_state(sctx, DATA_ERROR);
