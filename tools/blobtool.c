@@ -452,7 +452,6 @@ static void parse_compress_alg(void)
 
 	if (compress_alg == NULL)
 		return;  /* Use defaults */
-	detect_compress = FALSE;
 	for (desc = compress_algs; desc->name != NULL; desc++) {
 		if (!strcmp(compress_alg, desc->name)) {
 			use_internal_compress = desc->internal;
@@ -661,8 +660,7 @@ static void read_archive(struct iodata *iod)
 		die("Couldn't read archive read object");
 	if (archive_read_support_format_tar(arch))
 		die("Enabling tar format: %s", archive_error_string(arch));
-	if (!use_internal_compress &&
-				archive_read_support_compression_gzip(arch))
+	if (archive_read_support_compression_gzip(arch))
 		die("Enabling gzip format: %s", archive_error_string(arch));
 	if (archive_read_open(arch, iod, NULL, archive_read, NULL))
 		die("Opening archive: %s", archive_error_string(arch));
@@ -863,9 +861,9 @@ static GOptionContext *build_option_context(void)
 	g_option_group_add_entries(grp, tar_options);
 	g_option_context_add_group(ctx, grp);
 
-	g_option_context_set_description(ctx, "tar defaults to gzip on "
-				"encode and auto-detected compression on "
-				"decode.");
+	g_option_context_set_description(ctx, "tar mode compresses with gzip "
+				"by default.  When unpacking a tarball,\n"
+				"compression is auto-detected.");
 
 	return ctx;
 }
@@ -885,7 +883,6 @@ int main(int argc, char **argv)
 	if (!g_option_context_parse(octx, &argc, &argv, &err))
 		die("%s", err->message);
 	g_option_context_free(octx);
-	parse_compress_alg();
 	if (want_tar && want_hash)
 		die("--tar is incompatible with --hash");
 	if (want_tar && encode && infile != NULL)
@@ -896,6 +893,11 @@ int main(int argc, char **argv)
 		die("No input files or directories specified");
 	if (!(want_tar && encode) && g_strv_length(argv) > 1)
 		die("Extraneous arguments on command line");
+	if (compress_alg && !want_tar)
+		die("--compression only supported with --tar");
+	if (compress_alg && !encode)
+		die("--compression only supported when encoding");
+	parse_compress_alg();
 	if (infile != NULL) {
 		iod.infp = fopen(infile, "r");
 		if (iod.infp == NULL)
