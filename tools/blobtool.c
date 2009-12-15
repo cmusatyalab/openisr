@@ -60,8 +60,12 @@ static enum isrcry_padding padding = ISRCRY_PADDING_PKCS5;
 static enum isrcry_hash hash = ISRCRY_HASH_SHA1;
 static unsigned hashlen = 20;
 static gboolean detect_compress = TRUE;		/* Only for decode */
-static gboolean use_internal_compress = FALSE;	/* If false, use gzip */
-static enum isrcry_compress compress;
+static gboolean use_internal_compress = FALSE;
+static enum external_compress {
+	EXTERNAL_COMPRESS_NONE,
+	EXTERNAL_COMPRESS_GZIP,
+} external_compress = EXTERNAL_COMPRESS_GZIP;	/* Only for encode */
+static enum isrcry_compress internal_compress;
 
 /* Command-line parameters */
 static int keyroot_fd;
@@ -436,16 +440,19 @@ static void run_hash(const char *in, unsigned inlen, GString *out,
 static const struct compress_desc {
 	const char *name;
 	gboolean internal;
-	enum isrcry_compress type;
+	enum external_compress external_type;
+	enum isrcry_compress internal_type;
 	unsigned magiclen;
 	const char magic[6];
 } compress_algs[] = {
-	{"gzip", FALSE},
-	{"lzf", TRUE, ISRCRY_COMPRESS_LZF_STREAM, 2, "ZV"},
-	{"lzma", TRUE, ISRCRY_COMPRESS_LZMA, 6, {0xfd, '7', 'z', 'X', 'Z', 0}},
+	{"none", FALSE, EXTERNAL_COMPRESS_NONE},
+	{"gzip", FALSE, EXTERNAL_COMPRESS_GZIP},
+	{"lzf", TRUE, 0, ISRCRY_COMPRESS_LZF_STREAM, 2, "ZV"},
+	{"lzma", TRUE, 0, ISRCRY_COMPRESS_LZMA, 6, {0xfd, '7', 'z', 'X', 'Z', 0}},
 	{NULL}
 };
 
+/* Only called for encode */
 static void parse_compress_alg(void)
 {
 	const struct compress_desc *desc;
@@ -455,29 +462,34 @@ static void parse_compress_alg(void)
 	for (desc = compress_algs; desc->name != NULL; desc++) {
 		if (!strcmp(compress_alg, desc->name)) {
 			use_internal_compress = desc->internal;
-			compress = desc->type;
+			external_compress = desc->external_type;
+			internal_compress = desc->internal_type;
 			return;
 		}
 	}
 	die("Unknown compression algorithm: %s", compress_alg);
 }
 
+/* Only called for decode */
 static void detect_compression(const char *in, unsigned inlen)
 {
 	const struct compress_desc *desc;
 
 	detect_compress = FALSE;
 	for (desc = compress_algs; desc->name != NULL; desc++) {
+		/* We only care about internal algorithms, since external
+		   algorithms will be detected by libarchive. */
 		if (!desc->internal || inlen < desc->magiclen)
 			continue;
 		if (!memcmp(in, desc->magic, desc->magiclen)) {
 			use_internal_compress = TRUE;
-			compress = desc->type;
+			internal_compress = desc->internal_type;
 			break;
 		}
 	}
 }
 
+/* Only called for internal compression */
 static void run_compression(const char *in, unsigned inlen, GString *out,
 			gboolean final)
 {
@@ -489,7 +501,7 @@ static void run_compression(const char *in, unsigned inlen, GString *out,
 	enum isrcry_result ret;
 
 	if (ctx == NULL) {
-		ctx = isrcry_compress_alloc(compress);
+		ctx = isrcry_compress_alloc(internal_compress);
 		if (ctx == NULL)
 			die("Couldn't allocate compression algorithm");
 		ret = isrcry_compress_init(ctx, encode ? ISRCRY_ENCODE :
@@ -772,6 +784,7 @@ static void write_archive(struct iodata *iod, char * const *paths)
 {
 	struct archive *arch;
 	char * const *path;
+	int ret;
 
 	gather_size_total = 0;  /* sigh */
 	for (path = paths; *path != NULL; path++)
@@ -783,10 +796,21 @@ static void write_archive(struct iodata *iod, char * const *paths)
 		die("Couldn't read archive write object");
 	if (archive_write_set_format_pax_restricted(arch))
 		die("Setting tar format: %s", archive_error_string(arch));
-	if (!use_internal_compress &&
-				archive_write_set_compression_gzip(arch))
-		die("Setting compression format: %s",
-					archive_error_string(arch));
+	if (!use_internal_compress) {
+		switch (external_compress) {
+		case EXTERNAL_COMPRESS_NONE:
+			ret = 0;
+			break;
+		case EXTERNAL_COMPRESS_GZIP:
+			ret = archive_write_set_compression_gzip(arch);
+			break;
+		default:
+			g_assert_not_reached();
+		}
+		if (ret)
+			die("Setting compression format: %s",
+						archive_error_string(arch));
+	}
 	if (archive_write_set_bytes_in_last_block(arch, 1))
 		die("Disabling final block padding: %s",
 					archive_error_string(arch));
@@ -830,7 +854,7 @@ static GOptionEntry hash_options[] = {
 
 static GOptionEntry tar_options[] = {
 	{"tar", 't', 0, G_OPTION_ARG_NONE, &want_tar, "Generate or extract a compressed tar archive", NULL},
-	{"compression", 'c', 0, G_OPTION_ARG_STRING, &compress_alg, "Compress with ALG (gzip, lzf, lzma)", "ALG"},
+	{"compression", 'c', 0, G_OPTION_ARG_STRING, &compress_alg, "Compress with ALG (none, gzip, lzf, lzma)", "ALG"},
 	{"directory", 'C', 0, G_OPTION_ARG_FILENAME, &parent_dir, "Change to DIR before tarring/untarring files", "DIR"},
 	{NULL}
 };
