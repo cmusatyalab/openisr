@@ -1,7 +1,7 @@
 /*
  * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
  *
- * Copyright (C) 2006-2009 Carnegie Mellon University
+ * Copyright (C) 2006-2010 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -19,7 +19,8 @@
 #include <string.h>
 #include "defs.h"
 
-#define DATAVER 3
+#define MIN_DATAVER 3
+#define MAX_DATAVER 4
 
 #define OPTSTRS \
 	optstr(VERSION), \
@@ -106,10 +107,10 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 						" %s", value);
 			return PK_INVALID;
 		}
-		if (u != DATAVER) {
+		if (u < MIN_DATAVER || u > MAX_DATAVER) {
 			pk_log(LOG_ERROR, "Unknown parcel data version: "
-						"expected %d, found %u",
-						DATAVER, u);
+						"expected %d-%d, found %u",
+						MIN_DATAVER, MAX_DATAVER, u);
 			return PK_INVALID;
 		}
 		break;

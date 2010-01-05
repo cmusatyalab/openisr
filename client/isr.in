@@ -6,7 +6,7 @@
 #
 # isr - Client user interface for the Internet Suspend/Resume (R) system
 #
-# Copyright (C) 2004-2009 Carnegie Mellon University
+# Copyright (C) 2004-2010 Carnegie Mellon University
 #
 # This software is distributed under the terms of the Eclipse Public
 # License, Version 1.0 which can be found in the file named LICENSE.Eclipse.
@@ -2424,9 +2424,10 @@ sub parse_parcelcfg ($) {
     }
     
     # Check parcel format version
-    unless (exists $cfg{VERSION} and $cfg{VERSION} == 3) {
-	errexit("Unknown or missing VERSION in parcel.cfg for parcel $userid/$parcel.");
-    }
+    errexit("Missing VERSION in parcel.cfg for parcel $userid/$parcel.")
+        unless exists $cfg{VERSION};
+    errexit("Unknown VERSION in parcel.cfg for parcel $userid/$parcel.")
+        unless $cfg{VERSION} == 3 or $cfg{VERSION} == 4;
     
     # Make sure the parcel.cfg matches the parcel we think we're working with
     unless (exists $cfg{SERVER} and $cfg{SERVER} eq $server and
