@@ -105,6 +105,7 @@ my $vmm;
 my $imgfile;
 my $cfgdir;
 my $quick;
+my $format;
 
 # Server configuration
 my %config = get_config();
@@ -125,6 +126,7 @@ $result = GetOptions(
                      "Q|quick"         => \$quick,
                      "r|retain=i"      => \$retain,
                      "s|size=s"        => \$size,
+                     "T|format=i"      => \$format,
                      "u|userid=s"      => \$userid,
                      "U|srcuserid=s"   => \$srcuserid,
                      "v|version=i"     => \$version,
@@ -207,7 +209,7 @@ if ($command eq "makeparcel") {
         if (!$size);
     usage("Missing VMM type (-M)")
         if (!$vmm);
-    # -C is optional
+    # -C, -T optional
 }
 
 if ($command eq "import") {
@@ -221,7 +223,7 @@ if ($command eq "import") {
         if (!$imgfile);
     usage("Missing VMM type (-M)")
         if (!$vmm);
-    # -C, -Q optional
+    # -C, -Q, -T optional
 }
 
 if ($command eq "export") {
@@ -918,6 +920,12 @@ sub new_parcel ($$$$$$$) {
     errexit("Couldn't read $cfgdir")
 	if $cfgdir and not -d $cfgdir;
     
+    # Validate format version, if specified
+    $format = 4
+        unless defined $format;
+    errexit("Unknown format version specified")
+        if $format < 3 or $format > 4;
+
     # Create new content directory for this user and parcel
     print "Initializing parcel...\n";
     ($parceldir, $parcelcfg) = init_parceldir($userid, $parcel);
@@ -947,7 +955,7 @@ sub new_parcel ($$$$$$$) {
     # Write out the new parcel.cfg
     print "Finishing...\n";
     %cfg = (
-	VERSION => 4,
+	VERSION => $format,
 	UUID => gen_uuid(),
 	VMM => $vmm,
 	CRYPTO => 'aes-sha1',
@@ -966,6 +974,8 @@ sub new_parcel ($$$$$$$) {
 	CHUNKSPERDIR => $chunksperdir,
 	MEM => $memsize
     );
+    delete $cfg{'BLOBCOMPRESS'}
+        if $format < 4;
     write_parcel_cfg($parcelcfg, %cfg);
 
     # Set ownership and permissions, add last symlink, etc.
@@ -1244,8 +1254,8 @@ sub usage {
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u[f]).\n";
     print "  copyparcel Create a parcel based on an existing one (-upUP[s]).\n";
-    print "  makeparcel Create an empty parcel from scratch (-upmsM[C]).\n";
-    print "  import     Create a parcel from a disk image (-upmMF[CQ]).\n";
+    print "  makeparcel Create an empty parcel from scratch (-upmsM[CT]).\n";
+    print "  import     Create a parcel from a disk image (-upmMF[CQT]).\n";
     print "  export     Create a disk image from a parcel (-upF[C]).\n";
     print "  delparcel  Delete parcel from system (-up[f]).\n";
     print "  decrypt    Decrypt parcel version (-upv).\n";
@@ -1268,6 +1278,7 @@ sub usage {
     print "  -Q,--quick        Optimize for import speed rather than space.\n";
     print "  -r,--retain       How many of the most recent versions to retain when pruning.\n";
     print "  -s,--size         Size of the parcel's virtual disk (e.g. '256M', '8G')\n";
+    print "  -T,--format       Parcel format version to use.\n";
     print "  -u,--userid       ISR userid.\n";
     print "  -U,--srcuserid    Username of source parcel.\n";
     print "  -v,--version      Version number to encrypt or decrypt.\n";
