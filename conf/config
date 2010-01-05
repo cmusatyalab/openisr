@@ -65,7 +65,7 @@ ls_versions = 5
 # Note, however, that these mappings may change in the future.  Older
 # parcels may not be configured to support all of these algorithms; in this
 # case, the closest match will be used.
-compression = moderate
+compression = mild
 
 # Nexus cache size, in MB. This specifies how much kernel memory will be
 # reserved for parcel chunks.

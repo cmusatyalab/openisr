@@ -559,12 +559,12 @@ will almost always perform better.
 .B mild
 Use a very fast algorithm which compresses poorly.  Choose this option
 to improve runtime performance if you have a LAN-speed connection to
-the server.
+the server.  This is the default if no compression profile has been
+configured.
 .TP
 .B moderate
 Use an algorithm which is reasonably good and reasonably fast.  Choose
 this option for intermediate-bandwidth connections such as fast broadband.
-This is the default if no compression profile has been configured.
 .TP
 .B painful
 Attempt to compress as much as possible, and spend a lot of time doing it.
