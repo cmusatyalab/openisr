@@ -69,6 +69,7 @@ sub makeparcel_gen_chunks ($$$$$);
 sub makeparcel ($$$$$);
 sub import ($$$$$);
 sub export ($$$);
+sub upgrade ($$);
 sub delparcel ($$);
 sub prune ($$$);
 sub getusage ();
@@ -233,6 +234,13 @@ if ($command eq "export") {
     # -C optional
 }
 
+if ($command eq "upgrade") {
+    usage("Missing userid (-u)")
+        if (!$userid);
+    usage("Missing parcel name (-p)")
+	if (!$parcel);
+}
+
 if ($command eq "delparcel") {
     usage("Missing userid (-u)")
         if (!$userid);
@@ -285,6 +293,9 @@ elsif ($command eq "import") {
 }
 elsif ($command eq "export") {
     export($userid, $parcel, $imgfile);
+}
+elsif ($command eq "upgrade") {
+    upgrade($userid, $parcel);
 }
 elsif ($command eq "delparcel") {
     delparcel($userid, $parcel);
@@ -1070,6 +1081,41 @@ sub export ($$$) {
 }
 
 #
+# upgrade - Upgrade a parcel to the newest format
+#
+sub upgrade ($$) {
+    my $userid = shift;
+    my $parcel = shift;
+
+    my $parcelcfg = get_parcelcfg_path($userid, $parcel);
+    my %cfg = get_values($parcelcfg);
+    my $ver = int($cfg{'VERSION'});
+
+    my $minver = 3;
+    my $maxver = 4;
+
+    errexit("Unrecognized format $ver for parcel $userid/$parcel.")
+        if $ver < $minver or $ver > $maxver;
+    if ($ver == $maxver) {
+	print "Parcel $userid/$parcel is already at the newest format.\n";
+	return;
+    }
+
+    %cfg = (
+	# Defaults overridden by existing parcel.cfg values
+	MEM => 512,
+	BLOBCOMPRESS => 'gzip,lzf,lzma',
+
+	%cfg,
+
+	# New values overriding the existing parcel.cfg
+	VERSION => $maxver
+    );
+    write_parcel_cfg($parcelcfg, %cfg);
+    print "Success: Parcel $userid/$parcel upgraded to format $maxver.\n"
+}
+
+#
 # delparcel - Delete a user's parcel
 #
 sub delparcel ($$) {
@@ -1192,8 +1238,8 @@ sub usage {
     
     print "$progname revision " . RCS_REVISION . "\n";
     print RED, "Usage: $progname cmd [options...]\n", RESET;
-    print BLUE, "Commands: adduser, copyparcel, decrypt, delparcel, deluser, encrypt,\n";
-    print "          export, getkeyroot, getusage, import, keygen, makeparcel, prune.\n", RESET;
+    print BLUE, "Commands: adduser, copyparcel, decrypt, delparcel, deluser, encrypt, export,\n";
+    print "          getkeyroot, getusage, import, keygen, makeparcel, prune, upgrade.\n", RESET;
 
     print "  adduser    Add user to system (-u).\n";
     print "  deluser    Delete user from system (-u, [-f]).\n";
@@ -1208,6 +1254,7 @@ sub usage {
     print "  getusage   List recent activity for each parcel (no args)\n";
     print "  keygen     Generate a keyroot (no args).\n";
     print "  prune      Prune old versions of a parcel (-u, -p, -r, [-f]).\n";
+    print "  upgrade    Upgrade a parcel to the newest format (-u, -p).\n";
 
     print "Options:\n";
     print "  -C,--cfgdir       Obtain/put the contents of the memory image here.\n";
@@ -1251,6 +1298,10 @@ sub usage {
 	print RED, "export - ", RESET, "Create flat disk image debian.img from shut-down parcel debian\n";
 	print "belonging to user bovik\n";
 	print BLUE, "# isr_admin export -u bovik -p debian -F debian.img\n";
+	print "\n";
+	print RED, "upgrade - ", RESET, "Upgrade parcel debian, belonging to user bovik, to the newest\n";
+	print "on-disk format\n";
+	print BLUE, "# isr_admin upgrade -u bovik -p debian\n";
 	print "\n";
 	print RED, "delparcel - ", RESET, "Delete all data for parcel winxp belonging to existing user bovik\n";
 	print BLUE, "# isr_admin delparcel -u bovik -p winxp\n";
