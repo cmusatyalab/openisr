@@ -958,11 +958,12 @@ sub new_parcel ($$$$$$$) {
     open(OUT, ">", $parcelcfg)
     	or unix_errexit("Couldn't write $parcelcfg");
     print OUT <<EOF;
-VERSION = 3
+VERSION = 4
 UUID = $uuid
 VMM = $vmm
 CRYPTO = aes-sha1
 COMPRESS = zlib,lzf
+BLOBCOMPRESS = gzip,lzf,lzma
 KEYROOT = $keyroot
 USER = $userid
 PARCEL = $parcel
