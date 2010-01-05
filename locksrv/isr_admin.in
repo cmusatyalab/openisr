@@ -1242,25 +1242,25 @@ sub usage {
     print "          getkeyroot, getusage, import, keygen, makeparcel, prune, upgrade.\n", RESET;
 
     print "  adduser    Add user to system (-u).\n";
-    print "  deluser    Delete user from system (-u, [-f]).\n";
-    print "  copyparcel Create a parcel based on an existing one (-u, -p, -U, -P, [-s]).\n";
-    print "  makeparcel Create an empty parcel from scratch (-u, -p, -m, -s, -M, [-C]).\n";
-    print "  import     Create a parcel from a disk image (-u, -p, -m, -M, -F, [-C], [-Q]).\n";
-    print "  export     Create a disk image from a parcel (-u, -p, -F, [-C]).\n";
-    print "  delparcel  Delete parcel from system (-u, -p, [-f]).\n";
-    print "  decrypt    Decrypt parcel version (-u, -p, -v).\n";
-    print "  encrypt    Encrypt parcel version (-u, -p, -v).\n";
-    print "  getkeyroot Show parcel keyroot (-u, -p).\n";
-    print "  getusage   List recent activity for each parcel (no args)\n";
+    print "  deluser    Delete user from system (-u[f]).\n";
+    print "  copyparcel Create a parcel based on an existing one (-upUP[s]).\n";
+    print "  makeparcel Create an empty parcel from scratch (-upmsM[C]).\n";
+    print "  import     Create a parcel from a disk image (-upmMF[CQ]).\n";
+    print "  export     Create a disk image from a parcel (-upF[C]).\n";
+    print "  delparcel  Delete parcel from system (-up[f]).\n";
+    print "  decrypt    Decrypt parcel version (-upv).\n";
+    print "  encrypt    Encrypt parcel version (-upv).\n";
+    print "  getkeyroot Show parcel keyroot (-up).\n";
+    print "  getusage   List recent activity for each parcel (no args).\n";
     print "  keygen     Generate a keyroot (no args).\n";
-    print "  prune      Prune old versions of a parcel (-u, -p, -r, [-f]).\n";
-    print "  upgrade    Upgrade a parcel to the newest format (-u, -p).\n";
+    print "  prune      Prune old versions of a parcel (-upr[f]).\n";
+    print "  upgrade    Upgrade a parcel to the newest format (-up).\n";
 
     print "Options:\n";
     print "  -C,--cfgdir       Obtain/put the contents of the memory image here.\n";
     print "  -f,--force        Don't ask to confirm dangerous operations.\n";
     print "  -F,--file         Disk image file to import/export.\n";
-    print "  -h,--help         Print help message (Try '-hh' for some concrete examples).\n";
+    print "  -h,--help         Print help message (try '-hh' for some concrete examples).\n";
     print "  -m,--memsize      Size of the parcel's memory image in MB.\n";
     print "  -M,--vmm          Default VMM for the parcel.\n";
     print "  -p,--parcel       Parcel name (e.g., winxp).\n";
