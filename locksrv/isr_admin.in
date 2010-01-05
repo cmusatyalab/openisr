@@ -802,21 +802,17 @@ sub copyparcel ($$$$$) {
     my $dstparcelcfg;
     my $parceldir;
     my $srcverpath;
-    my $srckeyroot;
     my $dstkeyroot;
     my $file;
-    my $uuid;
-    my $umask;
-    my %map;
 
     my $srcpath = "$config{content_root}/$srcuserid/$srcparcel";
-    my $srcparcelcfg = get_parcelcfg_path($srcuserid, $srcparcel);
+    my %cfg = get_values(get_parcelcfg_path($srcuserid, $srcparcel));
 
-    my $chunksize = int(get_value($srcparcelcfg, "CHUNKSIZE"));
-    my $chunksperdir = int(get_value($srcparcelcfg, "CHUNKSPERDIR"));
-    my $srcchunks = int(get_value($srcparcelcfg, "NUMCHUNKS"));
+    my $chunksize = int($cfg{"CHUNKSIZE"});
+    my $chunksperdir = int($cfg{"CHUNKSPERDIR"});
+    my $srcchunks = int($cfg{"NUMCHUNKS"});
     my $numchunks = $srcchunks;
-    my $maxkb = int(get_value($srcparcelcfg, "MAXKB"));
+    my $maxkb = int($cfg{"MAXKB"});
     if (defined $size) {
 	$numchunks = parse_disk_size($chunksize, $size);
 	$maxkb = get_maxkb($chunksize, $numchunks);
@@ -839,8 +835,7 @@ sub copyparcel ($$$$$) {
         copy("$srcverpath/$file", "$parceldir/000001/$file")
             or unix_errexit("Couldn't write new $file");
     }
-    $srckeyroot = get_value($srcparcelcfg, "KEYROOT");
-    decrypt($userid, $parcel, 1, $srckeyroot);
+    decrypt($userid, $parcel, 1, $cfg{"KEYROOT"});
 
     # Copy the disk to the destination, trimming the keyring if necessary
     copy_chunks("$srcverpath", "$parceldir/000001",
@@ -858,30 +853,17 @@ sub copyparcel ($$$$$) {
     encrypt($userid, $parcel, 1, $dstkeyroot);
     
     # Write out the new parcel.cfg
-    $uuid = gen_uuid();
-    $umask = umask(0077);
-    open(IN, $srcparcelcfg)
-    	or unix_errexit("Couldn't read $srcparcelcfg");
-    open(OUT, ">", $dstparcelcfg)
-    	or unix_errexit("Couldn't write $dstparcelcfg");
-    %map = (
+    %cfg = (
+        %cfg,
+        # Overwrite existing entries
         KEYROOT => $dstkeyroot,
-        UUID => $uuid,
+        UUID => gen_uuid(),
         USER => $userid,
         PARCEL => $parcel,
         NUMCHUNKS => $numchunks,
         MAXKB => $maxkb
     );
-    while (<IN>) {
-    	if (/^([[:alpha:]]+)/ and exists $map{$1}) {
-	    print OUT "$1 = $map{$1}\n";
-	} else {
-	    print OUT;
-	}
-    }
-    close IN;
-    close OUT;
-    umask($umask);
+    write_parcel_cfg($dstparcelcfg, %cfg);
     
     # Set ownership and permissions, add last symlink, etc.
     finalize_parceldir($userid, $parcel);
@@ -905,10 +887,10 @@ sub new_parcel ($$$$$$$) {
     my $parceldir;
     my $parcelverdir;
     my $keyroot;
-    my $uuid;
     my $umask;
     my $numchunks;
     my $maxkb;
+    my %cfg;
 
     my $chunksize = CHUNKSIZE;
     my $chunksperdir = CHUNKSPERDIR;
@@ -953,32 +935,27 @@ sub new_parcel ($$$$$$$) {
     
     # Write out the new parcel.cfg
     print "Finishing...\n";
-    $uuid = gen_uuid();
-    $umask = umask(0077);
-    open(OUT, ">", $parcelcfg)
-    	or unix_errexit("Couldn't write $parcelcfg");
-    print OUT <<EOF;
-VERSION = 4
-UUID = $uuid
-VMM = $vmm
-CRYPTO = aes-sha1
-COMPRESS = zlib,lzf
-BLOBCOMPRESS = gzip,lzf,lzma
-KEYROOT = $keyroot
-USER = $userid
-PARCEL = $parcel
-PROTOCOL = HTTPSSH
-SERVER = $config{hostname}
-RPATH = http://$config{hostname}$config{http_path}
-WPATH = $config{hostname}:$config{content_root}
-MAXKB = $maxkb
-CHUNKSIZE = $chunksize
-NUMCHUNKS = $numchunks
-CHUNKSPERDIR = $chunksperdir
-MEM = $memsize
-EOF
-    close OUT;
-    umask($umask);
+    %cfg = (
+	VERSION => 4,
+	UUID => gen_uuid(),
+	VMM => $vmm,
+	CRYPTO => 'aes-sha1',
+	COMPRESS => 'zlib,lzf',
+	BLOBCOMPRESS => 'gzip,lzf,lzma',
+	KEYROOT => $keyroot,
+	USER => $userid,
+	PARCEL => $parcel,
+	PROTOCOL => 'HTTPSSH',
+	SERVER => $config{hostname},
+	RPATH => "http://$config{hostname}$config{http_path}",
+	WPATH => "$config{hostname}:$config{content_root}",
+	MAXKB => $maxkb,
+	CHUNKSIZE => $chunksize,
+	NUMCHUNKS => $numchunks,
+	CHUNKSPERDIR => $chunksperdir,
+	MEM => $memsize
+    );
+    write_parcel_cfg($parcelcfg, %cfg);
 
     # Set ownership and permissions, add last symlink, etc.
     finalize_parceldir($userid, $parcel);

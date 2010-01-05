@@ -40,6 +40,7 @@ require Exporter;
 	     system_errexit
 	     get_value
 	     get_values
+	     write_parcel_cfg
 	     get_config
 	     get_offset
 	     get_parcelcfg_path
@@ -152,6 +153,37 @@ sub get_value
     }
 
     return $data{$search_key};
+}
+
+sub write_parcel_cfg
+{
+    my $file = shift;
+    my %data = @_;
+
+    my $fh;
+    my $key;
+    my $umask;
+
+    # Try to write parcel.cfg keys in a sensible order to improve readability
+    my @sequence = (qw/VERSION UUID USER PARCEL VMM CRYPTO COMPRESS/,
+			qw/BLOBCOMPRESS KEYROOT PROTOCOL SERVER RPATH WPATH/,
+			qw/CHUNKSIZE NUMCHUNKS CHUNKSPERDIR MAXKB MEM/);
+
+    $umask = umask(0077);
+    open($fh, ">", $file)
+        or unix_errexit("Unable to write $file");
+    for $key (@sequence) {
+	if (exists $data{$key}) {
+	    print $fh "$key = $data{$key}\n";
+	    delete $data{$key};
+	}
+    }
+    # Write out unrecognized leftovers
+    for $key (sort keys %data) {
+	print $fh "$key = $data{$key}\n";
+    }
+    close($fh);
+    umask($umask);
 }
 
 sub get_config {
