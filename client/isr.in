@@ -102,6 +102,7 @@ sub sync_parcel_uuid_from_name ();
 sub sync_parcel_name_from_uuid ();
 sub parse_cfgfile ($$);
 sub parse_parcelcfg ($);
+sub set_compression ();
 sub build_cache ();
 sub purge_completion_cache ();
 sub is_fully_hoarded ();
@@ -181,6 +182,7 @@ my $forceflag = 0;   # Force release of lock in cleanclient()
 my $do_splice = 0;   # checkp: Restore invalid chunks from prev-keyring
 my $do_dirtometer = 0; # Run dirtometer on resume
 my $vmm;             # Override default VMM driver
+my $compression;     # Override default compression profile
 
 # General global state, mostly about the parcel we are working with
 my $progname;        # $0 without the directory part
@@ -190,6 +192,8 @@ my $userid;          # ISR userid
 my $parcel;          # Parcel name
 my $uuid;            # Parcel UUID
 my $sessionid = 0;   # Unique session id (nonce from lock operation)
+my $memory_compress; # Compression algorithm for memory image
+my $disk_compress;   # Compression algorithm for disk chunks
 my $parceldir;       # Path to parcel directory (named after its UUID)
 my $uploaddir;       # Path to dir to be rsynced to the server at upload
 my $completiondir;   # Path to shell completion cache directory
@@ -341,6 +345,7 @@ Getopt::Long::Configure("no_ignore_case", "bundling_override",
 $result = GetOptions(
 		     "b|bwlimit=i"    => \$bwlimit,
 		     "c|checkstate"   => \$checkstate,
+		     "C|compression=s"=> \$compression,
 		     "d|disconnected" => \$disconnected,
 		     "D|dirtometer"   => \$do_dirtometer,
 		     "e|remote"       => \$remote,
@@ -507,6 +512,8 @@ elsif ($command eq "resume") {
     acquire_lock("checkout-$parcel", "Checkout", 0);
     checkout();
     release_lock("Checkout");
+    # We can't do this until we have the parcel.cfg
+    set_compression();
     acquire_lock("parcel-$uuid", "Parcel", 0);
     run();
 } 
@@ -515,6 +522,7 @@ elsif ($command eq "checkin") {
     need_checked_out();
     need_network();
     need_remote_parcel_and_lock();
+    set_compression();
     $do_sync = 1;
     acquire_lock("parcel-$uuid", "Parcel", 0);
     checkin();
@@ -524,6 +532,7 @@ elsif ($command eq "sync") {
     need_checked_out();
     need_network();
     need_remote_parcel_and_lock();
+    set_compression();
     $do_sync = 1;
     acquire_lock("parcel-$uuid", "Parcel", 0);
     sync(0);
@@ -1707,7 +1716,7 @@ sub parcelkeeper_cmd ($$) {
 	} elsif ($arg eq "nexus-cache") {
 	    $cmd .= " --nexus-cache $syscfg{nexus_cache}";
 	} elsif ($arg eq "compression") {
-	    $cmd .= " --compression $syscfg{compression}";
+	    $cmd .= " --compression $disk_compress";
 	} elsif ($arg eq "uuid") {
 	    $cmd .= " --uuid $uuid";
 	} elsif ($arg eq "check") {
@@ -2442,6 +2451,58 @@ sub parse_parcelcfg ($) {
 }
 
 #
+# set_compression - Parse the specified compression profile, check it against
+#                   the supported algorithms in the parcel.cfg, and set
+#                   variables indicating the memory and disk compression
+#                   algorithms to use.
+#
+sub set_compression () {
+    my %mappings = (
+        # profile => [memory_alg, disk_alg]
+	disabled => ['none', 'none'],
+	mild => ['lzf', 'lzf'],
+	moderate => ['gzip', 'zlib'],
+	painful => ['lzma', 'zlib'],
+    );
+    my %supported_mem;
+    my %supported_disk;
+    my $profile;
+    my $cur;
+
+    # Determine which algorithms the parcel supports
+    if ($cfg{VERSION} >= 4) {
+	%supported_mem = map {$_, 1} ('none', split(/,/, $cfg{BLOBCOMPRESS}));
+    } else {
+	%supported_mem = (gzip => 1);
+    }
+    %supported_disk = map {$_, 1} ('none', split(/,/, $cfg{COMPRESS}));
+
+    # Check the profile requested by the user
+    if (defined $compression) {
+	$profile = $compression;
+    } else {
+	$profile = $syscfg{'compression'};
+    }
+    errexit("Unrecognized compression profile \"$profile\"; must be one of: " .
+			join(', ', sort keys %mappings))
+        unless exists $mappings{$profile};
+
+    # See if the chosen algorithms are supported.  If not, try fallbacks.
+    for $cur (@{$mappings{$profile}}[0], qw/gzip none/) {
+	if (defined $supported_mem{$cur}) {
+	    $memory_compress = $cur;
+	    last;
+	}
+    }
+    for $cur (@{$mappings{$profile}}[1], qw/zlib none/) {
+	if (defined $supported_disk{$cur}) {
+	    $disk_compress = $cur;
+	    last;
+	}
+    }
+}
+
+#
 # build_cache - Create a local Parcelkeeper cache
 #
 sub build_cache () {
@@ -2767,7 +2828,8 @@ sub encrypt_cfg ($$) {
     my $parent = dirname($src);
     my $cur = basename($src);
     
-    return mysystem(LIBDIR . "/blobtool -etp -o $dest -k $fd -C $parent $cur");
+    return mysystem(LIBDIR . "/blobtool -etp -o $dest -k $fd -C $parent " .
+			"-c $memory_compress $cur");
 }
 
 sub decrypt_cfg ($) {
@@ -3121,14 +3183,14 @@ sub usage ($) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR server (once per X session only)\n";
 	print "  ls         List info about your parcels (parcel, -lL optional)\n";
- 	print "  resume     Checkout (if necessary) and run a parcel (-dDFmr optional)\n";
-	print "  checkin    Sync parcel to server and check it in (-b optional)\n";
+ 	print "  resume     Checkout (if necessary) and run a parcel (-CdDFmr optional)\n";
+	print "  checkin    Sync parcel to server and check it in (-bC optional)\n";
 	print "  passwd     Change your ISR password on the server\n";
 	print "  help       Print help message\n";
 	print "Advanced commands:\n";
 	print "  stat       Display information about local state for a parcel\n";
 	print "  checkout   Checkout parcel without running it (-cdr optional)\n";
-	print "  sync       Sync parcel to server without checking it in (-b optional)\n";
+	print "  sync       Sync parcel to server without checking it in (-bC optional)\n";
 	print "  discard    Discard all local changes to parcel since last checkout or sync\n";
 	print "  clean      Remove parcel from client and release its lock (-f optional)\n";
 	print "  hoard      Fetch entire virtual disk for improved performance\n";
@@ -3145,6 +3207,7 @@ sub usage ($) {
     print "Options:\n";
     print "  -b,--bwlimit       Bandwidth limit (KBytes/s) [checkin, sync]\n";
     print "  -c,--checkstate    Do extra checks [checkout, checkp, checkhoard]\n";
+    print "  -C,--compression   Override compression profile [checkin, resume, sync]\n";
     print "  -d,--disconnected  Run disconnected (after hoarding) [checkout, resume]\n";
     print "  -D,--dirtometer    Launch dirtometer visualization tool [resume]\n";
     print "  -e,--remote        Perform action on server rather than client [checkp]\n";

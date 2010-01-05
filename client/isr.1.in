@@ -1,7 +1,7 @@
 .\" =========================================================================
 .\" isr - Client user interface for the Internet Suspend/Resume (R) system
 .\" 
-.\" Copyright (C) 2004-2009 Carnegie Mellon University
+.\" Copyright (C) 2004-2010 Carnegie Mellon University
 .\" 
 .\" This software is distributed under the terms of the Eclipse Public
 .\" License, Version 1.0 which can be found in the file named LICENSE.Eclipse.
@@ -27,6 +27,8 @@ isr \- Internet Suspend/Resume client program
 .IR version ]
 .RB [ \-m
 .IR vmm ]
+.RB [ \-C
+.IR compression ]
 .RB [ \-L
 .IR count ]
 
@@ -140,17 +142,23 @@ to avoid having to keep typing your ISR password.
 
 
 .TP
-.BI "isr checkin(ci) " parcel " [-b " "KBytes/s" "]"
+.BI "isr checkin(ci) " parcel " [-b " "KBytes/s" "] [-C " "compression" "]"
 Checkin a 
 .I parcel 
 to the server. This command creates a new checkpointed version
 of the parcel on the server, and then releases a lock on the
 parcel so that it can be resumed by other client hosts.
 The 
-.BI -b 
-.I KBytes/s
+.B -b
 option limits the upload bandwidth to 
 .I KBytes/s.
+The
+.B -C
+option specifies the algorithm used to compress the memory image for
+upload; see
+.B OPTIONS
+below for supported values of
+.IR compression .
 
 The
 .B checkin
@@ -396,7 +404,7 @@ option will delete the memory image for the specified
 rather than for the parcel's default VMM.
 
 .TP
-.BI "isr resume " "parcel" " [-r " "oldversion" "] [-m " "vmm" "] [-d] [-D] [-F]"
+.BI "isr resume " "parcel" " [-C " "compression" "] [-r " "oldversion" "] [-m " "vmm" "] [-d] [-D] [-F]"
 Checkout a 
 .I parcel
 (if necessary) and then run it. Any additional state that the parcel
@@ -429,7 +437,13 @@ machine monitor or for running multiple parcels at once.  This option
 may be unavailable if the VMM does not support it.  The
 .B -D
 option launches the dirtometer, which provides a visual representation of
-parcel disk accesses and the resulting parcel state.
+parcel disk accesses and the resulting parcel state.  The
+.B -C
+option specifies the algorithm used to compress newly-written disk chunks;
+see
+.B OPTIONS
+below for supported values of
+.IR compression .
 
 The
 .B -m
@@ -464,7 +478,7 @@ must be checked out in order to use the
 command.
 
 .TP
-.BI "isr sync " parcel " [-b " "KBytes/s" "]"
+.BI "isr sync " parcel " [-b " "KBytes/s" "] [-C " "compression" "]"
 Save a new checkpointed version of 
 .I parcel 
 on the server, without releasing the lock or 
@@ -475,10 +489,16 @@ as often as you like between
 .B resume
 commands. 
 The 
-.BI -b 
-.I KBytes/s
+.B -b
 option limits the upload bandwidth to 
 .IR KBytes/s .
+The
+.B -C
+option specifies the algorithm used to compress the memory image for
+upload; see
+.B OPTIONS
+below for supported values of
+.IR compression .
 
 The
 .B sync
@@ -515,6 +535,45 @@ to
 Perform an additional content consistency check during the 
 .BR checkp ", " checkhoard ", and " checkout
 commands.
+
+.TP
+.BI -C/--compression " compression"
+Override the configured compression profile, which determines how hard
+the ISR client should try to compress newly-generated disk chunks (at
+runtime) and memory images (at checkin/sync).  The default is obtained
+from the
+.B compression
+option in the configuration files (see
+.B FILES
+below).  Recognized values of
+.I compression
+are:
+
+.RS
+.TP
+.B disabled
+Do not compress at all.  This is intended for debugging purposes only;
+.B mild
+will almost always perform better.
+.TP
+.B mild
+Use a very fast algorithm which compresses poorly.  Choose this option
+to improve runtime performance if you have a LAN-speed connection to
+the server.
+.TP
+.B moderate
+Use an algorithm which is reasonably good and reasonably fast.  Choose
+this option for intermediate-bandwidth connections such as fast broadband.
+This is the default if no compression profile has been configured.
+.TP
+.B painful
+Attempt to compress as much as possible, and spend a lot of time doing it.
+This option is appropriate for very slow links.
+.RE
+
+.IP
+Older parcels may not be configured to support all of these compression
+profiles; in this case, the closest match will be used.
 
 .TP
 .B -d/--disconnected

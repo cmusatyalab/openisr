@@ -1,7 +1,7 @@
 #
 # openisr-client.completion - bash completions for isr command
 #
-# Copyright (C) 2007-2009 Carnegie Mellon University
+# Copyright (C) 2007-2010 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as published
@@ -186,8 +186,8 @@ _isr_subcommand_opts() {
 		long="--checkstate"
 		;;
 	checkin|ci|sync)
-		short="-b -s -u"
-		long="--bwlimit --server --user"
+		short="-b -C -s -u"
+		long="--bwlimit --compression --server --user"
 		;;
 	checkout|co)
 		short="-c -d -r -s -u"
@@ -214,8 +214,8 @@ _isr_subcommand_opts() {
 		long="--server --user --vmm"
 		;;
 	resume)
-		short="-d -D -F -m -r -s -u"
-		long="--disconnected --dirtometer --no-fullscreen --rollback --server --user --vmm"
+		short="-C -d -D -F -m -r -s -u"
+		long="--compression --disconnected --dirtometer --no-fullscreen --rollback --server --user --vmm"
 		;;
 	esac
 	short="-q -v $short"
@@ -248,6 +248,10 @@ _isr() {
 	fi
 	if [ "$prev" = "-m" -o "$prev" = "--vmm" ] ; then
 		COMPREPLY=(`_isr_vmms $cur`)
+		return
+	fi
+	if [ "$prev" = "-C" -o "$prev" = "--compression" ] ; then
+		COMPREPLY=(`compgen -W "disabled mild moderate painful" -- $cur`)
 		return
 	fi
 
