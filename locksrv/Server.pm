@@ -165,7 +165,7 @@ sub write_parcel_cfg
     my $umask;
 
     # Try to write parcel.cfg keys in a sensible order to improve readability
-    my @sequence = (qw/VERSION UUID USER PARCEL VMM CRYPTO COMPRESS/,
+    my @sequence = (qw/VERSION UUID USER PARCEL READONLY VMM CRYPTO COMPRESS/,
 			qw/BLOBCOMPRESS KEYROOT PROTOCOL SERVER RPATH WPATH/,
 			qw/CHUNKSIZE NUMCHUNKS CHUNKSPERDIR MAXKB MEM/);
 

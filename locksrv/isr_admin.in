@@ -964,6 +964,7 @@ sub new_parcel ($$$$$$$) {
 	KEYROOT => $keyroot,
 	USER => $userid,
 	PARCEL => $parcel,
+	READONLY => 0,
 	PROTOCOL => 'HTTPSSH',
 	SERVER => $config{hostname},
 	RPATH => "http://$config{hostname}$config{http_path}",
@@ -974,8 +975,10 @@ sub new_parcel ($$$$$$$) {
 	CHUNKSPERDIR => $chunksperdir,
 	MEM => $memsize
     );
-    delete $cfg{'BLOBCOMPRESS'}
-        if $format < 4;
+    if ($format < 4) {
+        delete $cfg{'BLOBCOMPRESS'};
+        delete $cfg{'READONLY'};
+    }
     write_parcel_cfg($parcelcfg, %cfg);
 
     # Set ownership and permissions, add last symlink, etc.
@@ -1115,6 +1118,7 @@ sub upgrade ($$) {
 	# Defaults overridden by existing parcel.cfg values
 	MEM => 512,
 	BLOBCOMPRESS => 'gzip,lzf,lzma',
+	READONLY => 0,
 
 	%cfg,
 
