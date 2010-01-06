@@ -200,6 +200,9 @@ sub get_config {
 	
 	# Fully-qualified server hostname
 	hostname => lc((gethostbyname(hostname()))[0]),
+	
+	# Default parcel format version
+	default_format => 4,
     );
     
     if (-r $conffile) {

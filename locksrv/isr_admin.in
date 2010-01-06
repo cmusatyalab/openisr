@@ -921,7 +921,7 @@ sub new_parcel ($$$$$$$) {
 	if $cfgdir and not -d $cfgdir;
     
     # Validate format version, if specified
-    $format = 4
+    $format = $config{default_format}
         unless defined $format;
     errexit("Unknown format version specified")
         if $format < 3 or $format > 4;
@@ -984,7 +984,7 @@ sub new_parcel ($$$$$$$) {
     # Set ownership and permissions, add last symlink, etc.
     finalize_parceldir($userid, $parcel);
     
-    print "Success: Added $userid/$parcel\n";
+    print "Success: Added $userid/$parcel (format $format)\n";
 }
 
 #
