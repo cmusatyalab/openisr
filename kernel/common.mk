@@ -1,8 +1,10 @@
 # Makefile fragment for non-Kbuild part of kernel makefiles
 
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+# 2.6.32 and earlier put utsrelease.h in include/linux
 KERN_RELEASE := $(shell grep -s UTS_RELEASE \
-		$(KERNELDIR)/include/linux/utsrelease.h | cut -f2 -d\")
+		$(KERNELDIR)/include/linux/utsrelease.h \
+		$(KERNELDIR)/include/generated/utsrelease.h | cut -f2 -d\")
 
 .PHONY: module
 module: check_config $(MOD_DEPENDS)
