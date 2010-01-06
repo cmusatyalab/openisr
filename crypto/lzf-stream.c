@@ -411,6 +411,8 @@ static void header_decode_3(struct lzf_stream_ctx *sctx, const uint8_t *buf)
 		else
 			set_state(sctx, WANT_HEADER_1);
 		return;
+	default:
+		g_assert_not_reached();
 	}
 	set_state(sctx, WANT_DATA, (unsigned) csize);
 	sctx->output_size = usize;
@@ -446,6 +448,8 @@ static void data_decode(struct isrcry_compress_ctx *cctx, const void *in,
 			return;
 		}
 		break;
+	default:
+		g_assert_not_reached();
 	}
 	sctx->crc = crc32(sctx->crc, out, outlen);
 	set_state(sctx, WANT_HEADER_1);
