@@ -1102,31 +1102,42 @@ sub upgrade ($$) {
 
     my $parcelcfg = get_parcelcfg_path($userid, $parcel);
     my %cfg = get_values($parcelcfg);
-    my $ver = int($cfg{'VERSION'});
+    my $curver = int($cfg{'VERSION'});
 
     my $minver = 3;
     my $maxver = 4;
 
-    errexit("Unrecognized format $ver for parcel $userid/$parcel.")
-        if $ver < $minver or $ver > $maxver;
-    if ($ver == $maxver) {
-	print "Parcel $userid/$parcel is already at the newest format.\n";
+    # Validate requested format version
+    $format = $config{default_format}
+        unless defined $format;
+    errexit("Unknown format version specified")
+        if $format < $minver or $format > $maxver;
+
+    # See if we can upgrade this parcel
+    errexit("Unrecognized format $curver for parcel $userid/$parcel.")
+        if $curver < $minver or $curver > $maxver;
+    errexit("Cannot downgrade parcel $userid/$parcel from format $curver.")
+        if $curver > $format;
+    if ($curver == $format) {
+	print "Parcel $userid/$parcel is already at format $format.\n";
 	return;
     }
 
-    %cfg = (
-	# Defaults overridden by existing parcel.cfg values
-	MEM => 512,
-	BLOBCOMPRESS => 'gzip,lzf,lzma',
-	READONLY => 0,
+    if ($format >= 4) {
+	%cfg = (
+	    # Defaults overridden by existing parcel.cfg values
+	    MEM => 512,
+	    BLOBCOMPRESS => 'gzip,lzf,lzma',
+	    READONLY => 0,
 
-	%cfg,
+	    %cfg,
 
-	# New values overriding the existing parcel.cfg
-	VERSION => $maxver
-    );
+	    # New values overriding the existing parcel.cfg
+	    VERSION => $format
+	);
+    }
     write_parcel_cfg($parcelcfg, %cfg);
-    print "Success: Parcel $userid/$parcel upgraded to format $maxver.\n"
+    print "Success: Parcel $userid/$parcel upgraded to format $format.\n"
 }
 
 #
@@ -1268,7 +1279,7 @@ sub usage {
     print "  getusage   List recent activity for each parcel (no args).\n";
     print "  keygen     Generate a keyroot (no args).\n";
     print "  prune      Prune old versions of a parcel (-upr[f]).\n";
-    print "  upgrade    Upgrade a parcel to the newest format (-up).\n";
+    print "  upgrade    Upgrade a parcel to a newer format (-up[T]).\n";
 
     print "Options:\n";
     print "  -C,--cfgdir       Obtain/put the contents of the memory image here.\n";
