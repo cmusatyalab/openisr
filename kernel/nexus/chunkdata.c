@@ -667,11 +667,21 @@ static nexus_err_t __chunk_tfm(struct nexus_tfm_state *ts,
 	if (cd->state == ST_DECRYPTING) {
 		debug(DBG_TFM, "Decoding %u bytes for chunk " SECTOR_FORMAT,
 					cd->size, cd->cid);
-		/* Make sure encrypted data matches tag */
-		if (crypto_hash(dev, ts, cd->sg, cd->size, hash))
-			return NEXUS_ERR_HASH;
-		if (memcmp(cd->tag, hash, hash_len))
-			return NEXUS_ERR_TAG;
+		if (!do_crypt || (debug_mask & DBG_ERR)) {
+			/* Make sure encoded data matches tag.  We don't do
+			   this for encrypted chunks because it doesn't catch
+			   anything that won't be caught by the cipher-padding
+			   and key checks.  If we're not decrypting, we don't
+			   perform those checks so we need to check the tag.
+
+			   Omitting the tag check makes it harder to debug
+			   data corruption, so we also do the check if DBG_ERR
+			   is enabled. */
+			if (crypto_hash(dev, ts, cd->sg, cd->size, hash))
+				return NEXUS_ERR_HASH;
+			if (memcmp(cd->tag, hash, hash_len))
+				return NEXUS_ERR_TAG;
+		}
 		if (do_crypt) {
 			ret=crypto_cipher(dev, ts, cd->sg, cd->key, cd->size,
 						READ, cd->compression !=
