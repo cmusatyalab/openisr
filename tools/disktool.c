@@ -534,11 +534,8 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 				inlen > chunklen /* -1 */)
 		die("Invalid length %u for chunk #%u", inlen, idx);
 
-	/* check chunk tag */
-	isrcry_hash_update(hash_ctx, tmpdata, inlen);
-	isrcry_hash_final(hash_ctx, calc_hash);
-	if (memcmp(chunk->tag, calc_hash, hash_len))
-		die("Bad tag for chunk #%u", idx);
+	/* We don't check the chunk tag because the cipher-padding and key
+	   checks will find anything the tag check might find. */
 
 	/* decrypt chunk */
 	rc = isrcry_cipher_init(cipher_ctx, ISRCRY_DECRYPT, chunk->key,
