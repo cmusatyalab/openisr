@@ -111,13 +111,6 @@ int hoard(struct pk_state *state)
 	int ret=1;
 	gboolean retry;
 
-	/* We need to do this first; otherwise, chunks we thought were hoarded
-	   could disappear out from under us */
-	if (hoard_sync_refs(state, FALSE)) {
-		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
-		return 1;
-	}
-
 	/* This opens a transaction */
 	if (build_hoard_table(state, &to_hoard))
 		return 1;
@@ -197,25 +190,22 @@ int examine_hoard(struct pk_state *state)
 	unsigned valid_pct;
 	gboolean retry;
 
-	if (hoard_sync_refs(state, FALSE)) {
-		pk_log(LOG_ERROR, "Couldn't synchronize reference list");
-		return 1;
-	}
-
 again:
 	if (!begin(state->db))
 		return 1;
-	query(&qry, state->db, "SELECT count(*) FROM "
-				"(SELECT 1 FROM prev.keys GROUP BY tag)",
-				NULL);
+	query(&qry, state->db, "SELECT count(*) FROM hoard.refs AS refs "
+				"WHERE refs.parcel == ?", "d",
+				state->hoard_ident);
 	if (!query_has_row(state->db)) {
-		sql_log_err(state->db, "Couldn't query previous keyring");
+		sql_log_err(state->db, "Couldn't query reference list");
 		goto bad;
 	}
 	query_row(qry, "d", &maxchunks);
 	query_free(qry);
-	query(&qry, state->db, "SELECT count(*) FROM hoard.refs WHERE "
-				"parcel == ?", "d", state->hoard_ident);
+	query(&qry, state->db, "SELECT count(*) FROM hoard.refs AS refs "
+				"JOIN hoard.chunks AS chunks "
+				"ON chunks.tag == refs.tag WHERE "
+				"refs.parcel == ?", "d", state->hoard_ident);
 	if (!query_has_row(state->db)) {
 		sql_log_err(state->db, "Couldn't query hoard cache");
 		goto bad;
@@ -289,11 +279,14 @@ again:
 				"server, user, name, total, uniq "
 				"FROM hoard.parcels LEFT JOIN "
 				"(SELECT parcel, count(*) AS total "
-				"FROM refs GROUP BY parcel) AS sub1 "
+				"FROM hoard.refs WHERE tag IN "
+				"(SELECT tag FROM hoard.chunks) "
+				"GROUP BY parcel) AS sub1 "
 				"ON parcels.parcel == sub1.parcel "
 				"LEFT JOIN "
 				"(SELECT parcel, count(parcel) AS uniq FROM "
-				"(SELECT parcel FROM refs GROUP BY tag "
+				"(SELECT parcel FROM hoard.refs WHERE tag IN "
+				"(SELECT tag FROM hoard.chunks) GROUP BY tag "
 				"HAVING count(*) == 1) GROUP BY parcel) "
 				"AS sub2 "
 				"ON parcels.parcel == sub2.parcel", NULL);
@@ -622,11 +615,6 @@ again:
 				"NOT IN (SELECT parcel FROM hoard.parcels)",
 				LOG_WARNING,
 				"refs with dangling parcel ID"))
-		goto bad;
-	if (cleanup_action(state->db, "DELETE FROM hoard.refs WHERE tag NOT IN "
-				"(SELECT tag FROM hoard.chunks)",
-				LOG_WARNING,
-				"refs with dangling tag"))
 		goto bad;
 	if (cleanup_action(state->db, "UPDATE hoard.chunks SET referenced = 0 "
 				"WHERE referenced == 1 AND tag NOTNULL AND "

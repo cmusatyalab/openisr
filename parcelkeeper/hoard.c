@@ -264,7 +264,7 @@ static pk_err_t expand_slot_cache(struct pk_state *state)
 	return PK_SUCCESS;
 }
 
-/* must be within transaction */
+/* Must be within transaction.  Does not add chunk references. */
 static pk_err_t _flush_slot_cache(struct pk_state *state)
 {
 	struct query *qry;
@@ -312,12 +312,6 @@ static pk_err_t _flush_slot_cache(struct pk_state *state)
 		return PK_IOERR;
 	}
 
-	if (!query(NULL, state->hoard, "INSERT OR IGNORE INTO refs (parcel, tag) "
-				"SELECT ?, tag FROM temp.slots "
-				"WHERE tag NOTNULL", "d", state->hoard_ident)) {
-		sql_log_err(state->hoard, "Couldn't add chunk references");
-		return PK_IOERR;
-	}
 	if (!query(NULL, state->hoard, "UPDATE chunks SET referenced = 0 WHERE "
 				"offset IN (SELECT offset FROM temp.slots "
 				"WHERE tag ISNULL)", NULL)) {
@@ -376,32 +370,6 @@ static pk_err_t allocate_slot(struct pk_state *state, int *offset)
 	return PK_SUCCESS;
 }
 
-static pk_err_t add_chunk_reference(struct pk_state *state, const void *tag)
-{
-	gchar *ftag;
-
-	if (!query(NULL, state->hoard, "INSERT OR IGNORE INTO refs "
-				"(parcel, tag) VALUES (?, ?)", "db",
-				state->hoard_ident, tag,
-				state->parcel->hashlen)) {
-		ftag=format_tag(tag, state->parcel->hashlen);
-		sql_log_err(state->hoard, "Couldn't add chunk reference "
-					"for tag %s", ftag);
-		g_free(ftag);
-		return PK_IOERR;
-	}
-	if (!query(NULL, state->hoard, "UPDATE chunks SET referenced = 1 "
-				" WHERE tag == ?", "b", tag,
-				state->parcel->hashlen)) {
-		ftag=format_tag(tag, state->parcel->hashlen);
-		sql_log_err(state->hoard, "Couldn't set referenced flag "
-					"for tag %s", ftag);
-		g_free(ftag);
-		return PK_IOERR;
-	}
-	return PK_SUCCESS;
-}
-
 /* This function is intended to be used when a particular chunk in the hoard
    cache is found to be invalid (e.g., the data does not match the tag).
    It first checks to make sure that the provided tag/offset pair is still
@@ -437,14 +405,6 @@ static pk_err_t _hoard_invalidate_chunk(struct pk_state *state, int offset,
 				offset)) {
 		sql_log_err(state->hoard, "Couldn't deallocate hoard chunk "
 					"at offset %d", offset);
-		return PK_IOERR;
-	}
-	if (!query(NULL, state->hoard, "DELETE FROM refs WHERE tag == ?", "b",
-				tag, taglen)) {
-		ftag=format_tag(tag, taglen);
-		sql_log_err(state->hoard, "Couldn't invalidate references "
-					"to tag %s", ftag);
-		g_free(ftag);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
@@ -563,11 +523,6 @@ again:
 		if (query_busy(state->hoard))
 			goto bad;
 	}
-	if (!slot_cache) {
-		ret=add_chunk_reference(state, tag);
-		if (ret)
-			goto bad;
-	}
 
 	if (!commit(state->hoard)) {
 		ret=PK_IOERR;
@@ -655,9 +610,6 @@ again:
 	query(NULL, state->hoard, "SELECT tag FROM chunks WHERE tag == ?",
 				"b", tag, state->parcel->hashlen);
 	if (query_has_row(state->hoard)) {
-		ret=add_chunk_reference(state, tag);
-		if (ret)
-			goto bad;
 		if (!commit(state->hoard)) {
 			ret=PK_IOERR;
 			goto bad;
@@ -755,8 +707,7 @@ again:
 		goto bad;
 	}
 	if (!query(NULL, state->db, "INSERT OR IGNORE INTO hoard.refs "
-				"(parcel, tag) SELECT ?, tag FROM temp.newrefs "
-				"WHERE tag IN (SELECT tag FROM hoard.chunks)",
+				"(parcel, tag) SELECT ?, tag FROM temp.newrefs",
 				"d", state->hoard_ident)) {
 		sql_log_err(state->db, "Couldn't insert new hoard refs");
 		goto bad;
