@@ -216,6 +216,7 @@ static pk_err_t expand_slot_cache(struct pk_state *state)
 	int i;
 	int step = state->parcel->chunksize >> 9;
 	int needed=EXPAND_CHUNKS;
+	gchar *type;
 
 	/* First, try to use existing unallocated slots */
 	if (!query(&qry, state->hoard, "INSERT OR IGNORE INTO temp.slots "
@@ -227,46 +228,45 @@ static pk_err_t expand_slot_cache(struct pk_state *state)
 	query_row(qry, "d", &count);
 	query_free(qry);
 	needed -= count;
-
-	/* Now expand the hoard cache as necessary to meet our quota */
-	if (needed > 0) {
-		query(&qry, state->hoard, "SELECT count(*), max(offset) "
-					"FROM chunks", NULL);
-		if (!query_has_row(state->hoard)) {
-			sql_log_err(state->hoard, "Couldn't find max hoard "
-						"cache offset");
-			return PK_IOERR;
-		}
-		query_row(qry, "dd", &count, &start);
-		query_free(qry);
-		if (count)
-			start += step;
-		for (i=0; i<needed; i++) {
-			if (!query(NULL, state->hoard, "INSERT INTO temp.slots "
-						"(offset) VALUES (?)", "d",
-						start + i * step)) {
-				sql_log_err(state->hoard, "Couldn't add new "
-							"offset %d to "
-							"slot cache",
-							start + i * step);
-				return PK_IOERR;
-			}
-		}
-		if (!query(NULL, state->hoard, "INSERT OR IGNORE INTO chunks "
-					"(offset) SELECT offset FROM "
-					"temp.slots", NULL)) {
-			sql_log_err(state->hoard, "Couldn't expand "
-						"hoard cache");
-			return PK_IOERR;
-		}
-	}
-
-	/* Grab allocations for the slots we've chosen */
-	if (!query(NULL, state->hoard, "UPDATE chunks SET tag = NULL, "
-				"length = 0, crypto = 0, allocated = 1 "
+	if (!query(NULL, state->hoard, "UPDATE chunks SET allocated = 1 "
 				"WHERE offset IN "
 				"(SELECT offset FROM temp.slots)", NULL)) {
 		sql_log_err(state->hoard, "Couldn't allocate chunk slots");
+		return PK_IOERR;
+	}
+	if (needed == 0)
+		return PK_SUCCESS;
+
+	/* Now expand the hoard cache as necessary to meet our quota */
+	query(&qry, state->hoard, "SELECT max(offset) FROM chunks", NULL);
+	if (!query_has_row(state->hoard)) {
+		sql_log_err(state->hoard, "Couldn't find max hoard cache "
+					"offset");
+		return PK_IOERR;
+	}
+	/* Distinguish between a max offset of 0 and a NULL value (indicating
+	   that the table is empty) */
+	type = query_column_types(qry);
+	query_row(qry, "d", &start);
+	query_free(qry);
+	if (strcmp(type, "0"))
+		start += step;
+	g_free(type);
+	for (i=0; i<needed; i++) {
+		if (!query(NULL, state->hoard, "INSERT INTO temp.slots "
+					"(offset) VALUES (?)", "d",
+					start + i * step)) {
+			sql_log_err(state->hoard, "Couldn't add new offset %d "
+						"to slot cache",
+						start + i * step);
+			return PK_IOERR;
+		}
+	}
+	if (!query(NULL, state->hoard, "INSERT OR IGNORE INTO chunks "
+				"(offset, allocated) "
+				"SELECT offset, 1 FROM temp.slots",
+				NULL)) {
+		sql_log_err(state->hoard, "Couldn't expand hoard cache");
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
