@@ -1240,6 +1240,10 @@ sub hoard ($) {
 	    decrypt_keyring("$parceldir/prev-keyring") == 0
 		or errexit("Unable to decrypt keyring.enc");
 	    release_lock("Hoard image");
+	    print "Updating hoard cache.\n"
+		if $verbose;
+	    run_parcelkeeper("refresh", "parcel hoard log") == 0
+	        or errexit("Couldn't update hoard cache");
 	}
 
 	# Ask Parcelkeeper to hoard all hdk blocks into local store. If the
