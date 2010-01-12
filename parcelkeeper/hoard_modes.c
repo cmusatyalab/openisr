@@ -217,7 +217,10 @@ again:
 
 	max_mb=(((off64_t)maxchunks) * state->parcel->chunksize) >> 20;
 	valid_mb=(((off64_t)validchunks) * state->parcel->chunksize) >> 20;
-	valid_pct=(100 * validchunks) / maxchunks;
+	if (maxchunks)
+		valid_pct=(100 * validchunks) / maxchunks;
+	else
+		valid_pct=100;
 	printf("Hoard cache : %u%% populated (%u/%u MB)\n", valid_pct,
 				valid_mb, max_mb);
 	return 0;
