@@ -132,7 +132,6 @@ struct pk_config {
 
 	/* miscellaneous parameters */
 	enum compresstype compress;
-	unsigned minsize;  /* MB */
 	gchar *uuid;
 	unsigned nexus_cache; /* MB */
 };

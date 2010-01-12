@@ -40,7 +40,6 @@ enum option {
 	OPT_HOARD,
 	OPT_UUID,
 	OPT_DESTDIR,
-	OPT_MINSIZE,
 	OPT_COMPRESSION,
 	OPT_LOG,
 	OPT_MASK_FILE,
@@ -80,7 +79,6 @@ static const struct pk_option pk_options[] = {
 	{"hoard",          OPT_HOARD,          "hoard_dir"},
 	{"uuid",           OPT_UUID,           "uuid"},
 	{"destdir",        OPT_DESTDIR,        "dir"},
-	{"minsize",        OPT_MINSIZE,        "MB",                       "Don't reclaim hoarded chunks until the hoard cache reaches this size"},
 	{"nexus-cache",    OPT_NEXUS_CACHE,    "MB",                       "Size of the Nexus cache"},
 	{"compression",    OPT_COMPRESSION,    "algorithm",                "Accepted algorithms: none (default), zlib, lzf"},
 	{"log",            OPT_LOG,            "file"},
@@ -106,7 +104,6 @@ struct pk_cmdline_parse_ctx {
 mode(RUN) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         OPTIONAL},
-	{OPT_MINSIZE,       OPTIONAL},
 	{OPT_NEXUS_CACHE,   OPTIONAL},
 	{OPT_COMPRESSION,   OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
@@ -120,7 +117,6 @@ mode(UPLOAD) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_DESTDIR,       REQUIRED},
 	{OPT_HOARD,         OPTIONAL, "Also update the specified hoard cache"},
-	{OPT_MINSIZE,       OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
@@ -130,7 +126,6 @@ mode(UPLOAD) = {
 mode(HOARD) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         REQUIRED},
-	{OPT_MINSIZE,       OPTIONAL},
 	{OPT_CHECK,         OPTIONAL, "Don't download; just return 0 if fully hoarded or 1 otherwise"},
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
@@ -436,11 +431,6 @@ enum mode parse_cmdline(struct pk_config **out, int argc, char **argv)
 			break;
 		case OPT_DESTDIR:
 			conf->dest_dir=g_strdup(ctx.optparam);
-			break;
-		case OPT_MINSIZE:
-			if (parseuint(&conf->minsize, ctx.optparam, 10))
-				PARSE_ERROR(&ctx, "invalid integer value: %s",
-							ctx.optparam);
 			break;
 		case OPT_COMPRESSION:
 			conf->compress=parse_compress(ctx.optparam);
