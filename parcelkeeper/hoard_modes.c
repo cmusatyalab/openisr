@@ -244,31 +244,22 @@ int list_hoard(struct pk_state *state)
 	int p_total;
 	int p_unique;
 	int shared;
-	int unreferenced;
 	int unused;
 	gboolean retry;
 
 again:
 	if (!begin(state->db))
 		return 1;
-	query(&qry, state->db, "SELECT count(tag) FROM hoard.chunks WHERE "
-				"referenced == 1", NULL);
+	query(&qry, state->db, "SELECT count(*) FROM hoard.chunks WHERE "
+				"tag NOTNULL", NULL);
 	if (!query_has_row(state->db)) {
-		sql_log_err(state->db, "Couldn't count referenced chunks");
+		sql_log_err(state->db, "Couldn't count valid chunks");
 		goto out;
 	}
 	query_row(qry, "d", &shared);
 	query_free(qry);
-	query(&qry, state->db, "SELECT count(tag) FROM hoard.chunks WHERE "
-				"referenced == 0", NULL);
-	if (!query_has_row(state->db)) {
-		sql_log_err(state->db, "Couldn't count unreferenced chunks");
-		goto out;
-	}
-	query_row(qry, "d", &unreferenced);
-	query_free(qry);
 	query(&qry, state->db, "SELECT count(*) FROM hoard.chunks WHERE "
-				"tag ISNULL", NULL);
+				"allocated == 0", NULL);
 	if (!query_has_row(state->db)) {
 		sql_log_err(state->db, "Couldn't count unused chunk slots");
 		goto out;
@@ -300,7 +291,6 @@ again:
 	query_free(qry);
 	if (query_ok(state->db)) {
 		printf("shared %d\n", shared);
-		printf("unreferenced %d\n", unreferenced);
 		printf("unused %d\n", unused);
 		ret=0;
 	} else {
@@ -324,7 +314,6 @@ int rmhoard(struct pk_state *state)
 	const char *name;
 	gchar *desc;
 	int parcel;
-	int removed;
 	gboolean retry;
 
 again:
@@ -347,29 +336,8 @@ again:
 	desc = g_strdup_printf("%s/%s/%s", server, user, name);
 	query_free(qry);
 
-	query(&qry, state->db, "SELECT count(*) FROM "
-				"(SELECT parcel FROM hoard.refs GROUP BY tag "
-				"HAVING parcel == ? AND count(*) == 1)", "d",
-				parcel);
-	if (!query_has_row(state->db)) {
-		g_free(desc);
-		sql_log_err(state->db, "Couldn't enumerate unique "
-					"parcel chunks");
-		goto bad;
-	}
-	query_row(qry, "d", &removed);
-	query_free(qry);
-
 	pk_log(LOG_INFO, "Removing parcel %s from hoard cache...", desc);
 	g_free(desc);
-	if (!query(NULL, state->db, "UPDATE hoard.chunks SET referenced = 0 "
-				"WHERE tag IN "
-				"(SELECT tag FROM hoard.refs GROUP BY tag "
-				"HAVING parcel == ? AND count(*) == 1)",
-				"d", parcel)) {
-		sql_log_err(state->db, "Couldn't update referenced flags");
-		goto bad;
-	}
 	if (!query(NULL, state->db, "DELETE FROM hoard.refs WHERE parcel == ?",
 				"d", parcel)) {
 		sql_log_err(state->db, "Couldn't remove parcel from "
@@ -382,7 +350,6 @@ again:
 
 	if (!commit(state->db))
 		goto bad;
-	pk_log(LOG_INFO, "Deallocated %d chunks", removed);
 	return 0;
 
 bad:
@@ -505,7 +472,6 @@ int check_hoard(struct pk_state *state)
 	int crypto;
 	int count;
 	int curcount;
-	int curtime;
 	gboolean retry;
 
 	pk_log(LOG_INFO, "Validating hoard cache");
@@ -576,9 +542,9 @@ again:
 			count++;
 			if (!query(NULL, state->db, "UPDATE hoard.chunks "
 						"SET tag = NULL, length = 0, "
-						"crypto = 0, last_access = 0, "
-						"referenced = 0 WHERE "
-						"offset = ?", "d", offset)) {
+						"crypto = 0, allocated = 0 "
+						"WHERE offset = ?", "d",
+						offset)) {
 				sql_log_err(state->db, "Couldn't deallocate "
 							"offset %d", offset);
 				query_free(qry);
@@ -597,51 +563,29 @@ again:
 
 	/* XXX assumes 128 KB */
 	if (cleanup_action(state->db, "UPDATE hoard.chunks SET tag = NULL, "
-				"length = 0, crypto = 0, last_access = 0, "
-				"referenced = 0 WHERE length < 0 OR "
-				"length > 131072 OR "
+				"length = 0, crypto = 0, allocated = 0 "
+				"WHERE length < 0 OR length > 131072 OR "
 				"(length == 0 AND tag NOTNULL)",
 				LOG_WARNING,
 				"chunks with invalid length"))
 		goto bad;
 	if (cleanup_action(state->db, "UPDATE hoard.chunks SET tag = NULL, "
-				"length = 0, crypto = 0, last_access = 0, "
-				"referenced = 0 WHERE referenced != 0 AND "
-				"referenced != 1",
+				"length = 0, crypto = 0, allocated = 0 "
+				"WHERE allocated != 0 AND allocated != 1",
 				LOG_WARNING,
-				"chunks with invalid referenced flag"))
+				"chunks with invalid allocated flag"))
+		goto bad;
+	if (cleanup_action(state->db, "UPDATE hoard.chunks SET tag = NULL, "
+				"length = 0, crypto = 0 WHERE "
+				"allocated == 0 AND tag NOTNULL",
+				LOG_WARNING,
+				"unallocated chunks with valid tag"))
 		goto bad;
 	if (cleanup_action(state->db, "DELETE FROM hoard.refs WHERE parcel "
 				"NOT IN (SELECT parcel FROM hoard.parcels)",
 				LOG_WARNING,
 				"refs with dangling parcel ID"))
 		goto bad;
-	if (cleanup_action(state->db, "UPDATE hoard.chunks SET referenced = 0 "
-				"WHERE referenced == 1 AND tag NOTNULL AND "
-				"tag NOT IN (SELECT tag FROM hoard.refs)",
-				LOG_WARNING,
-				"chunks with spurious referenced flag"))
-		goto bad;
-	if (cleanup_action(state->db, "UPDATE hoard.chunks SET referenced = 1 "
-				"WHERE referenced == 0 AND tag IN "
-				"(SELECT tag FROM hoard.refs)",
-				LOG_WARNING,
-				"chunks with missing referenced flag"))
-		goto bad;
-
-	curtime=time(NULL);
-	if (!query(&qry, state->db, "UPDATE hoard.chunks SET last_access = ? "
-				"WHERE last_access > ?", "dd", curtime,
-				curtime + 10)) {
-		sql_log_err(state->db, "Couldn't locate chunks with invalid "
-					"timestamps");
-		goto bad;
-	}
-	query_row(qry, "d", &count);
-	query_free(qry);
-	if (count)
-		pk_log(LOG_WARNING, "Repaired %d chunks with timestamps in "
-					"the future", count);
 
 	/* If we're going to do a FULL_CHECK, then get the necessary metadata
 	   *now* while we still know it's consistent. */
