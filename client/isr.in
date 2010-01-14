@@ -1931,9 +1931,12 @@ sub clientcommit($) {
     #
     if ($releasing) {
 	# There's no point in copying the keyring to prev-keyring if the
-	# whole directory tree is going to be removed.  SIGINT is blocked, and
+	# whole directory tree is going to be removed; we just rename it so
+	# that the hoard cache refresh will work.  SIGINT is blocked, and
 	# must remain blocked until the lock is released.
 	message("Client side commit - skipping copy of keyring");
+	rename("$parceldir/keyring", "$parceldir/prev-keyring")
+	    or unix_errexit("Unable to move keyring to $parceldir/prev-keyring.");
     } else {
 	message("Client side commit - start copying keyring");
 	copy("$parceldir/keyring", "$parceldir/prev-keyring")
@@ -1967,6 +1970,14 @@ sub clientcommit($) {
     message("Client side commit - start removing upload directory");
     system("rm -rf $uploaddir");
     message("Client side commit - finish removing upload directory");
+
+    #
+    # Release hoard cache references for previous parcel version
+    #
+    message("Client side commit - start hoard cache reference update");
+    run_parcelkeeper("refresh", "parcel hoard log") == 0
+        or errexit("Could not refresh hoard cache");
+    message("Client side commit - end hoard cache reference update");
 }
 
 

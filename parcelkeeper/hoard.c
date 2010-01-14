@@ -651,7 +651,7 @@ bad:
 
 /* We use state->db rather than state->hoard in this function, since we need to
    compare to the previous or current keyring */
-pk_err_t hoard_sync_refs(struct pk_state *state, gboolean from_cache)
+pk_err_t hoard_sync_refs(struct pk_state *state, gboolean new_chunks)
 {
 	gboolean retry;
 
@@ -661,7 +661,7 @@ pk_err_t hoard_sync_refs(struct pk_state *state, gboolean from_cache)
 again:
 	if (!begin_immediate(state->db))
 		return PK_IOERR;
-	if (from_cache)
+	if (new_chunks)
 		query(NULL, state->db, "CREATE TEMP TABLE newrefs AS "
 					"SELECT DISTINCT tag FROM keys", NULL);
 	else
@@ -677,11 +677,15 @@ again:
 		sql_log_err(state->db, "Couldn't create tag index");
 		goto bad;
 	}
-	if (!query(NULL, state->db, "DELETE FROM hoard.refs WHERE parcel == ? "
-				"AND tag NOT IN (SELECT tag FROM temp.newrefs)",
-				"d", state->hoard_ident)) {
-		sql_log_err(state->db, "Couldn't garbage-collect hoard refs");
-		goto bad;
+	if (!new_chunks) {
+		if (!query(NULL, state->db, "DELETE FROM hoard.refs WHERE "
+					"parcel == ? AND tag NOT IN "
+					"(SELECT tag FROM temp.newrefs)",
+					"d", state->hoard_ident)) {
+			sql_log_err(state->db, "Couldn't garbage-collect "
+						"hoard refs");
+			goto bad;
+		}
 	}
 	if (!query(NULL, state->db, "INSERT OR IGNORE INTO hoard.refs "
 				"(parcel, tag) SELECT ?, tag FROM temp.newrefs",
