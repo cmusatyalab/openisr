@@ -179,6 +179,14 @@ mode(RMHOARD) = {
 	{END_OPTS}
 };
 
+mode(GCHOARD) = {
+	{OPT_HOARD,         REQUIRED},
+	{OPT_LOG,           OPTIONAL},
+	{OPT_MASK_FILE,     OPTIONAL},
+	{OPT_MASK_STDERR,   OPTIONAL},
+	{END_OPTS}
+};
+
 mode(REFRESH) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         REQUIRED},
@@ -207,6 +215,7 @@ mode(VERSION) = {
 #define LISTHOARD_flags		0
 #define CHECKHOARD_flags	0
 #define RMHOARD_flags		0
+#define GCHOARD_flags		0
 #define REFRESH_flags		WANT_PREV
 #define HELP_flags		0
 #define VERSION_flags		0
@@ -221,6 +230,7 @@ static const struct pk_mode pk_modes[] = {
 	{"listhoard",   sym(LISTHOARD),  "List parcels in hoard cache"},
 	{"checkhoard",  sym(CHECKHOARD), "Validate hoard cache"},
 	{"rmhoard",     sym(RMHOARD),    "Remove parcel from hoard cache"},
+	{"gchoard",     sym(GCHOARD),    "Remove stale chunks from hoard cache"},
 	{"refresh",     sym(REFRESH),    "Update hoard cache reference list"},
 	{"help",        sym(HELP),       "Show usage summary"},
 	{"version",     sym(VERSION),    "Show version information"},

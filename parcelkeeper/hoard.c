@@ -51,7 +51,6 @@ again:							\
 
 static pk_err_t create_hoard_index(struct pk_state *state)
 {
-	/* XXX auto_vacuum */
 	if (!query(NULL, state->hoard, "PRAGMA user_version = "
 				G_STRINGIFY(HOARD_INDEX_VERSION), NULL)) {
 		sql_log_err(state->hoard, "Couldn't set schema version");
