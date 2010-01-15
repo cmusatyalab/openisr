@@ -568,6 +568,18 @@ bad:
 	return ret;
 }
 
+pk_err_t _hoard_write_chunk(struct pk_state *state, unsigned offset,
+			unsigned length, const void *buf)
+{
+	if (pwrite(state->hoard_fd, buf, length, ((off_t)offset) << 9) !=
+				(int)length) {
+		pk_log(LOG_ERROR, "Couldn't write hoard cache: offset %d, "
+					"length %d", offset, length);
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
 pk_err_t hoard_put_chunk(struct pk_state *state, const void *tag,
 			const void *buf, unsigned len)
 {
@@ -625,15 +637,10 @@ again:
 		ret=PK_IOERR;
 		goto bad;
 	}
-
-	if (pwrite(state->hoard_fd, buf, len, ((off_t)offset) << 9) !=
-				(int)len) {
-		pk_log(LOG_ERROR, "Couldn't write hoard cache: offset %d, "
-					"length %d", offset, len);
+	if (_hoard_write_chunk(state, offset, len, buf)) {
 		ret=PK_IOERR;
 		goto bad;
 	}
-
 	if (!commit(state->hoard)) {
 		pk_log(LOG_ERROR, "Couldn't commit hoard cache chunk");
 		ret=PK_IOERR;
