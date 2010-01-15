@@ -225,6 +225,8 @@ int examine_cache(struct pk_state *state);
 /* hoard.c */
 pk_err_t hoard_init(struct pk_state *state);
 void hoard_shutdown(struct pk_state *state);
+pk_err_t _hoard_read_chunk(struct pk_state *state, int offset, int length,
+			int crypto, const void *tag, int taglen, void *buf);
 pk_err_t hoard_get_chunk(struct pk_state *state, const void *tag, void *buf,
 			unsigned *len);
 pk_err_t hoard_put_chunk(struct pk_state *state, const void *tag,

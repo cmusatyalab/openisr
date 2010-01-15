@@ -438,11 +438,53 @@ TRANSACTION_WRAPPER
 #undef TRANSACTION_DECL
 #undef TRANSACTION_CALL
 
+pk_err_t _hoard_read_chunk(struct pk_state *state, int offset, int length,
+			int crypto, const void *tag, int taglen, void *buf)
+{
+	unsigned hashlen = crypto_hashlen(crypto);
+	char calctag[hashlen];
+	pk_err_t ret;
+
+	/* Check expected tag length */
+	if (taglen != (int) hashlen) {
+		pk_log(LOG_WARNING, "Hoard chunk has incorrect tag length %d "
+					"(expected %d)", taglen, hashlen);
+		return PK_BADFORMAT;
+	}
+
+	/* Check chunk offset and length */
+	if (offset < 0 || length <= 0 || (state->parcel != NULL &&
+				(unsigned)length > state->parcel->chunksize)) {
+		pk_log(LOG_WARNING, "Hoard chunk has unreasonable "
+					"offset/length %d/%d", offset, length);
+		return PK_BADFORMAT;
+	}
+
+	/* Read the data */
+	if (pread(state->hoard_fd, buf, length, ((off_t)offset) << 9)
+				!= length) {
+		pk_log(LOG_WARNING, "Couldn't read hoard chunk at offset %d",
+					offset);
+		return PK_IOERR;
+	}
+
+	/* Check its hash */
+	ret = digest(crypto, calctag, buf, length);
+	if (ret)
+		return ret;
+	if (memcmp(tag, calctag, hashlen)) {
+		pk_log(LOG_WARNING, "Tag mismatch reading hoard cache at "
+					"offset %d", offset);
+		log_tag_mismatch(tag, calctag, hashlen);
+		return PK_TAGFAIL;
+	}
+	return PK_SUCCESS;
+}
+
 pk_err_t hoard_get_chunk(struct pk_state *state, const void *tag, void *buf,
 			unsigned *len)
 {
 	struct query *qry;
-	char calctag[state->parcel->hashlen];
 	int offset;
 	int clen;
 	pk_err_t ret;
@@ -490,31 +532,21 @@ again:
 		query_free(qry);
 	}
 
-	if (offset < 0 || clen <= 0 || (unsigned)clen >
-				state->parcel->chunksize) {
-		pk_log(LOG_ERROR, "Chunk has unreasonable offset/length "
-					"%d/%d; invalidating", offset, clen);
-		if (slot_cache)
-			ret=_hoard_invalidate_slot_chunk(state, offset);
-		else
-			ret=_hoard_invalidate_chunk(state, offset, tag,
-						state->parcel->hashlen);
-		if (ret)
-			goto bad;
-		ret=PK_BADFORMAT;
-		if (!commit(state->hoard))
-			goto bad;
-		return ret;
-	}
-
 	if (!commit(state->hoard)) {
 		ret=PK_IOERR;
 		goto bad;
 	}
 
-	if (pread(state->hoard_fd, buf, clen, ((off_t)offset) << 9) != clen) {
-		pk_log(LOG_ERROR, "Couldn't read chunk at offset %d, retrying",
-					offset);
+	if (!_hoard_read_chunk(state, offset, clen, state->parcel->crypto,
+				tag, state->parcel->hashlen, buf)) {
+		/* Read failures can occur if the chunk has been moved due
+		   to GC compaction, so we don't want to blindly invalidate
+		   the slot in case some other data has been stored there
+		   in the interim.  Therefore, _hoard_invalidate_chunk()
+		   checks that the tag/index pair is still present in the
+		   chunks table before invalidating the slot.  If we're
+		   working from the slot cache, this race does not apply. */
+		pk_log(LOG_ERROR, "Invalidating chunk and retrying");
 		if (slot_cache)
 			hoard_invalidate_slot_chunk(state, offset);
 		else
@@ -523,32 +555,6 @@ again:
 		/* GC could have moved the chunk, try again */
 		goto again;
 	}
-
-	/* Make sure the stored hash matches the actual hash of the data.
-	   If not, remove the chunk from the hoard cache.  If the chunk
-	   has been moved due to GC compaction, we'll find a hash mismatch,
-	   so we don't want to blindly invalidate the slot in case some
-	   other data has been stored there in the interim.  Therefore,
-	   _hoard_invalidate_chunk() checks that the tag/index pair is still
-	   present in the chunks table before invalidating the slot.  If
-	   we're working from the slot cache, this race does not apply. */
-
-	ret=digest(state->parcel->crypto, calctag, buf, clen);
-	if (ret)
-		return ret;
-	if (memcmp(tag, calctag, state->parcel->hashlen)) {
-		pk_log(LOG_ERROR, "Tag mismatch reading hoard cache at "
-					"offset %d, retrying", offset);
-		log_tag_mismatch(tag, calctag, state->parcel->hashlen);
-		if (slot_cache)
-			hoard_invalidate_slot_chunk(state, offset);
-		else
-			hoard_invalidate_chunk(state, offset, tag,
-						state->parcel->hashlen);
-		/* GC could have moved the chunk, try again */
-		goto again;
-	}
-
 	*len=clen;
 	return PK_SUCCESS;
 
