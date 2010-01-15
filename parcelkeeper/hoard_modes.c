@@ -414,14 +414,12 @@ static pk_err_t check_hoard_data(struct pk_state *state)
 	struct query *qry;
 	char buf[131072];  /* XXX assumes 128 KB */
 	const void *tag;
-	char calctag[64];  /* XXX */
 	unsigned taglen;
 	unsigned offset;
 	unsigned len;
 	int crypto;
 	off64_t examined_bytes;
 	off64_t total_bytes;
-	pk_err_t ret;
 	int count;
 	gboolean retry;
 
@@ -448,26 +446,10 @@ again:
 		query_row(qry, "bddd", &tag, &taglen, &offset, &len, &crypto);
 		examined_bytes += len;
 		print_progress_mb(examined_bytes, total_bytes);
-		/* We assume the taglen, crypto suite, and chunk length are
-		   good, because check_hoard() already validated these */
-		if (pread(state->hoard_fd, buf, len, ((off_t)offset) << 9)
-					!= (off_t)len) {
-			pk_log(LOG_ERROR, "Couldn't read chunk at offset %d",
-						offset);
-			hoard_invalidate_chunk(state, offset, tag, taglen);
-			count++;
-			continue;
-		}
-
-		if (digest(crypto, calctag, buf, len)) {
-			pk_log(LOG_ERROR, "digest() failed");
-			ret=PK_CALLFAIL;
-			continue;
-		}
-		if (memcmp(tag, calctag, taglen)) {
-			pk_log(LOG_WARNING, "Tag mismatch at offset %d",
-						offset);
-			log_tag_mismatch(tag, calctag, taglen);
+		/* We assume the taglen and crypto suite are good, because
+		   check_hoard() already validated these */
+		if (_hoard_read_chunk(state, offset, len, crypto, tag, taglen,
+					buf)) {
 			hoard_invalidate_chunk(state, offset, tag, taglen);
 			count++;
 		}
@@ -485,7 +467,7 @@ again:
 		goto bad;
 	if (count)
 		pk_log(LOG_WARNING, "Removed %d invalid chunks", count);
-	return ret;
+	return PK_SUCCESS;
 
 bad:
 	retry = query_busy(state->db);
