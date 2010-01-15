@@ -383,18 +383,12 @@ static pk_err_t _hoard_invalidate_chunk(struct pk_state *state, int offset,
 			const void *tag, unsigned taglen)
 {
 	struct query *qry;
-	char *ftag;
 
 	query(&qry, state->hoard, "SELECT offset FROM chunks WHERE "
 				"offset == ? AND tag == ?", "db",
 				offset, tag, taglen);
 	if (query_ok(state->hoard)) {
-		/* Harmless: it's already not there.  But let's warn anyway. */
-		ftag=format_tag(tag, taglen);
-		pk_log(LOG_ERROR, "Attempted to invalidate tag %s at "
-					"offset %d, but it does not exist "
-					"(harmless)", ftag, offset);
-		g_free(ftag);
+		/* It's already not there. */
 		return PK_SUCCESS;
 	} else if (!query_has_row(state->hoard)) {
 		sql_log_err(state->hoard, "Could not query chunk list");
@@ -519,38 +513,40 @@ again:
 	}
 
 	if (pread(state->hoard_fd, buf, clen, ((off_t)offset) << 9) != clen) {
-		pk_log(LOG_ERROR, "Couldn't read chunk at offset %d", offset);
+		pk_log(LOG_ERROR, "Couldn't read chunk at offset %d, retrying",
+					offset);
 		if (slot_cache)
 			hoard_invalidate_slot_chunk(state, offset);
 		else
 			hoard_invalidate_chunk(state, offset, tag,
 						state->parcel->hashlen);
-		return PK_IOERR;
+		/* GC could have moved the chunk, try again */
+		goto again;
 	}
 
 	/* Make sure the stored hash matches the actual hash of the data.
-	   If not, remove the chunk from the hoard cache.  If the reference
-	   is released right now (e.g. by an rmhoard) and the chunk slot is
-	   immediately reused, we'll find a hash mismatch, but we don't want
-	   to blindly invalidate the slot because some other data has been
-	   stored there in the interim.  Therefore, _hoard_invalidate_chunk()
-	   checks that the tag/index pair is still present in the chunks
-	   table before invalidating the slot.  If we're working from the
-	   slot cache, this race does not apply. */
+	   If not, remove the chunk from the hoard cache.  If the chunk
+	   has been moved due to GC compaction, we'll find a hash mismatch,
+	   so we don't want to blindly invalidate the slot in case some
+	   other data has been stored there in the interim.  Therefore,
+	   _hoard_invalidate_chunk() checks that the tag/index pair is still
+	   present in the chunks table before invalidating the slot.  If
+	   we're working from the slot cache, this race does not apply. */
 
 	ret=digest(state->parcel->crypto, calctag, buf, clen);
 	if (ret)
 		return ret;
 	if (memcmp(tag, calctag, state->parcel->hashlen)) {
 		pk_log(LOG_ERROR, "Tag mismatch reading hoard cache at "
-					"offset %d", offset);
+					"offset %d, retrying", offset);
 		log_tag_mismatch(tag, calctag, state->parcel->hashlen);
 		if (slot_cache)
 			hoard_invalidate_slot_chunk(state, offset);
 		else
 			hoard_invalidate_chunk(state, offset, tag,
 						state->parcel->hashlen);
-		return PK_TAGFAIL;
+		/* GC could have moved the chunk, try again */
+		goto again;
 	}
 
 	*len=clen;
