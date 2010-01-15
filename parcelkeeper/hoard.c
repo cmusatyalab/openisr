@@ -452,7 +452,7 @@ pk_err_t hoard_get_chunk(struct pk_state *state, const void *tag, void *buf,
 	int offset;
 	int clen;
 	pk_err_t ret;
-	int slot_cache=0;
+	gboolean slot_cache;
 	gboolean retry;
 
 	if (state->conf->hoard_dir == NULL)
@@ -473,9 +473,10 @@ again:
 	if (query_has_row(state->hoard)) {
 		query_row(qry, "dd", &offset, &clen);
 		query_free(qry);
-		slot_cache=1;
+		slot_cache = TRUE;
 	} else {
 		/* Now query the hoard cache */
+		slot_cache = FALSE;
 		query(&qry, state->hoard, "SELECT offset, length FROM chunks "
 					"WHERE tag == ?", "b", tag,
 					state->parcel->hashlen);
