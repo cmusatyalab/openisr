@@ -341,7 +341,7 @@ def create_machine():
 	vm.VRAMSize = 16
 	vm.snapshotFolder = '.'
 	vm.audioAdapter.enabled = True
-	vm.audioAdapter.audioDriver = ifaces.AudioDriverType.ALSA
+	vm.audioAdapter.audioDriver = ifaces.AudioDriverType.Pulse
 	try:
 		# Not supported with VirtualBox OSE
 		vm.USBController.enabled = True
