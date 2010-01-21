@@ -167,7 +167,7 @@ _isr_vmms() {
 
 _isr_parameter_takes_option() {
 	case $1 in
-	-b|--bwlimit|-L|--longvers|-m|--vmm|-r|--rollback|-s|--server|-u|--user)
+	-b|--bwlimit|-C|--compression|-L|--longvers|-m|--vmm|-r|--rollback|-s|--server|-u|--user)
 		return 0
 		;;
 	esac
