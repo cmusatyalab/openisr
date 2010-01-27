@@ -357,6 +357,7 @@ def create_machine():
 	net.attachToNAT()
 	net.enabled = True
 	vm.setExtraData('GUI/LastCloseAction', 'save')
+	vm.setExtraData('GUI/FirstRun', 'yes')
 	vm.saveSettings()
 	del vm
 	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), vm_path)
