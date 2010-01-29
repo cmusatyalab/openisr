@@ -937,24 +937,25 @@ sub run () {
     set_suspended(%results);
     
     # Signal Parcelkeeper to shut down and wait until it is gone
-    print "Shutting down Parcelkeeper (pid=$pk_pid)"
+    print "Shutting down Parcelkeeper..."
 	if $verbose;
     kill("TERM", $pk_pid);
     $kill_pk = 0;
     message("Sent SIGTERM signal to Parcelkeeper (pid=$pk_pid)");
     $iters = 0;
     while (1) {
-	if (++$iters > 60) {
-	    print "\n";
-	    errexit("Unable to shutdown Parcelkeeper");
-	}
-	print "."
+	print qw(- \ | /)[$iters % 4] . "\b"
 	    if $verbose;
+	if (++$iters == 30 and $verbose) {
+	    print RED, " \nParcelkeeper is not shutting down.  Verify that " .
+				"the VMM has exited.\n", RESET;
+	    print "Still waiting for Parcelkeeper to exit...";
+	}
 	last
 	    if get_parcelkeeper_pid() == 0;
 	sleep(1);
     }
-    print "\n"
+    print " \n"
 	if $verbose;
 }
 
