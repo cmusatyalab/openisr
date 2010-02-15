@@ -370,7 +370,7 @@ sub prune ($$$) {
 	for ($i = $firstver; $i <= $lastvertoprune; $i++) {
 	    $dirname = sprintf("%06d", $i);
 	    $dirpath = "$parceldir/$dirname";
-	    print "Deleting $dirpath...\n";
+	    print "Deleting $userid/$parcel/$dirname...\n";
 	    system("rm -rf $dirpath") == 0
 		or system_errexit("Unable to delete $dirpath.");
 	}
@@ -815,6 +815,7 @@ sub copyparcel ($$$$$) {
     my $dstparcelcfg;
     my $parceldir;
     my $srcverpath;
+    my $srcver;
     my $dstkeyroot;
     my $file;
 
@@ -840,10 +841,11 @@ sub copyparcel ($$$$$) {
     ($parceldir, $dstparcelcfg) = init_parceldir($userid, $parcel);
 
     # Determine the last version that was checked in
-    $srcverpath = get_last_parcelverdir($srcpath);
+    $srcver = $srcverpath = get_last_parcelverdir($srcpath);
+    $srcver =~ s:.*/::;
 
     # Copy the parcel metadata and memory image, and decrypt it
-    print "Copying $srcverpath to $parceldir/000001...\n";
+    print "Copying $srcuserid/$srcparcel/$srcver to $userid/$parcel/000001...\n";
     for $file ("cfg.tgz.enc", "keyring.enc") {
         copy("$srcverpath/$file", "$parceldir/000001/$file")
             or unix_errexit("Couldn't write new $file");
