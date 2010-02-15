@@ -107,6 +107,10 @@ sub check_runnable {
 		fail "Could not find a supported version of KVM"
 			unless defined $program;
 	}
+	fail "Could not locate KVM control device"
+		unless -e "/dev/kvm";
+	fail "Could not access KVM control device"
+		unless -r _ and -w _;
 }
 
 sub find_cdrom {
