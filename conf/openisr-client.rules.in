@@ -1,12 +1,16 @@
 # OpenISR client udev rules
-# Does not use newer udev syntax for compatibility with old versions
 
 SUBSYSTEM=="misc", KERNEL=="openisrctl", \
 		GROUP="!!ISRGROUP!!", MODE="0660"
 
-# Set block device owner and permissions
+# Set block device owner and permissions, and set DeviceKit-disks and udisks
+# properties telling file managers not to display or mount Nexus devices
 ACTION!="remove", SUBSYSTEM=="block", KERNEL=="openisr*", \
-		RUN="!!SHAREDIR!!/set_device_owner", MODE="0600"
+		RUN="!!SHAREDIR!!/set_device_owner", MODE="0600", \
+		ENV{DKD_PRESENTATION_HIDE}="1", \
+		ENV{DKD_PRESENTATION_NOPOLICY}="1", \
+		ENV{UDISKS_PRESENTATION_HIDE}="1", \
+		ENV{UDISKS_PRESENTATION_NOPOLICY}="1"
 
 # Add persistent symlinks
 SUBSYSTEM=="block", KERNEL=="openisr[a-z]", \
