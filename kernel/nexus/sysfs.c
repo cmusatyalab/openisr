@@ -23,28 +23,28 @@
 #include <linux/device.h>
 #include "defs.h"
 
-static ssize_t drv_show_version(struct class *c, char *buf)
+static declare_classdev_show(drv_show_version, c, buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%u\n", NEXUS_INTERFACE_VERSION);
 }
 
-static ssize_t drv_show_release(struct class *c, char *buf)
+static declare_classdev_show(drv_show_release, c, buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%s\n", isr_release);
 }
 
-static ssize_t drv_show_revision(struct class *c, char *buf)
+static declare_classdev_show(drv_show_revision, c, buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%s\n", rcs_revision);
 }
 
 #ifdef DEBUG
-static ssize_t drv_show_debug(struct class *c, char *buf)
+static declare_classdev_show(drv_show_debug, c, buf)
 {
 	return snprintf(buf, PAGE_SIZE, "0x%x\n", debug_mask);
 }
 
-static ssize_t drv_store_debug(struct class *c, const char *buf, size_t len)
+static declare_classdev_store(drv_store_debug, c, buf, len)
 {
 	char *endp;
 	unsigned tmp;

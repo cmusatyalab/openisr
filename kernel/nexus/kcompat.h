@@ -122,6 +122,21 @@ typedef struct device_attribute kdevice_attribute_t;
 				const char *buf_p, size_t len_p)
 #endif
 
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
+#define declare_classdev_show(name, class_p, buf_p) \
+	ssize_t name(struct class *class_p, char *buf_p)
+#define declare_classdev_store(name, class_p, buf_p, len_p) \
+	ssize_t name(struct class *class_p, const char *buf_p, size_t len_p)
+#else
+#define declare_classdev_show(name, class_p, buf_p) \
+	ssize_t name(struct class *class_p, struct class_attribute *attr, \
+				char *buf_p)
+#define declare_classdev_store(name, class_p, buf_p, len_p) \
+	ssize_t name(struct class *class_p, struct class_attribute *attr, \
+				const char *buf_p, size_t len_p)
+#endif
+
 /***** Block layer ***********************************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
