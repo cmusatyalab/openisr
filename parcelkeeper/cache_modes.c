@@ -211,7 +211,7 @@ damaged:
 	goto out;
 }
 
-static pk_err_t validate_sqlite(struct pk_state *state)
+static pk_err_t validate_sqlite(struct pk_state *state, gboolean *ok)
 {
 	gboolean retry;
 	pk_err_t ret;
@@ -228,6 +228,7 @@ static pk_err_t validate_sqlite(struct pk_state *state)
 again:
 	if (!begin(state->db)) {
 		pk_log(LOG_WARNING, "...failed");
+		*ok = FALSE;
 		return PK_BADFORMAT;
 	}
 	if (!query(NULL, state->db, "DROP INDEX keys_tags", NULL)) {
@@ -243,8 +244,10 @@ again:
 		goto bad;
 
 	pk_log(LOG_WARNING, "Recreated indexes.  Rechecking database...");
-	if (!validate_db(state->db))
+	if (!validate_db(state->db)) {
+		*ok = FALSE;
 		return PK_BADFORMAT;
+	}
 
 	if (!cache_test_flag(state, CA_F_DAMAGED)) {
 		pk_log(LOG_WARNING, "Recheck passed.  Flagging cache for "
@@ -264,10 +267,11 @@ bad:
 		query_backoff(state->db);
 		goto again;
 	}
+	*ok = FALSE;
 	return PK_BADFORMAT;
 }
 
-static pk_err_t validate_keyring(struct pk_state *state)
+static pk_err_t validate_keyring(struct pk_state *state, gboolean *ok)
 {
 	struct query *qry;
 	unsigned expected_chunk;
@@ -290,18 +294,21 @@ again:
 						"than parcel size %u", chunk,
 						state->parcel->chunks);
 			ret=PK_INVALID;
+			*ok=FALSE;
 			continue;
 		}
 		if (chunk < expected_chunk) {
 			pk_log(LOG_WARNING, "Found unexpected keyring entry "
 						"for chunk %u", chunk);
 			ret=PK_INVALID;
+			*ok=FALSE;
 			continue;
 		}
 		while (expected_chunk < chunk) {
 			pk_log(LOG_WARNING, "Missing keyring entry for chunk "
 						"%u", expected_chunk);
 			ret=PK_INVALID;
+			*ok=FALSE;
 			expected_chunk++;
 		}
 		expected_chunk++;
@@ -310,18 +317,21 @@ again:
 						"%u, found %u", chunk,
 						state->parcel->hashlen, taglen);
 			ret=PK_INVALID;
+			*ok=FALSE;
 		}
 		if (keylen != state->parcel->hashlen) {
 			pk_log(LOG_WARNING, "Chunk %u: expected key length "
 						"%u, found %u", chunk,
 						state->parcel->hashlen, keylen);
 			ret=PK_INVALID;
+			*ok=FALSE;
 		}
 		if (!compress_is_valid(state->parcel, compress)) {
 			pk_log(LOG_WARNING, "Chunk %u: invalid or unsupported "
 						"compression type %u", chunk,
 						compress);
 			ret=PK_INVALID;
+			*ok=FALSE;
 		}
 	}
 	query_free(qry);
@@ -359,7 +369,7 @@ static pk_err_t revert_chunk(struct pk_state *state, int chunk)
 	return PK_SUCCESS;
 }
 
-static pk_err_t validate_cachefile(struct pk_state *state)
+static pk_err_t validate_cachefile(struct pk_state *state, gboolean *ok)
 {
 	struct query *qry;
 	void *buf;
@@ -409,6 +419,7 @@ again:
 			}
 		}
 		ret=PK_INVALID;
+		*ok=FALSE;
 	}
 	query_free(qry);
 	if (!query_ok(state->db)) {
@@ -431,18 +442,21 @@ again:
 						"parcel size %u", chunk,
 						state->parcel->chunks);
 			ret=PK_INVALID;
+			*ok=FALSE;
 			continue;
 		}
 		if (chunklen > state->parcel->chunksize || chunklen == 0) {
 			pk_log(LOG_WARNING, "Chunk %u: absurd size %u",
 						chunk, chunklen);
 			ret=PK_INVALID;
+			*ok=FALSE;
 			continue;
 		}
 		if (tag == NULL) {
 			pk_log(LOG_WARNING, "Found valid chunk %u with no "
 						"keyring entry", chunk);
 			ret=PK_INVALID;
+			*ok=FALSE;
 			continue;
 		}
 		if (taglen != state->parcel->hashlen) {
@@ -450,6 +464,7 @@ again:
 						"%u, found %u", chunk,
 						state->parcel->hashlen, taglen);
 			ret=PK_INVALID;
+			*ok=FALSE;
 			continue;
 		}
 
@@ -476,6 +491,7 @@ again:
 					}
 				}
 				ret=PK_TAGFAIL;
+				*ok=FALSE;
 			}
 		}
 	}
@@ -507,6 +523,7 @@ int validate_cache(struct pk_state *state)
 {
 	int ret=0;
 	pk_err_t err;
+	gboolean ok=TRUE;
 
 	if (state->conf->flags & WANT_CHECK) {
 		/* Don't actually do any validation; just see where we are */
@@ -519,40 +536,44 @@ int validate_cache(struct pk_state *state)
 
 	pk_log(LOG_INFO, "Validating databases");
 	printf("Validating databases...\n");
-	err=validate_sqlite(state);
+	err=validate_sqlite(state, &ok);
 	if (err)
-		goto bad;
+		goto out;
 
 	pk_log(LOG_INFO, "Validating keyring");
 	printf("Validating keyring...\n");
-	err=validate_keyring(state);
+	err=validate_keyring(state, &ok);
 	if (err)
-		goto bad;
+		goto out;
 
 	pk_log(LOG_INFO, "Checking cache consistency");
 	printf("Checking local cache for internal consistency...\n");
-	err=validate_cachefile(state);
-	if (err)
-		goto bad;
+	err=validate_cachefile(state, &ok);
 
-	if (cache_test_flag(state, CA_F_DIRTY)) {
-		if (state->conf->flags & WANT_FULL_CHECK) {
-			cache_clear_flag(state, CA_F_DIRTY);
-		} else {
-			pk_log(LOG_INFO, "Not clearing dirty flag: full check "
-						"not requested");
-			printf("Not clearing dirty flag: full check "
+out:
+	/* !ok means we should set the damaged flag.
+	   err != 0 means some test encountered a fatal error (== don't
+	   call further test functions), which may or may not be because
+	   the cache is damaged. */
+	if (ok && err == PK_SUCCESS) {
+		if (cache_test_flag(state, CA_F_DIRTY)) {
+			if (state->conf->flags & WANT_FULL_CHECK) {
+				cache_clear_flag(state, CA_F_DIRTY);
+			} else {
+				pk_log(LOG_INFO, "Not clearing dirty flag: "
+						"full check not requested");
+				printf("Not clearing dirty flag: full check "
 						"not requested\n");
+			}
 		}
+		return 0;
+	} else {
+		if (!ok) {
+			if (cache_set_flag(state, CA_F_DAMAGED) == PK_SUCCESS)
+				cache_clear_flag(state, CA_F_DIRTY);
+		}
+		return 1;
 	}
-	return 0;
-
-bad:
-	if (err == PK_BADFORMAT || err == PK_INVALID || err == PK_TAGFAIL) {
-		if (cache_set_flag(state, CA_F_DAMAGED) == PK_SUCCESS)
-			cache_clear_flag(state, CA_F_DIRTY);
-	}
-	return 1;
 }
 
 int examine_cache(struct pk_state *state)
