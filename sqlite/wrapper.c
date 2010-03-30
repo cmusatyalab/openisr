@@ -884,7 +884,7 @@ gboolean validate_db(struct db *db)
 
 	db_get(db);
 again:
-	query(&qry, db, "PRAGMA integrity_check(1)", NULL);
+	query(&qry, db, "PRAGMA integrity_check(50)", NULL);
 	if (query_busy(db)) {
 		query_backoff(db);
 		goto again;
@@ -895,11 +895,14 @@ again:
 	}
 	query_row(qry, "s", &str);
 	res=strcmp(str, "ok");
-	query_free(qry);
-	db_put(db);
 	if (res) {
 		g_message("SQLite integrity check failed");
-		return FALSE;
+		for (; query_has_row(db); query_next(qry)) {
+			query_row(qry, "s", &str);
+			g_message("Integrity: %s", str);
+		}
 	}
-	return TRUE;
+	query_free(qry);
+	db_put(db);
+	return res ? FALSE : TRUE;
 }
