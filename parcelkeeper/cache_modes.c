@@ -463,8 +463,10 @@ again:
 				log_tag_mismatch(tag, calctag, taglen);
 				if (state->conf->flags & WANT_SPLICE) {
 					ret=revert_chunk(state, chunk);
-					if (ret)
+					if (ret) {
+						query_free(qry);
 						goto bad;
+					}
 				}
 				ret=PK_TAGFAIL;
 			}
