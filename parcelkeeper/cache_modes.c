@@ -401,6 +401,13 @@ again:
 		query_row(qry, "d", &chunk);
 		pk_log(LOG_WARNING, "Chunk %u: modified but not present",
 					chunk);
+		if (state->conf->flags & WANT_SPLICE) {
+			ret=revert_chunk(state, chunk);
+			if (ret) {
+				query_free(qry);
+				goto bad;
+			}
+		}
 		ret=PK_INVALID;
 	}
 	query_free(qry);
