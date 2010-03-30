@@ -211,6 +211,62 @@ damaged:
 	goto out;
 }
 
+static pk_err_t validate_sqlite(struct pk_state *state)
+{
+	gboolean retry;
+	pk_err_t ret;
+
+	if (validate_db(state->db))
+		return PK_SUCCESS;
+
+	/* SQLite database is corrupt.  There have been multiple occasions
+	   in which this has been fixable by dropping and recreating
+	   indexes.  The only index in the keyring or cache databases is
+	   main.keys_tags; recreate that and try the check again. */
+	pk_log(LOG_WARNING, "Database check failed; trying to "
+				"recreate indexes...");
+again:
+	if (!begin(state->db)) {
+		pk_log(LOG_WARNING, "...failed");
+		return PK_BADFORMAT;
+	}
+	if (!query(NULL, state->db, "DROP INDEX keys_tags", NULL)) {
+		sql_log_err(state->db, "Couldn't drop keys_tags index");
+		goto bad;
+	}
+	if (!query(NULL, state->db, "CREATE INDEX keys_tags on keys (tag)",
+				NULL)) {
+		sql_log_err(state->db, "Couldn't create keys_tags index");
+		goto bad;
+	}
+	if (!commit(state->db))
+		goto bad;
+
+	pk_log(LOG_WARNING, "Recreated indexes.  Rechecking database...");
+	if (!validate_db(state->db))
+		return PK_BADFORMAT;
+
+	if (!cache_test_flag(state, CA_F_DAMAGED)) {
+		pk_log(LOG_WARNING, "Recheck passed.  Flagging cache for "
+					"full check.");
+		ret = cache_set_flag(state, CA_F_DIRTY);
+		if (ret)
+			return ret;
+	} else {
+		pk_log(LOG_WARNING, "Recheck passed.");
+	}
+	return PK_SUCCESS;
+
+bad:
+	retry = query_busy(state->db);
+	rollback(state->db);
+	if (retry) {
+		query_backoff(state->db);
+		goto again;
+	}
+	return PK_BADFORMAT;
+}
+
 static pk_err_t validate_keyring(struct pk_state *state)
 {
 	struct query *qry;
@@ -454,10 +510,9 @@ int validate_cache(struct pk_state *state)
 
 	pk_log(LOG_INFO, "Validating databases");
 	printf("Validating databases...\n");
-	if (!validate_db(state->db)) {
-		err=PK_BADFORMAT;
+	err=validate_sqlite(state);
+	if (err)
 		goto bad;
-	}
 
 	pk_log(LOG_INFO, "Validating keyring");
 	printf("Validating keyring...\n");
