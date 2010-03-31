@@ -214,21 +214,25 @@ damaged:
 static pk_err_t validate_sqlite(struct pk_state *state, gboolean *ok)
 {
 	gboolean retry;
-	pk_err_t ret;
 
 	if (validate_db(state->db))
 		return PK_SUCCESS;
 
 	/* SQLite database is corrupt.  There have been multiple occasions
 	   in which this has been fixable by dropping and recreating
-	   indexes.  The only index in the keyring or cache databases is
-	   main.keys_tags; recreate that and try the check again. */
+	   indexes, but at least one occasion in which this resulted in an
+	   inconsistent database that was prone to corruption later.
+	   Thus, only do this if splice is requested, and mark the cache
+	   damaged regardless. */
+	*ok = FALSE;
+	if (!(state->conf->flags & WANT_SPLICE))
+		return PK_BADFORMAT;
+
 	pk_log(LOG_WARNING, "Database check failed; trying to "
 				"recreate indexes...");
 again:
 	if (!begin(state->db)) {
 		pk_log(LOG_WARNING, "...failed");
-		*ok = FALSE;
 		return PK_BADFORMAT;
 	}
 	if (!query(NULL, state->db, "DROP INDEX keys_tags", NULL)) {
@@ -244,20 +248,9 @@ again:
 		goto bad;
 
 	pk_log(LOG_WARNING, "Recreated indexes.  Rechecking database...");
-	if (!validate_db(state->db)) {
-		*ok = FALSE;
+	if (!validate_db(state->db))
 		return PK_BADFORMAT;
-	}
 
-	if (!cache_test_flag(state, CA_F_DAMAGED)) {
-		pk_log(LOG_WARNING, "Recheck passed.  Flagging cache for "
-					"full check.");
-		ret = cache_set_flag(state, CA_F_DIRTY);
-		if (ret)
-			return ret;
-	} else {
-		pk_log(LOG_WARNING, "Recheck passed.");
-	}
 	return PK_SUCCESS;
 
 bad:
@@ -267,7 +260,6 @@ bad:
 		query_backoff(state->db);
 		goto again;
 	}
-	*ok = FALSE;
 	return PK_BADFORMAT;
 }
 
