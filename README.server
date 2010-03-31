@@ -93,6 +93,30 @@ The server includes a tool, "isr_admin", which automates creating and
 deleting users and parcels.  For a usage summary, run "isr_admin"
 without arguments.  For examples, run "isr_admin -hh".
 
+PARCEL FORMATS
+--------------
+
+OpenISR 0.9.8 introduces a new parcel format, format 4, which is not
+compatible with older versions of the OpenISR client.  This format is
+required to support new parcel features, such as selectable compression
+for the parcel's memory image.  Format 3 is still supported and remains
+compatible with all OpenISR 0.9.x releases.
+
+As of version 0.9.8, "isr_admin makeparcel" and "isr_admin import" will
+create format 4 parcels by default.  To override the default format
+when creating a parcel, pass "-T <format>" to isr_admin, where <format>
+is 3 or 4.  To change the default, place the following line in
+/etc/openisr/locksrv.conf:
+
+	default_format = <format>
+
+Existing format 3 parcels, and format 3 parcels cloned with
+"isr_admin copyparcel", are not automatically upgraded to format 4.
+To upgrade a parcel, use the new "isr_admin upgrade" command.  Note that
+"isr_admin upgrade" respects the default format specified in locksrv.conf,
+so if you have changed the default, you will need to pass "-T 4" to the
+upgrade command.
+
 SERVER SECURITY
 ---------------
 
