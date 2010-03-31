@@ -107,6 +107,7 @@ sub build_cache ();
 sub purge_completion_cache ();
 sub is_fully_hoarded ();
 sub check_for_nexus ();
+sub check_disk_space ();
 sub check_for_old_isrdir ();
 sub check_damaged_cache ();
 sub get_parcelkeeper_pid ();
@@ -654,9 +655,6 @@ exit 0;
 # checkout - Lock a parcel and copy it from the server to the client
 #
 sub checkout () {
-    my $diskinfo = `df -P -k $isrdir | tail -n 1`;
-    my ($diskpartition, $diskblocks, $diskused, $diskspace, $diskpercent, $diskroot) = split(" ", $diskinfo);
-
     my $clientname = hostname();
     my $sigset;
     my %map;
@@ -701,11 +699,6 @@ sub checkout () {
     if (-e $parceldir) {
 	unlink("$isrdir/$parcel-parcel.cfg");
 	errexit("Parcel directory already exists for UUID $uuid");
-    }
-
-    # Confirm that there is enough disk space.
-    if ($diskspace < $cfg{MAXKB}) {
-	errexit("Not enough disk space [$diskspace/$cfg{MAXKB} KB available]");
     }
 
     # From this point on, the operation should not be interrupted by the user
@@ -838,6 +831,7 @@ sub run () {
     }
     check_for_nexus();
     check_for_old_isrdir();
+    check_disk_space();
 
     # Reset the clean-cache flag, since we're about to make the cache dirty.
     unlink($cleancache_file);
@@ -2617,6 +2611,28 @@ sub check_for_nexus () {
 	print YELLOW, "The OpenISR kernel module is out of date.  Please run 'openisr-config' as root.\n", RESET;
 	message("Nexus is out of date ($nexus_version vs. $isr_version)");
     }
+}
+
+#
+# check_disk_space - Show a warning if free disk space < MAXKB
+#
+sub check_disk_space () {
+    my $diskinfo;
+    my $diskspace;
+    my $fh;
+
+    open($fh, "-|", "df -P -k $isrdir")
+        or unix_errexit("Couldn't run df");
+    # Get the last line of the output
+    while (<$fh>) {
+        $diskinfo = $_;
+    }
+    close $fh
+        or system_errexit("df returned error");
+    $diskspace = (split(" ", $diskinfo))[3];
+    print YELLOW, "Free disk space below recommended minimum " .
+		   "($diskspace/$cfg{MAXKB} KB available)\n", RESET
+        if $diskspace < $cfg{MAXKB};
 }
 
 #
