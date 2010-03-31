@@ -2440,6 +2440,10 @@ sub parse_parcelcfg ($) {
         errexit("Parcel server/userid/name doesn't match parcel.cfg for parcel $userid/$parcel.");
     }
     
+    # Bail out on unsupported features
+    errexit("Read-only parcels are not supported")
+        if exists $cfg{READONLY} and $cfg{READONLY} ne "0";
+    
     # Every read and write path gets appended with the userid and parcel
     $cfg{RPATH} .= "/$userid/$parcel";
     $cfg{WPATH} .= "/$userid/$parcel";
