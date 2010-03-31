@@ -700,7 +700,7 @@ sub get_maxkb ($$) {
     my $chunksize = shift;
     my $numchunks = shift;
 
-    return ($chunksize >> 10) * $numchunks * 2;
+    return ($chunksize >> 10) * $numchunks;
 }
 
 #
