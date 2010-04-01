@@ -98,8 +98,7 @@ pk_err_t transport_conn_alloc(struct pk_connection **out,
 	return PK_SUCCESS;
 
 bad:
-	if (conn)
-		transport_conn_free(conn);
+	transport_conn_free(conn);
 	return PK_CALLFAIL;
 }
 
