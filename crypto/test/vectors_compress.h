@@ -214,7 +214,7 @@ const uint8_t compressible_lzf_stream[] = {
 	0x20, 0x85, 0xc9, 0x89, 0xc6, 0x75, 0x24, 0x8b, 0x83, 0x00, 0x00,
 	0x0d, 0x0a,
 	/* Trailer */
-	'Z', 'V', 0x02, 0x93, 0x56, 0x99, 0xf8, 0x00
+	'Z', 'V', 0x30, 0x93, 0x56, 0x99, 0xf8, 0x00
 };
 
 const uint8_t incompressible_lzf_stream[] = {
@@ -246,7 +246,7 @@ const uint8_t incompressible_lzf_stream[] = {
 	0x0a, 0x2c, 0xf9, 0xd7, 0xfd, 0x65, 0x81, 0x00, 0xa3, 0x14, 0x21,
 	0x74, 0xdb, 0xba,
 	/* Trailer */
-	'Z', 'V', 0x02, 0x3d, 0x07, 0x6b, 0x89, 0x00
+	'Z', 'V', 0x30, 0x3d, 0x07, 0x6b, 0x89, 0x00
 };
 
 const uint8_t compressible_lzma[] = {
@@ -352,18 +352,18 @@ struct compress_test lzma_compress_vectors[] = {
 #undef ARR
 
 struct decompress_test lzf_stream_decompress_vectors[] = {
-	{1, 7, {'Z', 'V', 2, 0, 0, 0, 0}},
+	{1, 7, {'Z', 'V', 0x30, 0, 0, 0, 0}},
 	/* Invalid headers */
-	{0, 7, {'X', 'V', 2, 0, 0, 0, 0}},
-	{0, 7, {'Z', 'X', 2, 0, 0, 0, 0}},
+	{0, 7, {'X', 'V', 0x30, 0, 0, 0, 0}},
+	{0, 7, {'Z', 'X', 0x30, 0, 0, 0, 0}},
 	{0, 7, {'Z', 'V', 10, 0, 0, 0, 0}},
 	/* Short data */
 	{0, 1, {'Z'}},
 	{0, 2, {'Z', 'V'}},
-	{0, 3, {'Z', 'V', 2}},
+	{0, 3, {'Z', 'V', 0x30}},
 	{0, 4, {'Z', 'V', 0, 0}},
 	{0, 6, {'Z', 'V', 1, 0, 0, 0}},
-	{0, 6, {'Z', 'V', 2, 0, 0, 0}},
+	{0, 6, {'Z', 'V', 0x30, 0, 0, 0}},
 	/* Uncompressed data buffer length */
 	{1, 8, {'Z', 'V', 0, 0, 3, 'a', 'b', 'c'}},
 	{0, 7, {'Z', 'V', 0, 0, 3, 'a', 'b'}},
@@ -378,5 +378,5 @@ struct decompress_test lzf_stream_decompress_vectors[] = {
 	{0, 11, {'Z', 'V', 1, 0, 4, 0, 4, 2, 'a', 'b', 'c'}}, /* long ulen */
 	/* Bad CRC */
 	{0, 18, {'Z', 'V', 1, 0, 4, 0, 3, 2, 'a', 'b', 'c', 'Z', 'V',
-		2, 1, 2, 3, 4}},
+		0x30, 1, 2, 3, 4}},
 };
