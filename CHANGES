@@ -1,3 +1,44 @@
+====== 0.9.8 (2010-04-02)
+
+------ Client changes
+
+- Support kernels 2.6.32 and 2.6.33
+- Support parcel format 4
+- Support named compression profiles via config file or command-line option
+- Support LZF and LZMA compression for memory image
+- Use LZF chunk and memory image compression by default when possible
+- Significantly improve upload performance
+- Add pm-utils hook to suspend running parcels when the host is suspended
+- Don't give up when waiting for Parcelkeeper to exit after suspend
+- Move disk space check to resume and make it non-fatal
+- Allow isr checkp --splice to paper over more errors
+- Improve logging on SQLite integrity check failures
+- Nexus: Don't hash data twice when reading a chunk
+- Prevent host file managers on newer systems from showing parcel disks
+- Various minor improvements
+
+------ VMM driver changes
+
+- kvm: Improve display of input grabs and host key in windowed mode
+- kvm: Check access to kernel KVM driver before resuming parcel
+- virtualbox: Show VirtualBox first-run wizard on first resume
+- virtualbox: Use PulseAudio driver for new parcels to improve reliability
+
+------ Server changes
+
+- Add restricted login shell for users that should not have shell access
+
+------ isr_admin changes
+
+- Support parcel format 4
+- Add default_format config option and -T/--format command-line option
+- adduser: Assign new users the restricted login shell
+- export: Validate chunk data while reading it
+- makeparcel/import: Use format 4 by default
+- makeparcel/import: Change default MAXKB from 2x virtual disk size to 1x
+- upgrade: New command to upgrade parcels to newer format
+- Various minor improvements
+
 ====== 0.9.7 (2009-11-10)
 
 ------ Client changes
