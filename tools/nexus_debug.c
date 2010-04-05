@@ -1,7 +1,7 @@
 /*
  * nexus_debug - List, query, and set Nexus debug flags
  *
- * Copyright (C) 2006-2007 Carnegie Mellon University
+ * Copyright (C) 2006-2010 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -52,6 +52,7 @@ int query(void) {
 	}
 	if (fscanf(fp, "%x\n", &flags) != 1) {
 		printf("Unable to parse debug flags\n");
+		fclose(fp);
 		return 1;
 	}
 	fclose(fp);
@@ -107,6 +108,8 @@ int set(int argc, char **argv)
 		}
 	}
 	fprintf(fp, "0x%x\n", flags);
+	if (write)
+		fclose(fp);
 	return 0;
 }
 
