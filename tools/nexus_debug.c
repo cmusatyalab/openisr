@@ -1,14 +1,14 @@
 /*
  * nexus_debug - List, query, and set Nexus debug flags
- * 
+ *
  * Copyright (C) 2006-2007 Carnegie Mellon University
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
  * by the Free Software Foundation.  A copy of the GNU General Public License
  * should have been distributed along with this program in the file
  * LICENSE.GPL.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
  * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
@@ -44,7 +44,7 @@ int query(void) {
 	FILE *fp;
 	unsigned flags=0;
 	int i;
-	
+
 	fp=fopen(MASKFILE, "r");
 	if (fp == NULL) {
 		printf("Nexus not loaded or debugging not enabled\n");
@@ -68,7 +68,7 @@ int query(void) {
 
 int list(void) {
 	int i;
-	
+
 	for (i=0; bits[i] != NULL; i++)
 		printf("%s ", bits[i]);
 	printf("\n");
@@ -82,7 +82,7 @@ int set(int argc, char **argv)
 	unsigned flags=0;
 	int write=0;
 	FILE *fp=stdout;
-	
+
 	for (i=1; i<argc; i++) {
 		if (!strcmp("-s", argv[i])) {
 			write=1;
@@ -114,12 +114,12 @@ int main(int argc, char **argv)
 {
 	if (argc == 1)
 		return usage(argv[0]);
-	
+
 	if (argc == 2 && !strcmp(argv[1], "-q"))
 		return query();
-	
+
 	if (argc == 2 && !strcmp(argv[1], "-l"))
 		return list();
-	
+
 	return set(argc, argv);
 }
