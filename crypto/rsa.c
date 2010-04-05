@@ -131,8 +131,6 @@ static void pkcs_1_mgf1(struct isrcry_sign_ctx *sctx,
    PKCS #1 v2.00 Signature Encoding
    @param msghash          The hash to encode
    @param msghashlen       The length of the hash (octets)
-   @param rctx             An active PRNG context
-   @param hashtype         The index of the hash desired
    @param emBits           The desired bit length of the encoded data
    @param out              [out] The destination of the encoding
    @param outlen           [in/out] The max size and resulting size of the encoded data
