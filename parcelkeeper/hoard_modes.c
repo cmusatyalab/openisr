@@ -376,9 +376,9 @@ again:
 	if (!begin(state->db))
 		return 1;
 	query(&qry, state->db, "UPDATE hoard.chunks "
-				"SET tag = NULL, length = 0, crypto = 0 "
-				"WHERE tag NOTNULL AND tag NOT IN "
-				"(SELECT tag FROM refs)", NULL);
+				"SET tag = NULL, length = 0, crypto = 0, "
+				"allocated = 0 WHERE tag NOTNULL AND "
+				"tag NOT IN (SELECT tag FROM refs)", NULL);
 	if (!query_has_row(state->db)) {
 		sql_log_err(state->db, "Couldn't garbage-collect hoard cache");
 		goto bad;
