@@ -924,13 +924,17 @@ again:
 	if (ret)
 		goto bad;
 
-	ret=cleanup_action(state->hoard, "UPDATE chunks SET tag = NULL, "
-				"length = 0, crypto = 0, allocated = 0 "
-				"WHERE tag NOTNULL AND tag NOT IN "
-				"(SELECT tag FROM refs)",
-				LOG_INFO, "unreferenced chunks");
-	if (ret)
-		goto bad;
+	/* This query is slow when there are many refs, so perform it with
+	   1/16 probability */
+	if (!g_random_int_range(0, 15)) {
+		ret=cleanup_action(state->hoard, "UPDATE chunks SET "
+					"tag = NULL, length = 0, crypto = 0, "
+					"allocated = 0 WHERE tag NOTNULL AND "
+					"tag NOT IN (SELECT tag FROM refs)",
+					LOG_INFO, "unreferenced chunks");
+		if (ret)
+			goto bad;
+	}
 
 	if (!commit(state->hoard)) {
 		ret=PK_IOERR;
