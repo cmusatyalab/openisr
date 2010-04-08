@@ -18,7 +18,7 @@ isr \- Internet Suspend/Resume client program
 .B isr 
 .I command
 .RI [ parcel ]
-.RB [ \-bcdDefFlqvY ]
+.RB [ \-bcdDefFlpqvY ]
 .RB [ \-s
 .IR server ]
 .RB [ \-u
@@ -273,13 +273,16 @@ option cannot be used with
 .BR -e .
 
 .TP
-.B "isr checkhoard [-c]"
-This is a debugging command that checks the hoard cache for consistency
+.B "isr checkhoard [-c] [-p]"
+This is a maintenance command that checks the hoard cache for consistency
 and repairs any problems it finds.  By default, this command performs
 fast checks on the hoard cache indexes.  The
 .B -c
 option causes it to perform an additional (and time-consuming) content
-consistency check.
+consistency check.  The
+.B -p
+option defragments the hoard cache and resizes it to the smallest possible
+size.
 
 .TP
 .BI "isr clean " "parcel" " [-f]"
@@ -623,6 +626,12 @@ Use long listing format for the
 command, printing information about the 
 .I n
 most recent parcel versions.
+
+.TP
+.B -p/--compact
+During
+.BR checkhoard ,
+defragment the hoard cache and truncate it to the minimum possible size.
 
 .TP
 .B -q/--quiet

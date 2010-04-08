@@ -182,8 +182,8 @@ _isr_subcommand_opts() {
 		long="--server --user"
 		;;
 	checkhoard)
-		short="-c"
-		long="--checkstate"
+		short="-c -p"
+		long="--checkstate --compact"
 		;;
 	checkin|ci|sync)
 		short="-b -C -s -u"

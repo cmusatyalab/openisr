@@ -182,6 +182,7 @@ my $bwlimit;         # Bandwidth limit (KBytes/sec) in ci and sync
 my $forceflag = 0;   # Force release of lock in cleanclient()
 my $do_splice = 0;   # checkp: Restore invalid chunks from prev-keyring
 my $do_dirtometer = 0; # Run dirtometer on resume
+my $do_compact = 0;  # Compact the hoard cache during checkhoard
 my $vmm;             # Override default VMM driver
 my $compression;     # Override default compression profile
 
@@ -355,6 +356,7 @@ $result = GetOptions(
 		     "l|long"         => \$longflag,
 		     "L|longvers=i"   => \$longvers,
 		     "m|vmm=s"        => \$vmm,
+		     "p|compact"      => \$do_compact,
 		     "q|quiet"        => sub { $verbose = 0 },
 		     "r|rollback=i"   => \$version,
 		     "s|server=s"     => \$server,
@@ -1515,7 +1517,10 @@ sub rmhoard () {
 # checkhoard - Reports on the consistency of the hoard cache
 # 
 sub checkhoard () {
-    my $flags = $checkstate ? "full" : "";
+    my $flags = "";
+    
+    $flags .= $checkstate ? " full" : "";
+    $flags .= $do_compact ? " compact" : "";
     
     print "Checking hoard cache for internal consistency...\n"
 	if $verbose;
@@ -1719,6 +1724,8 @@ sub parcelkeeper_cmd ($$) {
 	    $cmd .= " --full";
 	} elsif ($arg eq "splice") {
 	    $cmd .= " --splice";
+	} elsif ($arg eq "compact") {
+	    $cmd .= " --compact";
 	} elsif ($arg eq "log") {
 	    $do_log = 1;
 	} else {
@@ -3229,7 +3236,7 @@ sub usage ($) {
 	print "Debugging and maintenance commands:\n";
 	print "  poweroff   Discard memory image for a suspended parcel (-m optional)\n";
 	print "  checkp     Check parcel for consistency (-cerY optional)\n";
-	print "  checkhoard Check hoard cache for consistency (-c optional)\n";
+	print "  checkhoard Check hoard cache for consistency (-cp optional)\n";
 	print "  lshoard    List info about the hoard cache (-l optional)\n";
 	print "  rmhoard    Remove a parcel from the hoard cache\n";
 	print "  uuid       Print the UUID for a parcel\n";
@@ -3247,6 +3254,7 @@ sub usage ($) {
     print "  -l,--long          Long listing [ls, lshoard, stat]\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls]\n";
     print "  -m,--vmm           Override default VMM for this parcel [resume, poweroff]\n";
+    print "  -p,--compact       Compact the hoard cache [checkhoard]\n";
     print "  -q,--quiet         Run silently (except if things go wrong)\n";
     print "  -r,--rollback      Rollback to or check version [checkout, checkp, resume]\n";
     print "  -s,--server        Server domain name (optional)\n";
