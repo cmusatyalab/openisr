@@ -614,6 +614,8 @@ static pk_err_t compact_hoard(struct pk_state *state)
 	pk_err_t ret;
 	gboolean done = FALSE;
 
+	pk_log(LOG_INFO, "Compacting hoard cache");
+	printf("Compacting hoard cache...\n");
 	ret = _compact_hoard_count_moves(state, chunksize, &total_moves);
 	if (ret)
 		return ret;
@@ -633,56 +635,6 @@ static pk_err_t compact_hoard(struct pk_state *state)
 	}
 	g_free(buf);
 	return _compact_hoard_truncate(state, chunksize);
-}
-
-int gchoard(struct pk_state *state)
-{
-	struct query *qry;
-	int count;
-	gboolean retry;
-
-	printf("Removing stale chunks from the hoard cache...\n");
-again:
-	if (!begin(state->db))
-		return 1;
-	query(&qry, state->db, "UPDATE hoard.chunks "
-				"SET tag = NULL, length = 0, crypto = 0, "
-				"allocated = 0 WHERE tag NOTNULL AND "
-				"tag NOT IN (SELECT tag FROM refs)", NULL);
-	if (!query_has_row(state->db)) {
-		sql_log_err(state->db, "Couldn't garbage-collect hoard cache");
-		goto bad;
-	}
-	query_row(qry, "d", &count);
-	query_free(qry);
-	if (!commit(state->db))
-		goto bad;
-	pk_log(LOG_STATS, "Hoard GC freed %d chunks", count);
-	/* XXX assumes 128 KB */
-	printf("Freed %d chunks (%d MB).\n", count, count / 8);
-
-	if (state->conf->flags & WANT_COMPACT) {
-		printf("Compacting hoard cache...\n");
-		if (compact_hoard(state))
-			return 1;
-	}
-
-	printf("Vacuuming hoard cache...\n");
-	/* We have to use the hoard connection for this */
-	if (!vacuum(state->hoard)) {
-		sql_log_err(state->hoard, "Couldn't vacuum hoard cache");
-		return 1;
-	}
-	return 0;
-
-bad:
-	retry = query_busy(state->db);
-	rollback(state->db);
-	if (retry) {
-		query_backoff(state->db);
-		goto again;
-	}
-	return 1;
 }
 
 static pk_err_t check_hoard_data(struct pk_state *state)
@@ -911,7 +863,9 @@ again:
 	if (state->conf->flags & WANT_FULL_CHECK)
 		if (check_hoard_data(state))
 			return 1;
-	/* XXX compact */
+	if (state->conf->flags & WANT_COMPACT)
+		if (compact_hoard(state))
+			return 1;
 	return 0;
 
 bad:

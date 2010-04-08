@@ -82,7 +82,6 @@ enum mode {
 	MODE_LISTHOARD,
 	MODE_CHECKHOARD,
 	MODE_RMHOARD,
-	MODE_GCHOARD,
 	MODE_REFRESH,
 	MODE_HELP,
 	MODE_VERSION,
@@ -243,7 +242,6 @@ int hoard(struct pk_state *state);
 int examine_hoard(struct pk_state *state);
 int list_hoard(struct pk_state *state);
 int rmhoard(struct pk_state *state);
-int gchoard(struct pk_state *state);
 int check_hoard(struct pk_state *state);
 int hoard_refresh(struct pk_state *state);
 

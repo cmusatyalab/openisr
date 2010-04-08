@@ -924,10 +924,29 @@ again:
 	if (ret)
 		goto bad;
 
+	ret=cleanup_action(state->hoard, "UPDATE chunks SET tag = NULL, "
+				"length = 0, crypto = 0, allocated = 0 "
+				"WHERE tag NOTNULL AND tag NOT IN "
+				"(SELECT tag FROM refs)",
+				LOG_INFO, "unreferenced chunks");
+	if (ret)
+		goto bad;
+
 	if (!commit(state->hoard)) {
 		ret=PK_IOERR;
 		goto bad;
 	}
+
+	/* Vacuum the hoard cache with 1/16 probability */
+	if (!g_random_int_range(0, 15)) {
+		pk_log(LOG_INFO, "Vacuuming hoard cache");
+		if (!vacuum(state->hoard)) {
+			sql_log_err(state->hoard, "Couldn't vacuum "
+						"hoard cache");
+			/* There's not much to be done about this */
+		}
+	}
+
 out:
 	put_file_lock(state->hoard_fd);
 	return ret;
