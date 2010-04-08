@@ -20,7 +20,7 @@ SERVERPROGS = disktool
 endif
 
 pkglib_PROGRAMS = query blobtool $(CLIENTPROGS) $(SERVERPROGS)
-EXTRA_PROGRAMS = nextest
+EXTRA_PROGRAMS = nextest hoardtest
 CLEANFILES = $(GEN) nextest
 EXTRA_DIST = $(GEN:=.in)
 
@@ -34,6 +34,8 @@ dirtometer_LDFLAGS = $(gtk_LIBS) $(glib_LIBS)
 query_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS)
 query_LDFLAGS = $(glib_LIBS) $(SQL_LIBS)
 nextest_LDFLAGS = $(CRYPTO_LIBS)
+hoardtest_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS)
+hoardtest_LDFLAGS = $(glib_LIBS) $(CRYPTO_LIBS) $(SQL_LIBS)
 
 include $(top_srcdir)/mkrevision.mk
 include $(top_srcdir)/subst.mk
