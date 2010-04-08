@@ -365,6 +365,267 @@ bad:
 	return 1;
 }
 
+static pk_err_t _compact_hoard_count_moves(struct pk_state *state,
+			unsigned chunksize, unsigned *moves)
+{
+	struct query *qry;
+	int offset;
+	int count;
+	gboolean retry;
+
+	/* Determine the number of moves we need to make by determining the
+	   target length of the hoard cache, then counting unallocated slots
+	   within that area.  If other processes are also modifying the hoard
+	   cache, this number can change as we work. */
+
+again:
+	if (!begin(state->db))
+		return PK_IOERR;
+	query(&qry, state->db, "SELECT count(*) FROM hoard.chunks "
+				"WHERE tag NOTNULL", NULL);
+	if (!query_has_row(state->db)) {
+		sql_log_err(state->db, "Couldn't count present hoard chunks");
+		goto bad;
+	}
+	query_row(qry, "d", &offset);
+	query_free(qry);
+	offset *= (chunksize >> 9);
+	query(&qry, state->db, "SELECT count(*) FROM hoard.chunks "
+				"WHERE allocated == 0 AND offset < ?", "d",
+				offset);
+	if (!query_has_row(state->db)) {
+		sql_log_err(state->db, "Couldn't count target hoard slots");
+		goto bad;
+	}
+	query_row(qry, "d", &count);
+	query_free(qry);
+	if (!rollback(state->db))
+		goto bad;
+	*moves = count;
+	return PK_SUCCESS;
+
+bad:
+	retry = query_busy(state->db);
+	rollback(state->db);
+	if (retry) {
+		query_backoff(state->db);
+		goto again;
+	}
+	return PK_IOERR;
+}
+
+static pk_err_t _compact_hoard_move_chunk(struct pk_state *state,
+			int from_offset, int to_offset, int length, int crypto,
+			const void *tag, int taglen, void *buf)
+{
+	pk_err_t ret;
+
+	ret = _hoard_read_chunk(state, from_offset, length, crypto, tag,
+				taglen, buf);
+	if (ret)
+		return ret;
+	ret = _hoard_write_chunk(state, to_offset, length, buf);
+	if (ret)
+		return ret;
+	if (!query(NULL, state->db, "UPDATE hoard.chunks SET tag = NULL, "
+				"length = 0, crypto = 0, allocated = 0 "
+				"WHERE offset = ?", "d", from_offset)) {
+		sql_log_err(state->db, "Couldn't deallocate hoard chunk "
+					"at offset %d", from_offset);
+		return PK_IOERR;
+	}
+	if (!query(NULL, state->db, "UPDATE hoard.chunks SET tag = ?, "
+				"length = ?, crypto = ?, allocated = 1 "
+				"WHERE offset = ?", "bddd", tag, taglen,
+				length, crypto, to_offset)) {
+		sql_log_err(state->db, "Couldn't allocate new hoard slot "
+					"at offset %d", to_offset);
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
+static pk_err_t _compact_hoard_iteration(struct pk_state *state, void *buf,
+			unsigned *moved, gboolean *done)
+{
+	struct query *chunk_qry;
+	struct query *slot_qry;
+	int from_offset;
+	int to_offset;
+	int length;
+	int crypto;
+	void *tag;
+	int taglen;
+	gboolean retry;
+	pk_err_t ret;
+
+again:
+	*moved = 0;
+	*done = FALSE;
+	ret = PK_IOERR;
+	/* Try to avoid lock promotion on the hoard cache. */
+	if (!begin_immediate(state->db))
+		goto bad;
+	for (query(&chunk_qry, state->db, "SELECT tag, offset, length, crypto "
+				"FROM hoard.chunks WHERE tag NOTNULL "
+				"ORDER BY offset DESC LIMIT 16", NULL);
+				query_has_row(state->db);
+				query_next(chunk_qry)) {
+		query_row(chunk_qry, "bddd", &tag, &taglen, &from_offset,
+					&length, &crypto);
+		/* Get a lower slot to move the chunk to */
+		query(&slot_qry, state->db, "SELECT offset FROM "
+					"hoard.chunks WHERE allocated == 0 "
+					"ORDER BY offset ASC LIMIT 1", NULL);
+		if (!query_has_row(state->db)) {
+			if (query_ok(state->db)) {
+				/* No free offsets; we're done */
+				*done = TRUE;
+			}
+			break;
+		}
+		query_row(slot_qry, "d", &to_offset);
+		query_free(slot_qry);
+		if (to_offset >= from_offset) {
+			/* Slot is not lower than where the chunk is now;
+			   we're done */
+			*done = TRUE;
+			break;
+		}
+		ret = _compact_hoard_move_chunk(state, from_offset, to_offset,
+					length, crypto, tag, taglen, buf);
+		if (ret) {
+			query_free(chunk_qry);
+			goto bad;
+		}
+		++*moved;
+	}
+	query_free(chunk_qry);
+	if (!*done && !query_ok(state->db)) {
+		sql_log_err(state->db, "Couldn't query chunks table");
+		goto bad;
+	}
+	if (!commit(state->db))
+		goto bad;
+	return PK_SUCCESS;
+
+bad:
+	retry = query_busy(state->db);
+	rollback(state->db);
+	if (retry) {
+		query_backoff(state->db);
+		goto again;
+	}
+	return ret;
+}
+
+static pk_err_t _compact_hoard_truncate(struct pk_state *state,
+			unsigned chunksize)
+{
+	struct query *qry;
+	int offset;
+	gchar *type;
+	int old_chunks;
+	int new_chunks;
+	off_t new_length;
+	gboolean retry;
+
+again:
+	if (!begin(state->db))
+		return PK_IOERR;
+	query(&qry, state->db, "SELECT max(offset) FROM hoard.chunks", NULL);
+	if (!query_has_row(state->db)) {
+		sql_log_err(state->db, "Couldn't get max offset from "
+					"hoard index");
+		query_free(qry);
+		goto bad;
+	}
+	type = query_column_types(qry);
+	query_row(qry, "d", &offset);
+	query_free(qry);
+	old_chunks = offset / (chunksize >> 9);
+	/* Distinguish between a max offset of 0 and a NULL value (indicating
+	   that the table is empty) */
+	if (strcmp(type, "0"))
+		old_chunks += 1;
+	g_free(type);
+
+	/* We move chunks with tag NOTNULL but only truncate unallocated
+	   slots, since we don't want to drop slots still in someone's slot
+	   cache. */
+	query(&qry, state->db, "SELECT max(offset) FROM hoard.chunks WHERE "
+				"allocated == 1", NULL);
+	if (!query_has_row(state->db)) {
+		sql_log_err(state->db, "Couldn't get max allocated offset "
+					"from hoard index");
+		query_free(qry);
+		goto bad;
+	}
+	type = query_column_types(qry);
+	query_row(qry, "d", &offset);
+	query_free(qry);
+	if (strcmp(type, "0"))
+		offset += (chunksize >> 9);
+	g_free(type);
+	new_chunks = offset / (chunksize >> 9);
+	new_length = ((off_t) offset) << 9;
+	if (!query(NULL, state->db, "DELETE FROM hoard.chunks "
+				"WHERE offset >= ?", "d", offset)) {
+		sql_log_err(state->db, "Couldn't delete empty cache slots");
+		goto bad;
+	}
+	if (ftruncate(state->hoard_fd, new_length)) {
+		pk_log(LOG_ERROR, "Couldn't truncate hoard file");
+		goto bad;
+	}
+	if (!commit(state->db))
+		goto bad;
+	if (old_chunks != new_chunks)
+		pk_log(LOG_STATS, "Compacted hoard cache from %d to %d slots",
+					old_chunks, new_chunks);
+	return PK_SUCCESS;
+
+bad:
+	retry = query_busy(state->db);
+	rollback(state->db);
+	if (retry) {
+		query_backoff(state->db);
+		goto again;
+	}
+	return PK_IOERR;
+}
+
+static pk_err_t compact_hoard(struct pk_state *state)
+{
+	void *buf;
+	unsigned chunksize = 131072;  /* XXX */
+	unsigned cur;
+	unsigned moved = 0;
+	unsigned total_moves;
+	pk_err_t ret;
+	gboolean done = FALSE;
+
+	ret = _compact_hoard_count_moves(state, chunksize, &total_moves);
+	if (ret)
+		return ret;
+	print_progress_chunks(moved, total_moves);
+	buf = g_malloc(chunksize);
+	while (!done) {
+		ret = _compact_hoard_iteration(state, buf, &cur, &done);
+		if (ret) {
+			g_free(buf);
+			return ret;
+		}
+		moved += cur;
+		/* The progress bar is only an estimate based on the state
+		   of the hoard cache when we started.  We're finished
+		   only when the done flag is set. */
+		print_progress_chunks(moved, total_moves);
+	}
+	g_free(buf);
+	return _compact_hoard_truncate(state, chunksize);
+}
+
 int gchoard(struct pk_state *state)
 {
 	struct query *qry;
@@ -390,6 +651,12 @@ again:
 	pk_log(LOG_STATS, "Hoard GC freed %d chunks", count);
 	/* XXX assumes 128 KB */
 	printf("Freed %d chunks (%d MB).\n", count, count / 8);
+
+	if (state->conf->flags & WANT_COMPACT) {
+		printf("Compacting hoard cache...\n");
+		if (compact_hoard(state))
+			return 1;
+	}
 
 	printf("Vacuuming hoard cache...\n");
 	/* We have to use the hoard connection for this */
