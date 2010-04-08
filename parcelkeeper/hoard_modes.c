@@ -482,6 +482,7 @@ again:
 				/* No free offsets; we're done */
 				*done = TRUE;
 			}
+			/* Handle errors after the loop */
 			break;
 		}
 		query_row(slot_qry, "d", &to_offset);
@@ -501,9 +502,17 @@ again:
 		++*moved;
 	}
 	query_free(chunk_qry);
-	if (!*done && !query_ok(state->db)) {
+	/* We might have exited the loop early, so query_has_row() is also
+	   okay */
+	if (!query_ok(state->db) && !query_has_row(state->db)) {
 		sql_log_err(state->db, "Couldn't query chunks table");
 		goto bad;
+	}
+	if (chunk_qry == NULL) {
+		/* Since we've already tested for query errors, this means
+		   that there never was a query result, i.e. we didn't
+		   traverse the loop even once.  Tell the caller we're done. */
+		*done = TRUE;
 	}
 	if (!commit(state->db))
 		goto bad;
