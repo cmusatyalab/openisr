@@ -23,7 +23,7 @@
 #include <time.h>
 #include "defs.h"
 
-#define HOARD_INDEX_VERSION 8
+#define HOARD_INDEX_VERSION 9
 #define EXPAND_CHUNKS 256
 
 /* Generator for an transaction wrapper around a function which expects to be
@@ -79,7 +79,7 @@ static pk_err_t create_hoard_index(struct pk_state *state)
 		return PK_IOERR;
 	}
 	if (!query(NULL, state->hoard, "CREATE INDEX chunks_allocated ON "
-				"chunks (allocated)", NULL)) {
+				"chunks (allocated, offset)", NULL)) {
 		sql_log_err(state->hoard, "Couldn't create chunk allocation "
 					"index");
 		return PK_IOERR;
@@ -180,6 +180,21 @@ static pk_err_t upgrade_hoard_index(struct pk_state *state, int ver)
 				"AND tag NOTNULL", NULL)) {
 			sql_log_err(state->hoard, "Couldn't clear "
 						"unreferenced chunks");
+			return PK_IOERR;
+		}
+		/* Fall through */
+	case 8:
+		if (!query(NULL, state->hoard, "DROP INDEX chunks_allocated",
+					NULL)) {
+			sql_log_err(state->hoard, "Couldn't drop old "
+						"allocated chunk index");
+			return PK_IOERR;
+		}
+		if (!query(NULL, state->hoard, "CREATE INDEX chunks_allocated "
+					"ON chunks (allocated, offset)",
+					NULL)) {
+			sql_log_err(state->hoard, "Couldn't create new "
+						"allocated chunk index");
 			return PK_IOERR;
 		}
 	}
