@@ -634,7 +634,15 @@ static pk_err_t compact_hoard(struct pk_state *state)
 		print_progress_chunks(moved, total_moves);
 	}
 	g_free(buf);
-	return _compact_hoard_truncate(state, chunksize);
+	ret = _compact_hoard_truncate(state, chunksize);
+	if (ret)
+		return ret;
+	/* We have to use the hoard cache connection for this */
+	if (!vacuum(state->hoard)) {
+		sql_log_err(state->hoard, "Couldn't vacuum hoard cache");
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
 }
 
 static pk_err_t check_hoard_data(struct pk_state *state)
