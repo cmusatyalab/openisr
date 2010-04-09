@@ -552,7 +552,7 @@ again:
 		goto bad;
 	}
 
-	if (!_hoard_read_chunk(state, offset, clen, state->parcel->crypto,
+	if (_hoard_read_chunk(state, offset, clen, state->parcel->crypto,
 				tag, state->parcel->hashlen, buf)) {
 		/* Read failures can occur if the chunk has been moved due
 		   to GC compaction, so we don't want to blindly invalidate
