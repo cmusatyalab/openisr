@@ -960,6 +960,7 @@ again:
 	/* This query is slow when there are many refs, so perform it only
 	   at refresh time and with 1/8 probability */
 	if ((state->conf->flags & WANT_GC) && !g_random_int_range(0, 7)) {
+		pk_log(LOG_INFO, "Garbage-collecting hoard cache");
 		ret = _hoard_gc(state);
 		if (ret)
 			goto bad;
