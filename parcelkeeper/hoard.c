@@ -957,9 +957,9 @@ again:
 	if (ret)
 		goto bad;
 
-	/* This query is slow when there are many refs, so perform it with
-	   1/16 probability */
-	if (!g_random_int_range(0, 15)) {
+	/* This query is slow when there are many refs, so perform it only
+	   at refresh time and with 1/8 probability */
+	if ((state->conf->flags & WANT_GC) && !g_random_int_range(0, 7)) {
 		ret = _hoard_gc(state);
 		if (ret)
 			goto bad;
@@ -970,8 +970,9 @@ again:
 		goto bad;
 	}
 
-	/* Vacuum the hoard cache with 1/16 probability */
-	if (!g_random_int_range(0, 15)) {
+	/* Vacuum the hoard cache only during refresh and with 1/8
+	   probability */
+	if ((state->conf->flags & WANT_GC) && !g_random_int_range(0, 7)) {
 		pk_log(LOG_INFO, "Vacuuming hoard cache");
 		if (!vacuum(state->hoard)) {
 			sql_log_err(state->hoard, "Couldn't vacuum "

@@ -98,6 +98,7 @@ enum mode_flags {
 	WANT_FULL_CHECK	= 0x0080,
 	WANT_SPLICE	= 0x0100,
 	WANT_COMPACT	= 0x0200,
+	WANT_GC		= 0x0400,  /* Enable slower hoard cleanup steps */
 };
 
 struct pk_connection;
