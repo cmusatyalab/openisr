@@ -853,6 +853,39 @@ bad:
 	return ret;
 }
 
+/* Must be in hoard transaction */
+static pk_err_t _hoard_gc(struct pk_state *state)
+{
+	return cleanup_action(state->hoard, "UPDATE chunks SET tag = NULL, "
+				"length = 0, crypto = 0, allocated = 0 "
+				"WHERE tag NOTNULL AND tag NOT IN "
+				"(SELECT tag FROM refs)",
+				LOG_INFO, "unreferenced chunks");
+}
+
+pk_err_t hoard_gc(struct pk_state *state)
+{
+	gboolean retry;
+
+again:
+	if (!begin(state->hoard))
+		return PK_IOERR;
+	if (_hoard_gc(state))
+		goto bad;
+	if (!commit(state->hoard))
+		goto bad;
+	return PK_SUCCESS;
+
+bad:
+	retry = query_busy(state->hoard);
+	rollback(state->hoard);
+	if (retry) {
+		query_backoff(state->hoard);
+		goto again;
+	}
+	return PK_IOERR;
+}
+
 /* Releases the hoard_fd lock before returning, including on error */
 static pk_err_t hoard_try_cleanup(struct pk_state *state)
 {
@@ -927,11 +960,7 @@ again:
 	/* This query is slow when there are many refs, so perform it with
 	   1/16 probability */
 	if (!g_random_int_range(0, 15)) {
-		ret=cleanup_action(state->hoard, "UPDATE chunks SET "
-					"tag = NULL, length = 0, crypto = 0, "
-					"allocated = 0 WHERE tag NOTNULL AND "
-					"tag NOT IN (SELECT tag FROM refs)",
-					LOG_INFO, "unreferenced chunks");
+		ret = _hoard_gc(state);
 		if (ret)
 			goto bad;
 	}

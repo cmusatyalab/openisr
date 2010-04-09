@@ -616,6 +616,9 @@ static pk_err_t compact_hoard(struct pk_state *state)
 
 	pk_log(LOG_INFO, "Compacting hoard cache");
 	printf("Compacting hoard cache...\n");
+	ret = hoard_gc(state);
+	if (ret)
+		return ret;
 	ret = _compact_hoard_count_moves(state, chunksize, &total_moves);
 	if (ret)
 		return ret;

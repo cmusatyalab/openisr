@@ -234,6 +234,7 @@ pk_err_t hoard_get_chunk(struct pk_state *state, const void *tag, void *buf,
 pk_err_t hoard_put_chunk(struct pk_state *state, const void *tag,
 			const void *buf, unsigned len);
 pk_err_t hoard_sync_refs(struct pk_state *state, gboolean new_chunks);
+pk_err_t hoard_gc(struct pk_state *state);
 void hoard_invalidate_chunk(struct pk_state *state, int offset,
 			const void *tag, unsigned taglen);
 
