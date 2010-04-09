@@ -21,7 +21,7 @@ endif
 
 pkglib_PROGRAMS = query blobtool $(CLIENTPROGS) $(SERVERPROGS)
 EXTRA_PROGRAMS = nextest hoardtest
-CLEANFILES = $(GEN) nextest
+CLEANFILES = $(GEN) nextest hoardtest
 EXTRA_DIST = $(GEN:=.in)
 
 blobtool_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS) $(NO_FIELD_INITIALIZER_WARNINGS)
