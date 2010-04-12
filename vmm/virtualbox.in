@@ -18,7 +18,6 @@
 
 import os
 import sys
-import re
 import signal
 import shutil
 import time
@@ -543,7 +542,7 @@ def fixup_machine():
 		fixup_uuid_2(vm)
 	did_inaccessible = fixup_inaccessible_devices(vm)
 	if did_uuid or did_inaccessible or did_upgrade:
-		vm.saveSettingsWithBackup()
+		vm.saveSettings()
 
 def register_machine():
 	disk = compat.register_disk(disk_path)
@@ -586,7 +585,7 @@ def unregister_machine(do_save = True):
 					vbox.settingsFormatVersion:
 			print >>sys.stderr, 'Warning: Auto-converting VM', \
 					'settings file during unregistration'
-			sesn.machine.saveSettingsWithBackup()
+			sesn.machine.saveSettings()
 		try:
 			unregister_state(sesn, do_save)
 			compat.detach_ide_disk(sesn.machine, 0, 0)
@@ -685,12 +684,6 @@ def cleanup():
 
 	# Remove logs
 	shutil.rmtree(vmm.CFGDIR + '/Logs', True)
-
-	# Remove backup files left by saveSettingsWithBackup()
-	regexp = re.escape(os.path.basename(vm_path)) + '\..+\.bak(\.[0-9]+)?$'
-	for name in os.listdir(vmm.CFGDIR):
-		if re.match(regexp, name):
-			os.remove(vmm.CFGDIR + '/' + name)
 
 vmm.DEBUG = (vmm.VERBOSE == "yes")
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
