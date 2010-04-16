@@ -365,6 +365,17 @@ bad:
 	return 1;
 }
 
+int gchoard(struct pk_state *state)
+{
+	printf("Garbage-collecting hoard cache...\n");
+	if (hoard_gc(state))
+		return 1;
+	printf("Vacuuming hoard cache...\n");
+	if (!vacuum(state->hoard))
+		return 1;
+	return 0;
+}
+
 static pk_err_t _compact_hoard_count_moves(struct pk_state *state,
 			unsigned chunksize, unsigned *moves)
 {

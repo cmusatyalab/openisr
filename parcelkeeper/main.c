@@ -148,6 +148,8 @@ int main(int argc, char **argv)
 		ret=list_hoard(&state);
 	} else if (mode == MODE_RMHOARD) {
 		ret=rmhoard(&state);
+	} else if (mode == MODE_GCHOARD) {
+		ret=gchoard(&state);
 	} else if (mode == MODE_CHECKHOARD) {
 		ret=check_hoard(&state);
 	} else if (mode == MODE_REFRESH) {
