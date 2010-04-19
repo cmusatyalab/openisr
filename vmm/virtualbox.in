@@ -182,36 +182,6 @@ class VboxCompat:
 			else:
 				sesn.console.forgetSavedState(True)
 
-	def get_floppy_drive(self, vm):
-		'''Return the floppy drive object for the specified machine.'''
-		if self.vbox_ver < (2,1):
-			return vm.FloppyDrive
-		else:
-			return vm.floppyDrive
-
-	def image_is_accessible(self, image):
-		'''Return whether the specified image is accessible.'''
-		if self.vbox_ver < (2,1):
-			return image.accessible
-		else:
-			return image.state not in (ifaces.MediaState.Created, \
-					ifaces.MediaState.LockedRead)
-
-	def get_image_location(self, image):
-		if self.vbox_ver < (2,1):
-			return image.filePath
-		else:
-			return image.location
-
-	def get_image_state(self, image):
-		if self.vbox_ver < (2,1):
-			if image.accessible:
-				return 'accessible'
-			else:
-				return 'inaccessible'
-		else:
-			return str(image.state)
-
 def vbox_init():
 	global xpcom, ifaces, vbox, compat
 
@@ -440,56 +410,38 @@ def fixup_uuid_2(vm):
 	for i in range(vbox.systemProperties.networkAdapterCount):
 		vm.getNetworkAdapter(i).MACAddress = None
 
-def fixup_invalid_images(mf):
-	"""openMachine() will fail if the machine refers to a disk image that
-	does not exist.  Manually check and clean the XML to prevent this.
-	Return True if we changed something."""
+def fixup_removable_devices(mf):
+	"""On VirtualBox 3.1 and above, unregistered machines cannot have any
+	removable media attached (or, indeed, any removable drives) or
+	openMachine() will fail.  Manually strip all removable media (both
+	images and host drives) from the machine XML.  For consistency, we do
+	this for all versions of VBox; otherwise, some users would retain
+	mounted media across a suspend and others wouldn't.
+
+	VBox >= 3.1 places these devices in a different XML subtree, but
+	unregistered 3.1 parcels will never have media attached, so we only
+	have to worry about older-format machines."""
 
 	modified = False
 	hw = mf.descend('VirtualBox', 'Machine', 'Hardware')
 
-	types = ('CD', 'DVDDrive', vbox.getDVDImage), \
-		('floppy', 'FloppyDrive', vbox.getFloppyImage)
-	for name, el, getFunc in types:
+	for name, el in ('CD', 'DVDDrive'), ('floppy', 'FloppyDrive'):
 		for drive in hw.getElementsByTagName(el):
 			img = drive.getElementsByTagName('Image')
 			assert len(img) < 2
-			if len(img) == 0:
-				continue
-			uuid = img[0].getAttribute('uuid')
-			try:
-				getFunc(str(uuid))
-			except:
-				print >>sys.stderr, 'Unbinding nonexistent', \
-							name, 'image', uuid
+			if len(img) == 1:
+				uuid = img[0].getAttribute('uuid')
+				print >>sys.stderr, 'Unbinding', name, \
+							'image', uuid
 				drive.removeChild(img[0])
 				modified = True
-	return modified
-
-def fixup_inaccessible_devices(vm):
-	"""Unbind inaccessible devices which will prevent the VM from starting.
-	Return True if we have done so."""
-
-	modified = False
-	types = ('CD', vm.DVDDrive), ('floppy', compat.get_floppy_drive(vm))
-	for name, drive in types:
-		if drive.state == ifaces.DriveState.ImageMounted:
-			image = drive.getImage()
-			if not compat.image_is_accessible(image):
-				print >>sys.stderr, 'Unbinding inaccessible', \
-					name, 'image', \
-					compat.get_image_location(image), \
-					'in state:', \
-					compat.get_image_state(image)
-				drive.unmount()
-				modified = True
-		elif drive.state == ifaces.DriveState.HostDriveCaptured:
-			path = drive.getHostDrive().name
-			if not os.access(path, os.R_OK):
-				print >>sys.stderr, \
-					'Unbinding inaccessible host', name, \
-					'drive', path
-				drive.unmount()
+			hdrv = drive.getElementsByTagName('HostDrive')
+			assert len(hdrv) < 2
+			if len(hdrv) == 1:
+				dev = hdrv[0].getAttribute('src')
+				print >>sys.stderr, 'Unbinding host', name, \
+							'drive', dev
+				drive.removeChild(hdrv[0])
 				modified = True
 	return modified
 
@@ -530,9 +482,9 @@ def fixup_machine():
 	# commits during the second one!
 	did_upgrade = fixup_upgrade_settings(mf)
 	did_uuid = fixup_uuid_1(mf)
-	did_invalid = fixup_invalid_images(mf)
+	did_removable = fixup_removable_devices(mf)
 	fixup_disk_size()
-	if did_uuid or did_invalid:
+	if did_uuid or did_removable:
 		mf.write()
 	mf.close()
 
@@ -540,8 +492,7 @@ def fixup_machine():
 	vm = vbox.openMachine(vm_path)
 	if did_uuid:
 		fixup_uuid_2(vm)
-	did_inaccessible = fixup_inaccessible_devices(vm)
-	if did_uuid or did_inaccessible or did_upgrade:
+	if did_uuid or did_upgrade:
 		vm.saveSettings()
 
 def register_machine():
