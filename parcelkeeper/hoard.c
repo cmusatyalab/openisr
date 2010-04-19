@@ -583,13 +583,27 @@ bad:
 	return ret;
 }
 
+/* Writing out only the data bytes in @buf causes a read-modify-write
+   in the kernel's page cache if the length is not a multiple of 512
+   (or 4096?), reducing throughput.  We could pad out to the next 4096-byte
+   boundary, but instead we pad to the entire length of the slot, based on
+   two assumptions: the extra I/O is cheap, and keeping the hoard cache
+   from becoming sparse is useful to avoid filesystem fragmentation when
+   chunks are overwritten by larger chunks. */
 pk_err_t _hoard_write_chunk(struct pk_state *state, unsigned offset,
 			unsigned length, const void *buf)
 {
-	if (pwrite(state->hoard_fd, buf, length, ((off_t)offset) << 9) !=
-				(int)length) {
-		pk_log(LOG_ERROR, "Couldn't write hoard cache: offset %d, "
-					"length %d", offset, length);
+	unsigned chunksize = 131072;  /* XXX */
+	char data[chunksize];
+
+	if (length > chunksize)
+		return PK_INVALID;
+	memcpy(data, buf, length);
+	memset(data + length, 0, chunksize - length);
+	if (pwrite(state->hoard_fd, data, chunksize, ((off_t)offset) << 9) !=
+				(int) chunksize) {
+		pk_log(LOG_ERROR, "Couldn't write hoard cache at offset %d",
+					offset);
 		return PK_IOERR;
 	}
 	return PK_SUCCESS;
