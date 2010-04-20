@@ -30,7 +30,7 @@ from vmm import *
 CLASS_VBOX = '@virtualbox.org/VirtualBox;1'
 CLASS_SESN = '@virtualbox.org/Session;1'
 MIN_VERSION = (2,0,0)
-SETTINGS_VERSIONS = ((1,3), (1,5), (1,6), (1,7))
+MAX_VERSION = (3,1,99)
 
 class MachineFile:
 	def __init__(self, vm_path):
@@ -69,6 +69,37 @@ class VboxCompat:
 			raise VmmError("VirtualBox >= %s required (found %s)" \
 					% (format_version(MIN_VERSION), \
 					vbox.version))
+
+	def version_is_recognized(self):
+		return self.vbox_ver <= MAX_VERSION
+
+	def settings_version_is_supported(self, ver):
+		if self.vbox_ver < (3,1):
+			cur = parse_settings_version( \
+						vbox.settingsFormatVersion)
+			return cur >= ver
+		else:
+			# We can't programmatically determine the maximum
+			# supported settings version.  We could include a
+			# VBox-version => max-settings-version map in this
+			# driver, but that would unconditionally prevent us
+			# from running on newer versions of VBox and would be
+			# error-prone anyway.
+			return True
+
+	def settings_version_will_upgrade(self, ver):
+		if self.vbox_ver < (3,1):
+			cur = parse_settings_version( \
+						vbox.settingsFormatVersion)
+			return cur != ver
+		else:
+			# Unregistering the DVD and floppy drives upgrades
+			# the settings version to at least 1.9.  For newer
+			# settings versions, VBox will upgrade the settings
+			# file only if necessary to represent the machine
+			# configuration.  We can't predict when this will
+			# happen, so return False in this case.
+			return ver < (1,9)
 
 	def create_machine(self, vmdir, name, uuid):
 		'''Create a machine, configure it to disable VT support, and
@@ -251,17 +282,25 @@ def check_runnable():
 	# be able to do an openMachine() to check it, so we have to read
 	# the XML.
 	if os.path.isfile(vm_path):
-		want_cfg_ver = parse_settings_version( \
-				vbox.settingsFormatVersion)
 		mf = MachineFile(vm_path)
 		found_cfg_ver = parse_settings_version(mf. \
 				descend('VirtualBox').getAttribute('version'))
 		mf.close()
-		if want_cfg_ver < found_cfg_ver:
+		if not compat.settings_version_is_supported(found_cfg_ver):
 			raise VmmError('VirtualBox too old to run this ' \
 					'parcel (settings version %s, max %s)' \
 					% (format_version(found_cfg_ver), \
 					format_version(want_cfg_ver)))
+
+def check_version():
+	if compat.version_is_recognized():
+		return
+	print >>sys.stderr, '\nNOTE: This version of OpenISR does', \
+			'not recognize this version of VirtualBox.'
+	print >>sys.stderr, 'Resuming this parcel will likely break', \
+			'it.  You may continue anyway, but you'
+	print >>sys.stderr, 'should be prepared to "isr discard"', \
+			'if it fails.\n'
 
 def get_disk_geometry():
 	# Always round down
@@ -334,21 +373,14 @@ def fixup_upgrade_settings(mf):
 	decides to abort."""
 
 	cfg_ver = mf.descend('VirtualBox').getAttribute('version')
-	if cfg_ver == vbox.settingsFormatVersion:
+	cfg_ver = parse_settings_version(cfg_ver)
+	if not compat.settings_version_will_upgrade(cfg_ver):
 		return False
 	print >>sys.stderr, '\nThis parcel is configured for an older', \
 				'version of VirtualBox.'
 	print >>sys.stderr, 'If you resume the parcel, it will be upgraded', \
 				'and will no longer be usable'
 	print >>sys.stderr, 'with older versions of VirtualBox.\n'
-	cfg_ver = parse_settings_version(vbox.settingsFormatVersion)
-	if cfg_ver not in SETTINGS_VERSIONS:
-		print >>sys.stderr, 'NOTE: This version of OpenISR does', \
-				'not recognize this version of VirtualBox.'
-		print >>sys.stderr, 'Resuming this parcel will likely break', \
-				'it.  You may continue anyway, but you'
-		print >>sys.stderr, 'should be prepared to "isr discard"', \
-				'if it fails.\n'
 	resp = ''
 	while resp != 'y' and resp != 'n':
 		sys.stderr.write('Resume parcel? (y/n) ')
@@ -526,10 +558,6 @@ def unregister_machine(do_save = True):
 	else:
 		sesn = new_instance(CLASS_SESN)
 		vbox.openSession(sesn, vm.id)
-		if sesn.machine.settingsFileVersion != \
-					vbox.settingsFormatVersion:
-			print >>sys.stderr, 'Warning: Auto-converting VM', \
-					'settings file during unregistration'
 		try:
 			unregister_state(sesn, do_save)
 			compat.detach_ide_disk(sesn.machine, 0, 0)
@@ -581,6 +609,7 @@ def run():
 	signal.signal(signal.SIGINT, handle_signal)
 	vbox_init()
 	check_runnable()
+	check_version()
 	# Make sure there's not a leftover registration from a previous crash
 	unregister_machine()
 	if not os.path.isfile(disk_path):
