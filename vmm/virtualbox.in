@@ -18,6 +18,7 @@
 
 import os
 import sys
+import re
 import signal
 import shutil
 import time
@@ -723,6 +724,15 @@ def cleanup():
 
 	# Remove logs
 	shutil.rmtree(vmm.CFGDIR + '/Logs', True)
+
+	# Remove backup files left by VBox 3.1 and above when upgrading the
+	# settings format
+	parts = os.path.basename(vm_path).split('.')
+	regexp = '^' + re.escape(parts[0]) + '-[0-9.]+-linux\.' + \
+				re.escape(parts[1]) + '$'
+	for name in os.listdir(vmm.CFGDIR):
+		if re.match(regexp, name):
+			os.remove(os.path.join(vmm.CFGDIR, name))
 
 vmm.DEBUG = (vmm.VERBOSE == "yes")
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
