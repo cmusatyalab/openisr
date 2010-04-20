@@ -33,7 +33,7 @@ CLASS_SESN = '@virtualbox.org/Session;1'
 MIN_VERSION = (2,0,0)
 MAX_VERSION = (3,1,99)
 
-class MachineFile:
+class MachineFile(object):
 	def __init__(self, vm_path):
 		self.path = vm_path
 		self.new_path = vm_path + '.new'
@@ -59,7 +59,7 @@ class MachineFile:
 		self.dom.unlink()
 		del self.dom
 
-class VboxCompat:
+class VboxCompat(object):
 	def __init__(self):
 		parts = map(int, vbox.version.replace('_OSE', '').split('.'))
 		if len(parts) != 3:
