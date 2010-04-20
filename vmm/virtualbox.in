@@ -116,20 +116,20 @@ class VboxCompat:
 			else:
 				disk.close()
 
-	def __find_ide_controller(self, sesn_machine):
-		for ctlr in sesn_machine.getStorageControllers():
-			if ctlr.bus == ifaces.StorageBus.IDE:
-				return ctlr
-		raise VmmError("Couldn't find an IDE controller")
+	def get_ide_controller(self, sesn_machine):
+		if self.vbox_ver < (2,2):
+			return ifaces.StorageBus.IDE
+		else:
+			for ctlr in sesn_machine.getStorageControllers():
+				if ctlr.bus == ifaces.StorageBus.IDE:
+					return ctlr.name
+			raise VmmError("Couldn't find an IDE controller")
 
 	def attach_ide_disk(self, sesn_machine, uuid, port, device):
 		'''Attach the specified disk to the given machine's IDE
 		controller.  The machine handle must be obtained from an open
 		session.'''
-		if self.vbox_ver < (2,2):
-			ctlr = ifaces.StorageBus.IDE
-		else:
-			ctlr = self.__find_ide_controller(sesn_machine).name
+		ctlr = self.get_ide_controller(sesn_machine)
 		if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
 			sesn_machine.attachHardDisk2(uuid, ctlr, port, device)
 		else:
@@ -141,11 +141,7 @@ class VboxCompat:
 		settings if successful.  The machine handle must be obtained
 		from an open session.'''
 		try:
-			if self.vbox_ver < (2,2):
-				ctlr = ifaces.StorageBus.IDE
-			else:
-				ctlr = self.__find_ide_controller( \
-						sesn_machine).name
+			ctlr = self.get_ide_controller(sesn_machine)
 			if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
 				sesn_machine.getHardDisk2(ctlr, port, device)
 			else:
