@@ -111,8 +111,12 @@ class VboxCompat:
 
 		if self.vbox_ver < (3,0,2):
 			vm.HWVirtExEnabled = ifaces.TSBool.False
-		else:
+		elif self.vbox_ver < (3,1):
 			vm.HWVirtExEnabled = False
+		else:
+			vm.setHWVirtExProperty( \
+					ifaces.HWVirtExPropertyType.Enabled,
+					False)
 
 		return vm
 
@@ -154,7 +158,26 @@ class VboxCompat:
 			for ctlr in sesn_machine.getStorageControllers():
 				if ctlr.bus == ifaces.StorageBus.IDE:
 					return ctlr.name
-			raise VmmError("Couldn't find an IDE controller")
+			# The machine will not have an IDE controller after
+			# it is first created, or if the user deletes the
+			# controller
+			ctlr = sesn_machine.addStorageController( \
+						'IDE Controller',
+						ifaces.StorageBus.IDE)
+			return ctlr.name
+
+	def __get_floppy_controller(self, sesn_machine):
+		# Only makes sense on 3.1 and above
+		for ctlr in sesn_machine.getStorageControllers():
+			if ctlr.bus == ifaces.StorageBus.Floppy:
+				return ctlr.name
+		# The machine will not have a floppy controller after it is
+		# first created, if it has been upgraded from a machine
+		# format earlier than 1.9, or if the user deletes the
+		# controller
+		ctlr = sesn_machine.addStorageController('Floppy Controller',
+					ifaces.StorageBus.Floppy)
+		return ctlr.name
 
 	def attach_ide_disk(self, sesn_machine, uuid, port, device):
 		'''Attach the specified disk to the given machine's IDE
@@ -163,8 +186,12 @@ class VboxCompat:
 		ctlr = self.get_ide_controller(sesn_machine)
 		if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
 			sesn_machine.attachHardDisk2(uuid, ctlr, port, device)
-		else:
+		elif self.vbox_ver < (3,1):
 			sesn_machine.attachHardDisk(uuid, ctlr, port, device)
+		else:
+			sesn_machine.attachDevice(ctlr, port, device,
+						ifaces.DeviceType.HardDisk,
+						uuid)
 
 	def detach_ide_disk(self, sesn_machine, port, device):
 		'''Detach the specified disk from the given machine's IDE
@@ -174,15 +201,47 @@ class VboxCompat:
 			ctlr = self.get_ide_controller(sesn_machine)
 			if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
 				sesn_machine.getHardDisk2(ctlr, port, device)
-			else:
+			elif self.vbox_ver < (3,1):
 				sesn_machine.getHardDisk(ctlr, port, device)
+			else:
+				sesn_machine.getMedium(ctlr, port, device)
 		except:
 			pass
 		else:
 			if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
 				sesn_machine.detachHardDisk2(ctlr, port, device)
-			else:
+			elif self.vbox_ver < (3,1):
 				sesn_machine.detachHardDisk(ctlr, port, device)
+			else:
+				sesn_machine.detachDevice(ctlr, port, device)
+
+	def attach_removable_drives(self, sesn_machine):
+		'''Attach standard removable drives to the machine.  The
+		machine handle must be obtained from an open session.'''
+		if self.vbox_ver < (3,1):
+			return
+		ctlr = self.get_ide_controller(sesn_machine)
+		sesn_machine.attachDevice(ctlr, 1, 0, ifaces.DeviceType.DVD,
+					'')
+		ctlr = self.__get_floppy_controller(sesn_machine)
+		sesn_machine.attachDevice(ctlr, 0, 0, ifaces.DeviceType.Floppy,
+					'')
+
+	def detach_removable_drives(self, sesn_machine):
+		'''Detach standard removable drives from the machine.  The
+		machine handle must be obtained from an open session.'''
+		if self.vbox_ver < (3,1):
+			return
+		try:
+			ctlr = self.get_ide_controller(sesn_machine)
+			sesn_machine.detachDevice(ctlr, 1, 0)
+		except:
+			pass
+		try:
+			ctlr = self.__get_floppy_controller(sesn_machine)
+			sesn_machine.detachDevice(ctlr, 0, 0)
+		except:
+			pass
 
 	def release_saved_state(self, sesn, dest_path = None):
 		'''Unregister the saved state attached to the given session.
@@ -529,6 +588,7 @@ def register_machine():
 	vbox.openSession(sesn, vm.id)
 	try:
 		compat.attach_ide_disk(sesn.machine, disk.id, 0, 0)
+		compat.attach_removable_drives(sesn.machine)
 		if vmm.FULLSCREEN == 'yes':
 			fullscreen = 'on'
 		else:
@@ -560,6 +620,7 @@ def unregister_machine(do_save = True):
 		vbox.openSession(sesn, vm.id)
 		try:
 			unregister_state(sesn, do_save)
+			compat.detach_removable_drives(sesn.machine)
 			compat.detach_ide_disk(sesn.machine, 0, 0)
 		finally:
 			sesn.machine.saveSettings()
