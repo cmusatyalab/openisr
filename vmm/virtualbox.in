@@ -243,6 +243,45 @@ class VboxCompat:
 		except:
 			pass
 
+	def fixup_removable_devices(self, mf):
+		"""On VirtualBox 3.1 and above, unregistered machines cannot
+		have any removable media attached (or, indeed, any removable
+		drives) or openMachine() will fail.  On 3.1 and above, strip
+		all removable drives from the XML.  On older versions, strip
+		all removable media (both images and host drive bindings);
+		otherwise, some users would retain mounted media across a
+		suspend and others wouldn't.
+
+		VBox >= 3.1 places these devices in a different XML subtree,
+		but unregistered 3.1 parcels will never have media attached,
+		so we only have to worry about older-format machines."""
+
+		modified = False
+		hw = mf.descend('VirtualBox', 'Machine', 'Hardware')
+
+		drives = 'DVDDrive', 'FloppyDrive'
+		if self.vbox_ver < (3,1):
+			for el in drives:
+				for drive in hw.getElementsByTagName(el):
+					img = drive.getElementsByTagName( \
+								'Image')
+					assert len(img) < 2
+					if len(img) == 1:
+						drive.removeChild(img[0])
+						modified = True
+					hdrv = drive.getElementsByTagName( \
+								'HostDrive')
+					assert len(hdrv) < 2
+					if len(hdrv) == 1:
+						drive.removeChild(hdrv[0])
+						modified = True
+		else:
+			for el in drives:
+				for drive in hw.getElementsByTagName(el):
+					hw.removeChild(drive)
+					modified = True
+		return modified
+
 	def release_saved_state(self, sesn, dest_path = None):
 		'''Unregister the saved state attached to the given session.
 		If dest_path is specified, move the state file to that
@@ -495,41 +534,6 @@ def fixup_uuid_2(vm):
 	for i in range(vbox.systemProperties.networkAdapterCount):
 		vm.getNetworkAdapter(i).MACAddress = None
 
-def fixup_removable_devices(mf):
-	"""On VirtualBox 3.1 and above, unregistered machines cannot have any
-	removable media attached (or, indeed, any removable drives) or
-	openMachine() will fail.  Manually strip all removable media (both
-	images and host drives) from the machine XML.  For consistency, we do
-	this for all versions of VBox; otherwise, some users would retain
-	mounted media across a suspend and others wouldn't.
-
-	VBox >= 3.1 places these devices in a different XML subtree, but
-	unregistered 3.1 parcels will never have media attached, so we only
-	have to worry about older-format machines."""
-
-	modified = False
-	hw = mf.descend('VirtualBox', 'Machine', 'Hardware')
-
-	for name, el in ('CD', 'DVDDrive'), ('floppy', 'FloppyDrive'):
-		for drive in hw.getElementsByTagName(el):
-			img = drive.getElementsByTagName('Image')
-			assert len(img) < 2
-			if len(img) == 1:
-				uuid = img[0].getAttribute('uuid')
-				print >>sys.stderr, 'Unbinding', name, \
-							'image', uuid
-				drive.removeChild(img[0])
-				modified = True
-			hdrv = drive.getElementsByTagName('HostDrive')
-			assert len(hdrv) < 2
-			if len(hdrv) == 1:
-				dev = hdrv[0].getAttribute('src')
-				print >>sys.stderr, 'Unbinding host', name, \
-							'drive', dev
-				drive.removeChild(hdrv[0])
-				modified = True
-	return modified
-
 def fixup_disk_size():
 	"""Update the virtual disk size in the VMDK file if necessary."""
 
@@ -567,7 +571,7 @@ def fixup_machine():
 	# commits during the second one!
 	did_upgrade = fixup_upgrade_settings(mf)
 	did_uuid = fixup_uuid_1(mf)
-	did_removable = fixup_removable_devices(mf)
+	did_removable = compat.fixup_removable_devices(mf)
 	fixup_disk_size()
 	if did_uuid or did_removable:
 		mf.write()
