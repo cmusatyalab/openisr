@@ -137,9 +137,8 @@ class VboxCompat:
 
 	def detach_ide_disk(self, sesn_machine, port, device):
 		'''Detach the specified disk from the given machine's IDE
-		controller, if such an attachment exists.  Save machine
-		settings if successful.  The machine handle must be obtained
-		from an open session.'''
+		controller, if such an attachment exists.  The machine handle
+		must be obtained from an open session.'''
 		try:
 			ctlr = self.get_ide_controller(sesn_machine)
 			if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
@@ -153,7 +152,6 @@ class VboxCompat:
 				sesn_machine.detachHardDisk2(ctlr, port, device)
 			else:
 				sesn_machine.detachHardDisk(ctlr, port, device)
-			sesn_machine.saveSettings()
 
 	def release_saved_state(self, sesn, dest_path = None):
 		'''Unregister the saved state attached to the given session.
@@ -532,11 +530,11 @@ def unregister_machine(do_save = True):
 					vbox.settingsFormatVersion:
 			print >>sys.stderr, 'Warning: Auto-converting VM', \
 					'settings file during unregistration'
-			sesn.machine.saveSettings()
 		try:
 			unregister_state(sesn, do_save)
 			compat.detach_ide_disk(sesn.machine, 0, 0)
 		finally:
+			sesn.machine.saveSettings()
 			try_close(sesn)
 		vbox.unregisterMachine(vm.id)
 
