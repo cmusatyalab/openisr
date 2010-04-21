@@ -2125,6 +2125,8 @@ sub vmm_cleanup () {
     my $vmm;
     my %results;
 
+    print "Cleaning up temporary parcel data...\n"
+        if $verbose;
     opendir(DRVS, VMMDIR)
         or unix_errexit("Couldn't read " . VMMDIR);
     foreach $vmm (readdir(DRVS)) {
