@@ -21,6 +21,7 @@ import sys
 import re
 import signal
 import shutil
+import struct
 import time
 import random
 import xml.dom.minidom
@@ -102,8 +103,68 @@ class VboxCompat(object):
 			# happen, so return False in this case.
 			return ver < (1,9)
 
+	def __configure_cpu(self, vm):
+		'''Configure CPUID flags.  Only makes sense on VBox >= 3.1.'''
+
+		def str32(string, length):
+			'''Space-pad @string to @length and convert it to
+			an array of integers suitable for CPUID strings.'''
+			assert len(string) <= length
+			string += (length - len(string)) * ' '
+			return struct.unpack('<' + (length / 4) * 'I', string)
+
+		def ext_leaf(leaf):
+			'''Python thinks extended leaf numbers (0x8xxxxxxx)
+			are large positive values which can't be represented
+			as 32-bit signed, and thus won't pass them to
+			setCpuIdLeaf().  Accept an extended leaf offset
+			without the leading 0x80 and return something Python
+			will accept.'''
+			packed = struct.pack('I', 0x80000000 + leaf)
+			return struct.unpack('i', packed)[0]
+
+		sname = str32('OpenISR x86', 12)
+		lname = str32('OpenISR (R) virtual x86 processor v1', 48)
+
+		# We don't enable the Synthetic property because it's not yet
+		# clear whether the exported CPU properties will be stable
+		# between VirtualBox versions, machine types, etc., especially
+		# since the feature flags selected by Synthetic CPU are *not*
+		# stored in the machine file.  Instead, we set the CPUID
+		# leaves ourselves, in a way that *is* stored in the machine
+		# file; therefore, older machines will keep a consistent set
+		# of feature flags even if newer versions of this code select
+		# a different set of flags.
+		#
+		# Also note that due to VBox #6577, setCpuProperty() can't be
+		# used to enable Synthetic CPU at least through VBox 3.1.6.
+		# We could enable it with setExtraData() if necessary.
+		vm.setCpuProperty(ifaces.CpuPropertyType.PAE, True)
+		# Standard leaf 0: vendor ID and highest standard leaf
+		vm.setCpuIdLeaf(0, 1, sname[0], sname[2], sname[1])
+		# Standard leaf 1: processor signature and features
+		vm.setCpuIdLeaf(1, 0xf11, 0, 0, 0x0781f1ff)
+
+		# Extended leaf 0: highest extended leaf
+		vm.setCpuIdLeaf(ext_leaf(0), ext_leaf(4), 0, 0, 0)
+		# Extended leaf 1: extended features
+		vm.setCpuIdLeaf(ext_leaf(1), 0, 0, 0, 0)
+		# Extended leaves 2 to 4: processor name
+		for i in range(3):
+			vm.setCpuIdLeaf(ext_leaf(2 + i),
+						*lname[4 * i : 4 * i + 4])
+
+		# With HWVirtEx disabled, these settings only affect the CPUID
+		# instruction from guest supervisor mode, not from guest
+		# user mode.  By default, VBox will therefore still refuse
+		# to resume if the resuming host CPU is different from the
+		# suspending host CPU.  Luckily, there's a CFGM option to
+		# override this.  We'll take our chances with user-mode
+		# applications examining the CPUID.
+		vm.setExtraData('VBoxInternal/CPUM/StrictCpuIdChecks', '0')
+
 	def create_machine(self, vmdir, name, uuid):
-		'''Create a machine, configure it to disable VT support, and
+		'''Create a machine, configure its processor features, and
 		return it.'''
 		if self.vbox_ver < (2,1):
 			vm = vbox.createMachine(vmdir, name, uuid)
@@ -118,6 +179,7 @@ class VboxCompat(object):
 			vm.setHWVirtExProperty( \
 					ifaces.HWVirtExPropertyType.Enabled,
 					False)
+			self.__configure_cpu(vm)
 
 		return vm
 
