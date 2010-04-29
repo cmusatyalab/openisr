@@ -513,7 +513,7 @@ def create_machine():
 		pass
 	net = vm.getNetworkAdapter(0)
 	try:
-		# Not supported with VirtualBox OSE
+		# Not supported by VirtualBox OSE until 2.1.2
 		net.adapterType = ifaces.NetworkAdapterType.I82543GC
 	except:
 		pass
