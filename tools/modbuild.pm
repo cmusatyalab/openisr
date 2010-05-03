@@ -19,6 +19,14 @@ use strict;
 use warnings;
 use File::Temp qw/tempdir/;
 
+sub fail_cd {
+	my $msg = shift;
+
+	# Prevent errors when File::Tree tries to clean up $topdir
+	chdir("/");
+	fail $msg;
+}
+
 sub build {
 	my $topdir;
 	my $found_version = 0;
@@ -32,7 +40,7 @@ sub build {
 	chdir("$topdir/openisr-modules")
 		or fail "Couldn't chdir";
 	open(CFGH, "config.h")
-		or fail "Couldn't read config.h";
+		or fail_cd "Couldn't read config.h";
 	while (<CFGH>) {
 		next unless /^#define\s+([^\s]+)\s+"([^"]+)"$/;
 		if ($1 eq "VERSION") {
@@ -48,13 +56,13 @@ sub build {
 
 	status "Building kernel modules...";
 	system("make") == 0
-		or fail "Couldn't build kernel source";
+		or fail_cd "Couldn't build kernel source";
 
 	status "Installing kernel modules...";
 	system("make install") == 0
-		or fail "Couldn't install kernel modules";
+		or fail_cd "Couldn't install kernel modules";
 	system("depmod") == 0
-		or fail "Couldn't run depmod";
+		or fail_cd "Couldn't run depmod";
 
 	# If our working directory is inside $topdir when we exit, some
 	# versions of File::Tree will fail when trying to delete $topdir
