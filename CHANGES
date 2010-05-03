@@ -1,3 +1,19 @@
+====== 0.9.9 (2010-05-03)
+
+------ Client changes
+
+- Hoard cache performance improvements
+- Prevent an interrupted upload from removing chunks from the hoard cache
+- Add -p/--compact option to "isr checkhoard" to compact the hoard cache
+- Remove hoard_minsize config option
+- Various minor fixes
+
+------ VMM driver changes
+
+- virtualbox: Support VirtualBox 3.1
+- virtualbox: Support suspend/resume across CPU types for new VBox 3.1 parcels
+- virtualbox: Always unmount removable media when suspending a parcel
+
 ====== 0.9.8 (2010-04-02)
 
 ------ Client changes
