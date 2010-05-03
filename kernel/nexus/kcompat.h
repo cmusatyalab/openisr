@@ -248,6 +248,14 @@ static inline struct request *blk_fetch_request(struct request_queue *q)
 #endif
 #endif
 
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
+#define blk_queue_max_segments(q, val) \
+	blk_queue_max_phys_segments(q, val)
+#define blk_queue_max_hw_sectors(q, val) \
+	blk_queue_max_sectors(q, val)
+#endif
+
 /***** Scatterlists **********************************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)

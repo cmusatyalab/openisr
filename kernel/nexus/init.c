@@ -637,7 +637,7 @@ struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 	}
 	dev->queue->queuedata=dev;
 	blk_queue_bounce_limit(dev->queue, BLK_BOUNCE_ANY);
-	blk_queue_max_phys_segments(dev->queue, MAX_SEGS_PER_IO);
+	blk_queue_max_segments(dev->queue, MAX_SEGS_PER_IO);
 	/* By default, blk_rq_map_sg() coalesces physically adjacent pages
 	   into the same segment, resulting in a segment that spans more
 	   than one page but only points directly to the first struct page.
@@ -651,7 +651,7 @@ struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 	   scatterlist_copy() to divide each scatterlist entry into its
 	   constituent pages. */
 	BUILD_BUG_ON(PAGE_SIZE != PAGE_CACHE_SIZE);
-	blk_queue_max_sectors(dev->queue,
+	blk_queue_max_hw_sectors(dev->queue,
 				chunk_sectors(dev) * (MAX_CHUNKS_PER_IO - 1));
 	
 	debug(DBG_CTR, "Configuring transforms");
