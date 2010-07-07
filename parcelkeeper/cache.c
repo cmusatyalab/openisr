@@ -489,10 +489,18 @@ static pk_err_t obtain_chunk(struct pk_state *state, unsigned chunk,
 	} else {
 		pk_log(LOG_CHUNK, "Fetched chunk %u from hoard cache", chunk);
 	}
-	count=pwrite(state->cache_fd, buf, len,
+	/* Write out the entire slot, not just the utilized bytes.  Nexus
+	   always does this when writing data, so the additional I/O bandwidth
+	   to do it here is negligible.  The benefit: we may be able to
+	   convince the filesystem to allocate contiguous sectors for the
+	   chunk.  Otherwise, Nexus' first write to the chunk might cause
+	   its second half to be allocated noncontiguously with the sectors
+	   written here. */
+	memset(buf + len, 0, state->parcel->chunksize - len);
+	count=pwrite(state->cache_fd, buf, state->parcel->chunksize,
 				cache_chunk_to_offset(state, chunk));
 	g_free(buf);
-	if (count != (int)len) {
+	if (count != (int) state->parcel->chunksize) {
 		pk_log(LOG_ERROR, "Couldn't write chunk %u to backing store",
 					chunk);
 		return PK_IOERR;
