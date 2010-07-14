@@ -191,6 +191,8 @@ AC_ARG_WITH([gmp], [AS_HELP_STRING([--with-gmp=DIR],
 			[look for GMP in DIR])])
 
 if test z$enable_client = zyes ; then
+	AC_CHECK_FUNCS([fallocate])
+
 	FIND_LIBRARY([libcurl], [curl], [curl_easy_init], [curl/curl.h],
 				[$with_curl /usr/local /usr])
 	if test ! -x $FOUND_PATH/bin/curl-config ; then

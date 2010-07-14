@@ -26,6 +26,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include "defs.h"
+#include "config.h"
 
 #define CA_MAGIC 0x51528038
 #define CA_VERSION 1
@@ -54,6 +55,38 @@ off64_t cache_chunk_to_offset(struct pk_state *state, unsigned chunk)
 	return (off64_t)state->parcel->chunksize * chunk + state->offset;
 }
 
+static pk_err_t set_cache_file_size(struct pk_state *state, int fd)
+{
+	off64_t len = cache_chunk_to_offset(state, state->parcel->chunks);
+
+#ifdef HAVE_FALLOCATE
+	if (!fallocate(fd, 0, 0, len)) {
+		return PK_SUCCESS;
+	} else {
+		int err = errno;
+
+		switch (err) {
+		case ENOSYS:
+		case EOPNOTSUPP:
+			break;
+		case ENOSPC:
+			pk_log(LOG_INFO, "Not preallocating cache file "
+						"due to insufficient space");
+			break;
+		default:
+			pk_log(LOG_WARNING, "Couldn't preallocate cache "
+						"file: %s", strerror(err));
+			break;
+		}
+	}
+#endif
+	if (ftruncate(fd, len)) {
+		pk_log(LOG_ERROR, "couldn't extend cache file");
+		return PK_IOERR;
+	}
+	return PK_SUCCESS;
+}
+
 static pk_err_t create_cache_file(struct pk_state *state, long page_size)
 {
 	struct ca_header hdr = {0};
@@ -80,13 +113,10 @@ static pk_err_t create_cache_file(struct pk_state *state, long page_size)
 	hdr.offset=htonl(state->offset >> 9);
 	hdr.flags=htonl(state->cache_flags);
 	hdr.version=CA_VERSION;
+	if (set_cache_file_size(state, fd))
+		return PK_IOERR;
 	if (write(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
 		pk_log(LOG_ERROR, "Couldn't write cache file header");
-		return PK_IOERR;
-	}
-	if (ftruncate(fd, cache_chunk_to_offset(state,
-				state->parcel->chunks))) {
-		pk_log(LOG_ERROR, "couldn't extend cache file");
 		return PK_IOERR;
 	}
 
