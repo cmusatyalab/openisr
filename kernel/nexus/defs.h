@@ -4,7 +4,7 @@
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
- * Copyright (C) 2006-2008 Carnegie Mellon University
+ * Copyright (C) 2006-2010 Carnegie Mellon University
  * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -39,6 +39,7 @@
 #define KTHREAD_NAME "kopenisrd"
 #define IOTHREAD_NAME "kopenisriod"
 #define REQTHREAD_NAME "kopenisrblockd"
+#define INITTHREAD_NAME "kopenisrinitd"
 #define CD_NR_STATES 16  /* must shadow NR_STATES in chunkdata.c */
 
 #include <linux/blkdev.h>
@@ -148,7 +149,7 @@ struct nexus_tfm_state {
  * @queue                : request queue for our block device (*)
  * @queue_lock           : spinlock associated with @queue
  * @chunk_bdev           : &block_device for our chunk store
- * @cb_add_disk          : workqueue callback for ctr
+ * @cb_add_disk          : workqueue callback for schedule_add_disk()
  * @requests             : queue for nexus_run_requests() (requests_lock)
  * @requests_lock        : lock for @requests
  * @requests_oom_timer   : out-of-memory callback for nexus_run_requests() (*)
@@ -504,6 +505,7 @@ void thread_unregister(struct nexus_dev *dev);
 void schedule_callback(enum callback type, struct list_head *entry);
 void schedule_io(struct bio *bio);
 void schedule_request_callback(struct list_head *entry);
+void schedule_add_disk(struct nexus_dev *dev);
 void wake_all_threads(void);
 
 /* sysfs.c */

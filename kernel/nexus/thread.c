@@ -106,6 +106,7 @@ static struct pending_requests {
 
 static struct task_struct *io_thread;
 static struct task_struct *request_thread;
+static struct workqueue_struct *add_disk_wq;
 
 
 /**
@@ -333,6 +334,44 @@ void schedule_request_callback(struct list_head *entry)
 	list_add_tail(entry, &pending_requests.list);
 	spin_unlock_irqrestore(&pending_requests.lock, flags);
 	wake_up_interruptible(&pending_requests.wq);
+}
+
+/**
+ * nexus_add_disk - register a newly-created device with the block layer
+ * 
+ * We have to call add_disk() from a workqueue callback in order to prevent
+ * deadlock.  This is the function that does so.
+ **/
+static void nexus_add_disk(work_t *work_struct)
+{
+	struct nexus_dev *dev=container_of(work_struct, struct nexus_dev,
+				cb_add_disk);
+	
+	debug(DBG_CTR, "Adding gendisk");
+	add_disk(dev->gendisk);
+	nexus_dev_put(dev, 0);
+}
+
+/**
+ * schedule_add_disk - arrange to register a device with the block layer
+ * 
+ * Arrange for add_disk() to be called on the device's gendisk from a
+ * thread callback.  add_disk() initiates I/O to read the partition tables,
+ * so userspace needs to be able to process key requests while it is running.
+ * If we called add_disk() directly from the ctr or a different worker thread,
+ * we would deadlock.  Further, since add_disk() can cause userspace to fetch
+ * chunks from the server, it can take a long time to run.  We therefore use
+ * our own thread for this, rather than the shared workqueue, to avoid
+ * blocking other kernel tasks (for example, processing of TTY input buffers)
+ * while these chunks are read.
+ **/
+void schedule_add_disk(struct nexus_dev *dev)
+{
+	WORK_INIT(&dev->cb_add_disk, nexus_add_disk);
+	/* Make sure the dev isn't freed until add_disk() completes */
+	nexus_dev_get(dev);
+	if (!queue_work(add_disk_wq, &dev->cb_add_disk))
+		BUG();
 }
 
 /**
@@ -807,6 +846,12 @@ void thread_shutdown(void)
 		debug(DBG_THREAD, "...done");
 		request_thread=NULL;
 	}
+	if (add_disk_wq != NULL) {
+		debug(DBG_THREAD, "Stopping init thread");
+		destroy_workqueue(add_disk_wq);
+		debug(DBG_THREAD, "...done");
+		add_disk_wq=NULL;
+	}
 }
 
 /**
@@ -871,6 +916,13 @@ int __init thread_start(void)
 	set_user_nice(thr, 0);
 	request_thread=thr;
 	wake_up_process(thr);
+	/* add_disk() doesn't require any special tricks in the runner thread,
+	   so we just use a workqueue. */
+	add_disk_wq=create_singlethread_workqueue(INITTHREAD_NAME);
+	if (add_disk_wq == NULL) {
+		ret=-ENOMEM;
+		goto bad;
+	}
 	
 	return 0;
 	

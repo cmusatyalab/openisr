@@ -4,7 +4,7 @@
  * Nexus - convergently encrypting virtual disk driver for the OpenISR (R)
  *         system
  * 
- * Copyright (C) 2006-2009 Carnegie Mellon University
+ * Copyright (C) 2006-2010 Carnegie Mellon University
  * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -316,24 +316,6 @@ static void free_devnum(int devnum)
 }
 
 /**
- * nexus_add_disk - register a newly-created device with the block layer
- * 
- * We have to call add_disk() from a workqueue callback in order to prevent
- * deadlock.  This is the function that does so.  The function which sets
- * up the callback must first grab a dev reference, which nexus_add_disk()
- * will put after the add_disk().
- **/
-static void nexus_add_disk(work_t *work_struct)
-{
-	struct nexus_dev *dev=container_of(work_struct, struct nexus_dev,
-				cb_add_disk);
-	
-	debug(DBG_CTR, "Adding gendisk");
-	add_disk(dev->gendisk);
-	nexus_dev_put(dev, 0);
-}
-
-/**
  * nexus_open_bdev - bind a block device to a &nexus_dev given its path
  * 
  * open_bdev_exclusive() doesn't check permissions on the device node it's
@@ -464,7 +446,7 @@ struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 	debug(DBG_CTR, "Ctr starting");
 	
 	/* If the userspace process goes away right after the ctr returns, the
-	   device will still exist until delayed_add_disk runs but the module
+	   device will still exist until nexus_add_disk runs but the module
 	   could be unloaded.  To get around this, we get an extra reference
 	   to the module here and put it in the dtr. */
 	if (!try_module_get(THIS_MODULE)) {
@@ -700,17 +682,7 @@ struct nexus_dev *nexus_dev_ctr(char *ident, char *devnode, unsigned chunksize,
 	}
 	
 	debug(DBG_CTR, "Scheduling add_disk");
-	/* add_disk() initiates I/O to read the partition tables, so userspace
-	   needs to be able to process key requests while it is running.
-	   If we called add_disk() directly here, we would deadlock. */
-	WORK_INIT(&dev->cb_add_disk, nexus_add_disk);
-	/* Make sure the dev isn't freed until add_disk() completes */
-	nexus_dev_get(dev);
-	/* We use the shared workqueue in order to prevent deadlock: if we
-	   used our own threads, add_disk() would block its own I/O to the
-	   partition table. */
-	if (!schedule_work(&dev->cb_add_disk))
-		BUG();
+	schedule_add_disk(dev);
 	
 	return dev;
 	
