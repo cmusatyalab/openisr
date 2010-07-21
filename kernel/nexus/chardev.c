@@ -74,6 +74,17 @@ static void chr_unconfig_thread(void)
 }
 
 /**
+ * chr_open - perform initial setup on a new chardev fd
+ **/
+static int chr_open(struct inode *ino, struct file *filp)
+{
+	/* The misc driver in 2.6.35 and up sets filp->private_data to a
+	   pointer to nexus_miscdev, but we expect it to start out as NULL. */
+	filp->private_data=NULL;
+	return nonseekable_open(ino, filp);
+}
+
+/**
  * chr_flush - clean up after an individual thread closes a chardev fd
  **/
 static int chr_flush(struct file *filp, fl_owner_t ignored)
@@ -363,7 +374,7 @@ static unsigned chr_poll(struct file *filp, poll_table *wait)
 
 static struct file_operations nexus_char_ops = {
 	.owner =		THIS_MODULE,
-	.open =			nonseekable_open,
+	.open =			chr_open,
 	.read =			chr_read,
 	.write =		chr_write,
 	.flush =		chr_flush,
