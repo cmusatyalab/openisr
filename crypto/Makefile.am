@@ -1,5 +1,3 @@
-LIBTOOL_VERSION = 0:0:0
-
 AM_CFLAGS  = -W -Wall -Wstrict-prototypes -funroll-loops -fomit-frame-pointer
 AM_CFLAGS += -pthread $(VISIBILITY_HIDDEN) $(glib_CFLAGS) $(libtasn1_CFLAGS)
 AM_CFLAGS += $(liblzma_CFLAGS)

@@ -1,5 +1,3 @@
-LIBTOOL_VERSION = 0:0:0
-
 AM_CFLAGS = $(glib_CFLAGS) $(gthread_CFLAGS)
 AM_LDFLAGS = -lpthread -ldl $(glib_LIBS) $(gthread_LIBS)
 pkglib_LTLIBRARIES = libisrsql.la
