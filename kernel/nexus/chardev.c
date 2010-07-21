@@ -26,6 +26,8 @@
 #include <linux/miscdevice.h>
 #include "defs.h"
 
+static DEFINE_MUTEX(register_lock);
+
 /**
  * chr_config_thread - configure task state for the userspace process
  *
@@ -301,8 +303,6 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 	
 	switch (cmd) {
 	case NEXUS_IOC_REGISTER:
-		if (dev != NULL)
-			return -EBUSY;
 		if (copy_from_user(&setup, (void __user *)arg, sizeof(setup)))
 			return -EFAULT;
 		if (strnlen(setup.ident, NEXUS_MAX_DEVICE_LEN)
@@ -311,13 +311,23 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		if (strnlen(setup.chunk_device, NEXUS_MAX_DEVICE_LEN)
 					== NEXUS_MAX_DEVICE_LEN)
 			return -EINVAL;
+		if (mutex_lock_interruptible(&register_lock))
+			return -ERESTARTSYS;
+		if (filp->private_data != NULL) {
+			mutex_unlock(&register_lock);
+			return -EBUSY;
+		}
 		dev=nexus_dev_ctr(setup.ident, setup.chunk_device,
 					setup.chunksize, setup.cachesize,
 					(sector_t)setup.offset, setup.crypto,
 					setup.compress_default,
 					setup.compress_required);
-		if (IS_ERR(dev))
+		if (IS_ERR(dev)) {
+			mutex_unlock(&register_lock);
 			return PTR_ERR(dev);
+		}
+		filp->private_data=dev;
+		mutex_unlock(&register_lock);
 		setup.chunks=dev->chunks;
 		setup.major=blk_major;
 		setup.num_minors=MINORS_PER_DEVICE;
@@ -325,7 +335,6 @@ static long chr_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 		setup.hash_len=suite_info(dev->suite)->hash_len;
 		if (copy_to_user((void __user *)arg, &setup, sizeof(setup)))
 			BUG(); /* XXX */
-		filp->private_data=dev;
 		chr_config_thread();
 		return 0;
 	case NEXUS_IOC_UNREGISTER:
