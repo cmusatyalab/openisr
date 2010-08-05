@@ -702,14 +702,24 @@ def run_machine():
 	sesn = new_instance(CLASS_SESN)
 	vmm.SUSPENDED = 'virtualbox'
 	start = time.time()
-	progress_wait(vbox.openRemoteSession(sesn, vmm.UUID, 'gui', None))
+	vm = vbox.getMachine(vmm.UUID)
+	try:
+		progress = vbox.openRemoteSession(sesn, vmm.UUID, 'gui', None)
+		progress_wait(progress)
+	except:
+		# Session didn't start successfully.  We need to close it
+		# and wait for it to die to ensure that unregister_machine()
+		# works properly.
+		sesn.close()
+		while vm.sessionState != ifaces.SessionState.Closed:
+			time.sleep(0.5)
+		raise
 	# It would be better to use IVirtualBoxCallback to wait for a
 	# session state change, but it's not clear how to do that from Python.
 	# We could loop reading sesn.state, but that deadlocks at session
 	# shutdown.  So we loop reading vm.sessionState.  Note that the
 	# remote session automatically closes once the direct session closes,
 	# so we don't need to do it ourselves.
-	vm = vbox.getMachine(vmm.UUID)
 	while vm.sessionState != ifaces.SessionState.Closed:
 		if signaled:
 			signaled = False
