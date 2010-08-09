@@ -32,7 +32,7 @@ from vmm import *
 CLASS_VBOX = '@virtualbox.org/VirtualBox;1'
 CLASS_SESN = '@virtualbox.org/Session;1'
 MIN_VERSION = (2,0,0)
-MAX_VERSION = (3,1,99)
+MAX_VERSION = (3,2,99)
 
 class MachineFile(object):
 	def __init__(self, vm_path):
@@ -139,20 +139,24 @@ class VboxCompat(object):
 		# Also note that due to VBox #6577, setCpuProperty() can't be
 		# used to enable Synthetic CPU at least through VBox 3.1.6.
 		# We could enable it with setExtraData() if necessary.
-		vm.setCpuProperty(ifaces.CpuPropertyType.PAE, True)
+		if self.vbox_ver < (3,2):
+			vm.setCpuProperty(ifaces.CpuPropertyType.PAE, True)
+			set_leaf = vm.setCpuIdLeaf
+		else:
+			vm.setCPUProperty(ifaces.CPUPropertyType.PAE, True)
+			set_leaf = vm.setCPUIDLeaf
 		# Standard leaf 0: vendor ID and highest standard leaf
-		vm.setCpuIdLeaf(0, 1, sname[0], sname[2], sname[1])
+		set_leaf(0, 1, sname[0], sname[2], sname[1])
 		# Standard leaf 1: processor signature and features
-		vm.setCpuIdLeaf(1, 0xf11, 0, 0, 0x0781f1ff)
+		set_leaf(1, 0xf11, 0, 0, 0x0781f1ff)
 
 		# Extended leaf 0: highest extended leaf
-		vm.setCpuIdLeaf(ext_leaf(0), ext_leaf(4), 0, 0, 0)
+		set_leaf(ext_leaf(0), ext_leaf(4), 0, 0, 0)
 		# Extended leaf 1: extended features
-		vm.setCpuIdLeaf(ext_leaf(1), 0, 0, 0, 0)
+		set_leaf(ext_leaf(1), 0, 0, 0, 0)
 		# Extended leaves 2 to 4: processor name
 		for i in range(3):
-			vm.setCpuIdLeaf(ext_leaf(2 + i),
-						*lname[4 * i : 4 * i + 4])
+			set_leaf(ext_leaf(2 + i), *lname[4 * i : 4 * i + 4])
 
 		# With HWVirtEx disabled, these settings only affect the CPUID
 		# instruction from guest supervisor mode, not from guest
@@ -168,8 +172,11 @@ class VboxCompat(object):
 		return it.'''
 		if self.vbox_ver < (2,1):
 			vm = vbox.createMachine(vmdir, name, uuid)
-		else:
+		elif self.vbox_ver < (3,2):
 			vm = vbox.createMachine(name, 'Other', vmdir, uuid)
+		else:
+			vm = vbox.createMachine(name, 'Other', vmdir, uuid,
+						False)
 
 		if self.vbox_ver < (3,0,2):
 			vm.HWVirtExEnabled = ifaces.TSBool.False
