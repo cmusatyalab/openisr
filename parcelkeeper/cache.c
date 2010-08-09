@@ -315,7 +315,7 @@ static pk_err_t shm_init(struct pk_state *state)
 	   with regard to someone else deleting and recreating the segment,
 	   but we do this under the PK lock so it shouldn't be a problem. */
 	shm_unlink(state->shm_name);
-	fd=shm_open(state->shm_name, O_RDWR|O_CREAT|O_EXCL, 0600);
+	fd=shm_open(state->shm_name, O_RDWR|O_CREAT|O_EXCL, 0400);
 	if (fd == -1) {
 		pk_log(LOG_ERROR, "Couldn't create shared memory segment: %s",
 					strerror(errno));
