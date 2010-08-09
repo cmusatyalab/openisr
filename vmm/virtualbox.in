@@ -524,7 +524,7 @@ def create_machine():
 	vm.saveSettings()
 	del vm
 	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), vm_path)
-	os.rmdir('%s/%s' % (vmm.CFGDIR, vmname))
+	shutil.rmtree('%s/%s' % (vmm.CFGDIR, vmname))
 
 def fixup_upgrade_settings(mf):
 	"""See if this VM has the most recent settings format.  If not, ask
@@ -805,6 +805,12 @@ def cleanup():
 	for name in os.listdir(vmm.CFGDIR):
 		if re.match(regexp, name):
 			os.remove(os.path.join(vmm.CFGDIR, name))
+
+	# Remove backup XML files left by VBox >= 3.2
+	try:
+		os.remove(vm_path + '-prev')
+	except OSError:
+		pass
 
 vmm.DEBUG = (vmm.VERBOSE == "yes")
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
