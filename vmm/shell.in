@@ -57,6 +57,7 @@ sub run {
 
 	$dev = realpath($DISK);
 	print STDERR "Block device: $dev\n";
+	print STDERR "Exit the shell to suspend your parcel.\n";
 
 	$ret = run_program($program, sub { kill 'HUP', shift });
 	fail "Couldn't run $program"
