@@ -33,7 +33,7 @@ isr \- Internet Suspend/Resume client program
 .IR count ]
 
 .I Commands: 
-.B auth, checkin (ci), checkout (co), checkhoard, checkp, clean, deauth, discard, help, hoard, ls, lshoard, passwd, poweroff, resume, rmhoard, stat, sync, uuid, version
+.B auth, checkin (ci), checkout (co), checkhoard, checkp, clean, deauth, dirtometer, discard, help, hoard, ls, lshoard, passwd, poweroff, resume, rmhoard, stat, sync, uuid, version
 
 .SH DESCRIPTION
 An Internet Suspend/Resume\*R (ISR) system is a collection of
@@ -310,6 +310,21 @@ use it from another client host.
 Remove the authentication credentials that were established by the
 .B auth
 command.
+
+.TP
+.BI "isr dirtometer " parcel
+Launch the dirtometer for
+.IR parcel ,
+which must already be resumed.  The dirtometer is a visualization tool which
+shows virtual disk accesses by the guest OS and the resulting parcel state.
+
+To automatically launch the dirtometer when a parcel is resumed, pass
+.B -D
+to
+.B isr resume
+or set the
+.I dirtometer
+option in ~/.openisrrc.
 
 .TP
 .BI "isr discard " "parcel"

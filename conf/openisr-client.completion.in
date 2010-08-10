@@ -177,7 +177,7 @@ _isr_parameter_takes_option() {
 _isr_subcommand_opts() {
 	local short long
 	case $1 in
-	auth|discard|hoard|passwd|stat)
+	auth|dirtometer|discard|hoard|passwd|stat)
 		short="-s -u"
 		long="--server --user"
 		;;
@@ -274,7 +274,7 @@ _isr() {
 	if [ $cmd_idx == -1 -o $cmd_idx == $COMP_CWORD -o \
 				\( $parcel_idx == -1 -a \
 				$COMP_CWORD -lt $cmd_idx \) ] ; then
-		COMPREPLY=(`compgen -W "auth checkhoard checkin ci checkout co checkp clean deauth discard help hoard ls lshoard passwd poweroff resume rmhoard stat sync uuid version" -- $cur`)
+		COMPREPLY=(`compgen -W "auth checkhoard checkin ci checkout co checkp clean deauth dirtometer discard help hoard ls lshoard passwd poweroff resume rmhoard stat sync uuid version" -- $cur`)
 		return
 	fi
 
@@ -286,7 +286,7 @@ _isr() {
 	user=`_isr_cur_user`
 
 	case $cmd in
-	ci|checkin|discard|poweroff|stat|sync|uuid)
+	ci|checkin|dirtometer|discard|poweroff|stat|sync|uuid)
 		# Need local parcel
 		COMPREPLY=(`_isr_local_parcel $server $user $cur`)
 		;;

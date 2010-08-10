@@ -96,6 +96,7 @@ sub rmhoard ();
 sub checkhoard ();
 sub checkparcel ();
 sub statparcel ();
+sub dirtometer ();
 sub set_parcel_globals;
 sub valid_uuid ($);
 sub sync_parcel_uuid_from_name ();
@@ -561,6 +562,11 @@ elsif ($command eq "hoard") {
     $do_sync = 1;
     # Locking is handled in hoard(), after we know the UUID
     hoard(0);
+}
+elsif ($command eq "dirtometer") {
+    need_parcel();
+    need_checked_out();
+    dirtometer();
 }
 elsif ($command eq "stat") {
     need_parcel();
@@ -1569,6 +1575,12 @@ sub cleanclient() {
 
     print(GREEN, "Success: Parcel $userid/$parcel erased from client and server lock released.\n", RESET)
 	if $verbose;
+}
+
+sub dirtometer () {
+    # On error, the dirtometer should have already printed a helpful message.
+    mysystem(LIBDIR . "/dirtometer -n $userid/$parcel $uuid") == 0
+        or exit 1;
 }
 
 #############################
@@ -3236,6 +3248,7 @@ sub usage ($) {
 	print "  hoard      Fetch entire virtual disk for improved performance\n";
 	print "  deauth     Remove authentication credentials from your client\n";
 	print "Debugging and maintenance commands:\n";
+	print "  dirtometer Launch dirtometer visualization tool for a running parcel\n";
 	print "  poweroff   Discard memory image for a suspended parcel (-m optional)\n";
 	print "  checkp     Check parcel for consistency (-cerY optional)\n";
 	print "  checkhoard Check hoard cache for consistency (-cp optional)\n";
