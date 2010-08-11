@@ -54,8 +54,6 @@ enum cryptotype parse_crypto(const char *desc)
 {
 	if (!strcmp(desc, "aes-sha1"))
 		return CRY_AES_SHA1;
-	if (!strcmp(desc, "blowfish-sha1"))
-		return CRY_BLOWFISH_SHA1;
 	return CRY_UNKNOWN;
 }
 
@@ -75,8 +73,6 @@ unsigned crypto_hashlen(enum cryptotype type)
 	switch (type) {
 	case CRY_AES_SHA1:
 		return 20;
-	case CRY_BLOWFISH_SHA1:
-		return 20;
 	case CRY_UNKNOWN:
 		break;
 	}
@@ -87,7 +83,6 @@ int crypto_is_valid(enum cryptotype type)
 {
 	switch (type) {
 	case CRY_AES_SHA1:
-	case CRY_BLOWFISH_SHA1:
 		return 1;
 	case CRY_UNKNOWN:
 		break;
@@ -457,7 +452,6 @@ pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
 	enum isrcry_hash alg;
 
 	switch (crypto) {
-	case CRY_BLOWFISH_SHA1:
 	case CRY_AES_SHA1:
 		alg=ISRCRY_HASH_SHA1;
 		break;

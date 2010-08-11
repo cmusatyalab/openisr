@@ -57,7 +57,7 @@ enum pk_log_type {
 
 enum cryptotype {
 	CRY_UNKNOWN=0,
-	CRY_BLOWFISH_SHA1=1,
+	/* 1 = blowfish-sha1, obsolete */
 	CRY_AES_SHA1=2
 };
 

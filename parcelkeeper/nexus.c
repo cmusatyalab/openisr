@@ -54,8 +54,6 @@ static enum nexus_crypto crypto_to_nexus(enum cryptotype type)
 	switch (type) {
 	case CRY_AES_SHA1:
 		return NEXUS_CRYPTO_AES_SHA1;
-	case CRY_BLOWFISH_SHA1:
-		return NEXUS_CRYPTO_BLOWFISH_SHA1;
 	default:
 		return NEXUS_NR_CRYPTO;
 	}
