@@ -154,7 +154,9 @@ again:
 						"local cache: %u", chunk);
 			goto out;
 		}
-		digest(state->parcel->crypto, calctag, buf, length);
+		if (!iu_chunk_crypto_digest(state->parcel->crypto, calctag,
+					buf, length))
+			goto out;
 		if (memcmp(tag, calctag, state->parcel->hashlen)) {
 			pk_log(LOG_WARNING, "Chunk %u: tag mismatch.  "
 					"Data corruption has occurred", chunk);
@@ -318,7 +320,9 @@ again:
 			ret=PK_INVALID;
 			*ok=FALSE;
 		}
-		if (!compress_is_valid(state->parcel, compress)) {
+		if (!iu_chunk_compress_is_enabled(
+					state->parcel->required_compress,
+					compress)) {
 			pk_log(LOG_WARNING, "Chunk %u: invalid or unsupported "
 						"compression type %u", chunk,
 						compress);
@@ -470,7 +474,11 @@ again:
 				ret=PK_IOERR;
 				continue;
 			}
-			digest(state->parcel->crypto, calctag, buf, chunklen);
+			if (!iu_chunk_crypto_digest(state->parcel->crypto,
+						calctag, buf, chunklen)) {
+				ret=PK_IOERR;
+				continue;
+			}
 			if (memcmp(tag, calctag, taglen)) {
 				pk_log(LOG_WARNING, "Chunk %u: tag check "
 							"failure", chunk);

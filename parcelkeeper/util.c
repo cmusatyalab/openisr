@@ -50,54 +50,6 @@ pk_err_t parseuint(unsigned *out, const char *in, int base)
 	return PK_SUCCESS;
 }
 
-enum cryptotype parse_crypto(const char *desc)
-{
-	if (!strcmp(desc, "aes-sha1"))
-		return CRY_AES_SHA1;
-	return CRY_UNKNOWN;
-}
-
-enum compresstype parse_compress(const char *desc)
-{
-	if (!strcmp(desc, "none"))
-		return COMP_NONE;
-	if (!strcmp(desc, "zlib"))
-		return COMP_ZLIB;
-	if (!strcmp(desc, "lzf"))
-		return COMP_LZF;
-	return COMP_UNKNOWN;
-}
-
-unsigned crypto_hashlen(enum cryptotype type)
-{
-	switch (type) {
-	case CRY_AES_SHA1:
-		return 20;
-	case CRY_UNKNOWN:
-		break;
-	}
-	return 0;
-}
-
-int crypto_is_valid(enum cryptotype type)
-{
-	switch (type) {
-	case CRY_AES_SHA1:
-		return 1;
-	case CRY_UNKNOWN:
-		break;
-	}
-	return 0;
-}
-
-int compress_is_valid(struct pk_parcel *parcel, enum compresstype type)
-{
-	if (type <= COMP_UNKNOWN || type >= 8 *
-				sizeof(parcel->required_compress))
-		return 0;
-	return (parcel->required_compress & (1 << type));
-}
-
 pk_err_t read_file(const char *path, gchar **buf, gsize *len)
 {
 	GError *err=NULL;
@@ -443,31 +395,6 @@ gchar *form_chunk_path(struct pk_parcel *parcel, const char *prefix,
 	unsigned file = chunk % parcel->chunks_per_dir;
 
 	return g_strdup_printf("%s/%.4u/%.4u", prefix, dir, file);
-}
-
-pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
-			unsigned len)
-{
-	struct isrcry_hash_ctx *ctx;
-	enum isrcry_hash alg;
-
-	switch (crypto) {
-	case CRY_AES_SHA1:
-		alg=ISRCRY_HASH_SHA1;
-		break;
-	case CRY_UNKNOWN:
-		return PK_INVALID;
-	}
-
-	ctx=isrcry_hash_alloc(alg);
-	if (ctx == NULL) {
-		pk_log(LOG_ERROR, "Couldn't allocate digest context");
-		return PK_CALLFAIL;
-	}
-	isrcry_hash_update(ctx, in, len);
-	isrcry_hash_final(ctx, out);
-	isrcry_hash_free(ctx);
-	return PK_SUCCESS;
 }
 
 gchar *format_tag(const void *tag, unsigned len)

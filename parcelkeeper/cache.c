@@ -1,7 +1,7 @@
 /*
  * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
  *
- * Copyright (C) 2006-2009 Carnegie Mellon University
+ * Copyright (C) 2006-2010 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -548,7 +548,7 @@ static pk_err_t obtain_chunk(struct pk_state *state, unsigned chunk,
 }
 
 pk_err_t cache_get(struct pk_state *state, unsigned chunk, void *tag,
-			void *key, enum compresstype *compress,
+			void *key, enum iu_chunk_compress *compress,
 			unsigned *length)
 {
 	struct query *qry;
@@ -607,7 +607,8 @@ again:
 		ret=PK_INVALID;
 		goto bad;
 	}
-	if (!compress_is_valid(state->parcel, *compress)) {
+	if (!iu_chunk_compress_is_enabled(state->parcel->required_compress,
+				*compress)) {
 		pk_log(LOG_ERROR, "Invalid or unsupported compression type "
 					"for chunk %u: %u", chunk, *compress);
 		ret=PK_INVALID;
@@ -631,7 +632,7 @@ bad:
 }
 
 pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *tag,
-			const void *key, enum compresstype compress,
+			const void *key, enum iu_chunk_compress compress,
 			unsigned length)
 {
 	gboolean retry;

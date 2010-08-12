@@ -816,8 +816,9 @@ again:
 				query_next(qry)) {
 		query_row(qry, "dbd", &offset, &tag, &taglen, &crypto);
 		if ((tag == NULL && crypto != 0) || (tag != NULL &&
-					(!crypto_is_valid(crypto) ||
-					crypto_hashlen(crypto) != taglen))) {
+					(!iu_chunk_crypto_is_valid(crypto) ||
+					iu_chunk_crypto_hashlen(crypto)
+					!= taglen))) {
 			count++;
 			if (!query(NULL, state->db, "UPDATE hoard.chunks "
 						"SET tag = NULL, length = 0, "

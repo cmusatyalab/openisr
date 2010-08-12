@@ -1,7 +1,7 @@
 /*
  * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
  *
- * Copyright (C) 2006-2009 Carnegie Mellon University
+ * Copyright (C) 2006-2010 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -166,7 +166,7 @@ static void log_backtrace(FILE *fp)
 static void g_log_handler(const gchar *domain, GLogLevelFlags level,
 			const gchar *message, void *data)
 {
-	if (!strcmp(domain, "isrsql")) {
+	if (!strcmp(domain, "isrsql") || !strcmp(domain, "isrutil")) {
 		switch (level) {
 		case G_LOG_LEVEL_MESSAGE:
 			pk_log(LOG_WARNING, "%s", message);
@@ -236,6 +236,7 @@ void log_start(const char *path, unsigned file_mask, unsigned stderr_mask)
 	if (path != NULL && file_mask)
 		open_log();
 	g_log_set_handler("isrsql", ~0, g_log_handler, NULL);
+	g_log_set_handler("isrutil", ~0, g_log_handler, NULL);
 }
 
 void log_shutdown(void)

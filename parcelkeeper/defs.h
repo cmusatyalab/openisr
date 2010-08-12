@@ -24,6 +24,7 @@
 #include <glib.h>
 #include <pthread.h>
 #include "sql.h"
+#include "isrutil.h"
 
 typedef enum pk_err {
 	PK_SUCCESS=0,
@@ -54,20 +55,6 @@ enum pk_log_type {
 };
 #define _LOG_BACKTRACE (1<<31)
 #define LOG_ERROR (LOG_WARNING|_LOG_BACKTRACE)
-
-enum cryptotype {
-	CRY_UNKNOWN=0,
-	/* 1 = blowfish-sha1, obsolete */
-	CRY_AES_SHA1=2
-};
-
-enum compresstype {
-	COMP_UNKNOWN=0,
-	COMP_NONE=1,
-	COMP_ZLIB=2,
-	COMP_LZF=3
-};
-
 enum cache_flags {
 	CA_F_DIRTY	= 0x0001,  /* Cache was not closed properly */
 	CA_F_DAMAGED	= 0x0002,  /* Cache has bad chunks */
@@ -134,13 +121,13 @@ struct pk_config {
 	unsigned log_stderr_mask;
 
 	/* miscellaneous parameters */
-	enum compresstype compress;
+	enum iu_chunk_compress compress;
 	gchar *uuid;
 	unsigned nexus_cache; /* MB */
 };
 
 struct pk_parcel {
-	enum cryptotype crypto;
+	enum iu_chunk_crypto crypto;
 	unsigned required_compress;
 	unsigned chunks;
 	unsigned chunksize;
@@ -210,9 +197,9 @@ void parcel_cfg_free(struct pk_parcel *parcel);
 pk_err_t cache_init(struct pk_state *state);
 void cache_shutdown(struct pk_state *state);
 pk_err_t cache_get(struct pk_state *state, unsigned chunk, void *tag, void *key,
-			enum compresstype *compress, unsigned *length);
+			enum iu_chunk_compress *compress, unsigned *length);
 pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *tag,
-			const void *key, enum compresstype compress,
+			const void *key, enum iu_chunk_compress compress,
 			unsigned length);
 off64_t cache_chunk_to_offset(struct pk_state *state, unsigned chunk);
 pk_err_t cache_set_flag(struct pk_state *state, unsigned flag);
@@ -267,11 +254,6 @@ pk_err_t transport_fetch_chunk(struct pk_connection *conn, void *buf,
 #define FILE_LOCK_WRITE 0x01
 #define FILE_LOCK_WAIT  0x02
 pk_err_t parseuint(unsigned *out, const char *in, int base);
-enum cryptotype parse_crypto(const char *desc);
-enum compresstype parse_compress(const char *desc);
-unsigned crypto_hashlen(enum cryptotype type);
-int crypto_is_valid(enum cryptotype type);
-int compress_is_valid(struct pk_parcel *parcel, enum compresstype type);
 pk_err_t read_file(const char *path, gchar **buf, gsize *len);
 pk_err_t read_sysfs_file(const char *path, gchar **buf);
 char *pk_strerror(pk_err_t err);
@@ -292,8 +274,6 @@ void release_lockfile(struct pk_lockfile *lf);
 pk_err_t create_pidfile(const char *path);
 gchar *form_chunk_path(struct pk_parcel *parcel, const char *prefix,
 			unsigned chunk);
-pk_err_t digest(enum cryptotype crypto, void *out, const void *in,
-			unsigned len);
 gchar *format_tag(const void *tag, unsigned len);
 void log_tag_mismatch(const void *expected, const void *found, unsigned len);
 pk_err_t canonicalize_uuid(const char *in, gchar **out);

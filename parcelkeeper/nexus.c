@@ -1,7 +1,7 @@
 /*
  * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
  *
- * Copyright (C) 2006-2009 Carnegie Mellon University
+ * Copyright (C) 2006-2010 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -49,41 +49,41 @@ static void nexus_signal_handler(int sig)
 	   be lost */
 }
 
-static enum nexus_crypto crypto_to_nexus(enum cryptotype type)
+static enum nexus_crypto crypto_to_nexus(enum iu_chunk_crypto type)
 {
 	switch (type) {
-	case CRY_AES_SHA1:
+	case IU_CHUNK_CRY_AES_SHA1:
 		return NEXUS_CRYPTO_AES_SHA1;
 	default:
 		return NEXUS_NR_CRYPTO;
 	}
 }
 
-static enum nexus_compress compress_to_nexus(enum compresstype type)
+static enum nexus_compress compress_to_nexus(enum iu_chunk_compress type)
 {
 	switch (type) {
-	case COMP_NONE:
+	case IU_CHUNK_COMP_NONE:
 		return NEXUS_COMPRESS_NONE;
-	case COMP_ZLIB:
+	case IU_CHUNK_COMP_ZLIB:
 		return NEXUS_COMPRESS_ZLIB;
-	case COMP_LZF:
+	case IU_CHUNK_COMP_LZF:
 		return NEXUS_COMPRESS_LZF;
 	default:
 		return NEXUS_NR_COMPRESS;
 	}
 }
 
-static enum compresstype nexus_to_compress(enum nexus_compress type)
+static enum iu_chunk_compress nexus_to_compress(enum nexus_compress type)
 {
 	switch (type) {
 	case NEXUS_COMPRESS_NONE:
-		return COMP_NONE;
+		return IU_CHUNK_COMP_NONE;
 	case NEXUS_COMPRESS_ZLIB:
-		return COMP_ZLIB;
+		return IU_CHUNK_COMP_ZLIB;
 	case NEXUS_COMPRESS_LZF:
-		return COMP_LZF;
+		return IU_CHUNK_COMP_LZF;
 	default:
-		return COMP_UNKNOWN;
+		return IU_CHUNK_COMP_UNKNOWN;
 	}
 }
 
@@ -462,7 +462,7 @@ static int process_message(struct pk_state *state,
 			struct nexus_message *reply)
 {
 	pk_err_t err;
-	enum compresstype compress;
+	enum iu_chunk_compress compress;
 
 	if (!request_is_valid(state, request)) {
 		if (request->type == NEXUS_MSGTYPE_GET_META) {

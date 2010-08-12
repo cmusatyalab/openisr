@@ -86,7 +86,9 @@ int main(int argc, char **argv)
 	if (state.conf->parcel_dir != NULL) {
 		if (parse_parcel_cfg(&state.parcel, state.conf->parcel_cfg))
 			goto shutdown;
-		if (!compress_is_valid(state.parcel, state.conf->compress)) {
+		if (!iu_chunk_compress_is_enabled(
+					state.parcel->required_compress,
+					state.conf->compress)) {
 			pk_log(LOG_ERROR, "This parcel does not support the "
 						"requested compression type");
 			goto shutdown;

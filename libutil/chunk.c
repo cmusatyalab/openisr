@@ -80,13 +80,13 @@ exported gboolean iu_chunk_crypto_digest(enum iu_chunk_crypto crypto,
 	enum isrcry_hash alg;
 
 	if (!crypto_get_algs(crypto, NULL, NULL, NULL, &alg)) {
-		g_log(G_LOG_DOMAIN, G_LOG_LEVEL_ERROR,
+		g_log(G_LOG_DOMAIN, G_LOG_LEVEL_CRITICAL,
 					"Invalid crypto suite requested");
 		return FALSE;
 	}
 	ctx = isrcry_hash_alloc(alg);
 	if (ctx == NULL) {
-		g_log(G_LOG_DOMAIN, G_LOG_LEVEL_ERROR,
+		g_log(G_LOG_DOMAIN, G_LOG_LEVEL_CRITICAL,
 					"Couldn't allocate digest context");
 		return FALSE;
 	}

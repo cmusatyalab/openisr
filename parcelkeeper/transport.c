@@ -176,11 +176,9 @@ pk_err_t transport_fetch_chunk(struct pk_connection *conn, void *buf,
 		pk_log(LOG_ERROR, "Couldn't fetch chunk %u", chunk);
 		return ret;
 	}
-	ret=digest(conn->state->parcel->crypto, calctag, buf, len);
-	if (ret) {
-		pk_log(LOG_ERROR, "Couldn't calculate chunk hash");
-		return ret;
-	}
+	if (!iu_chunk_crypto_digest(conn->state->parcel->crypto, calctag,
+				buf, len))
+		return PK_CALLFAIL;
 	if (memcmp(tag, calctag, conn->state->parcel->hashlen)) {
 		pk_log(LOG_ERROR, "Invalid tag for retrieved chunk %u", chunk);
 		log_tag_mismatch(tag, calctag, conn->state->parcel->hashlen);

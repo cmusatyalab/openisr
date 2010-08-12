@@ -456,9 +456,8 @@ TRANSACTION_WRAPPER
 pk_err_t _hoard_read_chunk(struct pk_state *state, int offset, int length,
 			int crypto, const void *tag, int taglen, void *buf)
 {
-	unsigned hashlen = crypto_hashlen(crypto);
+	unsigned hashlen = iu_chunk_crypto_hashlen(crypto);
 	char calctag[hashlen];
-	pk_err_t ret;
 
 	/* Check expected tag length */
 	if (taglen != (int) hashlen) {
@@ -484,9 +483,8 @@ pk_err_t _hoard_read_chunk(struct pk_state *state, int offset, int length,
 	}
 
 	/* Check its hash */
-	ret = digest(crypto, calctag, buf, length);
-	if (ret)
-		return ret;
+	if (!iu_chunk_crypto_digest(crypto, calctag, buf, length))
+		return PK_CALLFAIL;
 	if (memcmp(tag, calctag, hashlen)) {
 		pk_log(LOG_WARNING, "Tag mismatch reading hoard cache at "
 					"offset %d", offset);

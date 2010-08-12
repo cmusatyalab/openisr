@@ -25,7 +25,7 @@ static struct pk_config default_config = {
 	.log_file_mask = (1 << LOG_INFO) | (1 << LOG_WARNING) |
 				(1 << LOG_STATS),
 	.log_stderr_mask = 1 << LOG_WARNING,
-	.compress = COMP_NONE,
+	.compress = IU_CHUNK_COMP_NONE,
 	.nexus_cache = 32, /* MB */
 };
 
@@ -446,8 +446,8 @@ enum mode parse_cmdline(struct pk_config **out, int argc, char **argv)
 			conf->dest_dir=g_strdup(ctx.optparam);
 			break;
 		case OPT_COMPRESSION:
-			conf->compress=parse_compress(ctx.optparam);
-			if (conf->compress == COMP_UNKNOWN)
+			conf->compress = iu_chunk_compress_parse(ctx.optparam);
+			if (conf->compress == IU_CHUNK_COMP_UNKNOWN)
 				PARSE_ERROR(&ctx, "invalid compression type: "
 							"%s", ctx.optparam);
 			break;

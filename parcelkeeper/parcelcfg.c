@@ -98,7 +98,7 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 {
 	gchar **strs;
 	unsigned u;
-	enum compresstype compress;
+	enum iu_chunk_compress compress;
 
 	switch (ident) {
 	case PC_VERSION:
@@ -134,19 +134,20 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 		}
 		break;
 	case PC_CRYPTO:
-		ctx->pdata->crypto=parse_crypto(value);
-		if (ctx->pdata->crypto == CRY_UNKNOWN) {
+		ctx->pdata->crypto = iu_chunk_crypto_parse(value);
+		if (ctx->pdata->crypto == IU_CHUNK_CRY_UNKNOWN) {
 			pk_log(LOG_ERROR, "Unknown crypto suite %s", value);
 			return PK_INVALID;
 		}
-		ctx->pdata->hashlen=crypto_hashlen(ctx->pdata->crypto);
+		ctx->pdata->hashlen = iu_chunk_crypto_hashlen(
+					ctx->pdata->crypto);
 		break;
 	case PC_COMPRESS:
-		ctx->pdata->required_compress=(1 << COMP_NONE);
+		ctx->pdata->required_compress=(1 << IU_CHUNK_COMP_NONE);
 		strs=g_strsplit(value, ",", 0);
 		for (u=0; strs[u] != NULL; u++) {
-			compress=parse_compress(strs[u]);
-			if (compress == COMP_UNKNOWN) {
+			compress = iu_chunk_compress_parse(strs[u]);
+			if (compress == IU_CHUNK_COMP_UNKNOWN) {
 				pk_log(LOG_ERROR, "Unknown compression type"
 							" %s", strs[u]);
 				g_strfreev(strs);
