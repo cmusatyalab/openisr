@@ -250,6 +250,7 @@ AC_CONFIG_FILES([Makefile
                  crypto/Makefile
                  crypto/test/Makefile
                  kernel/Makefile
+                 libutil/Makefile
                  locksrv/Makefile
                  parcelkeeper/Makefile
                  sqlite/Makefile
