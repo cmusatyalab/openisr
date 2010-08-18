@@ -59,4 +59,13 @@ enum iu_chunk_compress iu_chunk_compress_parse(const char *desc);
 gboolean iu_chunk_compress_is_enabled(unsigned enabled_map,
 			enum iu_chunk_compress type);
 
+gboolean iu_chunk_encode(enum iu_chunk_crypto crypto,
+			const void *in, unsigned inlen,
+			void *out, unsigned *outlen, void *tag, void *key,
+			enum iu_chunk_compress *compress);
+gboolean iu_chunk_decode(enum iu_chunk_crypto crypto,
+			enum iu_chunk_compress compress, unsigned chunk,
+			const void *in, unsigned inlen, const void *key,
+			void *out, unsigned outlen);
+
 #endif
