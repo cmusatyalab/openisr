@@ -1,7 +1,7 @@
 /*
  * disktool - perform server-side operations on parcel disk images
  *
- * Copyright (C) 2009 Carnegie Mellon University
+ * Copyright (C) 2009-2010 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -26,16 +26,8 @@
 #include <errno.h>
 #include <glib.h>
 #include <glib/gstdio.h>
-#include "isrcrypto.h"
 #include "sql.h"
-
-/* should probably be defined in a header */
-enum compressiontype {
-	COMP_UNKNOWN=0,
-	COMP_NONE=1,
-	COMP_ZLIB=2,
-	COMP_LZF=3,
-};
+#include "isrutil.h"
 
 /* command line parameters */
 static const char *importimage;
@@ -45,7 +37,6 @@ static const char *destpath = ".";
 static const char *keyring = "keyring";
 static int chunksize = 128; /* chunk size in KiB */
 static int chunksperdir = 512;
-static int compress_level;
 static gboolean want_lzf;
 static gboolean want_progress;
 
@@ -57,7 +48,6 @@ static GOptionEntry options[] = {
 	{"keyring", 'k', 0, G_OPTION_ARG_FILENAME, &keyring, "Keyring (default: keyring)", "PATH"},
 	{"chunksize", 's', 0, G_OPTION_ARG_INT, &chunksize, "Chunksize (default: 128)", "KiB"},
 	{"chunksperdir", 'm', 0, G_OPTION_ARG_INT, &chunksperdir, "Chunks per directory (default: 512)", "N"},
-	{"compress", 'z', 0, G_OPTION_ARG_INT, &compress_level, "Compression level (default: 6)", "1-9"},
 	{"lzf", 'l', 0, G_OPTION_ARG_NONE, &want_lzf, "Use LZF compression", NULL},
 	{"progress", 'p', 0, G_OPTION_ARG_NONE, &want_progress, "Show progress bar", NULL},
 	{NULL}
@@ -70,22 +60,11 @@ static void clear_progress(void);
 		exit(1); \
 	} while(0)
 
-/* crypto parameters */
-static enum isrcry_cipher cipher = ISRCRY_CIPHER_AES;
-static enum isrcry_mode mode = ISRCRY_MODE_CBC;
-static enum isrcry_padding padding = ISRCRY_PADDING_PKCS5;
-static struct isrcry_cipher_ctx *cipher_ctx;
-static unsigned int cipher_keylen = 16;
-static unsigned int cipher_block;
-
-static enum isrcry_hash hash = ISRCRY_HASH_SHA1;
-static struct isrcry_hash_ctx *hash_ctx;
+/* encoding parameters */
+static enum iu_chunk_crypto crypto = IU_CHUNK_CRY_AES_SHA1;
+static enum iu_chunk_compress compressor = IU_CHUNK_COMP_ZLIB;
 static unsigned int hash_len;
 #define HASH_LEN 20
-
-static enum isrcry_compress compressor = ISRCRY_COMPRESS_ZLIB;
-static enum compressiontype db_compress_type = COMP_ZLIB;
-static struct isrcry_compress_ctx *compress_ctx;
 
 static struct db *sqlitedb;
 
@@ -271,6 +250,7 @@ static void handle_log_message(const gchar *domain, GLogLevelFlags level,
 	case SQL_LOG_LEVEL_SLOW_QUERY:
 		break;
 	default:
+		clear_progress();
 		fprintf(stderr, "%s\n", message);
 		break;
 	}
@@ -343,17 +323,9 @@ static void init(void)
 	GString *dbfile = g_string_new("");
 	gchar *hdkdir;
 
-	hash_ctx = isrcry_hash_alloc(hash);
-	if (hash_ctx == NULL)
-		die("Couldn't allocate hash");
-	hash_len = isrcry_hash_len(hash);
+	hash_len = iu_chunk_crypto_hashlen(crypto);
 	if (hash_len > HASH_LEN)
 		die("Unexpected hash size");
-
-	cipher_ctx = isrcry_cipher_alloc(cipher, mode);
-	if (cipher_ctx == NULL)
-		die("Couldn't allocate cipher");
-	cipher_block = isrcry_cipher_block(cipher);
 
 	/* allocate an empty chunk to compare against */
 	chunklen = chunksize * 1024;
@@ -363,6 +335,10 @@ static void init(void)
 	g_log_set_handler("isrsql", G_LOG_LEVEL_MASK, handle_log_message,
 				NULL);
 	sql_init();
+
+	/* initialize isrutil */
+	g_log_set_handler("isrutil", G_LOG_LEVEL_MASK, handle_log_message,
+				NULL);
 
 	/* make destination directory if it doesn't exist */
 	if (!g_file_test(destpath, G_FILE_TEST_IS_DIR))
@@ -398,9 +374,6 @@ static void fini(void)
 {
 	sql_conn_close(sqlitedb);
 
-	isrcry_cipher_free(cipher_ctx);
-	isrcry_hash_free(hash_ctx);
-
 	g_free(tmpdata);
 }
 
@@ -414,54 +387,16 @@ struct chunk_desc {
 
 static void encrypt_chunk(struct chunk_desc *chunk)
 {
-	gpointer chunkdata;
-	enum isrcry_result rc;
-	unsigned plainlen;
-	unsigned compresslen;
+	gpointer tmp;
 
-	/* compress chunk */
-	rc = isrcry_compress_init(compress_ctx, ISRCRY_ENCODE,
-				compress_level);
-	if (rc)
-		die("Failed to initialize compressor: %s",
-					isrcry_strerror(rc));
-	plainlen = chunk->len;
-	compresslen = chunklen;
-	rc = isrcry_compress_final(compress_ctx, chunk->data, &plainlen,
-				tmpdata, &compresslen);
-	if (rc == ISRCRY_OK && (chunklen - compresslen) > (cipher_block + 1)) {
-		chunk->compression = db_compress_type;
-		chunkdata = tmpdata;
-	} else { /* no room in output buffer / compression failed */
-		chunk->compression = COMP_NONE;
-		chunkdata = chunk->data;
-		compresslen = chunk->len;
-	}
-
-	/* calculate key */
-	isrcry_hash_update(hash_ctx, chunkdata, compresslen);
-	isrcry_hash_final(hash_ctx, chunk->key);
-
-	/* encrypt chunk */
-	rc = isrcry_cipher_init(cipher_ctx, ISRCRY_ENCRYPT, chunk->key,
-				cipher_keylen, NULL);
-	if (rc)
-		die("Couldn't initialize cipher: %s", isrcry_strerror(rc));
-
-	if (chunk->compression == COMP_NONE) {
-		rc = isrcry_cipher_process(cipher_ctx, chunk->data,
-					chunk->len, chunk->data);
-	} else {
-		chunk->len = chunklen;
-		rc = isrcry_cipher_final(cipher_ctx, padding, tmpdata,
-					compresslen, chunk->data, &chunk->len);
-	}
-	if (rc)
-		die("Couldn't run cipher: %s", isrcry_strerror(rc));
-
-	/* calculate tag */
-	isrcry_hash_update(hash_ctx, chunk->data, chunk->len);
-	isrcry_hash_final(hash_ctx, chunk->tag);
+	chunk->compression = compressor;
+	if (!iu_chunk_encode(crypto, chunk->data, chunk->len, tmpdata,
+				&chunk->len, chunk->tag, chunk->key,
+				&chunk->compression))
+		die("Couldn't encode chunk");
+	tmp = tmpdata;
+	tmpdata = chunk->data;
+	chunk->data = tmp;
 }
 
 static void make_chunk_dir(unsigned int chunk_idx)
@@ -516,12 +451,7 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 {
 	gchar *dest;
 	int fd;
-	enum isrcry_result rc;
 	unsigned inlen;
-	unsigned outlen;
-	gboolean uncompressed = (chunk->compression == COMP_NONE);
-	void *tmp;
-	uint8_t calc_hash[hash_len];
 
 	dest = form_chunk_path(idx);
 	fd = g_open(dest, O_RDONLY, 0);
@@ -530,71 +460,10 @@ static void read_chunk(unsigned int idx, struct chunk_desc *chunk)
 	inlen = read(fd, tmpdata, chunklen);
 	close(fd);
 	g_free(dest);
-	if ((uncompressed && inlen != chunklen) || inlen == 0 ||
-				inlen > chunklen /* -1 */)
-		die("Invalid length %u for chunk #%u", inlen, idx);
 
-	/* We don't check the chunk tag because the cipher-padding and key
-	   checks will find anything the tag check might find. */
-
-	/* decrypt chunk */
-	rc = isrcry_cipher_init(cipher_ctx, ISRCRY_DECRYPT, chunk->key,
-				cipher_keylen, NULL);
-	if (rc)
-		die("Couldn't initialize cipher: %s", isrcry_strerror(rc));
-
-	outlen = chunklen;
-	if (uncompressed)
-		rc = isrcry_cipher_process(cipher_ctx, tmpdata, inlen,
-					chunk->data);
-	else
-		rc = isrcry_cipher_final(cipher_ctx, padding, tmpdata, inlen,
-					chunk->data, &outlen);
-	if (rc)
-		die("Failed to decrypt chunk #%u: %s", idx,
-					isrcry_strerror(rc));
-
-	/* check chunk key */
-	isrcry_hash_update(hash_ctx, chunk->data, outlen);
-	isrcry_hash_final(hash_ctx, calc_hash);
-	if (memcmp(chunk->key, calc_hash, hash_len))
-		die("Bad key for chunk #%u", idx);
-
-	/* decompress chunk */
-	if (!uncompressed) {
-		switch (chunk->compression) {
-		case COMP_ZLIB:
-			compressor = ISRCRY_COMPRESS_ZLIB;
-			break;
-		case COMP_LZF:
-			compressor = ISRCRY_COMPRESS_LZF;
-			break;
-		default:
-			die("Unsupported compression type %d on chunk #%u",
-						chunk->compression, idx);
-		}
-		compress_ctx = isrcry_compress_alloc(compressor);
-		if (compress_ctx == NULL)
-			die("Couldn't allocate compressor");
-		rc = isrcry_compress_init(compress_ctx, ISRCRY_DECODE, 0);
-		if (rc)
-			die("Failed to initialize decompressor: %s",
-						isrcry_strerror(rc));
-		inlen = outlen;
-		outlen = chunklen;
-		rc = isrcry_compress_final(compress_ctx, chunk->data, &inlen,
-					tmpdata, &outlen);
-		if (rc)
-			die("Failed to decompress chunk #%u: %s", idx,
-						isrcry_strerror(rc));
-		isrcry_compress_free(compress_ctx);
-		tmp = tmpdata;
-		tmpdata = chunk->data;
-		chunk->data = tmp;
-	}
-	if (outlen != chunklen)
-		die("Invalid decoded chunk length %u on chunk #%u", outlen,
-					idx);
+	if (!iu_chunk_decode(crypto, chunk->compression, idx, tmpdata,
+				inlen, chunk->key, chunk->data, chunklen))
+		die("Couldn't decode chunk %u", idx);
 	chunk->len = chunklen;
 }
 
@@ -638,10 +507,6 @@ static void import_image(const gchar *img)
 	unsigned int idx;
 	ssize_t n;
 	struct chunk_desc chunk, zerochunk;
-
-	compress_ctx = isrcry_compress_alloc(compressor);
-	if (compress_ctx == NULL)
-		die("Couldn't allocate compressor");
 
 	fd = g_open(img, O_RDONLY, 0);
 	if (fd == -1)
@@ -695,7 +560,6 @@ static void import_image(const gchar *img)
 	g_free(chunk.data);
 	g_free(chunk.tag);
 	g_free(chunk.key);
-	isrcry_compress_free(compress_ctx);
 }
 
 static void export_image(const gchar *img)
@@ -786,15 +650,11 @@ static void expand_parcel(void)
 	unsigned int existing;
 	unsigned int idx;
 
-	compress_ctx = isrcry_compress_alloc(compressor);
-	if (compress_ctx == NULL)
-		die("Couldn't allocate compressor");
 	zerochunk.len = chunklen;
 	zerochunk.data = g_malloc0(chunklen);
 	zerochunk.tag = g_malloc(hash_len);
 	zerochunk.key = g_malloc(hash_len);
 	encrypt_chunk(&zerochunk);
-	isrcry_compress_free(compress_ctx);
 
 	if (!begin(sqlitedb))
 		die("Couldn't begin transaction");
@@ -849,10 +709,8 @@ int main(int argc, char **argv)
 	if (!!importimage + !!exportimage + !!expand_chunks != 1)
 		die("Specify one of --in, --out, or --expand");
 
-	if (want_lzf) {
-		compressor = ISRCRY_COMPRESS_LZF;
-		db_compress_type = COMP_LZF;
-	}
+	if (want_lzf)
+		compressor = IU_CHUNK_COMP_LZF;
 
 	init();
 
