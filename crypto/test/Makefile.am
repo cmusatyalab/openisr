@@ -1,6 +1,5 @@
-AM_CPPFLAGS = -I$(srcdir)/..
 AM_CFLAGS = -W -Wall -Wstrict-prototypes -Wno-unused-parameter
-AM_LDFLAGS = -L$(builddir)/.. -lisrcrypto
+AM_LDFLAGS = -lisrcrypto
 
 TESTS = run_vectors
 check_PROGRAMS = $(TESTS)

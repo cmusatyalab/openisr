@@ -1,7 +1,7 @@
 #
 # acinclude.m4 - autoconf macros for the OpenISR (R) system
 #
-# Copyright (C) 2007-2008 Carnegie Mellon University
+# Copyright (C) 2007-2010 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as published
@@ -156,3 +156,13 @@ AC_DEFUN([FIND_DIR], [
 # Set $? to true (0) if DRIVER is enabled, false (1) otherwise.
 # -------------------------------------------------------------
 AC_DEFUN([WANT_VMM], [echo " $vmms " | grep -Fq " $1 "])
+
+
+# ADD_PRIVATE_LIBRARY([DIRECTORY])
+# Add DIRECTORY, which contains a private library and is specified
+# relative to the top of the source tree, to CPPFLAGS and LDFLAGS.
+# ------------------------------------------------------------------
+AC_DEFUN([ADD_PRIVATE_LIBRARY], [
+	CPPFLAGS="$CPPFLAGS -I\${top_srcdir}/$1"
+	LDFLAGS="$LDFLAGS -L\${top_builddir}/$1"
+])
