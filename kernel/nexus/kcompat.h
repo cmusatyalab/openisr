@@ -256,6 +256,14 @@ static inline struct request *blk_fetch_request(struct request_queue *q)
 	blk_queue_max_sectors(q, val)
 #endif
 
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,36)
+/* On newer kernels, we're expected to open-code this.  Unfortunately, on
+   2.6.18 and older, the test is different, so we'd need a wrapper macro
+   anyway.  Reimplement the missing macro. */
+#define blk_fs_request(rq) ((rq)->cmd_type == REQ_TYPE_FS)
+#endif
+
 /***** Scatterlists **********************************************************/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
