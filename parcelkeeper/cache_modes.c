@@ -59,13 +59,13 @@ int copy_for_upload(struct pk_state *state)
 	void *tag;
 	unsigned taglen;
 	unsigned length;
-	char calctag[state->parcel->hashlen];
 	gchar *path;
 	int fd;
 	unsigned modified_chunks;
 	off64_t modified_bytes;
 	int64_t total_modified_bytes;
 	int ret=1;
+	pk_err_t err;
 	gboolean retry;
 
 	if (cache_test_flag(state, CA_F_DAMAGED)) {
@@ -147,22 +147,11 @@ again:
 						chunk, length);
 			goto damaged;
 		}
-		if (pread(state->cache_fd, buf, length,
-					cache_chunk_to_offset(state, chunk))
-					!= (int)length) {
-			pk_log(LOG_ERROR, "Couldn't read chunk from "
-						"local cache: %u", chunk);
-			goto out;
-		}
-		if (!iu_chunk_crypto_digest(state->parcel->crypto, calctag,
-					buf, length))
-			goto out;
-		if (memcmp(tag, calctag, state->parcel->hashlen)) {
-			pk_log(LOG_WARNING, "Chunk %u: tag mismatch.  "
-					"Data corruption has occurred", chunk);
-			log_tag_mismatch(tag, calctag, state->parcel->hashlen);
+		err = _cache_read_chunk(state, chunk, buf, length, tag);
+		if (err == PK_TAGFAIL)
 			goto damaged;
-		}
+		else if (err)
+			goto out;
 		path=form_chunk_path(state->parcel, state->conf->dest_dir,
 					chunk);
 		fd=open(path, O_WRONLY|O_CREAT|O_TRUNC, 0600);
@@ -370,7 +359,6 @@ static pk_err_t validate_cachefile(struct pk_state *state, gboolean *ok)
 	struct query *qry;
 	void *buf;
 	void *tag;
-	char calctag[state->parcel->hashlen];
 	unsigned chunk;
 	unsigned taglen;
 	unsigned chunklen;
@@ -465,24 +453,9 @@ again:
 		}
 
 		if (state->conf->flags & WANT_FULL_CHECK) {
-			if (pread(state->cache_fd, buf, chunklen,
-						cache_chunk_to_offset(state,
-						chunk)) != (int)chunklen) {
-				pk_log(LOG_ERROR, "Chunk %u: couldn't read "
-							"from local cache",
-							chunk);
-				ret=PK_IOERR;
-				continue;
-			}
-			if (!iu_chunk_crypto_digest(state->parcel->crypto,
-						calctag, buf, chunklen)) {
-				ret=PK_IOERR;
-				continue;
-			}
-			if (memcmp(tag, calctag, taglen)) {
-				pk_log(LOG_WARNING, "Chunk %u: tag check "
-							"failure", chunk);
-				log_tag_mismatch(tag, calctag, taglen);
+			ret = _cache_read_chunk(state, chunk, buf, chunklen,
+						tag);
+			if (ret == PK_TAGFAIL) {
 				if (state->conf->flags & WANT_SPLICE) {
 					ret=revert_chunk(state, chunk);
 					if (ret) {
@@ -490,7 +463,6 @@ again:
 						goto bad;
 					}
 				}
-				ret=PK_TAGFAIL;
 				*ok=FALSE;
 			}
 		}

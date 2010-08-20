@@ -50,7 +50,7 @@ enum shm_chunk_status {
 	SHM_DIRTY_SESSION	= 0x8,
 };
 
-off64_t cache_chunk_to_offset(struct pk_state *state, unsigned chunk)
+static off64_t cache_chunk_to_offset(struct pk_state *state, unsigned chunk)
 {
 	return (off64_t)state->parcel->chunksize * chunk + state->offset;
 }
@@ -497,51 +497,82 @@ bad:
 	return ret;
 }
 
-static pk_err_t obtain_chunk(struct pk_state *state, unsigned chunk,
-			const void *tag, unsigned *length)
+pk_err_t _cache_read_chunk(struct pk_state *state, unsigned chunk,
+			void *buf, unsigned chunklen, const void *tag)
 {
-	void *buf;
-	gchar *ftag;
-	unsigned len;
-	pk_err_t ret;
+	char calctag[state->parcel->hashlen];
+
+	if (pread(state->cache_fd, buf, chunklen, cache_chunk_to_offset(state,
+				chunk)) != (int)chunklen) {
+		pk_log(LOG_ERROR, "Chunk %u: couldn't read from local cache",
+					chunk);
+		return PK_IOERR;
+	}
+	if (!iu_chunk_crypto_digest(state->parcel->crypto, calctag, buf,
+				chunklen))
+		return PK_CALLFAIL;
+	if (memcmp(tag, calctag, state->parcel->hashlen)) {
+		pk_log(LOG_WARNING, "Chunk %u: tag check failure", chunk);
+		log_tag_mismatch(tag, calctag, state->parcel->hashlen);
+		return PK_TAGFAIL;
+	}
+	return PK_SUCCESS;
+}
+
+/* Must be in state->db transaction */
+static pk_err_t _cache_write_chunk(struct pk_state *state, unsigned chunk,
+			const void *buf, unsigned len)
+{
+	char data[state->parcel->chunksize];
 	ssize_t count;
 
-	buf = g_malloc(state->parcel->chunksize);
-	if (hoard_get_chunk(state, tag, buf, &len)) {
-		ftag=format_tag(tag, state->parcel->hashlen);
-		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
-		g_free(ftag);
-		ret=transport_fetch_chunk(state->conn, buf, chunk, tag, &len);
-		if (ret) {
-			g_free(buf);
-			return ret;
-		}
-	} else {
-		pk_log(LOG_CHUNK, "Fetched chunk %u from hoard cache", chunk);
-	}
-	/* Write out the entire slot, not just the utilized bytes.  Nexus
-	   always does this when writing data, so the additional I/O bandwidth
-	   to do it here is negligible.  The benefit: we may be able to
-	   convince the filesystem to allocate contiguous sectors for the
-	   chunk.  Otherwise, Nexus' first write to the chunk might cause
-	   its second half to be allocated noncontiguously with the sectors
-	   written here. */
-	memset(buf + len, 0, state->parcel->chunksize - len);
-	count=pwrite(state->cache_fd, buf, state->parcel->chunksize,
+	if (len > state->parcel->chunksize)
+		return PK_INVALID;
+	/* Write out the entire slot, not just the utilized bytes.  This
+	   allows the kernel to coalesce I/O to adjacent chunks.  On
+	   systems too old for fallocate(), it may also convince the
+	   filesystem to allocate contiguous sectors for the chunk. */
+	memcpy(data, buf, len);
+	memset(data + len, 0, state->parcel->chunksize - len);
+	count = pwrite(state->cache_fd, data, state->parcel->chunksize,
 				cache_chunk_to_offset(state, chunk));
-	g_free(buf);
 	if (count != (int) state->parcel->chunksize) {
 		pk_log(LOG_ERROR, "Couldn't write chunk %u to backing store",
 					chunk);
 		return PK_IOERR;
 	}
-
-	if (!query(NULL, state->db, "INSERT INTO cache.chunks (chunk, length) "
-				"VALUES(?, ?)", "dd", chunk, (int)len)) {
-		sql_log_err(state->db, "Couldn't insert chunk %u into "
-					"cache index", chunk);
+	/* Update cache index */
+	if (!query(NULL, state->db, "INSERT OR REPLACE INTO cache.chunks "
+				"(chunk, length) VALUES(?, ?)", "dd",
+				chunk, (int)len)) {
+		sql_log_err(state->db, "Couldn't update cache index for "
+					"chunk %u", chunk);
 		return PK_IOERR;
 	}
+	return PK_SUCCESS;
+}
+
+static pk_err_t obtain_chunk(struct pk_state *state, unsigned chunk,
+			const void *tag, unsigned *length)
+{
+	char buf[state->parcel->chunksize];
+	gchar *ftag;
+	unsigned len;
+	pk_err_t ret;
+
+	if (hoard_get_chunk(state, tag, buf, &len)) {
+		ftag=format_tag(tag, state->parcel->hashlen);
+		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
+		g_free(ftag);
+		ret=transport_fetch_chunk(state->conn, buf, chunk, tag, &len);
+		if (ret)
+			return ret;
+	} else {
+		pk_log(LOG_CHUNK, "Fetched chunk %u from hoard cache", chunk);
+	}
+	ret=_cache_write_chunk(state, chunk, buf, len);
+	if (ret)
+		return ret;
 	shm_set(state, chunk, SHM_PRESENT);
 	*length=len;
 	return PK_SUCCESS;
