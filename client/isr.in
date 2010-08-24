@@ -209,7 +209,7 @@ my $cdcache_file;    # Path to flag that upload directory is consistent
 # State globals which track which cleanup actions will be necessary when
 # we exit
 my $no_shutdown = 0;# Set by forked children so the child won't run END
-my $kill_pk = 0;    # Set by run command, tells END handler to kill Parcelkeeper
+my $unmount_pk = 0; # Set by run command, tells END handler to unmount VFS
 my $do_sync = 0;    # Set when the END handler should call sys_sync()
 my @locks;          # Names and FDs of open lock files
 my @temps;          # Paths to temporary files and directories we've created
@@ -246,18 +246,14 @@ my %syscfg = ();
 sub exit_handler ($) {
     my $status = shift;
     
-    my $pid;
     my $obj;
     
     return if $no_shutdown;
     
-    if ($kill_pk) {
-	$pid = get_parcelkeeper_pid();
-	if ($pid != 0) {
-	    kill("TERM", $pid);
-	    print("Sent shutdown signal to Parcelkeeper.\n")
-		if $verbose;
-	}
+    if ($unmount_pk && get_parcelkeeper_pid()) {
+        system("fusermount -uz $parceldir/vfs");
+        print("Sent shutdown signal to Parcelkeeper.\n")
+            if $verbose;
     }
     sys_sync()
         if $do_sync;
@@ -816,9 +812,7 @@ sub checkout () {
 #
 sub run () {
     my $iters;
-    my $pk_pid;
     my $dirtometer_pid;
-    my $devnode;
     my %results;
     my $vmname;
     my $err;
@@ -875,26 +869,9 @@ sub run () {
     # Launch Parcelkeeper. 
     print("Launching Parcelkeeper...\n")
 	if $verbose;
-    $kill_pk = 1;  # Tells the SIGINT handler to cleanly terminate PK
+    $unmount_pk = 1;  # Tells the SIGINT handler to cleanly terminate PK
     run_parcelkeeper("run", "parcel hoard nexus-cache compression log") == 0
 	or errexit("Unable to launch Parcelkeeper.");	
-    
-    # Wait for udev to catch up
-    $devnode = "/dev/disk/by-id/openisr-$cfg{UUID}";
-    $iters = 0;
-    while (1) {
-	# Get Parcelkeeper pid and make sure it's still alive
-	$pk_pid = get_parcelkeeper_pid();
-	if ($pk_pid == 0) {
-	    errexit("Parcelkeeper died unexpectedly");
-	}
-	last if -r $devnode && -w _;
-	# Sleep 100 ms
-	select(undef, undef, undef, 0.1);
-	# Give up after 15 s
-	errexit("Timed out waiting for creation of device node $devnode")
-	    if (++$iters == 150);
-    };
     
     # Run dirtometer, if requested
     if ($syscfg{'dirtometer'} or $do_dirtometer) {
@@ -918,7 +895,6 @@ sub run () {
     print "Launching $vmname...\n"
 	if $verbose;
     {
-	local $ENV{'DISK'} = $devnode;
 	local $ENV{'SECTORS'} = ($cfg{'CHUNKSIZE'} / 512) * $cfg{'NUMCHUNKS'};
 	# Some version-3 parcels don't have a MEM key in their parcel.cfg, so
 	# we pick a default
@@ -941,9 +917,10 @@ sub run () {
     # Signal Parcelkeeper to shut down and wait until it is gone
     print "Shutting down Parcelkeeper..."
 	if $verbose;
-    kill("TERM", $pk_pid);
-    $kill_pk = 0;
-    message("Sent SIGTERM signal to Parcelkeeper (pid=$pk_pid)");
+    system("fusermount -uz $parceldir/vfs")
+        if get_parcelkeeper_pid();
+    $unmount_pk = 0;
+    message("Unmounted Parcelkeeper filesystem");
     $iters = 0;
     while (1) {
 	print qw(- \ | /)[$iters % 4] . "\b"
