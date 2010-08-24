@@ -494,12 +494,12 @@ def create_disk():
 version=1
 CID=%s
 parentCID=ffffffff
-createType="fullDevice"
+createType="monolithicFlat"
 
-RW %s FLAT "%s" 0
+RW %s FLAT "../vfs/image" 0
 
 ddb.adapterType = "ide"
-''' % (cid, vmm.SECTORS, vmm.DISK))
+''' % (cid, vmm.SECTORS))
 	for k in keys:
 		f.write('%s = "%s"\n' % (k, geom[k]))
 	f.close()
@@ -533,6 +533,15 @@ def create_machine():
 	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), vm_path)
 	shutil.rmtree('%s/%s' % (vmm.CFGDIR, vmname))
 
+def request_upgrade_permission():
+	resp = ''
+	while resp != 'y' and resp != 'n':
+		sys.stderr.write('Resume parcel? (y/n) ')
+		resp = sys.stdin.readline().strip()
+	print >>sys.stderr
+	if resp != 'y':
+		raise VmmError('User declined to upgrade parcel')
+
 def fixup_upgrade_settings(mf):
 	"""See if this VM has the most recent settings format.  If not, ask
 	the user whether to continue.  Return True if upgrade is required.
@@ -549,14 +558,47 @@ def fixup_upgrade_settings(mf):
 	print >>sys.stderr, 'If you resume the parcel, it will be upgraded', \
 				'and will no longer be usable'
 	print >>sys.stderr, 'with older versions of VirtualBox.\n'
-	resp = ''
-	while resp != 'y' and resp != 'n':
-		sys.stderr.write('Resume parcel? (y/n) ')
-		resp = sys.stdin.readline().strip()
-	print >>sys.stderr
-	if resp != 'y':
-		raise VmmError('User declined to upgrade parcel')
+	request_upgrade_permission()
 	return True
+
+def fixup_upgrade_vfs():
+	"""See if the VMDK file is configured for Nexus rather than for the
+	FUSE VFS.  If so, prompt the user to upgrade, and if the user accepts,
+	rewrite the VMDK."""
+
+	new_disk_path = disk_path + '.new'
+
+	# Process the VMDK and determine whether we need to upgrade
+	ifd = file(disk_path)
+	out = []
+	want_upgrade = False
+	for line in ifd:
+		if re.match('createType.*fullDevice', line):
+			want_upgrade = True
+			out.append('createType="monolithicFlat"\n')
+		elif line.startswith('RW '):
+			parts = line.split(' ')
+			if '../vfs' not in parts[3]:
+				want_upgrade = True
+				parts[3] = '"../vfs/image"'
+			out.append(' '.join(parts))
+		else:
+			out.append(line)
+	ifd.close()
+	if not want_upgrade:
+		return
+
+	print >>sys.stderr, '\nThis parcel is configured for an older', \
+				'version of ISR.'
+	print >>sys.stderr, 'If you resume the parcel, it will be upgraded', \
+				'and will no longer be usable'
+	print >>sys.stderr, 'with OpenISR clients older than 0.10.0.\n'
+	request_upgrade_permission()
+
+	ofd = file(new_disk_path, 'w')
+	ofd.writelines(out)
+	ofd.close()
+	os.rename(new_disk_path, disk_path)
 
 def fixup_uuid_1(mf):
 	"""See if this parcel has been cloned.  If so, we need to update all
@@ -577,16 +619,11 @@ def fixup_uuid_1(mf):
 	mach.setAttribute('name', unicode(parcelname()))
 	mach.setAttribute('uuid', unicode(uuid))
 
-	# Update the path to the Nexus virtual disk, and strip UUIDs from
-	# the VMDK so that VBox will regenerate them
+	# Strip UUIDs from the VMDK so that VBox will regenerate them
 	ifd = file(disk_path)
 	ofd = file(new_disk_path, 'w')
 	for line in ifd:
-		if line.startswith('RW '):
-			parts = line.split(' ')
-			parts[3] = '"' + vmm.DISK + '"'
-			ofd.write(' '.join(parts))
-		elif line.startswith('ddb.uuid'):
+		if line.startswith('ddb.uuid'):
 			pass
 		else:
 			ofd.write(line)
@@ -640,6 +677,7 @@ def fixup_machine():
 	# NOTE: fixup_upgrade_settings() runs during the first pass but
 	# commits during the second one!
 	did_upgrade = fixup_upgrade_settings(mf)
+	fixup_upgrade_vfs()
 	did_uuid = fixup_uuid_1(mf)
 	did_removable = compat.fixup_removable_devices(mf)
 	fixup_disk_size()
