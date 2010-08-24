@@ -215,6 +215,7 @@ if test z$enable_client = zyes ; then
 	
 	PKG_CHECK_MODULES([gtk], [gtk+-2.0 >= 2.8])
 	PKG_CHECK_MODULES([libuuid], [uuid])
+	PKG_CHECK_MODULES([fuse], [fuse >= 2.7])
 fi
 
 if test z$enable_client = zyes -o z$enable_server = zyes ; then
