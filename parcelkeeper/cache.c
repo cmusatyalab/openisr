@@ -508,13 +508,17 @@ pk_err_t _cache_read_chunk(struct pk_state *state, unsigned chunk,
 					chunk);
 		return PK_IOERR;
 	}
-	if (!iu_chunk_crypto_digest(state->parcel->crypto, calctag, buf,
-				chunklen))
-		return PK_CALLFAIL;
-	if (memcmp(tag, calctag, state->parcel->hashlen)) {
-		pk_log(LOG_WARNING, "Chunk %u: tag check failure", chunk);
-		log_tag_mismatch(tag, calctag, state->parcel->hashlen);
-		return PK_TAGFAIL;
+	if (tag != NULL) {
+		if (!iu_chunk_crypto_digest(state->parcel->crypto, calctag,
+					buf, chunklen))
+			return PK_CALLFAIL;
+		if (memcmp(tag, calctag, state->parcel->hashlen)) {
+			pk_log(LOG_WARNING, "Chunk %u: tag check failure",
+						chunk);
+			log_tag_mismatch(tag, calctag,
+						state->parcel->hashlen);
+			return PK_TAGFAIL;
+		}
 	}
 	return PK_SUCCESS;
 }
@@ -552,41 +556,19 @@ static pk_err_t _cache_write_chunk(struct pk_state *state, unsigned chunk,
 	return PK_SUCCESS;
 }
 
-static pk_err_t obtain_chunk(struct pk_state *state, unsigned chunk,
-			const void *tag, unsigned *length)
-{
-	char buf[state->parcel->chunksize];
-	gchar *ftag;
-	unsigned len;
-	pk_err_t ret;
-
-	if (hoard_get_chunk(state, tag, buf, &len)) {
-		ftag=format_tag(tag, state->parcel->hashlen);
-		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
-		g_free(ftag);
-		ret=transport_fetch_chunk(state->conn, buf, chunk, tag, &len);
-		if (ret)
-			return ret;
-	} else {
-		pk_log(LOG_CHUNK, "Fetched chunk %u from hoard cache", chunk);
-	}
-	ret=_cache_write_chunk(state, chunk, buf, len);
-	if (ret)
-		return ret;
-	shm_set(state, chunk, SHM_PRESENT);
-	*length=len;
-	return PK_SUCCESS;
-}
-
-pk_err_t cache_get(struct pk_state *state, unsigned chunk, void *tag,
-			void *key, enum iu_chunk_compress *compress,
-			unsigned *length)
+pk_err_t cache_get(struct pk_state *state, unsigned chunk, void *buf)
 {
 	struct query *qry;
 	void *rowtag;
 	void *rowkey;
+	char encrypted[state->parcel->chunksize];
+	char tag[state->parcel->hashlen];
+	char key[state->parcel->hashlen];
+	unsigned compress;
+	unsigned len;
 	unsigned taglen;
 	unsigned keylen;
+	gchar *ftag;
 	pk_err_t ret;
 	gboolean retry;
 
@@ -601,7 +583,7 @@ again:
 		ret=PK_IOERR;
 		goto bad;
 	}
-	query_row(qry, "bbd", &rowtag, &taglen, &rowkey, &keylen, compress);
+	query_row(qry, "bbd", &rowtag, &taglen, &rowkey, &keylen, &compress);
 	if (taglen != state->parcel->hashlen ||
 				keylen != state->parcel->hashlen) {
 		query_free(qry);
@@ -612,43 +594,68 @@ again:
 		ret=PK_INVALID;
 		goto bad;
 	}
+	if (!iu_chunk_compress_is_enabled(state->parcel->required_compress,
+				compress)) {
+		query_free(qry);
+		pk_log(LOG_ERROR, "Invalid or unsupported compression type "
+					"for chunk %u: %u", chunk, compress);
+		ret=PK_INVALID;
+		goto bad;
+	}
 	memcpy(tag, rowtag, state->parcel->hashlen);
 	memcpy(key, rowkey, state->parcel->hashlen);
 	query_free(qry);
 
-	query(&qry, state->db, "SELECT length FROM cache.chunks "
-				"WHERE chunk == ?", "d", chunk);
-	if (query_ok(state->db)) {
-		/* Chunk is not in the local cache */
-		ret=obtain_chunk(state, chunk, tag, length);
-		if (ret)
-			goto bad;
-	} else if (query_has_row(state->db)) {
-		query_row(qry, "d", length);
-		query_free(qry);
-	} else {
+	if (!query(&qry, state->db, "SELECT length FROM cache.chunks "
+				"WHERE chunk == ?", "d", chunk)) {
 		sql_log_err(state->db, "Couldn't query cache index");
 		ret=PK_IOERR;
 		goto bad;
 	}
+	if (query_has_row(state->db)) {
+		/* Chunk is in local cache */
+		query_row(qry, "d", &len);
+		query_free(qry);
+	} else {
+		len = 0;
+	}
 
-	if (*length > state->parcel->chunksize) {
-		pk_log(LOG_ERROR, "Invalid chunk length for chunk %u: %u",
-					chunk, *length);
-		ret=PK_INVALID;
-		goto bad;
-	}
-	if (!iu_chunk_compress_is_enabled(state->parcel->required_compress,
-				*compress)) {
-		pk_log(LOG_ERROR, "Invalid or unsupported compression type "
-					"for chunk %u: %u", chunk, *compress);
-		ret=PK_INVALID;
-		goto bad;
-	}
+	/* Dispense with the database */
 	if (!commit(state->db)) {
 		ret=PK_IOERR;
 		goto bad;
 	}
+
+	if (len) {
+		/* Read the chunk from the local cache.  Don't check the
+		   tag, since decrypt will check the key */
+		ret = _cache_read_chunk(state, chunk, encrypted, len, NULL);
+		if (ret)
+			return ret;
+	} else if (hoard_get_chunk(state, tag, encrypted, &len)) {
+		/* Chunk is not in hoard cache; fetch from network */
+		ftag = format_tag(tag, state->parcel->hashlen);
+		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
+		g_free(ftag);
+		ret = transport_fetch_chunk(state->conn, encrypted, chunk,
+					tag, &len);
+		if (ret)
+			return ret;
+	}
+
+	if (len > state->parcel->chunksize) {
+		pk_log(LOG_ERROR, "Invalid chunk length for chunk %u: %u",
+					chunk, len);
+		return PK_INVALID;
+	}
+
+
+	if (!iu_chunk_decode(state->parcel->crypto, compress, chunk,
+				encrypted, len, key, buf,
+				state->parcel->chunksize))
+		return PK_IOERR;
+
+	state->stats.chunk_reads++;
 	shm_set(state, chunk, SHM_ACCESSED_SESSION);
 	return PK_SUCCESS;
 
@@ -662,19 +669,31 @@ bad:
 	return ret;
 }
 
-pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *tag,
-			const void *key, enum iu_chunk_compress compress,
-			unsigned length)
+pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *buf)
 {
 	gboolean retry;
+	char encrypted[state->parcel->chunksize];
+	char tag[state->parcel->hashlen];
+	char key[state->parcel->hashlen];
+	unsigned compress;
+	unsigned len;
 
 	pk_log(LOG_CHUNK, "Update: %u", chunk);
+
+	compress = state->conf->compress;
+	if (!iu_chunk_encode(state->parcel->crypto, buf,
+				state->parcel->chunksize, encrypted, &len,
+				tag, key, &compress))
+		return PK_IOERR;
+
 again:
 	if (!begin(state->db))
 		return PK_IOERR;
+	if (_cache_write_chunk(state, chunk, encrypted, len))
+		goto bad;
 	if (!query(NULL, state->db, "INSERT OR REPLACE INTO cache.chunks "
 				"(chunk, length) VALUES(?, ?)", "dd",
-				chunk, length)) {
+				chunk, len)) {
 		sql_log_err(state->db, "Couldn't update cache index");
 		goto bad;
 	}
@@ -687,6 +706,8 @@ again:
 	}
 	if (!commit(state->db))
 		goto bad;
+	state->stats.chunk_writes++;
+	state->stats.data_bytes_written += len;
 	shm_set(state, chunk, SHM_PRESENT | SHM_ACCESSED_SESSION | SHM_DIRTY |
 				SHM_DIRTY_SESSION);
 	return PK_SUCCESS;

@@ -432,6 +432,7 @@ enum mode parse_cmdline(struct pk_config **out, int argc, char **argv)
 						conf->flags & WANT_PREV);
 			conf->cache_file=filepath(&ctx, cp, "disk", 0);
 			conf->cache_index=filepath(&ctx, cp, "disk.idx", 0);
+			conf->mountpoint=filepath(&ctx, cp, "vfs", 0);
 			conf->lockfile=filepath(&ctx, cp, "parcelkeeper.lock",
 						0);
 			conf->pidfile=filepath(&ctx, cp, "parcelkeeper.pid",
@@ -532,6 +533,7 @@ void cmdline_free(struct pk_config *conf)
 	g_free(conf->prev_keyring);
 	g_free(conf->cache_file);
 	g_free(conf->cache_index);
+	g_free(conf->mountpoint);
 	g_free(conf->lockfile);
 	g_free(conf->pidfile);
 	g_free(conf->hoard_dir);

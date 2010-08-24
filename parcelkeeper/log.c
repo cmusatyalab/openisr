@@ -57,6 +57,8 @@ static pk_err_t parse_logtype(const char *name, enum pk_log_type *out)
 		*out=LOG_INFO;
 	else if (!strcmp(name, "chunk"))
 		*out=LOG_CHUNK;
+	else if (!strcmp(name, "fuse"))
+		*out=LOG_FUSE;
 	else if (!strcmp(name, "transport"))
 		*out=LOG_TRANSPORT;
 	else if (!strcmp(name, "query"))
@@ -79,6 +81,8 @@ static const char *log_prefix(enum pk_log_type type)
 		return "INFO";
 	case LOG_CHUNK:
 		return "CHUNK";
+	case LOG_FUSE:
+		return "FUSE";
 	case LOG_TRANSPORT:
 		return "TRANSPORT";
 	case LOG_QUERY:

@@ -47,6 +47,7 @@ typedef enum pk_err {
 enum pk_log_type {
 	LOG_INFO,
 	LOG_CHUNK,
+	LOG_FUSE,
 	LOG_TRANSPORT,
 	LOG_QUERY,
 	LOG_SLOW_QUERY,
@@ -89,6 +90,7 @@ enum mode_flags {
 	WANT_GC		= 0x0400,  /* Enable slower hoard cleanup steps */
 };
 
+struct pk_fuse;
 struct pk_connection;
 struct pk_lockfile;
 
@@ -104,6 +106,7 @@ struct pk_config {
 	gchar *prev_keyring;
 	gchar *cache_file;
 	gchar *cache_index;
+	gchar *mountpoint;
 	gchar *lockfile;
 	gchar *pidfile;
 
@@ -147,10 +150,7 @@ struct pk_state {
 	struct pk_lockfile *lockfile;
 	int cache_fd;
 	int hoard_fd;
-	gchar *loopdev_name;
-	int loopdev_fd;
-	int chardev_fd;
-	GMainLoop *nexus_loop;
+	struct pk_fuse *fuse;
 	gchar *shm_name;
 	unsigned char *shm_base;
 	unsigned shm_len;
@@ -158,20 +158,28 @@ struct pk_state {
 	struct db *db;
 	struct db *hoard;
 
-	int bdev_index;
 	int hoard_ident;
 
 	unsigned offset;
 	unsigned cache_flags;
-	int leave_dirty;
 
-	unsigned request_count;
+	struct {
+		uint64_t bytes_read;
+		uint64_t bytes_written;
+		uint64_t chunk_reads;
+		uint64_t chunk_writes;
+		uint64_t chunk_errors;
+		uint64_t cache_hits;
+		uint64_t cache_misses;
+		uint64_t data_bytes_written;
+		uint64_t whole_chunk_updates;
+	} stats;
 };
 
 struct pk_sigstate {
-	volatile int signal;  /* Last signal received by generic handler */
+	volatile int signal;
 	GList *interrupter_dbs;
-	int signal_fds[2];
+	struct pk_fuse *fuse;
 };
 
 extern struct pk_sigstate sigstate;
@@ -198,11 +206,8 @@ pk_err_t cache_init(struct pk_state *state);
 void cache_shutdown(struct pk_state *state);
 pk_err_t _cache_read_chunk(struct pk_state *state, unsigned chunk,
 			void *buf, unsigned chunklen, const void *tag);
-pk_err_t cache_get(struct pk_state *state, unsigned chunk, void *tag, void *key,
-			enum iu_chunk_compress *compress, unsigned *length);
-pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *tag,
-			const void *key, enum iu_chunk_compress compress,
-			unsigned length);
+pk_err_t cache_get(struct pk_state *state, unsigned chunk, void *buf);
+pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *buf);
 pk_err_t cache_set_flag(struct pk_state *state, unsigned flag);
 pk_err_t cache_clear_flag(struct pk_state *state, unsigned flag);
 int cache_test_flag(struct pk_state *state, unsigned flag);
@@ -211,6 +216,11 @@ int cache_test_flag(struct pk_state *state, unsigned flag);
 int copy_for_upload(struct pk_state *state);
 int validate_cache(struct pk_state *state);
 int examine_cache(struct pk_state *state);
+
+/* fuse.c */
+pk_err_t fuse_init(struct pk_state *state);
+void fuse_run(struct pk_state *state);
+void fuse_shutdown(struct pk_state *state);
 
 /* hoard.c */
 pk_err_t hoard_init(struct pk_state *state);
@@ -237,11 +247,6 @@ int gchoard(struct pk_state *state);
 int check_hoard(struct pk_state *state);
 int hoard_refresh(struct pk_state *state);
 
-/* nexus.c */
-pk_err_t nexus_init(struct pk_state *state);
-void nexus_run(struct pk_state *state);
-void nexus_shutdown(struct pk_state *state);
-
 /* transport.c */
 pk_err_t transport_init(void);
 pk_err_t transport_conn_alloc(struct pk_connection **out,
@@ -256,7 +261,6 @@ pk_err_t transport_fetch_chunk(struct pk_connection *conn, void *buf,
 #define FILE_LOCK_WAIT  0x02
 pk_err_t parseuint(unsigned *out, const char *in, int base);
 pk_err_t read_file(const char *path, gchar **buf, gsize *len);
-pk_err_t read_sysfs_file(const char *path, gchar **buf);
 char *pk_strerror(pk_err_t err);
 int set_signal_handler(int sig, void (*handler)(int sig));
 pk_err_t setup_signal_handlers(void (*caught_handler)(int sig),

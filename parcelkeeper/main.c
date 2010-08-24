@@ -35,7 +35,7 @@ int main(int argc, char **argv)
 	int have_cache=0;
 	int have_hoard=0;
 	int have_transport=0;
-	int have_nexus=0;
+	int have_fuse=0;
 	int have_lock=0;
 	pk_err_t err;
 
@@ -118,10 +118,10 @@ int main(int argc, char **argv)
 	}
 
 	if (mode == MODE_RUN) {
-		if (nexus_init(&state))
+		if (fuse_init(&state))
 			goto shutdown;
 		else
-			have_nexus=1;
+			have_fuse=1;
 	}
 
 	if (pending_signal())
@@ -134,7 +134,7 @@ int main(int argc, char **argv)
 	}
 
 	if (mode == MODE_RUN) {
-		nexus_run(&state);
+		fuse_run(&state);
 		ret=0;
 	} else if (mode == MODE_UPLOAD) {
 		ret=copy_for_upload(&state);
@@ -162,8 +162,8 @@ int main(int argc, char **argv)
 
 shutdown:
 	interrupter_clear();
-	if (have_nexus)
-		nexus_shutdown(&state);
+	if (have_fuse)
+		fuse_shutdown(&state);
 	if (have_transport)
 		transport_conn_free(state.conn);
 	if (have_hoard)

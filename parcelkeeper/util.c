@@ -72,17 +72,6 @@ pk_err_t read_file(const char *path, gchar **buf, gsize *len)
 	return ret;
 }
 
-/* Read a file containing a string, strip trailing whitespace, and return the
-   rest */
-pk_err_t read_sysfs_file(const char *path, gchar **buf)
-{
-	pk_err_t ret=read_file(path, buf, NULL);
-	if (ret)
-		return ret;
-	g_strchomp(*buf);
-	return PK_SUCCESS;
-}
-
 char *pk_strerror(pk_err_t err)
 {
 	switch (err) {
