@@ -2,7 +2,7 @@
 #
 # kvm - OpenISR (R) VMM driver for the Kernel-based Virtual Machine
 #
-# Copyright (C) 2008-2009 Carnegie Mellon University
+# Copyright (C) 2008-2010 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as published
@@ -208,6 +208,7 @@ sub run {
 	my $lsock;
 	my $sock;
 	my $buf;
+	my $diskpath = "$CFGDIR/../vfs/image";
 	my $sockpath = "$CFGDIR/kvm.ctl";
 	my $vncsock = "$CFGDIR/kvm.vnc";
 	my $loadmem = 0;
@@ -218,7 +219,7 @@ sub run {
 	cleanup();
 
 	# Calculate command-line options
-	$opts  = "-name \"$NAME\" -hda $DISK -m $MEM";
+	$opts  = "-name \"$NAME\" -hda \"$diskpath\" -m $MEM";
 	$opts .= " -monitor unix:$sockpath -vnc unix:$vncsock";
 	$opts .= " -enable-kvm"
 		if $need_enable_kvm;

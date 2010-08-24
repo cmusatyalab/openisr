@@ -33,7 +33,7 @@ class VmmError(Exception):
 	pass
 
 def _init():
-	for var in 'NAME', 'CFGDIR', 'UUID', 'DISK', 'SECTORS', 'MEM', \
+	for var in 'NAME', 'CFGDIR', 'UUID', 'SECTORS', 'MEM', \
 				'FULLSCREEN', 'SUSPENDED', 'COMMAND', \
 				'VERBOSE':
 		if os.environ.has_key(var):

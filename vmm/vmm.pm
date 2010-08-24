@@ -23,7 +23,7 @@ use strict;
 use warnings;
 
 BEGIN {
-	my @import = (qw/NAME CFGDIR UUID DISK SECTORS MEM FULLSCREEN/,
+	my @import = (qw/NAME CFGDIR UUID SECTORS MEM FULLSCREEN/,
 				qw/SUSPENDED COMMAND VERBOSE/);
 	our @EXPORT = qw/main fail find_program run_program $VMNAME/;
 	our $VMNAME = "UnknownVMM";
