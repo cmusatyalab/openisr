@@ -31,7 +31,6 @@
 #include <gdk/gdkkeysyms.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
-#include "nexus.h"
 
 struct pane {
 	const char *config_key;
@@ -47,7 +46,6 @@ struct pane {
 	int height;
 } panes[] = {
 	{"show_stats",	"Statistics",	"Show statistics",	TRUE,	GDK_s},
-	{"show_nexus",	"Nexus states",	"Show Nexus states",	FALSE,	GDK_n},
 	{"show_bitmap",	"Chunk bitmap",	"Show chunk bitmap",	TRUE,	GDK_c},
 	{NULL}
 };
@@ -178,7 +176,7 @@ void write_config(void)
 #define NOUTPUTS 2
 
 struct stat_values {
-	long i[NOUTPUTS];
+	long long i[NOUTPUTS];
 	double f;
 };
 
@@ -215,7 +213,7 @@ gboolean get_ints(struct stats *st)
 		data = get_attr(st->attrs[i]);
 		if (data == NULL)
 			return FALSE;
-		st->cur.i[i] = strtol(data, &end, 10);
+		st->cur.i[i] = strtoll(data, &end, 10);
 		if (data[0] == 0 || end[0] != 0)
 			success = FALSE;
 		g_free(data);
@@ -258,9 +256,9 @@ gboolean get_chunkstats(struct stats *st)
 	return TRUE;
 }
 
-char *format_sectors(struct stat_values *values, int which)
+char *format_bytes(struct stat_values *values, int which)
 {
-	return g_strdup_printf("%.1f", 1.0 * values->i[which] / (1 << 11));
+	return g_strdup_printf("%.1f", 1.0 * values->i[which] / (1 << 20));
 }
 
 char *format_chunks(struct stat_values *values, int which)
@@ -290,27 +288,27 @@ gboolean int_changed(struct stat_values *prev, struct stat_values *cur,
 struct stats statistics[] = {
 	{
 		"Guest",
-		{"sectors_read", "sectors_written"},
+		{"bytes_read", "bytes_written"},
 		get_ints,
 		{{"Data read by guest OS this session (MB)",
-			format_sectors, int_changed},
+			format_bytes, int_changed},
 		{"Data written by guest OS this session (MB)",
-			format_sectors, int_changed}}
+			format_bytes, int_changed}}
 	}, {
-		"Nexus",
+		"Chunks",
 		{"chunk_reads", "chunk_writes"},
 		get_ints,
-		{{"Chunk data read by Nexus this session (MB)",
+		{{"Chunk data read by Parcelkeeper this session (MB)",
 			format_chunks, int_changed},
-		{"Chunk data written by Nexus this session (MB)",
+		{"Chunk data written by Parcelkeeper this session (MB)",
 			format_chunks, int_changed}}
 	}, {
 		"State",
 		{NULL},
 		get_chunkstats,
-		{{"Chunks accessed this session (MB)",
+		{{"Distinct chunks accessed this session (MB)",
 			format_chunks, int_changed},
-		{"Chunks dirtied this session (MB)",
+		{"Distinct chunks dirtied this session (MB)",
 			format_chunks, int_changed}}
 	}, {
 		"Savings",
@@ -324,7 +322,7 @@ struct stats statistics[] = {
 		{"cache_hits", "cache_misses"},
 		get_ints,
 		{{NULL},
-		{"Nexus chunk cache hit rate",
+		{"Parcelkeeper chunk cache hit rate",
 			format_hit_rate, NULL}}
 	}, {0}
 };
@@ -396,37 +394,6 @@ void update_stats(void)
 				update_stat_invalid(st);
 		}
 	}
-}
-
-/** Nexus states pane ********************************************************/
-
-#define NEXUS_STATE(x) #x,
-char *state_names[]={
-	NEXUS_STATES
-};
-#undef NEXUS_STATE
-#define NR_STATES ((int)(sizeof(state_names) / sizeof(state_names[0])))
-
-GtkWidget *state_lbl[NR_STATES];
-
-void update_states(void)
-{
-	char *data;
-	char **vals;
-	int i;
-
-	if (!mapped || !g_key_file_get_boolean(config, CONFIG_GROUP,
-				"show_nexus", NULL))
-		return;
-	data = get_attr("states");
-	if (data == NULL)
-		return;
-	vals = g_strsplit(data, " ", 0);
-	if (g_strv_length(vals) == NR_STATES)
-		for (i = 0; i < NR_STATES; i++)
-			update_label(GTK_LABEL(state_lbl[i]), vals[i]);
-	g_strfreev(vals);
-	g_free(data);
 }
 
 /** Chunk bitmap pane ********************************************************/
@@ -607,7 +574,6 @@ gboolean update_event(void *data)
 	if (st.st_nlink == 0)
 		gtk_main_quit();
 	update_stats();
-	update_states();
 	update_img();
 	return TRUE;
 }
@@ -806,8 +772,10 @@ void init_files(void)
 {
 	GError *err = NULL;
 	char *path;
-	char *linkdest;
-	char **linkparts;
+	char *data;
+	char **lines;
+	char **line;
+	char **kv;
 	char *val;
 	char *end;
 
@@ -827,19 +795,26 @@ void init_files(void)
 		die("mmap failed");
 	g_free(path);
 
-	path = g_strdup_printf("/dev/disk/by-id/openisr-%s", uuid);
-	linkdest = g_file_read_link(path, &err);
-	if (err)
-		die("Couldn't read link %s: %s", path, err->message);
-	linkparts = g_strsplit(linkdest, "/", 0);
-	statsdir = g_strdup_printf("/sys/class/openisr/%s",
-				linkparts[g_strv_length(linkparts) - 1]);
-	g_strfreev(linkparts);
+	path = g_strdup_printf("%s/%s/parcel.cfg", isrdir, uuid);
+	if (!g_file_get_contents(path, &data, NULL, &err))
+		die("Couldn't read parcel.cfg: %s", err->message);
 	g_free(path);
-
-	val = get_attr("chunk_size");
+	lines = g_strsplit(data, "\n", 0);
+	g_free(data);
+	for (line = lines, val = NULL; *line != NULL; line++) {
+		kv = g_strsplit(*line, "=", 2);
+		g_strstrip(kv[0]);
+		if (!strcmp(kv[0], "CHUNKSIZE")) {
+			val = g_strdup(kv[1]);
+			g_strfreev(kv);
+			break;
+		}
+		g_strfreev(kv);
+	}
+	g_strfreev(lines);
 	if (val == NULL)
-		die("Couldn't get parcel chunk size");
+		die("Couldn't get parcel chunk size from parcel.cfg");
+	g_strstrip(val);
 	chunks_per_mb = (1 << 20) / strtol(val, &end, 10);
 	if (val[0] == 0 || end[0] != 0)
 		die("Couldn't parse parcel chunk size");
@@ -872,7 +847,7 @@ const char img_tooltip[] =
 "Red: Dirtied this session\n"
 "White: Accessed this session\n"
 "Dark red: Dirtied in previous session\n"
-"Light gray: Accessed in previous session\n"
+"Light gray: Copied in previous session\n"
 "Dark gray: Not present";
 
 void init_window(void)
@@ -882,7 +857,6 @@ void init_window(void)
 	GtkAccelGroup *accels;
 	GtkWidget *vbox;
 	GtkWidget *stats_table;
-	GtkWidget *state_table;
 	GtkWidget *lbl;
 	GtkWidget *menu;
 	GtkWidget *img_box;
@@ -910,8 +884,6 @@ void init_window(void)
 	for (i = 0; statistics[i].heading != NULL; i++);
 	stats_table = gtk_table_new(i, 3, TRUE);
 	gtk_container_set_border_width(GTK_CONTAINER(stats_table), 2);
-	state_table = gtk_table_new(NR_STATES, 2, FALSE);
-	gtk_container_set_border_width(GTK_CONTAINER(state_table), 2);
 	img = gtk_image_new();
 	gtk_misc_set_alignment(GTK_MISC(img), 0, 0);
 	img_box = gtk_event_box_new();
@@ -921,8 +893,6 @@ void init_window(void)
 	gtk_container_add(GTK_CONTAINER(wd), vbox);
 	gtk_box_pack_start(GTK_BOX(vbox), pane_widget("show_stats",
 				stats_table), FALSE, FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(vbox), pane_widget("show_nexus",
-				state_table), FALSE, FALSE, 0);
 	gtk_box_pack_end(GTK_BOX(vbox), pane_widget("show_bitmap", img_box),
 				TRUE, TRUE, 0);
 	for (i = 0; statistics[i].heading != NULL; i++) {
@@ -946,18 +916,6 @@ void init_window(void)
 						j + 1, j + 2, i, i + 1,
 						GTK_FILL, 0, 3, 2);
 		}
-	}
-	for (i = 0; i < NR_STATES; i++) {
-		lbl = gtk_label_new(state_names[i]);
-		gtk_misc_set_alignment(GTK_MISC(lbl), 0, 0.5);
-		gtk_table_attach(GTK_TABLE(state_table), lbl, 0, 1, i, i + 1,
-					GTK_FILL, 0, 0, 0);
-		lbl = gtk_label_new("--");
-		gtk_label_set_width_chars(GTK_LABEL(lbl), 5);
-		gtk_misc_set_alignment(GTK_MISC(lbl), 1, 0.5);
-		gtk_table_attach(GTK_TABLE(state_table), lbl, 1, 2, i, i + 1,
-					GTK_FILL, 0, 0, 2);
-		state_lbl[i] = lbl;
 	}
 	gtk_widget_show_all(GTK_WIDGET(wd));
 	/* Now re-hide the panes that are not enabled. */
@@ -1008,6 +966,7 @@ int main(int argc, char **argv)
 	isrdir = g_strdup_printf("%s/.isr", getenv("HOME"));
 	confdir = g_strdup_printf("%s/dirtometer", isrdir);
 	conffile = g_strdup_printf("%s/%s", confdir, uuid);
+	statsdir = g_strdup_printf("%s/%s/vfs/stats", isrdir, uuid);
 
 	init_files();
 	read_config();
