@@ -25,8 +25,10 @@ use warnings;
 BEGIN {
 	my @import = (qw/NAME CFGDIR UUID SECTORS MEM FULLSCREEN/,
 				qw/SUSPENDED COMMAND VERBOSE/);
-	our @EXPORT = qw/main fail find_program run_program $VMNAME/;
+	our @EXPORT = (qw/main fail find_program run_program $VMNAME/,
+				qw/$USES_ROOT/);
 	our $VMNAME = "UnknownVMM";
+	our $USES_ROOT = "no";
 	foreach my $var (@import) {
 		push(@EXPORT, "\$$var");
 		eval "our \$$var = \$ENV{'$var'}"
@@ -37,6 +39,7 @@ BEGIN {
 sub main {
 	our $VMNAME;
 	our $SUSPENDED;
+	our $USES_ROOT;
 	my $msg;
 
 	undef $@;
@@ -51,6 +54,7 @@ EOF
 		} else {
 			($msg = <<EOF) =~ s/^\s+//gm;
 				VMM=$VMNAME
+				USES_ROOT=$USES_ROOT
 				RUNNABLE=yes
 EOF
 		}

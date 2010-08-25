@@ -49,6 +49,7 @@ enum option {
 	OPT_FULL,
 	OPT_SPLICE,
 	OPT_COMPACT,
+	OPT_ALLOW_ROOT,
 	OPT_MODE,
 	OPT_NEXUS_CACHE,
 	END_OPTS
@@ -90,6 +91,7 @@ static const struct pk_option pk_options[] = {
 	{"full",           OPT_FULL,           NULL,                       "Perform full data-integrity check"},
 	{"splice",         OPT_SPLICE,         NULL,                       "Revert chunks that fail tag validation (requires --full)"},
 	{"compact",        OPT_COMPACT,        NULL,                       "Compact the hoard cache"},
+	{"allow-root",     OPT_ALLOW_ROOT,     NULL,                       "Allow the root user to access the virtual filesystem"},
 	{"mode",           OPT_MODE,           "mode",                     "Print detailed usage message about the given mode"},
 	{0}
 };
@@ -111,6 +113,7 @@ mode(RUN) = {
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
 	{OPT_MASK_STDERR,   OPTIONAL},
+	{OPT_ALLOW_ROOT,    OPTIONAL},
 	{OPT_FOREGROUND,    OPTIONAL},
 	{END_OPTS}
 };
@@ -492,6 +495,10 @@ enum mode parse_cmdline(struct pk_config **out, int argc, char **argv)
 		case OPT_COMPACT:
 			/* Abuse of WANT_ flags? */
 			conf->flags |= WANT_COMPACT;
+			break;
+		case OPT_ALLOW_ROOT:
+			/* Abuse of WANT_ flags? */
+			conf->flags |= WANT_ALLOW_ROOT;
 			break;
 		case OPT_MODE:
 			helpmode=parse_mode(ctx.optparam);

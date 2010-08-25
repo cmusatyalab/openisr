@@ -27,6 +27,7 @@ import __main__
 __all__ = 'VmmError', 'main', 'find_program', 'run_program'
 
 VMNAME = "UnknownVMM"
+USES_ROOT = "no"
 DEBUG = False
 
 class VmmError(Exception):
@@ -61,6 +62,7 @@ def main():
 			print "RUNNABLE_REASON=%s" % _exception_msg(inst)
 		else:
 			print "VMM=%s" % VMNAME
+			print "USES_ROOT=%s" % USES_ROOT
 			print "RUNNABLE=yes"
 	elif sys.argv[1] == "run":
 		try:

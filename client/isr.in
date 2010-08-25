@@ -111,6 +111,7 @@ sub check_for_nexus ();
 sub check_disk_space ();
 sub check_for_old_isrdir ();
 sub check_damaged_cache ();
+sub fuse_can_allow_root ();
 sub get_parcelkeeper_pid ();
 sub fetch_parcel_file ($$$$$);
 sub keyroot_pipe ();
@@ -817,6 +818,7 @@ sub run () {
     my $vmname;
     my $err;
     my $memtype;
+    my $allow_root = "";
     
     my $driver = (defined $vmm) ? $vmm : $cfg{'VMM'};
     my $pkcmd = LIBDIR . "/parcelkeeper";
@@ -855,6 +857,12 @@ sub run () {
     			"Unknown error";
     errexit("$vmname not runnable: $err")
         if !defined $results{'RUNNABLE'} or $results{'RUNNABLE'} ne "yes";
+    if (defined $results{'USES_ROOT'} and $results{'USES_ROOT'} eq "yes") {
+        $allow_root = "allow-root";
+        errexit("$vmname requires \"user_allow_other\" to be " .
+                        "specified in /etc/fuse.conf.")
+            unless fuse_can_allow_root();
+    }
 
     print("Running disconnected...\n")
 	if $disconnected and $verbose;
@@ -870,8 +878,8 @@ sub run () {
     print("Launching Parcelkeeper...\n")
 	if $verbose;
     $unmount_pk = 1;  # Tells the SIGINT handler to cleanly terminate PK
-    run_parcelkeeper("run", "parcel hoard nexus-cache compression log") == 0
-	or errexit("Unable to launch Parcelkeeper.");	
+    run_parcelkeeper("run", "parcel hoard nexus-cache compression log $allow_root") == 0
+	or errexit("Unable to launch Parcelkeeper.");
     
     # Run dirtometer, if requested
     if ($syscfg{'dirtometer'} or $do_dirtometer) {
@@ -1715,6 +1723,8 @@ sub parcelkeeper_cmd ($$) {
 	    $cmd .= " --splice";
 	} elsif ($arg eq "compact") {
 	    $cmd .= " --compact";
+	} elsif ($arg eq "allow-root") {
+	    $cmd .= " --allow-root";
 	} elsif ($arg eq "log") {
 	    $do_log = 1;
 	} else {
@@ -2723,6 +2733,27 @@ sub check_damaged_cache () {
 	    if $verbose;
     }
     return ($ret & 4) == 4;
+}
+
+#
+# fuse_can_allow_root - Returns true if FUSE has been configured to allow
+#                       filesystem implementations to allow root to access
+#                       files in their filesystems.
+#
+sub fuse_can_allow_root () {
+    my $fh;
+
+    open($fh, "<", "/etc/fuse.conf")
+        or return 0;
+    while (<$fh>) {
+        chomp;
+        if (/^user_allow_other$/) {
+            close($fh);
+            return 1;
+        }
+    }
+    close($fh);
+    return 0;
 }
 
 #

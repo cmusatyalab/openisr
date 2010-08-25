@@ -438,6 +438,13 @@ pk_err_t fuse_init(struct pk_state *state)
 	g_ptr_array_add(argv, g_strdup_printf("-ofsname=openisr#%s",
 				state->parcel->uuid));
 	g_ptr_array_add(argv, g_strdup("-osubtype=openisr"));
+	if (state->conf->flags & WANT_ALLOW_ROOT) {
+		/* This option is needed for certain VMMs which run their
+		   monitor process as root.  The "user_allow_other" option
+		   must be specified in /etc/fuse.conf or fuse_mount()
+		   will fail. */
+		g_ptr_array_add(argv, g_strdup("-oallow_root"));
+	}
 	g_ptr_array_add(argv, NULL);
 	args.argv = (gchar **) g_ptr_array_free(argv, FALSE);
 	args.argc = g_strv_length(args.argv);
