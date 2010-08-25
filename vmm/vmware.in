@@ -2,7 +2,7 @@
 #
 # vmware - OpenISR (R) VMM driver for VMware Workstation and VMware Player
 #
-# Copyright (C) 2008-2009 Carnegie Mellon University
+# Copyright (C) 2008-2010 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as published
@@ -108,6 +108,7 @@ sub check_runnable {
 
 sub info {
 	$VMNAME = "VMware";
+	$USES_ROOT = "yes";
 	check_runnable;
 }
 
@@ -138,9 +139,9 @@ sub new_vmdata {
 version=1
 CID=$cid
 parentCID=ffffffff
-createType="fullDevice"
+createType="monolithicFlat"
 
-RW $SECTORS FLAT "/dev/hdk" 0
+RW $SECTORS FLAT "../vfs/image" 0
 
 ddb.virtualHWVersion = "6"
 ddb.adapterType = "ide"
@@ -160,7 +161,6 @@ guestOS = "other26xlinux"
 memsize = "$MEM"
 ide0:0.present = "TRUE"
 ide0:0.fileName = "vmware.vmdk"
-ide0:0.deviceType = "rawDisk"
 ide0:1.present = "TRUE"
 ide0:1.deviceType = "cdrom-raw"
 ide0:1.autodetect = "TRUE"
@@ -284,6 +284,87 @@ sub new_filenames {
 	}
 }
 
+sub convert_to_fuse_vfs {
+	my $vmx = "$CFGDIR/vmware.vmx";
+	my $vmdk = find_vmdk($vmx);
+	my $ofh;
+	my $nfh;
+	my $line;
+	my $key;
+	my $value;
+	my $resp = "";
+	my $need_upgrade = 0;
+	my @data;
+	my @fields;
+
+	open($ofh, "<", $vmdk)
+		or fail "Couldn't read $vmdk";
+	while ($line = <$ofh>) {
+		($key, $value) = split_record($line);
+		if ($line =~ /^RW /) {
+			@fields = split ' ', $line;
+			if ($fields[3] =~ m:/dev/hdk:) {
+				$need_upgrade = 1;
+				$fields[3] = '"../vfs/image"';
+			}
+			push @data, join(' ', @fields) . "\n";
+		} elsif (! defined $key) {
+			push @data, $line;
+		} elsif ($key eq "createType" and $value !~ /monolithicFlat/) {
+			$need_upgrade = 1;
+			push @data, 'createType="monolithicFlat"' . "\n";
+		} else {
+			push @data, $line;
+		}
+	}
+	close($ofh);
+	return unless $need_upgrade;
+
+	print STDERR <<END;
+
+This parcel is configured for an older version of ISR.
+If you resume the parcel, it will be upgraded and will no longer be usable
+with OpenISR clients older than 0.10.0.
+
+END
+	while ($resp !~ /^[yn]$/) {
+		print STDERR "Resume parcel? (y/n) ";
+		chomp ($resp = <STDIN>);
+	}
+	print STDERR "\n";
+	fail "User declined to upgrade parcel"
+		if $resp ne "y";
+
+	open($nfh, ">", "$vmdk.new")
+		or fail "Couldn't write $vmdk.new";
+	for $line (@data) {
+		print $nfh $line;
+	}
+	close($nfh);
+	rename("$vmdk.new", $vmdk)
+		or fail "Couldn't update $vmdk";
+
+	undef $ofh;
+	undef $nfh;
+	open($ofh, "<", $vmx)
+		or fail "Couldn't read $vmx";
+	open($nfh, ">", "$vmx.new")
+		or fail "Couldn't write $vmx.new";
+	while ($line = <$ofh>) {
+		($key, $value) = split_record($line);
+		unless (defined $key) {
+			print $nfh $line;
+			next;
+		}
+		next if $key =~ /^ide0:0\.deviceType$/;
+		print $nfh $line;
+	}
+	close($ofh);
+	close($nfh);
+	rename("$vmx.new", $vmx)
+		or fail "Couldn't update $vmx";
+}
+
 sub new_uuid {
 	my $vmx = "$CFGDIR/vmware.vmx";
 	my $vmdk = find_vmdk($vmx);
@@ -400,6 +481,8 @@ sub update_cfg {
 	$vmx = find_vmx;
 	new_filenames $vmx
 		if defined $vmx and $vmx ne "vmware.vmx";
+	convert_to_fuse_vfs
+		if defined $vmx;
 	if (!defined $vmx) {
 		# This parcel has no VMX file.  Create a VMX and VMDK.
 		new_vmdata;
@@ -494,12 +577,8 @@ sub run {
 	$opts = ($FULLSCREEN eq "yes" ? "-X" : "");
 	check_runnable;
 	update_cfg;
-	{
-		local $ENV{'LD_PRELOAD'} = "libvdisk.so.0";
-		local $ENV{'VDISK_DEVICE'} = $DISK;
-		$ret = run_program("$program $opts $CFGDIR/vmware.vmx",
-					\&kill_vmware, ($VERBOSE ne "yes"));
-	}
+	$ret = run_program("$program $opts $CFGDIR/vmware.vmx",
+				\&kill_vmware, ($VERBOSE ne "yes"));
 	fail "Couldn't run $program"
 		if $ret == -1;
 
