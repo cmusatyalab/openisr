@@ -2,11 +2,11 @@ AM_CPPFLAGS = -I$(top_srcdir)/kernel/nexus -I..
 AM_CPPFLAGS += -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
 AM_CFLAGS = -W -Wall -Wstrict-prototypes
 
-GEN = post set_device_owner viewer
+GEN = post viewer
 
 if WANT_CLIENT
 CLIENTPROGS = dirtometer readstats nexus_debug
-pkgdata_SCRIPTS = set_device_owner viewer
+pkgdata_SCRIPTS = viewer
 noinst_SCRIPTS = post
 endif
 

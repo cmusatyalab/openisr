@@ -20,7 +20,6 @@ To run:
 - gtk-vnc Python bindings
 - Perl
 - Python >= 2.4
-- udev
 - ssh
 - rsync
 - ssh-agent running in your X session (most systems provide this by default)
@@ -149,11 +148,11 @@ compression algorithm" under "Cryptographic options" (CONFIG_CRYPTO_DEFLATE).
 INSTALLATION PATHS
 ------------------
 
-By default, the OpenISR init script, udev rules, and bash completion rules
-are installed in subdirectories of $prefix/etc.  However, most systems only
-look for these files in subdirectories of /etc.  To solve this problem, you
-can pass "--sysconfdir=/etc" to configure, or you can move the files into
-/etc by hand.
+By default, the OpenISR bash completion rules are installed in a subdirectory
+of $prefix/etc.  However, most systems only look for such files in
+subdirectories of /etc.  To solve this problem, you can pass
+"--sysconfdir=/etc" to configure, or you can move the rules file into /etc
+by hand.
 
 During the build process, several pieces of the OpenISR system are configured
 to expect helper programs and data files in the locations specified to

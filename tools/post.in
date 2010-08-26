@@ -53,39 +53,6 @@ unless (defined getgrnam(ISRGROUP)) {
 		or fail "Couldn't create " . ISRGROUP . " group";
 }
 
-# Now that we have the system group, reread udev rules file
-status "Reloading udev rules...";
-if (-x "/sbin/udevadm") {
-	my $help = `/sbin/udevadm control --help`;
-	my $ret;
-	if ($help =~ /reload-rules/) {
-		$ret = system("/sbin/udevadm control --reload-rules");
-	} else {
-		$ret = system("/sbin/udevadm control --reload_rules");
-	}
-	fail "Couldn't run udevadm"
-		if $ret;
-} else {
-	system("/sbin/udevcontrol reload_rules") == 0
-		or fail "Couldn't run udevcontrol";
-}
-
-# If the loop driver is built into the kernel, running openisr-config won't
-# change the permissions of the loop device nodes.  Thus we set the right
-# permissions by hand.
-status "Setting permissions on loop device nodes...";
-my $gid = (getgrnam(ISRGROUP))[2]
-	or fail "Couldn't get GID of " . ISRGROUP;
-opendir(DEV, "/dev")
-	or fail "Couldn't list /dev";
-for my $node (grep(/^loop[0-9]+$/, readdir(DEV))) {
-	chown(-1, $gid, "/dev/$node") == 1
-		or fail "Couldn't chgrp /dev/$node";
-	chmod(0660, "/dev/$node") == 1
-		or fail "Couldn't chmod /dev/$node";
-}
-closedir(DEV);
-
 # Print final thoughts
 status "Setup succeeded.";
 my $grp = ISRGROUP;
