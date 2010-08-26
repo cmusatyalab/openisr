@@ -160,16 +160,6 @@ if test z$enable_client = zyes || WANT_VMM([virtualbox]) ; then
 fi
 
 # Checks for kernel features.
-if test z$enable_client = zyes ; then
-	RUN_TEST([COMPILE], [whether loop.h is usable],
-				[AC_LANG_PROGRAM([#include <linux/loop.h>], 
-				[unsigned get=LOOP_GET_STATUS64;
-				unsigned set=LOOP_SET_STATUS64;])])
-	if test z$success = zno ; then
-		AC_MSG_ERROR([kernel headers in /usr/include/linux are too old])
-	fi
-fi
-
 if WANT_VMM([vmware]) ; then
 	RUN_TEST([COMPILE], [for lba_capacity_2 in hd_driveid],
 				[AC_LANG_PROGRAM([#include <linux/hdreg.h>], 
