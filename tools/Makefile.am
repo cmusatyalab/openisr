@@ -1,11 +1,10 @@
-AM_CPPFLAGS = -I$(top_srcdir)/kernel/nexus -I..
-AM_CPPFLAGS += -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
+AM_CPPFLAGS = -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
 AM_CFLAGS = -W -Wall -Wstrict-prototypes
 
 GEN = viewer
 
 if WANT_CLIENT
-CLIENTPROGS = dirtometer readstats nexus_debug
+CLIENTPROGS = dirtometer
 pkgdata_SCRIPTS = viewer
 endif
 
@@ -14,8 +13,8 @@ SERVERPROGS = disktool
 endif
 
 pkglib_PROGRAMS = query blobtool $(CLIENTPROGS) $(SERVERPROGS)
-EXTRA_PROGRAMS = nextest hoardtest
-CLEANFILES = $(GEN) nextest hoardtest
+EXTRA_PROGRAMS = hoardtest
+CLEANFILES = $(GEN) hoardtest
 EXTRA_DIST = $(GEN:=.in)
 
 blobtool_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS) $(NO_FIELD_INITIALIZER_WARNINGS)
@@ -27,7 +26,6 @@ dirtometer_CFLAGS += -Wno-unused-parameter $(NO_FIELD_INITIALIZER_WARNINGS)
 dirtometer_LDFLAGS = $(gtk_LIBS) $(glib_LIBS)
 query_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS)
 query_LDFLAGS = $(glib_LIBS) -lisrsql
-nextest_LDFLAGS = -lisrcrypto
 hoardtest_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS)
 hoardtest_LDFLAGS = $(glib_LIBS) -lisrcrypto -lisrsql
 
