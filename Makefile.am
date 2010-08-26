@@ -28,6 +28,3 @@ DISTCHECK_CONFIGURE_FLAGS = --enable-server
 .PHONY: .gitrevision
 .gitrevision:
 	$(top_srcdir)/mkrevision.sh $(top_builddir) update
-
-postinst:
-	@make -C $(top_builddir)/tools postinst
