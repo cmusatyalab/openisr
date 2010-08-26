@@ -12,6 +12,5 @@ $(GEN): %: %.in Makefile $(REVISION_DEPENDS)
 				-e "s=!!STATEDIR!!=$(pkgstatedir)=g" \
 				-e "s=!!PERLPATH!!=$(PERL)=g" \
 				-e "s=!!PYTHONPATH!!=$(PYTHON)=g" \
-				-e "s=!!ISRGROUP!!=$(ISRGROUP)=g" \
 				-e "s=!!VERSION!!=$(PACKAGE_VERSION)=g" \
 				-e "s=!!REVISION!!=$(RCS_REVISION)=g" $< > $@

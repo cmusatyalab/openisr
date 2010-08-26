@@ -46,9 +46,6 @@ AC_ARG_ENABLE([vmm-drivers], [AS_HELP_STRING([--enable-vmm-drivers=<list>],
 			[enable_vmm_drivers=${enable_client}])
 AC_ARG_ENABLE([server], [AS_HELP_STRING([--enable-server],
 			[build server code [no]])],, [enable_server=no])
-AC_ARG_WITH([group], [AS_HELP_STRING([--with-group=GROUP],
-			[group for device node access [isrusers]])],,
-			[with_group=isrusers])
 
 PROCESS_ENABLE_VAR([$enable_client], [WANT_CLIENT],
 			[whether we should build the client])
@@ -73,12 +70,6 @@ else
 fi
 AM_CONDITIONAL([WANT_VMMS], [test -n "$vmms" || test z$enable_client = zyes])
 AM_CONDITIONAL([WANT_VBOX_XPCOM], [WANT_VMM([virtualbox])])
-
-if test z$enable_client = zyes ; then
-	AC_MSG_CHECKING([group for OpenISR device nodes])
-	AC_MSG_RESULT([$with_group])
-	AC_SUBST([ISRGROUP], [$with_group])
-fi
 
 # Checks for compiler/host CPU characteristics.
 # Autoconf quadrigraphs: @<:@ is a literal '['; @:>@ is a literal ']'

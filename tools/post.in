@@ -21,7 +21,6 @@ use warnings;
 use Term::ANSIColor;
 use constant {
 	SBINDIR => "!!SBINDIR!!",
-	ISRGROUP => "!!ISRGROUP!!",
 };
 
 sub fail ($) {
@@ -46,19 +45,7 @@ sub status ($) {
 fail "You must be root."
 	if $> != 0;
 
-# Create the ISRGROUP group if it doesn't already exist
-unless (defined getgrnam(ISRGROUP)) {
-	status "Creating " . ISRGROUP . " group...";
-	system("groupadd " . ISRGROUP) == 0
-		or fail "Couldn't create " . ISRGROUP . " group";
-}
-
 # Print final thoughts
 status "Setup succeeded.";
-my $grp = ISRGROUP;
-print <<EOF;
-Any user who will use OpenISR must be added to the "$grp" group.
-
-EOF
 
 exit 0;

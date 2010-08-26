@@ -51,8 +51,6 @@ make
 make install      # As root
 make postinst     # As root
 
-Any user who will use OpenISR must be added to the "isrusers" group.
-
 VIRTUAL MACHINE MONITORS
 ------------------------
 
@@ -88,10 +86,6 @@ CONFIGURE OPTIONS
 
 Aside from the standard options, the OpenISR configure script supports the
 following command line options:
-
---with-group=GROUP
-	Overrides the name of the group which will be permitted to access
-	the OpenISR device nodes.  The default is "isrusers".
 
 --with-zlib=DIR
 --with-curl=DIR
