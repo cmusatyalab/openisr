@@ -51,7 +51,6 @@ enum isrcry_key_format {
 
 enum isrcry_cipher {
 	ISRCRY_CIPHER_AES		= 0,
-	ISRCRY_CIPHER_BLOWFISH		= 1,
 };
 
 enum isrcry_mode {

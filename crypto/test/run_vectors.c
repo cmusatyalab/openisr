@@ -21,7 +21,6 @@
 #include <libtasn1.h>
 #include "isrcrypto.h"
 #include "vectors.h"
-#include "vectors_blowfish.h"
 #include "vectors_aes.h"
 #include "vectors_sha1.h"
 #include "vectors_md5.h"
@@ -127,63 +126,6 @@ void chain_test(const char *alg, enum isrcry_cipher type,
 					buf);
 		if (ret)
 			fail("%s %u decrypt %d", alg, n, ret);
-		if (memcmp(buf, test->plain, test->plainlen))
-			fail("%s %u decrypt mismatch", alg, n);
-	}
-	isrcry_cipher_free(ctx);
-}
-
-void chain_pad_test(const char *alg, enum isrcry_cipher type,
-			enum isrcry_mode mode, enum isrcry_padding pad,
-			const struct chain_test *vectors, unsigned vec_count)
-{
-	struct isrcry_cipher_ctx *ctx;
-	const struct chain_test *test;
-	enum isrcry_result ret;
-	unsigned char buf[1024];
-	unsigned outlen;
-	unsigned n;
-	unsigned blocksize;
-
-	ctx = isrcry_cipher_alloc(type, mode);
-	if (ctx == NULL) {
-		fail("%s alloc", alg);
-		return;
-	}
-	blocksize = isrcry_cipher_block(type);
-	if (blocksize < 8 || blocksize > 16)
-		fail("%s invalid blocksize", alg);
-	for (n = 0; n < vec_count; n++) {
-		test = &vectors[n];
-		ret = isrcry_cipher_init(ctx, ISRCRY_ENCRYPT, test->key,
-					test->keylen, test->iv);
-		if (ret) {
-			fail("%s %u encrypt init %d", alg, n, ret);
-			continue;
-		}
-		outlen = sizeof(buf);
-		ret = isrcry_cipher_final(ctx, pad, test->plain,
-					test->plainlen, buf, &outlen);
-		if (ret)
-			fail("%s %u encrypt %d", alg, n, ret);
-		if (outlen != test->plainlen + (blocksize -
-					(test->plainlen % blocksize)))
-			fail("%s %u encrypt invalid len %u", alg, n, outlen);
-		if (memcmp(buf, test->cipher, outlen))
-			fail("%s %u encrypt mismatch", alg, n);
-
-		ret = isrcry_cipher_init(ctx, ISRCRY_DECRYPT, test->key,
-					test->keylen, test->iv);
-		if (ret) {
-			fail("%s %u decrypt init %d", alg, n, ret);
-			continue;
-		}
-		ret = isrcry_cipher_final(ctx, pad, test->cipher, outlen,
-					buf, &outlen);
-		if (ret)
-			fail("%s %u decrypt %d", alg, n, ret);
-		if (outlen != test->plainlen)
-			fail("%s %u decrypt length mismatch", alg, n);
 		if (memcmp(buf, test->plain, test->plainlen))
 			fail("%s %u decrypt mismatch", alg, n);
 	}
@@ -1147,11 +1089,6 @@ void random_fips_test(void)
 
 int main(void)
 {
-	ecb_test("bf", ISRCRY_CIPHER_BLOWFISH, blowfish_ecb_vectors,
-				MEMBERS(blowfish_ecb_vectors));
-	chain_pad_test("bf", ISRCRY_CIPHER_BLOWFISH, ISRCRY_MODE_CBC,
-				ISRCRY_PADDING_PKCS5, blowfish_cbc_vectors,
-				MEMBERS(blowfish_cbc_vectors));
 	ecb_test("aes", ISRCRY_CIPHER_AES, aes_ecb_vectors,
 				MEMBERS(aes_ecb_vectors));
 	monte_test("aes", ISRCRY_CIPHER_AES, aes_monte_vectors,

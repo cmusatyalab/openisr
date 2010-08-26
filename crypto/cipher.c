@@ -25,8 +25,6 @@ static const struct isrcry_cipher_desc *cipher_desc(enum isrcry_cipher type)
 	switch (type) {
 	case ISRCRY_CIPHER_AES:
 		return &_isrcry_aes_desc;
-	case ISRCRY_CIPHER_BLOWFISH:
-		return &_isrcry_bf_desc;
 	}
 	return NULL;
 }

@@ -50,7 +50,6 @@ struct isrcry_cipher_desc {
 };
 
 extern const struct isrcry_cipher_desc _isrcry_aes_desc;
-extern const struct isrcry_cipher_desc _isrcry_bf_desc;
 
 struct isrcry_mode_desc {
 	enum isrcry_result (*encrypt)(struct isrcry_cipher_ctx *cctx,
