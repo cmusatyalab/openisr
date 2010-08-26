@@ -15,14 +15,10 @@ if WANT_VBOX_XPCOM
 XPCOM = xpcom
 endif
 
-if WANT_LIBVDISK
-LIBVDISK = libvdisk
-endif
-
 vmm_SCRIPTS = $(CLIENT_VMMS) $(VMMS)
 EXTRA_SCRIPTS = $(ALL_VMMS)
 
-SUBDIRS = . $(XPCOM) $(LIBVDISK)
+SUBDIRS = . $(XPCOM)
 
 include $(top_srcdir)/mkrevision.mk
 include $(top_srcdir)/subst.mk

@@ -47,11 +47,6 @@ sub status ($) {
 fail "You must be root."
 	if $> != 0;
 
-# Update dynamic linker cache
-status("Running ldconfig...");
-system("/sbin/ldconfig") == 0
-	or fail "Couldn't run ldconfig";
-
 # Create the ISRGROUP group if it doesn't already exist
 unless (defined getgrnam(ISRGROUP)) {
 	status "Creating " . ISRGROUP . " group...";

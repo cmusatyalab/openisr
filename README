@@ -27,9 +27,6 @@ To run:
 - VirtualBox, KVM, VMware Workstation, or VMware Player
 - An accessible OpenISR 0.9-series server
 
-Additional requirements for the vmware driver:
-- On 64-bit systems: 32-bit glibc
-
 To build from a source tarball:
 - All of the requirements for running the OpenISR system, plus:
 - Development headers for glibc, libcurl, zlib, GMP, GTK+, libuuid, libtasn1,
@@ -71,17 +68,6 @@ machine monitors.  The name of the driver is listed in parentheses.
 	Newly created parcels for these VMMs require VMware Workstation 6.0
 	or greater, or VMware Player 2.0 or greater.  Legacy parcels may work
 	with older versions of VMware.
-
-	This driver includes libvdisk, a wrapper library that is preloaded
-	into VMware to enable support for the OpenISR virtual disk.  It is
-	installed setuid root so that it may be preloaded into the vmware-vmx
-	executable which is itself setuid root.  Due to the LD_PRELOAD rules
-	for setuid programs, libvdisk is installed in DESTDIR/usr/lib
-	regardless of the setting of libdir.  On 64-bit systems, a 64-bit
-	version of libvdisk is installed in DESTDIR/usr/lib64 or
-	DESTDIR/usr/lib, depending on your Linux distribution, and a 32-bit
-	version is installed in DESTDIR/usr/lib32 or DESTDIR/usr/lib.  See
-	the ld.so(8) man page for details on the LD_PRELOAD setuid rules.
 
 - Shell (shell)
 	This is a stub VMM driver that merely launches a shell.  It can be
@@ -177,12 +163,6 @@ there.  (You might want to do this while building a binary package, for
 example.)  To install to an alternate directory, set the DESTDIR environment
 variable to its absolute path when running "make install".
 
-If the vmware driver is enabled at configure time, "make install" will
-install the libvdisk library in the appropriate /usr/lib* directories and
-mark it setuid root, regardless of the installation directories specified on
-the configure command line.  See the documentation on the vmware driver (above)
-for details.
-
 COMPONENTS AND THEIR LICENSES
 -----------------------------
 
@@ -250,15 +230,6 @@ VMM drivers and support code
 	OpenISR client to interact with specific virtual machine monitors.
 	They are found in the "vmm" directory of the source tree, and are
 	licensed under the GNU General Public License, version 2.
-
-libvdisk
-	This is a small LD_PRELOAD shim which works around VMM-enforced
-	restrictions on the names and properties of block devices that are
-	accessed from within a virtual machine.  It is only built and
-	installed when the vmware driver is enabled at configure time.
-	libvdisk is found in the "libvdisk" subdirectory of the "vmm"
-	directory, and is licensed under version 2.1 of the GNU Lesser
-	General Public License.
 
 VirtualBox Python XPCOM bindings
 	The Python XPCOM bindings from the VirtualBox SDK are included in

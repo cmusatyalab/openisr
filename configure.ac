@@ -73,39 +73,12 @@ else
 fi
 AM_CONDITIONAL([WANT_VMMS], [test -n "$vmms" || test z$enable_client = zyes])
 AM_CONDITIONAL([WANT_VBOX_XPCOM], [WANT_VMM([virtualbox])])
-AM_CONDITIONAL([WANT_LIBVDISK], [WANT_VMM([vmware])])
 
 if test z$enable_client = zyes ; then
 	AC_MSG_CHECKING([group for OpenISR device nodes])
 	AC_MSG_RESULT([$with_group])
 	AC_SUBST([ISRGROUP], [$with_group])
 fi
-
-build_32=no
-if WANT_VMM([vmware]) ; then
-	# See if we're on an x86_64 system with multilib support.  If so, build
-	# both 32-bit and 64-bit versions of libvdisk.
-	if test z$host_cpu = zx86_64; then
-		CHECK_COMPILER_OPTION([-m32])
-		if test z$success = zyes ; then
-			build_32=yes
-			FIND_DIR([32-bit system libraries],
-					[$LIBVDISK_PATH32 /usr/lib32 /usr/lib],
-					[LIBVDISK_DIRPATH_32])
-		else
-			AC_MSG_WARN([cannot build 32-bit libvdisk; building only 64-bit version])
-		fi
-		FIND_DIR([64-bit system libraries],
-					[$LIBVDISK_PATH /usr/lib64 /usr/lib],
-					[LIBVDISK_DIRPATH])
-	else
-		FIND_DIR([system libraries], [$LIBVDISK_PATH /usr/lib],
-					[LIBVDISK_DIRPATH])
-	fi
-fi
-AM_CONDITIONAL([LIBVDISK_BUILD_32], [test z$build_32 = zyes])
-AC_ARG_VAR([LIBVDISK_PATH], [destination directory for native libvdisk])
-AC_ARG_VAR([LIBVDISK_PATH32], [destination directory for 32-bit libvdisk (if built)])
 
 # Checks for compiler/host CPU characteristics.
 # Autoconf quadrigraphs: @<:@ is a literal '['; @:>@ is a literal ']'
@@ -157,17 +130,6 @@ if test z$enable_client = zyes || WANT_VMM([virtualbox]) ; then
 	AC_ARG_VAR([PYTHON], [path to Python])
 	ver=`$PYTHON -V 2>&1 | cut -f2 -d\  `
 	CHECK_VERSION_VAL([python], [$ver], [2.4])
-fi
-
-# Checks for kernel features.
-if WANT_VMM([vmware]) ; then
-	RUN_TEST([COMPILE], [for lba_capacity_2 in hd_driveid],
-				[AC_LANG_PROGRAM([#include <linux/hdreg.h>], 
-				[struct hd_driveid id;
-				unsigned long long cap=id.lba_capacity_2;])])
-	if test z$success = zno ; then
-		AC_MSG_ERROR([kernel headers in /usr/include/linux are too old])
-	fi
 fi
 
 # Checks for libraries.
@@ -226,12 +188,6 @@ if test z$enable_client = zyes -o z$enable_server = zyes ; then
 	fi
 fi
 
-if WANT_VMM([vmware]) ; then
-	# We don't provide a --with-dl=DIR option because this is supposed
-	# to be a system function.
-	FIND_LIBRARY([libdl], [dl], [dlopen], [dlfcn.h], [/usr])
-fi
-
 ADD_PRIVATE_LIBRARY([crypto])
 ADD_PRIVATE_LIBRARY([libutil])
 ADD_PRIVATE_LIBRARY([sqlite])
@@ -250,6 +206,5 @@ AC_CONFIG_FILES([Makefile
                  sqlite/Makefile
                  tools/Makefile
                  vmm/Makefile
-                 vmm/libvdisk/Makefile
                  vmm/xpcom/Makefile])
 AC_OUTPUT
