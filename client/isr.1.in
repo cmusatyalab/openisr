@@ -804,7 +804,4 @@ Matt Toups, and Benjamin Gilbert from Carnegie Mellon; and Partho Nath
 from Penn State.  Internet Suspend/Resume and OpenISR are registered
 trademarks of Carnegie Mellon University.
 
-.SH SEE ALSO
-.BR openisr-config (8)
-
 .\" end of file

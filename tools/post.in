@@ -22,7 +22,6 @@ use Term::ANSIColor;
 use constant {
 	SBINDIR => "!!SBINDIR!!",
 	ISRGROUP => "!!ISRGROUP!!",
-	INITSCRIPT => "!!INITDIR!!/openisr-client",
 };
 
 sub fail ($) {
@@ -86,35 +85,6 @@ for my $node (grep(/^loop[0-9]+$/, readdir(DEV))) {
 		or fail "Couldn't chmod /dev/$node";
 }
 closedir(DEV);
-
-# Build and install kernel module
-# Don't print a status message, since openisr-config will do that for us.
-system(SBINDIR . "/openisr-config") == 0
-	or fail ("Couldn't run openisr-config");
-
-# Enable running the initscript at boot
-my $ret;
-if (-x "/usr/sbin/update-rc.d") {
-	status "Enabling initscript (Debian method)...";
-	$ret = system("/usr/sbin/update-rc.d openisr-client defaults");
-} elsif (-x "/sbin/chkconfig") {
-	status "Enabling initscript (Fedora method)...";
-	$ret = system("/sbin/chkconfig --add " . INITSCRIPT);
-} elsif (-x "/usr/lib/lsb/install_initd") {
-	status "Enabling initscript (LSB method)...";
-	$ret = system("/usr/lib/lsb/install_initd " . INITSCRIPT);
-} else {
-	status "Enabling initscript...";
-	$ret = 1;
-}
-if ($ret) {
-	my $scr = INITSCRIPT;
-	warning <<EOF;
-Couldn't enable initscript.  Please make sure that
-$scr
-is configured to run at boot.
-EOF
-}
 
 # Print final thoughts
 status "Setup succeeded.";

@@ -192,7 +192,6 @@ ADD_PRIVATE_LIBRARY([crypto])
 ADD_PRIVATE_LIBRARY([libutil])
 ADD_PRIVATE_LIBRARY([sqlite])
 AC_SUBST([pkgsysconfdir], [\$\(sysconfdir\)/$PACKAGE])
-AC_SUBST([initexecdir], [\$\(sysconfdir\)/init.d])
 AC_SUBST([pkgstatedir], [\$\(localstatedir\)/lib/$PACKAGE])
 AC_CONFIG_FILES([Makefile
                  conf/Makefile
