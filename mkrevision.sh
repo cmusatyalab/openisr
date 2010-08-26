@@ -66,12 +66,6 @@ object)
 	cat > revision.c <<- EOF
 		const char isr_release[] = "$REL";
 		const char rcs_revision[] = "$REV";
-		
-		#ifdef __KERNEL__
-		#include <linux/module.h>
-		MODULE_VERSION("$REL");
-		MODULE_INFO(revision, "$REV");
-		#endif
 	EOF
 	;;
 header)

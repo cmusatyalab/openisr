@@ -1,5 +1,5 @@
 if WANT_CLIENT
-CLIENTDIRS = client parcelkeeper kernel conf
+CLIENTDIRS = client parcelkeeper conf
 endif
 
 if WANT_SERVER

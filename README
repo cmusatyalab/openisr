@@ -6,8 +6,6 @@ REQUIREMENTS
 ------------
 
 To run:
-- Linux kernel (versions 2.6.18 through 2.6.35 supported)
-- Development headers for your Linux kernel version
 - libcurl >= 7.12.3 and curl command-line utility
 - zlib
 - liblzma from XZ Utils
@@ -112,32 +110,6 @@ following command line options:
 --enable-server
 	Build and install components that are used by the OpenISR server.
 
-CONFIGURING YOUR KERNEL
------------------------
-
-The default kernels provided by most Linux distributions should be able to
-support the OpenISR kernel modules.  In order to build the modules, you must
-have the kernel headers corresponding to your running kernel.  Most
-distributions provide these headers in a "kernel-headers" package separate
-from the package containing the kernel itself.
-
-If you compile your own kernels, you must enable the following options (either
-built-in or as modules) in order to use the OpenISR system:
-
-- Cryptographic API (CONFIG_CRYPTO)
-- Architecture-optimized AES cipher, if available on your architecture
-  (CONFIG_CRYPTO_AES_586 or CONFIG_CRYPTO_AES_X86_64)
-- Generic AES cipher, if no optimized version is available (CONFIG_CRYPTO_AES)
-- Blowfish cipher (CONFIG_CRYPTO_BLOWFISH)
-- SHA-1 hash, for architectures other than x86 and x86-64 (CONFIG_CRYPTO_SHA1)
-- CBC support, for kernels > 2.6.18 (CONFIG_CRYPTO_CBC)
-- Loopback block device (CONFIG_BLK_DEV_LOOP)
-- zlib compression (CONFIG_ZLIB_DEFLATE and CONFIG_ZLIB_INFLATE)
-
-zlib is a hidden option which cannot be selected directly from the
-configuration menus.  The easiest way to enable it is to enable "Deflate
-compression algorithm" under "Cryptographic options" (CONFIG_CRYPTO_DEFLATE).
-
 INSTALLATION PATHS
 ------------------
 
@@ -174,23 +146,6 @@ Parcelkeeper
 	by the user interface code when necessary; most users will never need
 	to start it directly.  Parcelkeeper is licensed under version 2 of
 	the GNU General Public License.
-
-Nexus
-	This is the kernel half of the virtual disk.  Nexus exports virtual
-	block devices to userspace upon request, performs chunking and
-	encryption, and exchanges keys with the userspace component.  Nexus
-	is licensed under version 2 of the GNU General Public License.
-
-SHA-1 Accelerator
-	This is an assembly-language implementation of the SHA-1 hash
-	algorithm, built as a loadable module for the Linux kernel's
-	Cryptographic API.  Implementations exist for the i586 and x86-64
-	architectures; the SHA-1 Accelerator will not be built on other
-	platforms.  Nexus will use the SHA-1 Accelerator to improve hashing
-	performance if it is available; otherwise, it will use the kernel's
-	built-in SHA-1 implementation at reduced performance.  This component
-	is licensed under version 2.1 of the GNU Lesser General Public License
-	and can be found in the "kernel/sha1" directory of the source tree.
 
 locksrv
 	This is the server component of the OpenISR system.  It includes
