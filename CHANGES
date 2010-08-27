@@ -1,3 +1,19 @@
+====== 0.9.10 (2010-08-27)
+
+------ Client changes
+
+- Support kernels 2.6.34 and 2.6.35
+- Add "isr dirtometer" to start the dirtometer against a running parcel
+- Reduce fragmentation in the local cache
+- Nexus: Don't freeze terminal windows while reading the partition table
+- Nexus: Don't allow a malicious user to create a dangling block device
+- Other minor fixes
+
+------ VMM driver changes
+
+- virtualbox: Support VirtualBox 3.2
+- shell: Print a message explaining how to suspend the parcel
+
 ====== 0.9.9 (2010-05-03)
 
 ------ Client changes
