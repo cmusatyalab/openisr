@@ -1,7 +1,7 @@
 #
 # configure.ac - build infrastructure for the OpenISR (R) system
 #
-# Copyright (C) 2007-2009 Carnegie Mellon University
+# Copyright (C) 2007-2010 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as published
@@ -21,7 +21,7 @@ AC_PREREQ(2.59)
 AC_INIT([OpenISR], [0.9.9])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign 1.10])
-AC_COPYRIGHT([Copyright (C) 2007-2009 Carnegie Mellon University])
+AC_COPYRIGHT([Copyright (C) 2007-2010 Carnegie Mellon University])
 AC_CONFIG_SRCDIR([parcelkeeper/nexus.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_DISABLE_STATIC
@@ -191,7 +191,19 @@ AC_ARG_WITH([gmp], [AS_HELP_STRING([--with-gmp=DIR],
 			[look for GMP in DIR])])
 
 if test z$enable_client = zyes ; then
-	AC_CHECK_FUNCS([fallocate])
+	# We can't use AC_CHECK_FUNCS() to check for fallocate(), because
+	# we need to #define _FILE_OFFSET_BITS 64 when doing the test.
+	# glibc 2.10 (Ubuntu Karmic) fails to export fallocate64(), so without
+	# the #define we'd misdetect the availability of fallocate() on 32-bit
+	# platforms.
+	RUN_TEST([LINK], [for fallocate], [AC_LANG_PROGRAM(
+				[#define _FILE_OFFSET_BITS 64
+				 #define _GNU_SOURCE
+				 #include <fcntl.h>],
+				[return fallocate(0, 0, 0, 0);])])
+	if test z$success = zyes ; then
+		AC_DEFINE([HAVE_FALLOCATE], [1], [Define to 1 if you have the 'fallocate' function.])
+	fi
 
 	FIND_LIBRARY([libcurl], [curl], [curl_easy_init], [curl/curl.h],
 				[$with_curl /usr/local /usr])
