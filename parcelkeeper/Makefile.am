@@ -7,6 +7,7 @@ AM_LDFLAGS += $(libuuid_LIBS) $(glib_LIBS) $(gthread_LIBS) $(fuse_LIBS)
 
 pkglib_PROGRAMS = parcelkeeper
 parcelkeeper_SOURCES  = cmdline.c main.c log.c cache.c cache_modes.c fuse.c
+parcelkeeper_SOURCES += fuse_image.c fuse_stats.c fuse_defs.h
 parcelkeeper_SOURCES += hoard.c hoard_modes.c util.c parcelcfg.c
 parcelkeeper_SOURCES += transport.c defs.h
 nodist_parcelkeeper_SOURCES = revision.c

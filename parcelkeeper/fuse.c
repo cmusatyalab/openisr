@@ -17,38 +17,12 @@
 
 #include <sys/utsname.h>
 #include <string.h>
-#include <inttypes.h>
 #include <signal.h>
 #include <errno.h>
 #define FUSE_USE_VERSION 26
 #include <fuse.h>
 #include "defs.h"
-
-struct pk_fuse {
-	/* Fileystem handles */
-	struct fuse *fuse;
-	struct fuse_chan *chan;
-
-	/* Open statistics files */
-	GHashTable *stat_buffers;
-
-	/* Leave the local cache file dirty flag set at shutdown to force
-	   the cache to be checked */
-	gboolean leave_dirty;
-};
-
-struct io_cursor {
-	/* Public fields; do not modify */
-	unsigned chunk;
-	unsigned offset;
-	unsigned length;
-	unsigned buf_offset;
-
-	/* Private fields */
-	struct pk_state *state;
-	off_t start;
-	size_t count;
-};
+#include "fuse_defs.h"
 
 enum fuse_directory {
 	DIR_ROOT,
@@ -64,72 +38,6 @@ static void fuse_signal_handler(int sig)
 	sigstate.signal = sig;
 	if (sigstate.fuse != NULL)
 		fuse_exit(sigstate.fuse->fuse);
-}
-
-typedef gboolean (stat_handler)(void *data, const char *name);
-
-static gchar *_statistic(struct pk_state *state, stat_handler *handle,
-			void *data)
-{
-	if (handle(data, "bytes_read"))
-		return g_strdup_printf("%"PRIu64"\n",
-					state->stats.bytes_read);
-	if (handle(data, "bytes_written"))
-		return g_strdup_printf("%"PRIu64"\n",
-					state->stats.bytes_written);
-	if (handle(data, "chunk_reads"))
-		return g_strdup_printf("%"PRIu64"\n",
-					state->stats.chunk_reads);
-	if (handle(data, "chunk_writes"))
-		return g_strdup_printf("%"PRIu64"\n",
-					state->stats.chunk_writes);
-	if (handle(data, "chunk_errors"))
-		return g_strdup_printf("%"PRIu64"\n",
-					state->stats.chunk_errors);
-	if (handle(data, "cache_hits"))
-		return g_strdup_printf("%"PRIu64"\n",
-					state->stats.cache_hits);
-	if (handle(data, "cache_misses"))
-		return g_strdup_printf("%"PRIu64"\n",
-					state->stats.cache_misses);
-	if (handle(data, "compression_ratio_pct")) {
-		if (state->stats.chunk_writes == 0)
-			return g_strdup("n/a\n");
-		return g_strdup_printf("%.1f\n", 100.0 *
-					state->stats.data_bytes_written /
-					(state->stats.chunk_writes *
-					state->parcel->chunksize));
-	}
-	if (handle(data, "whole_chunk_updates"))
-		return g_strdup_printf("%"PRIu64"\n",
-					state->stats.whole_chunk_updates);
-	return NULL;
-}
-
-static gboolean _stat_enumerate(void *data, const char *name)
-{
-	g_ptr_array_add(data, g_strdup(name));
-	return FALSE;
-}
-
-static gchar **list_stats(struct pk_state *state)
-{
-	GPtrArray *arr;
-
-	arr = g_ptr_array_new();
-	_statistic(state, _stat_enumerate, arr);
-	g_ptr_array_add(arr, NULL);
-	return (gchar **) g_ptr_array_free(arr, FALSE);
-}
-
-static gboolean _stat_compare(void *data, const char *name)
-{
-	return g_str_equal(data, name);
-}
-
-static gchar *get_stat(struct pk_state *state, const char *name)
-{
-	return _statistic(state, _stat_compare, (char *) name);
 }
 
 static int do_getattr(const char *path, struct stat *st)
@@ -155,7 +63,7 @@ static int do_getattr(const char *path, struct stat *st)
 					state->parcel->chunksize;
 	} else if (g_str_has_prefix(path, "/stats/")) {
 		/* Statistics file */
-		value = get_stat(state, path + strlen("/stats/"));
+		value = stat_get(state, path + strlen("/stats/"));
 		if (value == NULL)
 			return -ENOENT;
 		st->st_mode = S_IFREG | 0400;
@@ -171,89 +79,18 @@ static int do_getattr(const char *path, struct stat *st)
 static int do_open(const char *path, struct fuse_file_info *fi)
 {
 	struct pk_state *state = fuse_get_context()->private_data;
-	gchar *buf;
+	int fh;
 
 	if (g_str_has_prefix(path, "/stats/")) {
 		/* Statistics file */
-		buf = get_stat(state, path + strlen("/stats/"));
-		if (buf == NULL)
-			return -ENOENT;
-		/* Find the next available file handle */
-		for (fi->fh = 1; g_hash_table_lookup(
-					state->fuse->stat_buffers,
-					GINT_TO_POINTER(fi->fh)); fi->fh++);
-		g_hash_table_insert(state->fuse->stat_buffers,
-					GINT_TO_POINTER(fi->fh), buf);
+		fh = stat_open(state, path + strlen("/stats/"));
+		if (fh < 0)
+			return fh;
+		fi->fh = fh;
 	} else if (!g_str_equal(path, "/image")) {
 		return -ENOENT;
 	}
 	return 0;
-}
-
-static int read_stat(struct pk_state *state, int fh, char *buf, off_t start,
-			size_t count)
-{
-	gchar *src;
-	int srclen;
-	int len;
-
-	src = g_hash_table_lookup(state->fuse->stat_buffers,
-				GINT_TO_POINTER(fh));
-	if (src == NULL)
-		return -EBADF;
-	srclen = strlen(src);
-	len = MAX(0, MIN((int) count, srclen - start));
-	memcpy(buf, src + start, len);
-	return len;
-}
-
-/* The cursor is assumed to be allocated on the stack; this just fills
-   it in. */
-static void io_start(struct pk_state *state, struct io_cursor *cur,
-			off_t start, size_t count)
-{
-	memset(cur, 0, sizeof(*cur));
-	cur->state = state;
-	cur->start = start;
-	cur->count = count;
-}
-
-/* Populate the public fields of the cursor with information on the next
-   chunk in the I/O, starting from the first.  Returns TRUE if we produced
-   a valid chunk, FALSE if done with this I/O. */
-static gboolean io_chunk(struct io_cursor *cur)
-{
-	cur->buf_offset += cur->length;
-	if (cur->buf_offset >= cur->count)
-		return FALSE;  /* Done */
-	cur->chunk = (cur->start + cur->buf_offset) /
-				cur->state->parcel->chunksize;
-	if (cur->chunk >= cur->state->parcel->chunks)
-		return FALSE;  /* End of disk */
-	cur->offset = cur->start + cur->buf_offset -
-				(cur->chunk * cur->state->parcel->chunksize);
-	cur->length = MIN(cur->state->parcel->chunksize - cur->offset,
-				cur->count - cur->buf_offset);
-	return TRUE;
-}
-
-static int read_image(struct pk_state *state, char *buf, off_t start,
-			size_t count)
-{
-	struct io_cursor cur;
-	char data[state->parcel->chunksize];
-
-	pk_log(LOG_FUSE, "Read %"PRIu64" at %"PRIu64, count, start);
-	for (io_start(state, &cur, start, count); io_chunk(&cur); ) {
-		if (cache_get(state, cur.chunk, data)) {
-			state->stats.chunk_errors++;
-			state->fuse->leave_dirty = TRUE;
-			return (int) cur.buf_offset ?: -EIO;
-		}
-		memcpy(buf + cur.buf_offset, data + cur.offset, cur.length);
-		state->stats.bytes_read += cur.length;
-	}
-	return cur.buf_offset;
 }
 
 static int do_read(const char *path, char *buf, size_t count, off_t start,
@@ -262,40 +99,18 @@ static int do_read(const char *path, char *buf, size_t count, off_t start,
 	struct pk_state *state = fuse_get_context()->private_data;
 
 	if (fi->fh)
-		return read_stat(state, fi->fh, buf, start, count);
+		return stat_read(state, fi->fh, buf, start, count);
 	else
-		return read_image(state, buf, start, count);
+		return image_read(state, buf, start, count);
 }
 
 static int do_write(const char *path, const char *buf, size_t count,
 			off_t start, struct fuse_file_info *fi)
 {
 	struct pk_state *state = fuse_get_context()->private_data;
-	struct io_cursor cur;
-	char data[state->parcel->chunksize];
 
 	g_assert(fi->fh == 0);
-
-	pk_log(LOG_FUSE, "Write %"PRIu64" at %"PRIu64, count, start);
-	for (io_start(state, &cur, start, count); io_chunk(&cur); ) {
-		if (cur.length < state->parcel->chunksize) {
-			/* Read-modify-write */
-			if (cache_get(state, cur.chunk, data))
-				goto bad;
-		} else {
-			state->stats.whole_chunk_updates++;
-		}
-		memcpy(data + cur.offset, buf + cur.buf_offset, cur.length);
-		if (cache_update(state, cur.chunk, data))
-			goto bad;
-		state->stats.bytes_written += cur.length;
-	}
-	return cur.buf_offset;
-
-bad:
-	state->stats.chunk_errors++;
-	state->fuse->leave_dirty = TRUE;
-	return (int) cur.buf_offset ?: -EIO;
+	return image_write(state, buf, start, count);
 }
 
 static int do_statfs(const char *path, struct statvfs *st)
@@ -315,8 +130,7 @@ static int do_release(const char *path, struct fuse_file_info *fi)
 	struct pk_state *state = fuse_get_context()->private_data;
 
 	if (fi->fh)
-		g_hash_table_remove(state->fuse->stat_buffers,
-					GINT_TO_POINTER(fi->fh));
+		stat_release(state, fi->fh);
 	return 0;
 }
 
@@ -359,7 +173,7 @@ static int do_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		filler(buf, "stats", NULL, 0);
 		return 0;
 	case DIR_STATS:
-		for (cur = stats = list_stats(state); *cur != NULL; cur++)
+		for (cur = stats = stat_list(state); *cur != NULL; cur++)
 			filler(buf, *cur, NULL, 0);
 		g_strfreev(stats);
 		return 0;
@@ -409,8 +223,7 @@ pk_err_t fuse_init(struct pk_state *state)
 
 	/* Set up data structures */
 	state->fuse = g_slice_new0(struct pk_fuse);
-	state->fuse->stat_buffers = g_hash_table_new_full(g_direct_hash,
-				g_direct_equal, NULL, g_free);
+	stat_init(state);
 
 	/* Create mountpoint */
 	if (!g_file_test(state->conf->mountpoint, G_FILE_TEST_IS_DIR)) {
@@ -493,7 +306,7 @@ bad_rmdir:
 		pk_log(LOG_ERROR, "Couldn't remove %s",
 					state->conf->mountpoint);
 bad_dealloc:
-	g_hash_table_destroy(state->fuse->stat_buffers);
+	stat_shutdown(state, FALSE);
 	g_slice_free(struct pk_fuse, state->fuse);
 	return ret;
 }
@@ -521,25 +334,12 @@ void fuse_run(struct pk_state *state)
 
 void fuse_shutdown(struct pk_state *state)
 {
-	gchar **stats;
-	gchar **cur;
-	gchar *value;
-
-	/* Log statistics */
-	for (stats = cur = list_stats(state); *cur != NULL; cur++) {
-		value = get_stat(state, *cur);
-		g_strchomp(value);
-		pk_log(LOG_STATS, "%s: %s", *cur, value);
-		g_free(value);
-	}
-	g_strfreev(stats);
-
 	if (!state->fuse->leave_dirty)
 		cache_clear_flag(state, CA_F_DIRTY);
 	fsync(state->cache_fd);
 
 	sigstate.fuse = NULL;
 	fuse_destroy(state->fuse->fuse);
-	g_hash_table_destroy(state->fuse->stat_buffers);
+	stat_shutdown(state, TRUE);
 	g_slice_free(struct pk_fuse, state->fuse);
 }
