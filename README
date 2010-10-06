@@ -6,6 +6,7 @@ REQUIREMENTS
 ------------
 
 To run:
+- libfuse and the FUSE utilities
 - libcurl >= 7.12.3 and curl command-line utility
 - zlib
 - liblzma from XZ Utils
@@ -27,7 +28,7 @@ To run:
 To build from a source tarball:
 - All of the requirements for running the OpenISR system, plus:
 - Development headers for glibc, libcurl, zlib, GMP, GTK+, libuuid, libtasn1,
-  and libarchive
+  libarchive, and libfuse
 - asn1Parser from libtasn1
 - pkg-config
 
@@ -139,8 +140,8 @@ User interface
 	can be found in the "client" directory of the source tree.
 
 Parcelkeeper
-	This is the userspace half of the virtual disk provided by the OpenISR
-	system to guest VMs.  It is responsible for maintenance of the parcel
+	This program manages the virtual disk provided by the OpenISR system
+	to guest VMs.  It is responsible for maintenance of the parcel
 	keyring, local cache, and hoard cache; runtime communication with
 	the server; and various maintenance tasks.  Parcelkeeper is launched
 	by the user interface code when necessary; most users will never need
