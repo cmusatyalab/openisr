@@ -172,6 +172,11 @@ libisrsql
 	licensed under version 2 of the GNU General Public License, and can
 	be found in the "sqlite" directory of the source tree.
 
+libisrutil
+	This is a utility library used by other parts of the OpenISR system.
+	It is licensed under version 2 of the GNU General Public License
+	and can be found in the "libutil" directory of the source tree.
+
 VMM drivers and support code
 	These are driver programs and associated support code which allow the
 	OpenISR client to interact with specific virtual machine monitors.
