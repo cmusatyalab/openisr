@@ -23,6 +23,7 @@
 #include <fuse.h>
 #include "defs.h"
 #include "fuse_defs.h"
+#include "config.h"
 
 enum fuse_directory {
 	DIR_ROOT,
@@ -192,7 +193,9 @@ static const struct fuse_operations pk_fuse_ops = {
 	.fsync = do_fsync,
 	.opendir = do_opendir,
 	.readdir = do_readdir,
+#ifdef HAVE_FUSE_NULLPATH_OK
 	.flag_nullpath_ok = 1,
+#endif
 };
 
 pk_err_t fuse_init(struct pk_state *state)
