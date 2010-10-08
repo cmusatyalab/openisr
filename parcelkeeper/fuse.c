@@ -250,10 +250,13 @@ pk_err_t fuse_init(struct pk_state *state)
 	/* Build FUSE command line */
 	argv = g_ptr_array_new();
 	g_ptr_array_add(argv, g_strdup("-odefault_permissions"));
-	g_ptr_array_add(argv, g_strdup("-obig_writes"));
 	g_ptr_array_add(argv, g_strdup_printf("-ofsname=openisr#%s",
 				state->parcel->uuid));
 	g_ptr_array_add(argv, g_strdup("-osubtype=openisr"));
+#ifdef FUSE_CAP_BIG_WRITES
+	/* Older versions of libfuse don't support this option. */
+	g_ptr_array_add(argv, g_strdup("-obig_writes"));
+#endif
 	if (state->conf->flags & WANT_ALLOW_ROOT) {
 		/* This option is needed for certain VMMs which run their
 		   monitor process as root.  The "user_allow_other" option
