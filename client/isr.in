@@ -107,6 +107,7 @@ sub set_compression ();
 sub build_cache ();
 sub purge_completion_cache ();
 sub is_fully_hoarded ();
+sub check_for_fuse ();
 sub check_disk_space ();
 sub check_for_old_isrdir ();
 sub check_damaged_cache ();
@@ -825,12 +826,13 @@ sub run () {
     # Block receipt of the SIGTSTP (ctrl-z)
     block_sigtstp();
     
-    # Make sure that Parcelkeeper is where we expect it to be and that
-    # there's enough disk space to resume the parcel.  Also give the user
-    # a chance to clean up old-style hoard caches.
+    # Make sure that Parcelkeeper is where we expect it to be, that FUSE is
+    # loaded and accessible, and that there's enough disk space to resume the
+    # parcel.  Also give the user a chance to clean up old-style hoard caches.
     if (!-e $pkcmd or !-x $pkcmd ) {
 	errexit("Could not find an executable Parcelkeeper binary.");
     }
+    check_for_fuse();
     check_for_old_isrdir();
     check_disk_space();
 
@@ -2570,6 +2572,35 @@ sub purge_completion_cache () {
 	    if $stat->mtime < $threshold;
     }
     closedir(COMP);
+}
+
+#
+# check_for_fuse - Make sure FUSE is loaded and accessible
+#
+sub check_for_fuse () {
+    my $node = "/dev/fuse";
+    my $stat;
+    my $grp;
+    
+    # Check for fatal problems first
+    -e $node
+        or errexit("The FUSE kernel module does not appear to be loaded.");
+    if (! -r $node or ! -w $node) {
+	# Try to give the user an intelligent explanation of how to fix the
+	# problem.  Some Linux distributions require the user to be a member
+	# of the "fuse" group to use FUSE.  
+	$stat = stat($node)
+	    or errexit("Couldn't stat $node");
+	if (($stat->mode & 0060) == 0060 &&
+	    		!grep($_ == $stat->gid, split(/ /, $)))) {
+	    $grp = getgrgid($stat->gid);
+	    errexit("You must be a member of the \"$grp\" group to resume a parcel.")
+	        if $grp;
+	    errexit("You must be a member of group " . $stat->gid . " to resume a parcel.")
+	} else {
+	    errexit("You must have access to $node to resume a parcel.");
+	}
+    }
 }
 
 #
