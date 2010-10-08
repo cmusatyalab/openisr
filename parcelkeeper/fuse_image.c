@@ -69,7 +69,8 @@ int image_read(struct pk_state *state, char *buf, off_t start, size_t count)
 	struct io_cursor cur;
 	char data[state->parcel->chunksize];
 
-	pk_log(LOG_FUSE, "Read %"PRIu64" at %"PRIu64, count, start);
+	pk_log(LOG_FUSE, "Read %"PRIu64" at %"PRIu64, (uint64_t) count,
+				(uint64_t) start);
 	for (io_start(state, &cur, start, count); io_chunk(&cur); ) {
 		if (cache_get(state, cur.chunk, data)) {
 			state->stats.chunk_errors++;
@@ -88,7 +89,8 @@ int image_write(struct pk_state *state, const char *buf, off_t start,
 	struct io_cursor cur;
 	char data[state->parcel->chunksize];
 
-	pk_log(LOG_FUSE, "Write %"PRIu64" at %"PRIu64, count, start);
+	pk_log(LOG_FUSE, "Write %"PRIu64" at %"PRIu64, (uint64_t) count,
+				(uint64_t) start);
 	for (io_start(state, &cur, start, count); io_chunk(&cur); ) {
 		if (cur.length < state->parcel->chunksize) {
 			/* Read-modify-write */
