@@ -269,7 +269,7 @@ pk_err_t fuse_init(struct pk_state *state)
 	/* Initialize FUSE */
 	state->fuse->chan = fuse_mount(state->conf->mountpoint, &args);
 	if (state->fuse->chan == NULL) {
-		pk_log(LOG_ERROR, "Couldn't mount FUSE filesystem");
+		pk_log(LOG_WARNING, "Couldn't mount FUSE filesystem");
 		g_strfreev(args.argv);
 		ret = PK_IOERR;
 		goto bad_unflag;
