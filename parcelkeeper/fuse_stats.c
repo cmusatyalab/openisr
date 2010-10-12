@@ -101,11 +101,13 @@ int stat_open(struct pk_state *state, const char *name)
 	buf = stat_get(state, name);
 	if (buf == NULL)
 		return -ENOENT;
+	g_mutex_lock(state->fuse->stat_buffer_lock);
 	/* Find the next available file handle */
 	for (fh = 1; g_hash_table_lookup(state->fuse->stat_buffers,
 				GINT_TO_POINTER(fh)); fh++);
 	g_hash_table_insert(state->fuse->stat_buffers, GINT_TO_POINTER(fh),
 				buf);
+	g_mutex_unlock(state->fuse->stat_buffer_lock);
 	return fh;
 }
 
@@ -116,25 +118,32 @@ int stat_read(struct pk_state *state, int fh, char *buf, off_t start,
 	int srclen;
 	int len;
 
+	g_mutex_lock(state->fuse->stat_buffer_lock);
 	src = g_hash_table_lookup(state->fuse->stat_buffers,
 				GINT_TO_POINTER(fh));
-	if (src == NULL)
+	if (src == NULL) {
+		g_mutex_unlock(state->fuse->stat_buffer_lock);
 		return -EBADF;
+	}
 	srclen = strlen(src);
 	len = MAX(0, MIN((int) count, srclen - start));
 	memcpy(buf, src + start, len);
+	g_mutex_unlock(state->fuse->stat_buffer_lock);
 	return len;
 }
 
 void stat_release(struct pk_state *state, int fh)
 {
+	g_mutex_lock(state->fuse->stat_buffer_lock);
 	g_hash_table_remove(state->fuse->stat_buffers, GINT_TO_POINTER(fh));
+	g_mutex_unlock(state->fuse->stat_buffer_lock);
 }
 
 void stat_init(struct pk_state *state)
 {
 	state->fuse->stat_buffers = g_hash_table_new_full(g_direct_hash,
 				g_direct_equal, NULL, g_free);
+	state->fuse->stat_buffer_lock = g_mutex_new();
 }
 
 void stat_shutdown(struct pk_state *state, gboolean normal)
@@ -154,4 +163,5 @@ void stat_shutdown(struct pk_state *state, gboolean normal)
 		g_strfreev(stats);
 	}
 	g_hash_table_destroy(state->fuse->stat_buffers);
+	g_mutex_free(state->fuse->stat_buffer_lock);
 }

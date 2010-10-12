@@ -27,6 +27,7 @@ struct pk_fuse {
 
 	/* Open statistics files */
 	GHashTable *stat_buffers;
+	GMutex *stat_buffer_lock;
 
 	/* Leave the local cache file dirty flag set at shutdown to force
 	   the cache to be checked */
