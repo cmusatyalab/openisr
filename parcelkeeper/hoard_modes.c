@@ -145,7 +145,7 @@ again:
 		}
 
 		if (need_fetch(state, tag, taglen)) {
-			if (transport_fetch_chunk(state->conn, buf, chunk,
+			if (transport_fetch_chunk(state->cpool, buf, chunk,
 						tag, &chunklen))
 				goto out;
 			print_progress_chunks(++num_hoarded, to_hoard);

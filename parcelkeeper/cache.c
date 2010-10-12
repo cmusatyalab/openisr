@@ -637,7 +637,7 @@ again:
 		ftag = format_tag(tag, state->parcel->hashlen);
 		pk_log(LOG_CHUNK, "Tag %s not in hoard cache", ftag);
 		g_free(ftag);
-		ret = transport_fetch_chunk(state->conn, encrypted, chunk,
+		ret = transport_fetch_chunk(state->cpool, encrypted, chunk,
 					tag, &len);
 		if (ret)
 			return ret;

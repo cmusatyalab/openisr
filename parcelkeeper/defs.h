@@ -155,7 +155,7 @@ struct pk_state {
 	gchar *shm_name;
 	unsigned char *shm_base;
 	unsigned shm_len;
-	struct pk_connection *conn;
+	struct pk_connection_pool *cpool;
 	struct db *db;
 	struct db *hoard;
 
@@ -250,10 +250,9 @@ int hoard_refresh(struct pk_state *state);
 
 /* transport.c */
 pk_err_t transport_init(void);
-pk_err_t transport_conn_alloc(struct pk_connection **out,
-			struct pk_state *state);
-void transport_conn_free(struct pk_connection *conn);
-pk_err_t transport_fetch_chunk(struct pk_connection *conn, void *buf,
+struct pk_connection_pool *transport_pool_alloc(struct pk_state *state);
+void transport_pool_free(struct pk_connection_pool *cpool);
+pk_err_t transport_fetch_chunk(struct pk_connection_pool *cpool, void *buf,
 			unsigned chunk, const void *tag, unsigned *length);
 
 /* util.c */

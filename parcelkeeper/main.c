@@ -110,11 +110,12 @@ int main(int argc, char **argv)
 	}
 
 	if (state.conf->flags & WANT_TRANSPORT) {
-		if (transport_init() || transport_conn_alloc(&state.conn,
-					&state))
+		if (transport_init())
 			goto shutdown;
-		else
-			have_transport=1;
+		state.cpool = transport_pool_alloc(&state);
+		if (state.cpool == NULL)
+			goto shutdown;
+		have_transport=1;
 	}
 
 	if (mode == MODE_RUN) {
@@ -165,7 +166,7 @@ shutdown:
 	if (have_fuse)
 		fuse_shutdown(&state);
 	if (have_transport)
-		transport_conn_free(state.conn);
+		transport_pool_free(state.cpool);
 	if (have_hoard)
 		hoard_shutdown(&state);
 	if (have_cache)
