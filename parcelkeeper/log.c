@@ -30,6 +30,7 @@
 #define MAX_BACKTRACE_LEN 32
 
 static struct {
+	GMutex *lock;
 	gchar *path;
 	unsigned file_mask;
 	unsigned stderr_mask;
@@ -198,6 +199,7 @@ void pk_log(enum pk_log_type type, const char *fmt, ...)
 	va_list ap;
 	char buf[50];
 
+	g_mutex_lock(log_state.lock);
 	if (log_state.fp != NULL && ((1 << type) & log_state.file_mask)) {
 		curtime(buf, sizeof(buf));
 		check_log();
@@ -227,10 +229,12 @@ void pk_log(enum pk_log_type type, const char *fmt, ...)
 		if (type & _LOG_BACKTRACE)
 			log_backtrace(stderr);
 	}
+	g_mutex_unlock(log_state.lock);
 }
 
 void log_start(const char *path, unsigned file_mask, unsigned stderr_mask)
 {
+	log_state.lock = g_mutex_new();
 	log_state.path = g_strdup(path);
 	log_state.file_mask = file_mask;
 	log_state.stderr_mask = stderr_mask;
@@ -250,4 +254,5 @@ void log_shutdown(void)
 		close_log();
 	g_free(log_state.path);
 	log_state.path = NULL;
+	g_mutex_free(log_state.lock);
 }
