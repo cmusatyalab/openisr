@@ -23,6 +23,7 @@
 
 typedef gboolean (stat_handler)(void *data, const char *name);
 
+/* state->stats_lock must be held if stat_handler ever returns TRUE */
 static gchar *_statistic(struct pk_state *state, stat_handler *handle,
 			void *data)
 {
@@ -84,7 +85,12 @@ static gboolean _stat_compare(void *data, const char *name)
 
 gchar *stat_get(struct pk_state *state, const char *name)
 {
-	return _statistic(state, _stat_compare, (char *) name);
+	gchar *ret;
+
+	g_mutex_lock(state->stats_lock);
+	ret = _statistic(state, _stat_compare, (char *) name);
+	g_mutex_unlock(state->stats_lock);
+	return ret;
 }
 
 int stat_open(struct pk_state *state, const char *name)

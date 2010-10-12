@@ -164,6 +164,7 @@ struct pk_state {
 	unsigned offset;
 	unsigned cache_flags;
 
+	GMutex *stats_lock;
 	struct {
 		uint64_t bytes_read;
 		uint64_t bytes_written;
@@ -284,5 +285,8 @@ void log_tag_mismatch(const void *expected, const void *found, unsigned len);
 pk_err_t canonicalize_uuid(const char *in, gchar **out);
 pk_err_t cleanup_action(struct db *db, const char *sql,
 			enum pk_log_type logtype, const char *desc);
+void _stats_increment(struct pk_state *state, uint64_t *var, uint64_t val);
+#define stats_increment(state, field, count) \
+	_stats_increment(state, &(state)->stats.field, count)
 
 #endif

@@ -441,3 +441,10 @@ pk_err_t cleanup_action(struct db *db, const char *sql,
 		pk_log(logtype, "Cleaned %d %s", changes, desc);
 	return PK_SUCCESS;
 }
+
+void _stats_increment(struct pk_state *state, uint64_t *var, uint64_t val)
+{
+	g_mutex_lock(state->stats_lock);
+	*var += val;
+	g_mutex_unlock(state->stats_lock);
+}

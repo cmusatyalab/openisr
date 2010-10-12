@@ -73,12 +73,12 @@ int image_read(struct pk_state *state, char *buf, off_t start, size_t count)
 				(uint64_t) start);
 	for (io_start(state, &cur, start, count); io_chunk(&cur); ) {
 		if (cache_get(state, cur.chunk, data)) {
-			state->stats.chunk_errors++;
+			stats_increment(state, chunk_errors, 1);
 			state->fuse->leave_dirty = TRUE;
 			return (int) cur.buf_offset ?: -EIO;
 		}
 		memcpy(buf + cur.buf_offset, data + cur.offset, cur.length);
-		state->stats.bytes_read += cur.length;
+		stats_increment(state, bytes_read, cur.length);
 	}
 	return cur.buf_offset;
 }
@@ -97,17 +97,17 @@ int image_write(struct pk_state *state, const char *buf, off_t start,
 			if (cache_get(state, cur.chunk, data))
 				goto bad;
 		} else {
-			state->stats.whole_chunk_updates++;
+			stats_increment(state, whole_chunk_updates, 1);
 		}
 		memcpy(data + cur.offset, buf + cur.buf_offset, cur.length);
 		if (cache_update(state, cur.chunk, data))
 			goto bad;
-		state->stats.bytes_written += cur.length;
+		stats_increment(state, bytes_written, cur.length);
 	}
 	return cur.buf_offset;
 
 bad:
-	state->stats.chunk_errors++;
+	stats_increment(state, chunk_errors, 1);
 	state->fuse->leave_dirty = TRUE;
 	return (int) cur.buf_offset ?: -EIO;
 }

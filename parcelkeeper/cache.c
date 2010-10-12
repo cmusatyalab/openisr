@@ -655,7 +655,7 @@ again:
 				state->parcel->chunksize))
 		return PK_IOERR;
 
-	state->stats.chunk_reads++;
+	stats_increment(state, chunk_reads, 1);
 	shm_set(state, chunk, SHM_ACCESSED_SESSION);
 	return PK_SUCCESS;
 
@@ -706,8 +706,8 @@ again:
 	}
 	if (!commit(state->db))
 		goto bad;
-	state->stats.chunk_writes++;
-	state->stats.data_bytes_written += len;
+	stats_increment(state, chunk_writes, 1);
+	stats_increment(state, data_bytes_written, len);
 	shm_set(state, chunk, SHM_PRESENT | SHM_ACCESSED_SESSION | SHM_DIRTY |
 				SHM_DIRTY_SESSION);
 	return PK_SUCCESS;

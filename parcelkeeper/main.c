@@ -41,6 +41,7 @@ int main(int argc, char **argv)
 
 	if (!g_thread_supported())
 		g_thread_init(NULL);
+	state.stats_lock = g_mutex_new();
 
 	if (setup_signal_handlers(generic_signal_handler, caught_signals,
 				ignored_signals)) {
