@@ -323,7 +323,10 @@ void fuse_run(struct pk_state *state)
 {
 	int sig;
 
-	fuse_loop(state->fuse->fuse);
+	if (state->conf->flags & WANT_SINGLE_THREAD)
+		fuse_loop(state->fuse->fuse);
+	else
+		fuse_loop_mt(state->fuse->fuse);
 	sig = pending_signal();
 	if (sig)
 		pk_log(LOG_INFO, "Caught signal %d, shutting down FUSE "

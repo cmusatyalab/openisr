@@ -89,6 +89,7 @@ enum mode_flags {
 	WANT_COMPACT	= 0x0200,
 	WANT_GC		= 0x0400,  /* Enable slower hoard cleanup steps */
 	WANT_ALLOW_ROOT	= 0x0800,  /* Allow root to access FUSE FS */
+	WANT_SINGLE_THREAD = 0x1000,  /* Run FUSE single-threaded */
 };
 
 struct pk_shm;
