@@ -77,3 +77,7 @@ disable_lookaside = 0
 
 # Whether to run the dirtometer when resuming a parcel
 dirtometer = 0
+
+# Debug option: set to 1 to run Parcelkeeper single-threaded when resuming
+# a parcel
+resume_single_threaded = 0
