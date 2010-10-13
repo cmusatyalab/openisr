@@ -91,6 +91,7 @@ enum mode_flags {
 	WANT_ALLOW_ROOT	= 0x0800,  /* Allow root to access FUSE FS */
 };
 
+struct pk_shm;
 struct pk_fuse;
 struct pk_connection;
 struct pk_lockfile;
@@ -152,9 +153,7 @@ struct pk_state {
 	int cache_fd;
 	int hoard_fd;
 	struct pk_fuse *fuse;
-	gchar *shm_name;
-	unsigned char *shm_base;
-	unsigned shm_len;
+	struct pk_shm *shm;
 	struct pk_connection_pool *cpool;
 	struct db *db;
 	struct db *hoard;

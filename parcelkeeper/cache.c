@@ -43,6 +43,13 @@ struct ca_header {
 	uint8_t reserved_2[491];
 };
 
+struct pk_shm {
+	gchar *name;
+	unsigned char *base;
+	unsigned len;
+	GMutex *lock;
+};
+
 enum shm_chunk_status {
 	SHM_PRESENT		= 0x1,
 	SHM_DIRTY		= 0x2,
@@ -287,15 +294,18 @@ bad:
 	return PK_SQLERR;
 }
 
+/* Must be thread-safe */
 static void shm_set(struct pk_state *state, unsigned chunk, unsigned status)
 {
-	if (state->shm_base == NULL)
+	if (state->shm == NULL)
 		return;
 	if (chunk > state->parcel->chunks) {
 		pk_log(LOG_ERROR, "Invalid chunk %u", chunk);
 		return;
 	}
-	state->shm_base[chunk] |= status;
+	g_mutex_lock(state->shm->lock);
+	state->shm->base[chunk] |= status;
+	g_mutex_unlock(state->shm->lock);
 }
 
 static pk_err_t shm_init(struct pk_state *state)
@@ -306,36 +316,38 @@ static pk_err_t shm_init(struct pk_state *state)
 	pk_err_t ret;
 	gboolean retry;
 
-	state->shm_len = state->parcel->chunks;
-	state->shm_name = g_strdup_printf("/openisr-chunkmap-%s",
+	state->shm = g_slice_new0(struct pk_shm);
+	state->shm->lock = g_mutex_new();
+	state->shm->len = state->parcel->chunks;
+	state->shm->name = g_strdup_printf("/openisr-chunkmap-%s",
 				state->parcel->uuid);
 	/* If there's a segment by that name, it's leftover and should be
 	   killed.  (Or else we have a UUID collision, which will prevent
 	   Nexus registration from succeeding in any case.)  This is racy
 	   with regard to someone else deleting and recreating the segment,
 	   but we do this under the PK lock so it shouldn't be a problem. */
-	shm_unlink(state->shm_name);
-	fd=shm_open(state->shm_name, O_RDWR|O_CREAT|O_EXCL, 0400);
+	shm_unlink(state->shm->name);
+	fd=shm_open(state->shm->name, O_RDWR|O_CREAT|O_EXCL, 0400);
 	if (fd == -1) {
 		pk_log(LOG_ERROR, "Couldn't create shared memory segment: %s",
 					strerror(errno));
 		ret=PK_IOERR;
 		goto bad_open;
 	}
-	if (ftruncate(fd, state->shm_len)) {
+	if (ftruncate(fd, state->shm->len)) {
 		pk_log(LOG_ERROR, "Couldn't set shared memory segment to "
-					"%u bytes", state->shm_len);
+					"%u bytes", state->shm->len);
 		close(fd);
 		ret=PK_IOERR;
 		goto bad_truncate;
 	}
-	state->shm_base=mmap(NULL, state->shm_len, PROT_READ|PROT_WRITE,
+	state->shm->base=mmap(NULL, state->shm->len, PROT_READ|PROT_WRITE,
 				MAP_SHARED, fd, 0);
 	close(fd);
-	if (state->shm_base == MAP_FAILED) {
+	if (state->shm->base == MAP_FAILED) {
 		pk_log(LOG_ERROR, "Couldn't map shared memory segment");
 		ret=PK_CALLFAIL;
-		goto bad_map;
+		goto bad_truncate;
 	}
 
 again:
@@ -380,22 +392,25 @@ bad_sql:
 		goto again;
 	}
 bad_populate:
-	munmap(state->shm_base, state->shm_len);
-bad_map:
-	state->shm_base=NULL;
+	munmap(state->shm->base, state->shm->len);
 bad_truncate:
-	shm_unlink(state->shm_name);
+	shm_unlink(state->shm->name);
 bad_open:
-	g_free(state->shm_name);
+	g_free(state->shm->name);
+	g_mutex_free(state->shm->lock);
+	g_slice_free(struct pk_shm, state->shm);
+	state->shm = NULL;
 	return ret;
 }
 
 void cache_shutdown(struct pk_state *state)
 {
-	if (state->shm_base) {
-		munmap(state->shm_base, state->shm_len);
-		shm_unlink(state->shm_name);
-		g_free(state->shm_name);
+	if (state->shm) {
+		g_mutex_free(state->shm->lock);
+		munmap(state->shm->base, state->shm->len);
+		shm_unlink(state->shm->name);
+		g_free(state->shm->name);
+		g_slice_free(struct pk_shm, state->shm);
 	}
 	if (state->cache_fd)
 		close(state->cache_fd);
