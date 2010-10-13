@@ -226,6 +226,7 @@ pk_err_t fuse_init(struct pk_state *state)
 
 	/* Set up data structures */
 	state->fuse = g_slice_new0(struct pk_fuse);
+	state->fuse->chunk_lock = g_mutex_new();
 	stat_init(state);
 
 	/* Create mountpoint */
@@ -313,6 +314,7 @@ bad_rmdir:
 					state->conf->mountpoint);
 bad_dealloc:
 	stat_shutdown(state, FALSE);
+	g_mutex_free(state->fuse->chunk_lock);
 	g_slice_free(struct pk_fuse, state->fuse);
 	return ret;
 }
@@ -347,5 +349,6 @@ void fuse_shutdown(struct pk_state *state)
 	sigstate.fuse = NULL;
 	fuse_destroy(state->fuse->fuse);
 	stat_shutdown(state, TRUE);
+	g_mutex_free(state->fuse->chunk_lock);
 	g_slice_free(struct pk_fuse, state->fuse);
 }

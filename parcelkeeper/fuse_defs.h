@@ -32,6 +32,9 @@ struct pk_fuse {
 	/* Leave the local cache file dirty flag set at shutdown to force
 	   the cache to be checked */
 	gboolean leave_dirty;
+
+	/* Temporary chunk access lock */
+	GMutex *chunk_lock;
 };
 
 /* fuse_image.c */

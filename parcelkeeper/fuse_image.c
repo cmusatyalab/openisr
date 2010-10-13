@@ -71,15 +71,18 @@ int image_read(struct pk_state *state, char *buf, off_t start, size_t count)
 
 	pk_log(LOG_FUSE, "Read %"PRIu64" at %"PRIu64, (uint64_t) count,
 				(uint64_t) start);
+	g_mutex_lock(state->fuse->chunk_lock);
 	for (io_start(state, &cur, start, count); io_chunk(&cur); ) {
 		if (cache_get(state, cur.chunk, data)) {
 			stats_increment(state, chunk_errors, 1);
 			state->fuse->leave_dirty = TRUE;
+			g_mutex_unlock(state->fuse->chunk_lock);
 			return (int) cur.buf_offset ?: -EIO;
 		}
 		memcpy(buf + cur.buf_offset, data + cur.offset, cur.length);
 		stats_increment(state, bytes_read, cur.length);
 	}
+	g_mutex_unlock(state->fuse->chunk_lock);
 	return cur.buf_offset;
 }
 
@@ -91,6 +94,7 @@ int image_write(struct pk_state *state, const char *buf, off_t start,
 
 	pk_log(LOG_FUSE, "Write %"PRIu64" at %"PRIu64, (uint64_t) count,
 				(uint64_t) start);
+	g_mutex_lock(state->fuse->chunk_lock);
 	for (io_start(state, &cur, start, count); io_chunk(&cur); ) {
 		if (cur.length < state->parcel->chunksize) {
 			/* Read-modify-write */
@@ -104,10 +108,12 @@ int image_write(struct pk_state *state, const char *buf, off_t start,
 			goto bad;
 		stats_increment(state, bytes_written, cur.length);
 	}
+	g_mutex_unlock(state->fuse->chunk_lock);
 	return cur.buf_offset;
 
 bad:
 	stats_increment(state, chunk_errors, 1);
 	state->fuse->leave_dirty = TRUE;
+	g_mutex_unlock(state->fuse->chunk_lock);
 	return (int) cur.buf_offset ?: -EIO;
 }
