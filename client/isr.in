@@ -878,7 +878,7 @@ sub run () {
     print("Launching Parcelkeeper...\n")
 	if $verbose;
     $unmount_pk = 1;  # Tells the SIGINT handler to cleanly terminate PK
-    run_parcelkeeper("run", "parcel hoard nexus-cache compression log $allow_root $single_thread") == 0
+    run_parcelkeeper("run", "parcel hoard chunk-cache compression log $allow_root $single_thread") == 0
 	or errexit("Unable to launch Parcelkeeper.");
     
     # Run dirtometer, if requested
@@ -1709,8 +1709,8 @@ sub parcelkeeper_cmd ($$) {
 	    $cmd .= " --destdir $uploaddir/hdk";
 	} elsif ($arg eq "hoard") {
 	    $cmd .= " --hoard $hoarddir";
-	} elsif ($arg eq "nexus-cache") {
-	    $cmd .= " --nexus-cache $syscfg{nexus_cache}";
+	} elsif ($arg eq "chunk-cache") {
+	    $cmd .= " --chunk-cache $syscfg{chunk_cache}";
 	} elsif ($arg eq "compression") {
 	    $cmd .= " --compression $disk_compress";
 	} elsif ($arg eq "uuid") {

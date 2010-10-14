@@ -67,9 +67,9 @@ ls_versions = 5
 # case, the closest match will be used.
 compression = mild
 
-# Nexus cache size, in MB. This specifies how much kernel memory will be
-# reserved for parcel chunks.
-nexus_cache = 32
+# Parcelkeeper chunk cache size, in MB.  This specifies how much memory
+# will be used to cache decrypted parcel chunks while a parcel is running.
+chunk_cache = 32
 
 # Debug option: set to 1 to force the client to ignore cached keyrings and
 # memory images, always re-downloading them from the server
