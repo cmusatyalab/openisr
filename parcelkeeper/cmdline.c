@@ -26,7 +26,7 @@ static struct pk_config default_config = {
 				(1 << LOG_STATS),
 	.log_stderr_mask = 1 << LOG_WARNING,
 	.compress = IU_CHUNK_COMP_NONE,
-	.nexus_cache = 32, /* MB */
+	.chunk_cache = 32, /* MB */
 };
 
 enum arg_type {
@@ -52,7 +52,7 @@ enum option {
 	OPT_ALLOW_ROOT,
 	OPT_SINGLE_THREAD,
 	OPT_MODE,
-	OPT_NEXUS_CACHE,
+	OPT_CHUNK_CACHE,
 	END_OPTS
 };
 
@@ -82,7 +82,7 @@ static const struct pk_option pk_options[] = {
 	{"hoard",          OPT_HOARD,          "hoard_dir"},
 	{"uuid",           OPT_UUID,           "uuid"},
 	{"destdir",        OPT_DESTDIR,        "dir"},
-	{"nexus-cache",    OPT_NEXUS_CACHE,    "MB",                       "Size of the Nexus cache"},
+	{"chunk-cache",    OPT_CHUNK_CACHE,    "MB",                       "Size of the decrypted chunk cache"},
 	{"compression",    OPT_COMPRESSION,    "algorithm",                "Accepted algorithms: none (default), zlib, lzf"},
 	{"log",            OPT_LOG,            "file"},
 	{"log-filter",     OPT_MASK_FILE,      "comma_separated_list",     "Override default list of log types"},
@@ -110,7 +110,7 @@ struct pk_cmdline_parse_ctx {
 mode(RUN) = {
 	{OPT_PARCEL,        REQUIRED},
 	{OPT_HOARD,         OPTIONAL},
-	{OPT_NEXUS_CACHE,   OPTIONAL},
+	{OPT_CHUNK_CACHE,   OPTIONAL},
 	{OPT_COMPRESSION,   OPTIONAL},
 	{OPT_LOG,           OPTIONAL},
 	{OPT_MASK_FILE,     OPTIONAL},
@@ -515,8 +515,8 @@ enum mode parse_cmdline(struct pk_config **out, int argc, char **argv)
 							ctx.optparam,
 							g_get_prgname());
 			break;
-		case OPT_NEXUS_CACHE:
-			if (parseuint(&conf->nexus_cache, ctx.optparam, 10))
+		case OPT_CHUNK_CACHE:
+			if (parseuint(&conf->chunk_cache, ctx.optparam, 10))
 				PARSE_ERROR(&ctx, "invalid integer value: %s",
 							ctx.optparam);
 			break;

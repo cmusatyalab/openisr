@@ -129,7 +129,7 @@ struct pk_config {
 	/* miscellaneous parameters */
 	enum iu_chunk_compress compress;
 	gchar *uuid;
-	unsigned nexus_cache; /* MB */
+	unsigned chunk_cache; /* MB */
 };
 
 struct pk_parcel {
