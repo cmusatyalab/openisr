@@ -25,6 +25,21 @@ struct pk_fuse {
 	struct fuse *fuse;
 	struct fuse_chan *chan;
 
+	/* Chunk cache */
+	struct {
+		GMutex *lock;
+		GHashTable *chunks;
+		GQueue *dirty;
+		GQueue *reclaimable;
+		GCond *reclaimable_cond;
+		unsigned allocatable;
+		gboolean stopping;
+	} image;
+	struct {
+		GThread *thread;
+		GCond *cond;
+	} cleaner;
+
 	/* Open statistics files */
 	GHashTable *stat_buffers;
 	GMutex *stat_buffer_lock;
@@ -32,12 +47,11 @@ struct pk_fuse {
 	/* Leave the local cache file dirty flag set at shutdown to force
 	   the cache to be checked */
 	gboolean leave_dirty;
-
-	/* Temporary chunk access lock */
-	GMutex *chunk_lock;
 };
 
 /* fuse_image.c */
+pk_err_t image_init(struct pk_state *state);
+void image_shutdown(struct pk_state *state);
 int image_read(struct pk_state *state, char *buf, off_t start, size_t count);
 int image_write(struct pk_state *state, const char *buf, off_t start,
 			size_t count);

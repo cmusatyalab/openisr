@@ -226,8 +226,10 @@ pk_err_t fuse_init(struct pk_state *state)
 
 	/* Set up data structures */
 	state->fuse = g_slice_new0(struct pk_fuse);
-	state->fuse->chunk_lock = g_mutex_new();
 	stat_init(state);
+	ret = image_init(state);
+	if (ret)
+	        goto bad_dealloc;
 
 	/* Create mountpoint */
 	if (!g_file_test(state->conf->mountpoint, G_FILE_TEST_IS_DIR)) {
@@ -235,7 +237,7 @@ pk_err_t fuse_init(struct pk_state *state)
 			pk_log(LOG_ERROR, "Couldn't create %s directory",
 						state->conf->mountpoint);
 			ret = PK_CALLFAIL;
-			goto bad_dealloc;
+			goto bad_dealloc_image;
 		}
 	}
 
@@ -312,9 +314,10 @@ bad_rmdir:
 	if (rmdir(state->conf->mountpoint))
 		pk_log(LOG_ERROR, "Couldn't remove %s",
 					state->conf->mountpoint);
+bad_dealloc_image:
+	image_shutdown(state);
 bad_dealloc:
 	stat_shutdown(state, FALSE);
-	g_mutex_free(state->fuse->chunk_lock);
 	g_slice_free(struct pk_fuse, state->fuse);
 	return ret;
 }
@@ -345,13 +348,12 @@ void fuse_run(struct pk_state *state)
 
 void fuse_shutdown(struct pk_state *state)
 {
+	sigstate.fuse = NULL;
+	fuse_destroy(state->fuse->fuse);
+	image_shutdown(state);
+	stat_shutdown(state, TRUE);
 	if (!state->fuse->leave_dirty)
 		cache_clear_flag(state, CA_F_DIRTY);
 	fsync(state->cache_fd);
-
-	sigstate.fuse = NULL;
-	fuse_destroy(state->fuse->fuse);
-	stat_shutdown(state, TRUE);
-	g_mutex_free(state->fuse->chunk_lock);
 	g_slice_free(struct pk_fuse, state->fuse);
 }
