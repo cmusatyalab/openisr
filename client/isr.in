@@ -112,6 +112,7 @@ sub check_disk_space ();
 sub check_for_old_isrdir ();
 sub check_damaged_cache ();
 sub fuse_can_allow_root ();
+sub fuse_try_unmount ();
 sub get_parcelkeeper_pid ();
 sub fetch_parcel_file ($$$$$);
 sub keyroot_pipe ();
@@ -252,7 +253,7 @@ sub exit_handler ($) {
     return if $no_shutdown;
     
     if ($unmount_pk && get_parcelkeeper_pid()) {
-        system("fusermount -uz $parceldir/vfs");
+        fuse_try_unmount();
         print("Sent shutdown signal to Parcelkeeper.\n")
             if $verbose;
     }
@@ -925,7 +926,7 @@ sub run () {
     # Signal Parcelkeeper to shut down and wait until it is gone
     print "Shutting down Parcelkeeper..."
 	if $verbose;
-    system("fusermount -uz $parceldir/vfs")
+    fuse_try_unmount()
         if get_parcelkeeper_pid();
     $unmount_pk = 0;
     message("Unmounted Parcelkeeper filesystem");
@@ -2725,6 +2726,21 @@ sub fuse_can_allow_root () {
     }
     close($fh);
     return 0;
+}
+
+#
+# fuse_try_unmount - Try to unmount the FUSE virtual filesystem for the
+#                    current parcel.
+#
+sub fuse_try_unmount () {
+    my $mountpoint;
+
+    $mountpoint = readlink("$parceldir/vfs");
+    if (defined $mountpoint) {
+        system("fusermount -uz $mountpoint");
+    } else {
+        unix_err("Couldn't read $parceldir/vfs");
+    }
 }
 
 #

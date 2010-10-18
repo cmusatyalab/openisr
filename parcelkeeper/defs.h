@@ -109,7 +109,7 @@ struct pk_config {
 	gchar *prev_keyring;
 	gchar *cache_file;
 	gchar *cache_index;
-	gchar *mountpoint;
+	gchar *vfspath;
 	gchar *lockfile;
 	gchar *pidfile;
 

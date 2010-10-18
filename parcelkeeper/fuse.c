@@ -17,6 +17,7 @@
 
 #include <sys/utsname.h>
 #include <string.h>
+#include <stdlib.h>
 #include <signal.h>
 #include <errno.h>
 #define FUSE_USE_VERSION 26
@@ -232,14 +233,20 @@ pk_err_t fuse_init(struct pk_state *state)
 	if (ret)
 	        goto bad_dealloc;
 
-	/* Create mountpoint */
-	if (!g_file_test(state->conf->mountpoint, G_FILE_TEST_IS_DIR)) {
-		if (mkdir(state->conf->mountpoint, 0700)) {
-			pk_log(LOG_ERROR, "Couldn't create %s directory",
-						state->conf->mountpoint);
-			ret = PK_CALLFAIL;
-			goto bad_dealloc_image;
-		}
+	/* Create mountpoint and canonical symlink.  We mount the filesystem
+	   off of /var/tmp because mounting it in $HOME will cause Nautilus
+	   and the Gtk file browser to show an icon for the filesystem. */
+	state->fuse->mountpoint = g_strdup("/var/tmp/isr-vfs-XXXXXX");
+	if (mkdtemp(state->fuse->mountpoint) == NULL) {
+		pk_log(LOG_ERROR, "Couldn't create FUSE mountpoint");
+		ret = PK_CALLFAIL;
+		goto bad_dealloc_mountpoint;
+	}
+	unlink(state->conf->vfspath);
+	if (symlink(state->fuse->mountpoint, state->conf->vfspath)) {
+		pk_log(LOG_ERROR, "Couldn't create FUSE symlink");
+		ret = PK_CALLFAIL;
+		goto bad_rmdir;
 	}
 
 	/* Set the dirty flag on the local cache.  If the damaged flag is
@@ -248,7 +255,7 @@ pk_err_t fuse_init(struct pk_state *state)
 	if (!cache_test_flag(state, CA_F_DAMAGED)) {
 		ret = cache_set_flag(state, CA_F_DIRTY);
 		if (ret)
-			goto bad_rmdir;
+			goto bad_unlink;
 	}
 
 	/* Build FUSE command line */
@@ -277,7 +284,7 @@ pk_err_t fuse_init(struct pk_state *state)
 	g_free(str);
 
 	/* Initialize FUSE */
-	state->fuse->chan = fuse_mount(state->conf->mountpoint, &args);
+	state->fuse->chan = fuse_mount(state->fuse->mountpoint, &args);
 	if (state->fuse->chan == NULL) {
 		pk_log(LOG_WARNING, "Couldn't mount FUSE filesystem");
 		g_strfreev(args.argv);
@@ -311,14 +318,18 @@ bad_destroy_fuse:
 	sigstate.fuse = NULL;
 	fuse_destroy(state->fuse->fuse);
 bad_unmount:
-	fuse_unmount(state->conf->mountpoint, state->fuse->chan);
+	fuse_unmount(state->fuse->mountpoint, state->fuse->chan);
 bad_unflag:
 	cache_clear_flag(state, CA_F_DIRTY);
+bad_unlink:
+	if (unlink(state->conf->vfspath))
+		pk_log(LOG_ERROR, "Couldn't remove %s", state->conf->vfspath);
 bad_rmdir:
-	if (rmdir(state->conf->mountpoint))
+	if (rmdir(state->fuse->mountpoint))
 		pk_log(LOG_ERROR, "Couldn't remove %s",
-					state->conf->mountpoint);
-bad_dealloc_image:
+					state->fuse->mountpoint);
+bad_dealloc_mountpoint:
+	g_free(state->fuse->mountpoint);
 	image_shutdown(state);
 bad_dealloc:
 	stat_shutdown(state, FALSE);
@@ -340,10 +351,12 @@ void fuse_run(struct pk_state *state)
 					"immediately", sig);
 	else
 		pk_log(LOG_INFO, "Shutting down FUSE");
+	if (unlink(state->conf->vfspath))
+		pk_log(LOG_ERROR, "Couldn't remove FUSE symlink");
 	/* Normally the filesystem will already have been unmounted.  Try
 	   to make sure. */
-	fuse_unmount(state->conf->mountpoint, state->fuse->chan);
-	if (rmdir(state->conf->mountpoint)) {
+	fuse_unmount(state->fuse->mountpoint, state->fuse->chan);
+	if (rmdir(state->fuse->mountpoint)) {
 		/* FUSE doesn't return an error code if umount fails, so
 		   detect it here */
 		pk_log(LOG_ERROR, "Couldn't unmount FUSE filesystem");
@@ -359,5 +372,6 @@ void fuse_shutdown(struct pk_state *state)
 	if (!state->fuse->leave_dirty)
 		cache_clear_flag(state, CA_F_DIRTY);
 	fsync(state->cache_fd);
+	g_free(state->fuse->mountpoint);
 	g_slice_free(struct pk_fuse, state->fuse);
 }

@@ -24,6 +24,7 @@ struct pk_fuse {
 	/* Fileystem handles */
 	struct fuse *fuse;
 	struct fuse_chan *chan;
+	gchar *mountpoint;
 
 	/* Chunk cache */
 	struct {
