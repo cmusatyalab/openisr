@@ -78,6 +78,25 @@ static int do_getattr(const char *path, struct stat *st)
 	return 0;
 }
 
+static int do_truncate(const char *path, off_t len)
+{
+	struct stat st;
+	int ret;
+
+	ret = do_getattr(path, &st);
+	if (ret) {
+		return ret;
+	} else if (S_ISDIR(st.st_mode)) {
+		return -EISDIR;
+	} else if (g_str_equal(path, "/image")) {
+		/* Pretend to truncate the image file.  This allows
+		   "dd of=image" to work without "conv=notrunc". */
+		return 0;
+	} else {
+		return -EPERM;
+	}
+}
+
 static int do_open(const char *path, struct fuse_file_info *fi)
 {
 	struct pk_state *state = fuse_get_context()->private_data;
@@ -186,6 +205,7 @@ static int do_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 static const struct fuse_operations pk_fuse_ops = {
 	.getattr = do_getattr,
+	.truncate = do_truncate,
 	.open = do_open,
 	.read = do_read,
 	.write = do_write,
