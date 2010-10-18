@@ -137,11 +137,13 @@ static int do_write(const char *path, const char *buf, size_t count,
 static int do_statfs(const char *path, struct statvfs *st)
 {
 	struct pk_state *state = fuse_get_context()->private_data;
+	unsigned validchunks;
 
+	if (cache_count_chunks(state, &validchunks, NULL))
+		return -EIO;
 	st->f_bsize = state->parcel->chunksize;
 	st->f_blocks = state->parcel->chunks;
-	/* XXX number of unfetched chunks */
-	st->f_bfree = st->f_bavail = 0;
+	st->f_bfree = st->f_bavail = state->parcel->chunks - validchunks;
 	st->f_namemax = 256;
 	return 0;
 }

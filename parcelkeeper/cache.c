@@ -712,3 +712,49 @@ bad:
 	}
 	return PK_IOERR;
 }
+
+pk_err_t cache_count_chunks(struct pk_state *state, unsigned *valid,
+			unsigned *dirty)
+{
+	struct query *qry;
+	gboolean retry;
+
+again:
+	if (!begin(state->db))
+		return PK_IOERR;
+	if (valid != NULL) {
+		query(&qry, state->db, "SELECT count(*) from cache.chunks",
+					NULL);
+		if (!query_has_row(state->db)) {
+			sql_log_err(state->db, "Couldn't query cache index");
+			goto bad;
+		}
+		query_row(qry, "d", valid);
+		query_free(qry);
+	}
+	if (dirty != NULL) {
+		query(&qry, state->db, "SELECT count(*) "
+					"FROM main.keys JOIN prev.keys ON "
+					"main.keys.chunk == prev.keys.chunk "
+					"WHERE main.keys.tag != prev.keys.tag",
+					NULL);
+		if (!query_has_row(state->db)) {
+			sql_log_err(state->db, "Couldn't compare keyrings");
+			goto bad;
+		}
+		query_row(qry, "d", dirty);
+		query_free(qry);
+	}
+	/* We didn't make any changes; we just need to release the locks */
+	rollback(state->db);
+	return PK_SUCCESS;
+
+bad:
+	retry = query_busy(state->db);
+	rollback(state->db);
+	if (retry) {
+		query_backoff(state->db);
+		goto again;
+	}
+	return PK_IOERR;
+}

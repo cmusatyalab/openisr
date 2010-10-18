@@ -210,6 +210,8 @@ pk_err_t _cache_read_chunk(struct pk_state *state, unsigned chunk,
 			void *buf, unsigned chunklen, const void *tag);
 pk_err_t cache_get(struct pk_state *state, unsigned chunk, void *buf);
 pk_err_t cache_update(struct pk_state *state, unsigned chunk, const void *buf);
+pk_err_t cache_count_chunks(struct pk_state *state, unsigned *valid,
+			unsigned *dirty);
 pk_err_t cache_set_flag(struct pk_state *state, unsigned flag);
 pk_err_t cache_clear_flag(struct pk_state *state, unsigned flag);
 int cache_test_flag(struct pk_state *state, unsigned flag);

@@ -550,7 +550,6 @@ out:
 
 int examine_cache(struct pk_state *state)
 {
-	struct query *qry;
 	unsigned validchunks;
 	unsigned dirtychunks;
 	unsigned max_mb;
@@ -558,31 +557,9 @@ int examine_cache(struct pk_state *state)
 	unsigned dirty_mb;
 	unsigned valid_pct;
 	unsigned dirty_pct;
-	gboolean retry;
 
-again:
-	if (!begin(state->db))
+	if (cache_count_chunks(state, &validchunks, &dirtychunks))
 		return 1;
-	query(&qry, state->db, "SELECT count(*) from cache.chunks", NULL);
-	if (!query_has_row(state->db)) {
-		sql_log_err(state->db, "Couldn't query cache index");
-		goto bad;
-	}
-	query_row(qry, "d", &validchunks);
-	query_free(qry);
-	query(&qry, state->db, "SELECT count(*) FROM main.keys "
-				"JOIN prev.keys ON "
-				"main.keys.chunk == prev.keys.chunk WHERE "
-				"main.keys.tag != prev.keys.tag", NULL);
-	if (!query_has_row(state->db)) {
-		sql_log_err(state->db, "Couldn't compare keyrings");
-		goto bad;
-	}
-	query_row(qry, "d", &dirtychunks);
-	query_free(qry);
-	/* We didn't make any changes; we just need to release the locks */
-	rollback(state->db);
-
 	max_mb=(((off64_t)state->parcel->chunks) *
 				state->parcel->chunksize) >> 20;
 	valid_mb=(((off64_t)validchunks) * state->parcel->chunksize) >> 20;
@@ -596,13 +573,4 @@ again:
 				"(%u/%u MB)\n", valid_pct, valid_mb, max_mb,
 				dirty_pct, dirty_mb, valid_mb);
 	return 0;
-
-bad:
-	retry = query_busy(state->db);
-	rollback(state->db);
-	if (retry) {
-		query_backoff(state->db);
-		goto again;
-	}
-	return 1;
 }
