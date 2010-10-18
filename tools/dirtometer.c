@@ -276,7 +276,13 @@ char *format_hit_rate(struct stat_values *values, int which)
 {
 	long hits = values->i[0];
 	long misses = values->i[1];
-	return g_strdup_printf("%.1f%%", 100.0 * hits / (hits + misses));
+	double result;
+
+	if (hits + misses)
+		result = 100.0 * hits / (hits + misses);
+	else
+		result = 0;
+	return g_strdup_printf("%.1f%%", result);
 }
 
 gboolean int_changed(struct stat_values *prev, struct stat_values *cur,
