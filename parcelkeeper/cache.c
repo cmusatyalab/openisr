@@ -40,7 +40,6 @@ struct ca_header {
 	uint32_t flags;
 	uint32_t reserved_1;
 	uint8_t version;
-	uint8_t reserved_2[491];
 };
 
 struct pk_shm {
@@ -94,7 +93,7 @@ static pk_err_t set_cache_file_size(struct pk_state *state, int fd)
 	return PK_SUCCESS;
 }
 
-static pk_err_t create_cache_file(struct pk_state *state, long page_size)
+static pk_err_t create_cache_file(struct pk_state *state)
 {
 	struct ca_header hdr = {0};
 	int fd;
@@ -104,16 +103,9 @@ static pk_err_t create_cache_file(struct pk_state *state, long page_size)
 		pk_log(LOG_ERROR, "couldn't create cache file");
 		return PK_IOERR;
 	}
-	/* There's a race condition in the way the loop driver
-	   interacts with the memory management system for (at least)
-	   underlying file systems that provide the prepare_write and
-	   commit_write address space operations.  This can cause data
-	   not to be properly written to disk if I/O submitted to the
-	   loop driver spans multiple page-cache pages and is not
-	   aligned on page cache boundaries.  We therefore need to
-	   make sure that our header is a multiple of the page size.
-	   We assume that the page size is at least sizeof(hdr) bytes. */
-	state->offset=page_size;
+	/* Place the first chunk 4 KB into the file, for better performance
+	   on disks with 4 KB sectors */
+	state->offset=4096;
 	state->cache_flags=0;
 	hdr.magic=htonl(CA_MAGIC);
 	hdr.entries=htonl(state->parcel->chunks);
@@ -132,7 +124,7 @@ static pk_err_t create_cache_file(struct pk_state *state, long page_size)
 	return PK_SUCCESS;
 }
 
-static pk_err_t open_cache_file(struct pk_state *state, long page_size)
+static pk_err_t open_cache_file(struct pk_state *state)
 {
 	struct ca_header hdr;
 	int fd;
@@ -165,15 +157,6 @@ static pk_err_t open_cache_file(struct pk_state *state, long page_size)
 	}
 	state->cache_flags=ntohl(hdr.flags);
 	state->offset=ntohl(hdr.offset) << 9;
-	if (state->offset % page_size != 0) {
-		/* This may occur with old cache files, or with cache files
-		   copied from another system with a different page size. */
-		pk_log(LOG_WARNING, "Cache file's header length %u is not "
-					"a multiple of the page size %ld",
-					state->offset, page_size);
-		pk_log(LOG_ERROR, "Data corruption may occur.  If it does, "
-					"checkin will be disallowed");
-	}
 
 	pk_log(LOG_INFO, "Read cache header");
 	state->cache_fd=fd;
@@ -417,7 +400,7 @@ void cache_shutdown(struct pk_state *state)
 	sql_conn_close(state->db);
 }
 
-static pk_err_t open_cachedir(struct pk_state *state, long page_size)
+static pk_err_t open_cachedir(struct pk_state *state)
 {
 	pk_err_t ret;
 	gboolean have_image;
@@ -431,7 +414,7 @@ static pk_err_t open_cachedir(struct pk_state *state, long page_size)
 	if (have_image && have_index) {
 		if (!attach(state->db, "cache", state->conf->cache_index))
 			return PK_IOERR;
-		ret=open_cache_file(state, page_size);
+		ret=open_cache_file(state);
 		if (ret)
 			return ret;
 		ret=verify_cache_index(state);
@@ -451,7 +434,7 @@ static pk_err_t open_cachedir(struct pk_state *state, long page_size)
 			if (!attach(state->db, "cache",
 						state->conf->cache_index))
 				return PK_IOERR;
-			ret=create_cache_file(state, page_size);
+			ret=create_cache_file(state);
 			if (ret)
 				return ret;
 		} else {
@@ -473,16 +456,9 @@ static pk_err_t open_cachedir(struct pk_state *state, long page_size)
 pk_err_t cache_init(struct pk_state *state)
 {
 	pk_err_t ret;
-	long page_size;
-
-	page_size=sysconf(_SC_PAGESIZE);
-	if (page_size == -1) {
-		pk_log(LOG_ERROR, "Couldn't get system page size");
-		return PK_CALLFAIL;
-	}
 
 	if (state->conf->flags & WANT_CACHE) {
-		ret=open_cachedir(state, page_size);
+		ret=open_cachedir(state);
 		if (ret)
 			goto bad;
 	} else {
