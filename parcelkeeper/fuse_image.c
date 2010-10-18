@@ -22,6 +22,8 @@
 #include "defs.h"
 #include "fuse_defs.h"
 
+#define MAX_CACHE_MULT 1
+#define MAX_CACHE_DIV 10
 #define DIRTY_WRITEBACK_DELAY 5 /* seconds */
 
 struct cache_entry {
@@ -316,6 +318,21 @@ void image_shutdown(struct pk_state *state)
 pk_err_t image_init(struct pk_state *state)
 {
 	GError *err = NULL;
+	unsigned max_mb;
+
+	max_mb = (uint64_t) MAX_CACHE_MULT * sysconf(_SC_PHYS_PAGES) *
+				sysconf(_SC_PAGE_SIZE) / (MAX_CACHE_DIV << 20);
+	if (state->conf->chunk_cache == 0) {
+		pk_log(LOG_WARNING, "Chunk cache size may not be zero");
+		return PK_INVALID;
+	}
+	if (state->conf->chunk_cache > max_mb) {
+		pk_log(LOG_WARNING, "Chunk cache may not be larger than "
+					G_STRINGIFY(MAX_CACHE_MULT) "/"
+					G_STRINGIFY(MAX_CACHE_DIV)
+					" of system RAM (%u MB)", max_mb);
+		return PK_INVALID;
+	}
 
 	state->fuse->image.lock = g_mutex_new();
 	state->fuse->image.chunks = g_hash_table_new(g_int_hash, g_int_equal);
