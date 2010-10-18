@@ -115,7 +115,11 @@ static pk_err_t pc_handle_option(struct pc_parse_ctx *ctx, enum pc_ident ident,
 		}
 		break;
 	case PC_CHUNKSIZE:
-		if (parseuint(&ctx->pdata->chunksize, value, 10)) {
+		/* Chunksize must be >= 512 and a power of 2 */
+		if (parseuint(&ctx->pdata->chunksize, value, 10) ||
+					ctx->pdata->chunksize < 512 ||
+					(ctx->pdata->chunksize &
+					(ctx->pdata->chunksize - 1)) != 0) {
 			pk_log(LOG_ERROR, "Invalid chunksize %s", value);
 			return PK_INVALID;
 		}
