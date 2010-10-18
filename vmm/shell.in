@@ -25,6 +25,7 @@ BEGIN {
 	import vmm;
 }
 
+use Cwd qw/realpath/;
 use strict;
 use warnings;
 
@@ -53,6 +54,8 @@ sub run {
 
 	check_runnable;
 
+	$ENV{'DISK'} = realpath("$CFGDIR/../vfs/image");
+	print STDERR "Disk image file (\$DISK): $ENV{DISK}\n";
 	print STDERR "Exit the shell to suspend your parcel.\n";
 
 	$ret = run_program($program, sub { kill 'HUP', shift });
