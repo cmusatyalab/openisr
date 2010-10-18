@@ -47,6 +47,7 @@ struct io_cursor {
 	unsigned offset;
 	unsigned length;
 	unsigned buf_offset;
+	gboolean eof;		/* Tried to do I/O past the end of the disk */
 
 	/* Private fields */
 	struct pk_state *state;
@@ -378,8 +379,11 @@ static gboolean io_chunk(struct io_cursor *cur)
 		return FALSE;  /* Done */
 	cur->chunk = (cur->start + cur->buf_offset) /
 				cur->state->parcel->chunksize;
-	if (cur->chunk >= cur->state->parcel->chunks)
-		return FALSE;  /* End of disk */
+	if (cur->chunk >= cur->state->parcel->chunks) {
+		/* End of disk */
+		cur->eof = TRUE;
+		return FALSE;
+	}
 	cur->offset = cur->start + cur->buf_offset -
 				(cur->chunk * cur->state->parcel->chunksize);
 	cur->length = MIN(cur->state->parcel->chunksize - cur->offset,
@@ -431,5 +435,7 @@ int image_write(struct pk_state *state, const char *buf, off_t start,
 		if (whole_chunk)
 			stats_increment(state, whole_chunk_updates, 1);
 	}
+	if (cur.eof && !cur.buf_offset)
+		return -ENOSPC;
 	return cur.buf_offset;
 }
