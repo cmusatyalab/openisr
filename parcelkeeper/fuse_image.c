@@ -206,6 +206,8 @@ static struct cache_entry *entry_acquire(struct pk_state *state,
 static void entry_release(struct pk_state *state, struct cache_entry *ent,
 			gboolean dirty)
 {
+	if (dirty)
+		cache_shm_set_dirty(state, ent->chunk);
 	g_mutex_lock(state->fuse->image.lock);
 	if (dirty && !ent->dirty) {
 		ent->dirty = time(NULL);

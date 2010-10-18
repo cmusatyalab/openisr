@@ -291,6 +291,17 @@ static void shm_set(struct pk_state *state, unsigned chunk, unsigned status)
 	g_mutex_unlock(state->shm->lock);
 }
 
+/* cache_update() sets the chunk dirty when it is called, but that may not be
+   for several seconds after the chunk is actually dirtied due to the
+   fuse_image.c writeback cache.  Provide a mechanism for the chunk cache to
+   notify us that it has just dirtied a chunk so that we can update the
+   shm segment immediately. */
+void cache_shm_set_dirty(struct pk_state *state, unsigned chunk)
+{
+	shm_set(state, chunk, SHM_PRESENT | SHM_ACCESSED_SESSION | SHM_DIRTY |
+				SHM_DIRTY_SESSION);
+}
+
 static pk_err_t shm_init(struct pk_state *state)
 {
 	int fd;

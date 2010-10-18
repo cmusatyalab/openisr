@@ -215,6 +215,7 @@ pk_err_t cache_count_chunks(struct pk_state *state, unsigned *valid,
 pk_err_t cache_set_flag(struct pk_state *state, unsigned flag);
 pk_err_t cache_clear_flag(struct pk_state *state, unsigned flag);
 int cache_test_flag(struct pk_state *state, unsigned flag);
+void cache_shm_set_dirty(struct pk_state *state, unsigned chunk);
 
 /* cache_modes.c */
 int copy_for_upload(struct pk_state *state);
