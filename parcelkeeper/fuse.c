@@ -204,6 +204,7 @@ pk_err_t fuse_init(struct pk_state *state)
 	struct utsname utsname;
 	GPtrArray *argv;
 	struct fuse_args args;
+	gchar *str;
 
 	/* Check for previous unclean shutdown of local cache */
 	if (cache_test_flag(state, CA_F_DIRTY)) {
@@ -271,6 +272,9 @@ pk_err_t fuse_init(struct pk_state *state)
 	args.argv = (gchar **) g_ptr_array_free(argv, FALSE);
 	args.argc = g_strv_length(args.argv);
 	args.allocated = 0;
+	str = g_strjoinv(" ", args.argv);
+	pk_log(LOG_INFO, "Arguments: %s", str);
+	g_free(str);
 
 	/* Initialize FUSE */
 	state->fuse->chan = fuse_mount(state->conf->mountpoint, &args);
