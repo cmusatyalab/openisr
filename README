@@ -12,7 +12,6 @@ To run:
 - liblzma from XZ Utils
 - libuuid from e2fsprogs
 - libarchive
-- libtasn1
 - GMP
 - GTK+
 - PyGTK
@@ -27,9 +26,8 @@ To run:
 
 To build from a source tarball:
 - All of the requirements for running the OpenISR system, plus:
-- Development headers for glibc, libcurl, zlib, GMP, GTK+, libuuid, libtasn1,
-  libarchive, and libfuse
-- asn1Parser from libtasn1
+- Development headers for glibc, libcurl, zlib, GMP, GTK+, libuuid, libarchive,
+  and libfuse
 - pkg-config
 
 To build from the Git repository:

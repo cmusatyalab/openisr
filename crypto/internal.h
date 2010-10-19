@@ -121,37 +121,6 @@ struct isrcry_mac_ctx {
 	void *ctx;
 };
 
-struct isrcry_sign_desc {
-	enum isrcry_result (*make_keys)(struct isrcry_sign_ctx *sctx,
-				unsigned length);
-	enum isrcry_result (*get_key)(struct isrcry_sign_ctx *sctx,
-				enum isrcry_key_type type,
-				enum isrcry_key_format format,
-				unsigned char *out, unsigned *outlen);
-	enum isrcry_result (*set_key)(struct isrcry_sign_ctx *sctx,
-				enum isrcry_key_type type,
-				enum isrcry_key_format format,
-				const unsigned char *key, unsigned keylen);
-	enum isrcry_result (*sign)(struct isrcry_sign_ctx *sctx,
-				unsigned char *out, unsigned *outlen);
-	enum isrcry_result (*verify)(struct isrcry_sign_ctx *sctx,
-				const unsigned char *sig, unsigned siglen);
-	void (*free)(struct isrcry_sign_ctx *sctx);
-	enum isrcry_hash hash;
-	unsigned saltlen;
-};
-
-extern const struct isrcry_sign_desc _isrcry_rsa_pss_sha1_desc;
-
-struct isrcry_sign_ctx {
-	const struct isrcry_sign_desc *desc;
-	struct isrcry_hash_ctx *hctx;
-	struct isrcry_random_ctx *rctx;
-	void *pubkey;
-	void *privkey;
-	void *salt;
-};
-
 struct isrcry_compress_desc {
 	gboolean can_stream;
 	enum isrcry_result (*alloc)(struct isrcry_compress_ctx *cctx);
@@ -185,12 +154,6 @@ struct isrcry_compress_ctx {
 	int level;
 	void *ctx;
 };
-
-gchar *isrcry_pem_encode(const char *alg, enum isrcry_key_type type,
-			void *data, unsigned datalen);
-enum isrcry_result isrcry_pem_decode(const char *alg,
-			enum isrcry_key_type type, const void *data,
-			unsigned datalen, void **out, unsigned *outlen);
 
 /* The helper macros below are originally from libtomcrypt. */
 
@@ -244,9 +207,6 @@ enum isrcry_result isrcry_pem_decode(const char *alg,
 		memcpy(&__t, (y), 4);		\
 		x = GUINT32_FROM_LE(__t);	\
 	} while (0)
-
-enum isrcry_result isrcry_gen_prime(mpz_t out, struct isrcry_random_ctx *rctx,
-			unsigned len);
 
 static inline void mpz_init_multi(mpz_t *a, ...)
 {

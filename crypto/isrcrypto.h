@@ -25,9 +25,7 @@ enum isrcry_result {
 	ISRCRY_INVALID_ARGUMENT		= 1,
 	ISRCRY_BAD_PADDING		= 2,
 	ISRCRY_BAD_FORMAT		= 3,
-	ISRCRY_BAD_SIGNATURE		= 4,
 	ISRCRY_BUFFER_OVERFLOW		= 5,
-	ISRCRY_NEED_RANDOM		= 6,
 	ISRCRY_NEED_KEY			= 7,
 	ISRCRY_NO_STREAMING		= 8,
 };
@@ -37,16 +35,6 @@ enum isrcry_direction {
 	ISRCRY_ENCRYPT			= 1,  /* legacy */
 	ISRCRY_DECODE			= 0,
 	ISRCRY_ENCODE			= 1
-};
-
-enum isrcry_key_type {
-	ISRCRY_KEY_PUBLIC		= 0,
-	ISRCRY_KEY_PRIVATE		= 1
-};
-
-enum isrcry_key_format {
-	ISRCRY_KEY_FORMAT_RAW		= 0,
-	ISRCRY_KEY_FORMAT_PEM		= 1,
 };
 
 enum isrcry_cipher {
@@ -71,10 +59,6 @@ enum isrcry_mac {
 	ISRCRY_MAC_HMAC_SHA1		= 0,
 };
 
-enum isrcry_sign {
-	ISRCRY_SIGN_RSA_PSS_SHA1	= 0,
-};
-
 enum isrcry_dh {
 	ISRCRY_DH_IKE_2048		= 0,
 };
@@ -94,7 +78,6 @@ struct isrcry_cipher_ctx;
 struct isrcry_hash_ctx;
 struct isrcry_random_ctx;
 struct isrcry_mac_ctx;
-struct isrcry_sign_ctx;
 struct isrcry_dh_ctx;
 struct isrcry_compress_ctx;
 
@@ -202,67 +185,6 @@ void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 
 /* Free the random context. */
 void isrcry_random_free(struct isrcry_random_ctx *rctx);
-
-
-/***** Signature functions *****/
-
-/* Allocate a signature context for the given signature algorithm.  @rctx is
-   optional, but if it is NULL and functions are later called on the
-   isrcry_sign_ctx which require a random ctx, ISRCRY_NEED_RANDOM will
-   be returned.  Returns NULL on error. */
-struct isrcry_sign_ctx *isrcry_sign_alloc(enum isrcry_sign type,
-			struct isrcry_random_ctx *rctx);
-
-/* Free the signature context. */
-void isrcry_sign_free(struct isrcry_sign_ctx *sctx);
-
-/* Generate a key pair of the given @length (in bytes) and store it in the
-   @sctx. */
-enum isrcry_result isrcry_sign_make_keys(struct isrcry_sign_ctx *sctx,
-			unsigned length);
-
-/* Retrieve the key of the specified @type (public or private) from the @sctx,
-   in the given @fmt, and return it in @out.  @outlen is an in/out parameter
-   giving the length of @out; if @outlen is insufficient,
-   ISRCRY_BUFFER_OVERFLOW will be returned and the necessary length will be
-   left in *outlen. */
-enum isrcry_result isrcry_sign_get_key(struct isrcry_sign_ctx *sctx,
-			enum isrcry_key_type type, enum isrcry_key_format fmt,
-			void *out, unsigned *outlen);
-
-/* Set the key of the specified @type to @key, which is of length @keylen and
-   encoded in format @fmt.  For RSA, the private key includes all of the
-   information in the public key, so only one need be set; if both private
-   and public keys are set, the public key data will override the
-   corresponding data in the private key. */
-enum isrcry_result isrcry_sign_set_key(struct isrcry_sign_ctx *sctx,
-			enum isrcry_key_type type, enum isrcry_key_format fmt,
-			const void *key, unsigned keylen);
-
-/* Provide @data of length @datalen to the @sctx for future signing or
-   verification.  This function may be called more than once to read data
-   incrementally. */
-void isrcry_sign_update(struct isrcry_sign_ctx *sctx, const void *data,
-			unsigned datalen);
-
-/* Sign the data previously provided with isrcry_sign_update().  Place the
-   signature in @out, which has length *outlen.  @outlen is an in/out
-   parameter.  If *outlen is insufficient, ISRCRY_BUFFER_OVERFLOW will be
-   returned and the necessary length will be left in *outlen.  @sctx is
-   reinitialized for additional sign/verify operations. */
-enum isrcry_result isrcry_sign_sign(struct isrcry_sign_ctx *sctx,
-			void *out, unsigned *outlen);
-
-/* Verify the data previously provided with isrcry_sign_update() against
-   signature @sig with length @siglen.  Returns ISRCRY_OK if the signature
-   verified successfully.  @sctx is reinitialized for additional sign/verify
-   operations. */
-enum isrcry_result isrcry_sign_verify(struct isrcry_sign_ctx *sctx,
-			const void *sig, unsigned siglen);
-
-/* Do not use this function; it is only here for the test suite. */
-enum isrcry_result isrcry_sign_set_salt(struct isrcry_sign_ctx *sctx,
-			const void *salt, unsigned saltlen);
 
 
 /***** Diffie-Hellman functions *****/
