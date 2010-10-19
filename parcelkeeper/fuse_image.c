@@ -255,8 +255,8 @@ static void *entry_cleaner(void *data)
 			/* Set wakeup based on the expiration time of the
 			   head-of-queue.  Round off for better energy use. */
 			g_get_current_time(&timeout);
-			timeout.tv_sec += time(NULL) - (ent->dirty +
-						DIRTY_WRITEBACK_DELAY);
+			timeout.tv_sec += ent->dirty + DIRTY_WRITEBACK_DELAY -
+						time(NULL);
 			timeout.tv_usec = 0;
 			g_cond_timed_wait(state->fuse->cleaner.cond,
 						state->fuse->image.lock,
