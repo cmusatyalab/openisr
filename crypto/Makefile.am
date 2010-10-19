@@ -1,5 +1,5 @@
 AM_CFLAGS  = -W -Wall -Wstrict-prototypes -funroll-loops -fomit-frame-pointer
-AM_CFLAGS += -pthread $(VISIBILITY_HIDDEN) $(glib_CFLAGS) $(liblzma_CFLAGS)
+AM_CFLAGS += $(VISIBILITY_HIDDEN) $(glib_CFLAGS) $(liblzma_CFLAGS)
 # autoconf puts a -O2 flag in CFLAGS which cannot be overridden by AM_CFLAGS
 CFLAGS=@CFLAGS@ -O3
 AM_LDFLAGS = -lz $(glib_LIBS) $(liblzma_LIBS)
