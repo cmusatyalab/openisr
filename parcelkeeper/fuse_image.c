@@ -91,12 +91,9 @@ static void entry_clean(struct pk_state *state, struct cache_entry *ent)
 
 	/* Remove the chunk from the dirty list early, so that if we're
 	   doing demand reclaim, the cleaner thread knows it doesn't have
-	   to deal with this chunk. */
-	if (g_queue_peek_head(state->fuse->image.dirty) == ent) {
-		/* We're changing the queue head, so the cleaner needs to
-		   recalculate its wakeup time */
-		g_cond_signal(state->fuse->cleaner.cond);
-	}
+	   to deal with this chunk.  Removing this entry can only move the
+	   next cleaner wakeup *later*, so we don't bother signalling the
+	   cleaner here. */
 	queue_delete_with_link(state->fuse->image.dirty, &ent->dirty_link);
 
 	g_mutex_unlock(state->fuse->image.lock);
