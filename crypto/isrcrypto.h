@@ -26,7 +26,6 @@ enum isrcry_result {
 	ISRCRY_BAD_PADDING		= 2,
 	ISRCRY_BAD_FORMAT		= 3,
 	ISRCRY_BUFFER_OVERFLOW		= 5,
-	ISRCRY_NEED_KEY			= 7,
 	ISRCRY_NO_STREAMING		= 8,
 };
 
@@ -59,10 +58,6 @@ enum isrcry_mac {
 	ISRCRY_MAC_HMAC_SHA1		= 0,
 };
 
-enum isrcry_dh {
-	ISRCRY_DH_IKE_2048		= 0,
-};
-
 enum isrcry_compress {
 	/* Deflate wrapped in a zlib header/trailer */
 	ISRCRY_COMPRESS_ZLIB		= 0,
@@ -78,7 +73,6 @@ struct isrcry_cipher_ctx;
 struct isrcry_hash_ctx;
 struct isrcry_random_ctx;
 struct isrcry_mac_ctx;
-struct isrcry_dh_ctx;
 struct isrcry_compress_ctx;
 
 /***** Cipher functions *****/
@@ -185,38 +179,6 @@ void isrcry_random_bytes(struct isrcry_random_ctx *rctx, void *buffer,
 
 /* Free the random context. */
 void isrcry_random_free(struct isrcry_random_ctx *rctx);
-
-
-/***** Diffie-Hellman functions *****/
-
-/* Allocate a Diffie-Hellman context.  @rctx is required.  Returns NULL on
-   error. */
-struct isrcry_dh_ctx *isrcry_dh_alloc(enum isrcry_dh type,
-			struct isrcry_random_ctx *rctx);
-
-/* Free the DH context. */
-void isrcry_dh_free(struct isrcry_dh_ctx *dctx);
-
-/* Generate a new Diffie-Hellman key pair and store it in @dctx.  This function
-   may be called more than once.  @entropy_bytes is the desired amount of
-   entropy in the agreed key, in bytes.  ISRCRY_INVALID_ARGUMENT will be
-   returned if @entropy_bytes is too large for the specified DH parameters. */
-enum isrcry_result isrcry_dh_init(struct isrcry_dh_ctx *dctx,
-			unsigned entropy_bytes);
-
-/* Store into @out the Diffie-Hellman public key associated with @dctx. */
-enum isrcry_result isrcry_dh_get_public(struct isrcry_dh_ctx *dctx, void *out);
-
-/* Run Diffie-Hellman against the private key stored in @dctx and the peer's
-   public key provided in @peerkey, and write the resulting shared secret into
-   @out. */
-enum isrcry_result isrcry_dh_run(struct isrcry_dh_ctx *dctx,
-			const void *peerkey, void *out);
-
-/* Return the length, in bytes, of the public keys and shared secrets
-   generated using the given DH parameters.  Note that the shared secrets
-   will contain less entropy than this. */
-unsigned isrcry_dh_key_len(enum isrcry_dh type);
 
 
 /***** Compression functions *****/

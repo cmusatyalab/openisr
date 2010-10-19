@@ -181,8 +181,6 @@ if test z$enable_client = zyes -o z$enable_server = zyes ; then
 	FIND_LIBRARY([libarchive], [archive], [archive_read_extract],
 				[archive.h archive_entry.h],
 				[$with_libarchive /usr/local /usr])
-	FIND_LIBRARY([GMP], [gmp], [__gmpz_powm], [gmp.h],
-				[$with_gmp /usr/local /usr])
 	PKG_CHECK_MODULES([glib], [glib-2.0 >= 2.12])
 	PKG_CHECK_MODULES([gthread], [gthread-2.0])
 	PKG_CHECK_MODULES([liblzma], [liblzma])

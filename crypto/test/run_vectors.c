@@ -328,70 +328,6 @@ void mac_test(const char *alg, enum isrcry_mac type,
 	isrcry_mac_free(ctx);
 }
 
-void dh_test(const char *alg, enum isrcry_dh type, unsigned reps)
-{
-	struct isrcry_random_ctx *rctx;
-	struct isrcry_dh_ctx *a;
-	struct isrcry_dh_ctx *b;
-	unsigned keylen = isrcry_dh_key_len(type);
-	char pub_a[keylen];
-	char pub_b[keylen];
-	char shared_a[keylen];
-	char shared_b[keylen];
-	unsigned n;
-
-	rctx = isrcry_random_alloc();
-	if (rctx == NULL) {
-		fail("alloc random");
-		return;
-	}
-	a = isrcry_dh_alloc(type, rctx);
-	if (a == NULL) {
-		fail("alloc %s", alg);
-		isrcry_random_free(rctx);
-		return;
-	}
-	b = isrcry_dh_alloc(type, rctx);
-	if (b == NULL) {
-		fail("alloc %s", alg);
-		isrcry_dh_free(a);
-		isrcry_random_free(rctx);
-		return;
-	}
-	for (n = 0; n < reps; n++) {
-		if (isrcry_dh_init(a, 16) || isrcry_dh_init(b, 16)) {
-			fail("init %s %u", alg, n);
-			continue;
-		}
-		if (isrcry_dh_get_public(a, pub_a) ||
-					isrcry_dh_get_public(b, pub_b)) {
-			fail("get_public %s %u", alg, n);
-			continue;
-		}
-		if (isrcry_dh_run(a, pub_b, shared_a) ||
-					isrcry_dh_run(b, pub_a, shared_b)) {
-			fail("run %s %u", alg, n);
-			continue;
-		}
-		if (memcmp(shared_a, shared_b, keylen)) {
-			fail("shared %s %u", alg, n);
-			continue;
-		}
-		pub_b[1]++;
-		if (isrcry_dh_run(a, pub_b, shared_a)) {
-			fail("run %s %u", alg, n);
-			continue;
-		}
-		if (!memcmp(shared_a, shared_b, keylen)) {
-			fail("shared xfail %s %u", alg, n);
-			continue;
-		}
-	}
-	isrcry_dh_free(a);
-	isrcry_dh_free(b);
-	isrcry_random_free(rctx);
-}
-
 unsigned compress_stream(const char *alg, const char *direction, unsigned test,
 			struct isrcry_compress_ctx *ctx, const void *inbuf,
 			unsigned inlen, void *outbuf)
@@ -938,7 +874,6 @@ int main(void)
 				MEMBERS(md5_monte_vectors));
 	mac_test("hmac-sha1", ISRCRY_MAC_HMAC_SHA1, hmac_sha1_vectors,
 				MEMBERS(hmac_sha1_vectors));
-	dh_test("ike-2048", ISRCRY_DH_IKE_2048, 8);
 	compress_test("zlib", ISRCRY_COMPRESS_ZLIB, zlib_compress_vectors,
 				MEMBERS(zlib_compress_vectors));
 	compress_test("lzf", ISRCRY_COMPRESS_LZF, lzf_compress_vectors,

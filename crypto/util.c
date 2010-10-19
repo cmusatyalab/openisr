@@ -32,8 +32,6 @@ exported const char *isrcry_strerror(enum isrcry_result result)
 		return "Invalid data format";
 	case ISRCRY_BUFFER_OVERFLOW:
 		return "Buffer too short";
-	case ISRCRY_NEED_KEY:
-		return "Required key has not been provided";
 	case ISRCRY_NO_STREAMING:
 		return "Algorithm does not support streaming";
 	}
