@@ -56,6 +56,7 @@ void image_shutdown(struct pk_state *state);
 int image_read(struct pk_state *state, char *buf, off_t start, size_t count);
 int image_write(struct pk_state *state, const char *buf, off_t start,
 			size_t count);
+void image_sync(struct pk_state *state);
 
 /* fuse_stats.c */
 gchar **stat_list(struct pk_state *state);

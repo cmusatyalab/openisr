@@ -220,6 +220,30 @@ static void entry_release(struct pk_state *state, struct cache_entry *ent,
 	g_mutex_unlock(state->fuse->image.lock);
 }
 
+/* Clean all dirty entries that are ripe for writeback.  If @force is TRUE,
+   clean all dirty entries.  Image lock must be held. */
+static void entry_clean_all(struct pk_state *state, gboolean force)
+{
+	struct cache_entry *ent;
+
+	while ((ent = g_queue_peek_head(state->fuse->image.dirty))) {
+		_entry_acquire(state, ent);
+		if (!ent->dirty) {
+			/* By the time we acquired the busy flag, the
+			   chunk was no longer dirty. */
+			_entry_release(state, ent);
+			continue;
+		}
+		if (!force && ent->dirty + DIRTY_WRITEBACK_DELAY >
+					time(NULL)) {
+			_entry_release(state, ent);
+			break;
+		}
+		entry_clean(state, ent);
+		_entry_release(state, ent);
+	}
+}
+
 /* Thread to write dirty entries back to disk */
 static void *entry_cleaner(void *data)
 {
@@ -230,21 +254,7 @@ static void *entry_cleaner(void *data)
 	g_mutex_lock(state->fuse->image.lock);
 	while (!state->fuse->image.stopping) {
 		/* Clean what we can */
-		while ((ent = g_queue_peek_head(state->fuse->image.dirty))) {
-			_entry_acquire(state, ent);
-			if (!ent->dirty) {
-				/* By the time we acquired the busy flag, the
-				   chunk was no longer dirty. */
-				_entry_release(state, ent);
-				continue;
-			}
-			if (ent->dirty + DIRTY_WRITEBACK_DELAY > time(NULL)) {
-				_entry_release(state, ent);
-				break;
-			}
-			entry_clean(state, ent);
-			_entry_release(state, ent);
-		}
+		entry_clean_all(state, FALSE);
 
 		/* Sleep until we're needed again */
 		ent = g_queue_peek_head(state->fuse->image.dirty);
@@ -292,11 +302,7 @@ void image_shutdown(struct pk_state *state)
 
 	/* Write back dirty chunks */
 	g_mutex_lock(state->fuse->image.lock);
-	while ((ent = g_queue_peek_head(state->fuse->image.dirty))) {
-		_entry_acquire(state, ent);
-		entry_clean(state, ent);
-		_entry_release(state, ent);
-	}
+	entry_clean_all(state, TRUE);
 
 	/* Free chunk buffers */
 	while ((ent = g_queue_peek_head(state->fuse->image.reclaimable))) {
@@ -437,4 +443,11 @@ int image_write(struct pk_state *state, const char *buf, off_t start,
 	if (cur.eof && !cur.buf_offset)
 		return -ENOSPC;
 	return cur.buf_offset;
+}
+
+void image_sync(struct pk_state *state)
+{
+	g_mutex_lock(state->fuse->image.lock);
+	entry_clean_all(state, TRUE);
+	g_mutex_unlock(state->fuse->image.lock);
 }

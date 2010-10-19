@@ -162,7 +162,12 @@ static int do_fsync(const char *path, int datasync, struct fuse_file_info *fi)
 	struct pk_state *state = fuse_get_context()->private_data;
 	int ret;
 
-	/* XXX flush dirty chunks */
+	if (fi->fh)
+		return -EINVAL;
+	/* Write out dirty chunks */
+	image_sync(state);
+	/* Synchronize the cache file.  Note that we do not synchronize the
+	   SQLite databases. */
 	if (datasync)
 		ret = fdatasync(state->cache_fd);
 	else
