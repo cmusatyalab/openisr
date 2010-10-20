@@ -25,7 +25,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <glib.h>
-#include <gmp.h>
 #include "config.h"
 
 #ifdef HAVE_VISIBILITY

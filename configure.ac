@@ -129,8 +129,6 @@ AC_ARG_WITH([curl], [AS_HELP_STRING([--with-curl=DIR],
 			[look for libcurl in DIR])])
 AC_ARG_WITH([libarchive], [AS_HELP_STRING([--with-libarchive=DIR],
 			[look for libarchive in DIR])])
-AC_ARG_WITH([gmp], [AS_HELP_STRING([--with-gmp=DIR],
-			[look for GMP in DIR])])
 
 if test z$enable_client = zyes ; then
 	# We can't use AC_CHECK_FUNCS() to check for fallocate(), because
