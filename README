@@ -52,7 +52,7 @@ VIRTUAL MACHINE MONITORS
 The OpenISR system currently includes drivers for the following virtual
 machine monitors.  The name of the driver is listed in parentheses.
 
-- VirtualBox >= 2.0.0 (virtualbox)
+- VirtualBox >= 3.0.2 (virtualbox)
 
 - KVM (kvm)
 

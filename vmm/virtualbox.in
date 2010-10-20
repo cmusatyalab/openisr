@@ -1,6 +1,6 @@
 #!!!PYTHONPATH!!
 #
-# virtualbox - OpenISR (R) VMM driver for VirtualBox >= 2.0.0
+# virtualbox - OpenISR (R) VMM driver for VirtualBox >= 3.0.2
 #
 # Copyright (C) 2008-2010 Carnegie Mellon University
 #
@@ -31,7 +31,7 @@ from vmm import *
 
 CLASS_VBOX = '@virtualbox.org/VirtualBox;1'
 CLASS_SESN = '@virtualbox.org/Session;1'
-MIN_VERSION = (2,0,0)
+MIN_VERSION = (3,0,2)
 MAX_VERSION = (3,2,99)
 
 class MachineFile(object):
@@ -170,17 +170,13 @@ class VboxCompat(object):
 	def create_machine(self, vmdir, name, uuid):
 		'''Create a machine, configure its processor features, and
 		return it.'''
-		if self.vbox_ver < (2,1):
-			vm = vbox.createMachine(vmdir, name, uuid)
-		elif self.vbox_ver < (3,2):
+		if self.vbox_ver < (3,2):
 			vm = vbox.createMachine(name, 'Other', vmdir, uuid)
 		else:
 			vm = vbox.createMachine(name, 'Other', vmdir, uuid,
 						False)
 
-		if self.vbox_ver < (3,0,2):
-			vm.HWVirtExEnabled = ifaces.TSBool.False
-		elif self.vbox_ver < (3,1):
+		if self.vbox_ver < (3,1):
 			vm.HWVirtExEnabled = False
 		else:
 			vm.setHWVirtExProperty( \
@@ -190,51 +186,15 @@ class VboxCompat(object):
 
 		return vm
 
-	def register_disk(self, path):
-		'''Register the disk at the specified path and return it.'''
-		if self.vbox_ver < (2,1):
-			disk = vbox.openHardDisk(path)
-			vbox.registerHardDisk(disk)
-			return disk
-		elif self.vbox_ver < (2,2):
-			return vbox.openHardDisk2(path)
-		elif self.vbox_ver < (3,0):
-			return vbox.openHardDisk(path, \
-					ifaces.AccessMode.ReadWrite)
-		else:
-			return vbox.openHardDisk(path, \
-					ifaces.AccessMode.ReadWrite, \
-					False, '', False, '')
-
-	def unregister_disk(self, path):
-		'''Unregister the disk at the specified path if it exists.'''
-		try:
-			if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
-				disk = vbox.findHardDisk2(path)
-			else:
-				disk = vbox.findHardDisk(path)
-		except:
-			return
-		else:
-			if self.vbox_ver < (2,1):
-				vbox.unregisterHardDisk(disk.id)
-			else:
-				disk.close()
-
-	def get_ide_controller(self, sesn_machine):
-		if self.vbox_ver < (2,2):
-			return ifaces.StorageBus.IDE
-		else:
-			for ctlr in sesn_machine.getStorageControllers():
-				if ctlr.bus == ifaces.StorageBus.IDE:
-					return ctlr.name
-			# The machine will not have an IDE controller after
-			# it is first created, or if the user deletes the
-			# controller
-			ctlr = sesn_machine.addStorageController( \
-						'IDE Controller',
-						ifaces.StorageBus.IDE)
-			return ctlr.name
+	def __get_ide_controller(self, sesn_machine):
+		for ctlr in sesn_machine.getStorageControllers():
+			if ctlr.bus == ifaces.StorageBus.IDE:
+				return ctlr.name
+		# The machine will not have an IDE controller after it is
+		# first created, or if the user deletes the controller
+		ctlr = sesn_machine.addStorageController('IDE Controller',
+					ifaces.StorageBus.IDE)
+		return ctlr.name
 
 	def __get_floppy_controller(self, sesn_machine):
 		# Only makes sense on 3.1 and above
@@ -253,10 +213,8 @@ class VboxCompat(object):
 		'''Attach the specified disk to the given machine's IDE
 		controller.  The machine handle must be obtained from an open
 		session.'''
-		ctlr = self.get_ide_controller(sesn_machine)
-		if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
-			sesn_machine.attachHardDisk2(uuid, ctlr, port, device)
-		elif self.vbox_ver < (3,1):
+		ctlr = self.__get_ide_controller(sesn_machine)
+		if self.vbox_ver < (3,1):
 			sesn_machine.attachHardDisk(uuid, ctlr, port, device)
 		else:
 			sesn_machine.attachDevice(ctlr, port, device,
@@ -268,19 +226,15 @@ class VboxCompat(object):
 		controller, if such an attachment exists.  The machine handle
 		must be obtained from an open session.'''
 		try:
-			ctlr = self.get_ide_controller(sesn_machine)
-			if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
-				sesn_machine.getHardDisk2(ctlr, port, device)
-			elif self.vbox_ver < (3,1):
+			ctlr = self.__get_ide_controller(sesn_machine)
+			if self.vbox_ver < (3,1):
 				sesn_machine.getHardDisk(ctlr, port, device)
 			else:
 				sesn_machine.getMedium(ctlr, port, device)
 		except:
 			pass
 		else:
-			if self.vbox_ver >= (2,1) and self.vbox_ver < (2,2):
-				sesn_machine.detachHardDisk2(ctlr, port, device)
-			elif self.vbox_ver < (3,1):
+			if self.vbox_ver < (3,1):
 				sesn_machine.detachHardDisk(ctlr, port, device)
 			else:
 				sesn_machine.detachDevice(ctlr, port, device)
@@ -290,7 +244,7 @@ class VboxCompat(object):
 		machine handle must be obtained from an open session.'''
 		if self.vbox_ver < (3,1):
 			return
-		ctlr = self.get_ide_controller(sesn_machine)
+		ctlr = self.__get_ide_controller(sesn_machine)
 		sesn_machine.attachDevice(ctlr, 1, 0, ifaces.DeviceType.DVD,
 					'')
 		ctlr = self.__get_floppy_controller(sesn_machine)
@@ -303,7 +257,7 @@ class VboxCompat(object):
 		if self.vbox_ver < (3,1):
 			return
 		try:
-			ctlr = self.get_ide_controller(sesn_machine)
+			ctlr = self.__get_ide_controller(sesn_machine)
 			sesn_machine.detachDevice(ctlr, 1, 0)
 		except:
 			pass
@@ -351,29 +305,6 @@ class VboxCompat(object):
 					hw.removeChild(drive)
 					modified = True
 		return modified
-
-	def release_saved_state(self, sesn, dest_path = None):
-		'''Unregister the saved state attached to the given session.
-		If dest_path is specified, move the state file to that
-		location, otherwise remove it.'''
-		if dest_path is not None:
-			if self.vbox_ver < (3,0):
-				# The stateFilePath may be equal to the
-				# dest_path (if the VM was never started
-				# successfully), so we rename through a
-				# temporary file
-				cur_path = dest_path + '.temp'
-				os.rename(sesn.machine.stateFilePath, cur_path)
-				sesn.console.discardSavedState()
-			else:
-				cur_path = sesn.machine.stateFilePath
-				sesn.console.forgetSavedState(False)
-			os.rename(cur_path, dest_path)
-		else:
-			if self.vbox_ver < (3.0):
-				sesn.console.discardSavedState()
-			else:
-				sesn.console.forgetSavedState(True)
 
 def vbox_init():
 	global xpcom, ifaces, vbox, compat
@@ -519,11 +450,7 @@ def create_machine():
 	except:
 		pass
 	net = vm.getNetworkAdapter(0)
-	try:
-		# Not supported by VirtualBox OSE until 2.1.2
-		net.adapterType = ifaces.NetworkAdapterType.I82543GC
-	except:
-		pass
+	net.adapterType = ifaces.NetworkAdapterType.I82543GC
 	net.attachToNAT()
 	net.enabled = True
 	vm.setExtraData('GUI/LastCloseAction', 'save')
@@ -693,7 +620,8 @@ def fixup_machine():
 		vm.saveSettings()
 
 def register_machine():
-	disk = compat.register_disk(disk_path)
+	disk = vbox.openHardDisk(disk_path, ifaces.AccessMode.ReadWrite,
+				False, '', False, '')
 	vm = vbox.openMachine(vm_path)
 	vbox.registerMachine(vm)
 	sesn = new_instance(CLASS_SESN)
@@ -715,11 +643,13 @@ def register_machine():
 def unregister_state(sesn, do_save):
 	have_state = (sesn.machine.state == ifaces.MachineState.Saved)
 	if do_save and have_state:
-		compat.release_saved_state(sesn, saved_path)
+		cur_path = sesn.machine.stateFilePath
+		sesn.console.forgetSavedState(False)
+		os.rename(cur_path, saved_path)
 		vmm.SUSPENDED = 'virtualbox'
 	else:
 		if have_state:
-			compat.release_saved_state(sesn)
+			sesn.console.forgetSavedState(True)
 		vmm.SUSPENDED = 'no'
 
 def unregister_machine(do_save = True):
@@ -739,7 +669,12 @@ def unregister_machine(do_save = True):
 			try_close(sesn)
 		vbox.unregisterMachine(vm.id)
 
-	compat.unregister_disk(disk_path)
+	try:
+		disk = vbox.findHardDisk(disk_path)
+	except:
+		pass
+	else:
+		disk.close()
 
 def run_machine():
 	global signaled
