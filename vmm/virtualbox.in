@@ -326,6 +326,7 @@ def vbox_init():
 
 	# Load the XPCOM bindings
 	sys.path.append(libdir)
+	sys.path.append(os.path.join(libdir, 'sdk/bindings/xpcom/python'))
 	__import__('xpcom.vboxxpcom')
 	xpcom = __import__('xpcom')
 	xpcom.components = __import__('xpcom.components', None, None, 'xpcom')

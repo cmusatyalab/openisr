@@ -69,7 +69,6 @@ else
 	AC_MSG_RESULT([none])
 fi
 AM_CONDITIONAL([WANT_VMMS], [test -n "$vmms" || test z$enable_client = zyes])
-AM_CONDITIONAL([WANT_VBOX_XPCOM], [WANT_VMM([virtualbox])])
 
 # Checks for compiler/host CPU characteristics.
 # Autoconf quadrigraphs: @<:@ is a literal '['; @:>@ is a literal ']'
@@ -201,6 +200,5 @@ AC_CONFIG_FILES([Makefile
                  parcelkeeper/Makefile
                  sqlite/Makefile
                  tools/Makefile
-                 vmm/Makefile
-                 vmm/xpcom/Makefile])
+                 vmm/Makefile])
 AC_OUTPUT

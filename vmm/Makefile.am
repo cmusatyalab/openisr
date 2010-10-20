@@ -11,14 +11,8 @@ CLIENT_VMMS = $(DUMMY_VMMS)
 dist_pkgdata_DATA = vmm.pm vmm.py
 endif
 
-if WANT_VBOX_XPCOM
-XPCOM = xpcom
-endif
-
 vmm_SCRIPTS = $(CLIENT_VMMS) $(VMMS)
 EXTRA_SCRIPTS = $(ALL_VMMS)
-
-SUBDIRS = . $(XPCOM)
 
 include $(top_srcdir)/mkrevision.mk
 include $(top_srcdir)/subst.mk
