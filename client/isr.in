@@ -2583,12 +2583,27 @@ sub purge_completion_cache () {
 #
 sub check_for_fuse () {
     my $node = "/dev/fuse";
+    my $dir;
+    my $prog;
     my $stat;
     my $grp;
     
     # Check for fatal problems first
     -e $node
         or errexit("The FUSE kernel module does not appear to be loaded.");
+    foreach $dir (File::Spec->path()) {
+        # Note that libfuse hardcodes the path to fusermount and so doesn't use
+        # the search path when mounting the VFS.  However, we use the search
+        # path when unmounting.
+        if (-e "$dir/fusermount") {
+            $prog = "$dir/fusermount";
+            last;
+        }
+    }
+    errexit("Couldn't find fusermount")
+        unless $prog;
+
+    # Check device node permissions
     if (! -r $node or ! -w $node) {
 	# Try to give the user an intelligent explanation of how to fix the
 	# problem.  Some Linux distributions require the user to be a member
@@ -2603,6 +2618,21 @@ sub check_for_fuse () {
 	    errexit("You must be a member of group " . $stat->gid . " to resume a parcel.")
 	} else {
 	    errexit("You must have access to $node to resume a parcel.");
+	}
+    }
+
+    # Some Linux distributions have a world-writable /dev/fuse but restrictive
+    # permissions on fusermount
+    if (! -x $prog) {
+	$stat = stat($prog)
+	    or errexit("Couldn't stat $prog");
+	if (($stat->mode & 0010) && !grep($_ == $stat->gid, split(/ /, $)))) {
+	    $grp = getgrgid($stat->gid);
+	    errexit("You must be a member of the \"$grp\" group to resume a parcel.")
+	        if $grp;
+	    errexit("You must be a member of group " . $stat->gid . " to resume a parcel.")
+	} else {
+	    errexit("You must have execute permission on $prog to resume a parcel.");
 	}
     }
 }
