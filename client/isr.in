@@ -2050,6 +2050,8 @@ sub run_vmm ($$) {
     my $key;
     my $value;
     my $pid;
+    my @signals;
+    my $sigint_val;
 
     errexit("Couldn't find driver for VMM '$driver'")
         unless -x $cmd;
@@ -2076,8 +2078,38 @@ sub run_vmm ($$) {
     }
     close VMM;
 
+    # Because we forward SIGINT to the driver, it may receive multiple SIGINTs
+    # if the user hits Ctrl-C: the kernel signals the driver directly because
+    # it's a member of the foreground process group, and then we signal the
+    # driver as well.  The Python interpreter, when it finishes executing
+    # Python code and starts shutting down its runtime, resets the SIGINT
+    # handler to SIG_DFL.  Therefore there is a race: if the VMM driver is
+    # implemented in Python and the second SIGINT arrives during interpreter
+    # shutdown, the interpreter will die on the signal.
+    #
+    # Ways to fix this:
+    # 1. Block SIGINT in the driver after it has been received once.  Python
+    #    doesn't provide sigprocmask(), so we'd have to use ctypes, which would
+    #    be gratuitously unportable because we'd have to hardcode the values
+    #    of constants from signal.h.
+    # 2. Prevent the driver from receiving duplicate signals by using
+    #    POSIX::sigaction() and a three-argument signal handler to check
+    #    whether this program received SIGINT from the kernel or from a
+    #    userspace process, and only forward SIGINT in the latter case.  This
+    #    assumes that a user running kill(1) will only target this process,
+    #    not the process group, but the kernel will target the whole process
+    #    group.  This bypasses Perl's "safe signal" infrastructure, possibly
+    #    to our peril.
+    # 3. Paper over the problem by treating "died on SIGINT" as success.
+    #
+    # We use option #3.
+    @signals = split(' ', $Config{sig_name});
+    for ($sigint_val = 0; ; $sigint_val++) {
+        last
+            if $signals[$sigint_val] eq 'INT';
+    }
     errexit("VMM driver '$driver' returned $?")
-        if $?;
+        if $? and $? != $sigint_val;
     return %results;
 }
 
