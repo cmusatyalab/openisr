@@ -26,9 +26,17 @@ BEGIN {
 	my @import = (qw/NAME CFGDIR UUID SECTORS MEM FULLSCREEN/,
 				qw/SUSPENDED COMMAND VERBOSE/);
 	our @EXPORT = (qw/main fail find_program run_program $VMNAME/,
-				qw/$USES_ROOT/);
+				qw/$USES_ROOT %OPTIONS/);
 	our $VMNAME = "UnknownVMM";
 	our $USES_ROOT = "no";
+	our %OPTIONS;
+	if (exists $ENV{'OPTIONS'}) {
+		for (split(',', $ENV{'OPTIONS'})) {
+			my ($k, $v) = split('=', $_, 2);
+			$k or next;
+			$OPTIONS{$k} = $v || '1';
+		}
+	}
 	foreach my $var (@import) {
 		push(@EXPORT, "\$$var");
 		eval "our \$$var = \$ENV{'$var'}"

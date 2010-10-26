@@ -34,12 +34,18 @@ class VmmError(Exception):
 	pass
 
 def _init():
+	global OPTIONS
 	for var in 'NAME', 'CFGDIR', 'UUID', 'SECTORS', 'MEM', \
 				'FULLSCREEN', 'SUSPENDED', 'COMMAND', \
 				'VERBOSE':
 		if os.environ.has_key(var):
 			exec('global ' + var + ';' + var + ' = "' + \
 						os.environ[var] + '"')
+	OPTIONS = dict()
+	for opt in os.environ.get('OPTIONS', '').split(','):
+		split = opt.split('=', 1) + ['1']
+		if split[0] != '':
+			OPTIONS.update([split[0:2]])
 
 def _exception_msg(inst):
 	if DEBUG:

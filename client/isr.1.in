@@ -27,6 +27,8 @@ isr \- Internet Suspend/Resume client program
 .IR version ]
 .RB [ \-m
 .IR vmm ]
+.RB [ \-o
+.IR optstring ]
 .RB [ \-C
 .IR compression ]
 .RB [ \-L
@@ -408,21 +410,24 @@ account on your client host. (Use the local
 command for that.)  
 
 .TP
-.BI "isr poweroff " "parcel" " [-m " "vmm" "]"
+.BI "isr poweroff " "parcel" " [-m " "vmm" "] [-o " "optstring" "]"
 Forcibly power off a suspended
 .I parcel
 by deleting its memory image.  When
 .I parcel
 is next resumed, it will perform a cold boot.  This command can be used to
-reboot a misbehaving parcel or to recover if its memory image is damaged.
-The
+reboot a misbehaving parcel or to recover if its memory image is damaged.  The
+.B -o
+option will pass the
+.I optstring
+configuration option to the VMM.  The
 .B -m
 option will delete the memory image for the specified
 .IR vmm ,
 rather than for the parcel's default VMM.
 
 .TP
-.BI "isr resume " "parcel" " [-C " "compression" "] [-r " "oldversion" "] [-m " "vmm" "] [-d] [-D] [-F]"
+.BI "isr resume " "parcel" " [-C " "compression" "] [-r " "oldversion" "] [-m " "vmm" "] [-o " "optstring" "] [-d] [-D] [-F]"
 Checkout a 
 .I parcel
 (if necessary) and then run it. Any additional state that the parcel
@@ -468,7 +473,11 @@ The
 option allows you to resume using a virtual machine monitor other than the
 default VMM for this parcel.  This will fail if the parcel includes a memory
 image written by an incompatible VMM, if the VMM is not properly installed
-on the client host, or if the guest OS does not support the target VMM.
+on the client host, or if the guest OS does not support the target VMM.  The
+.B -o
+option will pass the
+.I optstring
+configuration option to the VMM.
 
 .TP
 .BI "isr rmhoard " parcel
@@ -643,6 +652,24 @@ command, printing information about the
 most recent parcel versions.
 
 .TP
+.BI -m/--vmm " vmm"
+For
+.BR resume " or " poweroff ,
+use a virtual machine monitor other than the parcel's default.
+
+.TP
+.BI -o/--vmmopt " optstring"
+For
+.BR resume " or " poweroff ,
+pass the specified
+.I optstring
+to the virtual machine monitor.
+.I optstring
+can contain multiple comma-delimited options.
+.B -o
+can also be specified more than once.
+
+.TP
 .B -p/--compact
 During
 .BR checkhoard ,
@@ -675,12 +702,6 @@ Use the server
 overriding the default.
 .I name
 can be a fully qualified domain name or an IP address.
-
-.TP
-.BI -m/--vmm " vmm"
-For
-.BR resume " or " poweroff ,
-use a virtual machine monitor other than the parcel's default.
 
 .TP
 .BI -u/--user " userid"

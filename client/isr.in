@@ -153,7 +153,7 @@ sub release_lock ($);
 sub release_locks ();
 sub exit_handler ($);
 sub srun ($$%);
-sub run_vmm ($$);
+sub run_vmm ($$$);
 sub get_suspended ();
 sub set_suspended (%);
 sub vmm_cleanup ();
@@ -187,6 +187,7 @@ my $do_splice = 0;   # checkp: Restore invalid chunks from prev-keyring
 my $do_dirtometer = 0; # Run dirtometer on resume
 my $do_compact = 0;  # Compact the hoard cache during checkhoard
 my $vmm;             # Override default VMM driver
+my @vmmopts;         # Option strings for the VMM driver
 my $compression;     # Override default compression profile
 
 # General global state, mostly about the parcel we are working with
@@ -355,6 +356,7 @@ $result = GetOptions(
 		     "l|long"         => \$longflag,
 		     "L|longvers=i"   => \$longvers,
 		     "m|vmm=s"        => \$vmm,
+		     "o|vmmopt=s"     => \@vmmopts,
 		     "p|compact"      => \$do_compact,
 		     "q|quiet"        => sub { $verbose = 0 },
 		     "r|rollback=i"   => \$version,
@@ -851,7 +853,7 @@ sub run () {
     # See if the VMM plugin thinks the parcel is runnable.
     {
 	local $ENV{'SUSPENDED'} = $memtype;
-	%results = run_vmm($driver, 'info');
+	%results = run_vmm($driver, 'info', 1);
     }
     $vmname = $results{'VMM'} ? $results{'VMM'} : "UnknownVMM";
     $err = $results{'RUNNABLE_REASON'} ? $results{'RUNNABLE_REASON'} :
@@ -910,7 +912,7 @@ sub run () {
 	local $ENV{'MEM'} = exists $cfg{'MEM'} ? $cfg{'MEM'} : 512;
 	local $ENV{'FULLSCREEN'} = $fullscreen ? "yes" : "no";
 	local $ENV{'SUSPENDED'} = $memtype;
-	%results = run_vmm($driver, 'run');
+	%results = run_vmm($driver, 'run', 1);
     }
 
     # Wait here until the VMM exits
@@ -1027,7 +1029,7 @@ sub poweroff () {
     # Get the VMM name.
     {
 	local $ENV{'SUSPENDED'} = $memtype;
-	%results = run_vmm($driver, 'info');
+	%results = run_vmm($driver, 'info', 1);
     }
     $vmname = $results{'VMM'} ? $results{'VMM'} : "UnknownVMM";
 
@@ -1051,7 +1053,7 @@ sub poweroff () {
     # Delete the memory image.
     {
 	local $ENV{'SUSPENDED'} = $memtype;
-	%results = run_vmm($driver, 'poweroff');
+	%results = run_vmm($driver, 'poweroff', 1);
     }
     $err = $results{'ERROR'} ? $results{'ERROR'} : "Unknown error";
     errexit("$vmname returned error: $err")
@@ -2041,9 +2043,10 @@ sub srun ($$%) {
 #
 # run_vmm - Run the VMM driver (low-level routine)
 #
-sub run_vmm ($$) {
+sub run_vmm ($$$) {
     my $driver = shift;
     my $mode = shift;
+    my $with_opts = shift;
 
     my $cmd = VMMDIR . "/$driver";
     my %results;
@@ -2063,6 +2066,8 @@ sub run_vmm ($$) {
     local $ENV{'COMMAND'} = $syscfg{"$driver.command"}
 	if exists $syscfg{"$driver.command"};
     local $ENV{'VERBOSE'} = $verbose > 1 ? "yes" : "no";
+    local $ENV{'OPTIONS'} = join(',', @vmmopts)
+        if $with_opts;
 
     # While the driver is running, redirect SIGINT to the driver
     {
@@ -2165,7 +2170,7 @@ sub vmm_cleanup () {
         or unix_errexit("Couldn't read " . VMMDIR);
     foreach $vmm (readdir(DRVS)) {
 	next if $vmm =~ /^\.{1,2}$/;
-	%results = run_vmm($vmm, "cleanup");
+	%results = run_vmm($vmm, "cleanup", 0);
 	if (! exists $results{'SUCCESS'} or $results{'SUCCESS'} ne 'yes') {
 	    err("$vmm could not run cleanup: $results{ERROR}");
 	}
@@ -3292,7 +3297,7 @@ sub usage ($) {
 	print "Basic commands:\n";
 	print "  auth       Authenticate to the ISR server (once per X session only)\n";
 	print "  ls         List info about your parcels (parcel, -lL optional)\n";
- 	print "  resume     Checkout (if necessary) and run a parcel (-CdDFmr optional)\n";
+ 	print "  resume     Checkout (if necessary) and run a parcel (-CdDFmor optional)\n";
 	print "  checkin    Sync parcel to server and check it in (-bC optional)\n";
 	print "  passwd     Change your ISR password on the server\n";
 	print "  help       Print help message\n";
@@ -3306,7 +3311,7 @@ sub usage ($) {
 	print "  deauth     Remove authentication credentials from your client\n";
 	print "Debugging and maintenance commands:\n";
 	print "  dirtometer Launch dirtometer visualization tool for a running parcel\n";
-	print "  poweroff   Discard memory image for a suspended parcel (-m optional)\n";
+	print "  poweroff   Discard memory image for a suspended parcel (-mo optional)\n";
 	print "  checkp     Check parcel for consistency (-cerY optional)\n";
 	print "  checkhoard Check hoard cache for consistency (-cp optional)\n";
 	print "  lshoard    List info about the hoard cache (-l optional)\n";
@@ -3326,6 +3331,7 @@ sub usage ($) {
     print "  -l,--long          Long listing [ls, lshoard, stat]\n";
     print "  -L,--longvers      Long listing with specific number of versions [ls]\n";
     print "  -m,--vmm           Override default VMM for this parcel [resume, poweroff]\n";
+    print "  -o,--vmmopt        Option string for the VMM [resume, poweroff]\n";
     print "  -p,--compact       Compact the hoard cache [checkhoard]\n";
     print "  -q,--quiet         Run silently (except if things go wrong)\n";
     print "  -r,--rollback      Rollback to or check version [checkout, checkp, resume]\n";
