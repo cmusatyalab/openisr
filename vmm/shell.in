@@ -46,6 +46,8 @@ sub check_runnable {
 
 sub info {
 	$VMNAME = "shell";
+	$USES_ROOT = "yes"
+		if $OPTIONS{'allow_root'};
 	check_runnable;
 }
 

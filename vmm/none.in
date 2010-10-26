@@ -24,6 +24,8 @@ from vmm import *
 
 def info():
 	vmm.VMNAME = 'dummy VMM'
+	if 'allow_root' in vmm.OPTIONS:
+		vmm.USES_ROOT = 'yes'
 
 def run():
 	def handle_signal(sig, frame):
