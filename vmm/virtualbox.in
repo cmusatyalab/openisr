@@ -444,12 +444,6 @@ def create_machine():
 	vm.snapshotFolder = '.'
 	vm.audioAdapter.enabled = True
 	vm.audioAdapter.audioDriver = ifaces.AudioDriverType.Pulse
-	try:
-		# Not supported with VirtualBox OSE
-		vm.USBController.enabled = True
-		vm.USBController.enabledEhci = True
-	except:
-		pass
 	net = vm.getNetworkAdapter(0)
 	net.adapterType = ifaces.NetworkAdapterType.I82543GC
 	net.attachToNAT()
