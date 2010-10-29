@@ -23,44 +23,58 @@
 
 typedef gboolean (stat_handler)(void *data, const char *name);
 
-/* state->stats_lock must be held if stat_handler ever returns TRUE */
+#define RETURN_FORMAT(lock, str, args...) do {	\
+	g_mutex_lock(lock);			\
+	ret = g_strdup_printf(str, ## args);	\
+	g_mutex_unlock(lock);			\
+	return ret;				\
+} while (0)
+
 static gchar *_statistic(struct pk_state *state, stat_handler *handle,
 			void *data)
 {
+	gchar *ret;
+
 	if (handle(data, "bytes_read"))
-		return g_strdup_printf("%"PRIu64"\n",
+		RETURN_FORMAT(state->stats_lock, "%"PRIu64"\n",
 					state->stats.bytes_read);
 	if (handle(data, "bytes_written"))
-		return g_strdup_printf("%"PRIu64"\n",
+		RETURN_FORMAT(state->stats_lock, "%"PRIu64"\n",
 					state->stats.bytes_written);
 	if (handle(data, "chunk_reads"))
-		return g_strdup_printf("%"PRIu64"\n",
+		RETURN_FORMAT(state->stats_lock, "%"PRIu64"\n",
 					state->stats.chunk_reads);
 	if (handle(data, "chunk_writes"))
-		return g_strdup_printf("%"PRIu64"\n",
+		RETURN_FORMAT(state->stats_lock, "%"PRIu64"\n",
 					state->stats.chunk_writes);
 	if (handle(data, "chunk_errors"))
-		return g_strdup_printf("%"PRIu64"\n",
+		RETURN_FORMAT(state->stats_lock, "%"PRIu64"\n",
 					state->stats.chunk_errors);
 	if (handle(data, "cache_hits"))
-		return g_strdup_printf("%"PRIu64"\n",
+		RETURN_FORMAT(state->stats_lock, "%"PRIu64"\n",
 					state->stats.cache_hits);
 	if (handle(data, "cache_misses"))
-		return g_strdup_printf("%"PRIu64"\n",
+		RETURN_FORMAT(state->stats_lock, "%"PRIu64"\n",
 					state->stats.cache_misses);
 	if (handle(data, "compression_ratio_pct")) {
-		if (state->stats.chunk_writes == 0)
-			return g_strdup("n/a\n");
-		return g_strdup_printf("%.1f\n", 100.0 *
+		g_mutex_lock(state->stats_lock);
+		if (state->stats.chunk_writes)
+			ret = g_strdup_printf("%.1f\n", 100.0 *
 					state->stats.data_bytes_written /
 					(state->stats.chunk_writes *
 					state->parcel->chunksize));
+		else
+			ret = g_strdup("n/a\n");
+		g_mutex_unlock(state->stats_lock);
+		return ret;
 	}
 	if (handle(data, "whole_chunk_updates"))
-		return g_strdup_printf("%"PRIu64"\n",
+		RETURN_FORMAT(state->stats_lock, "%"PRIu64"\n",
 					state->stats.whole_chunk_updates);
 	return NULL;
 }
+
+#undef RETURN_FORMAT
 
 static gboolean _stat_enumerate(void *data, const char *name)
 {
@@ -85,12 +99,7 @@ static gboolean _stat_compare(void *data, const char *name)
 
 gchar *stat_get(struct pk_state *state, const char *name)
 {
-	gchar *ret;
-
-	g_mutex_lock(state->stats_lock);
-	ret = _statistic(state, _stat_compare, (char *) name);
-	g_mutex_unlock(state->stats_lock);
-	return ret;
+	return _statistic(state, _stat_compare, (char *) name);
 }
 
 int stat_open(struct pk_state *state, const char *name)
