@@ -173,6 +173,8 @@ struct pk_state {
 		uint64_t chunk_errors;
 		uint64_t cache_hits;
 		uint64_t cache_misses;
+		uint64_t cache_evictions;
+		uint64_t cache_evictions_dirty;
 		uint64_t data_bytes_written;
 		uint64_t whole_chunk_updates;
 	} stats;

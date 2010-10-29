@@ -56,6 +56,16 @@ static gchar *_statistic(struct pk_state *state, stat_handler *handle,
 	if (handle(data, "cache_misses"))
 		RETURN_FORMAT(state->stats_lock, "%"PRIu64"\n",
 					state->stats.cache_misses);
+	if (handle(data, "cache_evictions"))
+		RETURN_FORMAT(state->stats_lock, "%"PRIu64"\n",
+					state->stats.cache_evictions);
+	if (handle(data, "cache_evictions_dirty"))
+		RETURN_FORMAT(state->stats_lock, "%"PRIu64"\n",
+					state->stats.cache_evictions_dirty);
+	if (handle(data, "cache_dirty"))
+		RETURN_FORMAT(state->fuse->image.lock, "%u\n",
+					g_queue_get_length(state->fuse->
+					image.dirty));
 	if (handle(data, "compression_ratio_pct")) {
 		g_mutex_lock(state->stats_lock);
 		if (state->stats.chunk_writes)

@@ -175,9 +175,13 @@ static struct cache_entry *entry_acquire(struct pk_state *state,
 			reclaim = g_queue_peek_head(
 					state->fuse->image.reclaimable);
 			pk_log(LOG_FUSE, "Reclaim: %u", reclaim->chunk);
+			stats_increment(state, cache_evictions, 1);
 			_entry_acquire(state, reclaim);
-			if (reclaim->dirty)
+			if (reclaim->dirty) {
 				entry_clean(state, reclaim);
+				stats_increment(state, cache_evictions_dirty,
+							1);
+			}
 			g_assert(reclaim->data != NULL);
 			ent->data = reclaim->data;
 			reclaim->data = NULL;
