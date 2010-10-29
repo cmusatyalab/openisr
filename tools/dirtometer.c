@@ -173,10 +173,11 @@ void write_config(void)
 
 /** Statistics pane **********************************************************/
 
+#define NINPUTS 3
 #define NOUTPUTS 2
 
 struct stat_values {
-	long long i[NOUTPUTS];
+	long long i[NINPUTS];
 	double f;
 };
 
@@ -191,7 +192,7 @@ struct stat_output {
 
 struct stats {
 	const char *heading;
-	const char *attrs[NOUTPUTS];
+	const char *attrs[NINPUTS];
 	gboolean (*fetch)(struct stats *);
 	struct stat_output output[NOUTPUTS];
 	struct stat_values cur;
@@ -207,7 +208,7 @@ gboolean get_ints(struct stats *st)
 	int i;
 	gboolean success = TRUE;
 
-	for (i = 0; i < NOUTPUTS; i++) {
+	for (i = 0; i < NINPUTS; i++) {
 		if (st->attrs[i] == NULL)
 			continue;
 		data = get_attr(st->attrs[i]);
@@ -285,6 +286,32 @@ char *format_hit_rate(struct stat_values *values, int which)
 	return g_strdup_printf("%.1f%%", result);
 }
 
+char *format_dirty_evictions(struct stat_values *values, int which)
+{
+	long dirty_evictions = values->i[0];
+	long evictions = values->i[1];
+	double result;
+
+	if (evictions)
+		result = 100.0 * dirty_evictions / evictions;
+	else
+		result = 0;
+	return g_strdup_printf("%.1f%%", result);
+}
+
+char *format_eviction_writebacks(struct stat_values *values, int which)
+{
+	long dirty_evictions = values->i[0];
+	long writebacks = values->i[2];
+	double result;
+
+	if (writebacks)
+		result = 100.0 * dirty_evictions / writebacks;
+	else
+		result = 0;
+	return g_strdup_printf("%.1f%%", result);
+}
+
 gboolean int_changed(struct stat_values *prev, struct stat_values *cur,
 				int which)
 {
@@ -317,12 +344,12 @@ struct stats statistics[] = {
 		{"Distinct chunks dirtied this session (MB)",
 			format_chunks, int_changed}}
 	}, {
-		"Savings",
-		{"compression_ratio_pct"},
-		get_float,
+		"Pending",
+		{NULL, "cache_dirty"},
+		get_ints,
 		{{NULL},
-		{"Average compression savings from chunks written this session",
-			format_compression, NULL}}
+		{"Dirty chunk data pending writeback (MB)",
+			format_chunks, int_changed}}
 	}, {
 		"Hit",
 		{"cache_hits", "cache_misses"},
@@ -330,6 +357,21 @@ struct stats statistics[] = {
 		{{NULL},
 		{"Parcelkeeper chunk cache hit rate",
 			format_hit_rate, NULL}}
+	}, {
+		"DEvict",
+		{"cache_evictions_dirty", "cache_evictions", "chunk_writes"},
+		get_ints,
+		{{"Cache evictions that initiate writebacks",
+			format_dirty_evictions, NULL},
+		{"Chunk writebacks initiated by evictions rather than timer",
+			format_eviction_writebacks, NULL}}
+	}, {
+		"Savings",
+		{"compression_ratio_pct"},
+		get_float,
+		{{NULL},
+		{"Average compression savings from chunks written this session",
+			format_compression, NULL}}
 	}, {0}
 };
 
