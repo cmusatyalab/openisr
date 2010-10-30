@@ -37,6 +37,7 @@ use constant {
 my $program;
 my $need_enable_kvm;
 my $incoming_method;
+my $send_cont = 0;
 
 # Make sure the specified program is some variety of qemu with KVM support,
 # and set global variables defining how to interact with it.  (Different
@@ -60,6 +61,7 @@ sub validate_kvm {
 			$incoming_method = "file";
 			# file or exec will work for outgoing, so we use exec
 			# for consistency
+			$send_cont = 1;
 		} elsif ($1 <= 80) {
 			# The only available migrate method is "tcp" with <80
 			# KVM-80 has an issue with parsing a VNC socket argument
@@ -67,11 +69,15 @@ sub validate_kvm {
 		} else {
 			$incoming_method = "exec";
 			# Outgoing method must be exec
+ 			# KVM-80 or later does not need 'cont'
+ 			$send_cont = 0;
 		}
 	} elsif ($help =~ m/QEMU (PC )?emulator version ([0-9])+\.([0-9]+).*/) {
 		if ($2 > 0 or $3 >= 11) {
 			# New qemu with KVM support built-in
 			$incoming_method = "exec";
+			# qemu-kvm 0.11.0 or later does not need 'cont'
+			$send_cont = 0;
 		} else {
 			# Old KVM (< 56) that doesn't give its version in the
 			# help string.  Not worth supporting.
@@ -291,7 +297,7 @@ sub run {
 
 	# Resume virtual machine if we loaded a memory image
 	send_cmd $sock, "cont"
-		if $loadmem;
+		if $loadmem and $send_cont;
 
 	# Start VNC viewer and wait for it to exit.  Ignore SIGINT after
 	# it exits so that multiple SIGINTs won't prevent us from saving
