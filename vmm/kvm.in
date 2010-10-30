@@ -220,6 +220,7 @@ sub run {
 	my $sockpath = "$CFGDIR/kvm.ctl";
 	my $vncsock = "$CFGDIR/kvm.vnc";
 	my $loadmem = 0;
+	my $vnc_sock_ready = 0;
 	my $migrate_cmd;
 
 	check_runnable;
@@ -300,13 +301,27 @@ sub run {
 	send_cmd $sock, "cont"
 		if $loadmem and $send_cont;
 
+	# Wait for KVM to set up a socket for VNC viewer to connect to.
+	for (my $vnc_wait = 0; $vnc_wait < 30; $vnc_wait++) {
+		if (-e $vncsock) {
+			$vnc_sock_ready = 1;
+			last;
+		}
+		sleep 1;
+	}
+
 	# Start VNC viewer and wait for it to exit.  Ignore SIGINT after
 	# it exits so that multiple SIGINTs won't prevent us from saving
 	# the memory image.
 	local $SIG{'INT'} = sub {};
 	$opts = ($FULLSCREEN eq "yes") ? "-f" : "";
-	run_program(SHAREDIR . "/viewer $opts $vncsock",
-				sub { kill 'INT', shift });
+
+	if ($vnc_sock_ready) {
+		run_program(SHAREDIR . "/viewer $opts $vncsock",
+			    sub { kill 'INT', shift });
+	} else {
+		print STDERR "Could not find a VNC socket.\n";
+	}
 
 	# Ask KVM to suspend.  If it has already exited, send_cmd() will
 	# silently fail.
