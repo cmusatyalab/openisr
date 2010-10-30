@@ -220,6 +220,7 @@ sub run {
 	my $sockpath = "$CFGDIR/kvm.ctl";
 	my $vncsock = "$CFGDIR/kvm.vnc";
 	my $loadmem = 0;
+	my $migrate_cmd;
 
 	check_runnable;
 
@@ -309,10 +310,12 @@ sub run {
 
 	# Ask KVM to suspend.  If it has already exited, send_cmd() will
 	# silently fail.
+	$migrate_cmd  = "migrate \"exec:dd bs=1M 2>/dev/null |";
+	$migrate_cmd .= " dd bs=1M of=$CFGDIR/kvm.mem 2>/dev/null\"";
 	print STDERR "Suspending parcel...\n";
 	send_cmd $sock, "migrate_set_speed 1g";
 	send_cmd $sock, "stop";
-	send_cmd $sock, "migrate \"exec:dd of=$CFGDIR/kvm.mem 2>/dev/null\"";
+	send_cmd $sock, $migrate_cmd;
 	send_cmd $sock, "quit";
 	close $sock;
 
