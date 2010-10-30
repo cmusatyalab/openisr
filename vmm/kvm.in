@@ -60,8 +60,9 @@ sub validate_kvm {
 			$incoming_method = "file";
 			# file or exec will work for outgoing, so we use exec
 			# for consistency
-		} elsif ($1 < 80) {
-			# The only available migrate method is "tcp"
+		} elsif ($1 <= 80) {
+			# The only available migrate method is "tcp" with <80
+			# KVM-80 has an issue with parsing a VNC socket argument
 			return 0;
 		} else {
 			$incoming_method = "exec";
