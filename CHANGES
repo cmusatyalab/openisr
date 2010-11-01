@@ -1,3 +1,47 @@
+====== 0.10.0 (2010-11-01)
+
+------ Major changes in this release
+
+- Export parcel disk via a FUSE filesystem rather than custom kernel modules
+- Dramatically simplify codebase
+- Simplify installation from source
+
+------ Other client changes
+
+- Perform chunk demand-fetching asynchronously
+- No longer copy unmodified chunks into the local cache
+- No longer suspend parcels on host suspend (not necessary with FUSE)
+- Rework dirtometer statistics displays for FUSE
+- No longer require ISR users to be in isrusers group
+- Rename nexus_cache configuration option to chunk_cache
+- Add resume_single_threaded debugging option
+- Add "fuse" logtype
+- Various other improvements
+
+------ VMM driver changes
+
+- none: Allow root access to FUSE filesystem with "isr resume -o allow_root"
+- none: Avoid spurious "VMM driver returned 2" errors after Ctrl-C
+- kvm: Support qemu-kvm 0.13
+- kvm: Drop support for qemu-kvm 0.10
+- kvm: Fix resuming a suspended parcel with qemu-kvm
+- kvm: Fix slow suspend with qemu-kvm
+- kvm: Fix occasional resume failures
+- shell: Set DISK environment variable to the path to the virtual disk
+- shell: Allow root access to FUSE filesystem with "isr resume -o allow_root"
+- virtualbox: Backward-incompatible parcel update on first resume
+- virtualbox: Drop support for VirtualBox older than 3.0.2
+- virtualbox: Allow user to modify VM settings with "isr resume -o noresume"
+- virtualbox: Disable USB by default in new parcels for OSE compatibility
+- virtualbox: Use system VirtualBox API glue rather than shipping our own
+- vmware: Backward-incompatible parcel update on first resume
+- vmware: Require fuse_allow_other to be enabled in /etc/fuse.conf
+
+------ Server changes
+
+- disktool: Drop unused -z/--compress option
+- Minor internal cleanups
+
 ====== 0.9.10 (2010-08-27)
 
 ------ Client changes
