@@ -84,9 +84,10 @@ following command line options:
 
 --with-zlib=DIR
 --with-curl=DIR
-	Specifies an additional search path for zlib or curl, respectively.
-	In addition to the specified paths, configure will check a set of
-	default paths for each component.
+--with-libarchive=DIR
+	Specifies an additional search path for zlib, curl, or libarchive,
+	respectively.  In addition to the specified paths, configure will
+	check a set of default paths for each component.
 
 --disable-client
 	Do not build or install components that are only used by the OpenISR
