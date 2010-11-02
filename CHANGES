@@ -35,7 +35,7 @@
 - virtualbox: Disable USB by default in new parcels for OSE compatibility
 - virtualbox: Use system VirtualBox API glue rather than shipping our own
 - vmware: Backward-incompatible parcel update on first resume
-- vmware: Require fuse_allow_other to be enabled in /etc/fuse.conf
+- vmware: Require user_allow_other to be enabled in /etc/fuse.conf
 
 ------ Server changes
 
