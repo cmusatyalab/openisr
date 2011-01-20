@@ -447,7 +447,6 @@ def create_machine():
 	net.adapterType = ifaces.NetworkAdapterType.I82543GC
 	net.attachToNAT()
 	net.enabled = True
-	vm.setExtraData('GUI/LastCloseAction', 'save')
 	vm.setExtraData('GUI/FirstRun', 'yes')
 	vm.saveSettings()
 	del vm
@@ -628,6 +627,7 @@ def register_machine():
 		else:
 			fullscreen = 'off'
 		sesn.machine.setExtraData('GUI/Fullscreen', fullscreen)
+		sesn.machine.setExtraData('GUI/LastCloseAction', 'save')
 		sesn.machine.saveSettings()
 		if os.path.isfile(saved_path):
 			sesn.console.adoptSavedState(saved_path)
