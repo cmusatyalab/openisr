@@ -388,9 +388,8 @@ def check_runnable():
 		mf.close()
 		if not compat.settings_version_is_supported(found_cfg_ver):
 			raise VmmError('VirtualBox too old to run this ' \
-					'parcel (settings version %s, max %s)' \
-					% (format_version(found_cfg_ver), \
-					format_version(want_cfg_ver)))
+					'parcel (settings version %s)' \
+					% format_version(found_cfg_ver))
 
 def check_version():
 	if compat.version_is_recognized():
