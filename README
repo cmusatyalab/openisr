@@ -26,7 +26,7 @@ To run:
 To build from a source tarball:
 - All of the requirements for running the OpenISR system, plus:
 - Development headers for glibc, libcurl, zlib, GTK+, libuuid, libarchive,
-  and libfuse
+  liblzma, and libfuse
 - pkg-config
 
 To build from the Git repository:
