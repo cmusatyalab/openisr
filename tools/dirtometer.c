@@ -1,7 +1,7 @@
 /*
  * dirtometer - Shows present and dirty chunks in a parcel's local cache
  *
- * Copyright (C) 2008-2009 Carnegie Mellon University
+ * Copyright (C) 2008-2011 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -127,6 +127,13 @@ void read_config(void)
 		g_clear_error(&err);
 		g_key_file_set_boolean(config, CONFIG_GROUP, "keep_above",
 					TRUE);
+	}
+
+	g_key_file_get_boolean(config, CONFIG_GROUP, "show_image_cache", &err);
+	if (err) {
+		g_clear_error(&err);
+		g_key_file_set_boolean(config, CONFIG_GROUP,
+					"show_image_cache", FALSE);
 	}
 
 	for (pane = panes; pane->config_key != NULL; pane++) {
@@ -464,12 +471,14 @@ void update_img(void)
 	static char *prev_states;
 	static int last_width;
 	static int last_height;
+	static gboolean last_show_image_cache;
 	uint32_t *pixels;
 	int numpixels;
 	GdkPixbuf *pixbuf;
 	int i;
 	int height;
 	int changed = 0;
+	gboolean show_image_cache;
 
 	if (!mapped || !g_key_file_get_boolean(config, CONFIG_GROUP,
 				"show_bitmap", NULL))
@@ -481,12 +490,23 @@ void update_img(void)
 	height = optimal_height(img_width);
 	numpixels = height * img_width;
 	pixels = g_malloc(4 * numpixels);
+	show_image_cache = g_key_file_get_boolean(config, CONFIG_GROUP,
+				"show_image_cache", NULL);
+	if (show_image_cache != last_show_image_cache)
+		changed = 1;
 	for (i = 0; i < numchunks; i++) {
-		if (states[i] != prev_states[i]) {
+		if ((states[i] ^ prev_states[i]) & (show_image_cache ?
+					0xff : 0xcf)) {
 			prev_states[i] = states[i];
 			changed = 1;
 		}
-		if (states[i] & 0x8) {
+		if (show_image_cache && (states[i] & 0x20)) {
+			/* Dirty in image cache */
+			pixels[i] = htonl(0xffff00ff);
+		} else if (show_image_cache && (states[i] & 0x10)) {
+			/* Buffered in image cache */
+			pixels[i] = htonl(0x00ff00ff);
+		} else if (states[i] & 0x8) {
 			/* Dirtied this session */
 			pixels[i] = htonl(0xff0000ff);
 		} else if (states[i] & 0x4) {
@@ -516,6 +536,7 @@ void update_img(void)
 		g_object_unref(pixbuf);
 		last_width = img_width;
 		last_height = height;
+		last_show_image_cache = show_image_cache;
 	} else {
 		g_free(pixels);
 	}
@@ -684,6 +705,7 @@ gboolean destroy(GtkWidget *widget, GdkEvent *event, void *data)
 
 /** Context menu ************************************************************/
 
+GtkWidget *image_cache_item;
 GtkWidget *always_on_top;
 
 void update_pane_dimmers(void)
@@ -722,17 +744,22 @@ gboolean menu_toggle_pane(GtkCheckMenuItem *item, void *data)
 		gtk_widget_hide(pane->widget);
 		resize_window(NULL, pane);
 	}
+	if (!strcmp(pane->config_key, "show_bitmap"))
+		gtk_widget_set_sensitive(image_cache_item, newval);
 	update_pane_dimmers();
 	return TRUE;
 }
 
-gboolean menu_set_keep_above(GtkCheckMenuItem *item, void *data)
+gboolean menu_set_option(GtkCheckMenuItem *item, void *which)
 {
 	gboolean newval;
 
 	newval = gtk_check_menu_item_get_active(item);
-	g_key_file_set_boolean(config, CONFIG_GROUP, "keep_above", newval);
-	gtk_window_set_keep_above(GTK_WINDOW(wd), newval);
+	g_key_file_set_boolean(config, CONFIG_GROUP, which, newval);
+	if (!strcmp(which, "keep_above"))
+		gtk_window_set_keep_above(GTK_WINDOW(wd), newval);
+	else if (!strcmp(which, "show_image_cache"))
+		update_img();
 	return TRUE;
 }
 
@@ -786,6 +813,19 @@ GtkWidget *init_menu(GtkAccelGroup *accels)
 	}
 	update_pane_dimmers();
 
+	item = gtk_check_menu_item_new_with_label("   Show image cache");
+	gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(item),
+				g_key_file_get_boolean(config, CONFIG_GROUP,
+				"show_image_cache", NULL));
+	gtk_widget_set_sensitive(item, g_key_file_get_boolean(config,
+				CONFIG_GROUP, "show_bitmap", NULL));
+	g_signal_connect(item, "toggled", G_CALLBACK(menu_set_option),
+				"show_image_cache");
+	gtk_widget_add_accelerator(item, "activate", accels, GDK_M, 0,
+				GTK_ACCEL_VISIBLE);
+	image_cache_item = item;
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+
 	item = gtk_separator_menu_item_new();
 	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
 
@@ -793,8 +833,8 @@ GtkWidget *init_menu(GtkAccelGroup *accels)
 	gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(item),
 				g_key_file_get_boolean(config, CONFIG_GROUP,
 				"keep_above", NULL));
-	g_signal_connect(item, "toggled", G_CALLBACK(menu_set_keep_above),
-				NULL);
+	g_signal_connect(item, "toggled", G_CALLBACK(menu_set_option),
+				"keep_above");
 	gtk_widget_add_accelerator(item, "activate", accels, GDK_Tab, 0,
 				GTK_ACCEL_VISIBLE);
 	always_on_top = item;
@@ -892,6 +932,8 @@ GtkWidget *pane_widget(const char *config_key, GtkWidget *widget)
 }
 
 const char img_tooltip[] =
+"Yellow: Dirty in image cache (M to toggle)\n"
+"Green: Present in image cache (M to toggle)\n"
 "Red: Dirtied this session\n"
 "White: Accessed this session\n"
 "Dark red: Dirtied in previous session\n"
