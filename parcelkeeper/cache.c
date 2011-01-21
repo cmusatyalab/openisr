@@ -1,7 +1,7 @@
 /*
  * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
  *
- * Copyright (C) 2006-2010 Carnegie Mellon University
+ * Copyright (C) 2006-2011 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -278,7 +278,8 @@ bad:
 }
 
 /* Must be thread-safe */
-static void shm_set(struct pk_state *state, unsigned chunk, unsigned status)
+static void shm_update(struct pk_state *state, unsigned chunk, unsigned set,
+				unsigned clear)
 {
 	if (state->shm == NULL)
 		return;
@@ -287,7 +288,8 @@ static void shm_set(struct pk_state *state, unsigned chunk, unsigned status)
 		return;
 	}
 	g_mutex_lock(state->shm->lock);
-	state->shm->base[chunk] |= status;
+	state->shm->base[chunk] |= set;
+	state->shm->base[chunk] &= ~clear;
 	g_mutex_unlock(state->shm->lock);
 }
 
@@ -298,8 +300,8 @@ static void shm_set(struct pk_state *state, unsigned chunk, unsigned status)
    shm segment immediately. */
 void cache_shm_set_dirty(struct pk_state *state, unsigned chunk)
 {
-	shm_set(state, chunk, SHM_PRESENT | SHM_ACCESSED_SESSION | SHM_DIRTY |
-				SHM_DIRTY_SESSION);
+	shm_update(state, chunk, SHM_PRESENT | SHM_ACCESSED_SESSION |
+				SHM_DIRTY | SHM_DIRTY_SESSION, 0);
 }
 
 static pk_err_t shm_init(struct pk_state *state)
@@ -352,7 +354,7 @@ again:
 	for (query(&qry, state->db, "SELECT chunk FROM cache.chunks", NULL);
 				query_has_row(state->db); query_next(qry)) {
 		query_row(qry, "d", &chunk);
-		shm_set(state, chunk, SHM_PRESENT);
+		shm_update(state, chunk, SHM_PRESENT, 0);
 	}
 	query_free(qry);
 	if (!query_ok(state->db)) {
@@ -367,7 +369,7 @@ again:
 				"WHERE main.keys.tag != prev.keys.tag", NULL);
 				query_has_row(state->db); query_next(qry)) {
 		query_row(qry, "d", &chunk);
-		shm_set(state, chunk, SHM_DIRTY);
+		shm_update(state, chunk, SHM_DIRTY, 0);
 	}
 	query_free(qry);
 	if (!query_ok(state->db)) {
@@ -658,7 +660,7 @@ again:
 		return PK_IOERR;
 
 	stats_increment(state, chunk_reads, 1);
-	shm_set(state, chunk, SHM_ACCESSED_SESSION);
+	shm_update(state, chunk, SHM_ACCESSED_SESSION, 0);
 	return PK_SUCCESS;
 
 bad:
@@ -710,8 +712,8 @@ again:
 		goto bad;
 	stats_increment(state, chunk_writes, 1);
 	stats_increment(state, data_bytes_written, len);
-	shm_set(state, chunk, SHM_PRESENT | SHM_ACCESSED_SESSION | SHM_DIRTY |
-				SHM_DIRTY_SESSION);
+	shm_update(state, chunk, SHM_PRESENT | SHM_ACCESSED_SESSION |
+				SHM_DIRTY | SHM_DIRTY_SESSION, 0);
 	return PK_SUCCESS;
 
 bad:
