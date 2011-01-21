@@ -50,10 +50,12 @@ struct pk_shm {
 };
 
 enum shm_chunk_status {
-	SHM_PRESENT		= 0x1,
-	SHM_DIRTY		= 0x2,
-	SHM_ACCESSED_SESSION	= 0x4,
-	SHM_DIRTY_SESSION	= 0x8,
+	SHM_PRESENT		= 0x01,
+	SHM_DIRTY		= 0x02,
+	SHM_ACCESSED_SESSION	= 0x04,
+	SHM_DIRTY_SESSION	= 0x08,
+	SHM_CACHED		= 0x10,
+	SHM_CACHE_DIRTY		= 0x20,
 };
 
 static off64_t cache_chunk_to_offset(struct pk_state *state, unsigned chunk)
@@ -302,6 +304,20 @@ void cache_shm_set_dirty(struct pk_state *state, unsigned chunk)
 {
 	shm_update(state, chunk, SHM_PRESENT | SHM_ACCESSED_SESSION |
 				SHM_DIRTY | SHM_DIRTY_SESSION, 0);
+}
+
+void cache_shm_set_cached(struct pk_state *state, unsigned chunk,
+				gboolean cached)
+{
+	shm_update(state, chunk, cached ? SHM_CACHED : 0,
+				cached ? 0 : SHM_CACHED);
+}
+
+void cache_shm_set_cache_dirty(struct pk_state *state, unsigned chunk,
+				gboolean dirty)
+{
+	shm_update(state, chunk, dirty ? SHM_CACHE_DIRTY : 0,
+				dirty ? 0 : SHM_CACHE_DIRTY);
 }
 
 static pk_err_t shm_init(struct pk_state *state)

@@ -1,7 +1,7 @@
 /*
  * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
  *
- * Copyright (C) 2006-2010 Carnegie Mellon University
+ * Copyright (C) 2006-2011 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -218,6 +218,10 @@ pk_err_t cache_set_flag(struct pk_state *state, unsigned flag);
 pk_err_t cache_clear_flag(struct pk_state *state, unsigned flag);
 int cache_test_flag(struct pk_state *state, unsigned flag);
 void cache_shm_set_dirty(struct pk_state *state, unsigned chunk);
+void cache_shm_set_cached(struct pk_state *state, unsigned chunk,
+				gboolean cached);
+void cache_shm_set_cache_dirty(struct pk_state *state, unsigned chunk,
+				gboolean dirty);
 
 /* cache_modes.c */
 int copy_for_upload(struct pk_state *state);

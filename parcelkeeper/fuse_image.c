@@ -1,7 +1,7 @@
 /*
  * Parcelkeeper - support daemon for the OpenISR (R) system virtual disk
  *
- * Copyright (C) 2006-2010 Carnegie Mellon University
+ * Copyright (C) 2006-2011 Carnegie Mellon University
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as published
@@ -102,6 +102,7 @@ static void entry_clean(struct pk_state *state, struct cache_entry *ent)
 	g_mutex_lock(state->fuse->image.lock);
 
 	ent->dirty = 0;
+	cache_shm_set_cache_dirty(state, ent->chunk, FALSE);
 }
 
 /* Acquire the busy flag for an entry.  Image lock must be held, and may be
@@ -185,8 +186,10 @@ static struct cache_entry *entry_acquire(struct pk_state *state,
 			g_assert(reclaim->data != NULL);
 			ent->data = reclaim->data;
 			reclaim->data = NULL;
+			cache_shm_set_cached(state, reclaim->chunk, FALSE);
 			_entry_release(state, reclaim);
 		}
+		cache_shm_set_cached(state, ent->chunk, TRUE);
 		g_mutex_unlock(state->fuse->image.lock);
 
 		/* Populate it if requested. */
@@ -219,6 +222,7 @@ static void entry_release(struct pk_state *state, struct cache_entry *ent,
 			   needs to recalculate its wakeup time */
 			g_cond_signal(state->fuse->cleaner.cond);
 		}
+		cache_shm_set_cache_dirty(state, ent->chunk, TRUE);
 	}
 	_entry_release(state, ent);
 	g_mutex_unlock(state->fuse->image.lock);
@@ -315,6 +319,7 @@ void image_shutdown(struct pk_state *state)
 		g_assert(ent->data != NULL);
 		g_slice_free1(state->parcel->chunksize, ent->data);
 		ent->data = NULL;
+		cache_shm_set_cached(state, ent->chunk, FALSE);
 		/* Since the entry has no buffer, it will be freed */
 		_entry_release(state, ent);
 	}
