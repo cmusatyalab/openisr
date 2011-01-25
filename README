@@ -15,6 +15,7 @@ To run:
 - GTK+
 - PyGTK
 - gtk-vnc Python bindings
+- PyYAML
 - Perl
 - Python >= 2.4
 - ssh

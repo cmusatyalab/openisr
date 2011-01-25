@@ -2,7 +2,7 @@
 #
 # virtualbox - OpenISR (R) VMM driver for VirtualBox >= 3.0.2
 #
-# Copyright (C) 2008-2010 Carnegie Mellon University
+# Copyright (C) 2008-2011 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as published
@@ -25,6 +25,7 @@ import struct
 import time
 import random
 import xml.dom.minidom
+import yaml
 sys.path.insert(1, '!!SHAREDIR!!')
 import vmm
 from vmm import *
@@ -436,6 +437,18 @@ ddb.adapterType = "ide"
 	f.close()
 
 def create_machine():
+	config = {
+		'show-firstrun': True,
+	}
+	try:
+		config.update(yaml.safe_load(file(setup_path)))
+	except IOError:
+		pass
+	except yaml.YAMLError, e:
+		raise VmmError(str(e).replace('\n', ' '))
+	except ValueError:
+		raise VmmError("Couldn't parse %s" % setup_path)
+
 	vmname = parcelname()
 	vm = compat.create_machine(vmm.CFGDIR, vmname, vmm.UUID)
 	vm.memorySize = vmm.MEM
@@ -447,7 +460,8 @@ def create_machine():
 	net.adapterType = ifaces.NetworkAdapterType.I82543GC
 	net.attachToNAT()
 	net.enabled = True
-	vm.setExtraData('GUI/FirstRun', 'yes')
+	if config['show-firstrun']:
+		vm.setExtraData('GUI/FirstRun', 'yes')
 	vm.saveSettings()
 	del vm
 	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), vm_path)
@@ -808,5 +822,6 @@ vmm.DEBUG = (vmm.VERBOSE == "yes")
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
 disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
 saved_path = vmm.CFGDIR + '/virtualbox.sav'
+setup_path = vmm.CFGDIR + '/virtualbox.setup'
 signaled = False
 main()
