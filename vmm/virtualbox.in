@@ -104,7 +104,7 @@ class VboxCompat(object):
 			# happen, so return False in this case.
 			return ver < (1,9)
 
-	def __configure_cpu(self, vm):
+	def __configure_cpu(self, vm, enable64):
 		'''Configure CPUID flags.  Only makes sense on VBox >= 3.1.'''
 
 		def str32(string, length):
@@ -154,7 +154,7 @@ class VboxCompat(object):
 		# Extended leaf 0: highest extended leaf
 		set_leaf(ext_leaf(0), ext_leaf(4), 0, 0, 0)
 		# Extended leaf 1: extended features
-		set_leaf(ext_leaf(1), 0, 0, 0, 0)
+		set_leaf(ext_leaf(1), 0, 0, 0, enable64 and 0x20000000 or 0)
 		# Extended leaves 2 to 4: processor name
 		for i in range(3):
 			set_leaf(ext_leaf(2 + i), *lname[4 * i : 4 * i + 4])
@@ -168,22 +168,31 @@ class VboxCompat(object):
 		# applications examining the CPUID.
 		vm.setExtraData('VBoxInternal/CPUM/StrictCpuIdChecks', '0')
 
-	def create_machine(self, vmdir, name, uuid):
+	def create_machine(self, vmdir, name, uuid, enable64):
 		'''Create a machine, configure its processor features, and
 		return it.'''
-		if self.vbox_ver < (3,2):
-			vm = vbox.createMachine(name, 'Other', vmdir, uuid)
+		if enable64:
+			# We need to specify a 64-bit operating system so
+			# that VBox knows to enable 64-bit guest support
+			# when running on a 32-bit host, but there is no
+			# "Other_64" OS type.
+			ostype = 'Linux26_64'
 		else:
-			vm = vbox.createMachine(name, 'Other', vmdir, uuid,
+			ostype = 'Other'
+
+		if self.vbox_ver < (3,2):
+			vm = vbox.createMachine(name, ostype, vmdir, uuid)
+		else:
+			vm = vbox.createMachine(name, ostype, vmdir, uuid,
 						False)
 
 		if self.vbox_ver < (3,1):
-			vm.HWVirtExEnabled = False
+			vm.HWVirtExEnabled = enable64
 		else:
 			vm.setHWVirtExProperty( \
 					ifaces.HWVirtExPropertyType.Enabled,
-					False)
-			self.__configure_cpu(vm)
+					enable64)
+			self.__configure_cpu(vm, enable64)
 
 		return vm
 
@@ -446,6 +455,7 @@ ddb.adapterType = "ide"
 def create_machine():
 	config = {
 		'show-firstrun': True,
+		'64-bit': False,
 	}
 	try:
 		config.update(yaml.safe_load(file(setup_path)))
@@ -457,7 +467,8 @@ def create_machine():
 		raise VmmError("Couldn't parse %s" % setup_path)
 
 	vmname = parcelname()
-	vm = compat.create_machine(vmm.CFGDIR, vmname, vmm.UUID)
+	vm = compat.create_machine(vmm.CFGDIR, vmname, vmm.UUID,
+				config['64-bit'])
 	vm.memorySize = vmm.MEM
 	vm.VRAMSize = 16
 	vm.snapshotFolder = '.'
@@ -469,6 +480,8 @@ def create_machine():
 	net.enabled = True
 	if config['show-firstrun']:
 		vm.setExtraData('GUI/FirstRun', 'yes')
+	if config['64-bit']:
+		vm.BIOSSettings.IOAPICEnabled = True
 	vm.saveSettings()
 	del vm
 	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), vm_path)
