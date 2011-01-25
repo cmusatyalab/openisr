@@ -268,6 +268,13 @@ class VboxCompat(object):
 		except:
 			pass
 
+	def mount_dvd_medium(self, sesn_machine, uuid):
+		if self.vbox_ver < (3,1):
+			sesn_machine.DVDDrive.mountImage(uuid)
+		else:
+			ctlr = self.__get_ide_controller(sesn_machine)
+			sesn_machine.mountMedium(ctlr, 1, 0, uuid, False)
+
 	def fixup_removable_devices(self, mf):
 		"""On VirtualBox 3.1 and above, unregistered machines cannot
 		have any removable media attached (or, indeed, any removable
@@ -629,6 +636,10 @@ def fixup_machine():
 def register_machine():
 	disk = vbox.openHardDisk(disk_path, ifaces.AccessMode.ReadWrite,
 				False, '', False, '')
+	if os.path.exists(iso_path):
+		dvd = vbox.openDVDImage(iso_path, '')
+	else:
+		dvd = None
 	vm = vbox.openMachine(vm_path)
 	vbox.registerMachine(vm)
 	sesn = new_instance(CLASS_SESN)
@@ -636,6 +647,8 @@ def register_machine():
 	try:
 		compat.attach_ide_disk(sesn.machine, disk.id, 0, 0)
 		compat.attach_removable_drives(sesn.machine)
+		if dvd is not None:
+			compat.mount_dvd_medium(sesn.machine, dvd.id)
 		if vmm.FULLSCREEN == 'yes':
 			fullscreen = 'on'
 		else:
@@ -683,6 +696,13 @@ def unregister_machine(do_save = True):
 		pass
 	else:
 		disk.close()
+
+	try:
+		dvd = vbox.findDVDImage(iso_path)
+	except:
+		pass
+	else:
+		dvd.close()
 
 def run_machine():
 	global signaled
@@ -821,6 +841,7 @@ def cleanup():
 vmm.DEBUG = (vmm.VERBOSE == "yes")
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
 disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
+iso_path = vmm.CFGDIR + '/virtualbox.iso'
 saved_path = vmm.CFGDIR + '/virtualbox.sav'
 setup_path = vmm.CFGDIR + '/virtualbox.setup'
 signaled = False
