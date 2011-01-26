@@ -454,7 +454,7 @@ ddb.adapterType = "ide"
 
 def create_machine():
 	config = {
-		'show-firstrun': True,
+		'preconfigured': False,
 		'64-bit': False,
 	}
 	try:
@@ -478,7 +478,7 @@ def create_machine():
 	net.adapterType = ifaces.NetworkAdapterType.I82543GC
 	net.attachToNAT()
 	net.enabled = True
-	if config['show-firstrun']:
+	if not config['preconfigured']:
 		vm.setExtraData('GUI/FirstRun', 'yes')
 	if config['64-bit']:
 		vm.BIOSSettings.IOAPICEnabled = True
@@ -855,7 +855,7 @@ vmm.DEBUG = (vmm.VERBOSE == "yes")
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
 disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
 saved_path = vmm.CFGDIR + '/virtualbox.sav'
-setup_path = vmm.CFGDIR + '/virtualbox.setup'
+setup_path = vmm.CFGDIR + '/parcel.setup'
 iso_path = vmm.CFGDIR + '/parcel.iso'
 signaled = False
 main()
