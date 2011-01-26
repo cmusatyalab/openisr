@@ -854,8 +854,8 @@ def cleanup():
 vmm.DEBUG = (vmm.VERBOSE == "yes")
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
 disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
-iso_path = vmm.CFGDIR + '/virtualbox.iso'
 saved_path = vmm.CFGDIR + '/virtualbox.sav'
 setup_path = vmm.CFGDIR + '/virtualbox.setup'
+iso_path = vmm.CFGDIR + '/parcel.iso'
 signaled = False
 main()

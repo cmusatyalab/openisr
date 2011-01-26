@@ -126,8 +126,8 @@ sub find_cdrom {
 	my @paths;
 	my $path;
 
-	return "$CFGDIR/kvm.iso"
-		if -e "$CFGDIR/kvm.iso";
+	return "$CFGDIR/parcel.iso"
+		if -e "$CFGDIR/parcel.iso";
 	opendir($dh, "/dev")
 		or return undef;
 	@paths = map "/dev/$_", sort grep /^cdrom/, readdir $dh;
