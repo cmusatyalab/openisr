@@ -553,9 +553,22 @@ void update_img(void)
 
 void img_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
 {
+	static int prior_width;
 	gboolean do_update;
 
 	do_update = img_width != alloc->width;
+	if (prior_width == alloc->width &&
+				ABS(alloc->width - img_width) > 10) {
+		/* We are cycling between two size allocations with
+		   significantly different widths, probably indicating that
+		   GtkScrolledWindow is oscillating adding and removing the
+		   scroll bar.  This can happen when our size allocation, with
+		   scroll bar, is just above the number of pixels we need for
+		   the whole image.  Break the loop by refusing to update the
+		   bitmap. */
+		do_update = FALSE;
+	}
+	prior_width = img_width;
 	img_width = alloc->width;
 	if (do_update)
 		update_img();
