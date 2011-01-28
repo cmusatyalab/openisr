@@ -553,8 +553,12 @@ void update_img(void)
 
 void img_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
 {
+	gboolean do_update;
+
+	do_update = img_width != alloc->width;
 	img_width = alloc->width;
-	update_img();
+	if (do_update)
+		update_img();
 }
 
 /** Window *******************************************************************/
@@ -958,7 +962,8 @@ void init_window(void)
 	GtkWidget *stats_table;
 	GtkWidget *lbl;
 	GtkWidget *menu;
-	GtkWidget *img_box;
+	GtkWidget *img_viewport;
+	GtkWidget *img_scroller;
 	GtkTooltips *tips;
 	struct stats *st;
 	struct stat_output *output;
@@ -985,15 +990,25 @@ void init_window(void)
 	gtk_container_set_border_width(GTK_CONTAINER(stats_table), 2);
 	img = gtk_image_new();
 	gtk_misc_set_alignment(GTK_MISC(img), 0, 0);
-	img_box = gtk_event_box_new();
-	gtk_container_set_border_width(GTK_CONTAINER(img_box), 2);
-	gtk_container_add(GTK_CONTAINER(img_box), img);
-	gtk_tooltips_set_tip(tips, img_box, img_tooltip, NULL);
+	img_scroller = gtk_scrolled_window_new(NULL, NULL);
+	img_viewport = gtk_viewport_new(
+				gtk_scrolled_window_get_hadjustment(
+				GTK_SCROLLED_WINDOW(img_scroller)
+				), gtk_scrolled_window_get_vadjustment(
+				GTK_SCROLLED_WINDOW(img_scroller)));
+	gtk_tooltips_set_tip(tips, img_viewport, img_tooltip, NULL);
+	gtk_viewport_set_shadow_type(GTK_VIEWPORT(img_viewport),
+				GTK_SHADOW_NONE);
+	gtk_container_add(GTK_CONTAINER(img_viewport), img);
+	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(img_scroller),
+				GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+	gtk_container_set_border_width(GTK_CONTAINER(img_scroller), 2);
+	gtk_container_add(GTK_CONTAINER(img_scroller), img_viewport);
 	gtk_container_add(GTK_CONTAINER(wd), vbox);
 	gtk_box_pack_start(GTK_BOX(vbox), pane_widget("show_stats",
 				stats_table), FALSE, FALSE, 0);
-	gtk_box_pack_end(GTK_BOX(vbox), pane_widget("show_bitmap", img_box),
-				TRUE, TRUE, 0);
+	gtk_box_pack_end(GTK_BOX(vbox), pane_widget("show_bitmap",
+				img_scroller), TRUE, TRUE, 0);
 	for (i = 0; statistics[i].heading != NULL; i++) {
 		st = &statistics[i];
 		lbl = gtk_label_new(st->heading);
@@ -1030,8 +1045,8 @@ void init_window(void)
 				menu);
 	g_signal_connect(wd, "map-event", G_CALLBACK(map), NULL);
 	g_signal_connect(wd, "unmap-event", G_CALLBACK(unmap), NULL);
-	g_signal_connect(img, "size-allocate", G_CALLBACK(img_size_allocate),
-				NULL);
+	g_signal_connect(img_viewport, "size-allocate",
+				G_CALLBACK(img_size_allocate), NULL);
 
 	x = g_key_file_get_integer(config, CONFIG_GROUP, "x", &err1);
 	y = g_key_file_get_integer(config, CONFIG_GROUP, "y", &err2);
