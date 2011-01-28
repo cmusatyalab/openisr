@@ -20,6 +20,7 @@
 #include <sys/mman.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -91,6 +92,14 @@ void update_label(GtkLabel *lbl, const char *val)
 {
 	if (strcmp(gtk_label_get_label(lbl), val))
 		gtk_label_set_label(lbl, val);
+}
+
+int set_signal_handler(int sig, void (*handler)(int sig))
+{
+	struct sigaction sa = {};
+	sa.sa_handler = handler;
+	sa.sa_flags = SA_RESTART;
+	return sigaction(sig, &sa, NULL);
 }
 
 /** Config file **************************************************************/
@@ -1036,6 +1045,11 @@ void init_window(void)
 	resize_window(NULL, NULL);
 }
 
+void signal_handler(int sig)
+{
+	gtk_main_quit();
+}
+
 GOptionEntry options[] = {
 	{"name", 'n', 0, G_OPTION_ARG_STRING, &name, "Parcel name", "NAME"},
 	{NULL, 0, 0, 0, NULL, NULL, NULL}
@@ -1061,6 +1075,7 @@ int main(int argc, char **argv)
 	init_files();
 	read_config();
 	init_window();
+	set_signal_handler(SIGINT, signal_handler);
 	g_timeout_add(100, update_event, NULL);
 	gtk_main();
 	write_config();
