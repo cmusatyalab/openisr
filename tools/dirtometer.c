@@ -38,16 +38,13 @@ struct pane {
 	const char *frame_label;
 	const char *menu_label;
 	gboolean initial;
+	gboolean resizable;
 	unsigned accel;
 	GtkWidget *widget;
 	GtkWidget *checkbox;
-	int last_req_width;
-	int last_req_height;
-	int width;
-	int height;
 } panes[] = {
-	{"show_stats",	"Statistics",	"Show statistics",	TRUE,	GDK_s},
-	{"show_bitmap",	"Chunk bitmap",	"Show chunk bitmap",	TRUE,	GDK_c},
+	{"show_stats",	"Statistics",	"Show statistics",	TRUE,	FALSE,	GDK_s},
+	{"show_bitmap",	"Chunk bitmap",	"Show chunk bitmap",	TRUE,	TRUE,	GDK_c},
 	{NULL}
 };
 
@@ -463,12 +460,7 @@ void update_stats(void)
 /** Chunk bitmap pane ********************************************************/
 
 GtkWidget *img;
-int img_width;
-
-int optimal_height(int width)
-{
-	return (numchunks + width - 1) / width;
-}
+GtkWidget *img_viewport;
 
 void free_pixels(unsigned char *pixels, void *data)
 {
@@ -485,6 +477,7 @@ void update_img(void)
 	int numpixels;
 	GdkPixbuf *pixbuf;
 	int i;
+	int width;
 	int height;
 	int changed = 0;
 	gboolean show_image_cache;
@@ -492,12 +485,11 @@ void update_img(void)
 	if (!mapped || !g_key_file_get_boolean(config, CONFIG_GROUP,
 				"show_bitmap", NULL))
 		return;
-	if (img_width == 0)
-		return;  /* need to wait for img_size_allocate() callback */
 	if (prev_states == NULL)
 		prev_states = g_malloc(numchunks);
-	height = optimal_height(img_width);
-	numpixels = height * img_width;
+	width = img_viewport->allocation.width;
+	height = (numchunks + width - 1) / width;
+	numpixels = height * width;
 	pixels = g_malloc(4 * numpixels);
 	show_image_cache = g_key_file_get_boolean(config, CONFIG_GROUP,
 				"show_image_cache", NULL);
@@ -536,14 +528,14 @@ void update_img(void)
 		pixels[i] = 0;
 	/* These calls are expensive for large buffers, so we only invoke them
 	   if the image has changed */
-	if (changed || img_width != last_width || height != last_height) {
+	if (changed || width != last_width || height != last_height) {
 		pixbuf = gdk_pixbuf_new_from_data((guchar *)pixels,
 					GDK_COLORSPACE_RGB, TRUE, 8,
-					img_width, height, img_width * 4,
+					width, height, width * 4,
 					free_pixels, NULL);
 		gtk_image_set_from_pixbuf(GTK_IMAGE(img), pixbuf);
 		g_object_unref(pixbuf);
-		last_width = img_width;
+		last_width = width;
 		last_height = height;
 		last_show_image_cache = show_image_cache;
 	} else {
@@ -553,12 +545,13 @@ void update_img(void)
 
 void img_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
 {
+	static int current_width;
 	static int prior_width;
 	gboolean do_update;
 
-	do_update = img_width != alloc->width;
+	do_update = current_width != alloc->width;
 	if (prior_width == alloc->width &&
-				ABS(alloc->width - img_width) > 10) {
+				ABS(alloc->width - current_width) > 10) {
 		/* We are cycling between two size allocations with
 		   significantly different widths, probably indicating that
 		   GtkScrolledWindow is oscillating adding and removing the
@@ -568,8 +561,8 @@ void img_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
 		   bitmap. */
 		do_update = FALSE;
 	}
-	prior_width = img_width;
-	img_width = alloc->width;
+	prior_width = current_width;
+	current_width = alloc->width;
 	if (do_update)
 		update_img();
 }
@@ -578,86 +571,35 @@ void img_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
 
 GtkWidget *wd;
 int state_fd;
-gboolean resize_pending;
 
-#define WINDOW_BORDER		2
-#define IMG_MIN_WIDTH_PADDING	20
-#define IMG_MIN_HEIGHT_PADDING	25
-#define IMG_BORDER_WIDTH	16
-#define IMG_HEIGHT_PADDING	5
-/* Calculating the correct window size is difficult when the bitmap is enabled,
-   because the height depends on the width and there's no straightforward way
-   to calculate the width the bitmap itself will be assigned after frame and
-   padding are included.  So we apply fudge factors. */
-void resize_window(struct pane *added, struct pane *dropped)
+void resize_window(void)
 {
 	struct pane *pane;
-	GtkRequisition label_req;
-	GtkRequisition req;
-	int min_width = 0;
-	int min_height = 0;
+	gboolean resizable = FALSE;
 	int width;
 	int height;
 
 	width = g_key_file_get_integer(config, CONFIG_GROUP, "width", NULL);
 	height = g_key_file_get_integer(config, CONFIG_GROUP, "height", NULL);
-	for (pane = panes; pane->config_key != NULL; pane++)
-		if (!strcmp(pane->config_key, "show_bitmap"))
-			gtk_widget_size_request(
-					gtk_frame_get_label_widget(
-					GTK_FRAME(pane->widget)), &label_req);
 
-	/* Expand/contract the window if a pane was added/removed. */
-	if (added != NULL) {
-		if (!strcmp(added->config_key, "show_bitmap")) {
-			height += optimal_height(width - IMG_BORDER_WIDTH)
-						+ label_req.height
-						+ IMG_HEIGHT_PADDING;
-		} else {
-			gtk_widget_size_request(added->widget, &req);
-			height += req.height;
-		}
-	}
-	if (dropped != NULL)
-		height -= dropped->height;
-
-	/* Calculate the minimum window size. */
+	/* Calculate window resizability. */
 	for (pane = panes; pane->config_key != NULL; pane++) {
 		if (!g_key_file_get_boolean(config, CONFIG_GROUP,
 					pane->config_key, NULL))
 			continue;
-		if (!strcmp(pane->config_key, "show_bitmap")) {
-			min_width = max(min_width, label_req.width
-						+ IMG_MIN_WIDTH_PADDING);
-			min_height += label_req.height
-						+ IMG_MIN_HEIGHT_PADDING;
-		} else {
-			gtk_widget_size_request(pane->widget, &req);
-			min_width = max(min_width, req.width);
-			min_height += req.height;
-		}
+		if (pane->resizable)
+			resizable = TRUE;
 	}
-	min_width += 2 * WINDOW_BORDER;
-	min_height += 2 * WINDOW_BORDER;
 
-	/* Make sure the window size is at least the minimum. */
-	if (width < min_width && g_key_file_get_boolean(config, CONFIG_GROUP,
-				"show_bitmap", NULL)) {
-		/* We need to recalculate the height so that we don't end up
-		   with a bunch of empty rows at the bottom of the bitmap. */
-		width = min_width;
-		height = min_height - IMG_MIN_HEIGHT_PADDING +
-				optimal_height(width - IMG_BORDER_WIDTH) +
-				IMG_HEIGHT_PADDING;
-	} else {
-		width = max(min_width, width);
-		height = max(min_height, height);
-	}
+	/* If not resizable, use the minimum size. */
+	if (!resizable)
+		width = height = 1;
 
 	g_key_file_set_integer(config, CONFIG_GROUP, "width", width);
 	g_key_file_set_integer(config, CONFIG_GROUP, "height", height);
+	/* Resize the window, respecting the minimum size. */
 	gtk_window_resize(GTK_WINDOW(wd), width, height);
-	gtk_widget_set_size_request(wd, min_width, min_height);
+	gtk_window_set_resizable(GTK_WINDOW(wd), resizable);
 }
 
 gboolean update_event(void *data)
@@ -671,34 +613,6 @@ gboolean update_event(void *data)
 	update_stats();
 	update_img();
 	return TRUE;
-}
-
-gboolean do_resize(void *unused)
-{
-	resize_window(NULL, NULL);
-	resize_pending = FALSE;
-	return FALSE;
-}
-
-void pane_size_request(GtkWidget *widget, GtkRequisition *req, void *data)
-{
-	struct pane *pane = data;
-
-	if (!resize_pending && (req->width != pane->last_req_width ||
-				req->height != pane->last_req_height)) {
-		g_idle_add(do_resize, NULL);
-		resize_pending = TRUE;
-		pane->last_req_width = req->width;
-		pane->last_req_height = req->height;
-	}
-}
-
-void pane_size_allocate(GtkWidget *widget, GtkAllocation *alloc, void *data)
-{
-	struct pane *pane = data;
-
-	pane->width = alloc->width;
-	pane->height = alloc->height;
 }
 
 gboolean configure(GtkWidget *widget, GdkEventConfigure *event, void *data)
@@ -763,15 +677,13 @@ gboolean menu_toggle_pane(GtkCheckMenuItem *item, void *data)
 
 	newval = gtk_check_menu_item_get_active(item);
 	g_key_file_set_boolean(config, CONFIG_GROUP, pane->config_key, newval);
-	if (newval) {
+	if (newval)
 		gtk_widget_show(pane->widget);
-		resize_window(pane, NULL);
-	} else {
+	else
 		gtk_widget_hide(pane->widget);
-		resize_window(NULL, pane);
-	}
 	if (!strcmp(pane->config_key, "show_bitmap"))
 		gtk_widget_set_sensitive(image_cache_item, newval);
+	resize_window();
 	update_pane_dimmers();
 	return TRUE;
 }
@@ -945,12 +857,6 @@ GtkWidget *pane_widget(const char *config_key, GtkWidget *widget)
 			frame = gtk_frame_new(pane->frame_label);
 			gtk_container_add(GTK_CONTAINER(frame), widget);
 			pane->widget = frame;
-			g_signal_connect(frame, "size-request",
-						G_CALLBACK(pane_size_request),
-						pane);
-			g_signal_connect(frame, "size-allocate",
-						G_CALLBACK(pane_size_allocate),
-						pane);
 			return frame;
 		}
 	}
@@ -975,7 +881,6 @@ void init_window(void)
 	GtkWidget *stats_table;
 	GtkWidget *lbl;
 	GtkWidget *menu;
-	GtkWidget *img_viewport;
 	GtkWidget *img_scroller;
 	GtkTooltips *tips;
 	struct stats *st;
@@ -991,7 +896,7 @@ void init_window(void)
 	wd = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(wd), title);
 	g_free(title);
-	gtk_container_set_border_width(GTK_CONTAINER(wd), WINDOW_BORDER);
+	gtk_container_set_border_width(GTK_CONTAINER(wd), 2);
 	gtk_window_set_gravity(GTK_WINDOW(wd), GDK_GRAVITY_STATIC);
 	accels = gtk_accel_group_new();
 	gtk_window_add_accel_group(GTK_WINDOW(wd), accels);
@@ -1012,6 +917,7 @@ void init_window(void)
 	gtk_tooltips_set_tip(tips, img_viewport, img_tooltip, NULL);
 	gtk_viewport_set_shadow_type(GTK_VIEWPORT(img_viewport),
 				GTK_SHADOW_NONE);
+	gtk_widget_set_size_request(img_viewport, 0, 150);
 	gtk_container_add(GTK_CONTAINER(img_viewport), img);
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(img_scroller),
 				GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
@@ -1070,7 +976,7 @@ void init_window(void)
 	gtk_window_set_keep_above(GTK_WINDOW(wd),
 				g_key_file_get_boolean(config, CONFIG_GROUP,
 				"keep_above", NULL));
-	resize_window(NULL, NULL);
+	resize_window();
 }
 
 void signal_handler(int sig)
