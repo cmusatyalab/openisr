@@ -602,6 +602,35 @@ void resize_window(void)
 	gtk_window_set_resizable(GTK_WINDOW(wd), resizable);
 }
 
+void move_window(void)
+{
+	int x;
+	int y;
+	GError *err1 = NULL;
+	GError *err2 = NULL;
+	GdkScreen *screen;
+	int monitor;
+	GdkRectangle geom;
+
+	x = g_key_file_get_integer(config, CONFIG_GROUP, "x", &err1);
+	y = g_key_file_get_integer(config, CONFIG_GROUP, "y", &err2);
+	if (err1 != NULL || err2 != NULL) {
+		g_clear_error(&err1);
+		g_clear_error(&err2);
+		return;
+	}
+
+	/* Find out if this is a valid screen coordinate. */
+	screen = gtk_window_get_screen(wd);
+	monitor = gdk_screen_get_monitor_at_point(screen, x, y);
+	gdk_screen_get_monitor_geometry(screen, monitor, &geom);
+	if (x < geom.x || x >= geom.x + geom.width || y < geom.y ||
+				y >= geom.y + geom.height)
+		return;
+
+	gtk_window_move(GTK_WINDOW(wd), x, y);
+}
+
 gboolean update_event(void *data)
 {
 	struct stat st;
@@ -874,8 +903,6 @@ const char img_tooltip[] =
 
 void init_window(void)
 {
-	GError *err1 = NULL;
-	GError *err2 = NULL;
 	GtkAccelGroup *accels;
 	GtkWidget *vbox;
 	GtkWidget *stats_table;
@@ -887,8 +914,6 @@ void init_window(void)
 	struct stat_output *output;
 	struct pane *pane;
 	char *title;
-	int x;
-	int y;
 	int i;
 	int j;
 
@@ -967,12 +992,7 @@ void init_window(void)
 	g_signal_connect(img_viewport, "size-allocate",
 				G_CALLBACK(img_size_allocate), NULL);
 
-	x = g_key_file_get_integer(config, CONFIG_GROUP, "x", &err1);
-	y = g_key_file_get_integer(config, CONFIG_GROUP, "y", &err2);
-	if (err1 == NULL && err2 == NULL)
-		gtk_window_move(GTK_WINDOW(wd), x, y);
-	g_clear_error(&err1);
-	g_clear_error(&err2);
+	move_window();
 	gtk_window_set_keep_above(GTK_WINDOW(wd),
 				g_key_file_get_boolean(config, CONFIG_GROUP,
 				"keep_above", NULL));
