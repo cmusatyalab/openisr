@@ -910,6 +910,7 @@ void init_window(void)
 	GtkWidget *menu;
 	GtkWidget *img_scroller;
 	GtkTooltips *tips;
+	PangoAttrList *palist;
 	struct stats *st;
 	struct stat_output *output;
 	struct pane *pane;
@@ -950,11 +951,20 @@ void init_window(void)
 				GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
 	gtk_container_set_border_width(GTK_CONTAINER(img_scroller), 2);
 	gtk_container_add(GTK_CONTAINER(img_scroller), img_viewport);
-	gtk_container_add(GTK_CONTAINER(wd), vbox);
+	lbl = gtk_label_new(name);
+	palist = pango_attr_list_new();
+	pango_attr_list_insert(palist,
+				pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+	gtk_label_set_attributes(GTK_LABEL(lbl), palist);
+	pango_attr_list_unref(palist);
+	gtk_misc_set_alignment(GTK_MISC(lbl), 0, 0);
+	gtk_misc_set_padding(GTK_MISC(lbl), 3, 2);
+	gtk_box_pack_start(GTK_BOX(vbox), lbl, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(vbox), pane_widget("show_stats",
 				stats_table), FALSE, FALSE, 0);
 	gtk_box_pack_end(GTK_BOX(vbox), pane_widget("show_bitmap",
 				img_scroller), TRUE, TRUE, 0);
+	gtk_container_add(GTK_CONTAINER(wd), vbox);
 	for (i = 0; statistics[i].heading != NULL; i++) {
 		st = &statistics[i];
 		lbl = gtk_label_new(st->heading);
