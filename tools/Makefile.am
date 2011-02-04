@@ -23,6 +23,7 @@ disktool_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS) $(NO_FIELD_INITIALIZER_WARNINGS)
 disktool_LDFLAGS = $(glib_LIBS) -lisrsql -lisrutil
 dirtometer_CFLAGS = $(AM_CFLAGS) $(gtk_CFLAGS) $(glib_CFLAGS)
 dirtometer_CFLAGS += -Wno-unused-parameter $(NO_FIELD_INITIALIZER_WARNINGS)
+dirtometer_CFLAGS += -DSHAREDIR=\"$(pkgdatadir)\"
 dirtometer_LDFLAGS = $(gtk_LIBS) $(glib_LIBS)
 query_CFLAGS = $(AM_CFLAGS) $(glib_CFLAGS)
 query_LDFLAGS = $(glib_LIBS) -lisrsql

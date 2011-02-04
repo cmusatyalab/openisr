@@ -920,6 +920,8 @@ void init_window(void)
 	title = g_strdup_printf("Dirtometer: %s", name);
 	wd = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(wd), title);
+	gtk_window_set_icon_from_file(GTK_WINDOW(wd),
+				SHAREDIR "/logo-128.png", NULL);
 	g_free(title);
 	gtk_container_set_border_width(GTK_CONTAINER(wd), 2);
 	gtk_window_set_gravity(GTK_WINDOW(wd), GDK_GRAVITY_STATIC);
