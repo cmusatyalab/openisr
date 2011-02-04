@@ -621,7 +621,7 @@ void move_window(void)
 	}
 
 	/* Find out if this is a valid screen coordinate. */
-	screen = gtk_window_get_screen(wd);
+	screen = gtk_window_get_screen(GTK_WINDOW(wd));
 	monitor = gdk_screen_get_monitor_at_point(screen, x, y);
 	gdk_screen_get_monitor_geometry(screen, monitor, &geom);
 	if (x < geom.x || x >= geom.x + geom.width || y < geom.y ||
