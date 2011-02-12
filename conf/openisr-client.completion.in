@@ -304,7 +304,7 @@ _isr() {
 		# Need local parcel
 		COMPREPLY=(`_isr_local_parcel $server $user $cur`)
 		;;
-	co|checkout|hoard|resume|ls|clean)
+	co|checkout|hoard|resume|ls)
 		# Need local or remote parcel
 		COMPREPLY=(`_isr_remote_parcel $server $user $cur`)
 		;;
@@ -318,6 +318,15 @@ _isr() {
 		# Need local or remote parcel depending on options
 		if [ `_isr_find_word -e` != "-1" -o \
 				`_isr_find_word --remote` != "-1" ] ; then
+			COMPREPLY=(`_isr_remote_parcel $server $user $cur`)
+		else
+			COMPREPLY=(`_isr_local_parcel $server $user $cur`)
+		fi
+		;;
+	clean)
+		# Need local or remote parcel depending on options
+		if [ `_isr_find_word -f` != "-1" -o \
+				`_isr_find_word --force` != "-1" ] ; then
 			COMPREPLY=(`_isr_remote_parcel $server $user $cur`)
 		else
 			COMPREPLY=(`_isr_local_parcel $server $user $cur`)
