@@ -595,6 +595,12 @@ void resize_window(void)
 	if (!resizable)
 		width = height = 1;
 
+	/* To prevent gtk assertions, ensure that the config file does not
+	   cause us to call gtk_window_resize() with an invalid height or
+	   width. */
+	height = MAX(height, 1);
+	width = MAX(width, 1);
+
 	g_key_file_set_integer(config, CONFIG_GROUP, "width", width);
 	g_key_file_set_integer(config, CONFIG_GROUP, "height", height);
 	/* Resize the window, respecting the minimum size. */
