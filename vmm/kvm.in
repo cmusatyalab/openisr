@@ -155,7 +155,6 @@ sub get_config {
 			-parallel none
 			-usb
 			-usbdevice tablet
-			-no-quit
 EOF
 		open(KCONF, ">", $file)
 			or fail "Couldn't write $file";
@@ -170,6 +169,8 @@ EOF
 		chomp;
 		$conf .= " -cdrom $cdrom"
 			if s/-cdrom\s+auto// and defined $cdrom;
+		# Ignore -no-quit if present in the config file
+		s/-no-quit//;
 		$conf .= " $_";
 	}
 	close KCONF;
