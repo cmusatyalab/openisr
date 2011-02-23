@@ -127,6 +127,9 @@ class VncViewer(object):
 		if self.hostkey_down:
 			if lower(ev.keyval) == key('f'):
 				if self.fullscreen:
+					# Prevent Metacity from "helpfully"
+					# returning the window to fullscreen
+					self.wind.resize(1, 1)
 					self.wind.unfullscreen()
 				else:
 					self.wind.fullscreen()
