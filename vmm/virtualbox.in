@@ -1017,6 +1017,15 @@ def cleanup():
 	except OSError:
 		pass
 
+	# If VBox 4 finds a machine whose snapshotFolder is set to ".", as we
+	# have always done, it changes the setting to "Snapshots".  This will
+	# cause parcels which have ever been used under VBox 4 to create a
+	# "Snapshots" directory when the parcel is suspended.
+	try:
+		os.rmdir(os.path.join(vmm.CFGDIR, 'Snapshots'))
+	except OSError:
+		pass
+
 vmm.DEBUG = (vmm.VERBOSE == "yes")
 vm_path = vmm.CFGDIR + '/virtualbox.xml'
 disk_path = vmm.CFGDIR + '/virtualbox.vmdk'
