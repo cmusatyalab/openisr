@@ -33,7 +33,7 @@ from vmm import *
 CLASS_VBOX = '@virtualbox.org/VirtualBox;1'
 CLASS_SESN = '@virtualbox.org/Session;1'
 MIN_VERSION = (3,0,2)
-MAX_VERSION = (3,2,99)
+MAX_VERSION = (4,0,99)
 
 class MachineFile(object):
 	def __init__(self, vm_path):
@@ -62,6 +62,24 @@ class MachineFile(object):
 		del self.dom
 
 class VboxCompat(object):
+	# VBox 4 with settings version 1.11 maintains a media registry
+	# within the machine XML rather than in the global settings.  (For
+	# older settings versions, VBox 4 continues to maintain a global
+	# registry.)  The per-machine registry would allow us to simply
+	# unregister the entire VM without detaching saved state or
+	# unregistering any media.  (This would mean that VBox would have
+	# control of the naming of the memory state file, but we could
+	# probably live with that.)  If we reregister the VM later but
+	# e.g. DVD media is missing, VBox >= 4.0.2 shows a nice dialog
+	# box and continues anyway.  In the long run, for maintainability,
+	# we should switch exclusively to this model, drop support for
+	# VBox < 4.0.4, and force-upgrade all older settings files to
+	# 1.11.  This can be done by setting the chipset type to ICH9,
+	# saving the settings file, and switching it back.  (Need to
+	# check whether the IO-APIC is automatically enabled by this
+	# process.)  For the time being, for maximum compatibility, we
+	# continue to unregister and reregister as we always have.
+
 	def __init__(self):
 		parts = map(int, vbox.version.replace('_OSE', '').split('.'))
 		if len(parts) != 3:
@@ -72,6 +90,12 @@ class VboxCompat(object):
 			raise VmmError("VirtualBox >= %s required (found %s)" \
 					% (format_version(MIN_VERSION), \
 					vbox.version))
+		# VBox 4.0.0 and 4.0.2 truncate CpuIdLeaf attribute values
+		# in the machine XML to nine digits, corrupting them
+		if self.vbox_ver >= (4,0,0) and self.vbox_ver <= (4,0,2):
+			raise VmmError(("VirtualBox %s is not supported.  " + \
+					"Upgrade to at least version 4.0.4.") \
+					% vbox.version)
 
 	def version_is_recognized(self):
 		return self.vbox_ver <= MAX_VERSION
@@ -138,7 +162,7 @@ class VboxCompat(object):
 		# a different set of flags.
 		#
 		# Also note that due to VBox #6577, setCpuProperty() can't be
-		# used to enable Synthetic CPU at least through VBox 3.1.6.
+		# used to enable Synthetic CPU through VBox 4.0.2.
 		# We could enable it with setExtraData() if necessary.
 		if self.vbox_ver < (3,2):
 			vm.setCpuProperty(ifaces.CpuPropertyType.PAE, True)
@@ -168,7 +192,7 @@ class VboxCompat(object):
 		# applications examining the CPUID.
 		vm.setExtraData('VBoxInternal/CPUM/StrictCpuIdChecks', '0')
 
-	def create_machine(self, vmdir, name, uuid, enable64):
+	def create_machine(self, vmpath, name, uuid, enable64):
 		'''Create a machine, configure its processor features, and
 		return it.'''
 		if enable64:
@@ -180,11 +204,23 @@ class VboxCompat(object):
 		else:
 			ostype = 'Other'
 
+		vmdir = os.path.dirname(vmpath)
 		if self.vbox_ver < (3,2):
 			vm = vbox.createMachine(name, ostype, vmdir, uuid)
-		else:
+		elif self.vbox_ver < (4,0):
 			vm = vbox.createMachine(name, ostype, vmdir, uuid,
 						False)
+		else:
+			vm = vbox.createMachine(vmpath, name, ostype, uuid,
+						False)
+
+		if self.vbox_ver >= (4,0):
+			# We know the machine will never run on VBox < 4 due
+			# to settings version conflicts, so even the GPL
+			# version will always have at least a USB 1.1
+			# controller
+			vm.USBController.enabled = True
+			vm.USBController.enabledEhci = False
 
 		if self.vbox_ver < (3,1):
 			vm.HWVirtExEnabled = enable64
@@ -195,6 +231,132 @@ class VboxCompat(object):
 			self.__configure_cpu(vm, enable64)
 
 		return vm
+
+	def fixup_created_machine(self, vmpath, name):
+		'''Clean up filesystem layout problems produced by
+		create_machine() on VBox < 4.  This should be called after the
+		machine is configured and saved and its object is deleted.'''
+		if self.vbox_ver < (4,0):
+			vmdir = os.path.dirname(vmpath)
+			os.rename(os.path.join(vmdir, name, '%s.xml' % name),
+						vmpath)
+			shutil.rmtree(os.path.join(vmdir, name))
+
+	def get_machine_by_id(self, uuid):
+		'''Look up an existing machine by its UUID and return it.'''
+		if self.vbox_ver < (4,0):
+			return vbox.getMachine(uuid)
+		else:
+			return vbox.findMachine(uuid)
+
+	def unregister_machine(self, vm):
+		'''Unregister the machine.'''
+		if self.vbox_ver < (4,0):
+			vbox.unregisterMachine(vm.id)
+		else:
+			vm.unregister(ifaces.CleanupMode.UnregisterOnly)
+
+	def discard_saved_state(self, sesn, remove):
+		'''Discard the machine's saved state.'''
+		if self.vbox_ver < (4,0):
+			sesn.console.forgetSavedState(remove)
+		else:
+			sesn.console.discardSavedState(remove)
+
+	def lock_machine(self, vm, sesn):
+		'''Bind the machine to the session and lock it for writing.'''
+		if self.vbox_ver < (4,0):
+			vbox.openSession(sesn, vm.id)
+		else:
+			vm.lockMachine(sesn, ifaces.LockType.Write)
+
+	def unlock_machine(self, sesn):
+		'''Close the session and unlock the machine.'''
+		if self.vbox_ver < (4,0):
+			sesn.close()
+		else:
+			sesn.unlockMachine()
+
+	def launch_machine(self, vm, sesn):
+		'''Bind the machine to the session, launch a separate VM
+		process for it, and return a Progress object.'''
+		if self.vbox_ver < (4,0):
+			return vbox.openRemoteSession(sesn, vm.id, 'gui', None)
+		else:
+			return vm.launchVMProcess(sesn, 'gui', None)
+
+	def machine_is_locked(self, vm):
+		'''Return True if the machine is locked, False otherwise.'''
+		if self.vbox_ver < (4,0):
+			return vm.sessionState != ifaces.SessionState.Closed
+		else:
+			return vm.sessionState != ifaces.SessionState.Unlocked
+
+	def wait_for_machine_termination(self, vm, poll_func = None):
+		'''Wait for the specified machine to become unlocked.  If
+		poll_func is specified, call it periodically while waiting.'''
+		if self.vbox_ver < (4,0):
+			# There's no way to wait for a session state change
+			# from Python, so we have to poll.  We can't loop
+			# reading sesn.state because that deadlocks at session
+			# shutdown, so we loop reading vm.sessionState.
+			while self.machine_is_locked(vm):
+				if poll_func is not None:
+					poll_func()
+				time.sleep(0.5)
+		else:
+			src = vbox.eventSource
+			listener = src.createListener()
+			src.registerListener(listener,
+				[ifaces.VBoxEventType.OnSessionStateChanged],
+				False)
+			if poll_func is not None:
+				timeout = 500
+			else:
+				timeout = -1
+			while self.machine_is_locked(vm):
+				if poll_func is not None:
+					poll_func()
+				event = src.getEvent(listener, timeout)
+				if event is not None:
+					if event.waitable:
+						src.event_processed(listener,
+									event)
+			src.unregisterListener(listener)
+
+	def open_hard_disk(self, path):
+		'''Open the hard disk and return it.'''
+		if self.vbox_ver < (4,0):
+			return vbox.openHardDisk(path,
+						ifaces.AccessMode.ReadWrite,
+						False, '', False, '')
+		else:
+			return vbox.openMedium(path,
+						ifaces.DeviceType.HardDisk,
+						ifaces.AccessMode.ReadWrite)
+
+	def open_dvd_image(self, path):
+		'''Open the DVD image and return it.'''
+		if self.vbox_ver < (4,0):
+			return vbox.openDVDImage(path, '')
+		else:
+			return vbox.openMedium(path, ifaces.DeviceType.DVD,
+						ifaces.AccessMode.ReadOnly)
+
+	def get_hard_disk_by_path(self, path):
+		'''Look up an existing hard disk by its path and return it.'''
+		if self.vbox_ver < (4,0):
+			return vbox.findHardDisk(path)
+		else:
+			return vbox.findMedium(path,
+						ifaces.DeviceType.HardDisk)
+
+	def get_dvd_image_by_path(self, path):
+		'''Look up an existing DVD image by its path and return it.'''
+		if self.vbox_ver < (4,0):
+			return vbox.findDVDImage(path)
+		else:
+			return vbox.findMedium(path, ifaces.DeviceType.DVD)
 
 	def __get_ide_controller(self, sesn_machine):
 		for ctlr in sesn_machine.getStorageControllers():
@@ -219,17 +381,22 @@ class VboxCompat(object):
 					ifaces.StorageBus.Floppy)
 		return ctlr.name
 
-	def attach_ide_disk(self, sesn_machine, uuid, port, device):
+	def attach_ide_disk(self, sesn_machine, disk, port, device):
 		'''Attach the specified disk to the given machine's IDE
 		controller.  The machine handle must be obtained from an open
 		session.'''
 		ctlr = self.__get_ide_controller(sesn_machine)
 		if self.vbox_ver < (3,1):
-			sesn_machine.attachHardDisk(uuid, ctlr, port, device)
+			sesn_machine.attachHardDisk(disk.id, ctlr, port,
+						device)
+		elif self.vbox_ver < (4,0):
+			sesn_machine.attachDevice(ctlr, port, device,
+						ifaces.DeviceType.HardDisk,
+						disk.id)
 		else:
 			sesn_machine.attachDevice(ctlr, port, device,
 						ifaces.DeviceType.HardDisk,
-						uuid)
+						disk)
 
 	def detach_ide_disk(self, sesn_machine, port, device):
 		'''Detach the specified disk from the given machine's IDE
@@ -254,12 +421,16 @@ class VboxCompat(object):
 		machine handle must be obtained from an open session.'''
 		if self.vbox_ver < (3,1):
 			return
+		if self.vbox_ver < (4,0):
+			empty = ''
+		else:
+			empty = None
 		ctlr = self.__get_ide_controller(sesn_machine)
 		sesn_machine.attachDevice(ctlr, 1, 0, ifaces.DeviceType.DVD,
-					'')
+					empty)
 		ctlr = self.__get_floppy_controller(sesn_machine)
 		sesn_machine.attachDevice(ctlr, 0, 0, ifaces.DeviceType.Floppy,
-					'')
+					empty)
 
 	def detach_removable_drives(self, sesn_machine):
 		'''Detach standard removable drives from the machine.  The
@@ -277,12 +448,17 @@ class VboxCompat(object):
 		except:
 			pass
 
-	def mount_dvd_medium(self, sesn_machine, uuid):
+	def mount_dvd_medium(self, sesn_machine, dvd):
+		'''Mount the DVD medium with the specified UUID into the
+		machine.'''
 		if self.vbox_ver < (3,1):
-			sesn_machine.DVDDrive.mountImage(uuid)
+			sesn_machine.DVDDrive.mountImage(dvd.id)
+		elif self.vbox_ver < (4,0):
+			ctlr = self.__get_ide_controller(sesn_machine)
+			sesn_machine.mountMedium(ctlr, 1, 0, dvd.id, False)
 		else:
 			ctlr = self.__get_ide_controller(sesn_machine)
-			sesn_machine.mountMedium(ctlr, 1, 0, uuid, False)
+			sesn_machine.mountMedium(ctlr, 1, 0, dvd, False)
 
 	def fixup_removable_devices(self, mf):
 		"""On VirtualBox 3.1 and above, unregistered machines cannot
@@ -372,9 +548,9 @@ def handle_signal(sig, frame):
 # Use this from a finally block to ignore exceptions when attempting to close
 # a session, so that they do not overwrite any exception that was generated
 # in the corresponding try block.
-def try_close(sesn):
+def try_unlock(sesn):
 	try:
-		sesn.close()
+		compat.unlock_machine(sesn)
 	except:
 		pass
 
@@ -467,8 +643,7 @@ def create_machine():
 		raise VmmError("Couldn't parse %s" % setup_path)
 
 	vmname = parcelname()
-	vm = compat.create_machine(vmm.CFGDIR, vmname, vmm.UUID,
-				config['64-bit'])
+	vm = compat.create_machine(vm_path, vmname, vmm.UUID, config['64-bit'])
 	vm.memorySize = vmm.MEM
 	vm.VRAMSize = 16
 	vm.snapshotFolder = '.'
@@ -484,8 +659,7 @@ def create_machine():
 		vm.BIOSSettings.IOAPICEnabled = True
 	vm.saveSettings()
 	del vm
-	os.rename('%s/%s/%s.xml' % (vmm.CFGDIR, vmname, vmname), vm_path)
-	shutil.rmtree('%s/%s' % (vmm.CFGDIR, vmname))
+	compat.fixup_created_machine(vm_path, vmname)
 
 def request_upgrade_permission():
 	resp = ''
@@ -647,21 +821,20 @@ def fixup_machine():
 		vm.saveSettings()
 
 def register_machine():
-	disk = vbox.openHardDisk(disk_path, ifaces.AccessMode.ReadWrite,
-				False, '', False, '')
+	disk = compat.open_hard_disk(disk_path)
 	if os.path.exists(iso_path):
-		dvd = vbox.openDVDImage(iso_path, '')
+		dvd = compat.open_dvd_image(iso_path)
 	else:
 		dvd = None
 	vm = vbox.openMachine(vm_path)
 	vbox.registerMachine(vm)
 	sesn = new_instance(CLASS_SESN)
-	vbox.openSession(sesn, vm.id)
+	compat.lock_machine(vm, sesn)
 	try:
-		compat.attach_ide_disk(sesn.machine, disk.id, 0, 0)
+		compat.attach_ide_disk(sesn.machine, disk, 0, 0)
 		compat.attach_removable_drives(sesn.machine)
 		if dvd is not None:
-			compat.mount_dvd_medium(sesn.machine, dvd.id)
+			compat.mount_dvd_medium(sesn.machine, dvd)
 		if vmm.FULLSCREEN == 'yes':
 			fullscreen = 'on'
 		else:
@@ -672,76 +845,72 @@ def register_machine():
 		if os.path.isfile(saved_path):
 			sesn.console.adoptSavedState(saved_path)
 	finally:
-		try_close(sesn)
+		try_unlock(sesn)
 
 def unregister_state(sesn, do_save):
 	have_state = (sesn.machine.state == ifaces.MachineState.Saved)
 	if do_save and have_state:
 		cur_path = sesn.machine.stateFilePath
-		sesn.console.forgetSavedState(False)
+		compat.discard_saved_state(sesn, False)
 		os.rename(cur_path, saved_path)
 		vmm.SUSPENDED = 'virtualbox'
 	else:
 		if have_state:
-			sesn.console.forgetSavedState(True)
+			compat.discard_saved_state(sesn, True)
 		vmm.SUSPENDED = 'no'
 
 def unregister_machine(do_save = True):
 	try:
-		vm = vbox.getMachine(vmm.UUID)
+		vm = compat.get_machine_by_id(vmm.UUID)
 	except:
-		pass
+		vm = None
 	else:
 		sesn = new_instance(CLASS_SESN)
-		vbox.openSession(sesn, vm.id)
+		compat.lock_machine(vm, sesn)
 		try:
 			unregister_state(sesn, do_save)
 			compat.detach_removable_drives(sesn.machine)
 			compat.detach_ide_disk(sesn.machine, 0, 0)
 		finally:
 			sesn.machine.saveSettings()
-			try_close(sesn)
-		vbox.unregisterMachine(vm.id)
-
+			try_unlock(sesn)
 	try:
-		disk = vbox.findHardDisk(disk_path)
+		disk = compat.get_hard_disk_by_path(disk_path)
 	except:
 		pass
 	else:
 		disk.close()
 
 	try:
-		dvd = vbox.findDVDImage(iso_path)
+		dvd = compat.get_dvd_image_by_path(iso_path)
 	except:
 		pass
 	else:
 		dvd.close()
 
-def run_machine():
-	global signaled
+	# We need to do this last on VBox 4 with settings version >= 1.11,
+	# since the hard disk and DVD are registered in the machine-specific
+	# registry
+	if vm is not None:
+		compat.unregister_machine(vm)
 
+def run_machine():
 	sesn = new_instance(CLASS_SESN)
 	vmm.SUSPENDED = 'virtualbox'
 	start = time.time()
-	vm = vbox.getMachine(vmm.UUID)
+	vm = compat.get_machine_by_id(vmm.UUID)
 	try:
-		progress = vbox.openRemoteSession(sesn, vmm.UUID, 'gui', None)
+		progress = compat.launch_machine(vm, sesn)
 		progress_wait(progress)
 	except:
-		# Session didn't start successfully.  We need to close it
+		# Machine didn't start successfully.  We need to unlock it
 		# and wait for it to die to ensure that unregister_machine()
 		# works properly.
-		sesn.close()
-		while vm.sessionState != ifaces.SessionState.Closed:
-			time.sleep(0.5)
+		compat.unlock_machine(sesn)
+		compat.wait_for_machine_termination(vm)
 		raise
-	# It would be better to use IVirtualBoxCallback to wait for a
-	# session state change, but it's not clear how to do that from Python.
-	# We could loop reading sesn.state, but that deadlocks at session
-	# shutdown.  So we loop reading vm.sessionState.  Note that the
-	# remote session automatically closes once the direct session closes,
-	# so we don't need to do it ourselves.
-	while vm.sessionState != ifaces.SessionState.Closed:
+	def check_signal():
+		global signaled
 		if signaled:
 			signaled = False
 			print >>sys.stderr, 'Suspending parcel...',
@@ -751,7 +920,7 @@ def run_machine():
 				print >>sys.stderr, 'failed'
 			else:
 				print >>sys.stderr, 'done'
-		time.sleep(0.5)
+	compat.wait_for_machine_termination(vm, check_signal)
 	if time.time() - start < 20:
 		print >>sys.stderr, '''
 Your ISR session appears to have been very short, possibly because of a
@@ -766,13 +935,10 @@ def wait_for_interrupt():
 	while not signaled:
 		signal.pause()
 	print >>sys.stderr, ''
-	vm = vbox.getMachine(vmm.UUID)
-	printed = False
-	while vm.sessionState != ifaces.SessionState.Closed:
-		if not printed:
-			print >>sys.stderr, 'Waiting for parcel to be closed...'
-			printed = True
-		time.sleep(0.5)
+	vm = compat.get_machine_by_id(vmm.UUID)
+	if compat.machine_is_locked(vm):
+		print >>sys.stderr, 'Waiting for parcel to be closed...'
+	compat.wait_for_machine_termination(vm)
 
 def info():
 	vmm.VMNAME = 'VirtualBox'
