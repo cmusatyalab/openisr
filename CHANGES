@@ -1,3 +1,33 @@
+====== 0.10.1 (2011-02-23)
+
+------ Client changes
+
+- dirtometer: Allow showing image cache state in bitmap (press M to enable)
+- dirtometer: Add scroll bar to chunk bitmap
+- dirtometer: Show parcel name in the dirtometer window
+- dirtometer: Add window icon
+- dirtometer: Ignore saved window position if it is offscreen
+- dirtometer: Save settings on ctrl-C
+- Autocomplete only checked-out parcels for "isr clean" unless -f given
+- Various other improvements
+
+------ VMM driver changes
+
+- kvm: Fix RightCtrl-F with Metacity
+- kvm: Work with KVM version shipped with RHEL 6
+- kvm: Automatically bind parcel.iso to the VM if present
+- virtualbox: Support VirtualBox >= 4.0.4
+- virtualbox: Enable USB 1.1 for parcels created with VirtualBox 4
+- virtualbox: Always default to "Save the machine state" in Close VM dialog
+- virtualbox: Automatically bind parcel.iso to the VM if present
+- virtualbox: Allow configuring new parcels for 64-bit guests (requires VT)
+- virtualbox: Allow configuring new parcels to avoid First Run dialog
+- virtualbox: Fix error message if VirtualBox is too old to run a parcel
+
+------ isr_admin changes
+
+- adduser: Fix failure on newer Ubuntu systems
+
 ====== 0.10.0 (2010-11-01)
 
 ------ Major changes in this release
