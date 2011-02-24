@@ -505,11 +505,18 @@ sub adduser ($) {
     $passwd = $config{'default_pass'};
     $passwd = keygen(PASSWORD_BYTES)
         unless defined $passwd;
-    open(CHP, '|-', 'chpasswd -m')
+    # Older chpasswd will encrypt passwords with DES unless -m is specified.
+    # Some newer versions of chpasswd don't support (or require) -m.
+    open(CHP, '|-', 'chpasswd -m 2>/dev/null')
         or unix_errexit("Unable to change password for $userid");
     print CHP "$userid:$passwd\n";
-    close CHP
-	or system_errexit("Unable to change password for $userid");
+    unless (close CHP) {
+        open(CHP, '|-', 'chpasswd')
+            or unix_errexit("Unable to change password for $userid");
+        print CHP "$userid:$passwd\n";
+        close CHP
+	    or system_errexit("Unable to change password for $userid");
+    }
 
     # Create data directories
     if (!-d $isrdir) {
